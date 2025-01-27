@@ -30,7 +30,7 @@ If you've downloaded part or all of the above dataset into a folder `data/finewe
 `$ cargo run --example train -- --model emozilla/llama2-20m-init --data-path ./data/fineweb-10bt/ --total-batch 2 --micro-batch 1`
 
 ## Adding a new model type
-The `train` example currently asssumes your model is a Llama model, and instantiates it via `LlamaForCausalLM::from_pretrained`.
+The `train` example currently assumes your model is a Llama model, and instantiates it via `LlamaForCausalLM::from_pretrained`.
 
 We currently only support causal language models - to implement a new one, you can create a file similar to `llama_for_causal_lm` and implement your model, ensuring you provide the trait impls `CausalLM` and `ConcreteCausalLM`. `ConcreteCausalLM` isn't used in this repo, but will be needed for more advanced parallelism in the full Psyche codebase.
 
