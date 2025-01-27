@@ -1,8 +1,8 @@
 use crate::lcg::LCG;
 
-// Fisher-Yates shuffle, per Knuth
-// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
-
+/// Performs Fisher-Yates shuffle (Knuth variant) on the input slice
+/// Uses provided seed for deterministic randomization
+/// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
 pub fn deterministic_shuffle<T>(items: &mut [T], seed: u64) {
     let mut rng = LCG::new(seed);
 

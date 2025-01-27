@@ -1,22 +1,26 @@
-// Linear congruential generator
-// https://en.wikipedia.org/wiki/Linear_congruential_generator
-
+/// Linear congruential generator implementation
+/// See: https://en.wikipedia.org/wiki/Linear_congruential_generator
 const LCG_A: u64 = 6364136223846793005;
 const LCG_C: u64 = 1442695040888963407;
+
+/// Provides deterministic random number generation using the LCG algorithm
 pub struct LCG {
     state: u64,
 }
 
 impl LCG {
+    /// Creates a new LCG with the given seed value
     pub fn new(seed: u64) -> Self {
         LCG { state: seed }
     }
 
+    /// Generates the next random u64 value
     pub fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_mul(LCG_A).wrapping_add(LCG_C);
         self.state
     }
 
+    /// Generates a random number in range [0, max)
     pub fn next_range(&mut self, max: usize) -> usize {
         (self.next_u64() % max as u64) as usize
     }
