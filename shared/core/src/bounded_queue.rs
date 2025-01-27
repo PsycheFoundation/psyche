@@ -1,32 +1,40 @@
 use std::collections::VecDeque;
 
+/// A queue with a fixed maximum size that automatically removes oldest elements when full
 #[derive(Default)]
-pub struct BoundedQueue<T, const U: usize> {
+pub struct BoundedQueue<T, const CAPACITY: usize> {
     queue: VecDeque<T>,
 }
 
-impl<T, const U: usize> BoundedQueue<T, U> {
+impl<T, const CAPACITY: usize> BoundedQueue<T, CAPACITY> {
+    /// Adds an item to the queue, removing the oldest item if queue is at capacity
     pub fn push(&mut self, item: T) {
         self.queue.push_back(item);
-        if self.queue.len() > U {
+        if self.queue.len() > CAPACITY {
             self.queue.pop_front();
         }
     }
 
+    /// Returns an iterator over the items in the queue
+    #[must_use]
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.queue.iter()
     }
 
+    /// Returns the current number of items in the queue
+    #[must_use]
     pub fn len(&self) -> usize {
         self.queue.len()
     }
 
+    /// Returns true if the queue contains no items
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
 }
 
-impl<T, const U: usize> IntoIterator for BoundedQueue<T, U> {
+impl<T, const CAPACITY: usize> IntoIterator for BoundedQueue<T, CAPACITY> {
     type Item = T;
     type IntoIter = std::collections::vec_deque::IntoIter<Self::Item>;
 
