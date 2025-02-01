@@ -54,7 +54,7 @@ pub fn manhattan_distance(a: &[f32], b: &[f32]) -> Result<f32> {
     }
     
     if a.len() != b.len() {
-                return Err(anyhow!("Mismatched lengths: {} vs {}", a.len(), b.len()));
+        return Err(anyhow!("The lengths of the arrays must be equal, but found {} and {}", a.len(), b.len()));
     }
 
     let mut sum = 0.0;
@@ -71,7 +71,7 @@ pub fn hamming_distance(a: &[f32], b: &[f32]) -> Result<f32> {
     }
     
     if a.len() != b.len() {
-        return Err(anyhow!("Mismatched lengths: {} vs {}", a.len(), b.len()));
+        return Err(anyhow!("The lengths of the arrays must be equal, but found {} and {}", a.len(), b.len()));
     }
 
     let mut count = 0;
@@ -87,6 +87,7 @@ pub fn hamming_distance(a: &[f32], b: &[f32]) -> Result<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
 
     fn run_jaccard_tests(a: &[f32], b: &[f32], expected: f32) {
         // Print the result
@@ -94,7 +95,7 @@ mod tests {
         assert!((jaccard_distance(a, b) - expected).abs() < 1e-6);
     }
 
-    fn run_manhattan_tests(a: &[f32], b: &[f32], expected: Result<f32, anyhow::Error>) {
+    fn run_manhattan_tests(a: &[f32], b: &[f32], expected: Result<f32>) {
         let result = manhattan_distance(a, b);
         match (result, expected) {
             (Ok(result_val), Ok(expected_val)) => {
@@ -107,7 +108,7 @@ mod tests {
         }
     }
 
-    fn run_hamming_tests(a: &[f32], b: &[f32], expected: Result<f32, anyhow::Error>) {
+    fn run_hamming_tests(a: &[f32], b: &[f32], expected: Result<f32>) {
         let result = hamming_distance(a, b);
         match (result, expected) {
             (Ok(result_val), Ok(expected_val)) => {
@@ -139,8 +140,8 @@ mod tests {
         run_jaccard_tests(&a, &b, 0.333_333_34);
 
 
-        run_manhattan_tests(&a, &b, Err(anyhow!("Mismatched lengths: 3 vs 2")));
-        run_hamming_tests(&a, &b, Err(anyhow!("Mismatched lengths: 3 vs 2")));
+        run_manhattan_tests(&a, &b, Err(anyhow!("The lengths of the arrays must be equal, but found 3 and 2")));
+        run_hamming_tests(&a, &b, Err(anyhow!("The lengths of the arrays must be equal, but found 3 and 2")));
     }
 
     #[test]
