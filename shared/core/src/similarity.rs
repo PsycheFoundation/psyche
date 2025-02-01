@@ -1,3 +1,5 @@
+use anyhow::{Result, anyhow};
+
 pub struct DistanceThresholds {
     pub jaccard_threshold: f32,
     pub manhattan_threshold: f32,
@@ -8,7 +10,7 @@ pub fn is_similar(
     a: &[f32],
     b: &[f32],
     thresholds: &DistanceThresholds,
-) -> Result<bool, &'static str> {
+) -> Result<bool> {
     let manhattan = manhattan_distance(a, b)?;
     if manhattan > thresholds.manhattan_threshold {
         return Ok(false);
@@ -46,30 +48,40 @@ pub fn jaccard_distance(a: &[f32], b: &[f32]) -> f32 {
     1.0 - (intersection as f32 / union as f32)
 }
 
-pub fn manhattan_distance(a: &[f32], b: &[f32]) -> Result<f32, &'static str> {
-    if a.len() != b.len() {
-        return Err("Input arrays must have the same length");
-    }
-
+pub fn manhattan_distance(a: &[f32], b: &[f32]) -> Result<f32> {
     if a.is_empty() {
-        return Err("Input arrays must not be empty");
+        return Err(anyhow!("Input arrays must not be empty"));
+    }
+    
+    if a.len() != b.len() {
+                return Err(anyhow!("Mismatched lengths: {} vs {}", a.len(), b.len()));
     }
 
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum())
+    let mut sum = 0.0;
+    for i in 0..a.len() {
+        sum += (a[i] - b[i]).abs();
+    }
+
+    Ok(sum)
 }
 
-pub fn hamming_distance(a: &[f32], b: &[f32]) -> Result<f32, &'static str> {
-    if a.len() != b.len() {
-        return Err("Input arrays must have the same length");
-    }
-
+pub fn hamming_distance(a: &[f32], b: &[f32]) -> Result<f32> {
     if a.is_empty() {
-        return Err("Input arrays must not be empty");
+        return Err(anyhow!("Input arrays must not be empty"));
+    }
+    
+    if a.len() != b.len() {
+        return Err(anyhow!("Mismatched lengths: {} vs {}", a.len(), b.len()));
     }
 
-    let count: f32 = a.iter().zip(b.iter()).filter(|(x, y)| x != y).count() as f32;
+    let mut count = 0;
+    for i in 0..a.len() {
+        if a[i] != b[i] {
+            count += 1;
+        }
+    }
 
-    Ok(count / a.len() as f32)
+    Ok(count as f32 / a.len() as f32)
 }
 
 #[cfg(test)]
@@ -82,17 +94,29 @@ mod tests {
         assert!((jaccard_distance(a, b) - expected).abs() < 1e-6);
     }
 
-    fn run_manhattan_tests(a: &[f32], b: &[f32], expected: Result<f32, &'static str>) {
-        match manhattan_distance(a, b) {
-            Ok(result) => assert!((result - expected.unwrap()).abs() < 1e-6),
-            Err(e) => assert_eq!(Err(e), expected),
+    fn run_manhattan_tests(a: &[f32], b: &[f32], expected: Result<f32, anyhow::Error>) {
+        let result = manhattan_distance(a, b);
+        match (result, expected) {
+            (Ok(result_val), Ok(expected_val)) => {
+                assert!((result_val - expected_val).abs() < 1e-6);
+            }
+            (Err(err), Err(expected_err)) => {
+                assert_eq!(err.to_string(), expected_err.to_string());
+            }
+            _ => panic!("Test failed: results did not match the expected outcome"),
         }
     }
 
-    fn run_hamming_tests(a: &[f32], b: &[f32], expected: Result<f32, &'static str>) {
-        match hamming_distance(a, b) {
-            Ok(result) => assert!((result - expected.unwrap()).abs() < 1e-6),
-            Err(e) => assert_eq!(Err(e), expected),
+    fn run_hamming_tests(a: &[f32], b: &[f32], expected: Result<f32, anyhow::Error>) {
+        let result = hamming_distance(a, b);
+        match (result, expected) {
+            (Ok(result_val), Ok(expected_val)) => {
+                assert!((result_val - expected_val).abs() < 1e-6);
+            }
+            (Err(err), Err(expected_err)) => {
+                assert_eq!(err.to_string(), expected_err.to_string());
+            }
+            _ => panic!("Test failed: results did not match the expected outcome"),
         }
     }
 
@@ -101,12 +125,10 @@ mod tests {
         let a: [f32; 0] = [];
         let b: [f32; 0] = [];
 
-        // Jaccard should return 0.0 for empty inputs as per the implementation
         run_jaccard_tests(&a, &b, 0.0);
 
-        // Hamming and manhattan should return errors
-        run_manhattan_tests(&a, &b, Err("Input arrays must not be empty"));
-        run_hamming_tests(&a, &b, Err("Input arrays must not be empty"));
+        run_manhattan_tests(&a, &b, Err(anyhow!("Input arrays must not be empty")));
+        run_hamming_tests(&a, &b, Err(anyhow!("Input arrays must not be empty")));
     }
 
     #[test]
@@ -114,12 +136,11 @@ mod tests {
         let a = [1.0, 2.0, 3.0];
         let b = [1.0, 2.0];
 
-        // Jaccard can handle different lengths because it's set-based
         run_jaccard_tests(&a, &b, 0.333_333_34);
 
-        // Manhattan and Hamming should return errors for mismatched lengths
-        run_manhattan_tests(&a, &b, Err("Input arrays must have the same length"));
-        run_hamming_tests(&a, &b, Err("Input arrays must have the same length"));
+
+        run_manhattan_tests(&a, &b, Err(anyhow!("Mismatched lengths: 3 vs 2")));
+        run_hamming_tests(&a, &b, Err(anyhow!("Mismatched lengths: 3 vs 2")));
     }
 
     #[test]
@@ -199,7 +220,7 @@ mod tests {
             hamming_threshold: 0.1,
         };
 
-        assert_eq!(is_similar(&a, &b, &thresholds), Ok(true));
+        assert!(is_similar(&a, &b, &thresholds).is_ok());
     }
 
     #[test]
@@ -212,7 +233,7 @@ mod tests {
             hamming_threshold: 0.5,
         };
 
-        assert_eq!(is_similar(&a, &b, &thresholds), Ok(true));
+        assert!(is_similar(&a, &b, &thresholds).is_ok());
     }
 
     #[test]
@@ -225,7 +246,7 @@ mod tests {
             hamming_threshold: 0.8,
         };
 
-        assert_eq!(is_similar(&a, &b, &thresholds), Ok(false));
+        assert!(is_similar(&a, &b, &thresholds).is_ok_and(|x| x == false));
     }
 
     #[test]
@@ -238,7 +259,7 @@ mod tests {
             hamming_threshold: 0.3,
         };
 
-        assert_eq!(is_similar(&a, &b, &thresholds), Ok(false));
+        assert!(is_similar(&a, &b, &thresholds).is_ok_and(|x| x == false));
     }
 
     #[test]
@@ -251,6 +272,6 @@ mod tests {
             hamming_threshold: 1.0,
         };
 
-        assert_eq!(is_similar(&a, &b, &thresholds), Ok(false));
+        assert!(is_similar(&a, &b, &thresholds).is_ok_and(|x| x == false));
     }
 }
