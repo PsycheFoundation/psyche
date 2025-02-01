@@ -23,7 +23,7 @@ pub use lcg::LCG;
 pub use lr_scheduler::*;
 pub use running_average::RunningAverage;
 pub use similarity::{
-    hamming_distance, is_similar, jaccard_distance, manhattan_distance, DistanceThresholds,
+    hamming_distance, is_similar, jaccard_distance, manhattan_distance, DistanceThresholds, DistanceError
 };
 pub use sized_iterator::SizedIterator;
 pub use token_size::TokenSize;

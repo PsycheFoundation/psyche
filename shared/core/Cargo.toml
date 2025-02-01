@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
+thiserror.workspace = true
 rand = { workspace = true, optional = true }
 serde.workspace = true
 fnv = "1.0.7"
