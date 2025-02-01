@@ -1,4 +1,14 @@
-use anyhow::{Result, anyhow};
+use thiserror::Error;
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum DistanceError {
+    #[error("Input arrays must not be empty.")]
+    EmptyInput,
+
+    #[error("The lengths of the arrays must be equal, but found {0} and {1}.")]
+    LengthMismatch(usize, usize),
+}
+
 
 pub struct DistanceThresholds {
     pub jaccard_threshold: f32,
@@ -10,7 +20,7 @@ pub fn is_similar(
     a: &[f32],
     b: &[f32],
     thresholds: &DistanceThresholds,
-) -> Result<bool> {
+) -> Result<bool, DistanceError> {
     let manhattan = manhattan_distance(a, b)?;
     if manhattan > thresholds.manhattan_threshold {
         return Ok(false);
@@ -48,13 +58,13 @@ pub fn jaccard_distance(a: &[f32], b: &[f32]) -> f32 {
     1.0 - (intersection as f32 / union as f32)
 }
 
-pub fn manhattan_distance(a: &[f32], b: &[f32]) -> Result<f32> {
+pub fn manhattan_distance(a: &[f32], b: &[f32]) -> Result<f32, DistanceError> {
     if a.is_empty() {
-        return Err(anyhow!("Input arrays must not be empty"));
+        return Err(DistanceError::EmptyInput);
     }
     
     if a.len() != b.len() {
-        return Err(anyhow!("The lengths of the arrays must be equal, but found {} and {}", a.len(), b.len()));
+        return Err(DistanceError::LengthMismatch(a.len(), b.len()));
     }
 
     let mut sum = 0.0;
@@ -65,13 +75,13 @@ pub fn manhattan_distance(a: &[f32], b: &[f32]) -> Result<f32> {
     Ok(sum)
 }
 
-pub fn hamming_distance(a: &[f32], b: &[f32]) -> Result<f32> {
+pub fn hamming_distance(a: &[f32], b: &[f32]) -> Result<f32, DistanceError> {
     if a.is_empty() {
-        return Err(anyhow!("Input arrays must not be empty"));
+        return Err(DistanceError::EmptyInput);
     }
     
     if a.len() != b.len() {
-        return Err(anyhow!("The lengths of the arrays must be equal, but found {} and {}", a.len(), b.len()));
+        return Err(DistanceError::LengthMismatch(a.len(), b.len()));
     }
 
     let mut count = 0;
@@ -84,10 +94,10 @@ pub fn hamming_distance(a: &[f32], b: &[f32]) -> Result<f32> {
     Ok(count as f32 / a.len() as f32)
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result;
 
     fn run_jaccard_tests(a: &[f32], b: &[f32], expected: f32) {
         // Print the result
@@ -95,7 +105,7 @@ mod tests {
         assert!((jaccard_distance(a, b) - expected).abs() < 1e-6);
     }
 
-    fn run_manhattan_tests(a: &[f32], b: &[f32], expected: Result<f32>) {
+    fn run_manhattan_tests(a: &[f32], b: &[f32], expected: Result<f32, DistanceError>) {
         let result = manhattan_distance(a, b);
         match (result, expected) {
             (Ok(result_val), Ok(expected_val)) => {
@@ -108,7 +118,7 @@ mod tests {
         }
     }
 
-    fn run_hamming_tests(a: &[f32], b: &[f32], expected: Result<f32>) {
+    fn run_hamming_tests(a: &[f32], b: &[f32], expected: Result<f32, DistanceError>) {
         let result = hamming_distance(a, b);
         match (result, expected) {
             (Ok(result_val), Ok(expected_val)) => {
@@ -128,8 +138,8 @@ mod tests {
 
         run_jaccard_tests(&a, &b, 0.0);
 
-        run_manhattan_tests(&a, &b, Err(anyhow!("Input arrays must not be empty")));
-        run_hamming_tests(&a, &b, Err(anyhow!("Input arrays must not be empty")));
+        run_manhattan_tests(&a, &b, Err(DistanceError::EmptyInput));
+        run_hamming_tests(&a, &b, Err(DistanceError::EmptyInput));
     }
 
     #[test]
@@ -140,8 +150,8 @@ mod tests {
         run_jaccard_tests(&a, &b, 0.333_333_34);
 
 
-        run_manhattan_tests(&a, &b, Err(anyhow!("The lengths of the arrays must be equal, but found 3 and 2")));
-        run_hamming_tests(&a, &b, Err(anyhow!("The lengths of the arrays must be equal, but found 3 and 2")));
+        run_manhattan_tests(&a, &b, Err(DistanceError::LengthMismatch(3, 2)));
+        run_hamming_tests(&a, &b, Err(DistanceError::LengthMismatch(3, 2)));
     }
 
     #[test]
