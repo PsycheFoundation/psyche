@@ -84,7 +84,7 @@ export LIBTORCH_LIB=<path_to_libtorch>
 export LD_LIBRARY_PATH=<path_to_libtorch>/lib:$LD_LIBRARY_PATH
 ```
 
-This can also be acheived by making a `.cargo/config.toml` file in the checkout path
+This can also be achieved by making a `.cargo/config.toml` file in the checkout path
 
 ```
 [env]
@@ -128,5 +128,5 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 [env]
 LIBTORCH = <path_to_libtorch>
 OPENSSL_LIB_DIR = <path_to_openssl>/lib/VC/x64/MT
-OPENSSL_INCLUDE_DIR <path_to_openssl>/include
+OPENSSL_INCLUDE_DIR = <path_to_openssl>/include
 ```
