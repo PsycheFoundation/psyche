@@ -13,7 +13,7 @@ use std::{
     collections::HashMap,
     fmt,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tch::TchError;
 use thiserror::Error;
@@ -902,7 +902,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         if let InitStage::Initializing((_init_future, init_state)) = &mut self.0 {
             // if we're still initializing, check to see if we're done
             let init_state = *init_state;
-            self.apply_state(init_state).await?;
+            self.apply_state(None, init_state).await?;
         }
         if let InitStage::Running(state_machine) = &mut self.0 {
             state_machine.try_send_opportunistic_witness()?;
@@ -946,11 +946,38 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), ApplyStateError> {
+    pub async fn apply_state(
+        &mut self,
+        old_state: Option<Coordinator<T>>,
+        state: Coordinator<T>,
+    ) -> Result<(), ApplyStateError> {
+        if state.run_state == RunState::Warmup {
+            info!("WARMUP STATE RECEIVED");
+            if old_state.is_some() {
+                info!("OLD STATE BEING: {:?}", old_state.unwrap().run_state);
+            } else {
+                info!("OLD STATE BEING: None");
+            }
+        }
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        info!(
+            "AAAAAAAAAAAA: {}",
+            (state.run_state_start_unix_timestamp as f64 / state.config.warmup_time as f64)
+        );
         let new_state = match &mut self.0 {
             InitStage::NotYetInitialized(init_info @ Some(..))
-                if state.run_state == RunState::Warmup =>
+            // We run the initialization only when we are sure that we didn't just recently joined in Warmup
+            // If this is the case, then `old_state` is `None` and we will have to wait untill the next epoch
+                if (state.run_state == RunState::Warmup
+                    && (old_state.map(|old_state| old_state.run_state)
+                        == Some(RunState::WaitingForMembers)
+                        || old_state.map(|old_state| old_state.run_state)
+                            == Some(RunState::Cooldown))) || (state.run_state == RunState::Warmup && old_state.map(|old_state| old_state.run_state) == Some(RunState::Warmup) && ((timestamp - state.run_state_start_unix_timestamp) as f64 / state.config.warmup_time as f64) <= 0.2) =>
             {
+                info!("INITIALIZING MODEL");
                 // Take ownership of init_info using std::mem::take
                 let init_info = init_info.take().unwrap();
                 Some(InitStage::Initializing((
