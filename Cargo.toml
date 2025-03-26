@@ -57,5 +57,4 @@ pretty_assertions = "1.4.1"
 
 
 [profile.release]
-strip = "debuginfo"
-lto = "thin"
+debug = false
