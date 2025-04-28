@@ -15,7 +15,7 @@ use psyche_coordinator::{
 };
 use tracing::info;
 
-#[test_log::test(tokio::test(flavor = "current_thread"))]
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn connect_single_node() {
     let init_min_clients = 2;
     let global_batch_size = 4;
@@ -425,21 +425,17 @@ async fn client_join_in_training() {
     assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
 
     // run through the rest of the epoch
-    info!("running through the rest of the epoch");
     assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
     assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
     assert_with_retries(|| server_handle.get_rounds_head(), 3).await;
 
-    info!("asserting witnesses");
     // Assert that the witness healthy score of the previous round
     // 1 witness, 2 clients and each one trained 1 batch, expected_score = 2
     assert_witnesses_healthy_score(&server_handle, 1, 2).await;
 
-    info!("asserting warmup");
     // check that the run state evolves naturally to Warmup
     assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
 
-    info!("getting clients");
     // check that the clients length shows the new joined client
     assert_with_retries(|| server_handle.get_clients_len(), 3).await;
 }

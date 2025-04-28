@@ -873,6 +873,7 @@ async fn test_solana_subscriptions() {
 
     assert_eq!(subscription_events, expected_subscription_events[3..]);
     println!("subscription_events: {subscription_events:?}");
+}
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
