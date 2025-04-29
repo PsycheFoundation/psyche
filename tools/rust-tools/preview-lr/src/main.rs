@@ -1,6 +1,6 @@
 use clap::Parser;
 use plotters::prelude::*;
-use psyche_coordinator::{model::Model, CoordinatorConfig};
+use psyche_coordinator::{CoordinatorConfig, model::Model};
 use serde::Deserialize;
 use std::path::PathBuf;
 

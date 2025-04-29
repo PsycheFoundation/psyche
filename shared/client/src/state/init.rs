@@ -338,10 +338,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             init_config.data_parallelism * init_config.tensor_parallelism,
                         );
                         for dp in 0..init_config.data_parallelism {
-                            let communicator_id = match init_config.tensor_parallelism {
-                                1 => None,
-                                _ => Some(Arc::new(CommunicatorId::new())),
-                            };
+                            let communicator_id: Option<CommunicatorId> =
+                                match init_config.tensor_parallelism {
+                                    0 | 1 => None,
+                                    #[cfg(feature = "parallelism")]
+                                    _ => Some(tch::CStore::new().into()),
+                                    #[cfg(not(feature = "parallelism"))]
+                                    _ => unimplemented!(),
+                                };
                             for tp in 0..init_config.tensor_parallelism {
                                 let tensor_parallelism_world =
                                     communicator_id.as_ref().map(|communicator_id| {
@@ -491,18 +495,26 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let data_fetcher =
             DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
 
-        let data_parallel: Option<Vec<(Arc<CommunicatorId>, Arc<CancellableBarrier>)>> =
+        let data_parallel: Option<Vec<(CommunicatorId, Arc<CancellableBarrier>)>> =
             if init_config.data_parallelism > 1 {
-                Some(
-                    (0..init_config.tensor_parallelism)
-                        .map(|_| {
-                            (
-                                CommunicatorId::new().into(),
-                                CancellableBarrier::new(init_config.tensor_parallelism),
-                            )
-                        })
-                        .collect(),
-                )
+                #[cfg(feature = "parallelism")]
+                {
+                    Some(
+                        (0..init_config.tensor_parallelism)
+                            .map(|_| {
+                                (
+                                    tch::CStore::new().into(),
+                                    CancellableBarrier::new(init_config.tensor_parallelism),
+                                )
+                            })
+                            .collect(),
+                    )
+                }
+
+                #[cfg(not(feature = "parallelism"))]
+                {
+                    unimplemented!()
+                }
             } else {
                 None
             };

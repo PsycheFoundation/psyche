@@ -235,7 +235,7 @@ impl PreparedTask {
                 let ids = Tensor::from_slice(&context)
                     .to(options.model.device())
                     .unsqueeze(0);
-                let (logits, _) = options.model.forward(&ids, None, Some(1));
+                let (logits, _) = options.model.forward(&ids, None, Some(1), None);
                 let logits = logits.squeeze().log_softmax(-1, None);
                 let greedy: i64 = logits.argmax(-1, false).try_into().unwrap();
                 let index =
@@ -261,7 +261,7 @@ impl PreparedTask {
                     let (logits, _) =
                         options
                             .model
-                            .forward(&ids, None, Some((choice.len() + 1) as i64));
+                            .forward(&ids, None, Some((choice.len() + 1) as i64), None);
                     // drop the last logit, since we don't want to score what comes after the continuation
                     let logits = logits.log_softmax(-1, None).squeeze_dim(0).slice(
                         0,
