@@ -485,7 +485,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
 
         let data_fetcher =
-            DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
+            DataFetcher::<T, A>::new(vec![
+                DataProvider::Dummy(DummyDataProvider::new(TokenSize::TwoBytes, 2, 10)),
+                data_provider,
+            ], init_config.data_parallelism * 2);
 
         let data_parallel: Option<Vec<(Arc<CommunicatorId>, Arc<CancellableBarrier>)>> =
             if init_config.data_parallelism > 1 {
