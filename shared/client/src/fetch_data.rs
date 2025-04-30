@@ -14,7 +14,7 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
-use tracing::{debug, error, trace, trace_span, warn, info, Instrument};
+use tracing::{debug, error, info, trace, trace_span, warn, Instrument};
 
 pub type BatchStep = u32;
 pub type BatchIdSet = HashSet<BatchId>;
@@ -26,18 +26,21 @@ pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
     data_providers: Vec<Arc<Mutex<DataProvider<A>>>>,
     active_fetch_task: Option<(BatchStep, JoinHandle<()>)>,
     buffer_size: usize,
+    last_successful_provider_idx: Arc<Mutex<usize>>, // Store the index of the last successful provider
     _phantom: PhantomData<T>,
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
     pub fn new(data_providers: Vec<DataProvider<A>>, buffer_size: usize) -> Self {
+        assert!(!data_providers.is_empty(), "Must provide at least one data provider");
         Self {
             data_providers: data_providers
-                .into_iter() // Use into_iter to consume the input vector
-                .map(|dp| Arc::new(Mutex::new(dp))) // No need for clone here
+                .into_iter()
+                .map(|dp| Arc::new(Mutex::new(dp)))
                 .collect(),
             active_fetch_task: None,
             buffer_size,
+            last_successful_provider_idx: Arc::new(Mutex::new(0)), // Start with the first provider
             _phantom: Default::default(),
         }
     }
@@ -72,15 +75,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
             step,
             tokio::spawn({
                 trace!("New fetch task for step {step} has been spawned");
-                let data_providers = self.data_providers.clone(); // Clone the Arc vector for the async task
+                let data_providers = self.data_providers.clone();
+                let last_successful_provider_idx = self.last_successful_provider_idx.clone(); // Clone Arc for the task
 
                 async move {
+                    let num_providers = data_providers.len();
+                    if num_providers == 0 {
+                        error!("No data providers configured.");
+                        return;
+                    }
+
                     loop {
                         let batch_id = {
                             match assigned_batch_ids.pop() {
                                 Some(assigned) => assigned,
                                 None => {
-                                    // out of assigned data!
                                     debug!("No more assigned batch IDs for step {step}.");
                                     return;
                                 }
@@ -88,7 +97,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                         };
 
                         let mut batch_option = None;
-                        for (provider_idx, data_provider) in data_providers.iter().enumerate() {
+                        let start_idx = *last_successful_provider_idx.lock().await; // Read the last successful index
+
+                        // Iterate through providers, starting from the last successful one and wrapping around
+                        for i in 0..num_providers {
+                            let provider_idx = (start_idx + i) % num_providers;
+                            let data_provider = &data_providers[provider_idx];
+
                             info!(batch_id = %batch_id, provider_idx, "Attempting fetch with provider {}", provider_idx);
                             let mut retry_count = 0;
                             loop {
@@ -96,6 +111,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                     Ok(batch) => {
                                         info!(batch_id = %batch_id, provider_idx, "Successfully fetched batch with provider {}", provider_idx);
                                         batch_option = Some(batch);
+                                        // Update the last successful index
+                                        *last_successful_provider_idx.lock().await = provider_idx;
                                         break; // Break retry loop, batch found
                                     },
                                     Err(err) if retry_count < MAX_RETRIES => {
@@ -103,7 +120,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                         // Use exponential backoff with full jitter
                                         let delay_ms = BASE_DELAY_MS * 2u64.pow(retry_count - 1);
                                         let jitter = rand::random::<u64>() % delay_ms;
-                                        let final_delay = Duration::from_millis(delay_ms / 2 + jitter); // Example: Full Jitter
+                                        let final_delay = Duration::from_millis(delay_ms / 2 + jitter);
 
                                         warn!(
                                             batch_id = %batch_id,
@@ -123,25 +140,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                         break; // Break retry loop, provider failed permanently for this batch
                                     }
                                 }
-                            }
+                            } // End retry loop
+
                             if batch_option.is_some() {
-                                break; // Break provider loop, batch found
+                                break; // Break provider loop (for i in 0..num_providers), batch found
                             }
                             // If batch_option is None here, it means the current provider failed permanently for this batch_id
-                            warn!(batch_id = %batch_id, provider_idx, "Provider {} failed, trying next.", provider_idx);
-                        }
+                            warn!(batch_id = %batch_id, provider_idx, "Provider {} failed permanently for this batch, trying next.", provider_idx);
+                        } // End provider loop
 
                         // After trying all providers
                         let batch = match batch_option {
                             Some(b) => b,
                             None => {
                                 error!(batch_id = %batch_id, "Failed to fetch batch after trying all data providers.");
-                                // Decide how to handle this: skip the batch and continue, or stop the task?
-                                // For now, let's skip this batch and try the next assigned ID.
-                                continue; // Continue the outer loop to get the next batch_id
+                                continue; // Skip this batch and try the next assigned ID
                             }
                         };
-
 
                         if tx_next_sample
                             .send(Batch {
@@ -154,9 +169,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                             debug!("Data loop finished because receiver dropped (step {step}).");
                             return; // Receiver is gone, stop the task
                         }
-                    }
+                    } // End main loop
                 }
-                .instrument(trace_span!("fetch_data", step = step)) // Add step to span
+                .instrument(trace_span!("fetch_data", step = step))
             }),
         ));
 
