@@ -153,42 +153,47 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let model::Model::LLM(llm) = state.model;
 
         let data_future = async {
-            debug!("Setting up data provider from {:?}", llm.data_location);
-            let data_provider = match llm.data_location {
-                LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
-                    DataProviderTcpClient::connect(
-                        (&data_server).into(),
-                        init_config.network_identity,
-                        init_config.private_key,
-                    )
-                    .await?,
-                ),
-                LLMTrainingDataLocation::Local(_) => todo!(),
-                LLMTrainingDataLocation::Dummy => {
-                    DataProvider::Dummy(DummyDataProvider::new(TokenSize::TwoBytes, 2048, u64::MAX))
-                }
-                LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
-                    location,
-                    token_size_in_bytes,
-                    shuffle,
-                }) => {
-                    let file_urls = FileURLs::from_location(&location).await?;
-                    DataProvider::Http(HttpDataProvider::new(
-                        file_urls,
+            debug!("Setting up data providers from {:?}", llm.data_locations);
+            let mut data_providers = Vec::new();
+            
+            for data_location in llm.data_locations.iter() {
+                let provider = match data_location {
+                    LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
+                        DataProviderTcpClient::connect(
+                            data_server.into(),
+                            init_config.network_identity.clone(),
+                            init_config.private_key.clone(),
+                        )
+                        .await?,
+                    ),
+                    LLMTrainingDataLocation::Local(_) => todo!(),
+                    LLMTrainingDataLocation::Dummy => {
+                        DataProvider::Dummy(DummyDataProvider::new(TokenSize::TwoBytes, 2048, u64::MAX))
+                    }
+                    LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
+                        location,
                         token_size_in_bytes,
-                        llm.max_seq_len,
                         shuffle,
-                    )?)
-                }
-                LLMTrainingDataLocation::WeightedHttp(config_url) => DataProvider::WeightedHttp(
-                    WeightedDataProvider::<HttpDataProvider>::from_config_url(
-                        &String::from(&config_url),
-                        llm.max_seq_len,
-                    )
-                    .await?,
-                ),
-            };
-            Ok(data_provider)
+                    }) => {
+                        let file_urls = FileURLs::from_location(&location).await?;
+                        DataProvider::Http(HttpDataProvider::new(
+                            file_urls,
+                            *token_size_in_bytes,
+                            llm.max_seq_len,
+                            *shuffle,
+                        )?)
+                    }
+                    LLMTrainingDataLocation::WeightedHttp(config_url) => DataProvider::WeightedHttp(
+                        WeightedDataProvider::<HttpDataProvider>::from_config_url(
+                            &String::from(config_url),
+                            llm.max_seq_len,
+                        )
+                        .await?,
+                    ),
+                };
+                data_providers.push(provider);
+            }
+            Ok(data_providers)
         };
 
         let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &llm.architecture
@@ -482,13 +487,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         // TODO add data fetching for verifying, too..
-        let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
+        let data_providers = data.map_err(InitRunError::DataProviderConnect)?;
 
         let data_fetcher =
-            DataFetcher::<T, A>::new(vec![
-                DataProvider::Dummy(DummyDataProvider::new(TokenSize::TwoBytes, 2, 10)),
-                data_provider,
-            ], init_config.data_parallelism * 2);
+            DataFetcher::<T, A>::new(data_providers, init_config.data_parallelism * 2);
 
         let data_parallel: Option<Vec<(Arc<CommunicatorId>, Arc<CancellableBarrier>)>> =
             if init_config.data_parallelism > 1 {
