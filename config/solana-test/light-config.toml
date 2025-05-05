@@ -21,7 +21,6 @@ cold_start_warmup_steps = 0
 
 checkpoint = { Hub = { repo_id = "emozilla/llama2-20m-init" } }
 data_locations = [
-    { Dummy = {} },
     { Http = { location = { Gcp = { bucket_name = "nous-pretraining-public-us", filter_directory = "fineweb-edu-tokenized-llama2" } }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } }
 ]
 

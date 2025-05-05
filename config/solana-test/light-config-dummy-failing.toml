@@ -1,13 +1,13 @@
 [config]
-warmup_time = 50
+warmup_time = 30
 cooldown_time = 30
 rounds_per_epoch = 20
 max_round_train_time = 30
 round_witness_time = 1
-min_clients = 2
-init_min_clients = 2
+min_clients = 1
+init_min_clients = 1
 verification_percent = 0
-witness_nodes = 2
+witness_nodes = 1
 global_batch_size_start = 8
 global_batch_size_end = 8
 global_batch_size_warmup_tokens = 0
@@ -18,14 +18,12 @@ architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 2048
 cold_start_warmup_steps = 0
-
-[model.LLM.data_location.Http.location.Gcp]
-bucket_name = "nous-pretraining-public-us"
-filter_directory = "fineweb-edu-tokenized-llama2"
-checkpoint = { Hub = { repo_id = "emozilla/llama2-20m-init" } }
 data_locations = [
+    { Dummy = "Failing" },
     { Http = { location = { Gcp = { bucket_name = "nous-pretraining-public-us", filter_directory = "fineweb-edu-tokenized-llama2" } }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } }
 ]
+[model.LLM.checkpoint.Hub]
+repo_id = "emozilla/llama2-20m-init"
 
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4

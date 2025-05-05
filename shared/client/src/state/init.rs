@@ -155,7 +155,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let data_future = async {
             debug!("Setting up data providers from {:?}", llm.data_locations);
             let mut data_providers = Vec::new();
-            
+
             for data_location in llm.data_locations.iter() {
                 let provider = match data_location {
                     LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
@@ -167,15 +167,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         .await?,
                     ),
                     LLMTrainingDataLocation::Local(_) => todo!(),
-                    LLMTrainingDataLocation::Dummy => {
-                        DataProvider::Dummy(DummyDataProvider::new(TokenSize::TwoBytes, 2048, u64::MAX))
-                    }
+                    LLMTrainingDataLocation::Dummy(dummy_type) => DataProvider::Dummy(
+                        DummyDataProvider::new(TokenSize::TwoBytes, 2048, u64::MAX, *dummy_type),
+                    ),
                     LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
                         location,
                         token_size_in_bytes,
                         shuffle,
                     }) => {
-                        let file_urls = FileURLs::from_location(&location).await?;
+                        let file_urls = FileURLs::from_location(location).await?;
                         DataProvider::Http(HttpDataProvider::new(
                             file_urls,
                             *token_size_in_bytes,
@@ -183,13 +183,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             *shuffle,
                         )?)
                     }
-                    LLMTrainingDataLocation::WeightedHttp(config_url) => DataProvider::WeightedHttp(
-                        WeightedDataProvider::<HttpDataProvider>::from_config_url(
-                            &String::from(config_url),
-                            llm.max_seq_len,
+                    LLMTrainingDataLocation::WeightedHttp(config_url) => {
+                        DataProvider::WeightedHttp(
+                            WeightedDataProvider::<HttpDataProvider>::from_config_url(
+                                &String::from(config_url),
+                                llm.max_seq_len,
+                            )
+                            .await?,
                         )
-                        .await?,
-                    ),
+                    }
                 };
                 data_providers.push(provider);
             }

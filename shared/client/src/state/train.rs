@@ -286,8 +286,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 };
                 let finished = finished.clone();
 
-
-                info!("fetching data!!!");
                 let TrainingDataForStep {
                     step,
                     mut next_sample,

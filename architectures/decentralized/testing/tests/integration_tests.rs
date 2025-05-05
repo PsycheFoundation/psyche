@@ -1023,3 +1023,99 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
         }
     }
 }
+
+/// spawn 2 clients and run for 3 epochs but the first defined data provider fails
+/// this tests checks that the logic for retrying the failing data provider and switching to the new is working
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_backup_data_provider() {
+    let run_id = "test".to_string();
+    let mut saw_provider_0_error = false;
+    let mut successful_fetches_after_error = 0;
+    let mut current_epoch = -1;
+
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        2,
+        Some(PathBuf::from(
+            "../../config/solana-test/light-config-dummy-failing.toml",
+        )),
+    )
+    .await;
+
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![
+                IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::DataProviderFetchError,
+                IntegrationTestLogMarker::DataProviderFetchSuccess,
+            ],
+        )
+        .unwrap();
+    let _monitor_client_2 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            vec![
+                IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::DataProviderFetchError,
+                IntegrationTestLogMarker::DataProviderFetchSuccess,
+            ],
+        )
+        .unwrap();
+
+    // Initialize solana client to query the coordinator state
+    let solana_client = SolanaTestClient::new(run_id).await;
+    let mut live_interval = time::interval(Duration::from_secs(10));
+
+    loop {
+        tokio::select! {
+            _ = live_interval.tick() => {
+                if let Err(e) = watcher.monitor_clients_health(2).await {
+                    panic!("{}", e);
+                }
+            }
+            response = watcher.log_rx.recv() => {
+                match response {
+                    Some(Response::DataProviderFetchError(provider_idx)) => {
+                        println!("Data provider {} fetch error", provider_idx);
+                        if provider_idx == 0 {
+                            saw_provider_0_error = true;
+                        }
+                    }
+                    Some(Response::DataProviderFetchSuccess(provider_idx)) => {
+                        println!("Data provider {} fetch success", provider_idx);
+                        if provider_idx == 1 && saw_provider_0_error {
+                            successful_fetches_after_error += 1;
+                            println!("Successful fetch {} after error", successful_fetches_after_error);
+                            if successful_fetches_after_error >= 2 {
+                                println!("Saw 2 successful fetches after error, test successful!");
+                                return;
+                            }
+                        }
+                    }
+                    Some(Response::Loss(client, epoch, step, loss)) => {
+                        println!(
+                            "client: {:?}, epoch: {}, step: {}, Loss: {:?}",
+                            client, epoch, step, loss
+                        );
+                        // assert that the loss decreases each epoch
+                        if epoch as i64 > current_epoch {
+                            current_epoch = epoch as i64;
+
+                            if epoch > 1 {
+                                assert!(saw_provider_0_error, "Should have seen error from provider 0");
+                                assert!(successful_fetches_after_error >= 2, "Should have seen successful fetch after error");
+                                return;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
