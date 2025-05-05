@@ -73,7 +73,7 @@ pub enum LLMTrainingDataType {
 #[repr(C)]
 #[allow(clippy::large_enum_variant)]
 pub enum LLMTrainingDataLocation {
-    Dummy,
+    Dummy(DummyType),
     Server(FixedString<{ SOLANA_MAX_STRING_LEN }>),
     Local(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     Http(HttpLLMTrainingDataLocation),
@@ -81,9 +81,29 @@ pub enum LLMTrainingDataLocation {
     WeightedHttp(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
 }
 
+#[derive(
+    AnchorSerialize,
+    AnchorDeserialize,
+    InitSpace,
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    TS,
+    PartialEq,
+    Eq,
+)]
+#[repr(C)]
+pub enum DummyType {
+    Working,
+    Failing,
+}
+
 impl Default for LLMTrainingDataLocation {
     fn default() -> Self {
-        Self::Dummy
+        Self::Dummy(DummyType::Working)
     }
 }
 
@@ -272,11 +292,12 @@ impl Model {
 
                 for data_location in llm.data_locations.iter() {
                     let bad_data_location = match data_location {
-                        LLMTrainingDataLocation::Dummy => false,
+                        LLMTrainingDataLocation::Dummy(_) => false,
                         LLMTrainingDataLocation::Server(url) => url.is_empty(),
                         LLMTrainingDataLocation::Local(_) => false,
                         LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
-                            location, ..
+                            location,
+                            ..
                         }) => match location {
                             HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
                             HttpTrainingDataLocation::NumberedFiles {
@@ -284,7 +305,9 @@ impl Model {
                                 num_files,
                                 ..
                             } => url_template.is_empty() || *num_files == 0,
-                            HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
+                            HttpTrainingDataLocation::Gcp { bucket_name, .. } => {
+                                bucket_name.is_empty()
+                            }
                         },
                         LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
                     };

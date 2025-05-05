@@ -16,6 +16,8 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, trace_span, warn, Instrument};
 
+use crate::IntegrationTestLogMarker;
+
 pub type BatchStep = u32;
 pub type BatchIdSet = HashSet<BatchId>;
 
@@ -32,7 +34,10 @@ pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
     pub fn new(data_providers: Vec<DataProvider<A>>, buffer_size: usize) -> Self {
-        assert!(!data_providers.is_empty(), "Must provide at least one data provider");
+        assert!(
+            !data_providers.is_empty(),
+            "Must provide at least one data provider"
+        );
         Self {
             data_providers: data_providers
                 .into_iter()
@@ -109,7 +114,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                             loop {
                                 match data_provider.lock().await.get_samples(batch_id).await {
                                     Ok(batch) => {
-                                        info!(batch_id = %batch_id, provider_idx, "Successfully fetched batch with provider {}", provider_idx);
+                                        info!(
+                                            integration_test_log_marker = %IntegrationTestLogMarker::DataProviderFetchSuccess,
+                                            batch_id = %batch_id,
+                                            provider_idx,
+                                            "Successfully fetched batch with provider",
+                                        );
                                         batch_option = Some(batch);
                                         // Update the last successful index
                                         *last_successful_provider_idx.lock().await = provider_idx;
@@ -136,7 +146,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                         continue; // Continue retry loop
                                     }
                                     Err(err) => {
-                                        error!(batch_id = %batch_id, provider_idx, error = %err, "Data fetch failed permanently for provider {}", provider_idx);
+                                        error!(
+                                            integration_test_log_marker = %IntegrationTestLogMarker::DataProviderFetchError,
+                                            batch_id = %batch_id,
+                                            provider_idx,
+                                            error = %err,
+                                            "Data fetch failed permanently for provider {}",
+                                            provider_idx
+                                        );
                                         break; // Break retry loop, provider failed permanently for this batch
                                     }
                                 }
