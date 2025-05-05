@@ -1,7 +1,7 @@
 use crate::{
     p2p_model_sharing::{TransmittableModelConfig, TransmittableModelParameter},
     serialized_distro::TransmittableDistroResult,
-    Networkable,
+    ModelRequestType, Networkable,
 };
 
 use anyhow::{anyhow, Result};
@@ -10,11 +10,12 @@ use futures_util::future::select_all;
 use iroh::PublicKey;
 use iroh_blobs::{get::db::DownloadProgress, ticket::BlobTicket};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc};
+use std::{fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
 use tokio::{
     sync::{mpsc, oneshot, Mutex},
     task::JoinHandle,
 };
+use tokio_util::time::FutureExt;
 use tracing::{error, info, trace, warn};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -31,12 +32,14 @@ struct Download {
     download: mpsc::UnboundedReceiver<Result<DownloadProgress>>,
     last_offset: u64,
     total_size: u64,
+    pub download_type: Option<ModelRequestType>,
 }
 
 struct ReadingFinishedDownload {
     blob_ticket: BlobTicket,
     tag: u32,
-    download: oneshot::Receiver<Bytes>,
+    download: Result<oneshot::Receiver<Bytes>>,
+    pub download_type: Option<ModelRequestType>,
 }
 
 impl Debug for ReadingFinishedDownload {
@@ -53,6 +56,7 @@ impl Download {
         blob_ticket: BlobTicket,
         tag: u32,
         download: mpsc::UnboundedReceiver<Result<DownloadProgress>>,
+        download_type: Option<ModelRequestType>,
     ) -> Self {
         Self {
             blob_ticket,
@@ -60,6 +64,7 @@ impl Download {
             download,
             last_offset: 0,
             total_size: 0,
+            download_type,
         }
     }
 }
@@ -72,6 +77,8 @@ pub struct DownloadUpdate {
     pub downloaded_size: u64,
     pub total_size: u64,
     pub all_done: bool,
+    pub error: Option<String>,
+    pub download_type: Option<ModelRequestType>,
 }
 
 pub struct DownloadComplete<D: Networkable> {
@@ -85,6 +92,7 @@ pub struct DownloadFailed {
     pub blob_ticket: BlobTicket,
     pub tag: u32,
     pub error: anyhow::Error,
+    pub download_type: Option<ModelRequestType>,
 }
 
 impl<D: Networkable> Debug for DownloadComplete<D> {
@@ -180,6 +188,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         blob_ticket: BlobTicket,
         tag: u32,
         progress: mpsc::UnboundedReceiver<Result<DownloadProgress>>,
+        is_from_model: Option<ModelRequestType>,
     ) {
         let downloads = self.downloads.clone();
         let sender = self.tx_new_item.clone();
@@ -187,7 +196,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             downloads
                 .lock()
                 .await
-                .push(Download::new(blob_ticket, tag, progress));
+                .push(Download::new(blob_ticket, tag, progress, is_from_model));
 
             if let Err(e) = sender.send(()) {
                 error!("{}", e);
@@ -195,7 +204,13 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         });
     }
 
-    pub fn read(&mut self, blob_ticket: BlobTicket, tag: u32, download: oneshot::Receiver<Bytes>) {
+    pub fn read(
+        &mut self,
+        blob_ticket: BlobTicket,
+        tag: u32,
+        download: Result<oneshot::Receiver<Bytes>>,
+        download_type: Option<ModelRequestType>,
+    ) {
         let reading = self.reading.clone();
         let sender = self.tx_new_item.clone();
         tokio::spawn(async move {
@@ -203,6 +218,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 blob_ticket,
                 tag,
                 download,
+                download_type,
             });
             if let Err(e) = sender.send(()) {
                 error!("{}", e);
@@ -230,6 +246,18 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
 
         let download_futures = downloads.iter_mut().enumerate().map(|(i, download)| {
             Box::pin(async move {
+                let future = download
+                    .download
+                    .recv()
+                    .timeout(Duration::from_secs(5))
+                    .await;
+
+                let progress = match future {
+                    Ok(None) => None,
+                    Err(e) => Some(Ok(DownloadProgress::Abort(serde_error::Error::new(&e)))),
+                    Ok(Some(progress)) => Some(progress),
+                };
+
                 FutureResult::Download(
                     i,
                     download.download.recv().await.unwrap_or_else(|| {
@@ -283,57 +311,71 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         downloaded_size: size.value(),
                         total_size: size.value(),
                         all_done: false,
-                    }))
-                }
-                DownloadProgress::Connected => None,
-                DownloadProgress::Found { size, .. } => {
-                    download.total_size = size;
-                    Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
-                        tag: download.tag,
-                        downloaded_size_delta: 0,
-                        downloaded_size: 0,
-                        total_size: size,
-                        all_done: false,
-                    }))
-                }
-                DownloadProgress::FoundHashSeq { .. } => None,
-                DownloadProgress::Progress { offset, .. } => {
-                    let delta = offset.saturating_sub(download.last_offset);
-                    download.last_offset = offset;
-                    Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
-                        tag: download.tag,
-                        downloaded_size_delta: delta,
-                        downloaded_size: offset,
-                        total_size: download.total_size,
-                        all_done: false,
-                    }))
-                }
-                DownloadProgress::Done { .. } => None,
-                DownloadProgress::AllDone(_) => {
-                    Some(DownloadManagerEvent::Update(DownloadUpdate {
+                        error: None,
+                        download_type: download.download_type.clone(),
+                    }),
+                    DownloadProgress::Connected => None,
+                    DownloadProgress::Found { size, .. } => {
+                        download.total_size = size;
+                        Some(DownloadUpdate {
+                            blob_ticket: download.blob_ticket.clone(),
+                            tag: download.tag,
+                            downloaded_size_delta: 0,
+                            downloaded_size: 0,
+                            total_size: size,
+                            all_done: false,
+                            error: None,
+                            download_type: download.download_type.clone(),
+                        })
+                    }
+                    DownloadProgress::FoundHashSeq { .. } => None,
+                    DownloadProgress::Progress { offset, .. } => {
+                        let delta = offset.saturating_sub(download.last_offset);
+                        download.last_offset = offset;
+                        Some(DownloadUpdate {
+                            blob_ticket: download.blob_ticket.clone(),
+                            tag: download.tag,
+                            downloaded_size_delta: delta,
+                            downloaded_size: offset,
+                            total_size: download.total_size,
+                            all_done: false,
+                            error: None,
+                            download_type: download.download_type.clone(),
+                        })
+                    }
+                    DownloadProgress::Done { .. } => None,
+                    DownloadProgress::AllDone(_) => Some(DownloadUpdate {
                         blob_ticket: download.blob_ticket.clone(),
                         tag: download.tag,
                         downloaded_size_delta: 0,
                         downloaded_size: download.total_size,
                         total_size: download.total_size,
                         all_done: true,
-                    }))
-                }
-                DownloadProgress::Abort(err) => {
-                    Some(DownloadManagerEvent::Failed(DownloadFailed {
-                        blob_ticket: download.blob_ticket.clone(),
-                        error: err.into(),
-                        tag: download.tag,
-                    }))
-                }
-            },
-            Err(e) => Some(DownloadManagerEvent::Failed(DownloadFailed {
-                blob_ticket: download.blob_ticket.clone(),
-                error: e,
-                tag: download.tag,
-            })),
+                        error: None,
+                        download_type: download.download_type.clone(),
+                    }),
+                    DownloadProgress::Abort(err) => {
+                        warn!("Download aborted: {:?}", err);
+                        Some(DownloadUpdate {
+                            blob_ticket: download.blob_ticket.clone(),
+                            tag: download.tag,
+                            downloaded_size_delta: 0,
+                            downloaded_size: 0,
+                            total_size: 0,
+                            all_done: true,
+                            error: Some(format!("{err}")),
+                            download_type: download.download_type.clone(),
+                        })
+                    }
+                };
+                Ok(update.map(DownloadManagerEvent::Update))
+            }
+            Err(e) => {
+                error!("Download error: {}", e);
+                downloads.swap_remove(index);
+
+                Err(e)
+            }
         };
         match &event {
             Some(DownloadManagerEvent::Update(DownloadUpdate { all_done, .. })) if *all_done => {
@@ -381,7 +423,8 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 blob_ticket: downloader.blob_ticket,
                 tag: downloader.tag,
                 error: e,
-            })),
+                download_type: downloader.download_type,
+            }))),
         }
     }
 }
