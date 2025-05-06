@@ -547,7 +547,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         };
 
         let training = TrainingStepMetadata {
-            data_fetcher,
+            data_fetcher: data_fetcher.map_err(InitRunError::DataProviderConnect)?,
             identity: init_config.identity,
             write_gradients_dir: init_config.write_gradients_dir,
             tx_health_check,

@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use psyche_coordinator::{get_batch_ids_for_node, Coordinator};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{DataProvider, TokenizedDataProvider};
@@ -33,12 +34,11 @@ pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
-    pub fn new(data_providers: Vec<DataProvider<A>>, buffer_size: usize) -> Self {
-        assert!(
-            !data_providers.is_empty(),
-            "Must provide at least one data provider"
-        );
-        Self {
+    pub fn new(data_providers: Vec<DataProvider<A>>, buffer_size: usize) -> Result<Self> {
+        if data_providers.is_empty() {
+            bail!("Must provide at least one data provider");
+        }
+        Ok(Self {
             data_providers: data_providers
                 .into_iter()
                 .map(|dp| Arc::new(Mutex::new(dp)))
@@ -47,7 +47,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
             buffer_size,
             last_successful_provider_idx: Arc::new(Mutex::new(0)), // Start with the first provider
             _phantom: Default::default(),
-        }
+        })
     }
 
     pub fn fetch_data(
