@@ -191,6 +191,8 @@ pub enum HttpTrainingDataLocation {
     },
 }
 
+pub const MAX_DATA_LOCATIONS: usize = 4;
+
 #[derive(
     AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
 )]
@@ -201,14 +203,14 @@ pub struct LLM {
     pub architecture: LLMArchitecture,
     pub checkpoint: Checkpoint,
     pub data_type: LLMTrainingDataType,
-    pub data_locations: FixedVec<LLMTrainingDataLocation, 4>,
+    pub data_locations: FixedVec<LLMTrainingDataLocation, MAX_DATA_LOCATIONS>,
     pub lr_schedule: LearningRateSchedule,
     pub optimizer: OptimizerDefinition,
 }
 
 impl LLM {
     pub fn dummy() -> Self {
-        let data_locations: FixedVec<LLMTrainingDataLocation, 4> = FixedVec::new();
+        let data_locations: FixedVec<LLMTrainingDataLocation, MAX_DATA_LOCATIONS> = FixedVec::new();
         Self {
             architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),

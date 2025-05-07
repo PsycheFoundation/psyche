@@ -82,6 +82,12 @@ pub async fn run() {
         RunState::Uninitialized
     );
 
+    let mut data_locations: FixedVec<
+        LLMTrainingDataLocation,
+        MAX_DATA_LOCATIONS,
+    > = FixedVec::default();
+    data_locations.push(LLMTrainingDataLocation::Dummy(DummyType::Working));
+
     // update the coordinator's model
     process_update(
         &mut endpoint,
@@ -110,7 +116,7 @@ pub async fn run() {
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_location: LLMTrainingDataLocation::default(),
+            data_locations,
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,
