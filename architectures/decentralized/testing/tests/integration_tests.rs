@@ -1067,10 +1067,7 @@ async fn test_backup_data_provider() {
         )
         .unwrap();
 
-    // Initialize solana client to query the coordinator state
-    let solana_client = SolanaTestClient::new(run_id).await;
     let mut live_interval = time::interval(Duration::from_secs(10));
-
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
