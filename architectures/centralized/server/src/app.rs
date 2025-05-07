@@ -185,7 +185,7 @@ impl App {
                     ..
                 }) => {
                     // If you fail with the 1st data provider at the start don't even bother trying with the fallbacks
-                    let data_location = &data_locations[0];
+                    let data_location = data_locations.get(0).ok_or_else(|| anyhow!("No data location provided"))?;
                     if let LLMTrainingDataType::Finetuning = data_type {
                         panic!("Finetuning is not supported yet.")
                     }
