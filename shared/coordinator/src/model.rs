@@ -203,14 +203,18 @@ pub struct LLM {
     pub architecture: LLMArchitecture,
     pub checkpoint: Checkpoint,
     pub data_type: LLMTrainingDataType,
-    pub data_locations: FixedVec<LLMTrainingDataLocation, MAX_DATA_LOCATIONS>,
+    pub data_locations: FixedVec<LLMTrainingDataLocation, { MAX_DATA_LOCATIONS }>,
     pub lr_schedule: LearningRateSchedule,
     pub optimizer: OptimizerDefinition,
 }
 
 impl LLM {
     pub fn dummy() -> Self {
-        let data_locations: FixedVec<LLMTrainingDataLocation, MAX_DATA_LOCATIONS> = FixedVec::new();
+        let mut data_locations: FixedVec<LLMTrainingDataLocation, { MAX_DATA_LOCATIONS }> =
+            FixedVec::new();
+        data_locations
+            .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
+            .unwrap();
         Self {
             architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),

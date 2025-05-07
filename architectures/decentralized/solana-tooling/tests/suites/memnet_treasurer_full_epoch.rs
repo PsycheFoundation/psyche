@@ -187,7 +187,9 @@ pub async fn run() {
         LLMTrainingDataLocation,
         MAX_DATA_LOCATIONS,
     > = FixedVec::default();
-    data_locations.push(LLMTrainingDataLocation::Dummy(DummyType::Working));
+    data_locations
+        .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
+        .unwrap();
 
     // Prepare the coordinator's config
     process_treasurer_run_update(
