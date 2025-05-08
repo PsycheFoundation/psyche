@@ -22,8 +22,8 @@ use crate::IntegrationTestLogMarker;
 pub type BatchStep = u32;
 pub type BatchIdSet = HashSet<BatchId>;
 
-const MAX_RETRIES: u32 = 7;
-const BASE_DELAY_MS: u64 = 2000;
+const MAX_RETRIES: u32 = 4;
+const BASE_DELAY_MS: u64 = 500;
 
 pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
     data_providers: Vec<Arc<Mutex<DataProvider<A>>>>,
@@ -127,10 +127,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                     },
                                     Err(err) if retry_count < MAX_RETRIES => {
                                         retry_count += 1;
-                                        // Use exponential backoff with full jitter
                                         let delay_ms = BASE_DELAY_MS * 2u64.pow(retry_count - 1);
-                                        let jitter = rand::random::<u64>() % delay_ms;
-                                        let final_delay = Duration::from_millis(delay_ms / 2 + jitter);
+                                        let delay_ms = Duration::from_millis(delay_ms / 2);
 
                                         warn!(
                                             batch_id = %batch_id,
@@ -138,11 +136,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                             attempt = retry_count,
                                             max_retries = MAX_RETRIES,
                                             error = %err,
-                                            delay_ms = final_delay.as_millis(),
                                             "Data fetch error with provider {}. Retrying in {}ms",
-                                            provider_idx, final_delay.as_millis()
+                                            provider_idx, delay_ms.as_millis()
                                         );
-                                        sleep(final_delay).await;
+                                        sleep(delay_ms).await;
                                         continue; // Continue retry loop
                                     }
                                     Err(err) => {
