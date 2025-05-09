@@ -193,7 +193,7 @@ async fn test_rejoining_client_delay() {
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
 
-    tokio::time::sleep(Duration::from_secs(40)).await;
+    tokio::time::sleep(Duration::from_secs(30)).await;
 
     // Spawn client
     spawn_new_client(docker.clone()).await.unwrap();
@@ -238,6 +238,100 @@ async fn test_rejoining_client_delay() {
                    assert!(checkpoint.starts_with("P2P"), "The model should be obtained from P2P");
                    println!("Client got the model with P2P");
                    return;
+               }
+           }
+        }
+    }
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_client_removed_from_p2p_sharing_model_list_after_failing_many_times() {
+    // initialize DockerWatcher
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // initialize a Solana run with 2 client
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        2,
+        Some(PathBuf::from(
+            "../../config/solana-test/light-two-min-clients.toml",
+        )),
+    )
+    .await;
+
+    let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
+
+    tokio::time::sleep(Duration::from_secs(30)).await;
+
+    let _monitor_client = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-{}", 1),
+            vec![IntegrationTestLogMarker::StateChange],
+        )
+        .unwrap();
+
+    let _monitor_client = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-{}", 2),
+            vec![IntegrationTestLogMarker::StateChange],
+        )
+        .unwrap();
+
+    // Spawn client
+    spawn_new_client(docker.clone()).await.unwrap();
+
+    let _monitor_client = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-{}", 3),
+            vec![IntegrationTestLogMarker::LoadedModel],
+        )
+        .unwrap();
+
+    let scheduler = ChaosScheduler::new(docker.clone(), solana_client.clone());
+
+    let mut interval = time::interval(Duration::from_secs(10));
+    println!("Waiting for training to start");
+    loop {
+        tokio::select! {
+           _ = interval.tick() => {
+               println!("Waiting for first epoch to finish");
+               let current_epoch = solana_client.get_current_epoch().await;
+               let current_step = solana_client.get_last_step().await;
+               if current_epoch >= 1 && current_step > 25 {
+                    panic!("Second epoch started and the clients did not get the model");
+               }
+           }
+           response = watcher.log_rx.recv() => {
+               match response {
+                   Some(Response::StateChange(timestamp, _client_1, old_state, new_state, _ , _)) => {
+                       let _coordinator_state = solana_client.get_run_state().await;
+                       let current_epoch = solana_client.get_current_epoch().await;
+                       if current_epoch >= 1 {
+                           if old_state == RunState::WaitingForMembers.to_string() && new_state == RunState::Warmup.to_string() {
+                               scheduler.clone()
+                                   .schedule_chaos(
+                                       ChaosAction::Kill {
+                                           targets: vec![format!("{CLIENT_CONTAINER_PREFIX}-{}", 1)],
+                                       },
+                                       0,
+                                   )
+                                   .await;
+                           }
+                       }
+                       println!(
+                           "client: new_state: {}, old_state: {}, timestamp: {}",
+                           new_state, old_state, timestamp
+                       );
+                   },
+                   Some(Response::LoadedModel(checkpoint)) => {
+                       // assert client and coordinator state synchronization
+                       assert!(checkpoint.starts_with("P2P"), "The model should be obtained from P2P");
+                       println!("Client got the model with P2P");
+                       return;
+                   },
+                   _ => unreachable!(),
                }
            }
         }
