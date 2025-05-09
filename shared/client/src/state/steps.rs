@@ -368,17 +368,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     let current_timestamp = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .expect("BroadcastType::TrainingResult: Error getting current timestamp")
-                        .as_secs();
+                        .as_millis();
 
+                    info!("round_state: {}", round_state.height);
                     let training_started_at = round_state.training_started_at
                         .expect("BroadcastType::TrainingResult: training_started_at was None");
-                    let time_since_training_started = current_timestamp - training_started_at;
+                    let time_since_training_started = current_timestamp - (training_started_at as u128);
 
                     round_state
                         .client_times
                         .entry(from_client_id)
                         .or_default()
-                        .push(time_since_training_started);
+                        .push(time_since_training_started as u64);
                     info!(
                         "TIMESTAMP batch {} from {} at {} , time since training started: {}",
                         training_result.batch_id,
@@ -706,12 +707,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         let new_step: ActiveStep = match (std::mem::take(&mut self.active_step), state.run_state) {
             // start training at the beginning of an epoch
             (ActiveStep::Warmup(warmup), RunState::RoundTrain) => {
-                let current_timestamp = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("RoundTrain started: Error getting current timestamp")
-                    .as_secs();
-                self.current_round.training_started_at = Some(current_timestamp);
-
                 let trainers = warmup.finish().stop_evals().await?;
                 self.step_finish_time = None;
                 self.sent_warmup_finished = false;

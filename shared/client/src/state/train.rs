@@ -25,7 +25,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use thiserror::Error;
 use tokio::{
@@ -217,6 +217,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             Some((participant_bloom, broadcast_bloom))
         };
 
+        let current_timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("RoundTrain started: Error getting current timestamp")
+            .as_millis() as u64;
+
         *current_round = RoundState {
             height: round.height,
             step: state.progress.step,
@@ -233,7 +238,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 .map(|x| (num_all_batch_ids, x)),
             self_distro_results: vec![],
             client_times: HashMap::new(),
-            training_started_at: None,
+            training_started_at: Some(current_timestamp),
         };
 
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
