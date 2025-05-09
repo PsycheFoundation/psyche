@@ -371,21 +371,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         .as_millis();
 
                     info!("round_state: {}", round_state.height);
-                    let training_started_at = round_state.training_started_at
+                    let training_started_at = round_state
+                        .training_started_at
                         .expect("BroadcastType::TrainingResult: training_started_at was None");
-                    let time_since_training_started = current_timestamp - (training_started_at as u128);
+                    let time_since_training_started =
+                        current_timestamp - (training_started_at as u128);
 
-                    round_state
+                    let training_time_for_peer = round_state
                         .client_times
                         .entry(from_client_id)
-                        .or_default()
-                        .push(time_since_training_started as u64);
+                        .or_insert(time_since_training_started as u64);
+
                     info!(
                         "TIMESTAMP batch {} from {} at {} , time since training started: {}",
                         training_result.batch_id,
                         from_client_id,
                         current_timestamp,
-                        time_since_training_started,
+                        training_time_for_peer,
                     );
                 }
 
