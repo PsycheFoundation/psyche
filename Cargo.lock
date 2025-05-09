@@ -7310,7 +7310,6 @@ dependencies = [
  "psyche-tui",
  "rand 0.8.5",
  "serde",
- "serde-error",
  "serde_bytes",
  "serde_json",
  "sha2 0.10.8",

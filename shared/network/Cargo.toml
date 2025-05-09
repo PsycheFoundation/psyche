@@ -32,7 +32,6 @@ serde_bytes = "0.11.15"
 tokenizers.workspace = true
 get_if_addrs = "0.5.3"
 url = { version = "2.5", features = ["serde"] }
-serde-error.workspace = true
 
 # for examples
 [dev-dependencies]

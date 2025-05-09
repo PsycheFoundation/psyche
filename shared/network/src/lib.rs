@@ -4,7 +4,14 @@ use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::StreamExt;
 use iroh::endpoint::RemoteInfo;
-use iroh_blobs::{downloader::ConcurrencyLimits, net_protocol::Blobs, store::mem::Store};
+use iroh_blobs::{
+    downloader::ConcurrencyLimits,
+    net_protocol::{Blobs, DownloadMode},
+    rpc::client::blobs::DownloadOptions,
+    store::mem::Store,
+    util::SetTagOption,
+    BlobFormat,
+};
 use iroh_gossip::{
     net::{Gossip, GossipEvent, GossipReceiver, GossipSender},
     proto::{HyparviewConfig, PlumtreeConfig},
@@ -15,7 +22,7 @@ use p2p_model_sharing::{
 use router::Router;
 use state::State;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
     marker::PhantomData,
@@ -58,7 +65,7 @@ mod tui;
 mod util;
 
 pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
-pub use download_manager::{DownloadComplete, DownloadFailed, TransmittableDownload};
+pub use download_manager::{DownloadComplete, DownloadFailed, DownloadType, TransmittableDownload};
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
@@ -81,6 +88,8 @@ pub use util::fmt_bytes;
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
 const EUC_RELAY_HOSTNAME: &str = "euc1-1.relay.psyche.iroh.link";
+
+const TIMEOUT_SECONDS_FOR_DOWNLOADING: u64 = 5;
 
 /// How should this node discover other nodes?
 ///
@@ -337,10 +346,13 @@ where
         &mut self,
         ticket: BlobTicket,
         tag: u32,
-        additional_peers_to_try: &[NodeAddr],
-        download_type: Option<ModelRequestType>,
+        download_type: DownloadType,
     ) -> Result<()> {
         let provider_node_id = ticket.node_addr().clone();
+        let additional_peers_to_try = match download_type.clone() {
+            DownloadType::DistroResult(peers) => peers,
+            DownloadType::ModelSharing(_) => vec![],
+        };
         let mut progress = self
             .blobs
             .client()
@@ -366,20 +378,26 @@ where
 
         tokio::spawn(async move {
             loop {
-                match progress.next().await {
-                    None => {
-                        break;
-                    }
-                    Some(val) => {
+                match progress
+                    .next()
+                    .timeout(Duration::from_secs(TIMEOUT_SECONDS_FOR_DOWNLOADING))
+                    .await
+                {
+                    Ok(None) => break,
+                    Ok(Some(val)) => {
                         if let Err(err) = tx.send(val) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
+                    }
+                    Err(_) => {
+                        let _ = tx.send(Err(anyhow!(
+                            "Didn't recieve any progress for blob {hash}, aborting download"
+                        )));
                     }
                 }
             }
         });
 
-        println!("TICKET ADDED TO DOWNLOAD MANAGER");
         self.download_manager.add(ticket, tag, rx, download_type);
 
         Ok(())
@@ -538,12 +556,8 @@ where
                 }
             });
 
-            self.download_manager.read(
-                update.blob_ticket,
-                update.tag,
-                download,
-                update.download_type,
-            );
+            self.download_manager
+                .read(update.blob_ticket, update.tag, recv, update.download_type);
         } else {
             self.state.download_progesses.insert(hash, update);
         }
@@ -593,10 +607,6 @@ pub async fn request_model(
 
     // Receive parameter value blob ticket
     let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
-    // println!(
-    //     "PARAMETER RECEIVED: {:?}",
-    //     postcard::from_bytes(&parameter_blob_ticket_bytes)?
-    // );
     let parameter_blob_ticket: Result<BlobTicket, SharableModelError> =
         postcard::from_bytes(&parameter_blob_ticket_bytes)?;
     parameter_blob_ticket.with_context(|| "Error parsing model parameter blob ticket".to_string())
@@ -756,78 +766,58 @@ pub async fn param_request_task(
     router: Arc<Router>,
     model_blob_tickets: Arc<StdMutex<Vec<(BlobTicket, ModelRequestType)>>>,
     peer_cycle: Arc<Mutex<VecDeque<PublicKey>>>,
-    busy_peers: Arc<StdMutex<HashSet<PublicKey>>>,
     errored_peers: Arc<StdMutex<HashMap<PublicKey, usize>>>,
     num_peers: usize,
     cancel_token: CancellationToken,
 ) {
-    const MAX_ERRORS_PER_PEER: usize = 2;
+    let max_errors_per_peer: usize = 2;
     loop {
-        let mut queue = peer_cycle.lock().await;
-
-        // Exit if no peers left
-        if queue.is_empty() {
-            cancel_token.cancel();
-            break;
-        }
-
-        let peer_id = queue.pop_front().unwrap();
-
-        if !busy_peers.lock().unwrap().insert(peer_id) {
-            continue;
-        }
+        let peer_id = match peer_cycle.lock().await.pop_front() {
+            Some(peer) => peer,
+            None => {
+                continue;
+            }
+        };
 
         debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
-        match request_model(router.clone(), peer_id, &model_request_type)
+        let result = request_model(router.clone(), peer_id, &model_request_type)
             .timeout(Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS))
             .await
-        {
-            Ok(Ok(parameter_blob_ticket)) => {
+            .map_err(|_| anyhow!("Didn't receive the model resource in time"))
+            .and_then(|inner| inner);
+
+        match result {
+            Ok(parameter_blob_ticket) => {
                 model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push((parameter_blob_ticket, model_request_type));
-                busy_peers.lock().unwrap().remove(&peer_id);
-                // Continue to next parameter request
-                queue.push_back(peer_id);
+                    .push((parameter_blob_ticket, model_request_type.clone()));
+                peer_cycle.lock().await.push_back(peer_id);
                 break;
             }
             Err(e) => {
-                warn!(parameter = ?&model_request_type, peer = %peer_id, "Failed to get parameter: {e}");
-                busy_peers.lock().unwrap().remove(&peer_id);
+                let mut peer_cycle_lock = peer_cycle.lock().await;
+                warn!(
+                    parameter = ?&model_request_type,
+                    peer = %peer_id,
+                    "Failed to get parameter: {e}"
+                );
                 let mut errored_peers_lock = errored_peers.lock().unwrap();
                 *errored_peers_lock.entry(peer_id).or_insert(0) += 1;
-                if *errored_peers_lock.get(&peer_id).unwrap_or(&0) < MAX_ERRORS_PER_PEER {
-                    queue.push_back(peer_id);
+                if *errored_peers_lock.get(&peer_id).unwrap_or(&0) <= max_errors_per_peer {
+                    peer_cycle_lock.push_back(peer_id);
                 } else {
-                    warn!("REMOVING PEER FROM CONFIG GETTERS SINCE FAILED THREE TIMES ALREADY");
+                    warn!(
+                        "Not asking peer: {peer_id} because it's failing to retrieve us the model"
+                    );
                 }
                 let min_peers_error_count = *errored_peers_lock.values().min().unwrap_or(&1);
                 if errored_peers_lock.len() == num_peers
-                    && min_peers_error_count >= MAX_ERRORS_PER_PEER
+                    && min_peers_error_count >= max_errors_per_peer
                 {
                     cancel_token.cancel();
                     break;
                 }
-                // Continue to request this parameter to another peer
-                continue;
-            }
-            Ok(Err(e)) => {
-                warn!(parameter = ?&model_request_type, peer = %peer_id, "Failed to get parameter: {e}");
-                busy_peers.lock().unwrap().remove(&peer_id);
-                let mut errored_peers_lock = errored_peers.lock().unwrap();
-                *errored_peers_lock.entry(peer_id).or_insert(0) += 1;
-                if *errored_peers_lock.get(&peer_id).unwrap_or(&0) < MAX_ERRORS_PER_PEER {
-                    queue.push_back(peer_id);
-                }
-                let min_peers_error_count = *errored_peers_lock.values().min().unwrap_or(&1);
-                if errored_peers_lock.len() == num_peers
-                    && min_peers_error_count >= MAX_ERRORS_PER_PEER
-                {
-                    cancel_token.cancel();
-                    break;
-                }
-                // Continue to request this parameter to another peer
                 continue;
             }
         }

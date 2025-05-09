@@ -9,15 +9,15 @@ use psyche_coordinator::{Commitment, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_network::{
     allowlist, param_request_task, raw_p2p_verify, AuthenticatableIdentity, BlobTicket,
-    DownloadComplete, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    Networkable, NodeAddr, NodeId, SharableModel, TransmittableDownload,
+    DownloadComplete, DownloadType, ModelRequestType, NetworkConnection, NetworkEvent,
+    NetworkTUIState, Networkable, NodeAddr, NodeId, SharableModel, TransmittableDownload,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
 use rand::{seq::SliceRandom, thread_rng, RngCore};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     marker::PhantomData,
     sync::Arc,
     time::{Duration, Instant},
@@ -47,7 +47,7 @@ struct DownloadRetryInfo {
     retry_time: Option<Instant>,
     ticket: BlobTicket,
     tag: u32,
-    download_type: Option<ModelRequestType>,
+    r#type: DownloadType,
 }
 
 const MAX_DOWNLOAD_RETRIES: usize = 3;
@@ -150,7 +150,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 .map(|s| s.run_state.to_string())
                                 .unwrap_or_else(|| String::from(" - "));
 
-                            trace!(
+                            info!(
                                 integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
                                 client_id = %identity,
                                 old_state = old_run_state,
@@ -279,59 +279,30 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 dl.error
                                             );
 
-                                            match dl.download_type {
-                                                Some(model_type) => {
+                                            let blob_ticket_to_retry = if let DownloadType::ModelSharing(request_type) = dl.download_type.clone() {
                                                     let me = NodeId::from_bytes(identity.get_p2p_public_key())?;
                                                     let Some(coordinator_state) = watcher.coordinator_state() else {
                                                         bail!("Coordinator state not yet registered, nothing to do. Try joining the run again.");
                                                     };
                                                     let mut peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state).into_iter().filter(|peer_id| peer_id != &me).collect();
                                                     peer_ids.retain(|a| a != &dl.blob_ticket.node_addr().node_id);
-                                                    let router = p2p.router();
+                                                    let new_blob_ticket = get_blob_ticket_to_download(&p2p, peer_ids, &param_requests_cancel_token, request_type.clone()).await?;
 
-                                                    let new_blob_ticket = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
-                                                    let busy_peers = Arc::new(std::sync::Mutex::new(HashSet::new()));
-                                                    let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
-                                                    let num_peers = peer_ids.len();
-                                                    let peer_cycle = Arc::new(Mutex::new(VecDeque::from(peer_ids)));
-
-                                                    if num_peers == 0 {
-                                                        return Err(anyhow::anyhow!("No peers available to retry"))
-                                                    }
-
-                                                    param_request_task(
-                                                        model_type,
-                                                        router,
-                                                        new_blob_ticket.clone(),
-                                                        peer_cycle,
-                                                        busy_peers,
-                                                        errored_peers,
-                                                        num_peers,
-                                                        param_requests_cancel_token.clone()
-                                                    ).await;
-
-                                                     let (new_blob_ticket, request_type) = {
-                                                        let mut blob_ticket_lock = new_blob_ticket.lock().unwrap();
-                                                        let mut a: Vec<(BlobTicket, ModelRequestType)> = blob_ticket_lock.drain(..).collect();
-                                                        a.pop().unwrap()
-                                                    };
-
-                                                    retried_downloads.insert(hash, DownloadRetryInfo {
-                                                        retries: retries + 1,
-                                                        retry_time,
-                                                        ticket: new_blob_ticket,
-                                                        tag: dl.tag,
-                                                        download_type: Some(request_type),
-                                                    });
-                                                },
-                                                None => {retried_downloads.insert(hash, DownloadRetryInfo {
-                                                    retries: retries + 1,
-                                                    retry_time,
-                                                    ticket: dl.blob_ticket,
-                                                    tag: dl.tag,
-                                                    download_type: dl.download_type,
-                                                });}
+                                                    // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
+                                                    retried_downloads.remove(&hash);
+                                                    new_blob_ticket
+                                            } else {
+                                                dl.blob_ticket
                                             };
+
+                                            retried_downloads.insert(blob_ticket_to_retry.hash(), DownloadRetryInfo {
+                                                retries: retries + 1,
+                                                retry_time,
+                                                ticket: blob_ticket_to_retry,
+                                                tag: dl.tag,
+                                                r#type: dl.download_type,
+                                            });
+
                                         }
                                     }
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
@@ -366,9 +337,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 }
                                             }
                                         }
-                                        tracing::error!("--------------------------------------");
-                                        tracing::error!("RECIBI REQUEST DE CONFIG!!!!!!!!!!!!!!");
-                                        tracing::error!("--------------------------------------");
                                     }
                                 }
                             }
@@ -444,9 +412,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         _ = retry_check_interval.tick() => {
                             let now = Instant::now();
-                            let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, Option<ModelRequestType>)> = retried_downloads.iter()
+                            let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.iter()
                                 .filter(|(_, info)| info.retry_time.map(|retry_time| now >= retry_time).unwrap_or(false) && info.retries <= MAX_DOWNLOAD_RETRIES)
-                                .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.download_type.clone()))
+                                .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.r#type.clone()))
                                 .collect();
 
                             for (hash, ticket, tag, download_type) in pending_retries {
@@ -456,8 +424,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     debug!("Retrying download for blob {} (attempt {})",
                                         hex::encode(hash), info.retries);
 
-                                    let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                                    p2p.start_download(ticket, tag, &other_possible_nodes).await?;
+                                    p2p.start_download(ticket, tag, download_type).await?;
                                 }
                             }
                         }
@@ -468,7 +435,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                            p2p.start_download(download_ticket, tag, &other_possible_nodes).await?;
+                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes)).await?;
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
                             watcher.backend_mut().send_witness(opportunistic_data).await?;
@@ -512,16 +479,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
                                 // and dropped immediately
                                 let parameter_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::new()));
-                                let busy_peers = Arc::new(std::sync::Mutex::new(HashSet::new()));
                                 let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
                                 let peer_cycle = Arc::new(Mutex::new(VecDeque::from(peer_ids)));
                                 let mut request_handles = Vec::new();
 
                                 for param_name in param_names {
-
-                                    info!("REQUESTING PARAMETER");
                                     let router = router.clone();
-                                    let busy_peers = busy_peers.clone();
                                     let errored_peers = errored_peers.clone();
                                     let peer_cycle = peer_cycle.clone();
 
@@ -531,7 +494,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             router,
                                             parameter_blob_tickets.clone(),
                                             peer_cycle,
-                                            busy_peers,
                                             errored_peers,
                                             num_peers,
                                             param_requests_cancel_token.clone()
@@ -572,57 +534,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 warn!("Coordinator state not yet registered, nothing to do");
                                 return Ok(());
                             };
-                            let router = p2p.router();
+
                             let me = NodeId::from_bytes(identity.get_p2p_public_key())?;
-                            let peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state).into_iter().filter(|peer_id| peer_id != &me).collect();
+                            let peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state)
+                                .into_iter()
+                                .filter(|peer_id| peer_id != &me)
+                                .collect();
 
-                            // initialize variables to request model config
-                            let config_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
-                            let busy_peers = Arc::new(std::sync::Mutex::new(HashSet::new()));
-                            let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
-                            let num_peers = peer_ids.len();
-                            let peer_cycle = Arc::new(Mutex::new(VecDeque::from(peer_ids)));
+                            let config_blob_ticket = get_blob_ticket_to_download(&p2p, peer_ids, &param_requests_cancel_token, ModelRequestType::Config).await?;
 
-                            if num_peers == 0 {
-                                return Err(anyhow::anyhow!("No peers available to request the model"))
-                            }
-
-                            param_request_task(
-                                ModelRequestType::Config,
-                                router,
-                                config_blob_tickets.clone(),
-                                peer_cycle,
-                                busy_peers,
-                                errored_peers,
-                                num_peers,
-                                param_requests_cancel_token.clone()
-                            ).await;
-
-                             let (config_blob_ticket, request_type) = {
-                                let mut config_blob_tickets_lock = config_blob_tickets.lock().unwrap();
-                                let mut a: Vec<(BlobTicket, ModelRequestType)> = config_blob_tickets_lock.drain(..).collect();
-                                a.pop().unwrap()
-                            };
-
-
+                            // tokio::time::sleep(Duration::from_secs(5)).await;
                             // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket.clone(), 0, true).await?;
-
-                            // let parameter_blob_tickets: Vec<BlobTicket> = {
-                            //     let mut parameter_blob_tickets_lock = config_blob_tickets.lock().unwrap();
-                            //     parameter_blob_tickets_lock.drain(..).collect()
-                            // };
-
-                            // for ticket in parameter_blob_tickets {
-                                // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, &[]).await?;
-                            }
+                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config)).await?;
 
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for (ticket, request_type) in param_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, &[]).await?;
+                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type)).await?;
                             }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
@@ -726,4 +655,42 @@ fn all_node_addrs_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeA
         .collect::<Vec<_>>();
     addrs.shuffle(&mut thread_rng());
     addrs
+}
+
+async fn get_blob_ticket_to_download(
+    p2p: &NC,
+    peer_ids: Vec<NodeId>,
+    param_requests_cancel_token: &CancellationToken,
+    request_type: ModelRequestType,
+) -> Result<BlobTicket, anyhow::Error> {
+    let router = p2p.router();
+    // initialize variables to request model config
+    let config_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
+    let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let num_peers = peer_ids.len();
+    let peer_cycle = Arc::new(Mutex::new(VecDeque::from(peer_ids)));
+
+    if num_peers == 0 {
+        return Err(anyhow::anyhow!("No peers available to request the model"));
+    }
+
+    param_request_task(
+        request_type,
+        router,
+        config_blob_tickets.clone(),
+        peer_cycle,
+        errored_peers,
+        num_peers,
+        param_requests_cancel_token.clone(),
+    )
+    .await;
+
+    let (config_blob_ticket, _) = {
+        let mut config_blob_tickets_lock = config_blob_tickets.lock().unwrap();
+        let mut a: Vec<(BlobTicket, ModelRequestType)> =
+            config_blob_tickets_lock.drain(..).collect();
+        a.pop().unwrap()
+    };
+
+    Ok(config_blob_ticket)
 }
