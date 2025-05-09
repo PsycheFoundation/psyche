@@ -4,6 +4,7 @@ use crate::{
     Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker,
 };
 
+use chrono::{DateTime, Utc};
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{sha256, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_modeling::{DistroResult, Trainer};
@@ -13,7 +14,7 @@ use std::{
     collections::HashMap,
     fmt,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 use tch::TchError;
 use thiserror::Error;
@@ -362,6 +363,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
         match broadcast.data {
             BroadcastType::TrainingResult(training_result) => {
+                // Save the timestamp of when we received the training result in the client times hashmap
+                if from_client_id != self.identity {
+                    let system_now = SystemTime::now();
+                    let timestamp: DateTime<Utc> = system_now.into();
+                    let unix_ts = timestamp.timestamp() as u64;
+                    round_state
+                        .client_times
+                        .entry(from_client_id)
+                        .or_default()
+                        .push(unix_ts);
+                    info!(
+                        "Got batch {} from {} at {:?} unix={}",
+                        training_result.batch_id,
+                        from_client_id,
+                        timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ"),
+                        unix_ts
+                    );
+                }
+
                 if !round_state
                     .data_assignments
                     .contains_key(&training_result.batch_id)
@@ -382,6 +402,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     );
                     return Ok(());
                 }
+
+                dbg!(&round_state.data_assignments);
 
                 let correct_assignee =
                     match round_state.data_assignments.get(&training_result.batch_id) {
@@ -442,6 +464,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         }
 
         round_state.broadcasts.push(broadcast.commitment.data_hash);
+
+        dbg!(&round_state.client_times);
 
         Ok(())
     }

@@ -219,7 +219,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         trace!("Got training result gossip message from {from}: step {} batch id {}", broadcast.step, training_result.batch_id);
                                                     }
                                                     BroadcastType::Finished(_) => {
-                                                        trace!("Got finished gossip message from {from}: step {}", broadcast.step);
+                                                        info!("Got finished gossip message from {from}: step {}", broadcast.step);
                                                     }
                                                 }
                                                 run.apply_message(client.id, broadcast).await?;

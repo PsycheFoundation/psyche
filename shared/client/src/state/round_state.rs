@@ -28,6 +28,7 @@ pub struct RoundState<T: NodeIdentity> {
     pub committee_info: Option<(CommitteeProof, WitnessProof, CommitteeSelection)>,
     pub batch_ids_not_yet_trained_on: Option<(usize, Arc<Mutex<BatchIdSet>>)>,
     pub self_distro_results: Vec<Vec<DistroResult>>,
+    pub client_times: HashMap<T, Vec<u64>>,
 }
 
 impl<T: NodeIdentity> RoundState<T> {
@@ -46,6 +47,7 @@ impl<T: NodeIdentity> RoundState<T> {
             committee_info: None,
             batch_ids_not_yet_trained_on: None,
             self_distro_results: vec![],
+            client_times: HashMap::new(),
         }
     }
 }
