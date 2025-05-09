@@ -29,6 +29,7 @@ pub struct RoundState<T: NodeIdentity> {
     pub batch_ids_not_yet_trained_on: Option<(usize, Arc<Mutex<BatchIdSet>>)>,
     pub self_distro_results: Vec<Vec<DistroResult>>,
     pub client_times: HashMap<T, Vec<u64>>,
+    pub training_started_at: Option<u64>,
 }
 
 impl<T: NodeIdentity> RoundState<T> {
@@ -48,6 +49,7 @@ impl<T: NodeIdentity> RoundState<T> {
             batch_ids_not_yet_trained_on: None,
             self_distro_results: vec![],
             client_times: HashMap::new(),
+            training_started_at: None,
         }
     }
 }

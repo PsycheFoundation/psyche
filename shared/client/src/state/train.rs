@@ -233,6 +233,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 .map(|x| (num_all_batch_ids, x)),
             self_distro_results: vec![],
             client_times: HashMap::new(),
+            training_started_at: None,
         };
 
         let warmup_lr_between = state.get_cold_start_warmup_bounds();

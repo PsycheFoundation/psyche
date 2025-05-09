@@ -365,20 +365,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             BroadcastType::TrainingResult(training_result) => {
                 // Save the timestamp of when we received the training result in the client times hashmap
                 if from_client_id != self.identity {
-                    let system_now = SystemTime::now();
-                    let timestamp: DateTime<Utc> = system_now.into();
-                    let unix_ts = timestamp.timestamp() as u64;
+                    let current_timestamp = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+
+                    let training_started_at = round_state.training_started_at.unwrap();
+                    let time_since_training_started = current_timestamp - training_started_at;
+
                     round_state
                         .client_times
                         .entry(from_client_id)
                         .or_default()
-                        .push(unix_ts);
+                        .push(time_since_training_started);
                     info!(
-                        "Got batch {} from {} at {:?} unix={}",
+                        "TIMESTAMP batch {} from {} at {} , time since training started: {}",
                         training_result.batch_id,
                         from_client_id,
-                        timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ"),
-                        unix_ts
+                        current_timestamp,
+                        time_since_training_started,
                     );
                 }
 
@@ -700,6 +705,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         let new_step: ActiveStep = match (std::mem::take(&mut self.active_step), state.run_state) {
             // start training at the beginning of an epoch
             (ActiveStep::Warmup(warmup), RunState::RoundTrain) => {
+                let current_timestamp = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                self.current_round.training_started_at = Some(current_timestamp);
+
                 let trainers = warmup.finish().stop_evals().await?;
                 self.step_finish_time = None;
                 self.sent_warmup_finished = false;
