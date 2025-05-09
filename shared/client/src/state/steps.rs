@@ -367,10 +367,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 if from_client_id != self.identity {
                     let current_timestamp = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap()
+                        .expect("BroadcastType::TrainingResult: Error getting current timestamp")
                         .as_secs();
 
-                    let training_started_at = round_state.training_started_at.unwrap();
+                    let training_started_at = round_state.training_started_at
+                        .expect("BroadcastType::TrainingResult: training_started_at was None");
                     let time_since_training_started = current_timestamp - training_started_at;
 
                     round_state
@@ -707,7 +708,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             (ActiveStep::Warmup(warmup), RunState::RoundTrain) => {
                 let current_timestamp = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
+                    .expect("RoundTrain started: Error getting current timestamp")
                     .as_secs();
                 self.current_round.training_started_at = Some(current_timestamp);
 
