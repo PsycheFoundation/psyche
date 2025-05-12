@@ -7,9 +7,9 @@ use crate::{
 use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use psyche_coordinator::{
     assign_data_for_state, get_batch_ids_for_round, model, Commitment, CommitteeSelection,
-    Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE,
+    Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE, SOLANA_MAX_NUM_CLIENTS,
 };
-use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, FixedVec, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -222,6 +222,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .expect("RoundTrain started: Error getting current timestamp")
             .as_millis() as u64;
 
+        let mut client_times = FixedVec::new();
+        client_times.fill(0_u16);
         *current_round = RoundState {
             height: round.height,
             step: state.progress.step,
@@ -237,7 +239,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             batch_ids_not_yet_trained_on: batch_ids_not_yet_trained_on
                 .map(|x| (num_all_batch_ids, x)),
             self_distro_results: vec![],
-            client_times: HashMap::new(),
+            client_times,
             training_started_at: Some(current_timestamp),
         };
 

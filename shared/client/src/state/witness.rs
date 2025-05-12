@@ -104,11 +104,6 @@ impl WitnessStep {
         let blooms = previous_round.blooms;
         let (participant_bloom, broadcast_bloom) = blooms.unwrap_or_default();
 
-        let mut client_times = FixedVec::<u16, { SOLANA_MAX_NUM_CLIENTS }>::default();
-        for (_ident, time) in current_round.client_times.clone().into_iter() {
-            let _ = client_times.push(time);
-        }
-
         info!("Submitting witness blooms");
         previous_round.sent_witness = true;
 
@@ -121,7 +116,7 @@ impl WitnessStep {
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
-            client_times,
+            client_times: current_round.client_times,
         })
     }
 }

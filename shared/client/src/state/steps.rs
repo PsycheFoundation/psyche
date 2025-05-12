@@ -377,17 +377,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     let time_since_training_started =
                         current_timestamp - (training_started_at as u128);
 
-                    let training_time_for_peer = round_state
-                        .client_times
-                        .entry(from_client_id)
-                        .or_insert(time_since_training_started as u16);
+                    let client_index = self
+                        .coordinator_state
+                        .epoch_state
+                        .clients
+                        .iter()
+                        .position(|x| x.id == from_client_id);
+
+                    if let Some(index) = client_index {
+                        // We can safely bypass all the insert checks since we already initialized this vec with all zeroes.
+                        round_state.client_times[index] = time_since_training_started as u16;
+                    }
 
                     info!(
                         "TIMESTAMP batch {} from {} at {} , time since training started: {}",
                         training_result.batch_id,
                         from_client_id,
                         current_timestamp,
-                        training_time_for_peer,
+                        time_since_training_started,
                     );
                 }
 
