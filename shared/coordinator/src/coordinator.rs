@@ -12,7 +12,7 @@ use ts_rs::TS;
 
 pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
-pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
+pub const SOLANA_MAX_NUM_CLIENTS: usize = 100;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
@@ -139,7 +139,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
-    pub client_times: FixedVec<u64, { SOLANA_MAX_NUM_CLIENTS }>,
+    pub client_times: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
 }
 
 #[derive(

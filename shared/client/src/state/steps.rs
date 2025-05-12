@@ -380,7 +380,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     let training_time_for_peer = round_state
                         .client_times
                         .entry(from_client_id)
-                        .or_insert(time_since_training_started as u64);
+                        .or_insert(time_since_training_started as u16);
 
                     info!(
                         "TIMESTAMP batch {} from {} at {} , time since training started: {}",

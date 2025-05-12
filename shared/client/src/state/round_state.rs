@@ -28,7 +28,7 @@ pub struct RoundState<T: NodeIdentity> {
     pub committee_info: Option<(CommitteeProof, WitnessProof, CommitteeSelection)>,
     pub batch_ids_not_yet_trained_on: Option<(usize, Arc<Mutex<BatchIdSet>>)>,
     pub self_distro_results: Vec<Vec<DistroResult>>,
-    pub client_times: HashMap<T, u64>,
+    pub client_times: HashMap<T, u16>,
     pub training_started_at: Option<u64>,
 }
 
