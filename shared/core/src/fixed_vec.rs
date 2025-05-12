@@ -46,11 +46,12 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
         }
     }
 
-    pub fn fill(&mut self, value: T) {
-        self.len = N as u64;
-        for i in 0..self.len as usize {
-            self.data[i] = value;
+    pub fn fill(&mut self, value: T) -> Result<(), &'static str> {
+        for _ in 0..N as usize {
+            self.push(value)?
         }
+
+        Ok(())
     }
 
     pub fn pop(&mut self) -> Option<T> {
@@ -497,7 +498,7 @@ mod tests {
     #[test]
     fn test_fill_vec() {
         let mut vec: FixedVec<u32, 6> = FixedVec::new();
-        vec.fill(0u32);
+        assert!(vec.fill(0u32).is_ok());
         assert!(vec.is_full());
 
         for i in 0..vec.capacity() {
