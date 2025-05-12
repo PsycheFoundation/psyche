@@ -689,6 +689,7 @@ impl SolanaBackend {
                         broadcast_bloom: witness.broadcast_bloom,
                         broadcast_merkle: witness.broadcast_merkle,
                         metadata,
+                        client_times: witness.client_times,
                     }),
                 OpportunisticData::WarmupStep(witness) => program_coordinator
                     .request()
@@ -704,6 +705,7 @@ impl SolanaBackend {
                         participant_bloom: witness.participant_bloom,
                         broadcast_bloom: witness.broadcast_bloom,
                         broadcast_merkle: witness.broadcast_merkle,
+                        client_times: witness.client_times,
                     }),
             };
             match pending_tx_builder.signed_transaction().await {

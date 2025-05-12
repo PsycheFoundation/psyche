@@ -130,7 +130,7 @@ pub struct Round {
     AnchorSerialize,
     Serialize,
     Deserialize,
-    PartialEq,
+    //PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -139,6 +139,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
+    pub client_times: FixedVec<([u8; 32], u64), { SOLANA_MAX_NUM_CLIENTS }>,
 }
 
 #[derive(

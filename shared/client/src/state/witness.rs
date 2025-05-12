@@ -1,5 +1,5 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata};
-use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity};
+use psyche_coordinator::{Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS};
+use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
@@ -104,6 +104,11 @@ impl WitnessStep {
         let blooms = previous_round.blooms;
         let (participant_bloom, broadcast_bloom) = blooms.unwrap_or_default();
 
+        let mut client_times = FixedVec::<([u8; 32], u64), { SOLANA_MAX_NUM_CLIENTS }>::default();
+        for (ident, time) in current_round.client_times.clone().into_iter() {
+            let _ = client_times.push((*ident.get_p2p_public_key(), time));
+        }
+
         info!("Submitting witness blooms");
         previous_round.sent_witness = true;
 
@@ -116,6 +121,7 @@ impl WitnessStep {
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
+            client_times,
         })
     }
 }

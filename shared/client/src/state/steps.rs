@@ -4,7 +4,6 @@ use crate::{
     Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker,
 };
 
-use chrono::{DateTime, Utc};
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{sha256, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_modeling::{DistroResult, Trainer};
@@ -282,6 +281,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         participant_bloom: Default::default(),
                         broadcast_bloom: Default::default(),
                         broadcast_merkle: merkle,
+                        client_times: Default::default(),
                     };
                     self.tx_opportunistic_data
                         .send(OpportunisticData::WarmupStep(witness))
