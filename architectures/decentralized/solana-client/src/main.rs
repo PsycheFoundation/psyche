@@ -27,9 +27,9 @@ use psyche_tui::{maybe_start_render_loop, LogOutput};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 use std::sync::Arc;
 use std::{io::Cursor, path::PathBuf, time::Duration};
+use std::{str::FromStr, thread};
 use time::OffsetDateTime;
 use tokio::{
     runtime::Builder,
@@ -663,6 +663,7 @@ async fn async_main() -> Result<()> {
             .await
             .unwrap();
 
+            info!("AAAAA");
             app.run(allowlist, p2p, state_options).await?;
             logger.shutdown()?;
 
@@ -680,7 +681,21 @@ async fn async_main() -> Result<()> {
     }
 }
 
-fn main() -> Result<()> {
+fn main() {
+    thread::Builder::new()
+        .stack_size(32 * 1024 * 1024) // 32MB stack
+        .spawn(|| {
+            if let Err(e) = real_main() {
+                eprintln!("Error: {:?}", e);
+                std::process::exit(1);
+            }
+        })
+        .expect("Failed to spawn thread with increased stack")
+        .join()
+        .expect("Thread panicked");
+}
+
+fn real_main() -> Result<()> {
     let runtime = Builder::new_multi_thread()
         .enable_io()
         .enable_time()
