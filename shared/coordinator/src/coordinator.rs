@@ -3,7 +3,7 @@ use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
 };
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{prelude::{borsh, msg}, AnchorDeserialize, AnchorSerialize, InitSpace};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
 use serde::{Deserialize, Serialize};
@@ -255,6 +255,7 @@ pub struct CoordinatorEpochState<T> {
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
+    pub client_times: FixedVec<u16, { SOLANA_MAX_NUM_CLIENTS }>,
 }
 
 #[derive(
@@ -390,6 +391,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
+            client_times: Default::default(),
         }
     }
 }
@@ -539,6 +541,14 @@ impl<T: NodeIdentity> Coordinator<T> {
         if round.witnesses.len() == witness_nodes && !(self.run_state == RunState::RoundWitness) {
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
+
+        for (i, time) in witness.client_times.iter().enumerate() {
+            if *time != 0 {
+                self.epoch_state.client_times[i] = witness.client_times[i];
+            }
+        }
+
+        msg!("coordinator client times: {:?}", self.epoch_state.client_times);
         Ok(())
     }
 
