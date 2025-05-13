@@ -1,5 +1,6 @@
 use crate::{Committee, CommitteeSelection, Coordinator, Round};
 
+use anchor_lang::prelude::msg;
 use psyche_core::{deterministic_shuffle, BatchId, ClosedInterval, NodeIdentity};
 use std::{collections::BTreeMap, fmt};
 
@@ -16,7 +17,7 @@ pub fn assign_data_for_state<T: NodeIdentity>(
             let committee = committee_selection.get_committee(i as u64).committee;
 
             if matches!(committee, Committee::Trainer) {
-                Some(client)
+                Some((i, client))
             } else {
                 match committee {
                     Committee::TieBreaker => assert_eq!(round.tie_breaker_tasks, 0), // TODO
@@ -35,25 +36,34 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut trainer_nodes = trainer_nodes;
     deterministic_shuffle(&mut trainer_nodes, round.random_seed);
 
-    let total_size = coordinator.get_target_global_batch_size(coordinator.current_round()) as u64;
-    let num_trainers = trainer_nodes.len() as u64;
-    let base_size = total_size / num_trainers;
-    let remainder = total_size % num_trainers;
-
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
 
-    for (i, node) in trainer_nodes.iter().enumerate() {
-        let node_batch_size = base_size + if (i as u64) < remainder { 1 } else { 0 };
+    msg!(
+        "[assign_data_for_state] trainer_nodes: {}",
+        trainer_nodes.len()
+    );
 
-        if node_batch_size > 0 {
-            let end_index = current_index + node_batch_size - 1;
-            assignments.insert(
-                BatchId(ClosedInterval::new(current_index, end_index)),
-                node.id,
-            );
-            current_index = end_index + 1;
+    // Use assigned batch sizes for batch size assignments
+    for (client_index, node) in trainer_nodes {
+        let mut node_batch_size =
+            coordinator.epoch_state.clients[client_index].assigned_batch_size as u64;
+        msg!(
+            "[assign_data_for_state] node: {}, batch_size: {}",
+            client_index,
+            node_batch_size
+        );
+
+        if node_batch_size == 0 {
+            node_batch_size = 1u64;
         }
+
+        let end_index = current_index + node_batch_size - 1;
+        assignments.insert(
+            BatchId(ClosedInterval::new(current_index, end_index)),
+            node.id,
+        );
+        current_index = end_index + 1;
     }
 
     assignments

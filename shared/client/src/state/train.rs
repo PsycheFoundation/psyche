@@ -7,7 +7,7 @@ use crate::{
 use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use psyche_coordinator::{
     assign_data_for_state, get_batch_ids_for_round, model, Commitment, CommitteeSelection,
-    Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE, SOLANA_MAX_NUM_CLIENTS,
+    Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE,
 };
 use psyche_core::{BatchId, Bloom, FixedVec, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
@@ -223,7 +223,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .as_millis() as u64;
 
         let mut client_times = FixedVec::new();
-        client_times.fill(0_u16);
+        let _ = client_times.fill(0_u16);
         *current_round = RoundState {
             height: round.height,
             step: state.progress.step,

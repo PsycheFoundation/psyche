@@ -36,7 +36,7 @@ pub struct RoundState<T: NodeIdentity> {
 impl<T: NodeIdentity> RoundState<T> {
     pub fn new() -> Self {
         let mut client_times = FixedVec::new();
-        client_times.fill(0_u16);
+        let _ = client_times.fill(0_u16);
         Self {
             height: 0,
             step: 0,

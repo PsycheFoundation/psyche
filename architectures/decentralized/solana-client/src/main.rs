@@ -663,7 +663,6 @@ async fn async_main() -> Result<()> {
             .await
             .unwrap();
 
-            info!("AAAAA");
             app.run(allowlist, p2p, state_options).await?;
             logger.shutdown()?;
 

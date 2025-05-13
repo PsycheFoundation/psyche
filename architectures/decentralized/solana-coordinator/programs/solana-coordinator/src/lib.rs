@@ -190,7 +190,7 @@ pub mod psyche_solana_coordinator {
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
         metadata: WitnessMetadata,
-        client_times: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
+        proposed_batch_sizes: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
@@ -201,7 +201,7 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
-                client_times,
+                proposed_batch_sizes,
             },
         )
     }
@@ -223,7 +223,7 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
-                client_times: Default::default(),
+                proposed_batch_sizes: Default::default(),
             },
         )
     }

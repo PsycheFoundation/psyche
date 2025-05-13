@@ -1,12 +1,14 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS};
-use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
+use std::collections::BTreeMap;
+
+use psyche_coordinator::{Client, Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS};
+use psyche_core::{BatchId, FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
     sync::mpsc::{self},
     task::JoinHandle,
 };
-use tracing::{info, trace};
+use tracing::{error, info, trace};
 
 use super::{
     evals::{EvalError, EvalRunner, MaybeRunningEvals, RunningEvals},
@@ -44,7 +46,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
     pub fn start(
         &self,
         _client_index: u64,
-        _state: &Coordinator<T>,
+        state: &Coordinator<T>,
         trainers: MaybeRunningEvals,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
@@ -56,9 +58,11 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
 
         let evals = self.eval_runner.start_if_not_running(trainers);
 
-        let sending_witness = if let Some(witness) =
-            WitnessStep::get_witness_to_send(previous_round, current_round)
-        {
+        let sending_witness = if let Some(witness) = WitnessStep::get_witness_to_send(
+            previous_round,
+            current_round,
+            &state.epoch_state.clients,
+        ) {
             let tx_witness = self.tx_witness.clone();
             Some(tokio::task::spawn(async move {
                 tx_witness
@@ -88,6 +92,7 @@ impl WitnessStep {
     pub fn get_witness_to_send<T: NodeIdentity>(
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
+        clients: &[Client<T>],
     ) -> Option<Witness> {
         if previous_round.sent_witness {
             return None;
@@ -111,12 +116,141 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
+        let assigments_vec = Self::calculate_assignments_given_client_times(
+            &current_round.client_times,
+            &current_round.data_assignments,
+            clients,
+        );
+
+        let mut proposed_batch_sizes: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS> = FixedVec::new();
+        let _ = proposed_batch_sizes.fill(0u16);
+        for i in 0..assigments_vec.len() {
+            proposed_batch_sizes[i] = assigments_vec[i];
+        }
+
         Some(Witness {
             proof: *proof,
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
-            client_times: current_round.client_times,
+            proposed_batch_sizes,
         })
+    }
+
+    fn calculate_assignments_given_client_times<T: NodeIdentity>(
+        client_times: &FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
+        data_assignments: &BTreeMap<BatchId, T>,
+        clients: &[Client<T>],
+    ) -> Vec<u16> {
+        let global_batch_size = 8; // TODO change this obviously
+        let mut scores_per_node: Vec<f64> = Vec::new();
+        info!("[calculate_assignments] client_times: {:?}", client_times);
+        info!(
+            "[calculate_assignments] data_assignments: {:?}",
+            data_assignments
+        );
+
+        for i in 0..clients.len() {
+            let batches_assigned =
+                Self::number_of_data_assignments_for_client(&clients[i].id, data_assignments);
+
+            let score = if client_times[i] != 0 {
+                (batches_assigned as f64) / (client_times[i] as f64)
+            } else {
+                0.0
+            };
+            scores_per_node.push(score);
+
+            info!(
+                "[calculate_assignments] client {} ({})\n
+                client_time: {:?} , batches trained: {}, calculated score: {}\n",
+                i, clients[i].id, client_times[i], batches_assigned, score,
+            );
+        }
+
+        // Step 2: Sum of scores_per_node
+        let sum = scores_per_node.iter().sum::<f64>();
+        dbg!(sum);
+
+        if sum.abs() < 1e-10f64 {
+            error!("client_times is empty, using equitative assignments");
+            let assignments =
+                Self::calculate_equitative_assignments(global_batch_size, clients.len() as u16);
+            info!("equitative assignments: {:?}", assignments);
+            return assignments;
+        }
+
+        // Normalize scores_per_node
+        scores_per_node.iter_mut().for_each(|score| *score /= sum);
+        dbg!(&scores_per_node);
+
+        //  Calculate raw_assignments = scores_per_node[i] * total_batch_size
+        let raw_assignments: Vec<f64> = scores_per_node
+            .iter()
+            .map(|&score| score * global_batch_size as f64)
+            .collect();
+        dbg!(&raw_assignments);
+
+        let floored_assignments: Vec<u16> =
+            raw_assignments.iter().map(|&x| x.floor() as u16).collect();
+        dbg!(&floored_assignments);
+
+        // Calculate the remainder batches to assign
+        let floored_sum: u16 = floored_assignments.iter().sum();
+        let remainder = global_batch_size - floored_sum;
+
+        // Create simple vec of (client_index, score) pairs
+        let mut clients_by_score: Vec<(usize, f64)> = scores_per_node
+            .iter()
+            .enumerate()
+            .map(|(i, &score)| (i, score))
+            .collect();
+
+        // Sort by highest score first
+        clients_by_score.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Start with floored assignments and distribute remainder to highest scoring clients
+        let mut final_assignments = floored_assignments;
+
+        // Distribute remaining assignments to highest scoring clients
+        for (client_index, _) in clients_by_score.iter().take(remainder as usize) {
+            final_assignments[*client_index] += 1;
+        }
+
+        dbg!(&final_assignments);
+        final_assignments
+    }
+
+    fn number_of_data_assignments_for_client<T: NodeIdentity>(
+        client: &T,
+        data_assignments: &BTreeMap<BatchId, T>,
+    ) -> u16 {
+        let mut total: u16 = 0;
+        for (assignment, assigned_client) in data_assignments.iter() {
+            if assigned_client == client {
+                total += assignment.len() as u16;
+            }
+        }
+        total
+    }
+
+    fn calculate_equitative_assignments(
+        global_batch_size: u16,
+        number_of_clients: u16,
+    ) -> Vec<u16> {
+        let mut assignments: Vec<u16> = vec![0; number_of_clients as usize];
+        let mut total_assigned = 0;
+
+        for i in 0..number_of_clients {
+            assignments[i as usize] = global_batch_size / number_of_clients;
+            total_assigned += assignments[i as usize];
+        }
+
+        let remainder = global_batch_size - total_assigned;
+        for i in 0..remainder {
+            assignments[i as usize] += 1;
+        }
+
+        assignments
     }
 }

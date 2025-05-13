@@ -3,7 +3,10 @@ use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
 };
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{
+    prelude::{borsh, msg},
+    AnchorDeserialize, AnchorSerialize, InitSpace,
+};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
 use serde::{Deserialize, Serialize};
@@ -89,6 +92,7 @@ pub struct Client<I> {
     pub id: I,
     pub state: ClientState,
     pub exited_height: u32,
+    pub assigned_batch_size: u16,
 }
 
 impl<I: NodeIdentity> Hash for Client<I> {
@@ -139,7 +143,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
-    pub client_times: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
+    pub proposed_batch_sizes: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
 }
 
 #[derive(
@@ -410,6 +414,7 @@ impl<T: NodeIdentity> Client<T> {
             id,
             state: ClientState::Healthy,
             exited_height: 0,
+            assigned_batch_size: 1,
         }
     }
 }
@@ -539,6 +544,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         if round.witnesses.len() == witness_nodes && !(self.run_state == RunState::RoundWitness) {
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
+
         Ok(())
     }
 
@@ -911,6 +917,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 }
             }
 
+            msg!("[COORDINATOR] starting new epoch");
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
             bytemuck::write_zeroes(&mut self.epoch_state);
             self.epoch_state.first_round = true.into();
@@ -965,39 +972,119 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        if self.check_timeout(unix_timestamp, self.config.round_witness_time) {
-            // TODO: Punish idle witnesses
-            self.epoch_state.first_round = false.into();
-            self.progress.step += 1;
-
-            let current_round = self.current_round_unchecked();
-            let height = current_round.height;
-            let num_witnesses = current_round.witnesses.len() as u16;
-            self.move_clients_to_exited(height);
-
-            // If there are not witnesses, then we can't distinguish from
-            // the situation where only witness nodes disconnected or everyone
-            // disconnected. We just set everyone to withdrawn state and change
-            // to Cooldown.
-            if num_witnesses == 0 {
-                self.withdraw_all()?;
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
-
-            // If we reach the end of an epoch or if we don't reach the min number of
-            // clients or registered witnesses for the current round, we change to Cooldown
-            if height == self.config.rounds_per_epoch - 1
-                || self.epoch_state.clients.len() < self.config.min_clients as usize
-                || num_witnesses < self.witness_quorum()
-                || self.pending_pause.is_true()
-            {
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
-
-            self.start_round_train(unix_timestamp, random_seed, 0);
+        if !self.check_timeout(unix_timestamp, self.config.round_witness_time) {
+            return Ok(TickResult::Ticked);
         }
+        // Timeout ocurred, we need to move to the next round
+
+        // TODO: Punish idle witnesses
+        self.epoch_state.first_round = false.into();
+        self.progress.step += 1;
+
+        let height = self.current_round_unchecked().height;
+        let num_witnesses = self.current_round_unchecked().witnesses.len() as u16;
+        self.move_clients_to_exited(height);
+
+        // If there are not witnesses, then we can't distinguish from
+        // the situation where only witness nodes disconnected or everyone
+        // disconnected. We just set everyone to withdrawn state and change
+        // to Cooldown.
+        if num_witnesses == 0 {
+            self.withdraw_all()?;
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
+        }
+
+        // Check validity of each witness report on client batch assignment
+        // For debug purposes print each witness batch assignment
+        for witness in self.current_round_unchecked().witnesses.iter() {
+            let witness_id = self.epoch_state.clients[witness.proof.index as usize].id;
+            msg!(
+                "[witness_batch] Witness {} ({}): {:?}",
+                witness.proof.index,
+                witness_id,
+                witness.proposed_batch_sizes
+            );
+        }
+        let mut some_batch_mismatch = false;
+        for i in 0..self.current_round_unchecked().clients_len {
+            let first_witness_batch = self.current_round_unchecked().witnesses[0]
+                .proposed_batch_sizes
+                .get(i as usize)
+                .ok_or(CoordinatorError::InvalidWitness)?;
+            for witness in self.current_round_unchecked().witnesses.iter().skip(1) {
+                let Some(other_batch) = witness.proposed_batch_sizes.get(i as usize) else {
+                    msg!(
+                        "[witness_batch] Witness {} has no batch assignment for client {}",
+                        witness.proof.index,
+                        i
+                    );
+                    some_batch_mismatch = true;
+                    continue;
+                    //return Err(CoordinatorError::InvalidWitness);
+                };
+                if first_witness_batch != other_batch {
+                    msg!(
+                            "[witness_batch] Witness {} has different batch assignment for client {}: {} != {}",
+                            witness.proof.index,
+                            i,
+                            first_witness_batch,
+                            other_batch,
+                        );
+                    some_batch_mismatch = true;
+                    //return Err(CoordinatorError::InvalidWitness);
+                }
+            }
+        }
+        if !some_batch_mismatch {
+            msg!("[witness_batch] All witnesses have the same batch assignment");
+        }
+        // Populate the batch size for each client regardless for now, with the first witness
+        // Get the witness data before starting client iteration
+        let first_witness = self.current_round_unchecked().witnesses[0];
+        let first_witness_id = self.epoch_state.clients[first_witness.proof.index as usize].id;
+        let second_witness = self.current_round_unchecked().witnesses[1];
+
+        for (index, client) in self.epoch_state.clients.iter_mut().enumerate() {
+            // We do not want to get the batch size from ourselves; so in this particular case get from other witness
+            let to_assign: Option<u16> = if client.id == first_witness_id {
+                second_witness.proposed_batch_sizes.get(index).copied()
+            } else {
+                first_witness.proposed_batch_sizes.get(index).copied()
+            };
+
+            let to_assign = match to_assign {
+                Some(batch_assignment) => batch_assignment,
+                None => {
+                    msg!(
+                        "[witness_batch] Client {} has no batch assignment, using default of 1",
+                        index
+                    );
+                    1u16
+                }
+            };
+
+            msg!(
+                "[witness_batch] Client {} ({}) assigned batch size of: {:?}",
+                index,
+                client.id,
+                to_assign
+            );
+            client.assigned_batch_size = to_assign;
+        }
+
+        // If we reach the end of an epoch or if we don't reach the min number of
+        // clients or registered witnesses for the current round, we change to Cooldown
+        if height == self.config.rounds_per_epoch - 1
+            || self.epoch_state.clients.len() < self.config.min_clients as usize
+            || num_witnesses < self.witness_quorum()
+            || self.pending_pause.is_true()
+        {
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
+        }
+
+        self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)
     }
 
@@ -1074,6 +1161,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         round.tie_breaker_tasks = tie_breaker_tasks;
         round.random_seed = random_seed;
         round.witnesses.clear();
+
         self.change_state(unix_timestamp, RunState::RoundTrain);
     }
 

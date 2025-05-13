@@ -47,7 +47,7 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
     }
 
     pub fn fill(&mut self, value: T) -> Result<(), &'static str> {
-        for _ in 0..N as usize {
+        for _ in 0..N {
             self.push(value)?
         }
 
