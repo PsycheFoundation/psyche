@@ -891,35 +891,20 @@ impl<T: NodeIdentity> Coordinator<T> {
         // This extra time allows for more clients to join even if the minimum number of clients is reached
         {
             let pending_clients: HashSet<_> = pending_clients.collect();
-
-            // Ensure every client in self.epoch_state.clients is present in pending_clients
-            // If all clients are no longer present we need to use a Hub checkpoint since there
-            // will be no peers for P2P sharing.
-            let mut all_prev_clients_disconnected = true;
-            for client in self.epoch_state.clients.iter() {
-                // If there's at least one client then we can use P2P
-                if pending_clients.contains(&client.id) {
-                    all_prev_clients_disconnected = false;
-                    break;
-                }
-            }
-
-            if all_prev_clients_disconnected {
-                let Model::LLM(llm) = &mut self.model;
-                if let Checkpoint::P2P(hub_repo) = llm.checkpoint {
-                    llm.checkpoint = Checkpoint::Hub(hub_repo);
-                }
-            }
-
             let height = self.current_round_unchecked().height;
             self.move_clients_to_exited(height);
 
-            // If no clients from the previous epoch are present for the beggining
-            // of the next epoch, then we change the checkpoint to HuggingFace.
-            // This way, we are covered for a failure scenario where all clients
-            // disconnected and the trained state could be lost.
-            let Model::LLM(llm) = &mut self.model;
-            if self.epoch_state.clients.is_empty() {
+            // Ensure at least one client in the previous epoch is present in pending_clients for the new epoch.
+            // If all clients are no longer present we need to use a Hub checkpoint since there
+            // will be no peers for P2P sharing.
+            let all_prev_clients_disconnected = !self
+                .epoch_state
+                .clients
+                .iter()
+                .any(|client| pending_clients.contains(&client.id));
+
+            if all_prev_clients_disconnected {
+                let Model::LLM(llm) = &mut self.model;
                 if let Checkpoint::P2P(hub_repo) = llm.checkpoint {
                     llm.checkpoint = Checkpoint::Hub(hub_repo);
                 }
