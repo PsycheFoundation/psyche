@@ -505,8 +505,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         witness: Witness,
         unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
-        msg!("[COORDINATOR] received times: {:?}", witness.client_times);
-        msg!("[COORDINATOR] epoch state client times length: {}", self.epoch_state.client_times.len());
+        msg!("[COORDINATOR] step={}, received times: {:?}", self.progress.step, witness.client_times);
         if self.halted() {
             return Err(CoordinatorError::Halted);
         }
@@ -549,12 +548,19 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
 
-        msg!("[COORDINATOR] client times: {:?}", self.epoch_state.client_times);
+        msg!("[COORDINATOR] client times before: {:?}", self.epoch_state.client_times);
         for (i, time) in witness.client_times.iter().enumerate() {
             if *time != 0 {
-                self.epoch_state.client_times[i] = witness.client_times[i];
+                let epoch_time = self.epoch_state.client_times[i];
+                if epoch_time == 0 {
+                    self.epoch_state.client_times[i] = *time;
+                } else if epoch_time != *time {
+                    msg!("[COORDINATOR] [WARN] client time with index {} is different: reported: {} != actual: {}",
+                        i, *time, epoch_time);
+                }
             }
         }
+        msg!("[COORDINATOR] client times after: {:?}", self.epoch_state.client_times);
 
         Ok(())
     }
@@ -943,6 +949,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                 )
                 .unwrap();
             self.epoch_state.client_times.fill(0_u16);
+            for i in 0..self.epoch_state.clients.len() {
+                self.epoch_state.client_times[i] = 0;
+            }
+            msg!("[COORDINATOR] after new epoch: {:?}", self.epoch_state.client_times);
 
             self.start_warmup(unix_timestamp);
         }
@@ -1092,6 +1102,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         round.tie_breaker_tasks = tie_breaker_tasks;
         round.random_seed = random_seed;
         round.witnesses.clear();
+        for i in 0..self.epoch_state.clients.len() {
+            self.epoch_state.client_times[i] = 0;
+        }
         self.change_state(unix_timestamp, RunState::RoundTrain);
     }
 

@@ -295,6 +295,9 @@ impl CoordinatorInstanceState {
             }
 
             let _ = std::mem::replace(&mut self.coordinator.progress, progress);
+            for i in 0..self.coordinator.epoch_state.clients.len() {
+                self.coordinator.epoch_state.client_times[i] = 0;
+            }
         }
 
         Ok(())
