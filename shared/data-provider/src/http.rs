@@ -1,6 +1,6 @@
 use std::{str::FromStr, time::Duration};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use futures::future::join_all;
 use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use psyche_coordinator::model::HttpTrainingDataLocation;
@@ -226,12 +226,14 @@ impl HttpDataProvider {
             start + length - 1
         );
 
+        let range = format!("bytes={}-{}", start, start + length - 1);
         let response = client
             .get(url)
-            .header("Range", format!("bytes={}-{}", start, start + length - 1))
+            .header("Range", &range)
             .timeout(HTTP_REQUEST_TIMEOUT)
             .send()
-            .await?;
+            .await
+            .with_context(|| format!("request for bytes {range}"))?;
 
         // Check if we got a 206 Partial Content response
         if !response.status().is_success()

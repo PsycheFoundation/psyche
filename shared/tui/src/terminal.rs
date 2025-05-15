@@ -45,10 +45,10 @@ impl<T: Backend> Drop for TerminalWrapper<T> {
 
 fn restore_terminal() {
     trace!(target:"crossterm", "Restoring terminal");
-    if let Err(e) = disable_raw_mode() {
-        error!("failed to disable terminal raw mode: {e}");
+    if let Err(err) = disable_raw_mode() {
+        error!("failed to disable terminal raw mode: {err:#}");
     }
-    if let Err(e) = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture) {
-        error!("failed to leave alternate screen & disable mouse capture: {e}");
+    if let Err(err) = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture) {
+        error!("failed to leave alternate screen & disable mouse capture: {err:#}");
     }
 }

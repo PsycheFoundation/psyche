@@ -189,8 +189,8 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 .await
                 .push(Download::new(blob_ticket, tag, progress));
 
-            if let Err(e) = sender.send(()) {
-                error!("{}", e);
+            if let Err(err) = sender.send(()) {
+                error!("{err:#}");
             }
         });
     }
@@ -204,8 +204,8 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 tag,
                 download,
             });
-            if let Err(e) = sender.send(()) {
-                error!("{}", e);
+            if let Err(err) = sender.send(()) {
+                error!("{err:#}");
             }
         });
     }

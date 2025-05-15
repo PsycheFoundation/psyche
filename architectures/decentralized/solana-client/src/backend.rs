@@ -95,7 +95,7 @@ async fn subscribe_to_account(
                 error!(
                     url = url,
                     subscription_number = id,
-                    error = err.to_string(),
+                    error = format!("{err:#}"),
                     "Solana account subscribe error",
                 );
                 continue;
@@ -219,13 +219,13 @@ impl SolanaBackend {
                                         "Coordinator account update"
                                     );
                                     if let Err(err) = tx_update.send(account.state.coordinator) {
-                                        error!("Error sending coordinator update: {err}");
+                                        error!("Error sending coordinator update: {err:#}");
                                         break;
                                     }
                                     last_nonce = account.nonce;
                                 }
                             }
-                            Err(err) => error!("Error deserializing coordinator account: {err}"),
+                            Err(err) => error!("Error deserializing coordinator account: {err:#}"),
                         }
                     }
                     None => error!("Error decoding coordinator account"),

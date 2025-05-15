@@ -530,8 +530,8 @@ where
             tokio::spawn(async move {
                 let blob_bytes = match blobs.read_to_bytes(hash).await {
                     Ok(b) => b,
-                    Err(e) => {
-                        error!("Failed to read bytes: {e}");
+                    Err(err) => {
+                        error!("Failed to read bytes: {err:#}");
                         return;
                     }
                 };

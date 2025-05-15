@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
             let _ = psyche_tui::init_logging(LogOutput::Console, Level::INFO, None, false, None);
             match config {
                 Ok(_) => info!("Configs are OK!"),
-                Err(error) => error!("Error found in config: {}", error),
+                Err(err) => error!("Error found in config: {err:#}"),
             }
         }
         Commands::Run { run_args } => {
@@ -166,7 +166,7 @@ async fn main() -> Result<()> {
                     .run()
                     .await?
                 }
-                Err(error) => error!("Error found in config: {}", error),
+                Err(err) => error!("Error found in config: {err:#}"),
             }
             logger.shutdown()?;
         }

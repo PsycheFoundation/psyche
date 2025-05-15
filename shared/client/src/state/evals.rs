@@ -110,9 +110,9 @@ impl EvalRunner {
                     info!("Eval tasks loaded successfully");
                     LoadingStateInner::Done(tasks)
                 }
-                Err(e) => {
-                    error!("Failed to load eval tasks: {}", e);
-                    LoadingStateInner::Failed(e)
+                Err(err) => {
+                    error!("Failed to load eval tasks: {err:#}");
+                    LoadingStateInner::Failed(err)
                 }
             };
             tasks_clone.loaded_notify.notify_one();
@@ -139,8 +139,8 @@ impl EvalRunner {
                         }
                         return Some(tasks.clone());
                     }
-                    LoadingStateInner::Failed(e) => {
-                        error!("Failed to load eval tasks: {}", e);
+                    LoadingStateInner::Failed(err) => {
+                        error!("Failed to load eval tasks: {err:#}");
                         return None;
                     }
                     LoadingStateInner::Loading => {
