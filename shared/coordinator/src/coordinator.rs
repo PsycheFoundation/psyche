@@ -890,13 +890,14 @@ impl<T: NodeIdentity> Coordinator<T> {
             && self.check_timeout(unix_timestamp, WAITING_FOR_MEMBERS_EXTRA_SECONDS)
         // This extra time allows for more clients to join even if the minimum number of clients is reached
         {
-            let pending_clients: HashSet<_> = pending_clients.collect();
+            // Make sure that all unhealthy clients are kicked at this point
             let height = self.current_round_unchecked().height;
             self.move_clients_to_exited(height);
 
             // Ensure at least one client in the previous epoch is present in pending_clients for the new epoch.
             // If all clients are no longer present we need to use a Hub checkpoint since there
             // will be no peers for P2P sharing.
+            let pending_clients: HashSet<_> = pending_clients.collect();
             let all_prev_clients_disconnected = !self
                 .epoch_state
                 .clients
