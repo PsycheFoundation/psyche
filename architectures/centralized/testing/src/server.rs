@@ -83,10 +83,11 @@ impl CoordinatorServer {
             total_steps: 10,
         };
 
-        let epoch_state = CoordinatorEpochState {
+        let mut epoch_state = CoordinatorEpochState {
             first_round: true.into(),
             ..CoordinatorEpochState::<ClientId>::zeroed()
         };
+        epoch_state.client_times.fill(0_u16);
 
         let run_id = sample_rand_run_id();
         let coordinator: Coordinator<ClientId> = Coordinator {

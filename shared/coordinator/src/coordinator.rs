@@ -382,6 +382,11 @@ impl std::fmt::Display for RunState {
 
 impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
     fn default() -> Self {
+        let mut client_times = FixedVec::new();
+        client_times.fill(0_u16);
+
+        msg!("[COORDIANTOR] default client times length: {}", client_times.len());
+
         Self {
             rounds: Default::default(),
             rounds_head: Default::default(),
@@ -391,7 +396,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
-            client_times: Default::default(),
+            client_times,
         }
     }
 }
@@ -500,6 +505,8 @@ impl<T: NodeIdentity> Coordinator<T> {
         witness: Witness,
         unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
+        msg!("[COORDINATOR] received times: {:?}", witness.client_times);
+        msg!("[COORDINATOR] epoch state client times length: {}", self.epoch_state.client_times.len());
         if self.halted() {
             return Err(CoordinatorError::Halted);
         }
@@ -542,13 +549,13 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
 
+        msg!("[COORDINATOR] client times: {:?}", self.epoch_state.client_times);
         for (i, time) in witness.client_times.iter().enumerate() {
             if *time != 0 {
                 self.epoch_state.client_times[i] = witness.client_times[i];
             }
         }
 
-        msg!("coordinator client times: {:?}", self.epoch_state.client_times);
         Ok(())
     }
 
@@ -935,6 +942,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                         .map(|x| Client::new(*x)),
                 )
                 .unwrap();
+            self.epoch_state.client_times.fill(0_u16);
 
             self.start_warmup(unix_timestamp);
         }
