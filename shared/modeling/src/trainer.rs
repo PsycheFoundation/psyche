@@ -435,7 +435,7 @@ impl Trainer {
             ) {
                 Ok(comm) => comm,
                 Err(err) => {
-                    error!("Error creating DP mesh: {}", err);
+                    error!("Error creating DP mesh: {err:#}");
                     return;
                 }
             };
@@ -577,7 +577,7 @@ impl Trainer {
                                 break;
                             }
                             Err(err) => {
-                                error!("Train error: {err}");
+                                error!("Train error: {err:#}");
                                 return;
                             }
                         }
@@ -736,7 +736,7 @@ impl Trainer {
                             }
                         }
                         Err(err) => {
-                            error!("Unexpected error in extract: {err}");
+                            error!("Unexpected error in extract: {err:#}");
                             return;
                         }
                     }
