@@ -89,6 +89,7 @@ pub struct Client<I> {
     pub id: I,
     pub state: ClientState,
     pub exited_height: u32,
+    pub assigned_batch_size: u16,
 }
 
 impl<I: NodeIdentity> Hash for Client<I> {
@@ -255,7 +256,6 @@ pub struct CoordinatorEpochState<T> {
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
-    pub client_times: FixedVec<u16, { SOLANA_MAX_NUM_CLIENTS }>,
 }
 
 #[derive(
@@ -382,11 +382,6 @@ impl std::fmt::Display for RunState {
 
 impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
     fn default() -> Self {
-        let mut client_times = FixedVec::new();
-        client_times.fill(0_u16);
-
-        msg!("[COORDIANTOR] default client times length: {}", client_times.len());
-
         Self {
             rounds: Default::default(),
             rounds_head: Default::default(),
@@ -396,7 +391,6 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
-            client_times,
         }
     }
 }
@@ -417,6 +411,7 @@ impl<T: NodeIdentity> Client<T> {
             id,
             state: ClientState::Healthy,
             exited_height: 0,
+            assigned_batch_size: 0,
         }
     }
 }
@@ -547,20 +542,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         if round.witnesses.len() == witness_nodes && !(self.run_state == RunState::RoundWitness) {
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
-
-        msg!("[COORDINATOR] client times before: {:?}", self.epoch_state.client_times);
-        for (i, time) in witness.client_times.iter().enumerate() {
-            if *time != 0 {
-                let epoch_time = self.epoch_state.client_times[i];
-                if epoch_time == 0 {
-                    self.epoch_state.client_times[i] = *time;
-                } else if epoch_time != *time {
-                    msg!("[COORDINATOR] [WARN] client time with index {} is different: reported: {} != actual: {}",
-                        i, *time, epoch_time);
-                }
-            }
-        }
-        msg!("[COORDINATOR] client times after: {:?}", self.epoch_state.client_times);
 
         Ok(())
     }
@@ -934,6 +915,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 }
             }
 
+            msg!("[COORDINATOR] starting new epoch");
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
             bytemuck::write_zeroes(&mut self.epoch_state);
             self.epoch_state.first_round = true.into();
@@ -948,11 +930,6 @@ impl<T: NodeIdentity> Coordinator<T> {
                         .map(|x| Client::new(*x)),
                 )
                 .unwrap();
-            self.epoch_state.client_times.fill(0_u16);
-            for i in 0..self.epoch_state.clients.len() {
-                self.epoch_state.client_times[i] = 0;
-            }
-            msg!("[COORDINATOR] after new epoch: {:?}", self.epoch_state.client_times);
 
             self.start_warmup(unix_timestamp);
         }
@@ -1012,6 +989,9 @@ impl<T: NodeIdentity> Coordinator<T> {
                 self.start_cooldown(unix_timestamp);
                 return Ok(TickResult::Ticked);
             }
+
+            // TODO Check validity of each witness report on client batch assignment
+            
 
             // If we reach the end of an epoch or if we don't reach the min number of
             // clients or registered witnesses for the current round, we change to Cooldown
@@ -1102,9 +1082,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         round.tie_breaker_tasks = tie_breaker_tasks;
         round.random_seed = random_seed;
         round.witnesses.clear();
-        for i in 0..self.epoch_state.clients.len() {
-            self.epoch_state.client_times[i] = 0;
-        }
+
         self.change_state(unix_timestamp, RunState::RoundTrain);
     }
 

@@ -478,9 +478,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         }
 
         round_state.broadcasts.push(broadcast.commitment.data_hash);
-
-        dbg!(&round_state.client_times);
-
         Ok(())
     }
 
