@@ -189,7 +189,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                     if !to_connect.is_empty() {
                                         info!(num_new_peers = to_connect.len(), "Connecting to new peers");
-                                        p2p.add_peers(to_connect).await?;
+                                        p2p.add_peers(to_connect);
                                     }
                                 }
                             }
@@ -362,7 +362,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             // simulate us recving it & apply like anyone else's
                             {
-                                run.apply_message(identity,  training_result).await?;
+                                run.apply_message(identity, training_result).await?;
 
                                 // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
                                 // even if quantization is turned on (distro_result is quantized).
