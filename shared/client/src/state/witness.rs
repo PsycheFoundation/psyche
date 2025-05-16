@@ -8,7 +8,7 @@ use tokio::{
     sync::mpsc::{self},
     task::JoinHandle,
 };
-use tracing::{info, trace};
+use tracing::{error, info, trace};
 
 use super::{
     evals::{EvalError, EvalRunner, MaybeRunningEvals, RunningEvals},
@@ -142,6 +142,7 @@ impl WitnessStep {
         data_assignments: &BTreeMap<BatchId, T>,
         clients: &[Client<T>],
     ) -> Vec<u16> {
+        let global_batch_size = 8; // TODO change this obviously
         let mut scores_per_node: Vec<f64> = Vec::new();
         info!("calculate_assigments: client_times: {:?}", client_times);
         info!("calculate_assigments: data_assignments: {:?}", data_assignments);
@@ -154,7 +155,7 @@ impl WitnessStep {
             if client_time != 0 {
                 let calc = (batches_assigned as f64) / (client_time as f64);
                 info!("calculated score for client: {}", calc);
-                scores_per_node.push((batches_assigned as f64) / (client_times[i] as f64));
+                scores_per_node.push(calc);
             } else {
                 scores_per_node.push(0.0);
             }
@@ -165,6 +166,17 @@ impl WitnessStep {
         for score in &scores_per_node {
             sum += score;
         }
+        dbg!(sum);
+
+        if sum.abs() < 1e-10f64 {
+            error!("client_times is empty, using equitative assignments");
+            let assignments =  Self::calculate_equitative_assignments(
+                global_batch_size,
+                clients.len() as u16,
+            );
+            info!("equitative assignments: {:?}", assignments);
+            return assignments;
+        }
 
         // Step 3: Normalize scores_per_node
         for i in 0..scores_per_node.len() {
@@ -174,9 +186,8 @@ impl WitnessStep {
 
         // Step 4: Calculate raw_assignments = scores_per_node[i] * total_batch_size
         let mut raw_assignments: Vec<f64> = Vec::new();
-        let total_batch_size = 8; // TODO change this obviously
         for score in &scores_per_node {
-            raw_assignments.push(score * total_batch_size as f64);
+            raw_assignments.push(score * global_batch_size as f64);
         }
         dbg!(&raw_assignments);
 
@@ -186,14 +197,33 @@ impl WitnessStep {
             floored_assignments.push(x.floor() as u16);
         }
         dbg!(&floored_assignments);
-        floored_assignments
 
         // Step 6: Calculate the remainder
-        //let mut floored_sum = 0;
-        //for val in &floored_assignments {
-        //    floored_sum += val;
-        //}
-        //let remainder = total_batch_size - floored_sum;
+        let mut floored_sum = 0;
+        for val in &floored_assignments {
+            floored_sum += val;
+        }
+        let remainder = global_batch_size - floored_sum;
+
+        // Create simple vec of (client_index, score) pairs
+        let mut clients_by_score = Vec::new();
+        for (index, &score) in scores_per_node.iter().enumerate() {
+            clients_by_score.push((index, score));
+        }
+        
+        // Sort by highest score first
+        clients_by_score.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Start with floored assignments and distribute remainder to highest scoring clients
+        let mut final_assignments = floored_assignments;
+        
+        // Distribute remaining assignments to highest scoring clients
+        for (client_index, _) in clients_by_score.iter().take(remainder as usize) {
+            final_assignments[*client_index] += 1;
+        }
+
+        dbg!(&final_assignments);
+        final_assignments
     }
 
     fn number_of_data_assignments_for_client<T: NodeIdentity>(
@@ -207,5 +237,25 @@ impl WitnessStep {
             }
         }
         total
+    }
+
+    fn calculate_equitative_assignments(
+        global_batch_size: u16,
+        number_of_clients: u16,
+    ) -> Vec<u16> {
+        let mut assignments: Vec<u16> = vec![0; number_of_clients as usize];
+        let mut total_assigned = 0;
+
+        for i in 0..number_of_clients {
+            assignments[i as usize] = global_batch_size / number_of_clients;
+            total_assigned += assignments[i as usize];
+        }
+
+        let remainder = global_batch_size - total_assigned;
+        for i in 0..remainder {
+            assignments[i as usize] += 1;
+        }
+
+        assignments
     }
 }
