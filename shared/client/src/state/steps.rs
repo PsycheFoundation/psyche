@@ -365,39 +365,36 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         match broadcast.data {
             BroadcastType::TrainingResult(training_result) => {
                 // Save the timestamp of when we received the training result in the client times hashmap
-                if from_client_id != self.identity {
-                    let current_timestamp = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .expect("BroadcastType::TrainingResult: Error getting current timestamp")
-                        .as_millis();
+                let current_timestamp = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("BroadcastType::TrainingResult: Error getting current timestamp")
+                    .as_millis();
 
-                    info!("round_state: {}", round_state.height);
-                    let training_started_at = round_state
-                        .training_started_at
-                        .expect("BroadcastType::TrainingResult: training_started_at was None");
-                    let time_since_training_started =
-                        current_timestamp - (training_started_at as u128);
+                info!("round_state: {}", round_state.height);
+                let training_started_at = round_state
+                    .training_started_at
+                    .expect("BroadcastType::TrainingResult: training_started_at was None");
+                let time_since_training_started = current_timestamp - (training_started_at as u128);
 
-                    let client_index = self
-                        .coordinator_state
-                        .epoch_state
-                        .clients
-                        .iter()
-                        .position(|x| x.id == from_client_id);
+                let client_index = self
+                    .coordinator_state
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .position(|x| x.id == from_client_id);
 
-                    if let Some(index) = client_index {
-                        // We can safely bypass all the insert checks since we already initialized this vec with all zeroes.
-                        round_state.client_times[index] = time_since_training_started as u16;
-                    }
-
-                    info!(
-                        "TIMESTAMP batch {} from {} at {} , time since training started: {}",
-                        training_result.batch_id,
-                        from_client_id,
-                        current_timestamp,
-                        time_since_training_started,
-                    );
+                if let Some(index) = client_index {
+                    // We can safely bypass all the insert checks since we already initialized this vec with all zeroes.
+                    round_state.client_times[index] = time_since_training_started as u16;
                 }
+
+                info!(
+                    "TIMESTAMP batch {} from {} at {} , time since training started: {}",
+                    training_result.batch_id,
+                    from_client_id,
+                    current_timestamp,
+                    time_since_training_started,
+                );
 
                 if !round_state
                     .data_assignments
