@@ -211,6 +211,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     if let Some(witness) = WitnessStep::get_witness_to_send(
                         &mut self.previous_round,
                         &mut self.current_round,
+                        &self.coordinator_state.epoch_state.clients,
                     ) {
                         info!(target: "witness", id = %self.identity, merkle=witness.broadcast_merkle.fmt_short(), "Sending opportunistic witness");
 
