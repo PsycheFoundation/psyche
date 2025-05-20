@@ -384,18 +384,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .position(|x| x.id == from_client_id);
 
                 if let Some(index) = client_index {
-                    // We can safely bypass all the insert checks since we already initialized this vec with all zeroes.
-                    round_state.client_times[index] = time_since_training_started as u16;
+                    // We do NOT want to measure our own time since that'll just screw things up
+                    // So we set to 0 which is an invalid time measurement value just in case.
+                    if from_client_id == self.identity {
+                        round_state.client_times[index] = 0u16;
+                    } else {
+                        // We can safely bypass all the insert checks since we already initialized this vec with all zeroes.
+                        round_state.client_times[index] = time_since_training_started as u16;
 
-                    info!(
-                        "TIMESTAMP batch {} from {} (idx: {}) at {} , time since training started: {} (time per batch: {})",
-                        training_result.batch_id,
-                        from_client_id,
-                        index,
-                        current_timestamp,
-                        time_since_training_started,
-                        time_since_training_started / training_result.batch_id.len() as u128
-                    );
+                        info!(
+                            "TIMESTAMP batch {} from {} (idx: {}) at {} , time since training started: {} (time per batch: {})",
+                            training_result.batch_id,
+                            from_client_id,
+                            index,
+                            current_timestamp,
+                            time_since_training_started,
+                            time_since_training_started / training_result.batch_id.len() as u128
+                        );
+                    }
                 }
 
                 if !round_state
