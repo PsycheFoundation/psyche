@@ -21,7 +21,8 @@ data_location = { WeightedHttp = "https://storage.googleapis.com/nous-pretrainin
 cold_start_warmup_steps = 100
 
 [model.LLM.checkpoint.Hub]
-repo_id = "PsycheFoundation/consilience-v1-40b-init"
+repo_id = "PsycheFoundation/consilience-40b-7Y9v38s5"
+revision = "86c0309dec7b9f24c866328733a48da70456515a"
 
 [model.LLM.lr_schedule.WarmupStableDecay]
 warmup_steps = 2000
