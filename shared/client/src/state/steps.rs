@@ -565,11 +565,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         // we only care to add this to consensus & track it in batch IDs if we have any batch IDs that haven't yet been voted for.
         // TODO: how do we do witnessing for verifiers that might be training on data that's not in the normal remaining batch IDs?
         // TODO: also we want ALL those from everyone, right?
-        let just_finished = if let Some((num_batch_ids_left, batch_ids_not_yet_trained_on)) =
+        let just_finished = if let Some((num_batch_ids_left, remaining_batch_ids)) =
             &mut round_state.batch_ids_not_yet_trained_on
         {
-            let mut remaining_batch_ids = batch_ids_not_yet_trained_on.lock().await;
-
             match round_state.blooms.as_mut() {
                 Some((participant_bloom, broadcast_bloom)) => {
                     participant_bloom.add(&sha256(from.as_ref()));

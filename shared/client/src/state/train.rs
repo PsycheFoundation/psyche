@@ -186,8 +186,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         committee_selection.get_num_trainer_nodes(),
                     );
                     let num_all_batch_ids = all_batch_ids.len();
-                    let batch_ids_not_yet_trained_on: Arc<Mutex<BatchIdSet>> =
-                        Arc::new(Mutex::new(all_batch_ids.into_iter().collect()));
+                    let batch_ids_not_yet_trained_on: BatchIdSet =
+                        all_batch_ids.into_iter().collect();
                     (
                         data_assignments,
                         num_all_batch_ids,
