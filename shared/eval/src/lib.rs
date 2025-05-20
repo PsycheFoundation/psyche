@@ -6,16 +6,17 @@ mod tasks;
 mod traits;
 
 pub use harness::{EvalTaskOptions, PreparedTask, PreparedTaskResult, Task, TaskType};
-pub use tasks::{ArcChallenge, ArcEasy, Hellaswag, MMLUPro, MMLU};
+pub use tasks::{ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLUPro, MMLU};
 
 pub const ASCII_UPPERCASE: [&str; 26] = [
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
-pub const ALL_TASK_NAMES: [&str; 5] = [
+pub const ALL_TASK_NAMES: [&str; 6] = [
     ArcChallenge::name(),
     ArcEasy::name(),
+    BoolQ::name(),
     Hellaswag::name(),
     MMLUPro::name(),
     MMLU::name(),
@@ -47,6 +48,7 @@ pub fn tasktype_from_name(name: &str) -> Result<TaskType> {
     {
         "arc_challenge" => ArcChallenge::load(),
         "arc_easy" => ArcEasy::load(),
+        "bool_q" => BoolQ::load(),
         "hellaswag" => Hellaswag::load(),
         "mmlu_pro" => MMLUPro::load(),
         "mmlu" => MMLU::load(),
