@@ -1041,23 +1041,35 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
         // Populate the batch size for each client regardless for now, with the first witness
         // Get the witness data before starting client iteration
-        let first_witness = self.current_round_unchecked().witnesses[0];
-        let first_witness_id = self.epoch_state.clients[first_witness.proof.index as usize].id;
-        let second_witness = self.current_round_unchecked().witnesses[1];
+        let witnesses = self.current_round_unchecked().witnesses;
 
         for (index, client) in self.epoch_state.clients.iter_mut().enumerate() {
-            // We do not want to get the batch size from ourselves; so in this particular case get from other witness
-            let to_assign: Option<u16> = if client.id == first_witness_id {
-                second_witness.proposed_batch_sizes.get(index).copied()
-            } else {
-                first_witness.proposed_batch_sizes.get(index).copied()
-            };
+            let mut to_assign: Option<u16> = None;
+            let witnesses_len: usize = witnesses.len();
+            
+            // Try each witness in order until we find a valid batch size
+            for offset in 0..witnesses_len {
+                let witness_idx = offset % witnesses_len;
+                let witness = &witnesses[witness_idx];
+                
+                // Skip if witness is reporting about itself or reported time is 0
+                let proposed_batch_size = witness.proposed_batch_sizes.get(index).copied();
+                match proposed_batch_size {
+                    None | Some(0) => {
+                        continue;
+                    }
+                    Some(batch_size) => {
+                        to_assign = Some(batch_size);
+                        break;
+                    }
+                }
+            }
 
             let to_assign = match to_assign {
                 Some(batch_assignment) => batch_assignment,
                 None => {
                     msg!(
-                        "[witness_batch] Client {} has no batch assignment, using default of 1",
+                        "[witness_batch] Client {} has no valid batch assignment from any witness, using default of 1",
                         index
                     );
                     1u16
@@ -1071,6 +1083,45 @@ impl<T: NodeIdentity> Coordinator<T> {
                 to_assign
             );
             client.assigned_batch_size = to_assign;
+        }
+
+        // Get target global batch size and adjust if total exceeds it
+        let target_batch_size = self.get_target_global_batch_size(Some(self.current_round_unchecked()));
+        let mut total_assigned: u16 = self.epoch_state.clients.iter()
+            .map(|c| c.assigned_batch_size)
+            .sum();
+
+        if total_assigned > target_batch_size {
+            msg!(
+                "[witness_batch] Total assigned batch size {} exceeds target {}, adjusting...",
+                total_assigned,
+                target_batch_size
+            );
+
+            // Create a mutable vector of indices sorted by batch size
+            let mut sorted_indices: Vec<_> = (0..self.epoch_state.clients.len()).collect();
+            sorted_indices.sort_by_key(|&i| std::cmp::Reverse(self.epoch_state.clients[i].assigned_batch_size));
+
+            // Keep reducing batch sizes until we meet the target
+            let mut current_idx = 0;
+            while total_assigned > target_batch_size {
+                let idx = sorted_indices[current_idx % sorted_indices.len()];
+                if self.epoch_state.clients[idx].assigned_batch_size > 1 {
+                    self.epoch_state.clients[idx].assigned_batch_size -= 1;
+                    total_assigned -= 1;
+                }
+                current_idx += 1;
+            }
+
+            msg!("[witness_batch] After adjustment:");
+            for (i, client) in self.epoch_state.clients.iter().enumerate() {
+                msg!(
+                    "[witness_batch] Client {} ({}) batch size: {}",
+                    i,
+                    client.id,
+                    client.assigned_batch_size
+                );
+            }
         }
 
         // If we reach the end of an epoch or if we don't reach the min number of
