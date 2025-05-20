@@ -224,7 +224,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         trace!("Got finished gossip message from {from}: step {}", broadcast.step);
                                                     }
                                                 }
-                                                run.apply_message(client.id, broadcast).await?;
+                                                run.apply_message(client.id, broadcast)?;
                                             } else {
                                                 debug!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
                                             }
@@ -339,7 +339,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
-                            run.apply_message(identity,  training_result).await?;
+                            run.apply_message(identity,  training_result)?;
                         }
 
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
@@ -362,7 +362,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             // simulate us recving it & apply like anyone else's
                             {
-                                run.apply_message(identity, training_result).await?;
+                                run.apply_message(identity, training_result)?;
 
                                 // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
                                 // even if quantization is turned on (distro_result is quantized).

@@ -319,7 +319,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub async fn apply_message(
+    pub fn apply_message(
         &mut self,
         from_client_id: T,
         broadcast: Broadcast,
@@ -910,7 +910,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         Ok(())
     }
 
-    pub async fn apply_message(
+    pub fn apply_message(
         &mut self,
         from_client_id: T,
         training_result: Broadcast,
@@ -919,7 +919,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
             InitStage::Running(state_machine) => {
                 state_machine
                     .apply_message(from_client_id, training_result)
-                    .await
             }
             _ => {
                 // not yet warmed up, ignore any p2p messages.
