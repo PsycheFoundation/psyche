@@ -180,62 +180,56 @@ impl WitnessStep {
             return assignments;
         }
 
-        // Normalize scores_per_node
-        scores_per_node.iter_mut().for_each(|score| *score /= sum);
-        dbg!(&scores_per_node);
-
-        //  Calculate raw_assignments = scores_per_node[i] * total_batch_size
-        let raw_assignments: Vec<f64> = scores_per_node
-            .iter()
-            .map(|&score| score * global_batch_size as f64)
-            .collect();
-        dbg!(&raw_assignments);
-
-        let floored_assignments: Vec<u16> =
-            raw_assignments.iter().map(|&x| x.floor() as u16).collect();
-        dbg!(&floored_assignments);
-
-        // Calculate the remainder batches to assign
-        let floored_sum: u16 = floored_assignments.iter().sum();
-        let remainder = global_batch_size - floored_sum;
-
-        // Create simple vec of (client_index, score) pairs
-        let mut clients_by_score: Vec<(usize, f64)> = scores_per_node
-            .iter()
-            .enumerate()
-            .map(|(i, &score)| (i, score))
-            .collect();
-
-        // Sort by highest score first
-        clients_by_score.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Start with floored assignments and distribute remainder to highest scoring clients
-        let mut final_assignments = floored_assignments;
-
-        // Distribute remaining assignments to highest scoring clients
-        for (client_index, _) in clients_by_score.iter().take(remainder as usize) {
-            final_assignments[*client_index] += 1;
+        // Initialize final assignments
+        let mut final_assignments = vec![0u16; clients.len()];
+        
+        // First pass: assign 1 batch to each node with non-zero score
+        let mut remaining_batches = global_batch_size;
+        for (i, &score) in scores_per_node.iter().enumerate() {
+            if score > 0.0 {
+                final_assignments[i] = 1;
+                remaining_batches -= 1;
+            }
         }
 
-        // Check if total assignments exceed global_batch_size
-        let total: u16 = final_assignments.iter().sum();
-        if total > global_batch_size {
-            let excess = total - global_batch_size;
+        if remaining_batches > 0 {
+            // Normalize scores for remaining distribution
+            let sum = scores_per_node.iter().sum::<f64>();
+            scores_per_node.iter_mut().for_each(|score| *score /= sum);
 
-            // Sort assignments by value (highest first) with their indices
-            let mut indexed_assignments: Vec<(usize, u16)> = final_assignments
+            // Calculate raw assignments for remaining batches
+            let raw_remaining: Vec<f64> = scores_per_node
                 .iter()
-                .copied()
-                .enumerate()
+                .map(|&score| score * remaining_batches as f64)
                 .collect();
-            indexed_assignments.sort_by(|a, b| b.1.cmp(&a.1));
 
-            // Remove excess from highest values
-            for i in 0..excess as usize {
-                let idx = indexed_assignments[i % indexed_assignments.len()].0;
-                if final_assignments[idx] > 0 {
-                    final_assignments[idx] -= 1;
+            // Floor the remaining assignments
+            let mut additional = raw_remaining
+                .iter()
+                .map(|&x| x.floor() as u16)
+                .collect::<Vec<u16>>();
+
+            // Calculate how many batches are still unassigned
+            let assigned: u16 = additional.iter().sum();
+            let still_remaining = remaining_batches - assigned;
+
+            // Distribute remaining batches by fractional part
+            if still_remaining > 0 {
+                let mut fractional: Vec<(usize, f64)> = raw_remaining
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &x)| (i, x - x.floor()))
+                    .collect();
+                fractional.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                for (idx, _) in fractional.iter().take(still_remaining as usize) {
+                    additional[*idx] += 1;
                 }
+            }
+
+            // Add additional assignments to base assignments
+            for (base, extra) in final_assignments.iter_mut().zip(additional.iter()) {
+                *base += *extra;
             }
         }
 
