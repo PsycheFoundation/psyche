@@ -118,7 +118,7 @@ enum Commands {
         #[clap(flatten)]
         wallet: WalletArgs,
 
-        #[clap(short, long, env)]
+        #[clap(long, env)]
         run_id: String,
 
         #[clap(short, long, env)]
