@@ -217,6 +217,28 @@ impl WitnessStep {
             final_assignments[*client_index] += 1;
         }
 
+        // Check if total assignments exceed global_batch_size
+        let total: u16 = final_assignments.iter().sum();
+        if total > global_batch_size {
+            let excess = total - global_batch_size;
+
+            // Sort assignments by value (highest first) with their indices
+            let mut indexed_assignments: Vec<(usize, u16)> = final_assignments
+                .iter()
+                .copied()
+                .enumerate()
+                .collect();
+            indexed_assignments.sort_by(|a, b| b.1.cmp(&a.1));
+
+            // Remove excess from highest values
+            for i in 0..excess as usize {
+                let idx = indexed_assignments[i % indexed_assignments.len()].0;
+                if final_assignments[idx] > 0 {
+                    final_assignments[idx] -= 1;
+                }
+            }
+        }
+
         dbg!(&final_assignments);
         final_assignments
     }
