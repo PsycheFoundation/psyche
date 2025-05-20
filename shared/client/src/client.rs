@@ -189,7 +189,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                     if !to_connect.is_empty() {
                                         info!(num_new_peers = to_connect.len(), "Connecting to new peers");
-                                        p2p.add_peers(to_connect);
+                                        let _ = p2p.add_peers(to_connect);
                                     }
                                 }
                             }
@@ -405,7 +405,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         hex::encode(hash), info.retries);
 
                                     let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                                    p2p.start_download(ticket, tag, &other_possible_nodes).await?;
+                                    p2p.start_download(ticket, tag, other_possible_nodes);
                                 }
                             }
                         }
@@ -416,7 +416,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                            p2p.start_download(download_ticket, tag, &other_possible_nodes).await?;
+                            p2p.start_download(download_ticket, tag, other_possible_nodes);
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
                             watcher.backend_mut().send_witness(opportunistic_data).await?;
@@ -561,14 +561,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             for ticket in parameter_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, &[]).await?;
+                                p2p.start_download(ticket, 0, Vec::new());
                             }
 
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for ticket in param_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, &[]).await?;
+                                p2p.start_download(ticket, 0, Vec::new());
                             }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),

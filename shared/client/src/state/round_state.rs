@@ -5,11 +5,7 @@ use psyche_coordinator::{
 };
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_modeling::DistroResult;
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-use tokio::sync::Mutex;
+use std::collections::{BTreeMap, HashMap};
 
 use super::types::PayloadState;
 

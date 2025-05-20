@@ -346,52 +346,49 @@ where
         Ok(self.gossip_tx.broadcast(encoded_message).await?)
     }
 
-    pub async fn start_download(
+    pub fn start_download(
         &mut self,
         ticket: BlobTicket,
         tag: u32,
-        additional_peers_to_try: &[NodeAddr],
-    ) -> Result<()> {
+        additional_peers_to_try: Vec<NodeAddr>,
+    ) {
         let provider_node_id = ticket.node_addr().clone();
-        let mut progress = self
-            .blobs
-            .client()
-            .download_with_opts(
-                ticket.hash(),
-                DownloadOptions {
-                    format: BlobFormat::Raw,
-                    nodes: std::iter::once(provider_node_id)
-                        .chain(additional_peers_to_try.iter().cloned())
-                        .collect(),
-                    tag: SetTagOption::Auto,
-                    mode: DownloadMode::Queued,
-                },
-            )
-            .await?;
-
-        let hash = ticket.hash();
-        self.state.currently_sharing_blobs.insert(hash);
-        self.state.blob_tags.insert((tag, hash));
-        debug!(name: "blob_download_start", hash = hash.fmt_short(), "started downloading blob {}", hash.fmt_short());
-
+        let ticket_hash = ticket.hash();
         let (tx, rx) = mpsc::unbounded_channel();
 
+        self.state.currently_sharing_blobs.insert(ticket_hash);
+        self.state.blob_tags.insert((tag, ticket_hash));
+        self.download_manager.add(ticket, tag, rx);
+
+        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash.fmt_short());
+
+        let blobs_client = self.blobs.client().clone();
+
         tokio::spawn(async move {
-            loop {
-                match progress.next().await {
-                    None => break,
-                    Some(val) => {
+            let download_opts = DownloadOptions {
+                format: BlobFormat::Raw,
+                nodes: std::iter::once(provider_node_id)
+                    .chain(additional_peers_to_try.iter().cloned())
+                    .collect(),
+                tag: SetTagOption::Auto,
+                mode: DownloadMode::Queued,
+            };
+
+            let download_start_result = blobs_client
+                .download_with_opts(ticket_hash, download_opts)
+                .await;
+
+            match download_start_result {
+                Ok(mut progress) => {
+                    while let Some(val) = progress.next().await {
                         if let Err(err) = tx.send(val) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
                     }
                 }
+                Err(e) => panic!("Failed to start download: {e}"),
             }
         });
-
-        self.download_manager.add(ticket, tag, rx);
-
-        Ok(())
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {

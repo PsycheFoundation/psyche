@@ -28,10 +28,7 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
-use tokio::{
-    sync::{mpsc, Mutex},
-    task::JoinHandle,
-};
+use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, trace_span, warn, Instrument};
 
@@ -608,7 +605,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                             if trainer_nonce < cold_start_warmup_steps && epoch != 0 && warmup_lr_between.is_none()  {
                                 // results are not actually applied for the first cold_start_warmup_steps of a trainer's lifetime
                                 // note, we are relying on honest communication of this value here -- will need to harden with verification.
-                                // the only exception is for the first steps of the first epoch 
+                                // the only exception is for the first steps of the first epoch
                                 // or when doing a cold start (warmup_lr_between.is_some())
                                 info!("Skipping apply of batch {batch_id}, trainer warming up ({trainer_nonce}/{cold_start_warmup_steps})");
                             } else {
