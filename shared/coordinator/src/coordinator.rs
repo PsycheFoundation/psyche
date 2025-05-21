@@ -1081,23 +1081,69 @@ impl<T: NodeIdentity> Coordinator<T> {
                     target_batch_size
                 );
 
-                // Create a mutable vector of indices sorted by batch size
-                let mut sorted_indices: Vec<_> = (0..self.epoch_state.clients.len()).collect();
-                sorted_indices.sort_by_key(|&i| {
-                    std::cmp::Reverse(self.epoch_state.clients[i].assigned_batch_size)
-                });
+                // Proportional scaling and adjustment
+                let initial_total_assigned_for_scaling = total_assigned;
+                let scale_factor = target_batch_size as f64 / initial_total_assigned_for_scaling as f64;
 
-                // Keep reducing batch sizes until we meet the target
-                let mut current_idx = 0;
-                while total_assigned > target_batch_size {
-                    let idx = sorted_indices[current_idx % sorted_indices.len()];
-                    if self.epoch_state.clients[idx].assigned_batch_size > 1 {
-                        self.epoch_state.clients[idx].assigned_batch_size -= 1;
-                        total_assigned -= 1;
+                for client in self.epoch_state.clients.iter_mut() {
+                    // Skip clients with 0 batch size if any (should not happen with valid witnesses)
+                    if client.assigned_batch_size == 0 {
+                        continue;
                     }
-                    current_idx += 1;
+                    let scaled_size_f = client.assigned_batch_size as f64 * scale_factor;
+                    client.assigned_batch_size = scaled_size_f.max(1.0).round() as u16;
                 }
 
+                // Recalculate total assigned batch size after scaling
+                total_assigned = self
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .map(|c| c.assigned_batch_size)
+                    .sum();
+                
+                let discrepancy = total_assigned as i32 - target_batch_size as i32;
+                if discrepancy > 0 { // Total is too high, need to remove batches
+                    for _ in 0..discrepancy {
+                        let mut client_to_decrement_idx: Option<usize> = None;
+                        let mut max_batch_seen = 0; // Max batch size among those > 1
+
+                        for (k, c) in self.epoch_state.clients.iter().enumerate() {
+                            if c.assigned_batch_size > 1 { // Only consider clients that can be decremented
+                                if client_to_decrement_idx.is_none() || c.assigned_batch_size > max_batch_seen {
+                                    max_batch_seen = c.assigned_batch_size;
+                                    client_to_decrement_idx = Some(k);
+                                }
+                            }
+                        }
+
+                        if let Some(idx) = client_to_decrement_idx {
+                            self.epoch_state.clients[idx].assigned_batch_size -= 1;
+                        } else {
+                            break; // No client can be decremented further
+                        }
+                    }
+                } else if discrepancy < 0 { // Total is too low, need to add batches
+                    for _ in 0..(-discrepancy) {
+                        let mut client_to_increment_idx: Option<usize> = None;
+                        let mut max_batch_seen = 0; 
+
+                        for (k, c) in self.epoch_state.clients.iter().enumerate() {
+                            // Find client with current max batch size to add to
+                            if client_to_increment_idx.is_none() || c.assigned_batch_size > max_batch_seen {
+                                max_batch_seen = c.assigned_batch_size;
+                                client_to_increment_idx = Some(k);
+                            }
+                        }
+
+                        if let Some(idx) = client_to_increment_idx {
+                            self.epoch_state.clients[idx].assigned_batch_size += 1;
+                        } else {
+                            break; // No clients to increment (e.g., list is empty)
+                        }
+                    }
+                }
+                // The old sorted_indices loop is now replaced by the logic above.
                 msg!("[witness_batch] After adjustment:");
                 for (i, client) in self.epoch_state.clients.iter().enumerate() {
                     msg!(
