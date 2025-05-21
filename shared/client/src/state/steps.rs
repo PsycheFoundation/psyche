@@ -389,7 +389,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     // So we set to 0 which is an invalid time measurement value just in case.
                     if from_client_id == self.identity {
                         round_state.client_times[index] = 0u16;
-                    } else if round_state.client_times[index] == 0 { // Avoid writing more than one time for the same client
+                    } else if round_state.client_times[index] == 0 {
+                        // Avoid writing more than one time for the same client
                         round_state.client_times[index] = time_since_training_started as u16;
 
                         info!(

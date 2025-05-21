@@ -22,7 +22,7 @@ use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
 use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
 use psyche_coordinator::SOLANA_MAX_STRING_LEN;
-use psyche_core::{FixedVec, MerkleRoot};
+use psyche_core::{CompressedFixedVec, MerkleRoot};
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
@@ -120,6 +120,8 @@ impl CoordinatorInstance {
 #[program]
 pub mod psyche_solana_coordinator {
 
+    use psyche_core::CompressedFixedVec;
+
     use super::*;
 
     pub fn init_coordinator(
@@ -190,7 +192,7 @@ pub mod psyche_solana_coordinator {
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
         metadata: WitnessMetadata,
-        proposed_batch_sizes: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
+        proposed_batch_sizes: CompressedFixedVec,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();

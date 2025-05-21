@@ -66,6 +66,7 @@ pub fn assign_data_for_state<T: NodeIdentity>(
         current_index = end_index + 1;
     }
 
+    msg!("[assign_data_for_state] assignments: {:?}", assignments);
     assignments
 }
 

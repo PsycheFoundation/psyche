@@ -8,14 +8,17 @@ use anchor_lang::{
     AnchorDeserialize, AnchorSerialize, InitSpace,
 };
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
+use psyche_core::{
+    sha256, Bloom, CompressedFixedVec, FixedString, FixedVec, MerkleRoot, NodeIdentity,
+    SmallBoolean,
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
 
 pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
-pub const SOLANA_MAX_NUM_CLIENTS: usize = 100;
+pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
@@ -92,7 +95,7 @@ pub struct Client<I> {
     pub id: I,
     pub state: ClientState,
     pub exited_height: u32,
-    pub assigned_batch_size: u16,
+    pub assigned_batch_size: u8,
 }
 
 impl<I: NodeIdentity> Hash for Client<I> {
@@ -143,7 +146,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
-    pub proposed_batch_sizes: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
+    pub proposed_batch_sizes: CompressedFixedVec,
 }
 
 #[derive(
@@ -488,7 +491,12 @@ impl<T: NodeIdentity> Coordinator<T> {
         round
             .witnesses
             .push(witness)
-            .map_err(|_| CoordinatorError::WitnessesFull)?;
+            .map_err(|_| {
+                msg!("[warmup_witness] failed to add witness");
+                CoordinatorError::WitnessesFull
+            })?;
+
+        msg!("[warmup_witness] witness added");
 
         if round.witnesses.len() == witness_nodes {
             self.start_round_train(unix_timestamp, random_seed, 0);
@@ -504,6 +512,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
+            msg!("[witness] halted");
             return Err(CoordinatorError::Halted);
         }
 
@@ -517,6 +526,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.run_state,
             RunState::RoundWitness | RunState::RoundTrain,
         ) {
+            msg!("[witness] invalid run state {}", self.run_state);
             return Err(CoordinatorError::InvalidRunState);
         }
 
@@ -524,14 +534,21 @@ impl<T: NodeIdentity> Coordinator<T> {
             from,
             &witness.proof,
             &self.epoch_state.clients,
-        ) || witness.proof.witness.is_false()
+        )
         {
+            msg!("[witness] invalid witness: verify_witness_for_client failed");
+            return Err(CoordinatorError::InvalidWitness);
+        }
+
+        if witness.proof.witness.is_false() {
+            msg!("[witness] invalid witness: witness.proof.witness is false");
             return Err(CoordinatorError::InvalidWitness);
         }
 
         let round = self.current_round().unwrap();
         for witness in round.witnesses.iter() {
             if self.epoch_state.clients[witness.proof.index as usize].id == *from {
+                msg!("[witness] duplicate witness");
                 return Err(CoordinatorError::DuplicateWitness);
             }
         }
@@ -539,9 +556,13 @@ impl<T: NodeIdentity> Coordinator<T> {
         round
             .witnesses
             .push(witness)
-            .map_err(|_| CoordinatorError::WitnessesFull)?;
+            .map_err(|_| {
+                msg!("[witness] failed to add witness");
+                CoordinatorError::WitnessesFull
+            })?;
 
         if round.witnesses.len() == witness_nodes && !(self.run_state == RunState::RoundWitness) {
+            msg!("[witness] all witnesses received, moving to round train");
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
 
@@ -975,6 +996,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         if !self.check_timeout(unix_timestamp, self.config.round_witness_time) {
             return Ok(TickResult::Ticked);
         }
+        msg!("[witness_batch] Round witness timeout, moving to next round");
         // Timeout ocurred, we need to move to the next round
 
         // TODO: Punish idle witnesses
@@ -990,6 +1012,8 @@ impl<T: NodeIdentity> Coordinator<T> {
         // disconnected. We just set everyone to withdrawn state and change
         // to Cooldown.
         if num_witnesses == 0 {
+            msg!("[witness_batch] No witnesses, moving to cooldown");
+            msg!("[witness_batch] witnesses: {:?}", self.current_round_unchecked().witnesses);
             self.withdraw_all()?;
             self.start_cooldown(unix_timestamp);
             return Ok(TickResult::Ticked);
@@ -997,7 +1021,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
         // Check validity of each witness report on client batch assignment
         // For debug purposes print each witness batch assignment
-        for witness in self.current_round_unchecked().witnesses.iter() {
+        /*for witness in self.current_round_unchecked().witnesses.iter() {
             let witness_id = self.epoch_state.clients[witness.proof.index as usize].id;
             msg!(
                 "[witness_batch] Witness {} ({}): {:?}",
@@ -1005,7 +1029,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                 witness_id,
                 witness.proposed_batch_sizes
             );
-        }
+        }*/
+
+        let target_batch_size =
+            self.get_target_global_batch_size(Some(self.current_round_unchecked()));
 
         let consensus_reached = self.check_batch_assignment_consensus(
             &self.current_round_unchecked().witnesses,
@@ -1020,26 +1047,29 @@ impl<T: NodeIdentity> Coordinator<T> {
 
             // Populate the batch size for each client regardless for now, with the first witness
             // Get the witness data before starting client iteration
-            let witnesses = self.current_round_unchecked().witnesses;
+            let rounds_head_idx = self.epoch_state.rounds_head as usize;
+            let current_round_witnesses = &self.epoch_state.rounds[rounds_head_idx].witnesses;
+            let witnesses_len: usize = current_round_witnesses.len();
 
             for (index, client) in self.epoch_state.clients.iter_mut().enumerate() {
-                let mut to_assign: Option<u16> = None;
-                let witnesses_len: usize = witnesses.len();
+                let mut to_assign: Option<u8> = None;
 
-                // Try each witness in order until we find a valid batch size
-                for offset in 0..witnesses_len {
-                    let witness_idx = offset % witnesses_len;
-                    let witness = &witnesses[witness_idx];
+                if witnesses_len > 0 {
+                    // Try each witness in order until we find a valid batch size
+                    for offset in 0..witnesses_len {
+                        let witness_idx = offset % witnesses_len;
+                        let witness = &current_round_witnesses[witness_idx];
 
-                    // Skip if witness is reporting about itself or reported time is 0
-                    let proposed_batch_size = witness.proposed_batch_sizes.get(index).copied();
-                    match proposed_batch_size {
-                        None | Some(0) => {
-                            continue;
-                        }
-                        Some(batch_size) => {
-                            to_assign = Some(batch_size);
-                            break;
+                        // Skip if witness is reporting about itself or reported time is 0
+                        let proposed_batch_size = witness.proposed_batch_sizes.get(index);
+                        match proposed_batch_size {
+                            None | Some(0) => {
+                                continue;
+                            }
+                            Some(batch_size) => {
+                                to_assign = Some(batch_size);
+                                break;
+                            }
                         }
                     }
                 }
@@ -1051,27 +1081,32 @@ impl<T: NodeIdentity> Coordinator<T> {
                         "[witness_batch] Client {} has no valid batch assignment from any witness, using default of 1",
                         index
                     );
-                        1u16
+                        1u8
                     }
                 };
 
                 msg!(
-                    "[witness_batch] Client {} ({}) assigned batch size of: {:?}",
+                    "[witness_batch] Client {} ({}) batch size: (idx={}) {}",
                     index,
                     client.id,
-                    to_assign
+                    client.assigned_batch_size,
+                    batch_value_from_index(
+                        client.assigned_batch_size as usize,
+                        target_batch_size,
+                        63,
+                    )
                 );
                 client.assigned_batch_size = to_assign;
             }
 
             // Get target global batch size and adjust if total exceeds it
-            let target_batch_size =
-                self.get_target_global_batch_size(Some(self.current_round_unchecked()));
             let mut total_assigned: u16 = self
                 .epoch_state
                 .clients
                 .iter()
-                .map(|c| c.assigned_batch_size)
+                .map(|c| {
+                    batch_value_from_index(c.assigned_batch_size as usize, target_batch_size, 63)
+                })
                 .sum();
 
             if total_assigned > target_batch_size {
@@ -1081,32 +1116,132 @@ impl<T: NodeIdentity> Coordinator<T> {
                     target_batch_size
                 );
 
-                // Create a mutable vector of indices sorted by batch size
-                let mut sorted_indices: Vec<_> = (0..self.epoch_state.clients.len()).collect();
-                sorted_indices.sort_by_key(|&i| {
-                    std::cmp::Reverse(self.epoch_state.clients[i].assigned_batch_size)
-                });
+                // Proportional scaling and adjustment
+                let initial_total_assigned_for_scaling = total_assigned;
+                let scale_factor =
+                    target_batch_size as f64 / initial_total_assigned_for_scaling as f64;
 
-                // Keep reducing batch sizes until we meet the target
-                let mut current_idx = 0;
-                while total_assigned > target_batch_size {
-                    let idx = sorted_indices[current_idx % sorted_indices.len()];
-                    if self.epoch_state.clients[idx].assigned_batch_size > 1 {
-                        self.epoch_state.clients[idx].assigned_batch_size -= 1;
-                        total_assigned -= 1;
+                for client in self.epoch_state.clients.iter_mut() {
+                    // Skip clients with 0 batch size if any (should not happen with valid witnesses)
+                    if client.assigned_batch_size == 0 {
+                        msg!(
+                            "[witness_batch] Client {} has 0 batch size, skipping scaling",
+                            client.id
+                        );
+                        continue;
                     }
-                    current_idx += 1;
+                    let batch_val = batch_value_from_index(
+                        client.assigned_batch_size as usize,
+                        target_batch_size,
+                        63,
+                    );
+                    let scaled_val = (batch_val as f64 * scale_factor).max(1.0).round() as u16;
+                    client.assigned_batch_size =
+                        nearest_index_in_sequence(scaled_val, target_batch_size, 63);
+                    /*msg!(
+                        "[witness_batch] Client {} scaled batch size: (idx={}) {}",
+                        client.id,
+                        client.assigned_batch_size,
+                        batch_value_from_index(
+                            client.assigned_batch_size as usize,
+                            target_batch_size,
+                            63,
+                        )
+                    );*/
                 }
 
-                msg!("[witness_batch] After adjustment:");
-                for (i, client) in self.epoch_state.clients.iter().enumerate() {
+                // Recalculate total assigned batch size after scaling
+                total_assigned = self
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .map(|c| {
+                        batch_value_from_index(
+                            c.assigned_batch_size as usize,
+                            target_batch_size,
+                            63,
+                        )
+                    })
+                    .sum();
+
+                let discrepancy = total_assigned as i32 - target_batch_size as i32;
+                if discrepancy > 0 {
+                    // Total is too high, need to remove batches
+                    for _ in 0..discrepancy {
+                        let mut client_to_decrement_idx: Option<usize> = None;
+                        let mut max_batch_seen = 0; // Max batch size among those > 1
+
+                        for (k, c) in self.epoch_state.clients.iter().enumerate() {
+                            if c.assigned_batch_size > 1 {
+                                // Only consider clients that can be decremented
+                                if client_to_decrement_idx.is_none()
+                                    || c.assigned_batch_size > max_batch_seen
+                                {
+                                    max_batch_seen = c.assigned_batch_size;
+                                    client_to_decrement_idx = Some(k);
+                                }
+                            }
+                        }
+
+                        if let Some(idx) = client_to_decrement_idx {
+                            // Decrement the batch size of the client by 1 step
+                            let current_val = batch_value_from_index(
+                                self.epoch_state.clients[idx].assigned_batch_size as usize,
+                                target_batch_size,
+                                63,
+                            );
+                            let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
+                            self.epoch_state.clients[idx].assigned_batch_size =
+                                nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
+                        } else {
+                            break; // No client can be decremented further
+                        }
+                    }
+                } else if discrepancy < 0 {
+                    // Total is too low, need to add batches
+                    for _ in 0..(-discrepancy) {
+                        let mut client_to_increment_idx: Option<usize> = None;
+                        let mut max_batch_seen = 0;
+
+                        for (k, c) in self.epoch_state.clients.iter().enumerate() {
+                            // Find client with current max batch size to add to
+                            if client_to_increment_idx.is_none()
+                                || c.assigned_batch_size > max_batch_seen
+                            {
+                                max_batch_seen = c.assigned_batch_size;
+                                client_to_increment_idx = Some(k);
+                            }
+                        }
+
+                        if let Some(idx) = client_to_increment_idx {
+                            // Increment the batch size of the client by 1 step
+                            let current_val = batch_value_from_index(
+                                self.epoch_state.clients[idx].assigned_batch_size as usize,
+                                target_batch_size,
+                                63,
+                            );
+                            let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
+                            self.epoch_state.clients[idx].assigned_batch_size =
+                                nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
+                        } else {
+                            break; // No clients to increment (e.g., list is empty)
+                        }
+                    }
+                }
+                // The old sorted_indices loop is now replaced by the logic above.;
+                /*for (i, client) in self.epoch_state.clients.iter().enumerate() {
                     msg!(
-                        "[witness_batch] Client {} ({}) batch size: {}",
+                        "[witness_batch] after adjustment - Client {} ({}) batch size: (idx={}) {}",
                         i,
                         client.id,
-                        client.assigned_batch_size
+                        client.assigned_batch_size,
+                        batch_value_from_index(
+                            client.assigned_batch_size as usize,
+                            target_batch_size,
+                            63,
+                        )
                     );
-                }
+                }*/
             }
         }
 
@@ -1268,7 +1403,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
             // First pass: Boyer-Moore to find candidate (skip 0s)
             for witness in witnesses {
-                let value = witness.proposed_batch_sizes[i];
+                let value = witness.proposed_batch_sizes.get(i).unwrap_or(0);
                 if value == 0 {
                     continue;
                 }
@@ -1288,14 +1423,14 @@ impl<T: NodeIdentity> Coordinator<T> {
                 let actual_count = witnesses
                     .iter()
                     .filter(|wtn| {
-                        let val = wtn.proposed_batch_sizes[i];
+                        let val = wtn.proposed_batch_sizes.get(i).unwrap_or(0);
                         val != 0 && (val as i32 - candidate as i32).abs() <= tolerance as i32
                     })
                     .count();
 
                 let non_zero_count = witnesses
                     .iter()
-                    .filter(|wtn| wtn.proposed_batch_sizes[i] != 0)
+                    .filter(|wtn| wtn.proposed_batch_sizes.get(i).unwrap_or(0) != 0)
                     .count();
 
                 if (actual_count as f64) < threshold * (non_zero_count as f64) {
@@ -1347,4 +1482,24 @@ impl CoordinatorProgress {
     pub fn check(&self) -> bool {
         self.step > 0
     }
+}
+
+fn batch_value_from_index(index: usize, max_value: u16, steps: usize) -> u16 {
+    if steps <= 1 {
+        return max_value;
+    }
+
+    let increment = (max_value - 1) as f64 / (steps - 1) as f64;
+    let value = 1.0 + index as f64 * increment;
+    value.round() as u16
+}
+
+fn nearest_index_in_sequence(target: u16, max_value: u16, steps: usize) -> u8 {
+    if steps <= 1 || target == 0 {
+        return 0;
+    }
+
+    let increment = (max_value - 1) as f64 / (steps - 1) as f64;
+    let index = ((target as f64 - 1.0) / increment).round();
+    index.clamp(1.0, (steps - 1) as f64) as u8
 }
