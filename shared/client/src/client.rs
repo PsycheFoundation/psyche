@@ -189,7 +189,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                     if !to_connect.is_empty() {
                                         info!(num_new_peers = to_connect.len(), "Connecting to new peers");
-                                        let _ = p2p.add_peers(to_connect);
+                                        p2p.add_peers(to_connect);
                                     }
                                 }
                             }
