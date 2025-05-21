@@ -52,8 +52,8 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
     tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
 
-    current_round: RoundState<T>,
-    previous_round: RoundState<T>,
+    current_round: Arc<Mutex<RoundState<T>>>,
+    previous_round: Arc<Mutex<RoundState<T>>>,
     step_finish_time: Option<Instant>,
     sent_warmup_finished: bool,
     sent_warmup_witness: bool,
@@ -121,11 +121,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
         stats_logger: StatsLogger,
     ) -> Self {
-        let mut previous_round = RoundState::default();
-        let mut current_round = RoundState::default();
+        let previous_round = Arc::new(Mutex::new(RoundState::default()));
+        let current_round = Arc::new(Mutex::new(RoundState::default()));
 
-        let active_step =
-            ActiveStep::Warmup(warmup.start(trainers, &mut previous_round, &mut current_round));
+        let active_step = ActiveStep::Warmup(warmup.start(
+            trainers,
+            previous_round.clone(),
+            current_round.clone(),
+        ));
 
         Self {
             identity,
@@ -154,15 +157,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     }
 
     pub fn try_send_opportunistic_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
-        if let Some(committee_info) = &self.current_round.committee_info {
+        let mut current_round = self.current_round.lock().unwrap();
+        let mut previous_round = self.previous_round.lock().unwrap();
+        if let Some(committee_info) = &current_round.committee_info {
             // trace!("Checking for opprotunistic witness with committee info");
             if let ActiveStep::Training(step) = &self.active_step {
-                if step.finished() && self.previous_round.batch_ids_not_yet_trained_on.is_none() {
+                if step.finished() && previous_round.batch_ids_not_yet_trained_on.is_none() {
                     // Finished training and finished downloading the previous round's results
                     // (or we're on the first or last which has nothing to download)
 
                     // check that all batches from the previous round are done deserializing
-                    for batch in &self.previous_round.downloads {
+                    for batch in &previous_round.downloads {
                         match batch.1 {
                             PayloadState::Deserializing(thread) if thread.is_finished() => {
                                 // this batch is done deserializing, we can witness on it now.
@@ -176,18 +181,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         }
                     }
 
-                    if !self.current_round.sent_finished {
+                    if !current_round.sent_finished {
                         // okay, we're all done. we've trained and downloaded everything.
                         // send our early "finished message"
 
-                        let merkle = MerkleTree::new(&self.previous_round.broadcasts)
+                        let merkle = MerkleTree::new(&previous_round.broadcasts)
                             .get_root()
                             .cloned()
                             .unwrap_or(MerkleRoot::default());
 
                         self.tx_broadcast_finished
                             .send(FinishedBroadcast {
-                                step: self.current_round.step,
+                                step: current_round.step,
                                 commitment_data_hash: sha256(&merkle.inner),
                                 merkle,
                                 proof: committee_info.0,
@@ -195,7 +200,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                             })
                             .map_err(|_| OpportunisticWitnessError::Finished)?;
 
-                        self.current_round.sent_finished = true;
+                        current_round.sent_finished = true;
 
                         return Ok(());
                     }
@@ -208,7 +213,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         .clients
                         .iter()
                         .filter_map(|client| {
-                            if self.current_round.clients_finished.contains_key(&client.id) {
+                            if current_round.clients_finished.contains_key(&client.id) {
                                 None
                             } else {
                                 Some(client.id)
@@ -219,10 +224,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         return Ok(());
                     }
 
-                    if let Some(witness) = WitnessStep::get_witness_to_send(
-                        &mut self.previous_round,
-                        &mut self.current_round,
-                    ) {
+                    if let Some(witness) =
+                        WitnessStep::get_witness_to_send(&mut previous_round, &mut current_round)
+                    {
                         info!(target: "witness", id = %self.identity, merkle=witness.broadcast_merkle.fmt_short(), "Sending opportunistic witness");
 
                         let metadata = self
@@ -238,7 +242,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             }
         } else if self.coordinator_state.run_state == RunState::Warmup {
             if !self.sent_warmup_finished {
-                let merkle = MerkleTree::new(&self.current_round.broadcasts)
+                let merkle = MerkleTree::new(&current_round.broadcasts)
                     .get_root()
                     .cloned()
                     .unwrap_or(MerkleRoot::default());
@@ -265,7 +269,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 .clients
                 .iter()
                 .filter_map(|client| {
-                    if self.current_round.clients_finished.contains_key(&client.id) {
+                    if current_round.clients_finished.contains_key(&client.id) {
                         None
                     } else {
                         Some(client.id)
@@ -284,7 +288,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             if !self.sent_warmup_witness {
                 trace!("Sending warmup witness");
 
-                let merkle = MerkleTree::new(&self.current_round.broadcasts)
+                let merkle = MerkleTree::new(&current_round.broadcasts)
                     .get_root()
                     .cloned()
                     .unwrap_or(MerkleRoot::default());
@@ -324,16 +328,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         from_client_id: T,
         broadcast: Broadcast,
     ) -> Result<(), ApplyMessageError> {
-        let result_step = broadcast.step;
+        let mut current_round = self.current_round.lock().unwrap();
+        let mut previous_round = self.previous_round.lock().unwrap();
 
-        let round_state = if self.current_round.step == broadcast.step {
-            &mut self.current_round
-        } else if self.previous_round.step == broadcast.step {
-            &mut self.previous_round
+        let result_step = broadcast.step;
+        let round_state = if current_round.step == broadcast.step {
+            &mut current_round
+        } else if previous_round.step == broadcast.step {
+            &mut previous_round
         } else {
             trace!(
                 "Unknown round for gossiped, says it's for step {} but our current round is step {} and previous round is step {}",
-                result_step, self.current_round.step, self.previous_round.step,
+                result_step, current_round.step, previous_round.step,
             );
             return Ok(());
         };
@@ -472,28 +478,35 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub async fn apply_distro_result(
-        &mut self,
+    pub fn apply_distro_result(
+        &self,
         hash: Hash,
         distro_result: TransmittableDistroResult,
         self_result: Option<Vec<DistroResult>>,
     ) {
-        let round_state = if self.current_round.downloads.contains_key(&hash) {
-            trace!(
-                "Got download {hash} for current round {}",
-                self.current_round.height
-            );
-            &mut self.current_round
-        } else if self.previous_round.downloads.contains_key(&hash) {
-            trace!(
-                "Got download {hash} for previous round {}",
-                self.previous_round.height
-            );
-            &mut self.previous_round
-        } else {
-            warn!("Unknown download {}", hash);
-            return;
+        // let round_state = self.current_round.clone();
+        let round_state = {
+            let previous_round = self.previous_round.lock().unwrap();
+            let current_round = self.current_round.lock().unwrap();
+            if current_round.downloads.contains_key(&hash) {
+                trace!(
+                    "Got download {hash} for current round {}",
+                    current_round.height
+                );
+                self.current_round.clone()
+            } else if previous_round.downloads.contains_key(&hash) {
+                trace!(
+                    "Got download {hash} for previous round {}",
+                    previous_round.height
+                );
+                self.previous_round.clone()
+            } else {
+                warn!("Unknown download {}", hash);
+                return;
+            }
         };
+
+        error!("ACA 1");
 
         if let Some(self_result) = self_result {
             trace!(
@@ -501,7 +514,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 distro_result.batch_id,
                 distro_result.step
             );
-
+            let mut round_state = round_state.lock().unwrap();
             round_state.self_distro_results.push(self_result);
         } else {
             trace!(
@@ -511,7 +524,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             );
         }
 
-        let (from, batch_id, _) = match round_state.downloads.get(&hash) {
+        error!("ACA 2");
+
+        let (from, batch_id, _) = match round_state.lock().unwrap().downloads.get(&hash) {
             Some(PayloadState::Downloading(x)) => x.clone(),
             Some(PayloadState::Deserializing(_)) => {
                 debug!("Duplicate download of {}", hash);
@@ -523,126 +538,229 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             }
         };
 
-        let commitments = match round_state.results.get(&batch_id) {
-            Some(commitments) => commitments,
-            None => {
-                info!(
-                    "No commitment for payload from {} for batch {}",
-                    from, batch_id
+        let commitment = {
+            let round_state = round_state.lock().unwrap();
+            let commitments = match round_state.results.get(&batch_id) {
+                Some(commitments) => commitments,
+                None => {
+                    info!(
+                        "No commitment for payload from {} for batch {}",
+                        from, batch_id
+                    );
+                    return;
+                }
+            };
+
+            let Some(commitment) = commitments
+                .iter()
+                .find(|x| x.0 == from && x.1 .1.ticket.hash() == hash)
+            else {
+                info!("No commitment for payload from {}", from);
+                return;
+            };
+
+            commitment.1 .0.clone()
+        };
+
+        tokio::spawn(async move {
+            let round_state = round_state.clone();
+            // let mut round_state = round_state.lock().unwrap();
+            // verify that the result matches the commitment
+            let (distro_hash, distro_result) =
+                tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
+                    .await
+                    .unwrap();
+
+            error!("ACA 3");
+            if distro_hash != commitment.data_hash {
+                debug!(
+                    from = %from,
+                    batch_id = %batch_id,
+                    "Distro result failed commitment hash verification",
                 );
                 return;
             }
-        };
-        let commitment = match commitments
-            .iter()
-            .find(|x| x.0 == from && x.1 .1.ticket.hash() == hash)
-        {
-            Some(commitment) => &commitment.1 .0,
-            None => {
-                info!("No commitment for payload from {}", from);
-                return;
+            error!("ACA 4");
+
+            let just_finished = if let Some((num_batch_ids_left, remaining_batch_ids)) =
+                &mut round_state.lock().unwrap().batch_ids_not_yet_trained_on
+            {
+                match round_state.lock().unwrap().blooms {
+                    Some((mut participant_bloom, mut broadcast_bloom)) => {
+                        participant_bloom.add(&sha256(from.as_ref()));
+                        if remaining_batch_ids.contains(&batch_id) {
+                            // first received payload for this batch id, vote for it in consensus
+                            broadcast_bloom.add(&commitment.data_hash);
+                            trace!("Adding batch {batch_id} to broadcast bloom");
+                        } else {
+                            trace!(
+                                "Don't have {} in our remaining batch IDs {:?}, discarding",
+                                batch_id,
+                                remaining_batch_ids
+                            );
+                        }
+                    }
+                    None => {
+                        trace!(
+                            "Already submitted witness, not adding {} to participant bloom",
+                            from
+                        );
+                    }
+                }
+
+                remaining_batch_ids.remove(&batch_id);
+
+                trace!(
+                    "Remaining batches to download for step {}: {:?}",
+                    distro_result.step,
+                    remaining_batch_ids
+                );
+
+                *num_batch_ids_left = remaining_batch_ids.len();
+
+                remaining_batch_ids.is_empty()
+            } else {
+                trace!("All batches already trained on, discarding batch {batch_id}");
+                false
+            };
+
+            error!("ACA 5");
+            if just_finished {
+                round_state.lock().unwrap().batch_ids_not_yet_trained_on = None;
             }
-        };
 
-        // verify that the result matches the commitment
+            let deserializing = tokio::task::spawn({
+                //let batch_id = *batch_id;
+                async move {
+                    let maybe_results = tokio::task::spawn_blocking(move || {
+                        let r = distro_result
+                            .distro_results
+                            .iter()
+                            .map(|x| x.try_into())
+                            .collect::<Result<Vec<DistroResult>, TchError>>()
+                            .map(|x| (x, distro_result.trainer_nonce));
+                        trace!(
+                            hash = %hash,
+                            batch_id = %batch_id,
+                            "Finished deserializing payload {} for batch {}",
+                            hash,
+                            batch_id
+                        );
+                        r
+                    })
+                    .await
+                    .map_err(|_| DeserializeError::DeserializeThreadCrashed)??;
+                    Ok(maybe_results)
+                }
+            });
 
-        let (distro_hash, distro_result) =
-            tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
-                .await
-                .unwrap();
+            round_state
+                .lock()
+                .unwrap()
+                .downloads
+                .insert(hash, PayloadState::Deserializing(deserializing));
+        });
 
-        if distro_hash != commitment.data_hash {
-            debug!(
-                from = %from,
-                batch_id = %batch_id,
-                "Distro result failed commitment hash verification",
-            );
-            return;
-        }
+        // let (distro_hash, distro_result) =
+        //     tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
+        //         .await
+        //         .unwrap();
+
+        // if distro_hash != commitment.data_hash {
+        //     debug!(
+        //         from = %from,
+        //         batch_id = %batch_id,
+        //         "Distro result failed commitment hash verification",
+        //     );
+        //     return;
+        // }
 
         // TODO: verify shape of distro_results
 
         // we only care to add this to consensus & track it in batch IDs if we have any batch IDs that haven't yet been voted for.
         // TODO: how do we do witnessing for verifiers that might be training on data that's not in the normal remaining batch IDs?
         // TODO: also we want ALL those from everyone, right?
-        let just_finished = if let Some((num_batch_ids_left, remaining_batch_ids)) =
-            &mut round_state.batch_ids_not_yet_trained_on
-        {
-            match round_state.blooms.as_mut() {
-                Some((participant_bloom, broadcast_bloom)) => {
-                    participant_bloom.add(&sha256(from.as_ref()));
-                    if remaining_batch_ids.contains(&batch_id) {
-                        // first received payload for this batch id, vote for it in consensus
-                        broadcast_bloom.add(&commitment.data_hash);
-                        trace!("Adding batch {batch_id} to broadcast bloom");
-                    } else {
-                        trace!(
-                            "Don't have {} in our remaining batch IDs {:?}, discarding",
-                            batch_id,
-                            remaining_batch_ids
-                        );
-                    }
-                }
-                None => {
-                    trace!(
-                        "Already submitted witness, not adding {} to participant bloom",
-                        from
-                    );
-                }
-            }
+        // let just_finished = if let Some((num_batch_ids_left, remaining_batch_ids)) =
+        //     &mut round_state.batch_ids_not_yet_trained_on
+        // {
+        //     match round_state.blooms.as_mut() {
+        //         Some((participant_bloom, broadcast_bloom)) => {
+        //             participant_bloom.add(&sha256(from.as_ref()));
+        //             if remaining_batch_ids.contains(&batch_id) {
+        //                 // first received payload for this batch id, vote for it in consensus
+        //                 broadcast_bloom.add(&commitment.data_hash);
+        //                 trace!("Adding batch {batch_id} to broadcast bloom");
+        //             } else {
+        //                 trace!(
+        //                     "Don't have {} in our remaining batch IDs {:?}, discarding",
+        //                     batch_id,
+        //                     remaining_batch_ids
+        //                 );
+        //             }
+        //         }
+        //         None => {
+        //             trace!(
+        //                 "Already submitted witness, not adding {} to participant bloom",
+        //                 from
+        //             );
+        //         }
+        //     }
 
-            remaining_batch_ids.remove(&batch_id);
+        //     remaining_batch_ids.remove(&batch_id);
 
-            trace!(
-                "Remaining batches to download for step {}: {:?}",
-                distro_result.step,
-                remaining_batch_ids
-            );
+        //     trace!(
+        //         "Remaining batches to download for step {}: {:?}",
+        //         distro_result.step,
+        //         remaining_batch_ids
+        //     );
 
-            *num_batch_ids_left = remaining_batch_ids.len();
+        //     *num_batch_ids_left = remaining_batch_ids.len();
 
-            remaining_batch_ids.is_empty()
-        } else {
-            trace!("All batches already trained on, discarding batch {batch_id}");
-            false
-        };
+        //     remaining_batch_ids.is_empty()
+        // } else {
+        //     trace!("All batches already trained on, discarding batch {batch_id}");
+        //     false
+        // };
 
-        if just_finished {
-            round_state.batch_ids_not_yet_trained_on = None;
-        }
+        // if just_finished {
+        //     round_state.batch_ids_not_yet_trained_on = None;
+        // }
 
         // we unconditionally store every seen payload, since we're not yet sure what consensus will be on whether it's included.
-        let deserializing = tokio::task::spawn({
-            //let batch_id = *batch_id;
-            async move {
-                let maybe_results = tokio::task::spawn_blocking(move || {
-                    let r = distro_result
-                        .distro_results
-                        .iter()
-                        .map(|x| x.try_into())
-                        .collect::<Result<Vec<DistroResult>, TchError>>()
-                        .map(|x| (x, distro_result.trainer_nonce));
-                    trace!(
-                        hash = %hash,
-                        batch_id = %batch_id,
-                        "Finished deserializing payload {} for batch {}",
-                        hash,
-                        batch_id
-                    );
-                    r
-                })
-                .await
-                .map_err(|_| DeserializeError::DeserializeThreadCrashed)??;
-                Ok(maybe_results)
-            }
-        });
+        // let deserializing = tokio::task::spawn({
+        //     //let batch_id = *batch_id;
+        //     async move {
+        //         let maybe_results = tokio::task::spawn_blocking(move || {
+        //             let r = distro_result
+        //                 .distro_results
+        //                 .iter()
+        //                 .map(|x| x.try_into())
+        //                 .collect::<Result<Vec<DistroResult>, TchError>>()
+        //                 .map(|x| (x, distro_result.trainer_nonce));
+        //             trace!(
+        //                 hash = %hash,
+        //                 batch_id = %batch_id,
+        //                 "Finished deserializing payload {} for batch {}",
+        //                 hash,
+        //                 batch_id
+        //             );
+        //             r
+        //         })
+        //         .await
+        //         .map_err(|_| DeserializeError::DeserializeThreadCrashed)??;
+        //         Ok(maybe_results)
+        //     }
+        // });
 
-        round_state
-            .downloads
-            .insert(hash, PayloadState::Deserializing(deserializing));
+        // round_state
+        //     .downloads
+        //     .insert(hash, PayloadState::Deserializing(deserializing));
     }
 
     async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), StepError> {
+        // let mut previous_round = self.previous_round.lock().unwrap();
+        // let mut current_round = self.current_round.lock().unwrap();
+
         let client_index = match state
             .epoch_state
             .clients
@@ -661,6 +779,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         .map(|c| c.id)
                         .collect::<Vec<_>>()
                 );
+
                 let new_step = match std::mem::take(&mut self.active_step) {
                     ActiveStep::Intermediate => {
                         unreachable!("can never be in intermediate state.")
@@ -670,24 +789,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         trace!("since we're not a member of this step, killing cooldown step and returning to warmup to wait.");
                         ActiveStep::Warmup(self.warmup.start(
                             cooldown.finish().await?,
-                            &mut self.previous_round,
-                            &mut self.current_round,
+                            self.previous_round.clone(),
+                            self.current_round.clone(),
                         ))
                     }
                     ActiveStep::Training(training) => {
                         trace!("since we're not a member of this step, killing training step and returning to warmup to wait.");
                         ActiveStep::Warmup(self.warmup.start(
                             training.finish().await?.evals_or_trainers,
-                            &mut self.previous_round,
-                            &mut self.current_round,
+                            self.previous_round.clone(),
+                            self.current_round.clone(),
                         ))
                     }
                     ActiveStep::Witness(witness) => {
                         trace!("since we're not a member of this step, killing witness step and returning to warmup to wait.");
                         ActiveStep::Warmup(self.warmup.start(
                             witness.finish().await?,
-                            &mut self.previous_round,
-                            &mut self.current_round,
+                            self.previous_round.clone(),
+                            self.current_round.clone(),
                         ))
                     }
                 };
@@ -712,8 +831,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     client_index,
                     &state,
                     trainers,
-                    &mut self.previous_round,
-                    &mut self.current_round,
+                    self.previous_round.clone(),
+                    self.current_round.clone(),
                 )?)
             }
 
@@ -755,8 +874,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     client_index,
                     &state,
                     evals_or_trainers,
-                    &mut self.previous_round,
-                    &mut self.current_round,
+                    self.previous_round.clone(),
+                    self.current_round.clone(),
                     witness_metadata,
                 )?)
             }
@@ -767,8 +886,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     client_index,
                     &state,
                     trainers,
-                    &mut self.previous_round,
-                    &mut self.current_round,
+                    self.previous_round.clone(),
+                    self.current_round.clone(),
                 )?)
             }
 
@@ -784,8 +903,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 let trainers = cooldown.finish().await?;
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
-                    &mut self.previous_round,
-                    &mut self.current_round,
+                    self.previous_round.clone(),
+                    self.current_round.clone(),
                 ))
             }
             // stay in existing run state if there's no reason to change.
@@ -924,7 +1043,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub async fn apply_distro_result(
+    pub fn apply_distro_result(
         &mut self,
         hash: psyche_network::Hash,
         distro_result: TransmittableDistroResult,
@@ -932,9 +1051,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     ) {
         match &mut self.0 {
             InitStage::Running(state_machine) => {
-                state_machine
-                    .apply_distro_result(hash, distro_result, self_result)
-                    .await;
+                state_machine.apply_distro_result(hash, distro_result, self_result);
             }
             _ => {
                 // not yet warmed up, ignore any p2p messages.
@@ -1034,12 +1151,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> From<&RunManager<T, 
     fn from(run: &RunManager<T, A>) -> Self {
         match &run.0 {
             InitStage::Running(state_machine) => {
+                let current_round = state_machine.current_round.lock().unwrap();
                 let coordinator = &state_machine.coordinator_state;
-                let committee = state_machine
-                    .current_round
-                    .committee_info
-                    .as_ref()
-                    .map(|x| x.0.committee);
+                let committee = current_round.committee_info.as_ref().map(|x| x.0.committee);
                 let stats = run.stats();
                 let stats = stats.as_ref();
                 let stats_guard = stats.and_then(|s| s.lock().ok());
@@ -1052,8 +1166,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> From<&RunManager<T, 
                         .as_ref()
                         .map(|s| s.losses().to_vec())
                         .unwrap_or_default(),
-                    batches_left: state_machine
-                        .current_round
+                    batches_left: current_round
                         .batch_ids_not_yet_trained_on
                         .as_ref()
                         .map(|x| x.0)

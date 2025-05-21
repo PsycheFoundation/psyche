@@ -242,7 +242,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
                                                 trace!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
-                                                run.apply_distro_result(hash, distro_result, None).await;
+                                                run.apply_distro_result(hash, distro_result, None);
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {
                                                 info!("Download complete: parameter {}", parameter.name()?);
@@ -367,7 +367,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
                                 // even if quantization is turned on (distro_result is quantized).
                                 // this is because distro needs the unquantized version for lookahead
-                                run.apply_distro_result(hash, distro_result, Some(original_distro_result)).await;
+                                tracing::error!("ENTERING APPLY DISTRO RESULTS!!!!");
+                                run.apply_distro_result(hash, distro_result, Some(original_distro_result));
                             }
                         }
 

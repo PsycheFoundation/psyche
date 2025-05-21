@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use psyche_coordinator::{Coordinator, Witness, WitnessMetadata};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
@@ -46,8 +48,8 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
         _client_index: u64,
         _state: &Coordinator<T>,
         trainers: MaybeRunningEvals,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        previous_round: Arc<Mutex<RoundState<T>>>,
+        current_round: Arc<Mutex<RoundState<T>>>,
         metadata: WitnessMetadata,
     ) -> Result<WitnessStep, WitnessingError> {
         if trainers.is_empty() {
@@ -56,8 +58,10 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
 
         let evals = self.eval_runner.start_if_not_running(trainers);
 
+        let mut previous_round = previous_round.lock().unwrap();
+        let mut current_round = current_round.lock().unwrap();
         let sending_witness = if let Some(witness) =
-            WitnessStep::get_witness_to_send(previous_round, current_round)
+            WitnessStep::get_witness_to_send(&mut previous_round, &mut current_round)
         {
             let tx_witness = self.tx_witness.clone();
             Some(tokio::task::spawn(async move {

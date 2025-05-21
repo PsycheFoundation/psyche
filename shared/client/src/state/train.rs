@@ -23,7 +23,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -143,16 +143,20 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         client_index: u64,
         state: &Coordinator<T>,
         trainers: Vec<Trainer>,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        previous_round: Arc<Mutex<RoundState<T>>>,
+        current_round: Arc<Mutex<RoundState<T>>>,
     ) -> Result<TrainingStep, TrainError> {
         if trainers.is_empty() {
             return Err(TrainError::NoTrainers);
         }
 
-        let applying = self.apply_results(trainers, state, previous_round, current_round)?;
+        let mut previous_round = previous_round.lock().unwrap();
+        let mut current_round = current_round.lock().unwrap();
+        let applying =
+            self.apply_results(trainers, state, &mut previous_round, &mut current_round)?;
+
         let sending_health_checks =
-            start_sending_health_checks(current_round, state, self.tx_health_check.clone())?;
+            start_sending_health_checks(&mut current_round, state, self.tx_health_check.clone())?;
 
         debug!("Transitioning to train step {}", state.progress.step);
 
@@ -161,7 +165,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
         let round = state.current_round().ok_or(TrainError::NoActiveRound)?;
 
-        *previous_round = std::mem::take(current_round);
+        *previous_round = std::mem::take(&mut current_round);
 
         let committee_selection = CommitteeSelection::new(
             round.tie_breaker_tasks as usize,
