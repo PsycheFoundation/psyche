@@ -91,7 +91,7 @@ pub fn participant_claim_processor(
     }
 
     // We distribute 1 collateral per point and let the coordinator decide the point reward rate
-    let claim_collateral_amount = params.claim_earned_points * 1;
+    let claim_collateral_amount = params.claim_earned_points;
 
     participant.claimed_collateral_amount += claim_collateral_amount;
     participant.claimed_earned_points += params.claim_earned_points;
