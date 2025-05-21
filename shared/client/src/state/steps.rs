@@ -870,6 +870,12 @@ pub enum InitStage<T: NodeIdentity, A: AuthenticatableIdentity + 'static> {
     Running(StepStateMachine<T, A>),
 }
 
+impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> Default for InitStage<T, A> {
+    fn default() -> Self {
+        Self::NotYetInitialized(None)
+    }
+}
+
 pub struct RunManager<T: NodeIdentity, A: AuthenticatableIdentity + 'static>(InitStage<T, A>);
 
 #[derive(Error, Debug)]
@@ -943,7 +949,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     }
 
     pub async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), ApplyStateError> {
-        let new_state = match &mut self.0 {
+        let mut init_stage = std::mem::take(&mut self.0);
+        let new_state = match &mut init_stage {
             InitStage::NotYetInitialized(init_info @ Some(..))
                 if state.run_state == RunState::Warmup =>
             {
@@ -993,11 +1000,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
 
         // yay ok new state! let's go!
-        if let InitStage::Running(state_machine) = &mut self.0 {
-            state_machine
-                .apply_state(state)
-                .instrument(trace_span!("StepStateMachine::apply_state"))
-                .await?;
+        if let InitStage::Running(mut state_machine) = init_stage {
+            tokio::spawn(async move {
+                state_machine
+                    .apply_state(state)
+                    .instrument(trace_span!("StepStateMachine::apply_state"))
+                    .await
+            })
+            .await.unwrap().unwrap();
         }
 
         Ok(())

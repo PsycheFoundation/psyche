@@ -22,7 +22,7 @@ use thiserror::Error;
 use tokenizers::{models::wordlevel::WordLevel, ModelWrapper, Tokenizer};
 use tokio::{
     io,
-    sync::{mpsc::UnboundedSender, oneshot},
+    sync::{mpsc::{self, UnboundedSender}, oneshot},
     task::{JoinError, JoinHandle},
 };
 use tracing::{debug, info};
