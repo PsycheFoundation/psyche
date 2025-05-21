@@ -335,7 +335,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 broadcast_merkle: merkle, warmup
                             })};
 
-                            p2p.broadcast(&training_result).await?;
+                            p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
@@ -357,7 +357,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
                             let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
 
-                            p2p.broadcast(&training_result).await?;
+                            p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
@@ -385,7 +385,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         BroadcastType::TrainingResult(training_result) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, batch_id = %training_result.batch_id, "Rebroadcasting training result"),
                                         BroadcastType::Finished(finished) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, warmup = finished.warmup, "Rebroadcasting finished"),
                                     }
-                                    p2p.broadcast(broadcast).await?;
+                                    p2p.broadcast(broadcast)?;
                                 }
                             }
                         }

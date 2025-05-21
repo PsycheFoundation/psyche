@@ -100,6 +100,7 @@ pub enum DiscoveryMode {
     Local,
     N0,
 }
+
 pub struct NetworkConnection<BroadcastMessage, Download>
 where
     BroadcastMessage: Networkable,
@@ -333,7 +334,8 @@ where
         );
     }
 
-    pub async fn broadcast(&mut self, message: &BroadcastMessage) -> Result<()> {
+    pub fn broadcast(&self, message: &BroadcastMessage) -> Result<()> {
+        let gossip_tx = self.gossip_tx.clone();
         let encoded_message =
             SignedMessage::sign_and_encode(self.router.endpoint().secret_key(), message)?;
         let message_hash = hash_bytes(&encoded_message);
@@ -343,7 +345,8 @@ where
             "broadcasted gossip message with hash {message_hash}: {:?}",
             message
         );
-        Ok(self.gossip_tx.broadcast(encoded_message).await?)
+        tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
+        Ok(())
     }
 
     pub fn start_download(

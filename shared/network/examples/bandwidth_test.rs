@@ -164,10 +164,7 @@ impl App {
             NetworkEvent::MessageReceived((from, Message::DistroResult { step, blob_ticket })) => {
                 info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
-                self.network
-                    .start_download(blob_ticket, step, Vec::new())
-                    .await
-                    .unwrap();
+                self.network.start_download(blob_ticket, step, Vec::new())
             }
             NetworkEvent::DownloadComplete(result) => {
                 let hash = result.hash;
@@ -233,7 +230,7 @@ impl App {
             blob_ticket: blob_ticket.clone(),
         };
 
-        if let Err(e) = self.network.broadcast(&message).await {
+        if let Err(e) = self.network.broadcast(&message) {
             error!("Error sending message: {}", e);
         } else {
             info!("broadcasted message for step {step}: {}", blob_ticket);
