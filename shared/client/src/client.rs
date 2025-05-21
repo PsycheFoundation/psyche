@@ -189,7 +189,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                     if !to_connect.is_empty() {
                                         info!(num_new_peers = to_connect.len(), "Connecting to new peers");
-                                        p2p.add_peers(to_connect).await?;
+                                        p2p.add_peers(to_connect);
                                     }
                                 }
                             }
@@ -224,7 +224,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         trace!("Got finished gossip message from {from}: step {}", broadcast.step);
                                                     }
                                                 }
-                                                run.apply_message(client.id, broadcast).await?;
+                                                run.apply_message(client.id, broadcast)?;
                                             } else {
                                                 debug!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
                                             }
@@ -335,11 +335,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 broadcast_merkle: merkle, warmup
                             })};
 
-                            p2p.broadcast(&training_result).await?;
+                            p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
-                            run.apply_message(identity,  training_result).await?;
+                            run.apply_message(identity,  training_result)?;
                         }
 
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
@@ -357,12 +357,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
                             let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
 
-                            p2p.broadcast(&training_result).await?;
+                            p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
                             {
-                                run.apply_message(identity,  training_result).await?;
+                                run.apply_message(identity, training_result)?;
 
                                 // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
                                 // even if quantization is turned on (distro_result is quantized).
@@ -385,7 +385,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         BroadcastType::TrainingResult(training_result) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, batch_id = %training_result.batch_id, "Rebroadcasting training result"),
                                         BroadcastType::Finished(finished) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, warmup = finished.warmup, "Rebroadcasting finished"),
                                     }
-                                    p2p.broadcast(broadcast).await?;
+                                    p2p.broadcast(broadcast)?;
                                 }
                             }
                         }
@@ -405,7 +405,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         hex::encode(hash), info.retries);
 
                                     let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                                    p2p.start_download(ticket, tag, &other_possible_nodes).await?;
+                                    p2p.start_download(ticket, tag, other_possible_nodes);
                                 }
                             }
                         }
@@ -416,7 +416,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                            p2p.start_download(download_ticket, tag, &other_possible_nodes).await?;
+                            p2p.start_download(download_ticket, tag, other_possible_nodes);
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
                             watcher.backend_mut().send_witness(opportunistic_data).await?;
@@ -561,14 +561,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             for ticket in parameter_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, &[]).await?;
+                                p2p.start_download(ticket, 0, Vec::new());
                             }
 
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for ticket in param_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, &[]).await?;
+                                p2p.start_download(ticket, 0, Vec::new());
                             }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
