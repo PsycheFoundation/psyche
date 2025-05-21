@@ -1006,121 +1006,107 @@ impl<T: NodeIdentity> Coordinator<T> {
                 witness.proposed_batch_sizes
             );
         }
-        let mut some_batch_mismatch = false;
-        for i in 0..self.current_round_unchecked().clients_len {
-            let first_witness_batch = self.current_round_unchecked().witnesses[0]
-                .proposed_batch_sizes
-                .get(i as usize)
-                .ok_or(CoordinatorError::InvalidWitness)?;
-            for witness in self.current_round_unchecked().witnesses.iter().skip(1) {
-                let Some(other_batch) = witness.proposed_batch_sizes.get(i as usize) else {
-                    msg!(
-                        "[witness_batch] Witness {} has no batch assignment for client {}",
-                        witness.proof.index,
-                        i
-                    );
-                    some_batch_mismatch = true;
-                    continue;
-                    //return Err(CoordinatorError::InvalidWitness);
-                };
-                if first_witness_batch != other_batch {
-                    msg!(
-                            "[witness_batch] Witness {} has different batch assignment for client {}: {} != {}",
-                            witness.proof.index,
-                            i,
-                            first_witness_batch,
-                            other_batch,
-                        );
-                    some_batch_mismatch = true;
-                    //return Err(CoordinatorError::InvalidWitness);
-                }
-            }
-        }
-        if !some_batch_mismatch {
-            msg!("[witness_batch] All witnesses have the same batch assignment");
-        }
-        // Populate the batch size for each client regardless for now, with the first witness
-        // Get the witness data before starting client iteration
-        let witnesses = self.current_round_unchecked().witnesses;
 
-        for (index, client) in self.epoch_state.clients.iter_mut().enumerate() {
-            let mut to_assign: Option<u16> = None;
-            let witnesses_len: usize = witnesses.len();
-            
-            // Try each witness in order until we find a valid batch size
-            for offset in 0..witnesses_len {
-                let witness_idx = offset % witnesses_len;
-                let witness = &witnesses[witness_idx];
-                
-                // Skip if witness is reporting about itself or reported time is 0
-                let proposed_batch_size = witness.proposed_batch_sizes.get(index).copied();
-                match proposed_batch_size {
-                    None | Some(0) => {
-                        continue;
-                    }
-                    Some(batch_size) => {
-                        to_assign = Some(batch_size);
-                        break;
+        let consensus_reached = self.check_batch_assignment_consensus(
+            &self.current_round_unchecked().witnesses,
+            2.0 / 3.0,
+            self.config.global_batch_size_end,
+            0.05,
+        );
+        if !consensus_reached {
+            msg!("[witness_batch] Consensus not reached, using previous batch sizes");
+        } else {
+            msg!("[witness_batch] Consensus reached, using new batch sizes");
+
+            // Populate the batch size for each client regardless for now, with the first witness
+            // Get the witness data before starting client iteration
+            let witnesses = self.current_round_unchecked().witnesses;
+
+            for (index, client) in self.epoch_state.clients.iter_mut().enumerate() {
+                let mut to_assign: Option<u16> = None;
+                let witnesses_len: usize = witnesses.len();
+
+                // Try each witness in order until we find a valid batch size
+                for offset in 0..witnesses_len {
+                    let witness_idx = offset % witnesses_len;
+                    let witness = &witnesses[witness_idx];
+
+                    // Skip if witness is reporting about itself or reported time is 0
+                    let proposed_batch_size = witness.proposed_batch_sizes.get(index).copied();
+                    match proposed_batch_size {
+                        None | Some(0) => {
+                            continue;
+                        }
+                        Some(batch_size) => {
+                            to_assign = Some(batch_size);
+                            break;
+                        }
                     }
                 }
-            }
 
-            let to_assign = match to_assign {
-                Some(batch_assignment) => batch_assignment,
-                None => {
-                    msg!(
+                let to_assign = match to_assign {
+                    Some(batch_assignment) => batch_assignment,
+                    None => {
+                        msg!(
                         "[witness_batch] Client {} has no valid batch assignment from any witness, using default of 1",
                         index
                     );
-                    1u16
-                }
-            };
+                        1u16
+                    }
+                };
 
-            msg!(
-                "[witness_batch] Client {} ({}) assigned batch size of: {:?}",
-                index,
-                client.id,
-                to_assign
-            );
-            client.assigned_batch_size = to_assign;
-        }
-
-        // Get target global batch size and adjust if total exceeds it
-        let target_batch_size = self.get_target_global_batch_size(Some(self.current_round_unchecked()));
-        let mut total_assigned: u16 = self.epoch_state.clients.iter()
-            .map(|c| c.assigned_batch_size)
-            .sum();
-
-        if total_assigned > target_batch_size {
-            msg!(
-                "[witness_batch] Total assigned batch size {} exceeds target {}, adjusting...",
-                total_assigned,
-                target_batch_size
-            );
-
-            // Create a mutable vector of indices sorted by batch size
-            let mut sorted_indices: Vec<_> = (0..self.epoch_state.clients.len()).collect();
-            sorted_indices.sort_by_key(|&i| std::cmp::Reverse(self.epoch_state.clients[i].assigned_batch_size));
-
-            // Keep reducing batch sizes until we meet the target
-            let mut current_idx = 0;
-            while total_assigned > target_batch_size {
-                let idx = sorted_indices[current_idx % sorted_indices.len()];
-                if self.epoch_state.clients[idx].assigned_batch_size > 1 {
-                    self.epoch_state.clients[idx].assigned_batch_size -= 1;
-                    total_assigned -= 1;
-                }
-                current_idx += 1;
+                msg!(
+                    "[witness_batch] Client {} ({}) assigned batch size of: {:?}",
+                    index,
+                    client.id,
+                    to_assign
+                );
+                client.assigned_batch_size = to_assign;
             }
 
-            msg!("[witness_batch] After adjustment:");
-            for (i, client) in self.epoch_state.clients.iter().enumerate() {
+            // Get target global batch size and adjust if total exceeds it
+            let target_batch_size =
+                self.get_target_global_batch_size(Some(self.current_round_unchecked()));
+            let mut total_assigned: u16 = self
+                .epoch_state
+                .clients
+                .iter()
+                .map(|c| c.assigned_batch_size)
+                .sum();
+
+            if total_assigned > target_batch_size {
                 msg!(
-                    "[witness_batch] Client {} ({}) batch size: {}",
-                    i,
-                    client.id,
-                    client.assigned_batch_size
+                    "[witness_batch] Total assigned batch size {} exceeds target {}, adjusting...",
+                    total_assigned,
+                    target_batch_size
                 );
+
+                // Create a mutable vector of indices sorted by batch size
+                let mut sorted_indices: Vec<_> = (0..self.epoch_state.clients.len()).collect();
+                sorted_indices.sort_by_key(|&i| {
+                    std::cmp::Reverse(self.epoch_state.clients[i].assigned_batch_size)
+                });
+
+                // Keep reducing batch sizes until we meet the target
+                let mut current_idx = 0;
+                while total_assigned > target_batch_size {
+                    let idx = sorted_indices[current_idx % sorted_indices.len()];
+                    if self.epoch_state.clients[idx].assigned_batch_size > 1 {
+                        self.epoch_state.clients[idx].assigned_batch_size -= 1;
+                        total_assigned -= 1;
+                    }
+                    current_idx += 1;
+                }
+
+                msg!("[witness_batch] After adjustment:");
+                for (i, client) in self.epoch_state.clients.iter().enumerate() {
+                    msg!(
+                        "[witness_batch] Client {} ({}) batch size: {}",
+                        i,
+                        client.id,
+                        client.assigned_batch_size
+                    );
+                }
             }
         }
 
@@ -1260,6 +1246,68 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn is_training_just_starting(&self) -> bool {
         self.epoch_state.first_round.is_true() && self.run_state == RunState::RoundTrain
+    }
+
+    fn check_batch_assignment_consensus(
+        &self,
+        witnesses: &[Witness],
+        threshold: f64,
+        global_batch_size: u16,
+        tolerance: f64,
+    ) -> bool {
+        if witnesses.is_empty() {
+            return false;
+        }
+
+        let n = witnesses[0].proposed_batch_sizes.len();
+        let tolerance = ((global_batch_size as f64) * tolerance).ceil() as u16;
+
+        for i in 0..n {
+            let mut candidate = 0;
+            let mut count = 0;
+
+            // First pass: Boyer-Moore to find candidate (skip 0s)
+            for witness in witnesses {
+                let value = witness.proposed_batch_sizes[i];
+                if value == 0 {
+                    continue;
+                }
+
+                if count == 0 {
+                    candidate = value;
+                    count = 1;
+                } else if value == candidate {
+                    count += 1;
+                } else {
+                    count -= 1;
+                }
+            }
+
+            // Second pass: verify candidate meets threshold
+            if candidate != 0 {
+                let actual_count = witnesses
+                    .iter()
+                    .filter(|wtn| {
+                        let val = wtn.proposed_batch_sizes[i];
+                        val != 0 && (val as i32 - candidate as i32).abs() <= tolerance as i32
+                    })
+                    .count();
+
+                let non_zero_count = witnesses
+                    .iter()
+                    .filter(|wtn| wtn.proposed_batch_sizes[i] != 0)
+                    .count();
+
+                if (actual_count as f64) < threshold * (non_zero_count as f64) {
+                    return false;
+                }
+            } else {
+                // No candidate (e.g., all values at this index were 0): skip
+                continue;
+            }
+        }
+
+        true
     }
 }
 
