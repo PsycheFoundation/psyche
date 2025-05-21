@@ -915,8 +915,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     ) -> Result<(), ApplyMessageError> {
         match &mut self.0 {
             InitStage::Running(state_machine) => {
-                state_machine
-                    .apply_message(from_client_id, training_result)
+                state_machine.apply_message(from_client_id, training_result)
             }
             _ => {
                 // not yet warmed up, ignore any p2p messages.
