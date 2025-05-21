@@ -212,6 +212,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         &mut self.previous_round,
                         &mut self.current_round,
                         &self.coordinator_state.epoch_state.clients,
+                        self.coordinator_state.config.global_batch_size_end, // TODO should we use end or start here?
                     ) {
                         info!(target: "witness", id = %self.identity, merkle=witness.broadcast_merkle.fmt_short(), "Sending opportunistic witness");
 
@@ -388,8 +389,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     // So we set to 0 which is an invalid time measurement value just in case.
                     if from_client_id == self.identity {
                         round_state.client_times[index] = 0u16;
-                    } else {
-                        // We can safely bypass all the insert checks since we already initialized this vec with all zeroes.
+                    } else if round_state.client_times[index] == 0 { // Avoid writing more than one time for the same client
                         round_state.client_times[index] = time_since_training_started as u16;
 
                         info!(

@@ -62,6 +62,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
             previous_round,
             current_round,
             &state.epoch_state.clients,
+            state.config.global_batch_size_end, // TODO should we use end or start here?
         ) {
             let tx_witness = self.tx_witness.clone();
             Some(tokio::task::spawn(async move {
@@ -93,6 +94,7 @@ impl WitnessStep {
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
         clients: &[Client<T>],
+        global_batch_size: u16,
     ) -> Option<Witness> {
         if previous_round.sent_witness {
             return None;
@@ -120,6 +122,7 @@ impl WitnessStep {
             &current_round.client_times,
             &current_round.data_assignments,
             clients,
+            global_batch_size,
         );
 
         let mut proposed_batch_sizes: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS> = FixedVec::new();
@@ -141,8 +144,8 @@ impl WitnessStep {
         client_times: &FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
         data_assignments: &BTreeMap<BatchId, T>,
         clients: &[Client<T>],
+        global_batch_size: u16,
     ) -> Vec<u16> {
-        let global_batch_size = 8; // TODO change this obviously
         let mut scores_per_node: Vec<f64> = Vec::new();
         info!("[calculate_assignments] client_times: {:?}", client_times);
         info!(
