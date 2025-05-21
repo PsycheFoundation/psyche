@@ -11,7 +11,7 @@ use psyche_network::{AuthenticatableIdentity, BlobTicket, Hash, TransmittableDis
 use psyche_watcher::OpportunisticData;
 use std::{
     collections::HashMap,
-    fmt,
+    default, fmt,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -51,6 +51,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
     tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
     tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
+    tx_new_step: mpsc::UnboundedSender<Result<ActiveStep, StepError>>,
 
     current_round: RoundState<T>,
     previous_round: RoundState<T>,
@@ -119,6 +120,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
         tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
         tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
+        tx_new_step: mpsc::UnboundedSender<Result<ActiveStep, StepError>>,
         stats_logger: StatsLogger,
     ) -> Self {
         let mut previous_round = RoundState::default();
@@ -144,6 +146,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             tx_request_download,
             tx_opportunistic_data,
             tx_broadcast_finished,
+            tx_new_step,
 
             coordinator_state,
 
@@ -642,7 +645,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             .insert(hash, PayloadState::Deserializing(deserializing));
     }
 
-    async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), StepError> {
+    async fn apply_state(&mut self, state: Coordinator<T>) -> Result<ActiveStep, StepError> {
         let client_index = match state
             .epoch_state
             .clients
@@ -691,9 +694,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         ))
                     }
                 };
-                self.active_step = new_step;
+                // self.active_step = new_step;
 
-                return Ok(());
+                return Ok(new_step);
             }
         };
 
@@ -802,10 +805,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 return Err(step_error);
             }
         };
-        self.active_step = new_step;
-        self.coordinator_state = state;
+        // self.active_step = new_step;
+        // self.coordinator_state = state;
 
-        Ok(())
+        // self.tx_new_step.send(Ok(new_step));
+        return Ok(new_step);
     }
 
     pub fn set_node_info(&mut self, node_info: HashMap<String, P2PNodeInfo>) -> anyhow::Result<()> {
@@ -818,7 +822,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 }
 
 #[derive(Default, Debug)]
-enum ActiveStep {
+pub(crate) enum ActiveStep {
     #[default]
     Intermediate,
 
@@ -948,7 +952,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), ApplyStateError> {
+    pub async fn apply_state(
+        &mut self,
+        state: Coordinator<T>,
+    ) -> Result<Option<JoinHandle<()>>, ApplyStateError> {
         let mut init_stage = std::mem::take(&mut self.0);
         let new_state = match &mut init_stage {
             InitStage::NotYetInitialized(init_info @ Some(..))
@@ -962,7 +969,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
                 )))
             }
             InitStage::NotYetInitialized(None) => {
-                unreachable!("Once we take the init state, we move to initializing.");
+                info!("This is a transient state");
+                return Ok(None);
             }
             InitStage::Initializing(..)
                 if state.run_state == RunState::WaitingForMembers
@@ -970,28 +978,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
             {
                 // a client has left the network, transitioning back to RunState::WaitingForMembers.
                 // wait for new clients to join the network.
-                return Ok(());
+                return Ok(None);
             }
             InitStage::Initializing((ref mut init_future, _)) => {
                 // Try to complete initialization
-                match init_future.is_finished() {
-                    true => match init_future.await.unwrap() {
+                if init_future.is_finished() {
+                    match init_future.await.unwrap() {
                         Ok(state_machine) => Some(InitStage::Running(state_machine)),
-                        Err(e) => {
-                            return Err(ApplyStateError::Init(e));
-                        }
-                    },
-                    false => {
-                        // We're still initializing, keep current state
-                        return Ok(());
+                        Err(e) => return Err(ApplyStateError::Init(e)),
                     }
+                } else {
+                    // We're still initializing, keep current state
+                    return Ok(None);
                 }
             }
             // we're running, process it in a sec
             InitStage::Running(..) => None,
             // not initialized but we haven't seen a warmup yet, we're just waiting!
             InitStage::NotYetInitialized(_) => {
-                return Ok(());
+                return Ok(None);
             }
         };
 
@@ -1001,16 +1006,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
 
         // yay ok new state! let's go!
         if let InitStage::Running(mut state_machine) = init_stage {
-            tokio::spawn(async move {
-                state_machine
+            let state_machine_tx_result = state_machine.tx_new_step.clone();
+            let handler = tokio::spawn(async move {
+                let result = state_machine
                     .apply_state(state)
                     .instrument(trace_span!("StepStateMachine::apply_state"))
-                    .await
-            })
-            .await.unwrap().unwrap();
+                    .await;
+                state_machine_tx_result.send(result).unwrap();
+            });
+            return Ok(Some(handler));
         }
 
-        Ok(())
+        Ok(None)
+    }
+
+    pub fn set_active_step(&mut self, step: ActiveStep) {
+        if let InitStage::Running(state_machine) = &mut self.0 {
+            state_machine.active_step = step;
+        }
     }
 
     pub fn stats(&self) -> Option<Arc<Mutex<StatsLogger>>> {

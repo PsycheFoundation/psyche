@@ -22,15 +22,24 @@ use thiserror::Error;
 use tokenizers::{models::wordlevel::WordLevel, ModelWrapper, Tokenizer};
 use tokio::{
     io,
-    sync::{mpsc::{self, UnboundedSender}, oneshot},
+    sync::{
+        mpsc::{self, UnboundedSender},
+        oneshot,
+    },
     task::{JoinError, JoinHandle},
 };
 use tracing::{debug, info};
 
 use super::{
-    cooldown::CooldownStepMetadata, evals::EvalRunner, stats::StatsLogger, steps::StepStateMachine,
-    train::TrainingStepMetadata, types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata,
-    witness::WitnessStepMetadata, CheckpointConfig, FinishedBroadcast,
+    cooldown::CooldownStepMetadata,
+    evals::EvalRunner,
+    stats::StatsLogger,
+    steps::{ActiveStep, StepError, StepStateMachine},
+    train::TrainingStepMetadata,
+    types::DistroBroadcastAndPayload,
+    warmup::WarmupStepMetadata,
+    witness::WitnessStepMetadata,
+    CheckpointConfig, FinishedBroadcast,
 };
 
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
@@ -127,6 +136,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
+    pub tx_new_step: UnboundedSender<Result<ActiveStep, StepError>>,
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
@@ -147,6 +157,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_request_download,
             tx_request_model_config,
             tx_broadcast_finished,
+            tx_new_step,
         } = self;
 
         let model::Model::LLM(llm) = state.model;
@@ -578,6 +589,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_request_download,
             tx_witness,
             tx_broadcast_finished,
+            tx_new_step,
             stats_logger,
         ))
     }

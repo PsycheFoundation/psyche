@@ -97,6 +97,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let (tx_request_model_config, mut rx_request_model_config) =
                     mpsc::unbounded_channel();
                 let (tx_broadcast_finished, mut rx_broadcast_finished) = mpsc::unbounded_channel();
+                let (tx_new_step, mut rx_new_step) = mpsc::unbounded_channel();
 
                 let max_concurrent_downloads = init_config.max_concurrent_parameter_requests;
 
@@ -113,11 +114,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     tx_request_download,
                     tx_request_model_config,
                     tx_broadcast_finished,
+                    tx_new_step,
                 });
 
                 let mut retried_downloads: HashMap<psyche_network::Hash, DownloadRetryInfo> =
                     HashMap::new();
                 let mut sharable_model = SharableModel::empty();
+                let mut currently_step_task = None;
                 let mut broadcasts = vec![];
                 let mut broadcasts_rebroadcast_index = 0;
                 let mut sharing_downloadable_interval = interval(REBROADCAST_SHAREABLE);
@@ -140,6 +143,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let network_tui_state = (&p2p).into();
                             let client_tui_state = (&run).into();
                             tx_tui.send((client_tui_state, network_tui_state))?;
+                        },
+
+                        Some(new_active_step) = rx_new_step.recv() => {
+                            println!("New active step received: {new_active_step:?}");
+                            currently_step_task = None;
+                            if let Ok(new_active_step) = new_active_step {
+                                run.set_active_step(new_active_step);
+                            }
                         },
 
                         state = watcher.poll_next() => {
@@ -206,7 +217,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 sharable_model.clear_cache(); // IMPORTANT -- any cached blobs are now invalid
                             }
 
-                            run.apply_state(*new_state).await?;
+                            if currently_step_task.is_none() {
+                                let task_handler = run.apply_state(*new_state).await?;
+                                if task_handler.is_some() {
+                                    currently_step_task = task_handler;
+                                }
+                            } else {
+                                info!("We're still processing the previous update");
+                            }
+
+
                         }
 
                         res = p2p.poll_next() => {
