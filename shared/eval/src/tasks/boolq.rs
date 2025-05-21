@@ -22,7 +22,7 @@ impl BoolQ {
     }
 
     pub const fn name() -> &'static str {
-        "bool_q"
+        "boolq"
     }
 
     fn row_to_document(dataset: &Dataset, row: Row) -> Document {

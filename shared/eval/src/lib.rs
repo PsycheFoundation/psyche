@@ -48,7 +48,7 @@ pub fn tasktype_from_name(name: &str) -> Result<TaskType> {
     {
         "arc_challenge" => ArcChallenge::load(),
         "arc_easy" => ArcEasy::load(),
-        "bool_q" => BoolQ::load(),
+        "boolq" => BoolQ::load(),
         "hellaswag" => Hellaswag::load(),
         "mmlu_pro" => MMLUPro::load(),
         "mmlu" => MMLU::load(),
