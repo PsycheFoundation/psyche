@@ -378,21 +378,12 @@ where
 
         tokio::spawn(async move {
             loop {
-                match progress
-                    .next()
-                    .timeout(Duration::from_secs(TIMEOUT_SECONDS_FOR_DOWNLOADING))
-                    .await
-                {
-                    Ok(None) => break,
-                    Ok(Some(val)) => {
+                match progress.next().await {
+                    None => break,
+                    Some(val) => {
                         if let Err(err) = tx.send(val) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
-                    }
-                    Err(_) => {
-                        let _ = tx.send(Err(anyhow!(
-                            "Didn't recieve any progress for blob {hash}, aborting download"
-                        )));
                     }
                 }
             }

@@ -4550,7 +4550,7 @@ dependencies = [
 [[package]]
 name = "iroh-blobs"
 version = "0.34.0"
-source = "git+https://github.com/NousResearch/iroh-blobs?rev=f26e5a60c5b7fe32b5f2d4e590c7d55b97b346a5#f26e5a60c5b7fe32b5f2d4e590c7d55b97b346a5"
+source = "git+https://github.com/NousResearch/iroh-blobs?rev=2350a694d05173d8caea9b0f15cdcf3f9acdbe06#2350a694d05173d8caea9b0f15cdcf3f9acdbe06"
 dependencies = [
  "anyhow",
  "async-channel 2.3.1",
