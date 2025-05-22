@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use psyche_coordinator::{Client, Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS};
-use psyche_core::{BatchId, FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
+use psyche_core::{BatchId, CompressedFixedVec, FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
@@ -125,10 +125,13 @@ impl WitnessStep {
             global_batch_size,
         );
 
-        let mut proposed_batch_sizes: FixedVec<u8, SOLANA_MAX_NUM_CLIENTS> = FixedVec::new();
+        let mut proposed_batch_sizes = CompressedFixedVec::new();
         let _ = proposed_batch_sizes.fill(0);
         for i in 0..assigments_vec.len() {
-            proposed_batch_sizes[i] = assigments_vec[i];
+            let res = proposed_batch_sizes.set(i, assigments_vec[i]);
+            if res.is_err() {
+                error!("Failed to set batch size for client {}: {:?}", i, res);
+            }
         }
 
         Some(Witness {
@@ -234,7 +237,7 @@ impl WitnessStep {
         // Clamp each assignment to the nearest value in a generated sequence
         let clamped_indices: Vec<u8> = final_assignments
             .into_iter()
-            .map(|val| nearest_index_in_sequence(val, global_batch_size, 255))
+            .map(|val| nearest_index_in_sequence(val, global_batch_size, 63))
             .collect();
 
         dbg!(&clamped_indices);

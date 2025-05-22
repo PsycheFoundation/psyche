@@ -8,7 +8,10 @@ use anchor_lang::{
     AnchorDeserialize, AnchorSerialize, InitSpace,
 };
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
+use psyche_core::{
+    sha256, Bloom, CompressedFixedVec, FixedString, FixedVec, MerkleRoot, NodeIdentity,
+    SmallBoolean,
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
@@ -143,7 +146,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
-    pub proposed_batch_sizes: FixedVec<u8, SOLANA_MAX_NUM_CLIENTS>,
+    pub proposed_batch_sizes: CompressedFixedVec,
 }
 
 #[derive(
@@ -1039,7 +1042,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                         let witness = &current_round_witnesses[witness_idx];
 
                         // Skip if witness is reporting about itself or reported time is 0
-                        let proposed_batch_size = witness.proposed_batch_sizes.get(index).copied();
+                        let proposed_batch_size = witness.proposed_batch_sizes.get(index);
                         match proposed_batch_size {
                             None | Some(0) => {
                                 continue;
@@ -1071,7 +1074,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                     batch_value_from_index(
                         client.assigned_batch_size as usize,
                         target_batch_size,
-                        255
+                        63,
                     )
                 );
                 client.assigned_batch_size = to_assign;
@@ -1123,7 +1126,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                         batch_value_from_index(
                             c.assigned_batch_size as usize,
                             target_batch_size,
-                            255,
+                            63,
                         )
                     })
                     .sum();
@@ -1152,11 +1155,11 @@ impl<T: NodeIdentity> Coordinator<T> {
                             let current_val = batch_value_from_index(
                                 self.epoch_state.clients[idx].assigned_batch_size as usize,
                                 target_batch_size,
-                                255,
+                                63,
                             );
                             let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
                             self.epoch_state.clients[idx].assigned_batch_size =
-                                nearest_index_in_sequence(adjusted_val, target_batch_size, 255);
+                                nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
                         } else {
                             break; // No client can be decremented further
                         }
@@ -1182,11 +1185,11 @@ impl<T: NodeIdentity> Coordinator<T> {
                             let current_val = batch_value_from_index(
                                 self.epoch_state.clients[idx].assigned_batch_size as usize,
                                 target_batch_size,
-                                255,
+                                63,
                             );
                             let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
                             self.epoch_state.clients[idx].assigned_batch_size =
-                                nearest_index_in_sequence(adjusted_val, target_batch_size, 255);
+                                nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
                         } else {
                             break; // No clients to increment (e.g., list is empty)
                         }
@@ -1202,7 +1205,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                         batch_value_from_index(
                             client.assigned_batch_size as usize,
                             target_batch_size,
-                            255
+                            63,
                         )
                     );
                 }
@@ -1367,7 +1370,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
             // First pass: Boyer-Moore to find candidate (skip 0s)
             for witness in witnesses {
-                let value = witness.proposed_batch_sizes[i];
+                let value = witness.proposed_batch_sizes.get(i).unwrap_or(0);
                 if value == 0 {
                     continue;
                 }
@@ -1387,14 +1390,14 @@ impl<T: NodeIdentity> Coordinator<T> {
                 let actual_count = witnesses
                     .iter()
                     .filter(|wtn| {
-                        let val = wtn.proposed_batch_sizes[i];
+                        let val = wtn.proposed_batch_sizes.get(i).unwrap_or(0);
                         val != 0 && (val as i32 - candidate as i32).abs() <= tolerance as i32
                     })
                     .count();
 
                 let non_zero_count = witnesses
                     .iter()
-                    .filter(|wtn| wtn.proposed_batch_sizes[i] != 0)
+                    .filter(|wtn| wtn.proposed_batch_sizes.get(i).unwrap_or(0) != 0)
                     .count();
 
                 if (actual_count as f64) < threshold * (non_zero_count as f64) {
