@@ -154,8 +154,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     }
 
     pub fn try_send_opportunistic_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
-        // let mut current_round = self.current_round.lock().unwrap();
-        // let mut previous_round = self.previous_round.lock().unwrap();
         if let Some(committee_info) = &self.current_round.committee_info {
             // trace!("Checking for opprotunistic witness with committee info");
             if let ActiveStep::Training(step) = &self.active_step {
@@ -177,6 +175,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                             match batch.1 {
                                 // this batch is done deserializing, we can witness on it now.
                                 PayloadState::Deserializing(thread) if thread.is_finished() => (),
+                                // we're still downloading or deserializing this batch, so we're not ready to send an opportunistic witness.
+                                // this function will get called again when a deserialize finishes.
                                 _ => return Ok(()),
                             }
                         }
@@ -330,9 +330,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         from_client_id: T,
         broadcast: Broadcast,
     ) -> Result<(), ApplyMessageError> {
-        // let mut current_round = self.current_round.lock().unwrap();
-        // let mut previous_round = self.previous_round.lock().unwrap();
-
         let result_step = broadcast.step;
         let round_state = if self.current_round.step == broadcast.step {
             &mut self.current_round
@@ -408,16 +405,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 }
                 let ticket = training_result.ticket.clone();
                 let hash = ticket.hash();
-
-                {
-                    let downloads = round_state.downloads.lock().unwrap();
-                    if downloads.contains_key(&hash) {
-                        trace!(
-                            "Already have downloaded batch id {}, ignoring duplicated gossip",
-                            training_result.batch_id
-                        );
-                        return Ok(());
-                    }
+                if round_state.distro_result_blob_downloaded(&hash) {
+                    trace!(
+                        "Already have downloaded batch id {}, ignoring duplicated gossip",
+                        training_result.batch_id
+                    );
+                    return Ok(());
                 }
 
                 let correct_assignee =
@@ -554,6 +547,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             return;
         };
 
+        // TODO: verify shape of distro_results
         let commitment = commitment.1 .0;
         let batch_ids_not_yet_trained_on = round_state.batch_ids_not_yet_trained_on.clone();
         let blooms = round_state.blooms.clone();
@@ -574,6 +568,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 return;
             }
 
+            // we only care to add this to consensus & track it in batch IDs if we have any batch IDs that haven't yet been voted for.
+            // TODO: how do we do witnessing for verifiers that might be training on data that's not in the normal remaining batch IDs?
+            // TODO: also we want ALL those from everyone, right?
             let just_finished = {
                 let mut batch_ids_not_yet_trained_on = batch_ids_not_yet_trained_on.lock().unwrap();
                 let mut blooms = blooms.lock().unwrap();
@@ -609,6 +606,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 *batch_ids_not_yet_trained_on.lock().unwrap() = None;
             }
 
+            // we unconditionally store every seen payload, since we're not yet sure what consensus will be on whether it's included.
             let deserializing = tokio::task::spawn(async move {
                 let maybe_results = tokio::task::spawn_blocking(move || {
                     let r = distro_result
