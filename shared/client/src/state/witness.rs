@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use psyche_coordinator::{Coordinator, Witness, WitnessMetadata};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;

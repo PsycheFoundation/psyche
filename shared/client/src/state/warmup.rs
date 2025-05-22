@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use psyche_core::NodeIdentity;
 
 use super::{

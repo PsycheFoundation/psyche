@@ -361,15 +361,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
-                            {
-                                run.apply_message(identity, training_result)?;
+                            run.apply_message(identity, training_result)?;
 
-                                // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
-                                // even if quantization is turned on (distro_result is quantized).
-                                // this is because distro needs the unquantized version for lookahead
-                                tracing::error!("ENTERING APPLY DISTRO RESULTS!!!!");
-                                run.apply_distro_result(hash, distro_result, Some(original_distro_result));
-                            }
+                            // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
+                            // even if quantization is turned on (distro_result is quantized).
+                            // this is because distro needs the unquantized version for lookahead
+                            run.apply_distro_result(hash, distro_result, Some(original_distro_result));
                         }
 
                         _ = sharing_downloadable_interval.tick() => {

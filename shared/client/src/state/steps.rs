@@ -511,8 +511,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             return;
         };
 
-        error!("ACA 1");
-
         if let Some(self_result) = self_result {
             trace!(
                 "Processing our own distro result for batch {} in step {} with hash {hash}",
@@ -528,7 +526,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             );
         }
 
-        error!("ACA 2");
         let (from, batch_id, _) = {
             let downloads = round_state.downloads.lock().unwrap();
             match downloads.get(&hash) {
@@ -557,7 +554,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             return;
         };
 
-        let commitment = commitment.1 .0.clone();
+        let commitment = commitment.1 .0;
         let batch_ids_not_yet_trained_on = round_state.batch_ids_not_yet_trained_on.clone();
         let blooms = round_state.blooms.clone();
         let downloads = round_state.downloads.clone();
@@ -568,7 +565,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .await
                     .unwrap();
 
-            error!("ACA 3");
             if distro_hash != commitment.data_hash {
                 debug!(
                     from = %from,
@@ -577,7 +573,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 );
                 return;
             }
-            error!("ACA 4");
 
             let just_finished = {
                 let mut batch_ids_not_yet_trained_on = batch_ids_not_yet_trained_on.lock().unwrap();
@@ -610,74 +605,30 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 }
             };
 
-            // let just_finished = if let Some(remaining_batch_ids) =
-            //     &mut round_state.lock().unwrap().batch_ids_not_yet_trained_on
-            // {
-            //     match round_state.lock().unwrap().blooms.as_mut() {
-            //         Some((mut participant_bloom, mut broadcast_bloom)) => {
-            //             participant_bloom.add(&sha256(from.as_ref()));
-            //             if remaining_batch_ids.contains(&batch_id) {
-            //                 // first received payload for this batch id, vote for it in consensus
-            //                 broadcast_bloom.add(&commitment.data_hash);
-            //                 trace!("Adding batch {batch_id} to broadcast bloom");
-            //             } else {
-            //                 trace!(
-            //                     "Don't have {} in our remaining batch IDs {:?}, discarding",
-            //                     batch_id,
-            //                     remaining_batch_ids
-            //                 );
-            //             }
-            //         }
-            //         None => {
-            //             trace!(
-            //                 "Already submitted witness, not adding {} to participant bloom",
-            //                 from
-            //             );
-            //         }
-            //     }
-
-            //     remaining_batch_ids.remove(&batch_id);
-
-            //     trace!(
-            //         "Remaining batches to download for step {}: {:?}",
-            //         distro_result.step,
-            //         remaining_batch_ids
-            //     );
-
-            //     remaining_batch_ids.is_empty()
-            // } else {
-            //     trace!("All batches already trained on, discarding batch {batch_id}");
-            //     false
-            // };
-
-            error!("ACA 5");
             if just_finished {
                 *batch_ids_not_yet_trained_on.lock().unwrap() = None;
             }
 
-            let deserializing = tokio::task::spawn({
-                //let batch_id = *batch_id;
-                async move {
-                    let maybe_results = tokio::task::spawn_blocking(move || {
-                        let r = distro_result
-                            .distro_results
-                            .iter()
-                            .map(|x| x.try_into())
-                            .collect::<Result<Vec<DistroResult>, TchError>>()
-                            .map(|x| (x, distro_result.trainer_nonce));
-                        trace!(
-                            hash = %hash,
-                            batch_id = %batch_id,
-                            "Finished deserializing payload {} for batch {}",
-                            hash,
-                            batch_id
-                        );
-                        r
-                    })
-                    .await
-                    .map_err(|_| DeserializeError::DeserializeThreadCrashed)??;
-                    Ok(maybe_results)
-                }
+            let deserializing = tokio::task::spawn(async move {
+                let maybe_results = tokio::task::spawn_blocking(move || {
+                    let r = distro_result
+                        .distro_results
+                        .iter()
+                        .map(|x| x.try_into())
+                        .collect::<Result<Vec<DistroResult>, TchError>>()
+                        .map(|x| (x, distro_result.trainer_nonce));
+                    trace!(
+                        hash = %hash,
+                        batch_id = %batch_id,
+                        "Finished deserializing payload {} for batch {}",
+                        hash,
+                        batch_id
+                    );
+                    r
+                })
+                .await
+                .map_err(|_| DeserializeError::DeserializeThreadCrashed)??;
+                Ok(maybe_results)
             });
 
             downloads
@@ -685,107 +636,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 .unwrap()
                 .insert(hash, PayloadState::Deserializing(deserializing));
         });
-
-        // let (distro_hash, distro_result) =
-        //     tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
-        //         .await
-        //         .unwrap();
-
-        // if distro_hash != commitment.data_hash {
-        //     debug!(
-        //         from = %from,
-        //         batch_id = %batch_id,
-        //         "Distro result failed commitment hash verification",
-        //     );
-        //     return;
-        // }
-
-        // TODO: verify shape of distro_results
-
-        // we only care to add this to consensus & track it in batch IDs if we have any batch IDs that haven't yet been voted for.
-        // TODO: how do we do witnessing for verifiers that might be training on data that's not in the normal remaining batch IDs?
-        // TODO: also we want ALL those from everyone, right?
-        // let just_finished = if let Some((num_batch_ids_left, remaining_batch_ids)) =
-        //     &mut round_state.batch_ids_not_yet_trained_on
-        // {
-        //     match round_state.blooms.as_mut() {
-        //         Some((participant_bloom, broadcast_bloom)) => {
-        //             participant_bloom.add(&sha256(from.as_ref()));
-        //             if remaining_batch_ids.contains(&batch_id) {
-        //                 // first received payload for this batch id, vote for it in consensus
-        //                 broadcast_bloom.add(&commitment.data_hash);
-        //                 trace!("Adding batch {batch_id} to broadcast bloom");
-        //             } else {
-        //                 trace!(
-        //                     "Don't have {} in our remaining batch IDs {:?}, discarding",
-        //                     batch_id,
-        //                     remaining_batch_ids
-        //                 );
-        //             }
-        //         }
-        //         None => {
-        //             trace!(
-        //                 "Already submitted witness, not adding {} to participant bloom",
-        //                 from
-        //             );
-        //         }
-        //     }
-
-        //     remaining_batch_ids.remove(&batch_id);
-
-        //     trace!(
-        //         "Remaining batches to download for step {}: {:?}",
-        //         distro_result.step,
-        //         remaining_batch_ids
-        //     );
-
-        //     *num_batch_ids_left = remaining_batch_ids.len();
-
-        //     remaining_batch_ids.is_empty()
-        // } else {
-        //     trace!("All batches already trained on, discarding batch {batch_id}");
-        //     false
-        // };
-
-        // if just_finished {
-        //     round_state.batch_ids_not_yet_trained_on = None;
-        // }
-
-        // we unconditionally store every seen payload, since we're not yet sure what consensus will be on whether it's included.
-        // let deserializing = tokio::task::spawn({
-        //     //let batch_id = *batch_id;
-        //     async move {
-        //         let maybe_results = tokio::task::spawn_blocking(move || {
-        //             let r = distro_result
-        //                 .distro_results
-        //                 .iter()
-        //                 .map(|x| x.try_into())
-        //                 .collect::<Result<Vec<DistroResult>, TchError>>()
-        //                 .map(|x| (x, distro_result.trainer_nonce));
-        //             trace!(
-        //                 hash = %hash,
-        //                 batch_id = %batch_id,
-        //                 "Finished deserializing payload {} for batch {}",
-        //                 hash,
-        //                 batch_id
-        //             );
-        //             r
-        //         })
-        //         .await
-        //         .map_err(|_| DeserializeError::DeserializeThreadCrashed)??;
-        //         Ok(maybe_results)
-        //     }
-        // });
-
-        // round_state
-        //     .downloads
-        //     .insert(hash, PayloadState::Deserializing(deserializing));
     }
 
     async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), StepError> {
-        // let mut previous_round = self.previous_round.lock().unwrap();
-        // let mut current_round = self.current_round.lock().unwrap();
-
         let client_index = match state
             .epoch_state
             .clients
