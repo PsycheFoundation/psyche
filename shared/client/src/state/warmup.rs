@@ -15,13 +15,11 @@ impl WarmupStepMetadata {
     pub fn start<T: NodeIdentity>(
         &self,
         evals_or_trainers: impl Into<MaybeRunningEvals>,
-        previous_round: Arc<Mutex<RoundState<T>>>,
-        current_round: Arc<Mutex<RoundState<T>>>,
+        previous_round: &mut RoundState<T>,
+        current_round: &mut RoundState<T>,
     ) -> WarmupStep {
         // reset the transient states
-        let mut previous_round = previous_round.lock().unwrap();
         *previous_round = RoundState::default();
-        let mut current_round = current_round.lock().unwrap();
         *current_round = RoundState::default();
 
         let evals = self

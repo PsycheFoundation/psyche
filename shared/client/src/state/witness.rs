@@ -48,8 +48,8 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
         _client_index: u64,
         _state: &Coordinator<T>,
         trainers: MaybeRunningEvals,
-        previous_round: Arc<Mutex<RoundState<T>>>,
-        current_round: Arc<Mutex<RoundState<T>>>,
+        previous_round: &mut RoundState<T>,
+        current_round: &mut RoundState<T>,
         metadata: WitnessMetadata,
     ) -> Result<WitnessStep, WitnessingError> {
         if trainers.is_empty() {
@@ -58,10 +58,8 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
 
         let evals = self.eval_runner.start_if_not_running(trainers);
 
-        let mut previous_round = previous_round.lock().unwrap();
-        let mut current_round = current_round.lock().unwrap();
         let sending_witness = if let Some(witness) =
-            WitnessStep::get_witness_to_send(&mut previous_round, &mut current_round)
+            WitnessStep::get_witness_to_send(previous_round, current_round)
         {
             let tx_witness = self.tx_witness.clone();
             Some(tokio::task::spawn(async move {
@@ -105,8 +103,8 @@ impl WitnessStep {
         let merkle = MerkleTree::new(&previous_round.broadcasts);
         let broadcast_merkle = merkle.get_root().cloned().unwrap_or(MerkleRoot::default());
 
-        let blooms = previous_round.blooms;
-        let (participant_bloom, broadcast_bloom) = blooms.unwrap_or_default();
+        let (participant_bloom, broadcast_bloom) =
+            previous_round.blooms.lock().unwrap().unwrap_or_default();
 
         info!("Submitting witness blooms");
         previous_round.sent_witness = true;
