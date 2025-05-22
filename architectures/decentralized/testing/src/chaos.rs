@@ -32,6 +32,7 @@ pub enum ChaosAction {
     },
 }
 
+#[derive(Clone)]
 pub struct ChaosScheduler {
     docker_client: Arc<Docker>,
     solana_client: Arc<SolanaTestClient>,

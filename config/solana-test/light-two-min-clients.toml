@@ -1,5 +1,5 @@
 [config]
-warmup_time = 30
+warmup_time = 50
 cooldown_time = 30
 rounds_per_epoch = 20
 max_round_train_time = 30
@@ -12,7 +12,6 @@ global_batch_size_start = 8
 global_batch_size_end = 8
 global_batch_size_warmup_tokens = 0
 total_steps = 25000
-checkpointers = []
 
 [model.LLM]
 architecture = "HfLlama"

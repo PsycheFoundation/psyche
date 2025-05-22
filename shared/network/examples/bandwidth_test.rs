@@ -4,7 +4,7 @@ use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMap, RelayMode, RelayUrl};
 use psyche_network::Hash;
 use psyche_network::{
-    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, NetworkConnection, NetworkEvent,
+    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
     NetworkTUIState, NetworkTui, PeerList,
 };
 use psyche_tui::{
@@ -165,7 +165,7 @@ impl App {
                 info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network
-                    .start_download(blob_ticket, step, &[])
+                    .start_download(blob_ticket, step, DownloadType::DistroResult(vec![]))
                     .await
                     .unwrap();
             }

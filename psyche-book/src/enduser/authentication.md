@@ -60,4 +60,4 @@ sh scripts/join-authorization-set-delegates.sh devnet $GRANTOR_PUBKEY grantee.js
 
 ## Further information
 
-The source code for the `authorizer` smart contract used by the Psyche's coordinator can be found here with its readme: <https://github.com/NousResearch/psyche/tree/main/architectures/decentralized/solana-authorizer>
+The source code for the `authorizer` smart contract used by the Psyche's coordinator can be found here with its readme: <https://github.com/PsycheFoundation/psyche/tree/main/architectures/decentralized/solana-authorizer>

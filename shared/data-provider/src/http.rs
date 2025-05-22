@@ -101,7 +101,7 @@ impl FileURLs {
                     })
                     .await?;
                 all_results.extend(this_results.items.iter().flatten().filter_map(|obj| {
-                    let file_ext = obj.name.split('.').last()?;
+                    let file_ext = obj.name.split('.').next_back()?;
                     if !DATA_FILE_EXTENSIONS.contains(&file_ext) {
                         return None;
                     }
