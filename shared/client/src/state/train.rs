@@ -23,7 +23,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -151,6 +151,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         }
 
         let applying = self.apply_results(trainers, state, previous_round, current_round)?;
+
         let sending_health_checks =
             start_sending_health_checks(current_round, state, self.tx_health_check.clone())?;
 
@@ -188,10 +189,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     (
                         data_assignments,
                         num_all_batch_ids,
-                        Some(batch_ids_not_yet_trained_on),
+                        Arc::new(Mutex::new(Some(batch_ids_not_yet_trained_on))),
                     )
                 }
-                false => (BTreeMap::new(), 0, None),
+                false => (BTreeMap::new(), 0, Arc::new(Mutex::new(None))),
             };
 
         let committee_proof = committee_selection.get_committee(client_index);
@@ -211,7 +212,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 broadcast_bloom.bits.0.len(),
                 broadcast_bloom.keys.len()
             );
-            Some((participant_bloom, broadcast_bloom))
+            Arc::new(Mutex::new(Some((participant_bloom, broadcast_bloom))))
         };
 
         *current_round = RoundState {
@@ -226,8 +227,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             data_assignments: data_assignments.clone(),
             blooms,
             committee_info: Some((committee_proof, witness_proof, committee_selection)),
-            batch_ids_not_yet_trained_on: batch_ids_not_yet_trained_on
-                .map(|x| (num_all_batch_ids, x)),
+            batch_ids_not_yet_trained_on,
             self_distro_results: vec![],
         };
 
@@ -514,7 +514,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         // so our current_round corresponds to the coordinator's previous_round
         // `previous_round` -> state.previous_previous_round()
         // `current_round` -> state.previous_round()
-        let mut payloads = std::mem::take(&mut previous_round.downloads);
+        let payloads = std::mem::take(&mut previous_round.downloads);
         let commitments = std::mem::take(&mut previous_round.results);
 
         // here, when dealing with the coordinator,
@@ -538,10 +538,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         let data_assignments = previous_round.data_assignments.clone();
 
         Ok(tokio::task::spawn(async move {
+                let payloads = payloads.clone();
                 let mut distro_results: Vec<Vec<DistroResult>> = Vec::new();
 
                 trace!("Have commitments for batches {:?}", commitments.keys().collect::<Vec<_>>());
-                trace!("Have payloads for hashes {:?}", payloads.keys().collect::<Vec<_>>());
+                trace!("Have payloads for hashes {:?}", payloads.lock().unwrap().keys().collect::<Vec<_>>());
 
                 for batch_id in batch_ids {
                     let batch_commitments = match commitments.get(&batch_id) {
@@ -575,7 +576,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     trace!("Consensus commitment for batch {batch_id}: {consensus:?}");
 
                     let (commitment, result) = &batch_commitments[consensus].1;
-                    let maybe_results: Result<(Vec<DistroResult>, u32), DeserializeError> = match payloads.remove(&result.ticket.hash()) {
+                    let payload_remove_result = payloads.lock().unwrap().remove(&result.ticket.hash());
+                    let maybe_results: Result<(Vec<DistroResult>, u32), DeserializeError> = match payload_remove_result {
                         Some(PayloadState::Deserializing(x)) => match x.is_finished() {
                             true => x.await.unwrap(),
                             false => {
