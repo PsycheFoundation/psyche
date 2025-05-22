@@ -125,8 +125,8 @@ impl WitnessStep {
             global_batch_size,
         );
 
-        let mut proposed_batch_sizes: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS> = FixedVec::new();
-        let _ = proposed_batch_sizes.fill(0u16);
+        let mut proposed_batch_sizes: FixedVec<u8, SOLANA_MAX_NUM_CLIENTS> = FixedVec::new();
+        let _ = proposed_batch_sizes.fill(0);
         for i in 0..assigments_vec.len() {
             proposed_batch_sizes[i] = assigments_vec[i];
         }
@@ -145,7 +145,7 @@ impl WitnessStep {
         data_assignments: &BTreeMap<BatchId, T>,
         clients: &[Client<T>],
         global_batch_size: u16,
-    ) -> Vec<u16> {
+    ) -> Vec<u8> {
         let mut scores_per_node: Vec<f64> = Vec::new();
         info!("[calculate_assignments] client_times: {:?}", client_times);
         info!(
@@ -175,17 +175,9 @@ impl WitnessStep {
         let sum = scores_per_node.iter().sum::<f64>();
         dbg!(sum);
 
-        if sum.abs() < 1e-10f64 {
-            error!("client_times is empty, using equitative assignments");
-            let assignments =
-                Self::calculate_equitative_assignments(global_batch_size, clients.len() as u16);
-            info!("equitative assignments: {:?}", assignments);
-            return assignments;
-        }
-
         // Initialize final assignments
         let mut final_assignments = vec![0u16; clients.len()];
-        
+
         // First pass: assign 1 batch to each node with non-zero score
         let mut remaining_batches = global_batch_size;
         for (i, &score) in scores_per_node.iter().enumerate() {
@@ -223,7 +215,8 @@ impl WitnessStep {
                     .enumerate()
                     .map(|(i, &x)| (i, x - x.floor()))
                     .collect();
-                fractional.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                fractional
+                    .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
                 for (idx, _) in fractional.iter().take(still_remaining as usize) {
                     additional[*idx] += 1;
@@ -237,7 +230,15 @@ impl WitnessStep {
         }
 
         dbg!(&final_assignments);
-        final_assignments
+
+        // Clamp each assignment to the nearest value in a generated sequence
+        let clamped_indices: Vec<u8> = final_assignments
+            .into_iter()
+            .map(|val| nearest_index_in_sequence(val, global_batch_size, 255))
+            .collect();
+
+        dbg!(&clamped_indices);
+        clamped_indices
     }
 
     fn number_of_data_assignments_for_client<T: NodeIdentity>(
@@ -252,24 +253,15 @@ impl WitnessStep {
         }
         total
     }
+}
 
-    fn calculate_equitative_assignments(
-        global_batch_size: u16,
-        number_of_clients: u16,
-    ) -> Vec<u16> {
-        let mut assignments: Vec<u16> = vec![0; number_of_clients as usize];
-        let mut total_assigned = 0;
-
-        for i in 0..number_of_clients {
-            assignments[i as usize] = global_batch_size / number_of_clients;
-            total_assigned += assignments[i as usize];
-        }
-
-        let remainder = global_batch_size - total_assigned;
-        for i in 0..remainder {
-            assignments[i as usize] += 1;
-        }
-
-        assignments
+/// Finds the index of the value in `sequence` closest to `target`
+fn nearest_index_in_sequence(target: u16, max_value: u16, steps: usize) -> u8 {
+    if steps <= 1 {
+        return 0;
     }
+
+    let increment = (max_value - 1) as f64 / (steps - 1) as f64;
+    let index = ((target as f64 - 1.0) / increment).round();
+    index.clamp(0.0, (steps - 1) as f64) as u8
 }
