@@ -1002,7 +1002,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
         // Check validity of each witness report on client batch assignment
         // For debug purposes print each witness batch assignment
-        for witness in self.current_round_unchecked().witnesses.iter() {
+        /*for witness in self.current_round_unchecked().witnesses.iter() {
             let witness_id = self.epoch_state.clients[witness.proof.index as usize].id;
             msg!(
                 "[witness_batch] Witness {} ({}): {:?}",
@@ -1010,7 +1010,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 witness_id,
                 witness.proposed_batch_sizes
             );
-        }
+        }*/
 
         let target_batch_size =
             self.get_target_global_batch_size(Some(self.current_round_unchecked()));
