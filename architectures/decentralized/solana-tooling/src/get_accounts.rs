@@ -2,6 +2,7 @@ use anchor_lang::AccountDeserialize;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::coordinator_account_from_bytes;
 use psyche_solana_coordinator::CoordinatorInstanceState;
+use psyche_solana_treasurer::state::Participant;
 use psyche_solana_treasurer::state::Run;
 use solana_sdk::pubkey::Pubkey;
 use solana_toolbox_endpoint::ToolboxEndpoint;
@@ -63,12 +64,12 @@ pub async fn get_run(
 pub async fn get_participant(
     endpoint: &mut ToolboxEndpoint,
     participant: &Pubkey,
-) -> Result<Option<Run>, ToolboxEndpointError> {
+) -> Result<Option<Participant>, ToolboxEndpointError> {
     endpoint
         .get_account_data(participant)
         .await?
         .map(|data| {
-            Run::try_deserialize(&mut data.as_slice()).map_err(|_| {
+            Participant::try_deserialize(&mut data.as_slice()).map_err(|_| {
                 ToolboxEndpointError::Custom(
                     "Unable to decode participant data".to_string(),
                 )

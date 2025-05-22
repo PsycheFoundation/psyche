@@ -66,7 +66,6 @@ pub struct RunCreateParams {
     pub run_id: String,
     pub main_authority: Pubkey,
     pub join_authority: Pubkey,
-    pub collateral_amount_per_earned_point: u64,
 }
 
 pub fn run_create_processor(
@@ -84,8 +83,6 @@ pub fn run_create_processor(
     run.coordinator_account = context.accounts.coordinator_account.key();
 
     run.collateral_mint = context.accounts.collateral_mint.key();
-    run.collateral_amount_per_earned_point =
-        params.collateral_amount_per_earned_point;
 
     run.total_funded_collateral_amount = 0;
     run.total_claimed_collateral_amount = 0;
