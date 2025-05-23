@@ -258,13 +258,28 @@ impl WitnessStep {
     }
 }
 
-/// Finds the index of the value in `sequence` closest to `target`
-fn nearest_index_in_sequence(target: u16, max_value: u16, steps: usize) -> u8 {
-    if target == 0 || steps <= 1 {
+/// Finds the index (0 for target 0, or 1-63) that corresponds to the target batch value.
+/// `num_levels` is the number of distinct non-zero batch sizes (e.g., 63).
+fn nearest_index_in_sequence(target_value: u16, max_representable_value: u16, num_levels: usize) -> u8 {
+    if target_value == 0 || max_representable_value == 0 || num_levels == 0 {
         return 0;
     }
 
-    let increment = (max_value - 1) as f64 / (steps - 1) as f64;
-    let index = ((target as f64 - 1.0) / increment).round();
-    index.clamp(1.0, (steps - 1) as f64) as u8
+    if num_levels == 1 {
+        return 1;
+    }
+
+    let clamped_target = target_value.clamp(1, max_representable_value);
+    let effective_max_val = max_representable_value.max(1);
+    let increment = (effective_max_val - 1) as f64 / (num_levels - 1) as f64;
+
+    let zero_based_level_float = if increment == 0.0 {
+        0.0
+    } else {
+        ((clamped_target - 1) as f64) / increment
+    };
+
+    let mut zero_based_level_rounded = zero_based_level_float.round() as i64;
+    zero_based_level_rounded = zero_based_level_rounded.clamp(0, (num_levels - 1) as i64);
+    (zero_based_level_rounded as u8) + 1
 }
