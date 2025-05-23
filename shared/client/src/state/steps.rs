@@ -371,7 +371,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .expect("BroadcastType::TrainingResult: Error getting current timestamp")
                     .as_millis();
 
-                info!("round_state: {}", round_state.height);
                 let training_started_at = round_state
                     .training_started_at
                     .expect("BroadcastType::TrainingResult: training_started_at was None");
@@ -393,8 +392,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         // Avoid writing more than one time for the same client
                         round_state.client_times[index] = time_since_training_started as u16;
 
-                        info!(
-                            "TIMESTAMP batch {} from {} (idx: {}) at {} , time since training started: {} (time per batch: {})",
+                        trace!(
+                            "Received batch {} from client {} (idx: {}) at {} , total time: {}ms (per batch: {}ms)",
                             training_result.batch_id,
                             from_client_id,
                             index,

@@ -39,21 +39,12 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
 
-    msg!(
-        "[assign_data_for_state] trainer_nodes: {}",
-        trainer_nodes.len()
-    );
-
     // Use assigned batch sizes for batch size assignments
     for (client_index, node) in trainer_nodes {
         let mut node_batch_size =
             coordinator.epoch_state.clients[client_index].assigned_batch_size as u64;
-        msg!(
-            "[assign_data_for_state] node: {}, batch_size: {}",
-            client_index,
-            node_batch_size
-        );
 
+        // We don't want nodes not training so if there was no batch size assigned, we assign 1 at least
         if node_batch_size == 0 {
             node_batch_size = 1u64;
         }
