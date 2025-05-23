@@ -1014,6 +1014,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         // to Cooldown.
         if num_witnesses == 0 {
             msg!("[witness_batch] No witnesses, moving to cooldown");
+            msg!("[witness_batch] witnesses: {:?}", self.current_round_unchecked().witnesses);
             self.withdraw_all()?;
             self.start_cooldown(unix_timestamp);
             return Ok(TickResult::Ticked);
