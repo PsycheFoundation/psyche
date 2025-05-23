@@ -537,7 +537,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         )
         {
             msg!("[witness] invalid witness: verify_witness_for_client failed");
-            msg!("[witness] witness: {:?}", witness);
             return Err(CoordinatorError::InvalidWitness);
         }
 
@@ -1139,7 +1138,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                     let scaled_val = (batch_val as f64 * scale_factor).max(1.0).round() as u16;
                     client.assigned_batch_size =
                         nearest_index_in_sequence(scaled_val, target_batch_size, 63);
-                    msg!(
+                    /*msg!(
                         "[witness_batch] Client {} scaled batch size: (idx={}) {}",
                         client.id,
                         client.assigned_batch_size,
@@ -1148,7 +1147,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                             target_batch_size,
                             63,
                         )
-                    );
+                    );*/
                 }
 
                 // Recalculate total assigned batch size after scaling
@@ -1230,7 +1229,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                     }
                 }
                 // The old sorted_indices loop is now replaced by the logic above.;
-                for (i, client) in self.epoch_state.clients.iter().enumerate() {
+                /*for (i, client) in self.epoch_state.clients.iter().enumerate() {
                     msg!(
                         "[witness_batch] after adjustment - Client {} ({}) batch size: (idx={}) {}",
                         i,
@@ -1242,7 +1241,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                             63,
                         )
                     );
-                }
+                }*/
             }
         }
 
