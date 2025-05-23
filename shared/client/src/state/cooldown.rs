@@ -177,7 +177,7 @@ impl CooldownStepMetadata {
                             revision
                         }
                         Err(err) => {
-                            error!(repo = hub_repo, "Error uploading to HuggingFace: {err}");
+                            error!(repo = hub_repo, "Error uploading to HuggingFace: {err:#}");
                             return Err(err.into());
                         }
                     };
