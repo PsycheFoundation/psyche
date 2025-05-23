@@ -488,13 +488,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         let round = self.current_round_mut_unchecked();
-        round
-            .witnesses
-            .push(witness)
-            .map_err(|_| {
-                msg!("[warmup_witness] failed to add witness");
-                CoordinatorError::WitnessesFull
-            })?;
+        round.witnesses.push(witness).map_err(|_| {
+            msg!("[warmup_witness] failed to add witness");
+            CoordinatorError::WitnessesFull
+        })?;
 
         msg!("[warmup_witness] witness added");
 
@@ -534,8 +531,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             from,
             &witness.proof,
             &self.epoch_state.clients,
-        )
-        {
+        ) {
             msg!("[witness] invalid witness: verify_witness_for_client failed");
             return Err(CoordinatorError::InvalidWitness);
         }
@@ -553,13 +549,10 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
         }
         let round = self.current_round_mut_unchecked();
-        round
-            .witnesses
-            .push(witness)
-            .map_err(|_| {
-                msg!("[witness] failed to add witness");
-                CoordinatorError::WitnessesFull
-            })?;
+        round.witnesses.push(witness).map_err(|_| {
+            msg!("[witness] failed to add witness");
+            CoordinatorError::WitnessesFull
+        })?;
 
         if round.witnesses.len() == witness_nodes && !(self.run_state == RunState::RoundWitness) {
             msg!("[witness] all witnesses received, moving to round train");
@@ -1013,7 +1006,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         // to Cooldown.
         if num_witnesses == 0 {
             msg!("[witness_batch] No witnesses, moving to cooldown");
-            msg!("[witness_batch] witnesses: {:?}", self.current_round_unchecked().witnesses);
+            msg!(
+                "[witness_batch] witnesses: {:?}",
+                self.current_round_unchecked().witnesses
+            );
             self.withdraw_all()?;
             self.start_cooldown(unix_timestamp);
             return Ok(TickResult::Ticked);
@@ -1165,83 +1161,73 @@ impl<T: NodeIdentity> Coordinator<T> {
                     .sum();
 
                 let discrepancy = total_assigned as i32 - target_batch_size as i32;
-                if discrepancy > 0 {
-                    // Total is too high, need to remove batches
-                    for _ in 0..discrepancy {
-                        let mut client_to_decrement_idx: Option<usize> = None;
-                        let mut max_batch_seen = 0; // Max batch size among those > 1
+                match discrepancy.cmp(&0) {
+                    std::cmp::Ordering::Greater => {
+                        // Total is too high, need to remove batches
+                        for _ in 0..discrepancy {
+                            let mut client_to_decrement_idx: Option<usize> = None;
+                            let mut max_batch_seen = 0; // Max batch size among those > 1
 
-                        for (k, c) in self.epoch_state.clients.iter().enumerate() {
-                            if c.assigned_batch_size > 1 {
-                                // Only consider clients that can be decremented
-                                if client_to_decrement_idx.is_none()
+                            for (k, c) in self.epoch_state.clients.iter().enumerate() {
+                                if c.assigned_batch_size > 1 {
+                                    // Only consider clients that can be decremented
+                                    if client_to_decrement_idx.is_none()
+                                        || c.assigned_batch_size > max_batch_seen
+                                    {
+                                        max_batch_seen = c.assigned_batch_size;
+                                        client_to_decrement_idx = Some(k);
+                                    }
+                                }
+                            }
+
+                            if let Some(idx) = client_to_decrement_idx {
+                                // Decrement the batch size of the client by 1 step
+                                let current_val = batch_value_from_index(
+                                    self.epoch_state.clients[idx].assigned_batch_size as usize,
+                                    target_batch_size,
+                                    63,
+                                );
+                                let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
+                                self.epoch_state.clients[idx].assigned_batch_size =
+                                    nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
+                            } else {
+                                break; // No client can be decremented further
+                            }
+                        }
+                    }
+                    std::cmp::Ordering::Less => {
+                        // Total is too low, need to add batches
+                        for _ in 0..(-discrepancy) {
+                            let mut client_to_increment_idx: Option<usize> = None;
+                            let mut max_batch_seen = 0;
+
+                            for (k, c) in self.epoch_state.clients.iter().enumerate() {
+                                // Find client with current max batch size to add to
+                                if client_to_increment_idx.is_none()
                                     || c.assigned_batch_size > max_batch_seen
                                 {
                                     max_batch_seen = c.assigned_batch_size;
-                                    client_to_decrement_idx = Some(k);
+                                    client_to_increment_idx = Some(k);
                                 }
                             }
-                        }
 
-                        if let Some(idx) = client_to_decrement_idx {
-                            // Decrement the batch size of the client by 1 step
-                            let current_val = batch_value_from_index(
-                                self.epoch_state.clients[idx].assigned_batch_size as usize,
-                                target_batch_size,
-                                63,
-                            );
-                            let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
-                            self.epoch_state.clients[idx].assigned_batch_size =
-                                nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
-                        } else {
-                            break; // No client can be decremented further
-                        }
-                    }
-                } else if discrepancy < 0 {
-                    // Total is too low, need to add batches
-                    for _ in 0..(-discrepancy) {
-                        let mut client_to_increment_idx: Option<usize> = None;
-                        let mut max_batch_seen = 0;
-
-                        for (k, c) in self.epoch_state.clients.iter().enumerate() {
-                            // Find client with current max batch size to add to
-                            if client_to_increment_idx.is_none()
-                                || c.assigned_batch_size > max_batch_seen
-                            {
-                                max_batch_seen = c.assigned_batch_size;
-                                client_to_increment_idx = Some(k);
+                            if let Some(idx) = client_to_increment_idx {
+                                // Increment the batch size of the client by 1 step
+                                let current_val = batch_value_from_index(
+                                    self.epoch_state.clients[idx].assigned_batch_size as usize,
+                                    target_batch_size,
+                                    63,
+                                );
+                                let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
+                                self.epoch_state.clients[idx].assigned_batch_size =
+                                    nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
+                            } else {
+                                break; // No clients to increment (e.g., list is empty)
                             }
                         }
-
-                        if let Some(idx) = client_to_increment_idx {
-                            // Increment the batch size of the client by 1 step
-                            let current_val = batch_value_from_index(
-                                self.epoch_state.clients[idx].assigned_batch_size as usize,
-                                target_batch_size,
-                                63,
-                            );
-                            let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
-                            self.epoch_state.clients[idx].assigned_batch_size =
-                                nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
-                        } else {
-                            break; // No clients to increment (e.g., list is empty)
-                        }
                     }
+                    std::cmp::Ordering::Equal => (), // No adjustment needed
                 }
-                // The old sorted_indices loop is now replaced by the logic above.;
-                /*for (i, client) in self.epoch_state.clients.iter().enumerate() {
-                    msg!(
-                        "[witness_batch] after adjustment - Client {} ({}) batch size: (idx={}) {}",
-                        i,
-                        client.id,
-                        client.assigned_batch_size,
-                        batch_value_from_index(
-                            client.assigned_batch_size as usize,
-                            target_batch_size,
-                            63,
-                        )
-                    );
-                }*/
             }
         }
 

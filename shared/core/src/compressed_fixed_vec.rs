@@ -1,8 +1,4 @@
-use anchor_lang::{
-    prelude::borsh, // Removed Error as AnchorError
-    AnchorDeserialize,
-    AnchorSerialize,
-};
+use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize};
 use bytemuck::Zeroable;
 use serde::{
     de::{SeqAccess, Visitor},
@@ -11,8 +7,6 @@ use serde::{
 };
 use std::fmt;
 use std::io::Read;
-
-// If you use ts-rs, uncomment this and the derive on the struct
 use ts_rs::TS;
 
 // Helper const fn to calculate bytes needed for N elements of X bits each.
@@ -25,13 +19,12 @@ pub const fn packed_bytes_count(num_elements: usize, bits_per_element: usize) ->
 }
 
 const BITS_PER_ELEMENT: usize = 6; // Each element is u6
-const MAX_VALUE_U6: u8 = (1 << BITS_PER_ELEMENT) - 1; // 63
+const MAX_VALUE_U6: u8 = (1 << BITS_PER_ELEMENT) - 1; // 63 for our hardcoded case
 const CAPACITY: usize = 256; // Hardcoded capacity
 
 /// Proxy object for mutable access to a u6 value in CompressedFixedVec.
 pub struct U6RefMut<'a> {
-    // Removed const N
-    vec: &'a mut CompressedFixedVec, // Removed <N>
+    vec: &'a mut CompressedFixedVec,
     idx: usize,
 }
 
@@ -59,16 +52,12 @@ impl U6RefMut<'_> {
 #[repr(C)] // Ensures field order for Zeroable.
 #[ts(type = "Array<number>")]
 pub struct CompressedFixedVec {
-    // Removed const N
-    // No where clause needed here anymore
     // Stores CAPACITY elements of BITS_PER_ELEMENT size.
     data: [u8; packed_bytes_count(CAPACITY, BITS_PER_ELEMENT)],
     len: u16, // Number of u6 elements currently stored. Max CAPACITY.
 }
 
 impl CompressedFixedVec {
-    // Removed const N
-    // No where clause needed here anymore
     /// Gets the 6-bit value at `idx`. Assumes `idx < self.len`.
     fn internal_get(&self, idx: usize) -> Option<u8> {
         // This check is technically redundant if callers ensure idx < self.len,
@@ -90,7 +79,6 @@ impl CompressedFixedVec {
         if (bit_offset_in_byte + BITS_PER_ELEMENT > 8)
             && (next_byte_idx < packed_bytes_count(CAPACITY, BITS_PER_ELEMENT))
         {
-            // Use CAPACITY
             window |= (self.data[next_byte_idx] as u16) << 8;
         }
 
@@ -145,6 +133,13 @@ impl CompressedFixedVec {
         }
     }
 
+    /// Creates a new `CompressedFixedVec` with a specified initial length.
+    pub fn filled_with(value: u8) -> Result<Self, &'static str> {
+        let mut vec = Self::new();
+        vec.fill(value)?;
+        Ok(vec)
+    }
+
     /// Returns the number of elements in the vector.
     pub fn len(&self) -> usize {
         self.len as usize
@@ -157,12 +152,12 @@ impl CompressedFixedVec {
 
     /// Returns the total number of elements the vector can hold.
     pub fn capacity(&self) -> usize {
-        CAPACITY // Use CAPACITY
+        CAPACITY
     }
 
     /// Returns `true` if the vector is full.
     pub fn is_full(&self) -> bool {
-        self.len as usize == CAPACITY // Use CAPACITY
+        self.len as usize == CAPACITY
     }
 
     /// Appends an element to the back of the collection.
@@ -215,7 +210,6 @@ impl CompressedFixedVec {
 
     /// Returns a mutable proxy `U6RefMut` for the element at `index`.
     pub fn get_mut(&mut self, index: usize) -> Option<U6RefMut<'_>> {
-        // Removed N
         if index < self.len() {
             Some(U6RefMut {
                 vec: self,
@@ -242,13 +236,11 @@ impl CompressedFixedVec {
             return Err("Value too large for u6");
         }
         if CAPACITY == 0 {
-            // Use CAPACITY
             self.len = 0;
             return Ok(());
         }
 
         if value == 0 {
-            // Optimized path for zero-fill
             let total_bytes = packed_bytes_count(CAPACITY, BITS_PER_ELEMENT); // Use CAPACITY
             if total_bytes > 0 {
                 self.data[0..total_bytes].fill(0);
@@ -256,15 +248,14 @@ impl CompressedFixedVec {
         } else {
             for i in 0..CAPACITY {
                 self.internal_set(i, value)?;
-            } // Use CAPACITY
+            }
         }
-        self.len = CAPACITY as u16; // Use CAPACITY
+        self.len = CAPACITY as u16;
         Ok(())
     }
 
     /// Returns an iterator over the elements.
     pub fn iter(&self) -> CompressedVecIter<'_> {
-        // Removed N
         CompressedVecIter {
             vec: self,
             current: 0,
@@ -289,9 +280,6 @@ impl CompressedFixedVec {
         }
     }
 
-    // Methods like remove, insert, retain, extend can be implemented similarly to FixedVec,
-    // using internal_get/set. They will be less efficient due to per-element bit manipulation.
-    // Example: remove
     pub fn remove(&mut self, index: usize) -> Option<u8> {
         if index >= self.len() {
             return None;
@@ -308,23 +296,20 @@ impl CompressedFixedVec {
 }
 
 impl Default for CompressedFixedVec {
-    // Removed const N and where clause
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl fmt::Debug for CompressedFixedVec {
-    // Removed const N and where clause
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Similar to FixedVec's debug, but shows actual values
         write!(
             f,
             "CompressedFixedVec<{}>({}/{}) [",
             CAPACITY,
             self.len(),
             CAPACITY
-        )?; // Use CAPACITY
+        )?;
         for i in 0..self.len() {
             if i > 0 {
                 write!(f, ", ")?;
@@ -337,7 +322,6 @@ impl fmt::Debug for CompressedFixedVec {
 }
 
 impl PartialEq for CompressedFixedVec {
-    // Removed const N and where clause
     fn eq(&self, other: &Self) -> bool {
         if self.len != other.len {
             return false;
@@ -345,19 +329,15 @@ impl PartialEq for CompressedFixedVec {
         self.iter().zip(other.iter()).all(|(a, b)| a == b)
     }
 }
-impl Eq for CompressedFixedVec // Removed const N and where clause
-{
-}
+impl Eq for CompressedFixedVec {}
 
 // Iterator
 pub struct CompressedVecIter<'a> {
-    // Removed const N
-    vec: &'a CompressedFixedVec, // Removed <N>
+    vec: &'a CompressedFixedVec,
     current: usize,
 }
 
 impl Iterator for CompressedVecIter<'_> {
-    // Removed const N
     type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
         if self.current < self.vec.len() {
@@ -370,7 +350,6 @@ impl Iterator for CompressedVecIter<'_> {
     }
 }
 impl ExactSizeIterator for CompressedVecIter<'_> {
-    // Removed const N
     fn len(&self) -> usize {
         self.vec.len() - self.current
     }
@@ -378,13 +357,11 @@ impl ExactSizeIterator for CompressedVecIter<'_> {
 
 // IntoIterator
 pub struct CompressedVecIntoIter {
-    // Removed const N
-    vec: CompressedFixedVec, // Removed <N>
+    vec: CompressedFixedVec,
     current: usize,
 }
 
 impl Iterator for CompressedVecIntoIter {
-    // Removed const N
     type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
         if self.current < self.vec.len() {
@@ -397,16 +374,14 @@ impl Iterator for CompressedVecIntoIter {
     }
 }
 impl ExactSizeIterator for CompressedVecIntoIter {
-    // Removed const N
     fn len(&self) -> usize {
         self.vec.len() - self.current
     }
 }
 
 impl IntoIterator for CompressedFixedVec {
-    // Removed const N and where clause
     type Item = u8;
-    type IntoIter = CompressedVecIntoIter; // Removed <N>
+    type IntoIter = CompressedVecIntoIter;
     fn into_iter(self) -> Self::IntoIter {
         CompressedVecIntoIter {
             vec: self,
@@ -417,7 +392,6 @@ impl IntoIterator for CompressedFixedVec {
 
 // Borsh (for Anchor)
 impl AnchorSerialize for CompressedFixedVec {
-    // Removed const N and where clause
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
         borsh::BorshSerialize::serialize(&self.len, writer)?;
         let num_data_bytes = packed_bytes_count(self.len(), BITS_PER_ELEMENT);
@@ -429,19 +403,17 @@ impl AnchorSerialize for CompressedFixedVec {
 }
 
 impl AnchorDeserialize for CompressedFixedVec {
-    // Removed const N and where clause
     fn deserialize(buf: &mut &[u8]) -> Result<Self, std::io::Error> {
         let len: u16 = borsh::BorshDeserialize::deserialize(buf)?;
 
         if len as usize > CAPACITY {
-            // Use CAPACITY
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Deserialized length exceeds capacity",
             ));
         }
 
-        let mut data_arr = [0u8; packed_bytes_count(CAPACITY, BITS_PER_ELEMENT)]; // Use CAPACITY
+        let mut data_arr = [0u8; packed_bytes_count(CAPACITY, BITS_PER_ELEMENT)];
         let num_data_bytes_to_read = packed_bytes_count(len as usize, BITS_PER_ELEMENT);
 
         if num_data_bytes_to_read > 0 {
@@ -476,14 +448,12 @@ impl AnchorDeserialize for CompressedFixedVec {
 
 // Serde
 impl Serialize for CompressedFixedVec {
-    // Removed const N and where clause
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let mut seq = serializer.serialize_seq(Some(self.len()))?;
         for val in self.iter() {
-            // Use existing iter()
             seq.serialize_element(&val)?;
         }
         seq.end()
@@ -491,22 +461,20 @@ impl Serialize for CompressedFixedVec {
 }
 
 impl<'de> Deserialize<'de> for CompressedFixedVec {
-    // Removed const N and where clause
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct VecVisitor; // Removed const V_N and where clause
+        struct VecVisitor;
 
         impl<'de> Visitor<'de> for VecVisitor {
-            // Removed const V_N and where clause
-            type Value = CompressedFixedVec; // Removed <V_N>
+            type Value = CompressedFixedVec;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str(&format!(
                     "a sequence of u8 numbers (0-{}) of at most {} elements",
                     MAX_VALUE_U6, CAPACITY
-                )) // Use CAPACITY
+                ))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -525,10 +493,9 @@ impl<'de> Deserialize<'de> for CompressedFixedVec {
                         if push_err_msg == "CompressedFixedVec is full" {
                             return Err(serde::de::Error::custom(format_args!(
                                 "Too many elements for CompressedFixedVec capacity {}",
-                                CAPACITY // Use CAPACITY
+                                CAPACITY
                             )));
                         } else {
-                            // Likely "Value too large for u6" or other internal_set error
                             return Err(serde::de::Error::custom(format_args!(
                                 "Invalid u6 value or other push error: {} (value: {})",
                                 push_err_msg, value
@@ -539,23 +506,21 @@ impl<'de> Deserialize<'de> for CompressedFixedVec {
                 Ok(vec)
             }
         }
-        deserializer.deserialize_seq(VecVisitor) // Removed <N>
+        deserializer.deserialize_seq(VecVisitor)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Note: Tests will need significant adaptation as CAPACITY is now 256.
-    // Many tests were written for small N.
 
     #[test]
     fn test_new_empty_full_capacity() {
         let vec: CompressedFixedVec = CompressedFixedVec::new();
         assert_eq!(vec.len(), 0);
         assert!(vec.is_empty());
-        assert!(!vec.is_full()); // Assuming CAPACITY (256) > 0
-        assert_eq!(vec.capacity(), CAPACITY); // Check against global CAPACITY
+        assert!(!vec.is_full());
+        assert_eq!(vec.capacity(), CAPACITY);
     }
 
     #[test]
@@ -618,9 +583,7 @@ mod tests {
 
     #[test]
     fn test_fill_clear() {
-        let mut vec: CompressedFixedVec = CompressedFixedVec::new(); // N is fixed
-                                                                     // This test used N=5. For N=CAPACITY, the data array will be much larger.
-                                                                     // The logic of fill and clear should still hold.
+        let mut vec: CompressedFixedVec = CompressedFixedVec::new();
         vec.fill(42).unwrap();
         assert!(vec.is_full());
         assert_eq!(vec.len(), CAPACITY);
@@ -688,14 +651,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "Value out of u6 range")]
     fn test_get_mut_set_panic_value_range() {
-        let mut vec: CompressedFixedVec = CompressedFixedVec::new(); // N is fixed
+        let mut vec: CompressedFixedVec = CompressedFixedVec::new();
         vec.push(0).unwrap();
         vec.get_mut(0).unwrap().set(64);
     }
 
     #[test]
     fn test_iter() {
-        let mut vec: CompressedFixedVec = CompressedFixedVec::new(); // N is fixed
+        let mut vec: CompressedFixedVec = CompressedFixedVec::new();
         vec.push(5).unwrap();
         vec.push(15).unwrap();
         vec.push(25).unwrap();
@@ -709,7 +672,7 @@ mod tests {
 
     #[test]
     fn test_into_iter() {
-        let mut vec: CompressedFixedVec = CompressedFixedVec::new(); // N is fixed
+        let mut vec: CompressedFixedVec = CompressedFixedVec::new();
         vec.push(1).unwrap();
         vec.push(2).unwrap();
         vec.push(3).unwrap();

@@ -35,8 +35,6 @@ pub struct RoundState<T: NodeIdentity> {
 
 impl<T: NodeIdentity> RoundState<T> {
     pub fn new() -> Self {
-        let mut client_times = FixedVec::new();
-        let _ = client_times.fill(0_u16);
         Self {
             height: 0,
             step: 0,
@@ -51,7 +49,7 @@ impl<T: NodeIdentity> RoundState<T> {
             committee_info: None,
             batch_ids_not_yet_trained_on: None,
             self_distro_results: vec![],
-            client_times,
+            client_times: FixedVec::filled_with(0u16),
             training_started_at: None,
         }
     }

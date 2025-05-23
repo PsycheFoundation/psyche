@@ -127,7 +127,7 @@ impl WitnessStep {
 
         let mut proposed_batch_sizes = CompressedFixedVec::new();
         let _ = proposed_batch_sizes.fill(0);
-        for i in 0..assigments_vec.len() {
+        for (i, _) in assigments_vec.iter().enumerate() {
             let res = proposed_batch_sizes.set(i, assigments_vec[i]);
             if res.is_err() {
                 error!("Failed to set batch size for client {}: {:?}", i, res);
