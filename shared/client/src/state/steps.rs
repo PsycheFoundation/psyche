@@ -949,7 +949,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     pub async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), ApplyStateError> {
         let new_state = match &mut self.0 {
             InitStage::NotYetInitialized(init_info @ Some(..))
-                if state.run_state == RunState::Warmup =>
+            // We run the initialization only when we are sure that we didn't just recently joined in Warmup
+            // If this is the case, then our ID won't be present in the list of clients available for this epoch
+                if state.run_state == RunState::Warmup && state.epoch_state.clients.iter().any(|c| c.id == init_info.as_ref().unwrap().init_config.identity) =>
             {
                 // Take ownership of init_info using std::mem::take
                 let init_info = init_info.take().unwrap();
