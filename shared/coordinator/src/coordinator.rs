@@ -1106,7 +1106,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 .clients
                 .iter()
                 .map(|c| {
-                    batch_value_from_index(c.assigned_batch_size as usize, target_batch_size, 255)
+                    batch_value_from_index(c.assigned_batch_size as usize, target_batch_size, 63)
                 })
                 .sum();
 
@@ -1125,16 +1125,30 @@ impl<T: NodeIdentity> Coordinator<T> {
                 for client in self.epoch_state.clients.iter_mut() {
                     // Skip clients with 0 batch size if any (should not happen with valid witnesses)
                     if client.assigned_batch_size == 0 {
+                        msg!(
+                            "[witness_batch] Client {} has 0 batch size, skipping scaling",
+                            client.id
+                        );
                         continue;
                     }
                     let batch_val = batch_value_from_index(
                         client.assigned_batch_size as usize,
                         target_batch_size,
-                        255,
+                        63,
                     );
                     let scaled_val = (batch_val as f64 * scale_factor).max(1.0).round() as u16;
                     client.assigned_batch_size =
-                        nearest_index_in_sequence(scaled_val, target_batch_size, 255);
+                        nearest_index_in_sequence(scaled_val, target_batch_size, 63);
+                    msg!(
+                        "[witness_batch] Client {} scaled batch size: (idx={}) {}",
+                        client.id,
+                        client.assigned_batch_size,
+                        batch_value_from_index(
+                            client.assigned_batch_size as usize,
+                            target_batch_size,
+                            63,
+                        )
+                    );
                 }
 
                 // Recalculate total assigned batch size after scaling
@@ -1482,11 +1496,11 @@ fn batch_value_from_index(index: usize, max_value: u16, steps: usize) -> u16 {
 }
 
 fn nearest_index_in_sequence(target: u16, max_value: u16, steps: usize) -> u8 {
-    if steps <= 1 {
+    if steps <= 1 || target == 0 {
         return 0;
     }
 
     let increment = (max_value - 1) as f64 / (steps - 1) as f64;
     let index = ((target as f64 - 1.0) / increment).round();
-    index.clamp(0.0, (steps - 1) as f64) as u8
+    index.clamp(1.0, (steps - 1) as f64) as u8
 }
