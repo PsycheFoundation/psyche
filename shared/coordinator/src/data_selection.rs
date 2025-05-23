@@ -4,6 +4,28 @@ use anchor_lang::prelude::msg;
 use psyche_core::{deterministic_shuffle, BatchId, ClosedInterval, NodeIdentity};
 use std::{collections::BTreeMap, fmt};
 
+/// Calculates the actual batch size value from an index, a maximum value, and the number of steps.
+/// The sequence of values ranges from 1 to `max_value`.
+/// `index` is expected to be `0 <= index < steps`.
+fn batch_value_from_index(index: usize, max_value: u16, steps: usize) -> u16 {
+    if max_value == 0 || steps <= 1 {
+        return 0;
+    }
+
+    // Ensure max_value is at least 1 for the formula `1.0 + ...` if it wasn't 0 initially.
+    let effective_max_value = max_value.max(1);
+
+    // Increment calculates the step size.
+    // (effective_max_value - 1) is the range to be covered (e.g., if max is 100, range is 99, values from 1 to 100).
+    // (steps - 1) is the number of intervals.
+    let increment = (effective_max_value as f64 - 1.0) / (steps as f64 - 1.0);
+
+    // Calculate value: starts at 1.0 and increases by increment for each index step.
+    let value = 1.0 + (index as f64 * increment);
+
+    value.round().max(0.0) as u16
+}
+
 /// Assigns data batches to nodes based on committee roles.  
 pub fn assign_data_for_state<T: NodeIdentity>(
     coordinator: &Coordinator<T>,
@@ -39,15 +61,32 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
 
+    let max_round_batch_size = coordinator.get_target_global_batch_size(Some(round));
+    let num_steps_for_batch_size = 64;
+
     // Use assigned batch sizes for batch size assignments
     for (client_index, node) in trainer_nodes {
-        let mut node_batch_size =
-            coordinator.epoch_state.clients[client_index].assigned_batch_size as u64;
+        let batch_size_index =
+            coordinator.epoch_state.clients[client_index].assigned_batch_size as usize;
 
-        // We don't want nodes not training so if there was no batch size assigned, we assign 1 at least
+        let mut node_batch_size = batch_value_from_index(
+            batch_size_index,
+            max_round_batch_size,
+            num_steps_for_batch_size,
+        ) as u64;
+
+        // We don't want nodes not training so if there was no batch size assigned (or calculated as 0),
+        // we assign 1 at least.
         if node_batch_size == 0 {
             node_batch_size = 1u64;
         }
+
+        msg!(
+            "[assign_data_for_state] node: {:?}, batch_size_index: {}, batch_size: {}",
+            node,
+            batch_size_index,
+            node_batch_size
+        );
 
         let end_index = current_index + node_batch_size - 1;
         assignments.insert(
@@ -77,7 +116,7 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
     let mut current = start;
 
     for i in 0..num_trainer_nodes {
-        let node_size = base_size + if i < remainder { 1 } else { 0 };
+        let node_size: u64 = base_size + if i < remainder { 1 } else { 0 };
 
         if node_size > 0 {
             let batch_end = current + node_size - 1;
