@@ -523,7 +523,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .previous_round()
             .ok_or(ApplyError::NoActiveRound)?
             .witnesses;
-        let batch_ids = get_batch_ids_for_round(
+        /*let batch_ids = get_batch_ids_for_round(
             state
                 .previous_previous_round()
                 .ok_or(ApplyError::NoActiveRound)?,
@@ -534,7 +534,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 .ok_or(ApplyError::NoActiveRound)?
                 .2
                 .get_num_trainer_nodes(),
-        );
+        );*/
+
+        // Get the BatchIds from the actual assignments made for the previous_round.
+        // These are the keys of the data_assignments map stored in the client's previous_round state.
+        let assigned_batch_ids_to_process: Vec<BatchId> = previous_round.data_assignments.keys().cloned().collect();
 
         Ok(tokio::task::spawn(async move {
                 let mut distro_results: Vec<Vec<DistroResult>> = Vec::new();
@@ -542,7 +546,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 trace!("[distro_results] Have commitments for batches {:?}", commitments.keys().collect::<Vec<_>>());
                 trace!("[distro_results] Have payloads for hashes {:?}", payloads.keys().collect::<Vec<_>>());
 
-                for batch_id in batch_ids {
+                for batch_id in assigned_batch_ids_to_process {
                     let batch_commitments = match commitments.get(&batch_id) {
                         Some(x) => x,
                         None => {
