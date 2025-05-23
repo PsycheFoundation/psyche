@@ -260,11 +260,11 @@ impl WitnessStep {
 
 /// Finds the index of the value in `sequence` closest to `target`
 fn nearest_index_in_sequence(target: u16, max_value: u16, steps: usize) -> u8 {
-    if steps <= 1 {
+    if target == 0 || steps <= 1 {
         return 0;
     }
 
     let increment = (max_value - 1) as f64 / (steps - 1) as f64;
     let index = ((target as f64 - 1.0) / increment).round();
-    index.clamp(0.0, (steps - 1) as f64) as u8
+    index.clamp(1.0, (steps - 1) as f64) as u8
 }
