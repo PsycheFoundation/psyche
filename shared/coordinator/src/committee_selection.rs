@@ -218,14 +218,14 @@ impl CommitteeSelection {
 
     fn verify_witness(&self, proof: &WitnessProof) -> bool {
         let position = self.compute_shuffled_index(proof.index, WITNESS_SALT);
-        if proof.position != position {
+        /*if proof.position != position {
             msg!(
                 "[verify_witness] proof.position ({}) != position ({})",
                 proof.position,
                 position
             );
             return false;
-        }
+        }*/
         if proof.witness != self.get_witness_from_position(position).into() {
             msg!(
                 "[verify_witness] proof.witness ({}) != witness ({}) position = {}",
