@@ -22,7 +22,7 @@ impl PIQA {
     }
 
     pub const fn name() -> &'static str {
-        "piqa"
+        "PIQA"
     }
 
     fn row_to_document(dataset: &Dataset, row: Row) -> Document {
