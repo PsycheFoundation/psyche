@@ -491,7 +491,12 @@ impl<T: NodeIdentity> Coordinator<T> {
         round
             .witnesses
             .push(witness)
-            .map_err(|_| CoordinatorError::WitnessesFull)?;
+            .map_err(|_| {
+                msg!("[warmup_witness] failed to add witness");
+                CoordinatorError::WitnessesFull
+            })?;
+
+        msg!("[warmup_witness] witness added");
 
         if round.witnesses.len() == witness_nodes {
             self.start_round_train(unix_timestamp, random_seed, 0);
@@ -507,6 +512,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
+            msg!("[witness] halted");
             return Err(CoordinatorError::Halted);
         }
 
@@ -520,6 +526,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.run_state,
             RunState::RoundWitness | RunState::RoundTrain,
         ) {
+            msg!("[witness] invalid run state {}", self.run_state);
             return Err(CoordinatorError::InvalidRunState);
         }
 
@@ -527,14 +534,22 @@ impl<T: NodeIdentity> Coordinator<T> {
             from,
             &witness.proof,
             &self.epoch_state.clients,
-        ) || witness.proof.witness.is_false()
+        )
         {
+            msg!("[witness] invalid witness: verify_witness_for_client failed");
+            msg!("[witness] witness: {:?}", witness);
+            return Err(CoordinatorError::InvalidWitness);
+        }
+
+        if witness.proof.witness.is_false() {
+            msg!("[witness] invalid witness: witness.proof.witness is false");
             return Err(CoordinatorError::InvalidWitness);
         }
 
         let round = self.current_round().unwrap();
         for witness in round.witnesses.iter() {
             if self.epoch_state.clients[witness.proof.index as usize].id == *from {
+                msg!("[witness] duplicate witness");
                 return Err(CoordinatorError::DuplicateWitness);
             }
         }
@@ -542,9 +557,13 @@ impl<T: NodeIdentity> Coordinator<T> {
         round
             .witnesses
             .push(witness)
-            .map_err(|_| CoordinatorError::WitnessesFull)?;
+            .map_err(|_| {
+                msg!("[witness] failed to add witness");
+                CoordinatorError::WitnessesFull
+            })?;
 
         if round.witnesses.len() == witness_nodes && !(self.run_state == RunState::RoundWitness) {
+            msg!("[witness] all witnesses received, moving to round train");
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
 

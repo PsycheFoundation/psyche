@@ -1,6 +1,9 @@
 use crate::{Client, Coordinator, CoordinatorError};
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{
+    prelude::{borsh, msg},
+    AnchorDeserialize, AnchorSerialize, InitSpace,
+};
 use bytemuck::Zeroable;
 use psyche_core::{compute_shuffled_index, sha256, sha256v, NodeIdentity, SmallBoolean};
 use serde::{Deserialize, Serialize};
@@ -193,7 +196,15 @@ impl CommitteeSelection {
         proof: &WitnessProof,
         clients: &[Client<T>],
     ) -> bool {
-        Self::verify_client(client_id, proof.index, clients) && self.verify_witness(proof)
+        if !Self::verify_client(client_id, proof.index, clients) {
+            msg!("[verify_witness_for_client] Self::verify_client failed");
+            return false;
+        }
+        if !self.verify_witness(proof) {
+            msg!("[verify_witness_for_client] self.verify_witness failed");
+            return false;
+        }
+        true
     }
 
     fn verify_client<T: NodeIdentity>(client_id: &T, index: u64, clients: &[Client<T>]) -> bool {
@@ -207,8 +218,24 @@ impl CommitteeSelection {
 
     fn verify_witness(&self, proof: &WitnessProof) -> bool {
         let position = self.compute_shuffled_index(proof.index, WITNESS_SALT);
-        proof.position == position
-            && proof.witness == self.get_witness_from_position(position).into()
+        if proof.position != position {
+            msg!(
+                "[verify_witness] proof.position ({}) != position ({})",
+                proof.position,
+                position
+            );
+            return false;
+        }
+        if proof.witness != self.get_witness_from_position(position).into() {
+            msg!(
+                "[verify_witness] proof.witness ({}) != witness ({}) position = {}",
+                proof.witness,
+                self.get_witness_from_position(position),
+                position
+            );
+            return false;
+        }
+        true
     }
 
     fn compute_shuffled_index(&self, index: u64, salt: &str) -> u64 {
