@@ -739,6 +739,28 @@ impl SolanaBackend {
         });
     }
 
+    pub async fn checkpoint(
+        &self,
+        coordinator_instance: Pubkey,
+        coordinator_account: Pubkey,
+        repo: HubRepo,
+    ) -> Result<Signature> {
+        let payer = self.program_coordinators[0].payer();
+        let signature = self.program_coordinators[0]
+            .request()
+            .accounts(
+                psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
+                    user: payer,
+                    coordinator_instance,
+                    coordinator_account,
+                },
+            )
+            .args(psyche_solana_coordinator::instruction::Checkpoint { repo })
+            .send()
+            .await?;
+        Ok(signature)
+    }
+
     pub fn send_checkpoint(
         &self,
         coordinator_instance: Pubkey,
