@@ -183,9 +183,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     let all_batch_ids = get_batch_ids_for_round(
                         state.current_round().unwrap(),
                         state,
-                        committee_selection.get_num_trainer_nodes(),
+                        &committee_selection,
                     );
                     let num_all_batch_ids = all_batch_ids.len();
+                    info!(
+                        "all_batch_ids: {:?}, len: {}",
+                        all_batch_ids, num_all_batch_ids
+                    );
                     let batch_ids_not_yet_trained_on: Arc<Mutex<BatchIdSet>> =
                         Arc::new(Mutex::new(all_batch_ids.into_iter().collect()));
                     (

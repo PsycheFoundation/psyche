@@ -1291,16 +1291,16 @@ impl<T: NodeIdentity> Coordinator<T> {
             );
         }
 
-            // If we reach the end of an epoch or if we don't reach the min number of
-            // clients or registered witnesses for the current round, we change to Cooldown
-            if height == self.config.rounds_per_epoch - 1
-                || self.epoch_state.clients.len() < self.config.min_clients as usize
-                || num_witnesses < self.witness_quorum(num_witnesses)
-                || self.pending_pause.is_true()
-            {
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
+        // If we reach the end of an epoch or if we don't reach the min number of
+        // clients or registered witnesses for the current round, we change to Cooldown
+        if height == self.config.rounds_per_epoch - 1
+            || self.epoch_state.clients.len() < self.config.min_clients as usize
+            || num_witnesses < self.witness_quorum(num_witnesses)
+            || self.pending_pause.is_true()
+        {
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
+        }
 
         self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)

@@ -619,17 +619,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     if remaining_batch_ids.contains(&batch_id) {
                         // first received payload for this batch id, vote for it in consensus
                         broadcast_bloom.add(&commitment.data_hash);
-                        trace!("Adding batch {batch_id} to broadcast bloom");
+                        info!("Adding batch {batch_id} to broadcast bloom");
                     } else {
-                        trace!(
+                        info!(
                             "Don't have {} in our remaining batch IDs {:?}, discarding",
-                            batch_id,
-                            remaining_batch_ids
+                            batch_id, remaining_batch_ids
                         );
                     }
                 }
                 None => {
-                    trace!(
+                    info!(
                         "Already submitted witness, not adding {} to participant bloom",
                         from
                     );
@@ -638,17 +637,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
             remaining_batch_ids.remove(&batch_id);
 
-            trace!(
+            info!(
                 "Remaining batches to download for step {}: {:?}",
-                distro_result.step,
-                remaining_batch_ids
+                distro_result.step, remaining_batch_ids
             );
 
             *num_batch_ids_left = remaining_batch_ids.len();
 
             remaining_batch_ids.is_empty()
         } else {
-            trace!("All batches already trained on, discarding batch {batch_id}");
+            info!("All batches already trained on, discarding batch {batch_id}");
             false
         };
 

@@ -1,4 +1,4 @@
-use crate::{Committee, CommitteeSelection, Coordinator, Round};
+use crate::{Client, Committee, CommitteeSelection, Coordinator, Round};
 
 use anchor_lang::prelude::msg;
 use psyche_core::{
@@ -87,29 +87,55 @@ pub fn assign_data_for_state<T: NodeIdentity>(
 pub fn get_batch_ids_for_round<T: NodeIdentity>(
     round: &Round,
     coordinator: &Coordinator<T>,
-    num_trainer_nodes: u64,
+    committee_selection: &CommitteeSelection, // Pass CommitteeSelection to determine trainers and their order
 ) -> Vec<BatchId> {
-    let start = round.data_index;
-    let total_size = coordinator.get_target_global_batch_size(Some(round)) as u64;
-    let end = start + total_size;
-
-    let base_size = total_size / num_trainer_nodes;
-    let remainder = total_size % num_trainer_nodes;
-
-    let mut batch_ids = Vec::with_capacity(num_trainer_nodes as usize);
-    let mut current = start;
-
-    for i in 0..num_trainer_nodes {
-        let node_size: u64 = base_size + if i < remainder { 1 } else { 0 };
-
-        if node_size > 0 {
-            let batch_end = current + node_size - 1;
-            batch_ids.push(BatchId(ClosedInterval::new(current, batch_end)));
-            current = batch_end + 1;
-
-            if current >= end {
-                break;
+    // Get the list of trainer nodes and their original indices, similar to assign_data_for_state
+    // The elements are (original_client_index, reference_to_client_data)
+    let mut trainer_info: Vec<(usize, &Client<T>)> = (0..coordinator.epoch_state.clients.len())
+        .filter_map(|i| {
+            let client = &coordinator.epoch_state.clients[i];
+            let proof = committee_selection.get_committee(i as u64);
+            if matches!(proof.committee, Committee::Trainer) {
+                Some((i, client))
+            } else {
+                // This part ensures that only trainers are selected, matching assign_data_for_state's filtering.
+                // The asserts in assign_data_for_state for TieBreaker/Verifier are for specific zero-config cases
+                // and don't change which nodes are considered trainers for data assignment.
+                None
             }
+        })
+        .collect();
+
+    // Apply the same deterministic shuffle as in assign_data_for_state
+    // This ensures the batch IDs are generated in the same order as assignments are made.
+    deterministic_shuffle(&mut trainer_info, round.random_seed);
+
+    let mut batch_ids = Vec::with_capacity(trainer_info.len());
+    let mut current_data_idx = round.data_index;
+    // This is the target total number of items for the round, used as max_value for index_to_value.
+    let max_round_batch_size_val = coordinator.get_target_global_batch_size(Some(round));
+
+    for (client_original_idx, _client_ref) in &trainer_info {
+        // Get the assigned_batch_size (index) for the current trainer node
+        let batch_size_idx =
+            coordinator.epoch_state.clients[*client_original_idx].assigned_batch_size;
+
+        // Convert the index to an actual number of items for this node's batch
+        let mut node_batch_actual_size = index_to_value(
+            batch_size_idx,
+            max_round_batch_size_val,
+            BATCH_SIZE_INDEX_BITS,
+        ) as u64;
+
+        // Ensure a minimum batch size of 1, consistent with assign_data_for_state
+        if node_batch_actual_size == 0 {
+            node_batch_actual_size = 1u64;
+        }
+
+        if node_batch_actual_size > 0 {
+            let end_data_idx = current_data_idx + node_batch_actual_size - 1;
+            batch_ids.push(BatchId(ClosedInterval::new(current_data_idx, end_data_idx)));
+            current_data_idx = end_data_idx + 1; // Move to the start of the next batch
         }
     }
 
