@@ -98,7 +98,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                     continue;
                                 }
                                 Err(err) => {
-                                    error!("Data fetch error: {}", err);
+                                    error!("Data fetch error: {err:#}");
                                     return;
                                 }
                             }

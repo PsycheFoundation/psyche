@@ -22,6 +22,7 @@ const TopBox = styled.div`
 	flex-direction: column;
 	gap: 24px;
 	flex-shrink: 0;
+	position: relative;
 `
 
 const ContributePoolLine = styled.div`
@@ -118,9 +119,12 @@ const ProgressContainer = styled.div`
 `
 
 const RankTable = styled.table`
-	flex-shrink: 1;
-	flex-grow: 1;
-	flex-direction: column;
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	width: 100%;
 	margin-top: 16px;
 	border-collapse: collapse;
 
@@ -129,19 +133,20 @@ const RankTable = styled.table`
 		text-transform: uppercase;
 		position: sticky;
 		top: 0;
+		z-index: 1;
 		.theme-light & {
 			background: ${slate[500]};
-			border-color: ${slate[500]};
+			outline-color: ${slate[500]};
 			color: ${slate[0]};
 		}
 		.theme-dark & {
 			background: ${forest[600]};
-			border-color: ${forest[600]};
+			outline-color: ${forest[600]};
 			color: ${forest[300]};
 		}
-		border: 1px solid;
-		border-top: 4px solid;
-		border-bottom: 4px solid;
+		outline: 1px solid;
+		outline-top: 4px solid;
+		outline-bottom: 4px solid;
 	}
 
 	& tbody tr {
@@ -215,18 +220,11 @@ const OrbCanvas = styled.canvas`
 `
 
 const TableContainer = styled.div`
-	display: flex;
-	flex-shrink: 1;
-	flex-grow: 1;
-	flex-basis: 256px;
+	position: relative;
+	height: 100%;
 	overflow-y: auto;
+	min-height: 256px;
 `
-
-const Spacer = styled.div`
-	flex-grow: 9999999999999999;
-	flex-shrink: 1;
-`
-
 const AddressBox = styled.td`
 	width: 100%;
 	max-width: 0;
@@ -419,7 +417,6 @@ export function ContributeCompute({
 					</tbody>
 				</RankTable>
 			</TableContainer>
-			<Spacer />
 		</>
 	)
 }
