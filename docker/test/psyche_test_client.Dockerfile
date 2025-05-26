@@ -1,7 +1,7 @@
 FROM psyche-base AS base
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y libssl-dev libgomp1 curl wget build-essential iproute2 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libssl-dev libgomp1 curl wget build-essential iproute2 libfontconfig-dev && rm -rf /var/lib/apt/lists/*
 
 # Install solana
 RUN sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"

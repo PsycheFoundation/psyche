@@ -173,7 +173,8 @@ export async function startWatchCoordinatorChainLoop(
 	coordinator: Program<PsycheSolanaCoordinator>,
 	websocketRpcUrl: string,
 	minSlot: number,
-	cancelled: { cancelled: boolean }
+	cancelled: { cancelled: boolean },
+	onError: (error: unknown) => void
 ) {
 	const getCoordinatorStateWithRetries = makeRetryPromise(
 		getRunCoordinatorState
@@ -186,6 +187,7 @@ export async function startWatchCoordinatorChainLoop(
 		websocketRpcUrl,
 		minSlot,
 		cancelled,
+		onError,
 		{
 			onStartCatchup() {
 				return new UpdateManager()

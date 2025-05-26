@@ -15,7 +15,10 @@ import { ResponsiveLineGraph } from '../../components/Chart.js'
 import { useMemo, useState } from 'react'
 import { css } from '@linaria/core'
 import { InfoChit } from '../../components/InfoChit.js'
-import { RunStateIndicator } from '../../components/RunStateIndicator.js'
+import {
+	runHasState,
+	RunStateIndicator,
+} from '../../components/RunStateIndicator.js'
 import { fetchRunStreaming } from '../../fetchRuns.js'
 import { useStreamingLoaderData } from '../../useStreamingData.js'
 import { RunBox } from '../../components/RunBox.js'
@@ -183,7 +186,7 @@ function RouteComponent() {
 							</Button>
 						)}
 						<StatsAndLiveRunContainer>
-							{run.state && run.info.status.type !== 'completed' && (
+							{runHasState(run) && run.info.status.type !== 'completed' && (
 								<RunStateActiveContainer
 									className="liveContainer"
 									active={
@@ -193,7 +196,7 @@ function RouteComponent() {
 								>
 									<RunStateIndicator
 										paused={run.info.status.type === 'paused'}
-										state={run.state}
+										state={run}
 										recentTxs={run.recentTxs}
 										disconnected={!!runData?.disconnected}
 									/>

@@ -1,7 +1,12 @@
-{ self, inputs, ... }:
+{ self, ... }:
 {
   perSystem =
-    { system, pkgs, ... }:
+    {
+      system,
+      pkgs,
+      inputs',
+      ...
+    }:
     let
 
       inherit (pkgs.psycheLib)
@@ -16,7 +21,7 @@
         src
         ;
 
-      solana-cli = inputs.solana-pkgs.packages.${system}.solana;
+      solana-cli = inputs'.solana-pkgs.packages.solana;
 
       rustPackageNames = [
         "psyche-solana-client"

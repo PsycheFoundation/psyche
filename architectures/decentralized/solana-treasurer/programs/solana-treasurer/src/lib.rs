@@ -6,12 +6,9 @@ use logic::*;
 
 declare_id!("77mYTtUnEzSYVoG1JtWCjKAdakSvYDkdPPy8DoGqr5RP");
 
-pub fn find_run(run_id: &str) -> Pubkey {
+pub fn find_run(index: u64) -> Pubkey {
     Pubkey::find_program_address(
-        &[
-            state::Run::SEEDS_PREFIX,
-            run_identity_from_string(run_id).as_ref(),
-        ],
+        &[state::Run::SEEDS_PREFIX, index.to_le_bytes().as_ref()],
         &crate::ID,
     )
     .0
@@ -27,13 +24,6 @@ pub fn find_participant(run: &Pubkey, user: &Pubkey) -> Pubkey {
         &crate::ID,
     )
     .0
-}
-
-pub fn run_identity_from_string(string: &str) -> Pubkey {
-    let mut bytes = vec![];
-    bytes.extend_from_slice(string.as_bytes());
-    bytes.resize(32, 0);
-    Pubkey::new_from_array(bytes.try_into().unwrap())
 }
 
 #[program]

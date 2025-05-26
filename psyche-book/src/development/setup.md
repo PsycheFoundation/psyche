@@ -2,22 +2,40 @@
 
 ## Installation and Setup
 
+Psyche uses `nix` + flakes to install every single dependency and development tool Psyche needs to run and be developed.
+This is the preferred way of working on Psyche, as it guarantees a consistent development and build process regardless of your machine's specific configuration.
+
+If you can't / don't want to use Nix, it's also possible to manually install all the required deps for Psyche.
+
 ### Any Linux, via Nix
 
-Psyche can use `nix` + flakes as a build system, to make your life easier.
+#### Installing Nix
+
 To install `nix`, simply run `curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install` or find it at your local package manager.
 
-You can optionally use `direnv` to automatically enter a Nix environment when you `cd` into the Psyche folder.
-Either option will install every single dependency and development tool Psyche needs to run and be developed.
+#### Binary cache
 
-#### Using `direnv`
+To speed up your builds & your local dev shell, we recommend enabling the binary cache from `garnix`, our CI provider.
+
+In order to use the cache that garnix provides, change your `nix.conf`, adding `https://cache.garnix.io` to substituters, and `cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=` to `trusted-public-keys`.
+
+If you've just installed Nix via the Determinite Systems installer above, you can do this by adding these lines to `/etc/nix/nix.conf`:
+
+```conf
+extra-substituters = https://cache.garnix.io
+extra-trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=
+```
+
+#### Setup Using `direnv`
+
+You can optionally use `direnv` to automatically enter a Nix environment when you `cd` into the Psyche folder.
 
 Install `direnv` from your system's package manager.
 After running `direnv allow` in the Psyche directory once, your terminal will automatically enter a development shell when you subsequently `cd` into the Psyche directory.
 
-#### Without `direnv`
+#### Setup Without `direnv`
 
-Enter the Psyche directory, then run `nix develop` to enter a development shell.
+Each time you open a new shell in the Psyche directory, run `nix develop` to enter a development shell.
 
 ### Ubuntu
 
@@ -63,7 +81,7 @@ export LD_LIBRARY_PATH=<path_to_libtorch>/lib:$LD_LIBRARY_PATH
 export CUDA_ROOT=/usr/local/cuda-12.4
 ```
 
-This can also be achieved by making a `.cargo/config.toml` file in the checkout path
+These variables can also be provided to cargo by creating a `.cargo/config.toml` file in your home directory
 
 ```toml
 [env]
@@ -103,7 +121,7 @@ cargo install --git https://github.com/coral-xyz/anchor --rev a7a23eea308440a9fa
 This may require
 
 ```bash
-sudo apt install pkg-config libudev-dev libssl-dev
+sudo apt install pkg-config libudev-dev libssl-dev libfontconfig-dev
 ```
 
 ### Windows

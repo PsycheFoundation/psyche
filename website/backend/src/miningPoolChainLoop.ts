@@ -10,7 +10,8 @@ export async function startWatchMiningPoolChainLoop(
 	miningPool: Program<PsycheSolanaMiningPool>,
 	websocketRpcUrl: string,
 	minSlot: number,
-	cancelled: { cancelled: boolean }
+	cancelled: { cancelled: boolean },
+	onError: (error: unknown) => void
 ) {
 	const ourPool = getMiningPoolPDA(miningPool.programId, 0n)
 	await startWatchChainLoop<PsycheMiningPoolInstructionsUnion>()(
@@ -20,6 +21,7 @@ export async function startWatchMiningPoolChainLoop(
 		websocketRpcUrl,
 		minSlot,
 		cancelled,
+		onError,
 		{
 			onStartCatchup(firstStateEver) {
 				return {

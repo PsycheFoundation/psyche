@@ -10,7 +10,6 @@ debug/
 target/
 **/*.rs.bk
 *.pdb
-.cargo/
 
 ### Python ###
 __pycache__
@@ -42,6 +41,7 @@ slurm*
 *.key
 node_modules/
 bindings
+.pre-commit-config.yaml
 
 ### Data folders ###
 /data

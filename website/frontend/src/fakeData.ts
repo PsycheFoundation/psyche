@@ -21,10 +21,11 @@ export const fakeIndexerStatus: IndexerStatus = {
 				'0xdeadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef',
 		},
 		trackedRuns: [
-			{ id: 'run-001', status: { type: 'active' } },
-			{ id: 'run-002', status: { type: 'funding' } },
+			{ id: 'run-001', index: 0, status: { type: 'active' } },
+			{ id: 'run-002', index: 0, status: { type: 'funding' } },
 			{
 				id: 'run-003',
+				index: 0,
 				status: {
 					type: 'completed',
 					at: {
@@ -34,6 +35,7 @@ export const fakeIndexerStatus: IndexerStatus = {
 				},
 			},
 		],
+		errors: [],
 	},
 	miningPool: {
 		status: 'ok',
@@ -44,6 +46,7 @@ export const fakeIndexerStatus: IndexerStatus = {
 			networkGenesis:
 				'0xdeadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef',
 		},
+		errors: [],
 	},
 }
 
@@ -235,6 +238,11 @@ export const fakeContributionInfo: ContributionInfo = {
 			address: '789abcdef0123456789abcdef0123456789abcdef',
 			funding: 80000000000n,
 		},
+		...Array.from({ length: 300 }, (_, i) => ({
+			rank: i + 6,
+			address: '789abcdef0123456789abcdef0123456789abcdef',
+			funding: 80000000000n,
+		})),
 	],
 	collateralMintAddress: 'N/A',
 	miningPoolProgramId: 'N/A',
@@ -243,13 +251,11 @@ export const fakeContributionInfo: ContributionInfo = {
 function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 	const seededRandom = createSeededRandom(seed)
 
-	const numEpochs = Math.round(seededRandom() * 300) + 10
 	const roundsPerEpoch = Math.round(seededRandom() * 10) + 10
 	const minClients = Math.round(seededRandom() * 10) + 2
 	const totalClients = minClients
 
 	const stepsPerEpoch = roundsPerEpoch + 2 + totalClients // +2 for warmup and cooldown, +n for num clients
-	const currentEpoch = Math.min(Math.floor(step / stepsPerEpoch), numEpochs - 1)
 	const epochStep = step % stepsPerEpoch
 
 	const clients = Array.from({ length: totalClients }, (_, i) => {
@@ -340,7 +346,6 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 			phase,
 			phaseStartTime: new Date(Date.now() - seededRandom() * 2_000),
 			round,
-			epoch: currentEpoch,
 			clients,
 			checkpoint: {
 				repo_id: 'PsycheFoundation/Skibbler',
@@ -353,7 +358,6 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 				roundWitnessTime: 2_000,
 				minClients,
 				roundsPerEpoch,
-				numEpochs,
 				lrSchedule: {
 					Cosine: {
 						base_lr: 4.0e-4,

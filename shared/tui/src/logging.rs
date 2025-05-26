@@ -2,6 +2,7 @@ use std::{fs::OpenOptions, path::PathBuf};
 
 use crate::CustomWidget;
 use clap::ValueEnum;
+use console_subscriber::ConsoleLayer;
 use crossterm::event::{Event, KeyCode, MouseEventKind};
 use logfire::{bridges::tracing::LogfireTracingPendingSpanNotSentLayer, config::AdvancedOptions};
 use opentelemetry_sdk::Resource;
@@ -11,7 +12,7 @@ use ratatui::{
     widgets::{Block, Widget},
 };
 use tracing::Level;
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer};
+use tracing_subscriber::{filter::FromEnvError, fmt, layer::SubscriberExt, EnvFilter, Layer};
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget, TuiWidgetEvent, TuiWidgetState};
 
 #[derive(Clone, Debug, Copy, ValueEnum, PartialEq)]
@@ -68,23 +69,30 @@ pub fn init_logging(
         None
     };
 
+    // exclude tokio traces from regular output
     let output_logs_filter = EnvFilter::builder()
         .with_default_directive(level.into())
-        .from_env()?;
+        .from_env()?
+        .add_directive("tokio=off".parse().unwrap())
+        .add_directive("runtime=off".parse().unwrap());
 
-    let make_detailed_logs_filter = || {
-        if std::env::var("WRITE_RUST_LOG").is_ok() {
+    let make_detailed_logs_filter = || -> Result<EnvFilter, FromEnvError> {
+        let filter = if std::env::var("WRITE_RUST_LOG").is_ok() {
             EnvFilter::builder()
                 .with_env_var("WRITE_RUST_LOG")
-                .from_env()
+                .from_env()?
         } else {
             EnvFilter::builder()
                 .with_default_directive(level.into())
-                .from_env()
-        }
+                .from_env()?
+        };
+        Ok(filter
+            .add_directive("tokio=off".parse().unwrap())
+            .add_directive("runtime=off".parse().unwrap()))
     };
 
-    let subscriber = tracing_subscriber::registry();
+    let subscriber =
+        tracing_subscriber::registry().with(ConsoleLayer::builder().with_default_env().spawn());
 
     let tracer = logfire_handler.as_ref().map(|t| t.tracer.tracer().clone());
     let subscriber = match output {

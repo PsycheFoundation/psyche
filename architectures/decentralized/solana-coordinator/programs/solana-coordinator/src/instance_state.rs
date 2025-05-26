@@ -265,7 +265,11 @@ impl CoordinatorInstanceState {
     ) -> Result<()> {
         if self.coordinator.run_state == RunState::Finished {
             return err!(ProgramError::UpdateConfigFinished);
-        } else if !self.coordinator.halted() {
+        } else if !self.coordinator.halted()
+            // these can't be updated without pausing
+            // but metadata can be updated without pausing so it's not included here
+            && (config.is_some() || model.is_some() || progress.is_some())
+        {
             return err!(ProgramError::UpdateConfigNotHalted);
         }
 

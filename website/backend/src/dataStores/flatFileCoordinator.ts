@@ -448,11 +448,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			evals,
 		}
 
-		const lastWitnessUpdate = run.witnessUpdates.at(-1)
 		const summary: Metrics = {
-			bandwidth: lastWitnessUpdate?.[0].bandwidth_per_sec ?? 0,
-			loss: lastWitnessUpdate?.[0].loss ?? Infinity,
-			tokensPerSecond: lastWitnessUpdate?.[0].tokens_per_sec ?? 0,
+			bandwidth: history.bandwidth.at(-1)?.[1] ?? 0,
+			loss: history.loss.at(-1)?.[1] ?? Infinity,
+			tokensPerSecond: history.tokensPerSecond.at(-1)?.[1] ?? 0,
 			lr: run.observedLrByStep.at(-1)?.[1] ?? 0,
 			evals: Object.fromEntries(
 				Object.entries(evals)
@@ -500,7 +499,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				phaseStartTime: new Date(
 					+`${c.coordinator.run_state_start_unix_timestamp.toString()}000`
 				),
-				epoch: c.coordinator.progress.epoch,
 				round: currentRound.height,
 
 				clients: witnessStates,
@@ -509,7 +507,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				config: {
 					minClients: config.init_min_clients,
 					roundsPerEpoch: config.rounds_per_epoch,
-					numEpochs: config.total_steps / config.rounds_per_epoch,
 					cooldownTime: Number(config.cooldown_time),
 					maxRoundTrainTime: Number(config.max_round_train_time),
 					roundWitnessTime: Number(config.round_witness_time),

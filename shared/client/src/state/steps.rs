@@ -202,9 +202,20 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                     // if we get here we've sent our own finished message.
                     // now we just need to wait until we've received everyone else's finished
-                    if self.current_round.clients_finished.len()
-                        != self.coordinator_state.epoch_state.clients.len()
-                    {
+                    let unfinished_clients: Vec<_> = self
+                        .coordinator_state
+                        .epoch_state
+                        .clients
+                        .iter()
+                        .filter_map(|client| {
+                            if self.current_round.clients_finished.contains_key(&client.id) {
+                                None
+                            } else {
+                                Some(client.id)
+                            }
+                        })
+                        .collect();
+                    if !unfinished_clients.is_empty() {
                         return Ok(());
                     }
 
@@ -250,10 +261,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 return Ok(());
             }
 
-            let waiting_for_finished = self.coordinator_state.epoch_state.clients.len()
-                - self.current_round.clients_finished.len();
-            if waiting_for_finished != 0 {
-                trace!("Still waiting on {waiting_for_finished} warmup finish broadcasts");
+            let unfinished_clients: Vec<_> = self
+                .coordinator_state
+                .epoch_state
+                .clients
+                .iter()
+                .filter_map(|client| {
+                    if self.current_round.clients_finished.contains_key(&client.id) {
+                        None
+                    } else {
+                        Some(client.id)
+                    }
+                })
+                .collect();
+            if !unfinished_clients.is_empty() {
+                trace!(
+                    unfinished_clients = ?unfinished_clients,
+                    "Still waiting on {} warmup finish broadcasts",
+                    unfinished_clients.len()
+                );
                 return Ok(());
             }
 
@@ -905,6 +931,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         Self(InitStage::NotYetInitialized(Some(config)))
     }
 
+    pub fn coordinator_state(&self) -> Option<&Coordinator<T>> {
+        match &self.0 {
+            InitStage::NotYetInitialized(..) => None,
+            InitStage::Initializing(init_state) => Some(&init_state.1),
+            InitStage::Running(step_state_machine) => Some(&step_state_machine.coordinator_state),
+        }
+    }
+
     pub async fn try_send_opportunistic_witness(
         &mut self,
     ) -> Result<(), OpportunisticWitnessError> {
@@ -958,7 +992,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     pub async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), ApplyStateError> {
         let new_state = match &mut self.0 {
             InitStage::NotYetInitialized(init_info @ Some(..))
-                if state.run_state == RunState::Warmup =>
+            // We run the initialization only when we are sure that we didn't just recently joined in Warmup
+            // If this is the case, then our ID won't be present in the list of clients available for this epoch
+                if state.run_state == RunState::Warmup && state.epoch_state.clients.iter().any(|c| c.id == init_info.as_ref().unwrap().init_config.identity) =>
             {
                 // Take ownership of init_info using std::mem::take
                 let init_info = init_info.take().unwrap();
@@ -1028,6 +1064,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
             run.set_node_info(node_info)?;
         }
         Ok(())
+    }
+
+    pub fn doing_checkpoint(&self) -> bool {
+        match &self.0 {
+            InitStage::Running(step_state_machine) => match &step_state_machine.active_step {
+                ActiveStep::Cooldown(cooldown_step) => cooldown_step.doing_checkpoint(),
+                _ => false,
+            },
+            _ => false,
+        }
     }
 }
 

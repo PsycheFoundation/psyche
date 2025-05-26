@@ -91,7 +91,7 @@ function RouteComponent() {
 					tracked runs:
 					{coordinator.trackedRuns.map((run) => (
 						<StatusChip status={run.status.type} style={'bold'} inverted>
-							{run.id}
+							{run.id} (v{run.index + 1})
 						</StatusChip>
 					))}
 				</div>

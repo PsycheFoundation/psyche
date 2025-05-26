@@ -18,7 +18,9 @@ use bytemuck::Zeroable;
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_coordinator::{
-    get_data_index_for_step, model::Model, CoordinatorConfig, CoordinatorProgress,
+    get_data_index_for_step,
+    model::{Checkpoint, Model},
+    CoordinatorConfig, CoordinatorProgress,
 };
 use psyche_core::sha256;
 use psyche_network::SecretKey;
@@ -116,7 +118,7 @@ enum Commands {
         #[clap(flatten)]
         wallet: WalletArgs,
 
-        #[clap(short, long, env)]
+        #[clap(long, env)]
         run_id: String,
 
         #[clap(short, long, env)]
@@ -133,10 +135,13 @@ enum Commands {
         run_id: String,
 
         #[clap(long, env)]
-        config_path: PathBuf,
+        config_path: Option<PathBuf>,
 
         #[clap(long, env)]
         restart_from_step: Option<u32>,
+
+        #[clap(long, env)]
+        switch_to_hub: bool,
 
         // metadata
         #[clap(long)]
@@ -343,6 +348,7 @@ async fn async_main() -> Result<()> {
             run_id,
             config_path,
             restart_from_step,
+            switch_to_hub,
             name,
             description,
             num_parameters,
@@ -357,11 +363,6 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let state: State = toml::from_str(std::str::from_utf8(
-                &std::fs::read(&config_path)
-                    .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
-            )?)
-            .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
             let coordinator_instance = find_coordinator_instance(&run_id);
             let coordinator_instance_state = backend
                 .get_coordinator_instance(&coordinator_instance)
@@ -375,6 +376,34 @@ async fn async_main() -> Result<()> {
                 step,
                 epoch_start_data_index: get_data_index_for_step(&account.state.coordinator, step),
             });
+
+            let (config, mut model) = match config_path {
+                Some(config_path) => {
+                    let state: State = toml::from_str(std::str::from_utf8(
+                        &std::fs::read(&config_path).with_context(|| {
+                            format!("failed to read config toml file {config_path:?}")
+                        })?,
+                    )?)
+                    .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
+
+                    (Some(state.config), Some(state.model))
+                }
+                None => (None, None),
+            };
+
+            model = if switch_to_hub {
+                let Model::LLM(mut llm) = model.unwrap_or(account.state.coordinator.model);
+                match llm.checkpoint {
+                    Checkpoint::P2P(hub_repo) | Checkpoint::Dummy(hub_repo) => {
+                        llm.checkpoint = Checkpoint::Hub(hub_repo)
+                    }
+                    _ => {}
+                }
+                Some(Model::LLM(llm))
+            } else {
+                model
+            };
+
             let metadata = {
                 let mut metadata = account.state.metadata;
 
@@ -397,15 +426,20 @@ async fn async_main() -> Result<()> {
                     metadata.vocab_size = vocab_size;
                 }
                 // only include if it's different
-                (metadata == account.state.metadata).then_some(metadata)
+                (metadata != account.state.metadata).then_some(metadata)
             };
+
+            if metadata.is_none() && config.is_none() && model.is_none() && progress.is_none() {
+                bail!("this invocation would not update anything, bailing.")
+            }
+
             let set: anchor_client::solana_sdk::signature::Signature = backend
                 .update(
                     coordinator_instance,
                     coordinator_account,
                     metadata,
-                    Some(state.config),
-                    Some(state.model),
+                    config,
+                    model,
                     progress,
                 )
                 .await?;

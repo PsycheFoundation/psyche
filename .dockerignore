@@ -8,7 +8,6 @@ debug/
 target/
 **/*.rs.bk
 *.pdb
-.cargo/
 
 __pycache__/
 

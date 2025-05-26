@@ -469,10 +469,10 @@ impl App {
                                 if let Err(err) =
                                     std::fs::write(save_state_dir.join(filename), toml)
                                 {
-                                    tracing::error!("Error saving TOML: {}", err);
+                                    tracing::error!("Error saving TOML: {err:#}");
                                 }
                             }
-                            Err(err) => tracing::error!("Error serialized to TOML: {err}"),
+                            Err(err) => tracing::error!("Error serialized to TOML: {err:#}"),
                         }
                     }
                 } else {

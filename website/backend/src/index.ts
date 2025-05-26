@@ -128,16 +128,16 @@ async function main() {
 		process.exit(0)
 	}
 
-	let coordinatorError: Error | null = null
+	let coordinatorCrashed: Error | null = null
 	coordinator.stopped.catch((err) => {
 		console.error(`[${Date.now()}] coordinator broken: `, err)
-		coordinatorError = new Error(err)
+		coordinatorCrashed = new Error(err)
 	})
 
-	let miningPoolError: Error | null = null
+	let miningPoolCrashed: Error | null = null
 	miningPool.stopped.catch((err) => {
 		console.error(`[${Date.now()}] mining pool broken: `, err)
-		miningPoolError = new Error(err)
+		miningPoolCrashed = new Error(err)
 	})
 
 	process.on('SIGTERM', shutdown)
@@ -158,7 +158,7 @@ async function main() {
 		const data: ApiGetContributionInfo = {
 			...miningPool.dataStore.getContributionInfo(),
 			miningPoolProgramId: process.env.MINING_POOL_PROGRAM_ID!,
-			error: miningPoolError,
+			error: miningPoolCrashed,
 		}
 
 		// set header for streaming/non
@@ -180,7 +180,7 @@ async function main() {
 			const data: ApiGetContributionInfo = {
 				...miningPool.dataStore.getContributionInfo(),
 				miningPoolProgramId: process.env.MINING_POOL_PROGRAM_ID!,
-				error: miningPoolError,
+				error: miningPoolCrashed,
 			}
 			stream.write(JSON.stringify(data, psycheJsonReplacer) + '\n')
 		}
@@ -201,7 +201,7 @@ async function main() {
 	fastify.get('/runs', (_req, res) => {
 		const runs: ApiGetRuns = {
 			...coordinator.dataStore.getRunSummaries(),
-			error: coordinatorError,
+			error: coordinatorCrashed,
 		}
 
 		res
@@ -231,7 +231,7 @@ async function main() {
 
 			const data: ApiGetRun = {
 				run: matchingRun,
-				error: coordinatorError,
+				error: coordinatorCrashed,
 				isOnlyRun: coordinator.dataStore.getNumRuns() === 1,
 			}
 
@@ -260,7 +260,7 @@ async function main() {
 			function sendRunData(runData: RunData) {
 				const data: ApiGetRun = {
 					run: runData,
-					error: coordinatorError,
+					error: coordinatorCrashed,
 					isOnlyRun: coordinator.dataStore.getNumRuns() === 1,
 				}
 				stream.write(JSON.stringify(data, psycheJsonReplacer) + '\n')
@@ -285,10 +285,11 @@ async function main() {
 			commit: process.env.GITCOMMIT ?? '???',
 			initTime,
 			coordinator: {
-				status: coordinatorError ? coordinatorError.toString() : 'ok',
+				status: coordinatorCrashed ? coordinatorCrashed.toString() : 'ok',
+				errors: coordinator.errors,
 				trackedRuns: coordinator.dataStore
 					.getRunSummaries()
-					.runs.map((r) => ({ id: r.id, status: r.status })),
+					.runs.map((r) => ({ id: r.id, index: r.index, status: r.status })),
 				chain: {
 					chainSlotHeight: await coordinatorRpc.getSlot('confirmed'),
 					indexedSlot:
@@ -299,7 +300,8 @@ async function main() {
 				},
 			},
 			miningPool: {
-				status: miningPoolError ? miningPoolError.toString() : 'ok',
+				status: miningPoolCrashed ? miningPoolCrashed.toString() : 'ok',
+				errors: miningPool.errors,
 				chain: {
 					chainSlotHeight: await miningPoolRpc.getSlot('confirmed'),
 					indexedSlot:

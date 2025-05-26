@@ -100,6 +100,7 @@ impl CooldownStepMetadata {
         let tx_checkpoint = self.tx_checkpoint.clone();
         let tx_model = self.tx_model.clone();
         let eval_runner = self.eval_runner.clone();
+        let doing_checkpoint = checkpoint_info.is_some();
 
         let checkpointing_and_evals = tokio::task::spawn(
             async move {
@@ -176,7 +177,7 @@ impl CooldownStepMetadata {
                             revision
                         }
                         Err(err) => {
-                            error!(repo = hub_repo, "Error uploading to HuggingFace: {err}");
+                            error!(repo = hub_repo, "Error uploading to HuggingFace: {err:#}");
                             return Err(err.into());
                         }
                     };
@@ -197,6 +198,7 @@ impl CooldownStepMetadata {
         );
         Ok(CooldownStep {
             checkpointing_and_evals,
+            doing_checkpoint,
         })
     }
 }
@@ -204,6 +206,7 @@ impl CooldownStepMetadata {
 #[derive(Debug)]
 pub struct CooldownStep {
     checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
+    doing_checkpoint: bool,
 }
 
 impl CooldownStep {
@@ -214,5 +217,9 @@ impl CooldownStep {
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
         Ok(running_evals)
+    }
+
+    pub fn doing_checkpoint(&self) -> bool {
+        self.doing_checkpoint
     }
 }

@@ -111,6 +111,10 @@ impl TransmittableModelParameter {
             param_value_bytes,
         }
     }
+
+    pub fn name(&self) -> Result<String, SharableModelError> {
+        Ok(String::from_utf8(self.param_name_bytes.clone())?)
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -334,7 +338,7 @@ impl SharableModel {
         };
 
         // Deserialize model parameter
-        let param_name = String::from_utf8(parameter.param_name_bytes)?;
+        let param_name = parameter.name()?;
         let buf_reader = Cursor::new(parameter.param_value_bytes);
         trace!("Start loading parameter {param_name}");
         let param_value = tokio::task::spawn_blocking(move || Tensor::load_from_stream(buf_reader))

@@ -1,10 +1,17 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::StreamExt;
-use iroh::{endpoint::RemoteInfo, NodeAddr};
-use iroh_blobs::{downloader::ConcurrencyLimits, net_protocol::Blobs, store::mem::Store};
+use iroh::endpoint::RemoteInfo;
+use iroh_blobs::{
+    downloader::ConcurrencyLimits,
+    net_protocol::{Blobs, DownloadMode},
+    rpc::client::blobs::DownloadOptions,
+    store::mem::Store,
+    util::SetTagOption,
+    BlobFormat,
+};
 use iroh_gossip::{
     net::{Gossip, GossipEvent, GossipReceiver, GossipSender},
     proto::{HyparviewConfig, PlumtreeConfig},
@@ -15,16 +22,14 @@ use p2p_model_sharing::{
 use router::Router;
 use state::State;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, VecDeque},
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
-    iter::Cycle,
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
     sync::{Arc, Mutex as StdMutex},
     time::{Duration, Instant},
-    vec::IntoIter,
 };
 use tokio::{
     select,
@@ -39,7 +44,7 @@ use tracing::{debug, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{endpoint::ConnectionType, NodeId, RelayMode};
+pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
 pub use iroh_blobs::{ticket::BlobTicket, Hash};
 
 pub mod allowlist;
@@ -60,7 +65,7 @@ mod tui;
 mod util;
 
 pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
-pub use download_manager::{DownloadComplete, DownloadFailed, TransmittableDownload};
+pub use download_manager::{DownloadComplete, DownloadFailed, DownloadType, TransmittableDownload};
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
@@ -83,6 +88,8 @@ pub use util::fmt_bytes;
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
 const EUC_RELAY_HOSTNAME: &str = "euc1-1.relay.psyche.iroh.link";
+
+const TIMEOUT_SECONDS_FOR_DOWNLOADING: u64 = 5;
 
 /// How should this node discover other nodes?
 ///
@@ -335,12 +342,33 @@ where
         Ok(self.gossip_tx.broadcast(encoded_message).await?)
     }
 
-    pub async fn start_download(&mut self, ticket: BlobTicket, tag: u32) -> Result<()> {
+    pub async fn start_download(
+        &mut self,
+        ticket: BlobTicket,
+        tag: u32,
+        download_type: DownloadType,
+    ) -> Result<()> {
+        let provider_node_id = ticket.node_addr().clone();
+        let additional_peers_to_try = match download_type.clone() {
+            DownloadType::DistroResult(peers) => peers,
+            DownloadType::ModelSharing(_) => vec![],
+        };
         let mut progress = self
             .blobs
             .client()
-            .download(ticket.hash(), ticket.node_addr().clone())
+            .download_with_opts(
+                ticket.hash(),
+                DownloadOptions {
+                    format: BlobFormat::Raw,
+                    nodes: std::iter::once(provider_node_id)
+                        .chain(additional_peers_to_try.iter().cloned())
+                        .collect(),
+                    tag: SetTagOption::Auto,
+                    mode: DownloadMode::Queued,
+                },
+            )
             .await?;
+
         let hash = ticket.hash();
         self.state.currently_sharing_blobs.insert(hash);
         self.state.blob_tags.insert((tag, hash));
@@ -350,18 +378,27 @@ where
 
         tokio::spawn(async move {
             loop {
-                match progress.next().await {
-                    None => break,
-                    Some(val) => {
+                match progress
+                    .next()
+                    .timeout(Duration::from_secs(TIMEOUT_SECONDS_FOR_DOWNLOADING))
+                    .await
+                {
+                    Ok(None) => break,
+                    Ok(Some(val)) => {
                         if let Err(err) = tx.send(val) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
+                    }
+                    Err(_) => {
+                        let _ = tx.send(Err(anyhow!(
+                            "Didn't recieve any progress for blob {hash}, aborting download"
+                        )));
                     }
                 }
             }
         });
 
-        self.download_manager.add(ticket, tag, rx);
+        self.download_manager.add(ticket, tag, rx, download_type);
 
         Ok(())
     }
@@ -452,7 +489,7 @@ where
         // these are factored out to separate fns so rustfmt works on their contents :)
         select! {
             Some(event) = self.gossip_rx.next() => {
-                match parse_gossip_event(event.map_err(|ee| ee.into())) {
+                match parse_gossip_event(event.map_err(|ee| ee.into()), &self.gossip_rx) {
                     Some(result) => Ok(Some(NetworkEvent::MessageReceived(result))),
                     None => Ok(None),
                 }
@@ -463,10 +500,10 @@ where
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
-                        self.on_download_update(update)?;
-                        Ok(None)
+                        Ok(self.on_download_update(update))
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
+                        self.state.download_progesses.remove(&result.blob_ticket.hash());
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),
@@ -486,7 +523,10 @@ where
         }
     }
 
-    fn on_download_update(&mut self, update: DownloadUpdate) -> Result<()> {
+    fn on_download_update(
+        &mut self,
+        update: DownloadUpdate,
+    ) -> Option<NetworkEvent<BroadcastMessage, Download>> {
         self.state.bandwidth_tracker.add_event(
             update.blob_ticket.node_addr().node_id,
             update.downloaded_size_delta,
@@ -497,37 +537,31 @@ where
         if update.all_done {
             self.state.download_progesses.remove(&hash);
 
-            let download = match update.error {
-                Some(err) => Err(Error::msg(err.to_string())),
-                None => {
-                    let blobs = self.blobs.client().clone();
-                    let (send, recv) = oneshot::channel();
-                    trace!(name: "blob_download_read_start", hash = hash.fmt_short());
-                    tokio::spawn(async move {
-                        let blob_bytes = match blobs.read_to_bytes(hash).await {
-                            Ok(b) => b,
-                            Err(e) => {
-                                error!("Failed to read bytes: {e}");
-                                return;
-                            }
-                        };
-                        let size = blob_bytes.len();
-                        let res = send.send(blob_bytes);
-                        debug!(name: "blob_download_finish", hash = hash.fmt_short(), "downloaded blob {}, {} bytes", hash.fmt_short(), size);
-                        if res.is_err() {
-                            error!("Failed to send read bytes result.");
-                        }
-                    });
-                    Ok(recv)
+            let blobs = self.blobs.client().clone();
+            let (send, recv) = oneshot::channel();
+            trace!(name: "blob_download_read_start", hash = hash.fmt_short());
+            tokio::spawn(async move {
+                let blob_bytes = match blobs.read_to_bytes(hash).await {
+                    Ok(b) => b,
+                    Err(err) => {
+                        error!("Failed to read bytes: {err:#}");
+                        return;
+                    }
+                };
+                let size = blob_bytes.len();
+                let res = send.send(blob_bytes);
+                debug!(name: "blob_download_finish", hash = hash.fmt_short(), "downloaded blob {}, {} bytes", hash.fmt_short(), size);
+                if res.is_err() {
+                    error!("Failed to send read bytes result.");
                 }
-            };
+            });
 
             self.download_manager
-                .read(update.blob_ticket, update.tag, download);
+                .read(update.blob_ticket, update.tag, recv, update.download_type);
         } else {
             self.state.download_progesses.insert(hash, update);
         }
-        Ok(())
+        None
     }
 
     pub async fn get_all_peers(&self) -> Vec<(NodeAddr, ConnectionType)> {
@@ -572,10 +606,7 @@ pub async fn request_model(
     send.finish()?;
 
     // Receive parameter value blob ticket
-    let parameter_blob_ticket_bytes = recv
-        .read_to_end(16384)
-        .timeout(Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS))
-        .await??;
+    let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
     let parameter_blob_ticket: Result<BlobTicket, SharableModelError> =
         postcard::from_bytes(&parameter_blob_ticket_bytes)?;
     parameter_blob_ticket.with_context(|| "Error parsing model parameter blob ticket".to_string())
@@ -583,6 +614,7 @@ pub async fn request_model(
 
 fn parse_gossip_event<BroadcastMessage: Networkable>(
     event: Result<iroh_gossip::net::Event>,
+    gossip: &GossipReceiver,
 ) -> Option<(PublicKey, BroadcastMessage)> {
     match event {
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Received(msg))) => {
@@ -598,14 +630,24 @@ fn parse_gossip_event<BroadcastMessage: Networkable>(
                     return Some(result);
                 }
                 Err(err) => {
-                    warn!("Got a gossip message, but could not verify / decode it! {err}");
+                    warn!("Got a gossip message delivered from {}, but could not verify / decode it! {err}", msg.delivered_from);
                 }
             }
         }
-        Ok(iroh_gossip::net::Event::Gossip(_)) => {
-            // join, leave, etc.
+        Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Joined(peers))) => {
+            debug!(name: "gossip_init", peers = ?peers, "gossip initialized with peers {peers:?}");
         }
-        Ok(iroh_gossip::net::Event::Lagged) => error!("Gossip lagged. We missed some events."),
+        Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborUp(node_id))) => {
+            let peers: Vec<_> = gossip.neighbors().collect();
+            debug!(name: "gossip_new_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip connected to new peer {node_id}, we now have {} peers", peers.len());
+        }
+        Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborDown(node_id))) => {
+            let peers: Vec<_> = gossip.neighbors().collect();
+            debug!(name: "gossip_lost_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip disconnected from peer {node_id}, we now have {} peers", peers.len());
+        }
+        Ok(iroh_gossip::net::Event::Lagged) => {
+            error!(name: "gossip_lagged","Gossip lagged. We missed some events.")
+        }
         Err(err) => {
             warn!("Error on gossip event RX: {err}");
         }
@@ -722,50 +764,60 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 pub async fn param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    parameter_blob_tickets: Arc<StdMutex<Vec<BlobTicket>>>,
-    peer_cycle: Arc<Mutex<Cycle<IntoIter<PublicKey>>>>,
-    busy_peers: Arc<StdMutex<HashSet<PublicKey>>>,
+    model_blob_tickets: Arc<StdMutex<Vec<(BlobTicket, ModelRequestType)>>>,
+    peer_cycle: Arc<Mutex<VecDeque<PublicKey>>>,
     errored_peers: Arc<StdMutex<HashMap<PublicKey, usize>>>,
     num_peers: usize,
     cancel_token: CancellationToken,
 ) {
-    const MAX_ERRORS_PER_PEER: usize = 3;
+    let max_errors_per_peer: usize = 2;
     loop {
-        let Some(peer_id) = peer_cycle.lock().await.next() else {
-            // This should never really happen, since the only chance for calling
-            // `next()` on a `Cycle` iterator and return `None` is when the iterator
-            // is empty, which was checked previously.
-            unreachable!();
+        let peer_id = match peer_cycle.lock().await.pop_front() {
+            Some(peer) => peer,
+            None => {
+                continue;
+            }
         };
 
-        if !busy_peers.lock().unwrap().insert(peer_id) {
-            continue;
-        }
+        debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
+        let result = request_model(router.clone(), peer_id, &model_request_type)
+            .timeout(Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS))
+            .await
+            .map_err(|_| anyhow!("Didn't receive the model resource in time"))
+            .and_then(|inner| inner);
 
-        debug!(parameter = ?&model_request_type, peer = %peer_id, "Requesting parameter");
-        match request_model(router.clone(), peer_id, &model_request_type).await {
+        match result {
             Ok(parameter_blob_ticket) => {
-                parameter_blob_tickets
+                model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push(parameter_blob_ticket);
-                busy_peers.lock().unwrap().remove(&peer_id);
-                // Continue to next parameter request
+                    .push((parameter_blob_ticket, model_request_type.clone()));
+                peer_cycle.lock().await.push_back(peer_id);
                 break;
             }
             Err(e) => {
-                warn!(parameter = ?&model_request_type, peer = %peer_id, "Failed to get parameter: {e}");
-                busy_peers.lock().unwrap().remove(&peer_id);
+                let mut peer_cycle_lock = peer_cycle.lock().await;
+                warn!(
+                    parameter = ?&model_request_type,
+                    peer = %peer_id,
+                    "Failed to get parameter: {e}"
+                );
                 let mut errored_peers_lock = errored_peers.lock().unwrap();
                 *errored_peers_lock.entry(peer_id).or_insert(0) += 1;
+                if *errored_peers_lock.get(&peer_id).unwrap_or(&0) <= max_errors_per_peer {
+                    peer_cycle_lock.push_back(peer_id);
+                } else {
+                    warn!(
+                        "Not asking peer: {peer_id} because it's failing to retrieve us the model"
+                    );
+                }
                 let min_peers_error_count = *errored_peers_lock.values().min().unwrap_or(&1);
                 if errored_peers_lock.len() == num_peers
-                    && min_peers_error_count >= MAX_ERRORS_PER_PEER
+                    && min_peers_error_count >= max_errors_per_peer
                 {
                     cancel_token.cancel();
                     break;
                 }
-                // Continue to request this parameter to another peer
                 continue;
             }
         }

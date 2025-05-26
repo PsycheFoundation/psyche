@@ -20,13 +20,26 @@ interface ServiceConfig {
 	minSlot: number
 }
 
+interface TimestampedError {
+	time: Date
+	error: unknown
+}
+
 export function startIndexingChainToDataStores(
 	coordinator: ServiceConfig,
 	miningPool: ServiceConfig
 ): {
 	cancel: () => void
-	coordinator: { stopped: Promise<void>; dataStore: CoordinatorDataStore }
-	miningPool: { stopped: Promise<void>; dataStore: MiningPoolDataStore }
+	coordinator: {
+		stopped: Promise<void>
+		dataStore: CoordinatorDataStore
+		errors: TimestampedError[]
+	}
+	miningPool: {
+		stopped: Promise<void>
+		dataStore: MiningPoolDataStore
+		errors: TimestampedError[]
+	}
 } {
 	const stateDirectory = process.env.STATE_DIRECTORY ?? process.cwd()
 
@@ -57,12 +70,15 @@ export function startIndexingChainToDataStores(
 		coordinator.websocketRpcUrl ??
 		coordinator.connection.rpcEndpoint.replace('http', 'ws')
 
+	const coordinatorErrors: TimestampedError[] = []
+
 	startWatchCoordinatorChainLoop(
 		coordinatorDataStore,
 		coordinatorProgram,
 		coordinatorWebsocketRpcUrl,
 		coordinator.minSlot,
-		cancelled
+		cancelled,
+		(error) => coordinatorErrors.push({ error, time: new Date() })
 	)
 		.catch(coordinatorRej)
 		.then(coordinatorRes)
@@ -88,12 +104,15 @@ export function startIndexingChainToDataStores(
 		miningPool.websocketRpcUrl ??
 		miningPool.connection.rpcEndpoint.replace('http', 'ws')
 
+	const miningPoolErrors: TimestampedError[] = []
+
 	startWatchMiningPoolChainLoop(
 		miningPoolDataStore,
 		miningPoolProgram,
 		miningPoolWebsocketRpcUrl,
 		miningPool.minSlot,
-		cancelled
+		cancelled,
+		(error) => miningPoolErrors.push({ error, time: new Date() })
 	)
 		.catch(miningPoolRej)
 		.then(miningPoolRes)
@@ -110,10 +129,12 @@ export function startIndexingChainToDataStores(
 		coordinator: {
 			stopped: coordinatorStopped,
 			dataStore: coordinatorDataStore,
+			errors: coordinatorErrors,
 		},
 		miningPool: {
 			stopped: miningPoolStopped,
 			dataStore: miningPoolDataStore,
+			errors: miningPoolErrors,
 		},
 		cancel: () => {
 			cancelled.cancelled = true

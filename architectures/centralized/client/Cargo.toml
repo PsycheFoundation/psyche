@@ -4,7 +4,6 @@ version.workspace = true
 edition = "2021"
 
 [dependencies]
-
 psyche-centralized-shared = { path = "../shared" }
 psyche-client.workspace = true
 psyche-coordinator.workspace = true
@@ -24,3 +23,6 @@ time.workspace = true
 bytemuck.workspace = true
 clap-markdown.workspace = true
 hex = "0.4.3"
+
+[features]
+parallelism = ["psyche-client/parallelism"]

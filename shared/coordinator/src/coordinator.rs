@@ -98,6 +98,17 @@ pub struct Client<I> {
     pub assigned_batch_size: u8,
 }
 
+impl std::fmt::Display for ClientState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientState::Healthy => write!(f, "Healthy"),
+            ClientState::Dropped => write!(f, "Dropped"),
+            ClientState::Withdrawn => write!(f, "Withdrawn"),
+            ClientState::Ejected => write!(f, "Ejected"),
+        }
+    }
+}
+
 impl<I: NodeIdentity> Hash for Client<I> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
@@ -255,6 +266,12 @@ pub struct CoordinatorConfig {
 #[serde(bound = "T: NodeIdentity")]
 pub struct CoordinatorEpochState<T> {
     pub rounds: [Round; NUM_STORED_ROUNDS],
+    /// **WARNING**: Using this can be a footgun:
+    /// If you need to access the clients list for a particular round,
+    /// e.g. when applying a message that could be from the previous round,
+    /// This list might not be the list of clients at *that* round.
+    /// Consider carefully if `get_client_at_historical_index` or
+    /// `get_historical_clients` is what you actually want.
     pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub rounds_head: u32,
@@ -653,6 +670,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 self.pending_pause = true.into();
             } else {
                 self.change_state(unix_timestamp, RunState::Paused);
+                self.epoch_state.cold_start_epoch = true.into();
             }
             Ok(())
         } else {
@@ -697,13 +715,17 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
     }
 
-    pub fn witness_quorum(&self) -> u16 {
-        match self.config.witness_nodes {
+    pub fn witness_quorum(&self, num_witnesses: u16) -> u16 {
+        let witness_nodes = match self.config.witness_nodes {
+            0 => num_witnesses,
+            witness_nodes => witness_nodes,
+        };
+        match witness_nodes {
             0 => unreachable!(),
             1 => 1,
             2 => 2,
             3 => 2,
-            witness_nodes => (witness_nodes as f64 * WITNESS_QUORUM_RAIO) as u16,
+            witness_nodes => ((witness_nodes as f64 * WITNESS_QUORUM_RAIO) as u16).max(1),
         }
     }
 
@@ -714,7 +736,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             .witnesses;
 
         let score = Self::trainer_healthy_score_by_witnesses(id, prev_round_witnesses);
-        Ok(score >= self.witness_quorum())
+        Ok(score >= self.witness_quorum(prev_round_witnesses.len() as u16))
     }
 
     /// Computes the health score of a client based on witness confirmations.
@@ -900,19 +922,19 @@ impl<T: NodeIdentity> Coordinator<T> {
             && self.check_timeout(unix_timestamp, WAITING_FOR_MEMBERS_EXTRA_SECONDS)
         // This extra time allows for more clients to join even if the minimum number of clients is reached
         {
-            let pending_clients: HashSet<_> = pending_clients.collect();
+            // Make sure that all unhealthy clients are kicked at this point
+            let height = self.current_round_unchecked().height;
+            self.move_clients_to_exited(height);
 
-            // Ensure every client in self.epoch_state.clients is present in pending_clients
+            // Ensure at least one client in the previous epoch is present in pending_clients for the new epoch.
             // If all clients are no longer present we need to use a Hub checkpoint since there
             // will be no peers for P2P sharing.
-            let mut all_prev_clients_disconnected = true;
-            for client in self.epoch_state.clients.iter() {
-                // If there's at least one client then we can use P2P
-                if pending_clients.contains(&client.id) {
-                    all_prev_clients_disconnected = false;
-                    break;
-                }
-            }
+            let pending_clients: HashSet<_> = pending_clients.collect();
+            let all_prev_clients_disconnected = !self
+                .epoch_state
+                .clients
+                .iter()
+                .any(|client| pending_clients.contains(&client.id));
 
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
@@ -942,7 +964,6 @@ impl<T: NodeIdentity> Coordinator<T> {
                 }
             }
 
-            msg!("[COORDINATOR] starting new epoch");
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
             bytemuck::write_zeroes(&mut self.epoch_state);
             self.epoch_state.first_round = true.into();
@@ -1270,16 +1291,16 @@ impl<T: NodeIdentity> Coordinator<T> {
             );
         }
 
-        // If we reach the end of an epoch or if we don't reach the min number of
-        // clients or registered witnesses for the current round, we change to Cooldown
-        if height == self.config.rounds_per_epoch - 1
-            || self.epoch_state.clients.len() < self.config.min_clients as usize
-            || num_witnesses < self.witness_quorum()
-            || self.pending_pause.is_true()
-        {
-            self.start_cooldown(unix_timestamp);
-            return Ok(TickResult::Ticked);
-        }
+            // If we reach the end of an epoch or if we don't reach the min number of
+            // clients or registered witnesses for the current round, we change to Cooldown
+            if height == self.config.rounds_per_epoch - 1
+                || self.epoch_state.clients.len() < self.config.min_clients as usize
+                || num_witnesses < self.witness_quorum(num_witnesses)
+                || self.pending_pause.is_true()
+            {
+                self.start_cooldown(unix_timestamp);
+                return Ok(TickResult::Ticked);
+            }
 
         self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)
@@ -1483,7 +1504,6 @@ impl CoordinatorConfig {
             && self.global_batch_size_end >= self.global_batch_size_start
             && self.rounds_per_epoch >= 4 // need at least 4 rounds per epoch for overlapped pipeling
             && self.total_steps != 0
-            && self.witness_nodes != 0
             && self.witness_nodes <= self.min_clients
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0

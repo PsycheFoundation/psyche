@@ -99,7 +99,7 @@ pub fn participant_claim_processor(
     run.total_claimed_earned_points += params.claim_earned_points;
 
     let run_signer_seeds: &[&[&[u8]]] =
-        &[&[Run::SEEDS_PREFIX, &run.identity.to_bytes(), &[run.bump]]];
+        &[&[Run::SEEDS_PREFIX, &run.index.to_le_bytes(), &[run.bump]]];
     transfer(
         CpiContext::new(
             context.accounts.token_program.to_account_info(),

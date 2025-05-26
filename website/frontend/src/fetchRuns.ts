@@ -128,21 +128,25 @@ export async function fetchContributionsStreaming(): Promise<
 
 async function makeStreamingNdJsonDecode<T>(backendPath: string) {
 	let { reader, decodeState } = await openStreamToBackendPath(backendPath)
-	return new ReadableStream<T>({
+	let streamController: ReadableStreamDefaultController<T>
+	let lastData: T | null = null
+	const stream = new ReadableStream<T>({
 		async start(controller) {
+			streamController = controller
 			const MAX_RECONNECT_ATTEMPTS = 5
 			let reconnectAttempts = 0
 			let reconnectDelay = 1000
 
 			try {
 				while (true) {
-					const nextRun = await getOneJsonPayloadFromStream<T>(
+					const nextPayload = await getOneJsonPayloadFromStream<T>(
 						decodeState,
 						reader
 					)
-					if (nextRun) {
-						decodeState = nextRun.decodeState
-						controller.enqueue(nextRun.parsedRun)
+					if (nextPayload) {
+						decodeState = nextPayload.decodeState
+						lastData = nextPayload.parsedPayload
+						controller.enqueue(nextPayload.parsedPayload)
 						continue
 					}
 
@@ -190,14 +194,27 @@ async function makeStreamingNdJsonDecode<T>(backendPath: string) {
 			reader.cancel(reason)
 		},
 	})
+
+	// When a new reader attaches, make sure they get the current data :)
+	const getReader = stream.getReader.bind(stream)
+	stream.getReader = ((...args: Parameters<typeof getReader>) => {
+		const reader = getReader(...args)
+
+		if (lastData) {
+			streamController.enqueue(lastData)
+		}
+
+		return reader
+	}) as typeof getReader
+	return stream
 }
 
 async function getOneJsonPayloadFromStream<T>(
 	decodeState: DecodeState,
 	reader: ReadableStreamDefaultReader<Uint8Array<ArrayBufferLike>>
 ) {
-	let parsedRun: T | null = null
-	while (!parsedRun) {
+	let parsedPayload: T | null = null
+	while (!parsedPayload) {
 		const { value, done } = await reader.read()
 
 		if (done) {
@@ -211,14 +228,14 @@ async function getOneJsonPayloadFromStream<T>(
 			// we have at least one complete line, so one full JSON object
 			const firstLine = lines[0].trim()
 			if (firstLine) {
-				parsedRun = JSON.parse(firstLine, psycheJsonReviver) as T
+				parsedPayload = JSON.parse(firstLine, psycheJsonReviver) as T
 				decodeState.buffer = lines.slice(1).join('\n')
 			} else {
 				decodeState.buffer = lines.slice(1).join('\n')
 			}
 		}
 	}
-	return { parsedRun, decodeState }
+	return { parsedPayload, decodeState }
 }
 
 async function openStreamToBackendPath(path: string) {

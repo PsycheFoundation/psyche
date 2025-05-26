@@ -2,7 +2,7 @@ FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS base
 WORKDIR /usr/src
 
 RUN apt-get update && apt-get install -y \
-    unzip libssl-dev libgomp1 curl wget build-essential \
+    unzip libssl-dev libgomp1 curl wget build-essential libfontconfig-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and extract libtorch
@@ -48,3 +48,6 @@ RUN cargo chef cook --release --recipe-path client-recipe.json
 # Build the actual binaries
 COPY . .
 RUN cargo build -p psyche-solana-client --release --features parallelism
+RUN cargo build -p psyche-centralized-client --release --features parallelism
+RUN cargo build --example inference --release --features parallelism
+RUN cargo build --example train --release --features parallelism

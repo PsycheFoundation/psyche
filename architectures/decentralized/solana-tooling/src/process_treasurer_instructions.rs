@@ -36,7 +36,7 @@ pub async fn process_treasurer_run_create(
     coordinator_account: &Pubkey,
     params: RunCreateParams,
 ) -> Result<(Pubkey, Pubkey), ToolboxEndpointError> {
-    let run = find_run(&params.run_id);
+    let run = find_run(params.index);
     let run_collateral = ToolboxEndpoint::find_spl_associated_token_account(
         &run,
         collateral_mint,

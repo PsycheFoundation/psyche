@@ -111,9 +111,7 @@ export interface RunData {
 		checkpoint: HubRepo | null
 
 		round: number
-		epoch: number
 		config: {
-			numEpochs: number
 			roundsPerEpoch: number
 			minClients: number
 
@@ -289,12 +287,14 @@ export interface IndexerStatus {
 
 export interface CoordinatorStatus {
 	status: 'ok' | string
+	errors: Array<{ time: Date; error: unknown }>
 	chain: ChainStatus
-	trackedRuns: Array<{ id: string; status: RunStatus }>
+	trackedRuns: Array<{ id: string; index: number; status: RunStatus }>
 }
 
 export interface MiningPoolStatus {
 	status: 'ok' | string
+	errors: Array<{ time: Date; error: unknown }>
 	chain: ChainStatus
 }
 

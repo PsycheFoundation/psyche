@@ -97,7 +97,7 @@ fn main() -> Result<()> {
             .map(|x| x.unwrap().path())
             .collect()
     } else {
-        download_model_repo_sync(&args.model.clone(), None, None, None, false)?
+        download_model_repo_sync(&args.model.clone(), None, None, None, true)?
     };
     info!(
         "starting training run: model {}, data_path {}, sequence_length {}, token_size {}, micro_batch {}, total_batch {}, beta1 {:.9}, beta2 {:.9}, weight_decay {:.9}, eps {:.9}, learning_rate {:.9}, warmup_steps {}, total_steps {}, max_grad_norm {:.9}, grad_accum_in_fp32 {}, compression_chunk {}, compression_topk {}, compression_decay {}, distro {}, distro quantization {}",

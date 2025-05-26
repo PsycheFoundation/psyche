@@ -118,18 +118,18 @@ export type SolanaCluster = 'mainnet' | 'devnet' | string
 
 function solanaFmCluster(network: SolanaCluster) {
 	if (network === 'mainnet') {
-		return 'mainnet-alpha'
+		return ''
 	}
 	if (network === 'devnet') {
-		return 'devnet-alpha'
+		return 'devnet'
 	}
-	return encodeURIComponent(`custom-${network}`)
+	return `custom&customUrl=${encodeURIComponent(network)}`
 }
 
 export function solanaAccountUrl(account: string, network: SolanaCluster) {
-	return `https://solana.fm/address/${account}?cluster=${solanaFmCluster(network)}`
+	return `https://explorer.solana.com/address/${account}?cluster=${solanaFmCluster(network)}`
 }
 
 export function solanaTxUrl(tx: string, network: SolanaCluster) {
-	return `https://solana.fm/tx/${tx}?cluster=${solanaFmCluster(network)}`
+	return `https://explorer.solana.com/tx/${tx}?cluster=${solanaFmCluster(network)}`
 }

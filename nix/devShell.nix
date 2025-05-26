@@ -10,6 +10,8 @@
       config,
       pkgs,
       lib,
+      inputs',
+      self',
       ...
     }:
     let
@@ -19,10 +21,17 @@
         ;
     in
     {
+
+      # fmt as precommit hook
+      pre-commit = {
+        check.enable = false;
+        settings.hooks.treefmt.enable = true;
+      };
+
       devShells.default = pkgs.mkShell {
         inputsFrom = [
           buildWholeWorkspace
-          self.packages.${system}.psyche-book
+          self'.packages.psyche-book
         ];
         inherit env;
         buildInputs = with pkgs; [
@@ -42,7 +51,7 @@
           pkgs.nix-gl-host
 
           # solana
-          inputs.solana-pkgs.packages.${system}.default
+          inputs'.solana-pkgs.packages.default
 
           # nixfmt
           nixfmt-rfc-style
@@ -52,9 +61,6 @@
           pnpm
           wasm-pack
         ];
-
-        # fmt as precommit hook
-        pre-commit.settings.hooks.treefmt.enable = true;
 
         shellHook = ''
           source ${lib.getExe config.agenix-shell.installationScript}

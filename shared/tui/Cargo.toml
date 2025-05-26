@@ -17,6 +17,7 @@ clap.workspace = true
 logfire = { git = "https://github.com/NousResearch/logfire-rust", rev = "497574bff53f27db42ee4e581fea2658561c7833" }
 tracing-opentelemetry = "0.29.0"
 opentelemetry_sdk = "0.28.0"
+console-subscriber = "0.4.1"
 
 
 [dev-dependencies]

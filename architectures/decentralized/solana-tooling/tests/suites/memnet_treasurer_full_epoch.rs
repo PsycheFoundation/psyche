@@ -82,6 +82,7 @@ pub async fn run() {
         &collateral_mint,
         &coordinator_account,
         RunCreateParams {
+            index: 42,
             run_id: "This is my run's dummy run_id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),

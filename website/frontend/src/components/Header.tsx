@@ -146,6 +146,12 @@ export function Header() {
 							forum
 						</a>
 						<a
+							href="https://nousresearch.com/nous-psyche/"
+							title="read the psyche annoucement"
+						>
+							about psyche
+						</a>
+						<a
 							href="https://docs.psyche.network/"
 							title="read about how psyche works"
 						>

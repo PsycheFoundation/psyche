@@ -227,20 +227,14 @@ impl Trainer {
             return Ok(None);
         }
         let device = inputs.device();
-        if device.is_cuda() {
-            device.cuda_synchronize();
-        }
         let (_, loss) = model.forward(&inputs, Some(&targets), None);
         let mut loss = loss.ok_or(Error::msg("No loss"))?;
         if let Some(loss_scale) = loss_scale {
             loss /= loss_scale;
         }
-        if barrier.wait().is_err() {
-            return Ok(None);
-        }
         loss.backward();
-        if barrier.wait().is_err() {
-            return Ok(None);
+        if device.is_cuda() {
+            device.cuda_synchronize();
         }
         Ok(Some(loss.detach()))
     }
@@ -253,19 +247,16 @@ impl Trainer {
         num_logits_to_keeep: Option<i64>,
     ) -> Option<(Tensor, Option<Tensor>)> {
         let _guard = tch::no_grad_guard();
+        if barrier.wait().is_err() {
+            return None;
+        }
         let device = model.device();
         let inputs = data.to(device);
         let labels = labels.map(|x| x.to(device));
-        if barrier.wait().is_err() {
-            return None;
-        }
         let device = inputs.device();
+        let (logits, loss) = model.forward(&inputs, labels.as_ref(), num_logits_to_keeep);
         if device.is_cuda() {
             device.cuda_synchronize();
-        }
-        let (logits, loss) = model.forward(&inputs, labels.as_ref(), num_logits_to_keeep);
-        if barrier.wait().is_err() {
-            return None;
         }
         Some((logits, loss.map(|x| x.detach())))
     }
@@ -444,7 +435,7 @@ impl Trainer {
             ) {
                 Ok(comm) => comm,
                 Err(err) => {
-                    error!("Error creating DP mesh: {}", err);
+                    error!("Error creating DP mesh: {err:#}");
                     return;
                 }
             };
@@ -488,6 +479,8 @@ impl Trainer {
                     //     };
                     // }
 
+                    debug!(batch_id=%batch.id, "model thread training on batch {}", batch.id);
+
                     let batch_size = batch.data.size();
 
                     let mut grad_accum_steps = batch_size / micro_batch_size;
@@ -522,7 +515,13 @@ impl Trainer {
                         step => Self::get_lr(&lr_scheduler, step - 1, warmup_lr_between),
                     };
 
-                    tracing::debug!(lr = lr, prev_lr = prev_lr, step = step, "train begin");
+                    tracing::debug!(
+                        lr = lr,
+                        prev_lr = prev_lr,
+                        step = step,
+                        micro_batches = grad_accum_steps,
+                        "Train begin"
+                    );
 
                     match &mut optimizer {
                         Optimizer::Torch { optimizer, .. } => {
@@ -552,7 +551,7 @@ impl Trainer {
 
                     let mut loss = None;
                     let mut cancelled = false;
-                    for micro_batch in micro_batches {
+                    for (index, micro_batch) in micro_batches.into_iter().enumerate() {
                         if cancel_training.is_cancelled() {
                             cancelled = true;
                             barrier.cancel();
@@ -578,13 +577,14 @@ impl Trainer {
                                 break;
                             }
                             Err(err) => {
-                                error!("Train error: {err}");
+                                error!("Train error: {err:#}");
                                 return;
                             }
                         }
                         if let Some(grad_accum) = &mut grad_accum {
                             grad_accum.accumulate_gradients();
                         }
+                        trace!(micro_batch = index, "Finished micro batch forward/backward");
                     }
                     if let Some(grad_accum) = &mut grad_accum {
                         grad_accum.apply_accumulation();
@@ -725,7 +725,7 @@ impl Trainer {
                         return;
                     }
                 }
-                Ok(ParallelAssignment::Extract {}) => {
+                Ok(ParallelAssignment::Extract) => {
                     match unsharded_cpu_variables(model.variables(), model.communicator()) {
                         Ok(variables) => {
                             if submission
@@ -736,7 +736,7 @@ impl Trainer {
                             }
                         }
                         Err(err) => {
-                            error!("Unexpected error in extract: {err}");
+                            error!("Unexpected error in extract: {err:#}");
                             return;
                         }
                     }

@@ -8,7 +8,7 @@ use anchor_client::{
     solana_sdk::{
         commitment_config::CommitmentConfig,
         pubkey::Pubkey,
-        signature::{Keypair, Signature, Signer},
+        signature::{Keypair, Signer},
     },
     Cluster,
 };
@@ -16,7 +16,7 @@ use anyhow::{anyhow, Result};
 use psyche_client::{
     CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
 };
-use psyche_coordinator::{Coordinator, CoordinatorError, RunState};
+use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_network::{
     allowlist, psyche_relay_map, DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey,
 };
@@ -48,7 +48,6 @@ pub struct App {
     cancel: CancellationToken,
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
-    joined_new_train_epoch: Option<Signature>,
     authorizer: Option<Pubkey>,
 }
 
@@ -123,7 +122,6 @@ impl AppBuilder {
             cancel: p.cancel,
             tx_tui_state: p.tx_tui_state,
             update_tui_interval: interval(Duration::from_millis(150)),
-            joined_new_train_epoch: None,
             authorizer: p.authorizer,
         };
         let identity = psyche_solana_coordinator::ClientId::new(
@@ -194,6 +192,9 @@ impl App {
             .state
             .coordinator;
 
+        let mut joined_run_this_epoch = None;
+        let mut ever_joined_run = false;
+
         // if we're already in "WaitingForMembers" we won't get an update saying that
         // (subscription is on change), so check if it's in that state right at boot
         // and join the run if so
@@ -217,7 +218,8 @@ impl App {
                 tx = %joined,
                 "Joined run",
             );
-            self.joined_new_train_epoch = Some(joined);
+            joined_run_this_epoch = Some(joined);
+            ever_joined_run = true;
         } else {
             info!("Waiting for the current epoch to end before joining");
         }
@@ -231,6 +233,11 @@ impl App {
         let mut latest_update = coordinator_state.coordinator;
         let mut updates = backend_runner.updates();
         let mut client = Client::new(backend_runner, allowlist, p2p, state_options);
+
+        let id = psyche_solana_coordinator::ClientId {
+            signer,
+            p2p_identity: *p2p_identity.as_bytes(),
+        };
 
         loop {
             select! {
@@ -285,15 +292,12 @@ impl App {
                     latest_update = update?;
                     match latest_update.run_state {
                         RunState::WaitingForMembers => {
-                            if self.joined_new_train_epoch.is_none() {
+                            if joined_run_this_epoch.is_none() {
                                 let joined = retry_function("join_run", || backend
                                     .join_run_retryable(
                                         coordinator_instance,
                                         coordinator_account,
-                                        psyche_solana_coordinator::ClientId {
-                                            signer,
-                                            p2p_identity: *p2p_identity.as_bytes(),
-                                        },
+                                        id,
                                         self.authorizer,
                                     ))
                                     .await.map_err(|e: RetryError<String>| anyhow!("join_run error: {}", e))?;
@@ -303,10 +307,37 @@ impl App {
                                     tx = %joined,
                                     "Joined run",
                                 );
-                                self.joined_new_train_epoch = Some(joined);
+                                joined_run_this_epoch = Some(joined);
+                                ever_joined_run = true;
                             }
                         }
-                        _ => { self.joined_new_train_epoch = None; }
+                        _ => {
+                            if ever_joined_run {
+                                let err = if latest_update.halted() {
+                                    Err(anyhow!("{}", latest_update.run_state))
+                                } else {
+                                    let me = latest_update.epoch_state.clients.iter().find(|x| x.id == id);
+                                    match me {
+                                        Some(me) => if me.state != ClientState::Healthy {
+                                            tracing::error!(id = %id, state = %me.state, "Coordinator says we're unhealthy, exiting");
+                                            Err(anyhow!("{}", me.state))
+                                        } else {
+                                            Ok(())
+                                        }
+                                        None => {
+                                            tracing::error!(id = %id, "Coordinator did not select us for the round, exiting");
+                                            Err(anyhow!("Not a participant"))
+                                        }
+                                    }
+                                };
+                                if let Err(err) = err {
+                                    client.shutdown();
+                                    let _ = client.finished().await;
+                                    return Err(err);
+                                }
+                            }
+                            joined_run_this_epoch = None;
+                        }
                     }
                 }
                 res = client.finished() => {

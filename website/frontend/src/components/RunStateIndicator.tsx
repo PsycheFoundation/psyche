@@ -118,6 +118,7 @@ const Title = styled.div`
 	}
 	.theme-dark & {
 		background: ${forest[600]};
+		color: ${forest[300]};
 	}
 `
 
@@ -140,22 +141,29 @@ const OuterContainer = styled.div`
 	}
 `
 
+export type RunWithState = Exclude<RunData, 'state'> & {
+	state: Exclude<RunData['state'], undefined>
+}
+
+export function runHasState(run: RunData): run is RunWithState {
+	return !!run.state
+}
+
 export function RunStateIndicator({
-	state,
+	state: { state, info },
 	recentTxs,
 	disconnected,
 	paused,
 }: {
 	paused: boolean
-	state: Exclude<RunData['state'], undefined>
+	state: RunWithState
 	recentTxs: TxSummary[]
 	disconnected: boolean
 }) {
 	const {
 		phase,
 		round,
-		epoch,
-		config: { roundsPerEpoch, numEpochs, minClients },
+		config: { roundsPerEpoch, minClients },
 		clients,
 	} = state
 	const [now, setNow] = useState(new Date(Date.now()))
@@ -164,8 +172,13 @@ export function RunStateIndicator({
 	return (
 		<OuterContainer>
 			<Title className="toEdge">
-				<span className={text['aux/xl/medium']}>
-					epoch {epoch}/{numEpochs}
+				<span className={text['aux/xl/medium']} title="the number of tokens">
+					training progress{' '}
+					{(
+						(Number(info.completedTokens) / Number(info.totalTokens)) *
+						100
+					).toFixed(2)}
+					%
 				</span>
 				{!paused && (
 					<span>

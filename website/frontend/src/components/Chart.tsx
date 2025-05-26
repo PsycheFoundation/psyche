@@ -64,10 +64,30 @@ const GraphContainer = styled.div`
 `
 
 const Title = styled.div`
-	color: ${(props) => props.color};
+	color: var(--color-fg);
 	pointer-events: none;
 	display: flex;
 	justify-content: space-between;
+	padding: 0 4px;
+	border-left: 1.5px solid ${(props) => props.color};
+	border-right: 1.5px solid ${(props) => props.color};
+	background:
+		linear-gradient(
+				to right,
+				${(props) => props.color} 5px,
+				transparent 5px,
+				transparent calc(100% - 5px),
+				${(props) => props.color} calc(100% - 5px)
+			)
+			bottom/100% 1.5px no-repeat,
+		linear-gradient(
+				to right,
+				${(props) => props.color} 5px,
+				transparent 5px,
+				transparent calc(100% - 5px),
+				${(props) => props.color} calc(100% - 5px)
+			)
+			top/100% 1.5px no-repeat;
 `
 
 const uppercase = css`
@@ -78,10 +98,6 @@ const WaitingForData = styled.div`
 	align-items: center;
 	justify-content: center;
 	height: 100%;
-`
-
-const FgColor = styled.span`
-	color: var(--color-fg);
 `
 
 function findNiceDivisor(max: number, targetDivisions: number): number {
@@ -294,15 +310,10 @@ const LineGraphInner: React.FC<
 		<GraphContainer>
 			{title && (
 				<Title color={labelColor} className={text['body/sm/semibold']}>
-					<span className={uppercase}>
-						[<FgColor>{title}</FgColor>
-					</span>
+					<span className={uppercase}>{title}</span>
 					<span>
-						<FgColor>
-							{(renderValue ?? ((x) => x.toFixed(1)))(lastYValue)}
-							{line.unit}
-						</FgColor>
-						]
+						{(renderValue ?? ((x) => x.toFixed(1)))(lastYValue)}
+						{line.unit}
 					</span>
 				</Title>
 			)}

@@ -1,4 +1,4 @@
-use crate::{Client, Coordinator, CoordinatorError};
+use crate::{Client, Coordinator, CoordinatorError, SOLANA_MAX_NUM_WITNESSES};
 
 use anchor_lang::{
     prelude::{borsh, msg},
@@ -176,7 +176,7 @@ impl CommitteeSelection {
 
     fn get_witness_from_position(&self, witness_position: u64) -> bool {
         match self.witness_nodes {
-            0 => true,
+            0 => witness_position < SOLANA_MAX_NUM_WITNESSES as u64,
             witness_nodes => witness_position < witness_nodes,
         }
     }

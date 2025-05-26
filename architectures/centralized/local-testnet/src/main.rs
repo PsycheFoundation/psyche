@@ -404,8 +404,10 @@ fn start_client(
         OsString::new()
     };
 
+    let tokio_console_port = 6669 + i - 1;
+
     cmd.push(format!(
-        "RUST_LOG={} RUST_BACKTRACE=1 RAW_IDENTITY_SECRET_KEY={} cargo run -p psyche-centralized-client train --run-id {} --server-addr localhost:{} --logs {}",
+        "TOKIO_CONSOLE_BIND=127.0.0.1:{tokio_console_port} RUST_LOG={} RUST_BACKTRACE=1 RAW_IDENTITY_SECRET_KEY={} cargo run -p psyche-centralized-client train --run-id {} --server-addr localhost:{} --logs {}",
         args.log,
         raw_key,
         run_id,

@@ -23,6 +23,7 @@ export function startWatchChainLoop<D>(): <
 	websocketRpcUrl: string,
 	minimumSlotToIndexFrom: number,
 	cancelled: { cancelled: boolean },
+	onError: (error: unknown) => void,
 	process: {
 		onStartCatchup(firstStateEver: boolean): T
 		onInstruction(
@@ -42,109 +43,126 @@ export function startWatchChainLoop<D>(): <
 		websocketRpcUrl,
 		minimumSlotToIndexFrom,
 		cancelled,
+		onError,
 		process,
 		delayMsBetweenUpdates = 1000
 	) => {
-		let lastUpdate = dataStore.lastUpdate()
-
 		const instructionCoder = new BorshInstructionCoder(program.rawIdl)
 
-		const wsListener = new ProgramEventListener(
-			websocketRpcUrl,
-			program.programId,
-			name
-		)
+		let wsListener: ProgramEventListener | null = null
 
 		while (!cancelled.cancelled) {
-			await Promise.race([
-				wsListener.nextUpdate(),
-				new Promise((r) => setTimeout(r, delayMsBetweenUpdates)),
-			])
+			try {
+				let lastUpdate = dataStore.lastUpdate()
+				console.error(`[${name}] chain loop starting up`)
 
-			const startSlot = Math.max(
-				minimumSlotToIndexFrom,
-				lastUpdate?.highestSignature?.slot ?? 0
-			)
-			const catchupTxs = await catchupOnTxsToAddress(
-				name,
-				program.provider,
-				program.programId,
-				startSlot,
-				cancelled
-			)
-
-			if (catchupTxs === null) {
-				// cancelled
-				return
-			}
-
-			if (catchupTxs.length) {
-				console.debug(
-					`[${name}] updated from slot ${startSlot} to latest slot.`
+				wsListener = new ProgramEventListener(
+					websocketRpcUrl,
+					program.programId,
+					name
 				)
-			}
 
-			const state = process.onStartCatchup(!lastUpdate.highestSignature)
+				while (!cancelled.cancelled) {
+					await Promise.race([
+						wsListener.nextUpdate(),
+						new Promise((r) => setTimeout(r, delayMsBetweenUpdates)),
+					])
 
-			for (const data of catchupTxs) {
-				const tx = data[1]
-				const index = catchupTxs.indexOf(data)
-				if (index % 1000 === 1) {
-					console.log(
-						`[${name}] processing changes from tx ${index} / ${catchupTxs.length} (${((index / catchupTxs.length) * 100).toFixed(2)}%)`
+					const startSlot = Math.max(
+						minimumSlotToIndexFrom,
+						lastUpdate?.highestSignature?.slot ?? 0
 					)
-				}
-				if (cancelled.cancelled) {
-					return
-				}
-				const instr = tx.transaction.message.instructions
-				for (const i of instr) {
-					// instructions without a payload aren't useful to us.
-					if (!('data' in i)) {
-						continue
-					}
-					let rawDecoded
-					try {
-						rawDecoded = instructionCoder.decode(i.data, 'base58')
-					} catch (err) {
-						// instructions that we can't decode with our IDL aren't useful to us. hopefully this doesn't break.
-						console.warn(
-							`Failed to process instruction from tx in slot ${tx.slot}. Attempting to continue. Maybe we have a different IDL than this was created with?`
-						)
-					}
-					if (!rawDecoded) {
-						continue
-					}
-					try {
-						// this is a bit of a "hope and pray" cast,
-						// the IDL stuff is a bit of a nightmare to work with.
-						process.onInstruction(tx, i, rawDecoded as D, state)
-						if (cancelled.cancelled) {
-							break
-						}
-					} catch (err) {
-						throw new Error(
-							`failed to process instruction in ${program.programId} from TX in slot ${tx.slot}: ${err}`
-						)
-					}
-				}
-			}
-			if (cancelled.cancelled) {
-				break
-			}
+					const catchupTxs = await catchupOnTxsToAddress(
+						name,
+						program.provider,
+						program.programId,
+						startSlot,
+						cancelled
+					)
 
-			lastUpdate.time = new Date()
-			if (catchupTxs.length) {
-				const [signature, { slot }] = catchupTxs.at(-1)!
-				lastUpdate.highestSignature = {
-					signature,
-					slot,
+					if (catchupTxs === null) {
+						// cancelled
+						return
+					}
+
+					if (catchupTxs.length) {
+						console.debug(
+							`[${name}] updated from slot ${startSlot} to latest slot.`
+						)
+					}
+
+					const state = process.onStartCatchup(!lastUpdate.highestSignature)
+
+					for (const data of catchupTxs) {
+						const tx = data[1]
+						const index = catchupTxs.indexOf(data)
+						if (index % 1000 === 1) {
+							console.log(
+								`[${name}] processing changes from tx ${index} / ${catchupTxs.length} (${((index / catchupTxs.length) * 100).toFixed(2)}%)`
+							)
+						}
+						if (cancelled.cancelled) {
+							return
+						}
+						const instr = tx.transaction.message.instructions
+						for (const i of instr) {
+							// instructions without a payload aren't useful to us.
+							if (!('data' in i)) {
+								continue
+							}
+							let rawDecoded
+							try {
+								rawDecoded = instructionCoder.decode(i.data, 'base58')
+							} catch (err) {
+								// instructions that we can't decode with our IDL aren't useful to us. hopefully this doesn't break.
+								console.warn(
+									`Failed to process instruction from tx in slot ${tx.slot}. Attempting to continue. Maybe we have a different IDL than this was created with?`
+								)
+							}
+							if (!rawDecoded) {
+								continue
+							}
+							try {
+								// this is a bit of a "hope and pray" cast,
+								// the IDL stuff is a bit of a nightmare to work with.
+								process.onInstruction(tx, i, rawDecoded as D, state)
+								if (cancelled.cancelled) {
+									break
+								}
+							} catch (err) {
+								throw new Error(
+									`failed to process instruction in ${program.programId} from TX in slot ${tx.slot}: ${err}`
+								)
+							}
+						}
+					}
+					if (cancelled.cancelled) {
+						break
+					}
+
+					lastUpdate.time = new Date()
+					if (catchupTxs.length) {
+						const [signature, { slot }] = catchupTxs.at(-1)!
+						lastUpdate.highestSignature = {
+							signature,
+							slot,
+						}
+					}
+					await process.onDoneCatchup(dataStore, state)
+					await dataStore.sync(lastUpdate)
+				}
+			} catch (err) {
+				console.error(
+					`[${name}] chain loop encountered an error, restarting: ${err}`
+				)
+				onError(err)
+			} finally {
+				if (wsListener) {
+					wsListener.disconnect()
 				}
 			}
-			await process.onDoneCatchup(dataStore, state)
-			await dataStore.sync(lastUpdate)
+			console.info(`[${name}] chain loop was cancelled, exiting cleanly...`)
 		}
-		console.info(`[${name}] chain loop was cancelled, exiting cleanly...`)
 	}
 }
 
