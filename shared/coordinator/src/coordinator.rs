@@ -737,10 +737,21 @@ impl<T: NodeIdentity> Coordinator<T> {
         witnesses: &[Witness],
         witness_quorum: u16,
     ) -> Option<usize> {
+        msg!(
+            "[select_consensus_commitment_by_witnesses] quorum: {} #witnesses: {}",
+            witness_quorum,
+            witnesses.len(),
+        );
         let mut scores = vec![0; commitments.len()];
         for witness in witnesses {
             for (index, commitment) in commitments.iter().enumerate() {
+                msg!(
+                    "[select_consensus_commitment_by_witnesses] witness {}, bloom: {:?}",
+                    index,
+                    witness.broadcast_bloom
+                );
                 if witness.broadcast_bloom.contains(&commitment.data_hash) {
+                    msg!("[select_consensus_commitment_by_witnesses] commitment matches witness",);
                     scores[index] += 1;
                     break;
                 }
@@ -1017,10 +1028,10 @@ impl<T: NodeIdentity> Coordinator<T> {
 
         // Check validity of each witness report on client batch assignment
         // For debug purposes print each witness batch assignment
-        /*for witness in self.current_round_unchecked().witnesses.iter() {
+        /*for witness in self.current_round_unchecked().witnesses.iter().take(5) {
             let witness_id = self.epoch_state.clients[witness.proof.index as usize].id;
             msg!(
-                "[witness_batch] Witness {} ({}): {:?}",
+                "[witness_batch] Witness {} ({}) proposed: {:?}",
                 witness.proof.index,
                 witness_id,
                 witness.proposed_batch_sizes
@@ -1030,12 +1041,14 @@ impl<T: NodeIdentity> Coordinator<T> {
         let target_batch_size =
             self.get_target_global_batch_size(Some(self.current_round_unchecked()));
 
-        let consensus_reached = self.check_batch_assignment_consensus(
-            &self.current_round_unchecked().witnesses,
-            2.0 / 3.0,
-            self.config.global_batch_size_end,
-            0.05,
-        );
+        // TODO change this back but we assume consensus for now in order to debug
+        //let consensus_reached = self.check_batch_assignment_consensus(
+        //    &self.current_round_unchecked().witnesses,
+        //    2.0 / 3.0,
+        //    self.config.global_batch_size_end,
+        //    0.05,
+        //    );
+        let consensus_reached = true; // For debugging purposes, assume consensus is always reached
         if !consensus_reached {
             msg!("[witness_batch] Consensus not reached, using previous batch sizes");
         } else {
@@ -1096,154 +1109,165 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
 
             // Get target global batch size and adjust if total exceeds it
-            let mut total_assigned: u16 = self
-                .epoch_state
-                .clients
-                .iter()
-                .map(|c| {
-                    index_to_value(
-                        c.assigned_batch_size,
-                        target_batch_size,
-                        BATCH_SIZE_INDEX_BITS,
-                    )
-                })
-                .sum();
+            let mut total_assigned: u16 = 0;
+            for (client_idx, c) in self.epoch_state.clients.iter().enumerate() {
+                let client_batch_value = index_to_value(
+                    c.assigned_batch_size,
+                    target_batch_size,
+                    BATCH_SIZE_INDEX_BITS,
+                );
+                /*msg!(
+                    "[witness_batch] Client {} ({}) assigned batch index: {}, value: {}",
+                    client_idx,
+                    c.id,
+                    c.assigned_batch_size,
+                    client_batch_value,
+                );*/
+                total_assigned += client_batch_value;
+            }
+            msg!(
+                "[witness_batch] Initial total_assigned after loop: {}",
+                total_assigned
+            );
 
-            if total_assigned > target_batch_size {
+            let n_clients = self.epoch_state.clients.len();
+
+            if n_clients == 0 {
+                msg!("[witness_batch] No clients to adjust batch sizes for.");
+            } else if total_assigned > target_batch_size {
                 msg!(
-                    "[witness_batch] Total assigned batch size {} exceeds target {}, adjusting...",
+                    "[witness_batch] Total assigned batch size {} exceeds target {}, adjusting downwards...",
                     total_assigned,
                     target_batch_size
                 );
+                let mut current_sum_of_values = total_assigned;
+                let mut client_cycle_iter = (0..n_clients).cycle();
 
-                // Proportional scaling and adjustment
-                let initial_total_assigned_for_scaling = total_assigned;
-                let scale_factor =
-                    target_batch_size as f64 / initial_total_assigned_for_scaling as f64;
+                while current_sum_of_values > target_batch_size {
+                    let mut made_reduction_in_full_cycle = false;
+                    for _cycle_count in 0..n_clients {
+                        // Iterate through clients to attempt reduction
+                        if current_sum_of_values <= target_batch_size {
+                            break;
+                        }
+                        let client_idx = client_cycle_iter.next().unwrap(); // Safe due to n_clients > 0
+                        let client = &mut self.epoch_state.clients[client_idx];
 
-                for client in self.epoch_state.clients.iter_mut() {
-                    // Skip clients with 0 batch size if any (should not happen with valid witnesses)
-                    if client.assigned_batch_size == 0 {
-                        msg!(
-                            "[witness_batch] Client {} has 0 batch size, skipping scaling",
-                            client.id
-                        );
-                        continue;
-                    }
-                    let batch_val = index_to_value(
-                        client.assigned_batch_size,
-                        target_batch_size,
-                        BATCH_SIZE_INDEX_BITS,
-                    );
-                    let scaled_val = (batch_val as f64 * scale_factor).max(1.0).round() as u16;
-                    client.assigned_batch_size = value_to_nearest_index(
-                        scaled_val,
-                        target_batch_size,
-                        BATCH_SIZE_INDEX_BITS,
-                    );
-                    /*msg!(
-                        "[witness_batch] Client {} scaled batch size: (idx={}) {}",
-                        client.id,
-                        client.assigned_batch_size,
-                        batch_value_from_index(
-                            client.assigned_batch_size as usize,
-                            target_batch_size,
-                            BATCH_SIZE_INDEX_BITS,
-                        )
-                    );*/
-                }
+                        // Ensure client's assigned_batch_size (index) can be decremented (min index is 1)
+                        if client.assigned_batch_size > 1 {
+                            let old_client_value = index_to_value(
+                                client.assigned_batch_size,
+                                target_batch_size,
+                                BATCH_SIZE_INDEX_BITS,
+                            );
+                            client.assigned_batch_size -= 1;
+                            let new_client_value = index_to_value(
+                                client.assigned_batch_size,
+                                target_batch_size,
+                                BATCH_SIZE_INDEX_BITS,
+                            );
 
-                // Recalculate total assigned batch size after scaling
-                total_assigned = self
-                    .epoch_state
-                    .clients
-                    .iter()
-                    .map(|c| {
-                        index_to_value(
-                            c.assigned_batch_size,
-                            target_batch_size,
-                            BATCH_SIZE_INDEX_BITS,
-                        )
-                    })
-                    .sum();
-
-                let discrepancy = total_assigned as i32 - target_batch_size as i32;
-                match discrepancy.cmp(&0) {
-                    std::cmp::Ordering::Greater => {
-                        // Total is too high, need to remove batches
-                        for _ in 0..discrepancy {
-                            let mut client_to_decrement_idx: Option<usize> = None;
-                            let mut max_batch_seen = 0; // Max batch size among those > 1
-
-                            for (k, c) in self.epoch_state.clients.iter().enumerate() {
-                                if c.assigned_batch_size > 1 {
-                                    // Only consider clients that can be decremented
-                                    if client_to_decrement_idx.is_none()
-                                        || c.assigned_batch_size > max_batch_seen
-                                    {
-                                        max_batch_seen = c.assigned_batch_size;
-                                        client_to_decrement_idx = Some(k);
-                                    }
-                                }
-                            }
-
-                            if let Some(idx) = client_to_decrement_idx {
-                                // Decrement the batch size of the client by 1 step
-                                let current_val = index_to_value(
-                                    self.epoch_state.clients[idx].assigned_batch_size,
-                                    target_batch_size,
-                                    BATCH_SIZE_INDEX_BITS,
-                                );
-                                let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
-                                self.epoch_state.clients[idx].assigned_batch_size =
-                                    value_to_nearest_index(
-                                        adjusted_val,
-                                        target_batch_size,
-                                        BATCH_SIZE_INDEX_BITS,
-                                    );
+                            if new_client_value < old_client_value {
+                                // Check if the value actually decreased
+                                current_sum_of_values =
+                                    current_sum_of_values - old_client_value + new_client_value;
+                                made_reduction_in_full_cycle = true;
                             } else {
-                                break; // No client can be decremented further
+                                // Value didn't change (likely due to quantization), revert index to prevent unproductive change
+                                client.assigned_batch_size += 1;
                             }
                         }
                     }
-                    std::cmp::Ordering::Less => {
-                        // Total is too low, need to add batches
-                        for _ in 0..(-discrepancy) {
-                            let mut client_to_increment_idx: Option<usize> = None;
-                            let mut max_batch_seen = 0;
 
-                            for (k, c) in self.epoch_state.clients.iter().enumerate() {
-                                // Find client with current max batch size to add to
-                                if client_to_increment_idx.is_none()
-                                    || c.assigned_batch_size > max_batch_seen
+                    if !made_reduction_in_full_cycle {
+                        msg!("[witness_batch] Cannot reduce total value further. Current: {}, Target: {}", current_sum_of_values, target_batch_size);
+                        break; // No client's batch size could be reduced further in a full cycle
+                    }
+                }
+                total_assigned = current_sum_of_values; // Update for logging
+                msg!(
+                    "[witness_batch] Adjusted total_assigned after reduction: {}",
+                    total_assigned
+                );
+            } else if total_assigned < target_batch_size {
+                msg!(
+                    "[witness_batch] Total assigned batch size {} is below target {}, adjusting upwards...",
+                    total_assigned,
+                    target_batch_size
+                );
+                let mut current_sum_of_values = total_assigned;
+                let mut client_cycle_iter = (0..n_clients).cycle();
+                let max_batch_index = ((1u16 << BATCH_SIZE_INDEX_BITS) - 1) as u8;
+
+                while current_sum_of_values < target_batch_size {
+                    let mut made_increase_in_full_cycle = false;
+                    for _cycle_count in 0..n_clients {
+                        // Iterate through clients to attempt increase
+                        if current_sum_of_values >= target_batch_size {
+                            break;
+                        }
+                        let client_idx = client_cycle_iter.next().unwrap();
+                        let client = &mut self.epoch_state.clients[client_idx];
+
+                        if client.assigned_batch_size < max_batch_index {
+                            let old_client_value = index_to_value(
+                                client.assigned_batch_size,
+                                target_batch_size,
+                                BATCH_SIZE_INDEX_BITS,
+                            );
+                            client.assigned_batch_size += 1;
+                            let new_client_value = index_to_value(
+                                client.assigned_batch_size,
+                                target_batch_size,
+                                BATCH_SIZE_INDEX_BITS,
+                            );
+
+                            if new_client_value > old_client_value {
+                                // Check if value actually increased
+                                // Check if this increase would overshoot the target
+                                if current_sum_of_values - old_client_value + new_client_value
+                                    <= target_batch_size
                                 {
-                                    max_batch_seen = c.assigned_batch_size;
-                                    client_to_increment_idx = Some(k);
+                                    current_sum_of_values =
+                                        current_sum_of_values - old_client_value + new_client_value;
+                                    made_increase_in_full_cycle = true;
+                                } else {
+                                    // This increment would overshoot, revert it.
+                                    client.assigned_batch_size -= 1;
                                 }
-                            }
-
-                            if let Some(idx) = client_to_increment_idx {
-                                // Increment the batch size of the client by 1 step
-                                let current_val = index_to_value(
-                                    self.epoch_state.clients[idx].assigned_batch_size,
-                                    target_batch_size,
-                                    BATCH_SIZE_INDEX_BITS,
-                                );
-                                let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
-                                self.epoch_state.clients[idx].assigned_batch_size =
-                                    value_to_nearest_index(
-                                        adjusted_val,
-                                        target_batch_size,
-                                        BATCH_SIZE_INDEX_BITS,
-                                    );
                             } else {
-                                break; // No clients to increment (e.g., list is empty)
+                                // Value didn't change (quantization) or decreased (should not happen), revert index
+                                client.assigned_batch_size -= 1;
                             }
                         }
                     }
-                    std::cmp::Ordering::Equal => (), // No adjustment needed
+
+                    if !made_increase_in_full_cycle {
+                        msg!("[witness_batch] Cannot increase total value further without overshooting or maxed out. Current: {}, Target: {}", current_sum_of_values, target_batch_size);
+                        break; // No client's batch size could be increased further in a full cycle
+                    }
                 }
+                total_assigned = current_sum_of_values; // Update for logging
+                msg!(
+                    "[witness_batch] Adjusted total_assigned after increment: {}",
+                    total_assigned
+                );
             }
+        }
+
+        // Print final assignments
+        for (index, client) in self.epoch_state.clients.iter().enumerate() {
+            msg!(
+                "[witness_batch] Final Client {} ({}) assigned batch size: {} (idx={})",
+                index,
+                client.id,
+                index_to_value(
+                    client.assigned_batch_size,
+                    target_batch_size,
+                    BATCH_SIZE_INDEX_BITS
+                ),
+                client.assigned_batch_size,
+            );
         }
 
         // If we reach the end of an epoch or if we don't reach the min number of

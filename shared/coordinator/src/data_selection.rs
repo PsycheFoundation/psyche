@@ -72,6 +72,11 @@ pub fn assign_data_for_state<T: NodeIdentity>(
             BatchId(ClosedInterval::new(current_index, end_index)),
             node.id,
         );
+        msg!(
+            "[assign_data_for_state] assigned batch: {:?} to node: {:?}",
+            BatchId(ClosedInterval::new(current_index, end_index)),
+            node.id
+        );
         current_index = end_index + 1;
     }
 

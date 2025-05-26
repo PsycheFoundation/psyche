@@ -549,7 +549,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                 for batch_id in assigned_batch_ids_to_process {
                     let batch_commitments = match commitments.get(&batch_id) {
-                        Some(x) => x,
+                        Some(x) => {
+                            trace!("[distro_results] Found commitments for batch {batch_id}");
+                            x
+                        },
                         None => {
                             warn!(
                                 integration_test_log_marker = %IntegrationTestLogMarker::UntrainedBatches,
@@ -559,7 +562,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                             continue;
                         }
                     };
-                    trace!("Commitments for batch {batch_id}: {batch_commitments:?}");
+                    trace!("[distro_results] Commitments for batch {batch_id}: {batch_commitments:?}");
                     let consensus = match Coordinator::<T>::select_consensus_commitment_by_witnesses(
                         &batch_commitments
                             .iter()
@@ -570,11 +573,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     ) {
                         Some(x) => x,
                         None => {
-                            warn!("No consensus commitment for batch {}", batch_id);
+                            warn!("[distro_results] No consensus commitment for batch {}", batch_id);
                             continue;
                         }
                     };
-                    trace!("Consensus commitment for batch {batch_id}: {consensus:?}");
+                    trace!("[distro_results] Consensus commitment for batch {batch_id}: {consensus:?}");
 
                     let (commitment, result) = &batch_commitments[consensus].1;
                     let maybe_results: Result<(Vec<DistroResult>, u32), DeserializeError> = match payloads.remove(&result.ticket.hash()) {
