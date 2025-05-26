@@ -41,7 +41,7 @@ impl PIQA {
             .unwrap()
             .to_owned();
 
-        let text = format!("{}\n", goal);
+        let text = format!("Question: {goal}\nAnswer:");
         let choices = vec![sol1, sol2];
 
         let answer = row
