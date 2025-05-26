@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 
 use psyche_coordinator::{Client, Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS};
-use psyche_core::{BatchId, CompressedFixedVec, FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
+use psyche_core::{
+    value_to_nearest_index, BatchId, CompressedFixedVec, FixedVec, MerkleRoot, MerkleTree,
+    NodeIdentity, BATCH_SIZE_INDEX_BITS,
+};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
@@ -237,7 +240,7 @@ impl WitnessStep {
         // Clamp each assignment to the nearest value in a generated sequence
         let clamped_indices: Vec<u8> = final_assignments
             .into_iter()
-            .map(|val| nearest_index_in_sequence(val, global_batch_size, 63))
+            .map(|val| value_to_nearest_index(val, global_batch_size, BATCH_SIZE_INDEX_BITS))
             .collect();
 
         dbg!(&clamped_indices);
@@ -256,30 +259,4 @@ impl WitnessStep {
         }
         total
     }
-}
-
-/// Finds the index (0 for target 0, or 1-63) that corresponds to the target batch value.
-/// `num_levels` is the number of distinct non-zero batch sizes (e.g., 63).
-fn nearest_index_in_sequence(target_value: u16, max_representable_value: u16, num_levels: usize) -> u8 {
-    if target_value == 0 || max_representable_value == 0 || num_levels == 0 {
-        return 0;
-    }
-
-    if num_levels == 1 {
-        return 1;
-    }
-
-    let clamped_target = target_value.clamp(1, max_representable_value);
-    let effective_max_val = max_representable_value.max(1);
-    let increment = (effective_max_val - 1) as f64 / (num_levels - 1) as f64;
-
-    let zero_based_level_float = if increment == 0.0 {
-        0.0
-    } else {
-        ((clamped_target - 1) as f64) / increment
-    };
-
-    let mut zero_based_level_rounded = zero_based_level_float.round() as i64;
-    zero_based_level_rounded = zero_based_level_rounded.clamp(0, (num_levels - 1) as i64);
-    (zero_based_level_rounded as u8) + 1
 }

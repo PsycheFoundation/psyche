@@ -1,30 +1,11 @@
 use crate::{Committee, CommitteeSelection, Coordinator, Round};
 
 use anchor_lang::prelude::msg;
-use psyche_core::{deterministic_shuffle, BatchId, ClosedInterval, NodeIdentity};
+use psyche_core::{
+    deterministic_shuffle, index_to_value, BatchId, ClosedInterval, NodeIdentity,
+    BATCH_SIZE_INDEX_BITS,
+};
 use std::{collections::BTreeMap, fmt};
-
-/// Calculates the actual batch size value from an index, a maximum value, and the number of steps.
-/// The sequence of values ranges from 1 to `max_value`.
-/// `index` is expected to be `0 <= index < steps`.
-fn batch_value_from_index(index: usize, max_value: u16, steps: usize) -> u16 {
-    if max_value == 0 || steps <= 1 {
-        return 0;
-    }
-
-    // Ensure max_value is at least 1 for the formula `1.0 + ...` if it wasn't 0 initially.
-    let effective_max_value = max_value.max(1);
-
-    // Increment calculates the step size.
-    // (effective_max_value - 1) is the range to be covered (e.g., if max is 100, range is 99, values from 1 to 100).
-    // (steps - 1) is the number of intervals.
-    let increment = (effective_max_value as f64 - 1.0) / (steps as f64 - 1.0);
-
-    // Calculate value: starts at 1.0 and increases by increment for each index step.
-    let value = 1.0 + (index as f64 * increment);
-
-    value.round().max(0.0) as u16
-}
 
 /// Assigns data batches to nodes based on committee roles.  
 pub fn assign_data_for_state<T: NodeIdentity>(
@@ -62,17 +43,15 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut current_index = round.data_index;
 
     let max_round_batch_size = coordinator.get_target_global_batch_size(Some(round));
-    let num_steps_for_batch_size = 64;
 
     // Use assigned batch sizes for batch size assignments
     for (client_index, node) in trainer_nodes {
-        let batch_size_index =
-            coordinator.epoch_state.clients[client_index].assigned_batch_size as usize;
+        let batch_size_index = coordinator.epoch_state.clients[client_index].assigned_batch_size;
 
-        let mut node_batch_size = batch_value_from_index(
+        let mut node_batch_size = index_to_value(
             batch_size_index,
             max_round_batch_size,
-            num_steps_for_batch_size,
+            BATCH_SIZE_INDEX_BITS,
         ) as u64;
 
         // We don't want nodes not training so if there was no batch size assigned (or calculated as 0),

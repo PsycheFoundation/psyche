@@ -538,7 +538,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
         // Get the BatchIds from the actual assignments made for the previous_round.
         // These are the keys of the data_assignments map stored in the client's previous_round state.
-        let assigned_batch_ids_to_process: Vec<BatchId> = previous_round.data_assignments.keys().cloned().collect();
+        let assigned_batch_ids_to_process: Vec<BatchId> =
+            previous_round.data_assignments.keys().cloned().collect();
 
         Ok(tokio::task::spawn(async move {
                 let mut distro_results: Vec<Vec<DistroResult>> = Vec::new();

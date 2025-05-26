@@ -9,8 +9,8 @@ use anchor_lang::{
 };
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{
-    sha256, Bloom, CompressedFixedVec, FixedString, FixedVec, MerkleRoot, NodeIdentity,
-    SmallBoolean,
+    index_to_value, sha256, value_to_nearest_index, Bloom, CompressedFixedVec, FixedString,
+    FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, BATCH_SIZE_INDEX_BITS,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
@@ -1086,10 +1086,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                     index,
                     client.id,
                     client.assigned_batch_size,
-                    batch_value_from_index(
-                        client.assigned_batch_size as usize,
+                    index_to_value(
+                        client.assigned_batch_size,
                         target_batch_size,
-                        63,
+                        BATCH_SIZE_INDEX_BITS,
                     )
                 );
                 client.assigned_batch_size = to_assign;
@@ -1101,7 +1101,11 @@ impl<T: NodeIdentity> Coordinator<T> {
                 .clients
                 .iter()
                 .map(|c| {
-                    batch_value_from_index(c.assigned_batch_size as usize, target_batch_size, 63)
+                    index_to_value(
+                        c.assigned_batch_size,
+                        target_batch_size,
+                        BATCH_SIZE_INDEX_BITS,
+                    )
                 })
                 .sum();
 
@@ -1126,14 +1130,17 @@ impl<T: NodeIdentity> Coordinator<T> {
                         );
                         continue;
                     }
-                    let batch_val = batch_value_from_index(
-                        client.assigned_batch_size as usize,
+                    let batch_val = index_to_value(
+                        client.assigned_batch_size,
                         target_batch_size,
-                        63,
+                        BATCH_SIZE_INDEX_BITS,
                     );
                     let scaled_val = (batch_val as f64 * scale_factor).max(1.0).round() as u16;
-                    client.assigned_batch_size =
-                        nearest_index_in_sequence(scaled_val, target_batch_size, 63);
+                    client.assigned_batch_size = value_to_nearest_index(
+                        scaled_val,
+                        target_batch_size,
+                        BATCH_SIZE_INDEX_BITS,
+                    );
                     /*msg!(
                         "[witness_batch] Client {} scaled batch size: (idx={}) {}",
                         client.id,
@@ -1141,7 +1148,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                         batch_value_from_index(
                             client.assigned_batch_size as usize,
                             target_batch_size,
-                            63,
+                            BATCH_SIZE_INDEX_BITS,
                         )
                     );*/
                 }
@@ -1152,10 +1159,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                     .clients
                     .iter()
                     .map(|c| {
-                        batch_value_from_index(
-                            c.assigned_batch_size as usize,
+                        index_to_value(
+                            c.assigned_batch_size,
                             target_batch_size,
-                            63,
+                            BATCH_SIZE_INDEX_BITS,
                         )
                     })
                     .sum();
@@ -1182,14 +1189,18 @@ impl<T: NodeIdentity> Coordinator<T> {
 
                             if let Some(idx) = client_to_decrement_idx {
                                 // Decrement the batch size of the client by 1 step
-                                let current_val = batch_value_from_index(
-                                    self.epoch_state.clients[idx].assigned_batch_size as usize,
+                                let current_val = index_to_value(
+                                    self.epoch_state.clients[idx].assigned_batch_size,
                                     target_batch_size,
-                                    63,
+                                    BATCH_SIZE_INDEX_BITS,
                                 );
                                 let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
                                 self.epoch_state.clients[idx].assigned_batch_size =
-                                    nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
+                                    value_to_nearest_index(
+                                        adjusted_val,
+                                        target_batch_size,
+                                        BATCH_SIZE_INDEX_BITS,
+                                    );
                             } else {
                                 break; // No client can be decremented further
                             }
@@ -1213,14 +1224,18 @@ impl<T: NodeIdentity> Coordinator<T> {
 
                             if let Some(idx) = client_to_increment_idx {
                                 // Increment the batch size of the client by 1 step
-                                let current_val = batch_value_from_index(
-                                    self.epoch_state.clients[idx].assigned_batch_size as usize,
+                                let current_val = index_to_value(
+                                    self.epoch_state.clients[idx].assigned_batch_size,
                                     target_batch_size,
-                                    63,
+                                    BATCH_SIZE_INDEX_BITS,
                                 );
                                 let adjusted_val = (current_val - 1).clamp(1, target_batch_size);
                                 self.epoch_state.clients[idx].assigned_batch_size =
-                                    nearest_index_in_sequence(adjusted_val, target_batch_size, 63);
+                                    value_to_nearest_index(
+                                        adjusted_val,
+                                        target_batch_size,
+                                        BATCH_SIZE_INDEX_BITS,
+                                    );
                             } else {
                                 break; // No clients to increment (e.g., list is empty)
                             }
@@ -1468,24 +1483,4 @@ impl CoordinatorProgress {
     pub fn check(&self) -> bool {
         self.step > 0
     }
-}
-
-fn batch_value_from_index(index: usize, max_value: u16, steps: usize) -> u16 {
-    if steps <= 1 {
-        return max_value;
-    }
-
-    let increment = (max_value - 1) as f64 / (steps - 1) as f64;
-    let value = 1.0 + index as f64 * increment;
-    value.round() as u16
-}
-
-fn nearest_index_in_sequence(target: u16, max_value: u16, steps: usize) -> u8 {
-    if steps <= 1 || target == 0 {
-        return 0;
-    }
-
-    let increment = (max_value - 1) as f64 / (steps - 1) as f64;
-    let index = ((target as f64 - 1.0) / increment).round();
-    index.clamp(1.0, (steps - 1) as f64) as u8
 }
