@@ -231,7 +231,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 debug!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
                                             }
                                         } else {
-                                            warn!("Got broadcast from unknown client {}", from);
+                                            debug!("Got broadcast from unknown client {}", from);
                                         }
                                     }
                                     NetworkEvent::DownloadComplete(DownloadComplete {
