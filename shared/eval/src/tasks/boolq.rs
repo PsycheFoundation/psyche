@@ -1,3 +1,11 @@
+/**
+       hf (pretrained=NousResearch/Llama-2-7b-hf,dtype=bfloat16), gen_kwargs: (None), limit: None, num_fewshot: None, batch_size: 8
+       |Tasks|Version|Filter|n-shot|Metric|   |Value|   |Stderr|
+       |-----|------:|------|-----:|------|---|----:|---|-----:|
+       |boolq|      2|none  |     0|acc   |↑  |0.778|±  |0.0073|
+
+       boolq: {"acc_norm": 0.7842367667338496, "acc": 0.7842367667338496}
+*/
 use crate::{
     load_dataset,
     traits::{Document, LogLikelihoodTask},
@@ -36,9 +44,9 @@ impl BoolQ {
             .unwrap()
             .to_owned();
 
-        let choices = vec!["true".to_string(), "false".to_string()];
+        let choices = vec!["yes".to_string(), "no".to_string()];
 
-        let text = format!("Passage: {}\nQuestion: {}\nAnswer: ", passage, question);
+        let text = format!("{}\nQuestion: {}?\nAnswer:", passage, question);
 
         let answer = row
             .get_bool(dataset.get_column_id("answer").unwrap())
@@ -46,7 +54,13 @@ impl BoolQ {
 
         let answer = choices
             .iter()
-            .position(|choice_str| choice_str == &answer.to_string())
+            .position(|choice_str| {
+                choice_str
+                    == match answer {
+                        true => "yes",
+                        false => "no",
+                    }
+            })
             .unwrap();
 
         Document {

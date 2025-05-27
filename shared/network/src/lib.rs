@@ -89,8 +89,6 @@ const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
 const EUC_RELAY_HOSTNAME: &str = "euc1-1.relay.psyche.iroh.link";
 
-const TIMEOUT_SECONDS_FOR_DOWNLOADING: u64 = 5;
-
 /// How should this node discover other nodes?
 ///
 /// In almost all cases, you want "N0", for over-the-internet communication.
@@ -311,22 +309,24 @@ where
 
     /// Don't call this often / with many peers!
     /// It can force disconnection of other gossip peers if we have too many.
-    pub async fn add_peers(&mut self, peers: Vec<NodeId>) -> Result<()> {
+    pub fn add_peers(&mut self, peers: Vec<NodeId>) {
         let peer_list = peers
             .iter()
             .map(|n| n.fmt_short())
             .collect::<Vec<_>>()
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
-        self.gossip_tx
-            .join_peers(
-                peers
-                    .into_iter()
-                    .filter(|p| p != &self.router.endpoint().node_id())
-                    .collect(),
-            )
-            .await?;
-        Ok(())
+
+        let gossip_tx = self.gossip_tx.clone();
+        let node_id = self.router.endpoint().node_id();
+        tokio::task::spawn(async move {
+            if let Err(err) = gossip_tx
+                .join_peers(peers.into_iter().filter(|p| p != &node_id).collect())
+                .await
+            {
+                error!("Failed to join new gossip peers: {err:?}");
+            }
+        });
     }
 
     pub async fn broadcast(&mut self, message: &BroadcastMessage) -> Result<()> {
@@ -378,21 +378,12 @@ where
 
         tokio::spawn(async move {
             loop {
-                match progress
-                    .next()
-                    .timeout(Duration::from_secs(TIMEOUT_SECONDS_FOR_DOWNLOADING))
-                    .await
-                {
-                    Ok(None) => break,
-                    Ok(Some(val)) => {
+                match progress.next().await {
+                    None => break,
+                    Some(val) => {
                         if let Err(err) = tx.send(val) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
-                    }
-                    Err(_) => {
-                        let _ = tx.send(Err(anyhow!(
-                            "Didn't recieve any progress for blob {hash}, aborting download"
-                        )));
                     }
                 }
             }
