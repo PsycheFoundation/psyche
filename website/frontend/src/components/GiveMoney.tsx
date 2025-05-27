@@ -60,6 +60,10 @@ const SideAlign = styled.span`
 	justify-content: space-between;
 `
 
+const DiscordLink = styled.a`
+	color: ${forest[400]};
+`
+
 const PSYCHE_POOL_INDEX = 0n
 
 export function GiveMoney({
@@ -169,6 +173,9 @@ export function GiveMoney({
 	// have to div by 100 because we replace x.xx with xxx, so 100x too big.
 	const contributeAmount =
 		(BigInt(money.replace('.', '')) * BigInt(fundingUnitsPerDollar)) / 100n
+
+	const poolFull = remainingMoney === 0n
+
 	return (
 		<>
 			<div>
@@ -193,6 +200,18 @@ export function GiveMoney({
 							you have provided $
 							{(Number(sending.amount) / fundingUnitsPerDollar).toFixed(2)} to
 							the pool
+						</Balance>
+					</>
+				) : poolFull ? (
+					<>
+						<div className={c(currencyInput, text['display/5xl'])}>
+							the pool is full
+						</div>
+						<Balance className={text['body/sm/medium']}>
+							<DiscordLink href="https://discord.com/invite/jqVphNsB4H">
+								join our discord
+							</DiscordLink>{' '}
+							for future updates about psyche
 						</Balance>
 					</>
 				) : (

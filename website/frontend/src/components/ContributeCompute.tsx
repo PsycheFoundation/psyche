@@ -312,6 +312,18 @@ export function ContributeCompute({
 	return (
 		<>
 			<TopBox>
+				<ProgressContainer>
+					<ContributeProgress className={text['body/base/medium']}>
+						POOL CAPACITY
+					</ContributeProgress>
+					<ContributeProgressBar
+						ratio={
+							Number(totalDepositedCollateralAmount) /
+							Number(maxDepositCollateralAmount)
+						}
+						widthCh={18}
+					/>
+				</ProgressContainer>
 				{contributing && buttonState === 'connected' ? (
 					<GiveMoney
 						onExit={() => setContributing(false)}
@@ -324,18 +336,6 @@ export function ContributeCompute({
 					/>
 				) : (
 					<>
-						<ProgressContainer>
-							<ContributeProgress className={text['body/base/medium']}>
-								POOL CAPACITY
-							</ContributeProgress>
-							<ContributeProgressBar
-								ratio={
-									Number(totalDepositedCollateralAmount) /
-									Number(maxDepositCollateralAmount)
-								}
-								widthCh={18}
-							/>
-						</ProgressContainer>
 						<OrbCanvas ref={canvasRef} width={canvasSize} height={canvasSize} />
 						<ContributePoolLine>
 							<span className={text['body/base/medium']}>
