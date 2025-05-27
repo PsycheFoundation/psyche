@@ -3,10 +3,7 @@ use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
 };
 
-use anchor_lang::{
-    prelude::borsh,
-    AnchorDeserialize, AnchorSerialize, InitSpace,
-};
+use anchor_lang::{prelude::{borsh, msg}, AnchorDeserialize, AnchorSerialize, InitSpace};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{
     index_to_value, sha256, Bloom, CompressedFixedVec, FixedString, FixedVec, MerkleRoot,
@@ -508,9 +505,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         round
             .witnesses
             .push(witness)
-            .map_err(|_| {
-                CoordinatorError::WitnessesFull
-            })?;
+            .map_err(|_| CoordinatorError::WitnessesFull)?;
 
         if round.witnesses.len() == witness_nodes {
             self.start_round_train(unix_timestamp, random_seed, 0);
@@ -1023,15 +1018,14 @@ impl<T: NodeIdentity> Coordinator<T> {
         let target_batch_size =
             self.get_target_global_batch_size(Some(self.current_round_unchecked()));
 
-        // TODO change this back but we assume consensus for now in order to debug
-        //let consensus_reached = self.check_batch_assignment_consensus(
-        //    &self.current_round_unchecked().witnesses,
-        //    2.0 / 3.0,
-        //    self.config.global_batch_size_end,
-        //    0.05,
-        //    );
-        let consensus_reached = true; // For debugging purposes, assume consensus is always reached
+        let consensus_reached = self.check_batch_assignment_consensus(
+            &self.current_round_unchecked().witnesses,
+            1.0 / 3.0, // TODO this is for testing use a better threshold
+            self.config.global_batch_size_end,
+            0.05,
+        );
         if consensus_reached {
+            msg!("[coordinator.rs] Consensus reached for batch assignment");
             // Populate the batch size for each client regardless for now, with the first witness
             // Get the witness data before starting client iteration
             let rounds_head_idx = self.epoch_state.rounds_head as usize;
@@ -1061,11 +1055,8 @@ impl<T: NodeIdentity> Coordinator<T> {
                     }
                 }
 
-                let to_assign = match to_assign {
-                    Some(batch_assignment) => batch_assignment,
-                    None => 1u8,
-                };
-                client.assigned_batch_size = to_assign;
+                // If none found or all were 0, assign at least one so that it trains something
+                client.assigned_batch_size = to_assign.unwrap_or(1u8);
             }
 
             // Get target global batch size and adjust if total exceeds it
@@ -1179,6 +1170,8 @@ impl<T: NodeIdentity> Coordinator<T> {
                     }
                 }
             }
+        } else {
+            msg!("[coordinator.rs] Consensus for batch assignment NOT reached");
         }
 
         // If we reach the end of an epoch or if we don't reach the min number of
@@ -1316,6 +1309,74 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn is_training_just_starting(&self) -> bool {
         self.epoch_state.first_round.is_true() && self.run_state == RunState::RoundTrain
+    }
+
+    fn check_batch_assignment_consensus(
+        &self,
+        witnesses: &[Witness],
+        threshold: f64,
+        global_batch_size: u16,
+        tolerance: f64,
+    ) -> bool {
+        if witnesses.is_empty() {
+            return false;
+        }
+
+        // Round up the tolerance to an integer
+        let tolerance = ((global_batch_size as f64) * tolerance).ceil() as i32;
+
+        // For each client...
+        let n = witnesses[0].proposed_batch_sizes.len();
+        for i in 0..n {
+            let mut candidate = 0;
+            let mut count = 0;
+
+            // Find a candidate for most frequently proposed batch size
+            for witness in witnesses {
+                let value = witness.proposed_batch_sizes.get(i).unwrap_or(0);
+                if value == 0 {
+                    continue;
+                }
+
+                if count == 0 {
+                    candidate = value;
+                    count = 1;
+                } else if value == candidate {
+                    count += 1;
+                } else {
+                    count -= 1;
+                }
+            }
+
+            // verify candidate meets threshold
+            if candidate != 0 {
+                // values close enough to the candidate
+                let matching_count = witnesses
+                    .iter()
+                    .filter(|wtn| {
+                        let val = wtn.proposed_batch_sizes.get(i).unwrap_or(0);
+                        val != 0 && (val as i32 - candidate as i32).abs() <= tolerance
+                    })
+                    .count();
+
+                // values total proposed
+                let non_zero_count = witnesses
+                    .iter()
+                    .filter(|wtn| wtn.proposed_batch_sizes.get(i).unwrap_or(0) != 0)
+                    .count();
+
+                // Check if the number of matching counts meets the threshold
+                if (matching_count as f64) < threshold * (non_zero_count as f64) {
+                    return false;
+                }
+            } else {
+                // No candidate (e.g., all values at this index were 0): skip
+                continue;
+            }
+        }
+
+        // If we reach here, all clients have a consensus on batch sizes up to the trheshold
+        true
     }
 }
 
