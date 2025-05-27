@@ -42,6 +42,12 @@ Your `.env` file should contain at least these configuration options:
 - `MICRO_BATCH_SIZE`: Number of samples processed per GPU per step (affects memory usage, set it as high as VRAM allows)
 - `AUTHORIZER`: The Solana address that delegated authorization to the Solana public key you will use to join the run. You can read more about [authorization here](./authentication.md).
 
+### Testing authorization
+
+You can check if your client is authorized to join a given run by running `psyche-solana-client check-authorization --run-id <RUN_ID> --authorizer <AUTHORIZER> --pubkey <PUBKEY>`, where `<AUTHORIZER>` is the same Solana authorizer delegate you have configured in your `.env` file, and `<PUBKEY>` is the key associated with the given client's private key. You can also pass the private key via `RAW_WALLET_PRIVATE_KEY="$(cat <path_to_solana_pubkey>)"` instead of passing `--pubkey`.
+
+This command will return successfully if the wallet is authorized to join that run, given the associated authorizer.
+
 ### Running the Psyche client docker image
 
 To download and run the Psyche client thru Docker, run the following command, replacing `<path_to_env_file>` and
