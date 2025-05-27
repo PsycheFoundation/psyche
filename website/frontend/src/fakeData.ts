@@ -210,7 +210,7 @@ export const makeFakeRunData: Record<
 
 export const fakeContributionInfo: ContributionInfo = {
 	collateralMintDecimals: 6,
-	totalDepositedCollateralAmount: 1250000000000n,
+	totalDepositedCollateralAmount: 2500000000000n,
 	maxDepositCollateralAmount: 2500000000000n,
 	users: [
 		{
@@ -240,12 +240,12 @@ export const fakeContributionInfo: ContributionInfo = {
 		},
 		...Array.from({ length: 300 }, (_, i) => ({
 			rank: i + 6,
-			address: '789abcdef0123456789abcdef0123456789abcdef',
+			address: `789abcdef0123456789abcdef0123456789abcdef${i}`,
 			funding: 80000000000n,
 		})),
 	],
-	collateralMintAddress: 'N/A',
-	miningPoolProgramId: 'N/A',
+	collateralMintAddress: '4BJXYkfvg37zEmBbsacZjeQDpTNx91KppxFJxRqrz48e',
+	miningPoolProgramId: '4BJXYkfvg37zEmBbsacZjeQDpTNx91KppxFJxRqrz48e',
 }
 
 function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
