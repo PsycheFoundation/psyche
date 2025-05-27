@@ -6,7 +6,7 @@ mod tasks;
 mod traits;
 
 pub use harness::{EvalTaskOptions, PreparedTask, PreparedTaskResult, Task, TaskType};
-pub use tasks::{ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLUPro, MMLU, OpenbookQA, PIQA};
+pub use tasks::{ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLUPro, OpenbookQA, MMLU, PIQA};
 
 pub const ASCII_UPPERCASE: [&str; 26] = [
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
