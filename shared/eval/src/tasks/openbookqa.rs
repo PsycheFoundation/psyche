@@ -35,37 +35,28 @@ impl OpenbookQA {
             .get_string(dataset.get_column_id("question_stem").unwrap())
             .unwrap()
             .to_owned();
+        let text = format!("{question_stem}");
 
         let choices_group = row
             .get_group(dataset.get_column_id("choices").unwrap())
             .unwrap();
         let choice_texts = choices_group.get_list(0).unwrap();
-        let choice_labels = choices_group.get_list(1).unwrap();
 
-        let options = (0..choice_texts.len())
-            .map(|i| {
-                format!(
-                    "{}. {}",
-                    choice_labels.get_string(i).unwrap(),
-                    choice_texts.get_string(i).unwrap()
-                )
-            })
+        let choices = (0..choice_texts.len())
+            .map(|i| choice_texts.get_string(i).unwrap().to_owned())
             .collect::<Vec<_>>();
-
-        let choices = (0..choice_labels.len())
-            .map(|i| choice_labels.get_string(i).unwrap().to_owned())
-            .collect::<Vec<_>>();
-
-        let text = format!("{question_stem}");
 
         let answer_key = row
             .get_string(dataset.get_column_id("answerKey").unwrap())
             .unwrap();
 
-        let answer = choices
-            .iter()
-            .position(|choice| choice == answer_key)
-            .unwrap();
+        let answer = match answer_key.to_string().as_str() {
+            "A" => 0,
+            "B" => 1,
+            "C" => 2,
+            "D" => 3,
+            _ => panic!("Invalid answer key"),
+        };
 
         Document {
             text,
