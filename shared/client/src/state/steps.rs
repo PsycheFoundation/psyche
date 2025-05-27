@@ -451,7 +451,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     return Ok(());
                 }
 
-                dbg!(&round_state.data_assignments);
+                debug!(
+                    "Round data assignments: {:?}",
+                    &round_state.data_assignments
+                );
 
                 let correct_assignee =
                     match round_state.data_assignments.get(&training_result.batch_id) {
@@ -619,16 +622,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     if remaining_batch_ids.contains(&batch_id) {
                         // first received payload for this batch id, vote for it in consensus
                         broadcast_bloom.add(&commitment.data_hash);
-                        info!("Adding batch {batch_id} to broadcast bloom");
+                        trace!("Adding batch {batch_id} to broadcast bloom");
                     } else {
-                        info!(
+                        trace!(
                             "Don't have {} in our remaining batch IDs {:?}, discarding",
-                            batch_id, remaining_batch_ids
+                            batch_id,
+                            remaining_batch_ids
                         );
                     }
                 }
                 None => {
-                    info!(
+                    trace!(
                         "Already submitted witness, not adding {} to participant bloom",
                         from
                     );
@@ -637,16 +641,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
             remaining_batch_ids.remove(&batch_id);
 
-            info!(
+            trace!(
                 "Remaining batches to download for step {}: {:?}",
-                distro_result.step, remaining_batch_ids
+                distro_result.step,
+                remaining_batch_ids
             );
 
             *num_batch_ids_left = remaining_batch_ids.len();
 
             remaining_batch_ids.is_empty()
         } else {
-            info!("All batches already trained on, discarding batch {batch_id}");
+            trace!("All batches already trained on, discarding batch {batch_id}");
             false
         };
 

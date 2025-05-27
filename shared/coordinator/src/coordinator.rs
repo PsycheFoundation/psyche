@@ -4,13 +4,13 @@ use crate::{
 };
 
 use anchor_lang::{
-    prelude::{borsh, msg},
+    prelude::borsh,
     AnchorDeserialize, AnchorSerialize, InitSpace,
 };
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{
-    index_to_value, sha256, value_to_nearest_index, Bloom, CompressedFixedVec, FixedString,
-    FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, BATCH_SIZE_INDEX_BITS,
+    index_to_value, sha256, Bloom, CompressedFixedVec, FixedString, FixedVec, MerkleRoot,
+    NodeIdentity, SmallBoolean, BATCH_SIZE_INDEX_BITS,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
@@ -505,12 +505,12 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         let round = self.current_round_mut_unchecked();
-        round.witnesses.push(witness).map_err(|_| {
-            msg!("[warmup_witness] failed to add witness");
-            CoordinatorError::WitnessesFull
-        })?;
-
-        msg!("[warmup_witness] witness added");
+        round
+            .witnesses
+            .push(witness)
+            .map_err(|_| {
+                CoordinatorError::WitnessesFull
+            })?;
 
         if round.witnesses.len() == witness_nodes {
             self.start_round_train(unix_timestamp, random_seed, 0);
@@ -526,7 +526,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
-            msg!("[witness] halted");
             return Err(CoordinatorError::Halted);
         }
 
@@ -540,7 +539,6 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.run_state,
             RunState::RoundWitness | RunState::RoundTrain,
         ) {
-            msg!("[witness] invalid run state {}", self.run_state);
             return Err(CoordinatorError::InvalidRunState);
         }
 
@@ -548,34 +546,26 @@ impl<T: NodeIdentity> Coordinator<T> {
             from,
             &witness.proof,
             &self.epoch_state.clients,
-        ) {
-            msg!("[witness] invalid witness: verify_witness_for_client failed");
-            return Err(CoordinatorError::InvalidWitness);
-        }
-
-        if witness.proof.witness.is_false() {
-            msg!("[witness] invalid witness: witness.proof.witness is false");
+        ) || witness.proof.witness.is_false()
+        {
             return Err(CoordinatorError::InvalidWitness);
         }
 
         let round = self.current_round().unwrap();
         for witness in round.witnesses.iter() {
             if self.epoch_state.clients[witness.proof.index as usize].id == *from {
-                msg!("[witness] duplicate witness");
                 return Err(CoordinatorError::DuplicateWitness);
             }
         }
         let round = self.current_round_mut_unchecked();
-        round.witnesses.push(witness).map_err(|_| {
-            msg!("[witness] failed to add witness");
-            CoordinatorError::WitnessesFull
-        })?;
+        round
+            .witnesses
+            .push(witness)
+            .map_err(|_| CoordinatorError::WitnessesFull)?;
 
         if round.witnesses.len() == witness_nodes && !(self.run_state == RunState::RoundWitness) {
-            msg!("[witness] all witnesses received, moving to round train");
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
-
         Ok(())
     }
 
@@ -759,21 +749,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         witnesses: &[Witness],
         witness_quorum: u16,
     ) -> Option<usize> {
-        msg!(
-            "[select_consensus_commitment_by_witnesses] quorum: {} #witnesses: {}",
-            witness_quorum,
-            witnesses.len(),
-        );
         let mut scores = vec![0; commitments.len()];
         for witness in witnesses {
             for (index, commitment) in commitments.iter().enumerate() {
-                msg!(
-                    "[select_consensus_commitment_by_witnesses] witness {}, bloom: {:?}",
-                    index,
-                    witness.broadcast_bloom
-                );
                 if witness.broadcast_bloom.contains(&commitment.data_hash) {
-                    msg!("[select_consensus_commitment_by_witnesses] commitment matches witness",);
                     scores[index] += 1;
                     break;
                 }
@@ -1021,7 +1000,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         if !self.check_timeout(unix_timestamp, self.config.round_witness_time) {
             return Ok(TickResult::Ticked);
         }
-        msg!("[witness_batch] Round witness timeout, moving to next round");
         // Timeout ocurred, we need to move to the next round
 
         // TODO: Punish idle witnesses
@@ -1037,27 +1015,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         // disconnected. We just set everyone to withdrawn state and change
         // to Cooldown.
         if num_witnesses == 0 {
-            msg!("[witness_batch] No witnesses, moving to cooldown");
-            msg!(
-                "[witness_batch] witnesses: {:?}",
-                self.current_round_unchecked().witnesses
-            );
             self.withdraw_all()?;
             self.start_cooldown(unix_timestamp);
             return Ok(TickResult::Ticked);
         }
-
-        // Check validity of each witness report on client batch assignment
-        // For debug purposes print each witness batch assignment
-        /*for witness in self.current_round_unchecked().witnesses.iter().take(5) {
-            let witness_id = self.epoch_state.clients[witness.proof.index as usize].id;
-            msg!(
-                "[witness_batch] Witness {} ({}) proposed: {:?}",
-                witness.proof.index,
-                witness_id,
-                witness.proposed_batch_sizes
-            );
-        }*/
 
         let target_batch_size =
             self.get_target_global_batch_size(Some(self.current_round_unchecked()));
@@ -1070,11 +1031,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         //    0.05,
         //    );
         let consensus_reached = true; // For debugging purposes, assume consensus is always reached
-        if !consensus_reached {
-            msg!("[witness_batch] Consensus not reached, using previous batch sizes");
-        } else {
-            msg!("[witness_batch] Consensus reached, using new batch sizes");
-
+        if consensus_reached {
             // Populate the batch size for each client regardless for now, with the first witness
             // Get the witness data before starting client iteration
             let rounds_head_idx = self.epoch_state.rounds_head as usize;
@@ -1106,61 +1063,25 @@ impl<T: NodeIdentity> Coordinator<T> {
 
                 let to_assign = match to_assign {
                     Some(batch_assignment) => batch_assignment,
-                    None => {
-                        msg!(
-                        "[witness_batch] Client {} has no valid batch assignment from any witness, using default of 1",
-                        index
-                    );
-                        1u8
-                    }
+                    None => 1u8,
                 };
-
-                msg!(
-                    "[witness_batch] Client {} ({}) batch size: (idx={}) {}",
-                    index,
-                    client.id,
-                    client.assigned_batch_size,
-                    index_to_value(
-                        client.assigned_batch_size,
-                        target_batch_size,
-                        BATCH_SIZE_INDEX_BITS,
-                    )
-                );
                 client.assigned_batch_size = to_assign;
             }
 
             // Get target global batch size and adjust if total exceeds it
             let mut total_assigned: u16 = 0;
-            for (client_idx, c) in self.epoch_state.clients.iter().enumerate() {
+            for c in self.epoch_state.clients.iter() {
                 let client_batch_value = index_to_value(
                     c.assigned_batch_size,
                     target_batch_size,
                     BATCH_SIZE_INDEX_BITS,
                 );
-                /*msg!(
-                    "[witness_batch] Client {} ({}) assigned batch index: {}, value: {}",
-                    client_idx,
-                    c.id,
-                    c.assigned_batch_size,
-                    client_batch_value,
-                );*/
                 total_assigned += client_batch_value;
             }
-            msg!(
-                "[witness_batch] Initial total_assigned after loop: {}",
-                total_assigned
-            );
 
             let n_clients = self.epoch_state.clients.len();
 
-            if n_clients == 0 {
-                msg!("[witness_batch] No clients to adjust batch sizes for.");
-            } else if total_assigned > target_batch_size {
-                msg!(
-                    "[witness_batch] Total assigned batch size {} exceeds target {}, adjusting downwards...",
-                    total_assigned,
-                    target_batch_size
-                );
+            if n_clients > 0 && total_assigned > target_batch_size {
                 let mut current_sum_of_values = total_assigned;
                 let mut client_cycle_iter = (0..n_clients).cycle();
 
@@ -1201,21 +1122,11 @@ impl<T: NodeIdentity> Coordinator<T> {
                     }
 
                     if !made_reduction_in_full_cycle {
-                        msg!("[witness_batch] Cannot reduce total value further. Current: {}, Target: {}", current_sum_of_values, target_batch_size);
                         break; // No client's batch size could be reduced further in a full cycle
                     }
                 }
-                total_assigned = current_sum_of_values; // Update for logging
-                msg!(
-                    "[witness_batch] Adjusted total_assigned after reduction: {}",
-                    total_assigned
-                );
             } else if total_assigned < target_batch_size {
-                msg!(
-                    "[witness_batch] Total assigned batch size {} is below target {}, adjusting upwards...",
-                    total_assigned,
-                    target_batch_size
-                );
+                // We need to distribute more batches to clients
                 let mut current_sum_of_values = total_assigned;
                 let mut client_cycle_iter = (0..n_clients).cycle();
                 let max_batch_index = ((1u16 << BATCH_SIZE_INDEX_BITS) - 1) as u8;
@@ -1264,31 +1175,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                     }
 
                     if !made_increase_in_full_cycle {
-                        msg!("[witness_batch] Cannot increase total value further without overshooting or maxed out. Current: {}, Target: {}", current_sum_of_values, target_batch_size);
                         break; // No client's batch size could be increased further in a full cycle
                     }
                 }
-                total_assigned = current_sum_of_values; // Update for logging
-                msg!(
-                    "[witness_batch] Adjusted total_assigned after increment: {}",
-                    total_assigned
-                );
             }
-        }
-
-        // Print final assignments
-        for (index, client) in self.epoch_state.clients.iter().enumerate() {
-            msg!(
-                "[witness_batch] Final Client {} ({}) assigned batch size: {} (idx={})",
-                index,
-                client.id,
-                index_to_value(
-                    client.assigned_batch_size,
-                    target_batch_size,
-                    BATCH_SIZE_INDEX_BITS
-                ),
-                client.assigned_batch_size,
-            );
         }
 
         // If we reach the end of an epoch or if we don't reach the min number of
@@ -1379,7 +1269,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         round.tie_breaker_tasks = tie_breaker_tasks;
         round.random_seed = random_seed;
         round.witnesses.clear();
-
         self.change_state(unix_timestamp, RunState::RoundTrain);
     }
 
@@ -1427,68 +1316,6 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn is_training_just_starting(&self) -> bool {
         self.epoch_state.first_round.is_true() && self.run_state == RunState::RoundTrain
-    }
-
-    fn check_batch_assignment_consensus(
-        &self,
-        witnesses: &[Witness],
-        threshold: f64,
-        global_batch_size: u16,
-        tolerance: f64,
-    ) -> bool {
-        if witnesses.is_empty() {
-            return false;
-        }
-
-        let n = witnesses[0].proposed_batch_sizes.len();
-        let tolerance = ((global_batch_size as f64) * tolerance).ceil() as u16;
-
-        for i in 0..n {
-            let mut candidate = 0;
-            let mut count = 0;
-
-            // First pass: Boyer-Moore to find candidate (skip 0s)
-            for witness in witnesses {
-                let value = witness.proposed_batch_sizes.get(i).unwrap_or(0);
-                if value == 0 {
-                    continue;
-                }
-
-                if count == 0 {
-                    candidate = value;
-                    count = 1;
-                } else if value == candidate {
-                    count += 1;
-                } else {
-                    count -= 1;
-                }
-            }
-
-            // Second pass: verify candidate meets threshold
-            if candidate != 0 {
-                let actual_count = witnesses
-                    .iter()
-                    .filter(|wtn| {
-                        let val = wtn.proposed_batch_sizes.get(i).unwrap_or(0);
-                        val != 0 && (val as i32 - candidate as i32).abs() <= tolerance as i32
-                    })
-                    .count();
-
-                let non_zero_count = witnesses
-                    .iter()
-                    .filter(|wtn| wtn.proposed_batch_sizes.get(i).unwrap_or(0) != 0)
-                    .count();
-
-                if (actual_count as f64) < threshold * (non_zero_count as f64) {
-                    return false;
-                }
-            } else {
-                // No candidate (e.g., all values at this index were 0): skip
-                continue;
-            }
-        }
-
-        true
     }
 }
 

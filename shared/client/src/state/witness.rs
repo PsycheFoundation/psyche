@@ -11,7 +11,7 @@ use tokio::{
     sync::mpsc::{self},
     task::JoinHandle,
 };
-use tracing::{error, info, trace};
+use tracing::{debug, info, trace, warn};
 
 use super::{
     evals::{EvalError, EvalRunner, MaybeRunningEvals, RunningEvals},
@@ -128,12 +128,12 @@ impl WitnessStep {
             global_batch_size,
         );
 
-        let mut proposed_batch_sizes = CompressedFixedVec::new();
-        let _ = proposed_batch_sizes.fill(0);
+        let mut proposed_batch_sizes =
+            CompressedFixedVec::filled_with(0).expect("Failed to create batch size vector");
         for (i, _) in assigments_vec.iter().enumerate() {
             let res = proposed_batch_sizes.set(i, assigments_vec[i]);
             if res.is_err() {
-                error!("Failed to set batch size for client {}: {:?}", i, res);
+                warn!("Failed to set batch size for client {}: {:?}", i, res);
             }
         }
 
@@ -153,11 +153,6 @@ impl WitnessStep {
         global_batch_size: u16,
     ) -> Vec<u8> {
         let mut scores_per_node: Vec<f64> = Vec::new();
-        info!("[calculate_assignments] client_times: {:?}", client_times);
-        info!(
-            "[calculate_assignments] data_assignments: {:?}",
-            data_assignments
-        );
 
         for i in 0..clients.len() {
             let batches_assigned =
@@ -170,16 +165,12 @@ impl WitnessStep {
             };
             scores_per_node.push(score);
 
-            info!(
+            debug!(
                 "[calculate_assignments] client {} ({})\n
                 client_time: {:?} , batches trained: {}, calculated score: {}\n",
                 i, clients[i].id, client_times[i], batches_assigned, score,
             );
         }
-
-        // Step 2: Sum of scores_per_node
-        let sum = scores_per_node.iter().sum::<f64>();
-        dbg!(sum);
 
         // Initialize final assignments
         let mut final_assignments = vec![0u16; clients.len()];
@@ -235,15 +226,13 @@ impl WitnessStep {
             }
         }
 
-        dbg!(&final_assignments);
-
         // Clamp each assignment to the nearest value in a generated sequence
         let clamped_indices: Vec<u8> = final_assignments
             .into_iter()
             .map(|val| value_to_nearest_index(val, global_batch_size, BATCH_SIZE_INDEX_BITS))
             .collect();
 
-        dbg!(&clamped_indices);
+        debug!("Calculated indices: {:?}", clamped_indices);
         clamped_indices
     }
 

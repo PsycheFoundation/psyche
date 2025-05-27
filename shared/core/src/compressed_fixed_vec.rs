@@ -6,7 +6,6 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::fmt;
-use std::io::Read;
 use ts_rs::TS;
 
 // Helper const fn to calculate bytes needed for N elements of X bits each.
@@ -48,7 +47,7 @@ impl U6RefMut<'_> {
 
 /// A fixed-size vector that stores u6 values (0-63) compactly.
 /// Capacity is fixed by the `CAPACITY` const.
-#[derive(Clone, Copy, Zeroable, TS)] // Zeroable assumes 0 len and 0 data is valid.
+#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, TS)] // Zeroable assumes 0 len and 0 data is valid.
 #[repr(C)] // Ensures field order for Zeroable.
 #[ts(type = "Array<number>")]
 pub struct CompressedFixedVec {
@@ -390,63 +389,6 @@ impl IntoIterator for CompressedFixedVec {
     }
 }
 
-// Borsh (for Anchor)
-impl AnchorSerialize for CompressedFixedVec {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
-        borsh::BorshSerialize::serialize(&self.len, writer)?;
-        let num_data_bytes = packed_bytes_count(self.len(), BITS_PER_ELEMENT);
-        if num_data_bytes > 0 {
-            writer.write_all(&self.data[..num_data_bytes])?;
-        }
-        Ok(())
-    }
-}
-
-impl AnchorDeserialize for CompressedFixedVec {
-    fn deserialize(buf: &mut &[u8]) -> Result<Self, std::io::Error> {
-        let len: u16 = borsh::BorshDeserialize::deserialize(buf)?;
-
-        if len as usize > CAPACITY {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Deserialized length exceeds capacity",
-            ));
-        }
-
-        let mut data_arr = [0u8; packed_bytes_count(CAPACITY, BITS_PER_ELEMENT)];
-        let num_data_bytes_to_read = packed_bytes_count(len as usize, BITS_PER_ELEMENT);
-
-        if num_data_bytes_to_read > 0 {
-            if buf.len() < num_data_bytes_to_read {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Buffer too small for deserialization",
-                ));
-            }
-            let (src_data, rest_buf) = buf.split_at(num_data_bytes_to_read);
-            data_arr[..num_data_bytes_to_read].copy_from_slice(src_data);
-            *buf = rest_buf;
-        }
-        Ok(CompressedFixedVec {
-            data: data_arr,
-            len,
-        })
-    }
-
-    fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self, std::io::Error>
-    where
-        Self: Sized,
-    {
-        // Default BorshDeserialize implementation pattern
-        let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer)?;
-        let mut slice = buffer.as_slice();
-        // Call the BorshDeserialize version explicitly
-        <Self as borsh::BorshDeserialize>::deserialize(&mut slice)
-    }
-}
-
-// Serde
 impl Serialize for CompressedFixedVec {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

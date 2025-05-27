@@ -1,9 +1,6 @@
 use crate::{Client, Coordinator, CoordinatorError, SOLANA_MAX_NUM_WITNESSES};
 
-use anchor_lang::{
-    prelude::{borsh, msg},
-    AnchorDeserialize, AnchorSerialize, InitSpace,
-};
+use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
 use bytemuck::Zeroable;
 use psyche_core::{compute_shuffled_index, sha256, sha256v, NodeIdentity, SmallBoolean};
 use serde::{Deserialize, Serialize};

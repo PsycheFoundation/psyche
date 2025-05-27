@@ -186,10 +186,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         &committee_selection,
                     );
                     let num_all_batch_ids = all_batch_ids.len();
-                    info!(
-                        "all_batch_ids: {:?}, len: {}",
-                        all_batch_ids, num_all_batch_ids
-                    );
                     let batch_ids_not_yet_trained_on: Arc<Mutex<BatchIdSet>> =
                         Arc::new(Mutex::new(all_batch_ids.into_iter().collect()));
                     (
@@ -226,8 +222,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .expect("RoundTrain started: Error getting current timestamp")
             .as_millis() as u64;
 
-        let mut client_times = FixedVec::new();
-        let _ = client_times.fill(0_u16);
         *current_round = RoundState {
             height: round.height,
             step: state.progress.step,
@@ -243,7 +237,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             batch_ids_not_yet_trained_on: batch_ids_not_yet_trained_on
                 .map(|x| (num_all_batch_ids, x)),
             self_distro_results: vec![],
-            client_times,
+            client_times: FixedVec::<u16, 256>::filled_with(0_u16),
             training_started_at: Some(current_timestamp),
         };
 
@@ -538,38 +532,22 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .previous_round()
             .ok_or(ApplyError::NoActiveRound)?
             .witnesses;
-        /*let batch_ids = get_batch_ids_for_round(
-            state
-                .previous_previous_round()
-                .ok_or(ApplyError::NoActiveRound)?,
-            state,
-            previous_round
-                .committee_info
-                .as_ref()
-                .ok_or(ApplyError::NoActiveRound)?
-                .2
-                .get_num_trainer_nodes(),
-        );*/
 
         // Get the BatchIds from the actual assignments made for the previous_round.
         // These are the keys of the data_assignments map stored in the client's previous_round state.
-        let assigned_batch_ids_to_process: Vec<BatchId> =
-            previous_round.data_assignments.keys().cloned().collect();
+        let batch_ids: Vec<BatchId> = previous_round.data_assignments.keys().cloned().collect();
 
         let data_assignments = previous_round.data_assignments.clone();
 
         Ok(tokio::task::spawn(async move {
                 let mut distro_results: Vec<Vec<DistroResult>> = Vec::new();
 
-                trace!("[distro_results] Have commitments for batches {:?}", commitments.keys().collect::<Vec<_>>());
-                trace!("[distro_results] Have payloads for hashes {:?}", payloads.keys().collect::<Vec<_>>());
+                trace!("Have commitments for batches {:?}", commitments.keys().collect::<Vec<_>>());
+                trace!("Have payloads for hashes {:?}", payloads.keys().collect::<Vec<_>>());
 
-                for batch_id in assigned_batch_ids_to_process {
+                for batch_id in batch_ids {
                     let batch_commitments = match commitments.get(&batch_id) {
-                        Some(x) => {
-                            trace!("[distro_results] Found commitments for batch {batch_id}");
-                            x
-                        },
+                        Some(x) => x,
                         None => {
                             let expected_trainer = data_assignments.get(&batch_id);
                             warn!(
@@ -581,7 +559,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                             continue;
                         }
                     };
-                    trace!("[distro_results] Commitments for batch {batch_id}: {batch_commitments:?}");
+                    trace!("Commitments for batch {batch_id}: {batch_commitments:?}");
                     let consensus = match Coordinator::<T>::select_consensus_commitment_by_witnesses(
                         &batch_commitments
                             .iter()
@@ -592,11 +570,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     ) {
                         Some(x) => x,
                         None => {
-                            warn!("[distro_results] No consensus commitment for batch {}", batch_id);
+                            warn!("No consensus commitment for batch {}", batch_id);
                             continue;
                         }
                     };
-                    trace!("[distro_results] Consensus commitment for batch {batch_id}: {consensus:?}");
+                    trace!("Consensus commitment for batch {batch_id}: {consensus:?}");
 
                     let (commitment, result) = &batch_commitments[consensus].1;
                     let maybe_results: Result<(Vec<DistroResult>, u32), DeserializeError> = match payloads.remove(&result.ticket.hash()) {

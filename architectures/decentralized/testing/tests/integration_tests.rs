@@ -892,7 +892,7 @@ async fn test_everybody_leaves_in_warmup() {
     let client_1_name = format!("{CLIENT_CONTAINER_PREFIX}-1");
 
     watcher
-        .monitor_container(&client_1_name, vec![JsonFilter::StateChange])
+        .monitor_container(&client_1_name, vec![IntegrationTestLogMarker::StateChange])
         .unwrap();
 
     while let Some(response) = watcher.log_rx.recv().await {
@@ -921,7 +921,7 @@ async fn test_everybody_leaves_in_warmup() {
 
     let client_2_name = format!("{CLIENT_CONTAINER_PREFIX}-2");
     watcher
-        .monitor_container(&client_2_name, vec![JsonFilter::StateChange])
+        .monitor_container(&client_2_name, vec![IntegrationTestLogMarker::StateChange])
         .unwrap();
 
     while let Some(response) = watcher.log_rx.recv().await {

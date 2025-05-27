@@ -1,6 +1,5 @@
 use crate::{Client, Committee, CommitteeSelection, Coordinator, Round};
 
-use anchor_lang::prelude::msg;
 use psyche_core::{
     deterministic_shuffle, index_to_value, BatchId, ClosedInterval, NodeIdentity,
     BATCH_SIZE_INDEX_BITS,
@@ -60,34 +59,21 @@ pub fn assign_data_for_state<T: NodeIdentity>(
             node_batch_size = 1u64;
         }
 
-        msg!(
-            "[assign_data_for_state] node: {:?}, batch_size_index: {}, batch_size: {}",
-            node,
-            batch_size_index,
-            node_batch_size
-        );
-
         let end_index = current_index + node_batch_size - 1;
         assignments.insert(
             BatchId(ClosedInterval::new(current_index, end_index)),
             node.id,
         );
-        msg!(
-            "[assign_data_for_state] assigned batch: {:?} to node: {:?}",
-            BatchId(ClosedInterval::new(current_index, end_index)),
-            node.id
-        );
         current_index = end_index + 1;
     }
 
-    msg!("[assign_data_for_state] assignments: {:?}", assignments);
     assignments
 }
 
 pub fn get_batch_ids_for_round<T: NodeIdentity>(
     round: &Round,
     coordinator: &Coordinator<T>,
-    committee_selection: &CommitteeSelection, // Pass CommitteeSelection to determine trainers and their order
+    committee_selection: &CommitteeSelection,
 ) -> Vec<BatchId> {
     // Get the list of trainer nodes and their original indices, similar to assign_data_for_state
     // The elements are (original_client_index, reference_to_client_data)
@@ -98,9 +84,7 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
             if matches!(proof.committee, Committee::Trainer) {
                 Some((i, client))
             } else {
-                // This part ensures that only trainers are selected, matching assign_data_for_state's filtering.
-                // The asserts in assign_data_for_state for TieBreaker/Verifier are for specific zero-config cases
-                // and don't change which nodes are considered trainers for data assignment.
+                // If it's not a trainer then there's nothing to check as there's no batch assignment for it.
                 None
             }
         })
