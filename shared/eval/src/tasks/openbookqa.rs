@@ -35,7 +35,7 @@ impl OpenbookQA {
             .get_string(dataset.get_column_id("question_stem").unwrap())
             .unwrap()
             .to_owned();
-        let text = format!("{question_stem}");
+        let text = question_stem.to_string();
 
         let choices_group = row
             .get_group(dataset.get_column_id("choices").unwrap())
