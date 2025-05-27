@@ -1,3 +1,15 @@
+/**
+   OpenBookQA is a question-answering dataset modeled after open book exams for assessing
+   understanding of elementary-level science.
+
+
+   hf (pretrained=NousResearch/Llama-2-7b-hf), gen_kwargs: (None), limit: None, num_fewshot: None, batch_size: 1
+   |  Tasks   |Version|Filter|n-shot| Metric |   |Value|   |Stderr|
+   |----------|------:|------|-----:|--------|---|----:|---|-----:|
+   |openbookqa|      1|none  |     0|acc     |↑  |0.314|±  |0.0208|
+   |          |       |none  |     0|acc_norm|↑  |0.442|±  |0.0222|
+
+*/
 use crate::{
     load_dataset,
     traits::{Document, LogLikelihoodTask},
@@ -7,11 +19,6 @@ use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
 use std::fmt::Display;
 
-/**
-   OpenBookQA is a question-answering dataset modeled after open book exams for assessing
-   understanding of elementary-level science.
-
-*/
 pub struct OpenbookQA {
     test_dataset: Dataset,
     validation_dataset: Dataset,
