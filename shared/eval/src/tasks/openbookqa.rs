@@ -27,7 +27,7 @@ impl OpenbookQA {
     }
 
     pub const fn name() -> &'static str {
-        "OpenbookQA"
+        "OpenBookQA"
     }
 
     fn row_to_document(dataset: &Dataset, row: Row) -> Document {
