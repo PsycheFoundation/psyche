@@ -101,8 +101,8 @@ impl WitnessStep {
         let merkle = MerkleTree::new(&previous_round.broadcasts);
         let broadcast_merkle = merkle.get_root().cloned().unwrap_or(MerkleRoot::default());
 
-        let blooms = previous_round.blooms;
-        let (participant_bloom, broadcast_bloom) = blooms.unwrap_or_default();
+        let (participant_bloom, broadcast_bloom) =
+            previous_round.blooms.lock().unwrap().unwrap_or_default();
 
         info!("Submitting witness blooms");
         previous_round.sent_witness = true;
