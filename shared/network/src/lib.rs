@@ -22,16 +22,14 @@ use p2p_model_sharing::{
 use router::Router;
 use state::State;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, VecDeque},
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
-    iter::Cycle,
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
     sync::{Arc, Mutex as StdMutex},
     time::{Duration, Instant},
-    vec::IntoIter,
 };
 use tokio::{
     select,
@@ -67,7 +65,7 @@ mod tui;
 mod util;
 
 pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
-pub use download_manager::{DownloadComplete, DownloadFailed, TransmittableDownload};
+pub use download_manager::{DownloadComplete, DownloadFailed, DownloadType, TransmittableDownload};
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
@@ -327,7 +325,7 @@ where
                     .join_peers(peers.into_iter().filter(|p| p != &node_id).collect())
                     .await
                 {
-                    warn!("Failed to join gossip peers: {err:#}")
+                    error!("Failed to join gossip peers: {err:#}")
                 }
             }
             .instrument(debug_span!("gossip_join_peers", peers = peer_list)),
@@ -349,19 +347,18 @@ where
         Ok(())
     }
 
-    pub fn start_download(
-        &mut self,
-        ticket: BlobTicket,
-        tag: u32,
-        additional_peers_to_try: Vec<NodeAddr>,
-    ) {
+    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
         let provider_node_id = ticket.node_addr().clone();
         let ticket_hash = ticket.hash();
+        let additional_peers_to_try = match download_type.clone() {
+            DownloadType::DistroResult(peers) => peers,
+            DownloadType::ModelSharing(_) => vec![],
+        };
         let (tx, rx) = mpsc::unbounded_channel();
 
         self.state.currently_sharing_blobs.insert(ticket_hash);
         self.state.blob_tags.insert((tag, ticket_hash));
-        self.download_manager.add(ticket, tag, rx);
+        self.download_manager.add(ticket, tag, rx, download_type);
 
         debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash.fmt_short());
 
@@ -534,8 +531,8 @@ where
             tokio::spawn(async move {
                 let blob_bytes = match blobs.read_to_bytes(hash).await {
                     Ok(b) => b,
-                    Err(e) => {
-                        error!("Failed to read bytes: {e}");
+                    Err(err) => {
+                        error!("Failed to read bytes: {err:#}");
                         return;
                     }
                 };
@@ -548,7 +545,7 @@ where
             });
 
             self.download_manager
-                .read(update.blob_ticket, update.tag, recv);
+                .read(update.blob_ticket, update.tag, recv, update.download_type);
         } else {
             self.state.download_progesses.insert(hash, update);
         }
@@ -597,10 +594,7 @@ pub async fn request_model(
     send.finish()?;
 
     // Receive parameter value blob ticket
-    let parameter_blob_ticket_bytes = recv
-        .read_to_end(16384)
-        .timeout(Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS))
-        .await??;
+    let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
     let parameter_blob_ticket: Result<BlobTicket, SharableModelError> =
         postcard::from_bytes(&parameter_blob_ticket_bytes)?;
     parameter_blob_ticket.with_context(|| "Error parsing model parameter blob ticket".to_string())
@@ -758,50 +752,60 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 pub async fn param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    parameter_blob_tickets: Arc<StdMutex<Vec<BlobTicket>>>,
-    peer_cycle: Arc<Mutex<Cycle<IntoIter<PublicKey>>>>,
-    busy_peers: Arc<StdMutex<HashSet<PublicKey>>>,
+    model_blob_tickets: Arc<StdMutex<Vec<(BlobTicket, ModelRequestType)>>>,
+    peer_cycle: Arc<Mutex<VecDeque<PublicKey>>>,
     errored_peers: Arc<StdMutex<HashMap<PublicKey, usize>>>,
     num_peers: usize,
     cancel_token: CancellationToken,
 ) {
-    const MAX_ERRORS_PER_PEER: usize = 3;
+    let max_errors_per_peer: usize = 2;
     loop {
-        let Some(peer_id) = peer_cycle.lock().await.next() else {
-            // This should never really happen, since the only chance for calling
-            // `next()` on a `Cycle` iterator and return `None` is when the iterator
-            // is empty, which was checked previously.
-            unreachable!();
+        let peer_id = match peer_cycle.lock().await.pop_front() {
+            Some(peer) => peer,
+            None => {
+                continue;
+            }
         };
 
-        if !busy_peers.lock().unwrap().insert(peer_id) {
-            continue;
-        }
+        debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
+        let result = request_model(router.clone(), peer_id, &model_request_type)
+            .timeout(Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS))
+            .await
+            .map_err(|_| anyhow!("Didn't receive the model resource in time"))
+            .and_then(|inner| inner);
 
-        debug!(parameter = ?&model_request_type, peer = %peer_id, "Requesting parameter");
-        match request_model(router.clone(), peer_id, &model_request_type).await {
+        match result {
             Ok(parameter_blob_ticket) => {
-                parameter_blob_tickets
+                model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push(parameter_blob_ticket);
-                busy_peers.lock().unwrap().remove(&peer_id);
-                // Continue to next parameter request
+                    .push((parameter_blob_ticket, model_request_type.clone()));
+                peer_cycle.lock().await.push_back(peer_id);
                 break;
             }
             Err(e) => {
-                warn!(parameter = ?&model_request_type, peer = %peer_id, "Failed to get parameter: {e}");
-                busy_peers.lock().unwrap().remove(&peer_id);
+                let mut peer_cycle_lock = peer_cycle.lock().await;
+                warn!(
+                    parameter = ?&model_request_type,
+                    peer = %peer_id,
+                    "Failed to get parameter: {e}"
+                );
                 let mut errored_peers_lock = errored_peers.lock().unwrap();
                 *errored_peers_lock.entry(peer_id).or_insert(0) += 1;
+                if *errored_peers_lock.get(&peer_id).unwrap_or(&0) <= max_errors_per_peer {
+                    peer_cycle_lock.push_back(peer_id);
+                } else {
+                    warn!(
+                        "Not asking peer: {peer_id} because it's failing to retrieve us the model"
+                    );
+                }
                 let min_peers_error_count = *errored_peers_lock.values().min().unwrap_or(&1);
                 if errored_peers_lock.len() == num_peers
-                    && min_peers_error_count >= MAX_ERRORS_PER_PEER
+                    && min_peers_error_count >= max_errors_per_peer
                 {
                     cancel_token.cancel();
                     break;
                 }
-                // Continue to request this parameter to another peer
                 continue;
             }
         }

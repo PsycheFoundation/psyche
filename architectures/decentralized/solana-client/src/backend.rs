@@ -95,7 +95,7 @@ async fn subscribe_to_account(
                 error!(
                     url = url,
                     subscription_number = id,
-                    error = err.to_string(),
+                    error = format!("{err:#}"),
                     "Solana account subscribe error",
                 );
                 continue;
@@ -219,13 +219,13 @@ impl SolanaBackend {
                                         "Coordinator account update"
                                     );
                                     if let Err(err) = tx_update.send(account.state.coordinator) {
-                                        error!("Error sending coordinator update: {err}");
+                                        error!("Error sending coordinator update: {err:#}");
                                         break;
                                     }
                                     last_nonce = account.nonce;
                                 }
                             }
-                            Err(err) => error!("Error deserializing coordinator account: {err}"),
+                            Err(err) => error!("Error deserializing coordinator account: {err:#}"),
                         }
                     }
                     None => error!("Error decoding coordinator account"),
@@ -737,6 +737,28 @@ impl SolanaBackend {
             }
             error!(from = %program_coordinators[0].payer(), "All attempts to send health check transaction failed");
         });
+    }
+
+    pub async fn checkpoint(
+        &self,
+        coordinator_instance: Pubkey,
+        coordinator_account: Pubkey,
+        repo: HubRepo,
+    ) -> Result<Signature> {
+        let payer = self.program_coordinators[0].payer();
+        let signature = self.program_coordinators[0]
+            .request()
+            .accounts(
+                psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
+                    user: payer,
+                    coordinator_instance,
+                    coordinator_account,
+                },
+            )
+            .args(psyche_solana_coordinator::instruction::Checkpoint { repo })
+            .send()
+            .await?;
+        Ok(signature)
     }
 
     pub fn send_checkpoint(

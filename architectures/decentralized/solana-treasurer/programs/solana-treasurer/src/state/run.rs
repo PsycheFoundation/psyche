@@ -13,7 +13,6 @@ pub struct Run {
     pub coordinator_instance: Pubkey,
 
     pub collateral_mint: Pubkey,
-    pub collateral_amount_per_earned_point: u64,
 
     pub total_funded_collateral_amount: u64,
     pub total_claimed_collateral_amount: u64,

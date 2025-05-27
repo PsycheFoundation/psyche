@@ -10,6 +10,9 @@ struct Args {
     #[arg(long, default_value = "NousResearch/Llama-2-7b-hf")]
     model: String,
 
+    #[arg(long)]
+    hf_token: Option<String>,
+
     #[arg(long, default_value_t = ALL_TASK_NAMES.join(","))]
     tasks: String,
 
@@ -31,7 +34,7 @@ fn main() -> Result<()> {
         .map(|x| tasktype_from_name(x).map(|y| Task::new(y, args.num_fewshot, args.seed)))
         .collect();
     let tasks = tasks?;
-    let repo = download_model_repo_sync(&args.model, None, None, None, true)?;
+    let repo = download_model_repo_sync(&args.model, None, None, args.hf_token, true)?;
     let tokenizer = auto_tokenizer(&repo)?;
     let mut model = auto_model_for_causal_lm_from_pretrained(
         repo,

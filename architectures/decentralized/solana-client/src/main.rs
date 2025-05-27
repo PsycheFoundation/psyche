@@ -4,14 +4,15 @@ use crate::{
 };
 
 use anchor_client::{
+    anchor_lang::system_program,
     solana_sdk::{
-        commitment_config::CommitmentConfig,
+        commitment_config::{CommitmentConfig, CommitmentLevel},
         native_token::lamports_to_sol,
         pubkey::Pubkey,
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
-    Cluster,
+    Client, Cluster,
 };
 use anyhow::{bail, Context, Result};
 use bytemuck::Zeroable;
@@ -19,12 +20,13 @@ use clap::{Args, Parser, Subcommand};
 use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_coordinator::{
     get_data_index_for_step,
-    model::{Checkpoint, Model},
+    model::{Checkpoint, HubRepo, Model},
     CoordinatorConfig, CoordinatorProgress,
 };
-use psyche_core::sha256;
+use psyche_core::{sha256, FixedString};
 use psyche_network::SecretKey;
-use psyche_solana_coordinator::find_coordinator_instance;
+use psyche_solana_authorizer::state::Authorization;
+use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
 use psyche_tui::{maybe_start_render_loop, LogOutput};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -198,6 +200,22 @@ enum Commands {
 
         choice: ShowChoices,
     },
+    Checkpoint {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+
+        #[clap(flatten)]
+        wallet: WalletArgs,
+
+        #[clap(short, long, env)]
+        run_id: String,
+
+        #[clap(long, env)]
+        repo: String,
+
+        #[clap(long, env)]
+        revision: Option<String>,
+    },
     Train {
         #[clap(flatten)]
         cluster: ClusterArgs,
@@ -216,6 +234,22 @@ enum Commands {
         rpc_3: String,
         #[clap(long, env, default_value_t = String::from(""))]
         ws_rpc_3: String,
+        #[clap(long, env)]
+        authorizer: Option<Pubkey>,
+    },
+    CheckAuthorization {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+
+        #[clap(flatten)]
+        wallet: WalletArgs,
+
+        #[clap(short, long)]
+        pubkey: Option<String>,
+
+        #[clap(short, long, env)]
+        run_id: String,
+
         #[clap(long, env)]
         authorizer: Option<Pubkey>,
     },
@@ -561,6 +595,51 @@ async fn async_main() -> Result<()> {
             }
             Ok(())
         }
+        Commands::Checkpoint {
+            cluster,
+            wallet,
+            run_id,
+            repo,
+            revision,
+        } => {
+            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            let coordinator_instance = find_coordinator_instance(&run_id);
+            let coordinator_instance_state = backend
+                .get_coordinator_instance(&coordinator_instance)
+                .await?;
+            let coordinator_account = coordinator_instance_state.coordinator_account;
+            let checkpoint = backend
+                .checkpoint(
+                    coordinator_instance,
+                    coordinator_account,
+                    HubRepo {
+                        repo_id: FixedString::from_str_truncated(&repo),
+                        revision: revision
+                            .clone()
+                            .map(|x| FixedString::from_str_truncated(&x)),
+                    },
+                )
+                .await?;
+            println!(
+                "Checkpointed to repo {}{}on run {} with transaction {}",
+                repo,
+                match revision {
+                    Some(revision) => format!(" ({revision}) "),
+                    None => " ".to_string(),
+                },
+                run_id,
+                checkpoint
+            );
+            Ok(())
+        }
         Commands::Show {
             cluster,
             run_id,
@@ -709,6 +788,69 @@ async fn async_main() -> Result<()> {
 
             let () = clap_markdown::print_help_markdown::<CliArgs>();
 
+            Ok(())
+        }
+        Commands::CheckAuthorization {
+            cluster,
+            wallet,
+            run_id,
+            authorizer,
+            pubkey,
+        } => {
+            // when we call join_run, we check
+            //  constraint = authorization.is_valid_for(
+            //     &coordinator_instance.join_authority,
+            //     user.key,
+            //     JOIN_RUN_AUTHORIZATION_SCOPE,
+            // )
+            // so replicate that check here.
+            let cluster: Cluster = cluster.into();
+            let fake_payer = Arc::new(Keypair::new());
+            let commitment = CommitmentConfig {
+                commitment: CommitmentLevel::Confirmed,
+            };
+            let client = Client::new_with_options(cluster.clone(), fake_payer.clone(), commitment);
+            let backend = SolanaBackend::new(cluster.clone(), vec![], fake_payer, commitment)
+                .context("Failed to create backend on cluster")?;
+
+            let coordinator_instance =
+                psyche_solana_coordinator::find_coordinator_instance(&run_id);
+            let coordinator_instance_state = backend
+                .get_coordinator_instance(&coordinator_instance)
+                .await
+                .context("failed to get coordinator instance")?;
+
+            let authorization = psyche_solana_authorizer::find_authorization(
+                &coordinator_instance_state.join_authority,
+                &authorizer.unwrap_or(system_program::ID),
+                psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
+            );
+
+            let authorization_state: Authorization = client
+                .program(psyche_solana_authorizer::ID)?
+                .account(authorization)
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to get authorization at addr {authorization} on cluster {cluster}"
+                    )
+                })?;
+
+            let maybe_wallet: Result<Keypair, _> = wallet.try_into();
+            let solana_pubkey: Pubkey = match (maybe_wallet, pubkey) {
+                (Ok(_), Some(_)) => bail!("passed both private key and pubkey args. pick one."),
+                (Ok(wallet), None) => wallet.pubkey(),
+                (Err(_), Some(pk)) => Pubkey::from_str(&pk)?,
+                (Err(e), None) => return Err(e),
+            };
+            if !authorization_state.is_valid_for(
+                &coordinator_instance_state.join_authority,
+                &solana_pubkey,
+                JOIN_RUN_AUTHORIZATION_SCOPE,
+            ) {
+                bail!("Authorization invalid for run id {run_id} using pubkey {solana_pubkey}");
+            }
+            println!("authorization valid for run id {run_id} using pubkey {solana_pubkey}");
             Ok(())
         }
     }

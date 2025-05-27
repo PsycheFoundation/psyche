@@ -50,8 +50,8 @@ pub async fn run() {
     let participant = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
+    let rounds_per_epoch = 4;
     let earned_point_per_epoch = 33;
-    let collateral_amount_per_earned_point = 42;
 
     // Prepare the collateral mint
     let collateral_mint_authority = Keypair::new();
@@ -86,7 +86,6 @@ pub async fn run() {
             run_id: "This is my run's dummy run_id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
-            collateral_amount_per_earned_point,
         },
     )
     .await
@@ -203,7 +202,7 @@ pub async fn run() {
                 global_batch_size_warmup_tokens: 0,
                 verification_percent: 0,
                 witness_nodes: 1,
-                rounds_per_epoch: 4,
+                rounds_per_epoch,
                 total_steps: 100,
             }),
             model: Some(Model::LLM(LLM {
@@ -310,7 +309,8 @@ pub async fn run() {
     .await
     .unwrap();
 
-    for _ in 0..4 {
+    // Go through an epoch's rounds
+    for _ in 0..rounds_per_epoch {
         // Witness
         process_coordinator_witness(
             &mut endpoint,

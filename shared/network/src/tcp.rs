@@ -84,11 +84,11 @@ where
                     let incoming_tx = incoming_tx.clone();
                     let disconnected_tx = disconnected_tx.clone();
                     tokio::spawn(async move {
-                        if let Err(e) =
+                        if let Err(err) =
                             Self::handle_connection(stream, clients, incoming_tx, disconnected_tx)
                                 .await
                         {
-                            error!("Error handling connection: {:?}", e);
+                            error!("Error handling connection: {err:#}");
                         }
                     });
                 }
@@ -100,8 +100,8 @@ where
             async move {
                 while let Some((id, message)) = outgoing_rx.recv().await {
                     if let Some(client) = clients.lock().await.get(&id) {
-                        if let Err(e) = client.send(message) {
-                            error!("Failed to send message to client {:?}: {:?}", id, e);
+                        if let Err(err) = client.send(message) {
+                            error!("Failed to send message to client {id:?}: {err:#}");
                         }
                     }
                 }
@@ -180,8 +180,8 @@ where
                             }
                         }
                     }
-                    Some(Err(e)) => {
-                        error!("Error reading from stream: {:?}", e);
+                    Some(Err(err)) => {
+                        error!("Error reading from stream: {err:#}");
                         break;
                     }
                     None => break,

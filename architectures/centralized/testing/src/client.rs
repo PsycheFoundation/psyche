@@ -89,7 +89,7 @@ impl ClientHandle {
             Client::default(server_port, run_id).await;
         let client_handle =
             tokio::spawn(async move { client.run(allowlist, p2p, state_options).await });
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         Self { client_handle }
     }
 

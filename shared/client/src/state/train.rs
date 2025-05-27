@@ -420,10 +420,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                                         let transmittable_distro_result = transmittable_distro_result.clone();
                                         let dir = dir.clone();
                                         tokio::spawn(async move {
-                                            if let Err(e) =
+                                            if let Err(err) =
                                                 write_gradients_to_disk(dir, identity, transmittable_distro_result).await
                                             {
-                                                error!("Failed to write gradients to disk: {e}");
+                                                error!("Failed to write gradients to disk: {err:#}");
                                             }
                                         });
                                     }

@@ -238,6 +238,11 @@ export const fakeContributionInfo: ContributionInfo = {
 			address: '789abcdef0123456789abcdef0123456789abcdef',
 			funding: 80000000000n,
 		},
+		...Array.from({ length: 300 }, (_, i) => ({
+			rank: i + 6,
+			address: '789abcdef0123456789abcdef0123456789abcdef',
+			funding: 80000000000n,
+		})),
 	],
 	collateralMintAddress: 'N/A',
 	miningPoolProgramId: 'N/A',

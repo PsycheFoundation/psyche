@@ -4,7 +4,7 @@ use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMap, RelayMode, RelayUrl};
 use psyche_network::Hash;
 use psyche_network::{
-    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, NetworkConnection, NetworkEvent,
+    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
     NetworkTUIState, NetworkTui, PeerList,
 };
 use psyche_tui::{
@@ -131,7 +131,7 @@ impl App {
                             }
                         }
                         Err(err) => {
-                            error!("Network error: {err}");
+                            error!("Network error: {err:#}{err:#}");
                             return;
                         }
                     }
@@ -219,8 +219,8 @@ impl App {
                 info!(name:"upload_blob", from=node_id.fmt_short(), step=step, blob=v.hash().fmt_short());
                 v
             }
-            Err(e) => {
-                error!("Couldn't add downloadable for step {step}. {}", e);
+            Err(err) => {
+                error!("Couldn't add downloadable for step {step}. {err:#}");
                 return;
             }
         };
@@ -230,8 +230,8 @@ impl App {
             blob_ticket: blob_ticket.clone(),
         };
 
-        if let Err(e) = self.network.broadcast(&message) {
-            error!("Error sending message: {}", e);
+        if let Err(err) = self.network.broadcast(&message) {
+            error!("Error sending message: {err}");
         } else {
             info!("broadcasted message for step {step}: {}", blob_ticket);
             info!(name:"message_send_distro", from=node_id.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
