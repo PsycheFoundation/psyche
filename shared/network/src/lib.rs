@@ -311,22 +311,24 @@ where
 
     /// Don't call this often / with many peers!
     /// It can force disconnection of other gossip peers if we have too many.
-    pub async fn add_peers(&mut self, peers: Vec<NodeId>) -> Result<()> {
+    pub fn add_peers(&mut self, peers: Vec<NodeId>) {
         let peer_list = peers
             .iter()
             .map(|n| n.fmt_short())
             .collect::<Vec<_>>()
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
-        self.gossip_tx
-            .join_peers(
-                peers
-                    .into_iter()
-                    .filter(|p| p != &self.router.endpoint().node_id())
-                    .collect(),
-            )
-            .await?;
-        Ok(())
+
+        let gossip_tx = self.gossip_tx.clone();
+        let node_id = self.router.endpoint().node_id();
+        tokio::task::spawn(async move {
+            if let Err(err) = gossip_tx
+                .join_peers(peers.into_iter().filter(|p| p != &node_id).collect())
+                .await
+            {
+                error!("Failed to join new gossip peers: {err:?}");
+            }
+        });
     }
 
     pub async fn broadcast(&mut self, message: &BroadcastMessage) -> Result<()> {

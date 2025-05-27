@@ -55,6 +55,7 @@ const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
+const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -125,6 +126,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut sharing_downloadable_interval = interval(REBROADCAST_SHAREABLE);
                 let mut retry_check_interval = interval(DOWNLOAD_RETRY_CHECK_INTERVAL);
                 let mut opprotunistic_witness_interval = interval(OPPROTUNISTIC_WITNESS_INTERVAL);
+                let mut check_connection_interval = interval(CHECK_CONNECTION_INTERVAL);
                 let mut wait_for_checkpoint = false;
                 debug!("Starting client loop");
 
@@ -164,40 +166,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 new_state.run_state
                             );
 
-                            let connected_p2p_nodes: BTreeSet<_> = p2p.neighbors().collect();
-                            if !new_state.halted()
-                            {
-                                let run_participating_node_ids = participating_node_ids(new_state);
-                                allowlist.set(run_participating_node_ids.iter().copied());
-
-                                let my_node_id = p2p.node_id();
-
-                                // only connect to peers after we become part of the set of current clients
-                                if run_participating_node_ids.contains(&my_node_id) {
-                                    const MAX_NUM_BOOTSTRAP_PEERS: usize = 3;
-                                    // we only want to bootstrap gossip;
-                                    // only connect to enough peers to bring our total peer count to at MOST MAX_NUM_BOOTSTRAP_PEERS.
-                                    // if we already have that many or more, don't send any gossip joins
-                                    // because gossip joins this way can force-disconnect other peers.
-                                    let num_peers_to_add = MAX_NUM_BOOTSTRAP_PEERS.saturating_sub(connected_p2p_nodes.len());
-
-                                    let mut to_connect = run_participating_node_ids
-                                        .iter()
-                                        .filter(|node_id| *node_id != &my_node_id)
-                                        .filter(|node_id| !connected_p2p_nodes.contains(*node_id))
-                                        .collect::<Vec<_>>();
-                                    to_connect.shuffle(&mut thread_rng());
-                                    let to_connect = to_connect.into_iter().take(num_peers_to_add).cloned().collect::<Vec<_>>();
-
-                                    if !to_connect.is_empty() {
-                                        info!(num_new_peers = to_connect.len(), "Connecting to new peers");
-                                        p2p.add_peers(to_connect).await?;
-                                    }
-                                }
-                            }
+                            let run_participating_node_ids = participating_node_ids(new_state);
+                            allowlist.set(run_participating_node_ids);
+                            ensure_gossip_connected(new_state, &mut p2p);
 
                             if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
-                                trace!(num_peers = connected_p2p_nodes.len(), "Updating p2p");
+                                trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
                                 p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
                                 let p2p_info = get_p2p_info(&p2p).await?;
@@ -555,6 +529,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
+                        _ = check_connection_interval.tick() => {
+                            let Some(run_state) = run.coordinator_state() else {continue;};
+                            if run_state.halted() {
+                                continue;
+                            }
+
+                            ensure_gossip_connected(run_state, &mut p2p);
+                        }
                         else => break
                     }
                 }
@@ -593,6 +575,57 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
     pub async fn tui_states(&self) -> TUIStates {
         self.req_tui_state.notify_one();
         self.rx_tui.borrow().clone()
+    }
+}
+
+fn ensure_gossip_connected<T: NodeIdentity>(run_state: &Coordinator<T>, p2p: &mut NC) {
+    // don't try to connect to anyone if we're paused
+    if run_state.halted() {
+        return;
+    }
+
+    let my_node_id = p2p.node_id();
+
+    let run_participating_node_ids = participating_node_ids(run_state);
+
+    // only connect to peers after we become part of the set of current clients
+    if !run_participating_node_ids.contains(&my_node_id) {
+        return;
+    }
+
+    // TODO: maybe don't force connections if we're trying to join new peers already
+    // see https://github.com/PsycheFoundation/psyche/issues/78
+    let gossip_neighbors: BTreeSet<_> = p2p.neighbors().collect();
+    if gossip_neighbors.is_empty() {
+        warn!("Not connected to any gossip peers! Trying to connect to some...");
+    }
+
+    const MAX_NUM_BOOTSTRAP_PEERS: usize = 3;
+    // we only want to bootstrap gossip;
+    // only connect to enough peers to bring our total peer count to at MOST MAX_NUM_BOOTSTRAP_PEERS.
+    // if we already have that many or more, don't send any gossip joins
+    // because gossip joins this way can force-disconnect other peers.
+    let num_peers_to_add = MAX_NUM_BOOTSTRAP_PEERS.saturating_sub(gossip_neighbors.len());
+
+    if num_peers_to_add == 0 {
+        return;
+    }
+
+    let mut to_connect = run_participating_node_ids
+        .iter()
+        .filter(|node_id| *node_id != &my_node_id)
+        .filter(|node_id| !gossip_neighbors.contains(*node_id))
+        .collect::<Vec<_>>();
+    to_connect.shuffle(&mut thread_rng());
+    let to_connect = to_connect
+        .into_iter()
+        .take(num_peers_to_add)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if !to_connect.is_empty() {
+        info!(num_new_peers = to_connect.len(), "Connecting to new peers");
+        p2p.add_peers(to_connect);
     }
 }
 
