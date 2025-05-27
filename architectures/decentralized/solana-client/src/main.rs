@@ -19,10 +19,10 @@ use clap::{Args, Parser, Subcommand};
 use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_coordinator::{
     get_data_index_for_step,
-    model::{Checkpoint, Model},
+    model::{Checkpoint, HubRepo, Model},
     CoordinatorConfig, CoordinatorProgress,
 };
-use psyche_core::sha256;
+use psyche_core::{sha256, FixedString};
 use psyche_network::SecretKey;
 use psyche_solana_coordinator::find_coordinator_instance;
 use psyche_tui::{maybe_start_render_loop, LogOutput};
@@ -197,6 +197,22 @@ enum Commands {
         run_id: String,
 
         choice: ShowChoices,
+    },
+    Checkpoint {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+
+        #[clap(flatten)]
+        wallet: WalletArgs,
+
+        #[clap(short, long, env)]
+        run_id: String,
+
+        #[clap(long, env)]
+        repo: String,
+
+        #[clap(long, env)]
+        revision: Option<String>,
     },
     Train {
         #[clap(flatten)]
@@ -559,6 +575,51 @@ async fn async_main() -> Result<()> {
             for log in backend.get_logs(&set).await? {
                 println!("{log}");
             }
+            Ok(())
+        }
+        Commands::Checkpoint {
+            cluster,
+            wallet,
+            run_id,
+            repo,
+            revision,
+        } => {
+            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            let coordinator_instance = find_coordinator_instance(&run_id);
+            let coordinator_instance_state = backend
+                .get_coordinator_instance(&coordinator_instance)
+                .await?;
+            let coordinator_account = coordinator_instance_state.coordinator_account;
+            let checkpoint = backend
+                .checkpoint(
+                    coordinator_instance,
+                    coordinator_account,
+                    HubRepo {
+                        repo_id: FixedString::from_str_truncated(&repo),
+                        revision: revision
+                            .clone()
+                            .map(|x| FixedString::from_str_truncated(&x)),
+                    },
+                )
+                .await?;
+            println!(
+                "Checkpointed to repo {}{}on run {} with transaction {}",
+                repo,
+                match revision {
+                    Some(revision) => format!(" ({revision}) "),
+                    None => " ".to_string(),
+                },
+                run_id,
+                checkpoint
+            );
             Ok(())
         }
         Commands::Show {
