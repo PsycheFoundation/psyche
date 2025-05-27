@@ -89,8 +89,6 @@ const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
 const EUC_RELAY_HOSTNAME: &str = "euc1-1.relay.psyche.iroh.link";
 
-const TIMEOUT_SECONDS_FOR_DOWNLOADING: u64 = 5;
-
 /// How should this node discover other nodes?
 ///
 /// In almost all cases, you want "N0", for over-the-internet communication.
@@ -380,21 +378,12 @@ where
 
         tokio::spawn(async move {
             loop {
-                match progress
-                    .next()
-                    .timeout(Duration::from_secs(TIMEOUT_SECONDS_FOR_DOWNLOADING))
-                    .await
-                {
-                    Ok(None) => break,
-                    Ok(Some(val)) => {
+                match progress.next().await {
+                    None => break,
+                    Some(val) => {
                         if let Err(err) = tx.send(val) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
-                    }
-                    Err(_) => {
-                        let _ = tx.send(Err(anyhow!(
-                            "Didn't recieve any progress for blob {hash}, aborting download"
-                        )));
                     }
                 }
             }
