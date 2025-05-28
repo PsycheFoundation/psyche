@@ -8,6 +8,7 @@ use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use psyche_coordinator::{
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model, Commitment,
     CommitteeSelection, Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE,
+    SOLANA_MAX_NUM_CLIENTS,
 };
 use psyche_core::{BatchId, Bloom, FixedVec, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
@@ -237,7 +238,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             batch_ids_not_yet_trained_on: batch_ids_not_yet_trained_on
                 .map(|x| (num_all_batch_ids, x)),
             self_distro_results: vec![],
-            client_times: FixedVec::<u16, 256>::filled_with(0_u16),
+            client_times: FixedVec::<u16, SOLANA_MAX_NUM_CLIENTS>::filled_with(0_u16),
             training_started_at: Some(current_timestamp),
         };
 
