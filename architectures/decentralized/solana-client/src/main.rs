@@ -864,5 +864,7 @@ fn main() -> Result<()> {
         .thread_stack_size(10 * 1024 * 1024)
         .build()
         .unwrap();
-    runtime.block_on(async_main())
+    let ret = runtime.block_on(async_main());
+    runtime.shutdown_timeout(Duration::from_millis(1000));
+    ret
 }
