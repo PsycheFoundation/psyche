@@ -3,9 +3,9 @@ use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::StreamExt;
-use iroh::endpoint::RemoteInfo;
+use iroh::endpoint::{RemoteInfo, TransportConfig};
 use iroh_blobs::{
-    downloader::ConcurrencyLimits,
+    downloader::{ConcurrencyLimits, RetryConfig},
     net_protocol::{Blobs, DownloadMode},
     rpc::client::blobs::DownloadOptions,
     store::mem::Store,
@@ -188,9 +188,15 @@ where
         };
 
         let endpoint = {
+            let mut transport_config = TransportConfig::default();
+            transport_config
+                .max_idle_timeout(Some(Duration::from_secs(5).try_into()?))
+                .keep_alive_interval(Some(Duration::from_secs(1)));
+
             let endpoint = Endpoint::builder()
                 .secret_key(secret_key)
                 .relay_mode(RelayMode::Custom(psyche_relay_map()))
+                .transport_config(transport_config)
                 .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)));
 
             let e = match discovery_mode {
@@ -215,6 +221,10 @@ where
                 max_concurrent_requests: max_concurrent_downloads,
                 max_open_connections: 512,
                 max_concurrent_dials_per_hash: 2,
+            })
+            .retry_config(RetryConfig {
+                max_retries_per_node: 0,
+                ..Default::default()
             })
             .build(&endpoint);
         trace!("blobs created!");
