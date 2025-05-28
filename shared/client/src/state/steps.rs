@@ -460,7 +460,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .insert(from_client_id, finished.clone());
 
                 if finished.warmup {
-                    info!(
+                    debug!(
                         "Received {} warmup readies",
                         round_state.clients_finished.len(),
                     );
