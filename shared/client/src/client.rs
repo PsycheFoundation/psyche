@@ -553,7 +553,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     info!("Checkpoint finished, exiting main client loop");
                 }
 
-                Ok(p2p_shutdown.await?)
+                p2p_shutdown.await
             }
         });
 
