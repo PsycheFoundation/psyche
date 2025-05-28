@@ -543,6 +543,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                 info!("Main client loop ended");
 
+                let p2p_shutdown = p2p.shutdown();
+
                 if wait_for_checkpoint {
                     info!("Waiting for checkpoint to finish");
                     if let Some(checkpoint) = rx_checkpoint.recv().await {
@@ -551,7 +553,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     info!("Checkpoint finished, exiting main client loop");
                 }
 
-                Ok(())
+                Ok(p2p_shutdown.await?)
             }
         });
 
