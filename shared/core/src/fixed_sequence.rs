@@ -1,4 +1,4 @@
-pub const BATCH_SIZE_INDEX_BITS: u8 = 6;
+pub const BATCH_SIZE_INDEX_BITS: u8 = 8;
 
 // In this file, we define functions to convert between values and indices
 // in a mapping from [1, max_data_value] to [1, 2^index_bits - 1].

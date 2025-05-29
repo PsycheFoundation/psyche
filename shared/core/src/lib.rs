@@ -5,7 +5,6 @@ mod bloom;
 mod bounded_queue;
 mod boxed_future;
 mod cancellable_barrier;
-mod compressed_fixed_vec;
 mod data_shuffle;
 mod definitions;
 mod deterministic_shuffle;
@@ -30,7 +29,6 @@ pub use bloom::Bloom;
 pub use bounded_queue::BoundedQueue;
 pub use boxed_future::BoxedFuture;
 pub use cancellable_barrier::{CancellableBarrier, CancelledBarrier};
-pub use compressed_fixed_vec::CompressedFixedVec;
 pub use data_shuffle::Shuffle;
 pub use definitions::{
     ConstantLR, CosineLR, LearningRateSchedule, LearningRateScheduler, LinearLR,

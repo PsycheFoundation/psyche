@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
 
-use psyche_coordinator::{Client, Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS};
+use psyche_coordinator::{
+    Client, Coordinator, Witness, WitnessBatchSizes, WitnessMetadata, MAX_NUM_WITNESSED_CLIENTS,
+    SOLANA_MAX_NUM_CLIENTS,
+};
 use psyche_core::{
-    value_to_nearest_index, BatchId, CompressedFixedVec, FixedVec, MerkleRoot, MerkleTree,
-    NodeIdentity, BATCH_SIZE_INDEX_BITS,
+    value_to_nearest_index, BatchId, FixedVec, MerkleRoot, MerkleTree, NodeIdentity,
+    BATCH_SIZE_INDEX_BITS,
 };
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
@@ -128,21 +131,24 @@ impl WitnessStep {
             global_batch_size,
         );
 
-        let mut proposed_batch_sizes =
-            CompressedFixedVec::filled_with(0).expect("Failed to create batch size vector");
-        for (i, _) in assigments_vec.iter().enumerate() {
-            let res = proposed_batch_sizes.set(i, assigments_vec[i]);
-            if res.is_err() {
-                warn!("Failed to set batch size for client {}: {:?}", i, res);
-            }
-        }
+        let proposed_batch_sizes: FixedVec<u8, { MAX_NUM_WITNESSED_CLIENTS }> =
+            FixedVec::try_from(assigments_vec.as_slice()).unwrap_or_else(|_| {
+                panic!(
+                    "Assignment vector length {} exceeds maximum of {}",
+                    assigments_vec.len(),
+                    MAX_NUM_WITNESSED_CLIENTS
+                );
+            });
 
         Some(Witness {
             proof: *proof,
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
-            proposed_batch_sizes,
+            proposed_batch_sizes: WitnessBatchSizes {
+                offset: 0, // TODO implement this logic
+                sizes: proposed_batch_sizes,
+            },
         })
     }
 
