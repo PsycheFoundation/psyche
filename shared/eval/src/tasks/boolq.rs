@@ -73,16 +73,16 @@ impl BoolQ {
 
 impl LogLikelihoodTask for BoolQ {
     fn get_documents(&self) -> Vec<Document> {
-        self.test_dataset
+        self.validation_dataset
             .iter()
-            .map(|row| BoolQ::row_to_document(&self.test_dataset, row))
+            .map(|row| BoolQ::row_to_document(&self.validation_dataset, row))
             .collect()
     }
 
     fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.validation_dataset
+        self.test_dataset
             .iter()
-            .map(|row| BoolQ::row_to_document(&self.validation_dataset, row))
+            .map(|row| BoolQ::row_to_document(&self.test_dataset, row))
             .collect()
     }
 }
