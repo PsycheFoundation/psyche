@@ -12,7 +12,7 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
         system_instruction,
     },
-    Client, Cluster, Program,
+    Client, ClientError, Cluster, Program,
 };
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;

@@ -288,7 +288,7 @@ impl App {
                         Err(err) => debug!("Tick simulation error: {err}")
                     };
                 }
-                update = async { updates.recv().await } => {
+                update = updates.recv() => {
                     latest_update = update?;
                     match latest_update.run_state {
                         RunState::WaitingForMembers => {
