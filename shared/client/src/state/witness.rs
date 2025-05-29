@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use psyche_coordinator::{
-    Client, Coordinator, Witness, WitnessBatchSizes, WitnessMetadata, MAX_NUM_WITNESSED_CLIENTS,
+    Client, Coordinator, Witness, WitnessMetadata, MAX_NUM_WITNESSED_CLIENTS,
     SOLANA_MAX_NUM_CLIENTS,
 };
 use psyche_core::{
@@ -14,7 +14,7 @@ use tokio::{
     sync::mpsc::{self},
     task::JoinHandle,
 };
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace};
 
 use super::{
     evals::{EvalError, EvalRunner, MaybeRunningEvals, RunningEvals},
@@ -145,10 +145,7 @@ impl WitnessStep {
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
-            proposed_batch_sizes: WitnessBatchSizes {
-                offset: 0, // TODO implement this logic
-                sizes: proposed_batch_sizes,
-            },
+            proposed_batch_sizes,
         })
     }
 

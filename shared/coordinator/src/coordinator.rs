@@ -158,7 +158,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
-    pub proposed_batch_sizes: WitnessBatchSizes,
+    pub proposed_batch_sizes: FixedVec<u8, { MAX_NUM_WITNESSED_CLIENTS }>,
 }
 
 #[derive(
@@ -208,24 +208,6 @@ impl WitnessEvalResult {
             value,
         }
     }
-}
-
-#[derive(
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
-    Default,
-    Debug,
-)]
-#[repr(C)]
-pub struct WitnessBatchSizes {
-    pub offset: u8, // offset from the array holding all clients
-    pub sizes: FixedVec<u8, { MAX_NUM_WITNESSED_CLIENTS }>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1065,9 +1047,14 @@ impl<T: NodeIdentity> Coordinator<T> {
 
             // Perform immutable borrows from `self` before creating the mutable `partition_clients` slice.
             let current_round_witnesses_ref = &self.current_round_unchecked().witnesses;
+
+            // Get only the witnesses that are clients in the current partition
             let partition_witnesses_data: Vec<Witness> = current_round_witnesses_ref
                 .iter()
-                .filter(|wtn| wtn.proposed_batch_sizes.offset == start_index as u8)
+                .filter(|wtn| {
+                    let client_idx = wtn.proof.index as usize;
+                    client_idx >= start_index && client_idx < slice_end_index
+                })
                 .cloned()
                 .collect();
 
@@ -1076,7 +1063,6 @@ impl<T: NodeIdentity> Coordinator<T> {
                 1.0 / 3.0, // TODO this is for testing use a better threshold
                 self.config.global_batch_size_end,
                 0.05,
-                start_index as u8,
             );
 
             if !consensus_reached {
@@ -1106,7 +1092,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                         let witness = &partition_witnesses_data[witness_idx]; // Use collected data
 
                         // Skip if witness is reporting about itself or reported time is 0
-                        let proposed_batch_size = witness.proposed_batch_sizes.sizes.get(index);
+                        let proposed_batch_size = witness.proposed_batch_sizes.get(index);
                         match proposed_batch_size {
                             None | Some(0) => {
                                 continue;
@@ -1391,7 +1377,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         threshold: f64,
         global_batch_size: u16,
         tolerance: f64,
-        index: u8,
     ) -> bool {
         if witnesses.is_empty() {
             return false;
@@ -1401,17 +1386,14 @@ impl<T: NodeIdentity> Coordinator<T> {
         let tolerance = ((global_batch_size as f64) * tolerance).ceil() as i32;
 
         // For each client...
-        let n = witnesses[0].proposed_batch_sizes.sizes.len();
+        let n = witnesses[0].proposed_batch_sizes.len();
         for i in 0..n {
             let mut candidate = 0;
             let mut count = 0;
 
             // Find a candidate for most frequently proposed batch size
             for witness in witnesses {
-                if witness.proposed_batch_sizes.offset != index {
-                    continue; // This witness is not witnessing this particular slice of clients
-                }
-                let &value = witness.proposed_batch_sizes.sizes.get(i).unwrap_or(&0);
+                let &value = witness.proposed_batch_sizes.get(i).unwrap_or(&0);
                 if value == 0 {
                     continue;
                 }
@@ -1435,7 +1417,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             let matching_count = witnesses
                 .iter()
                 .filter(|wtn| {
-                    let &val = wtn.proposed_batch_sizes.sizes.get(i).unwrap_or(&0);
+                    let &val = wtn.proposed_batch_sizes.get(i).unwrap_or(&0);
                     val != 0 && (val as i32 - candidate as i32).abs() <= tolerance
                 })
                 .count();
@@ -1443,7 +1425,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             // values total proposed
             let non_zero_count = witnesses
                 .iter()
-                .filter(|wtn| *wtn.proposed_batch_sizes.sizes.get(i).unwrap_or(&0) != 0)
+                .filter(|wtn| *wtn.proposed_batch_sizes.get(i).unwrap_or(&0) != 0)
                 .count();
 
             // Check if the number of matching counts meets the threshold
