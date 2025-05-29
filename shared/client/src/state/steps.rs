@@ -243,7 +243,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .cloned()
                     .unwrap_or(MerkleRoot::default());
 
-                debug!(name: "send_warmup_broadcast", epoch = self.coordinator_state.progress.epoch, "sending warmup broadcast");
+                info!(name: "send_warmup_broadcast", epoch = self.coordinator_state.progress.epoch, "Sending warmup ready broadcast");
                 self.tx_broadcast_finished
                     .send(FinishedBroadcast {
                         step: 0,
@@ -282,7 +282,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             }
 
             if !self.sent_warmup_witness {
-                trace!("Sending warmup witness");
+                info!(name: "send_warmup_witness", epoch = self.coordinator_state.progress.epoch, "Sending warmup witness");
 
                 let merkle = MerkleTree::new(&self.current_round.broadcasts)
                     .get_root()
@@ -457,13 +457,20 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 round_state
                     .clients_finished
-                    .insert(from_client_id, finished);
+                    .insert(from_client_id, finished.clone());
 
-                trace!(
-                    "Received {} finishes for round {}",
-                    round_state.clients_finished.len(),
-                    result_step
-                );
+                if finished.warmup {
+                    debug!(
+                        "Received {} warmup readies",
+                        round_state.clients_finished.len(),
+                    );
+                } else {
+                    trace!(
+                        "Received {} finishes for round {}",
+                        round_state.clients_finished.len(),
+                        result_step
+                    );
+                }
             }
         }
 
