@@ -220,6 +220,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     }
 
                     if let Some(witness) = WitnessStep::get_witness_to_send(
+                        self.identity,
                         &mut self.previous_round,
                         &mut self.current_round,
                         &self.coordinator_state.epoch_state.clients,

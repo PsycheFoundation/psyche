@@ -65,6 +65,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
         let evals = self.eval_runner.start_if_not_running(trainers);
 
         let sending_witness = if let Some(witness) = WitnessStep::get_witness_to_send(
+            self.identity,
             previous_round,
             current_round,
             &state.epoch_state.clients,
@@ -97,6 +98,7 @@ impl WitnessStep {
     }
 
     pub fn get_witness_to_send<T: NodeIdentity>(
+        identity: T,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
         clients: &[Client<T>],
@@ -131,12 +133,39 @@ impl WitnessStep {
             global_batch_size,
         );
 
+        // Find which partition we are currently on (0, 1, 2, etc.). Division should be safe as it floors
+        let client_index =
+            Self::get_client_index(&identity, clients).expect("Client not found in clients list");
+        let current_client_partition_index = client_index as usize / MAX_NUM_WITNESSED_CLIENTS;
+        let slice_start_index = current_client_partition_index * MAX_NUM_WITNESSED_CLIENTS;
+        // slice_end_index is not strictly needed for the new logic but good for context/debug
+        let slice_end_index = slice_start_index + MAX_NUM_WITNESSED_CLIENTS;
+        debug!(
+            "[get_witness_to_send] Client index: {}, partition index: {}, slice start: {}, slice end: {}. Assignments_vec length: {}",
+            client_index,
+            current_client_partition_index,
+            slice_start_index,
+            slice_end_index,
+            assigments_vec.len()
+        );
+
+        // A bit hackish but I'm creating a new vector with 0 padding for now as we need exact size
+        // Figure out a better way to handle this later
+        let mut assignments_partition_values = vec![0u8; MAX_NUM_WITNESSED_CLIENTS];
+        for i in 0..MAX_NUM_WITNESSED_CLIENTS {
+            let source_index = slice_start_index + i;
+            if source_index < assigments_vec.len() {
+                assignments_partition_values[i] = assigments_vec[source_index];
+            }
+        }
+
         let proposed_batch_sizes: FixedVec<u8, { MAX_NUM_WITNESSED_CLIENTS }> =
-            FixedVec::try_from(assigments_vec.as_slice()).unwrap_or_else(|_| {
+            FixedVec::try_from(assignments_partition_values.as_slice()).unwrap_or_else(|e| {
+                // Should never be reached but just in case
                 panic!(
-                    "Assignment vector length {} exceeds maximum of {}",
-                    assigments_vec.len(),
-                    MAX_NUM_WITNESSED_CLIENTS
+                    "Failed to convert assignments_partition_values (length {}) to FixedVec. Error: {:?}",
+                    assignments_partition_values.len(),
+                    e
                 );
             });
 
@@ -250,5 +279,9 @@ impl WitnessStep {
             }
         }
         total
+    }
+
+    fn get_client_index<T: NodeIdentity>(identity: &T, clients: &[Client<T>]) -> Option<usize> {
+        clients.iter().position(|client| &client.id == identity)
     }
 }
