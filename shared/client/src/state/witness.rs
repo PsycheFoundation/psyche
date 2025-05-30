@@ -1,5 +1,5 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata};
-use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity};
+use psyche_coordinator::{Coordinator, Witness, WitnessMetadata, TRAINING_TIMES_SLICE_SIZE};
+use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
@@ -44,7 +44,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
     pub fn start(
         &self,
         _client_index: u64,
-        _state: &Coordinator<T>,
+        state: &Coordinator<T>,
         trainers: MaybeRunningEvals,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
@@ -57,7 +57,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
         let evals = self.eval_runner.start_if_not_running(trainers);
 
         let sending_witness = if let Some(witness) =
-            WitnessStep::get_witness_to_send(previous_round, current_round)
+            WitnessStep::get_witness_to_send(state, previous_round, current_round)
         {
             let tx_witness = self.tx_witness.clone();
             Some(tokio::task::spawn(async move {
@@ -86,6 +86,7 @@ impl WitnessStep {
     }
 
     pub fn get_witness_to_send<T: NodeIdentity>(
+        state: &Coordinator<T>,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
     ) -> Option<Witness> {
@@ -111,11 +112,21 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
+        // TODO(dy): We are getting the first slice [0..90] for now, get proper slice later
+        // TODO(dy): Probably a cleaner way to do this or implement to_slice in FixedVec
+        let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new_filled(0);
+        for i in 0..TRAINING_TIMES_SLICE_SIZE {
+            if i < current_round.client_times.len() {
+                training_times[i] = current_round.client_times.get(i).copied().unwrap_or(0);
+            }
+        }
+
         Some(Witness {
             proof: *proof,
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
+            training_times,
         })
     }
 }
