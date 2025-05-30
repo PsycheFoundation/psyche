@@ -999,13 +999,29 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         // Debug training times
-        for witness in self.current_round_unchecked().witnesses.iter() {
+        let witnesses = &self.current_round_unchecked().witnesses;
+        for witness in witnesses.iter() {
             msg!(
                 "witness {} reported times: {:?}",
                 witness.proof.index,
                 witness.training_times
             );
         }
+
+        if let Some(agreed_values) = self.get_consensus_on_reported_times(witnesses, 1.0 / 3.0, 5.0)
+        {
+            dbg!("Consensus reached. Saving values");
+            for (client_index, &agreed_value) in agreed_values.iter().enumerate() {
+                if agreed_value != 0 {
+                    dbg!("client_index: {}", client_index);
+                    self.client_training_times[client_index] = agreed_value;
+                }
+            }
+        } else {
+            dbg!("No consensus reached. Keeping old values.");
+        }
+
+        msg!("Saved client times: {:?}", self.client_training_times);
 
         // If we reach the end of an epoch or if we don't reach the min number of
         // clients or registered witnesses for the current round, we change to Cooldown
@@ -1142,6 +1158,92 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn is_training_just_starting(&self) -> bool {
         self.epoch_state.first_round.is_true() && self.run_state == RunState::RoundTrain
+    }
+
+    fn get_consensus_on_reported_times(
+        &self,
+        witnesses: &[Witness],
+        threshold: f64, // e.g. if we want 2/3rds of the witnesses to agree
+        tolerance: f64, // in seconds how close the times should be to each other to be considered the same
+    ) -> Option<Vec<u16>> {
+        if witnesses.is_empty() {
+            return None;
+        }
+
+        let mut agreed_values: Vec<u16> = Vec::with_capacity(TRAINING_TIMES_SLICE_SIZE);
+
+        for i in 0..TRAINING_TIMES_SLICE_SIZE {
+            // --- Boyer-Moore to find a candidate (among non-zero values) ---
+            let mut candidate_val = 0u16;
+            let mut count = 0;
+
+            for witness in witnesses {
+                let value = witness.training_times.get(i).copied().unwrap_or(0);
+
+                if value == 0 {
+                    // Boyer-Moore variant: find candidate among non-zero reported times
+                    continue;
+                }
+
+                if count == 0 {
+                    candidate_val = value;
+                    count = 1;
+                } else if value == candidate_val {
+                    count += 1;
+                } else {
+                    count -= 1;
+                }
+            }
+
+            // --- Verification and Consensus Check ---
+            if candidate_val == 0 {
+                // This means either all proposals were effectively 0, or no non-zero candidate emerged from Boyer-Moore.
+                // Check if all actual proposals for this index i are 0.
+                let all_proposals_effectively_zero = witnesses
+                    .iter()
+                    .all(|w| w.training_times.get(i).copied().unwrap_or(0) == 0);
+
+                if all_proposals_effectively_zero {
+                    agreed_values.push(0); // Consensus on 0 for this slot
+                } else {
+                    // A candidate of 0 from Boyer-Moore, but not all proposals were 0.
+                    // This implies no consensus for non-zero values and 0 is not universally agreed.
+                    return None; // No consensus for this slot
+                }
+            } else {
+                // A non-zero candidate was found. Verify it against the threshold.
+                let mut matching_count = 0;
+                let mut non_zero_count = 0;
+
+                for wtn in witnesses {
+                    let val = wtn.training_times.get(i).copied().unwrap_or(0);
+
+                    if val != 0 {
+                        non_zero_count += 1;
+                        // Compare val with candidate_val, within tolerance
+                        if (val as i32 - candidate_val as i32).abs() <= tolerance as i32 {
+                            matching_count += 1;
+                        }
+                    }
+                }
+
+                if non_zero_count == 0 {
+                    // This case should ideally not be reached if candidate_val is non-zero,
+                    // as candidate_val itself must have been a non-zero value.
+                    // However, as a safeguard, if there are no non-zero values to compare against,
+                    // it implies no basis for the non-zero candidate.
+                    return None;
+                }
+
+                if (matching_count as f64) < threshold * (non_zero_count as f64) {
+                    return None; // Consensus threshold not met for this non-zero candidate
+                } else {
+                    agreed_values.push(candidate_val); // Consensus on candidate_val for this slot
+                }
+            }
+        } // End of loop over TRAINING_TIMES_SLICE_SIZE
+
+        Some(agreed_values)
     }
 }
 

@@ -15,6 +15,7 @@ pub use coordinator::{
     CoordinatorProgress, HealthChecks, Round, RunState, TickResult, Witness, WitnessBloom,
     WitnessEvalResult, WitnessMetadata, BLOOM_FALSE_RATE, NUM_STORED_ROUNDS,
     SOLANA_MAX_NUM_CLIENTS, SOLANA_MAX_NUM_WITNESSES, SOLANA_MAX_STRING_LEN,
+    TRAINING_TIMES_SLICE_SIZE,
 };
 pub use data_selection::{
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, get_data_index_for_step,
