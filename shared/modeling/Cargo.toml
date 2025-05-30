@@ -18,13 +18,17 @@ safetensors = "0.3.0"
 thiserror.workspace = true
 tokio-util.workspace = true
 psyche-core.workspace = true
+pyo3 = { workspace = true, optional = true }
+pyo3-tch = { workspace = true, optional = true }
 
 # for examples
 [dev-dependencies]
 clap.workspace = true
 psyche-data-provider.workspace = true
+psyche-python-extension-impl.workspace = true
 psyche-tui.workspace = true
 itertools = "0.14"
 
 [features]
 parallelism = ["tch/nccl", "torch-sys/nccl"]
+python = ["psyche-python-extension-impl/python", "pyo3", "pyo3-tch"]

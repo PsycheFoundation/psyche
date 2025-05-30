@@ -1,6 +1,6 @@
 use crate::{
-    safetensor_utils::load_safetensors_into_variables, tensor_parallelism::tensor_shard,
-    DeepseekConfig, LlamaConfig, LoadSafetensorsError,
+    parallelism::tensor_shard, safetensor_utils::load_safetensors_into_variables, DeepseekConfig,
+    LlamaConfig, LoadSafetensorsError,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -47,6 +47,9 @@ pub enum ModelLoadError {
 
     #[error("Wrong config type")]
     WrongConfigType,
+
+    #[error("Communicator/CommunicatorId mismatch")]
+    CommunicatorMismatch,
 }
 
 pub trait ModelConfig: serde::Serialize + Clone {

@@ -166,7 +166,7 @@ fn main() -> Result<()> {
     }
     let tp_world_size = args.tensor_parallelism.unwrap_or(1);
 
-    let data_parallel: Option<Vec<(Arc<CommunicatorId>, Arc<CancellableBarrier>)>> =
+    let data_parallel: Option<Vec<(CommunicatorId, Arc<CancellableBarrier>)>> =
         if args.data_parallelism.is_some() {
             {
                 #[cfg(feature = "parallelism")]
@@ -176,7 +176,7 @@ fn main() -> Result<()> {
                             .map(|_| {
                                 (
                                     tch::CStore::new().into(),
-                                    CancellableBarrier::new(dp_world_size).into(),
+                                    CancellableBarrier::new(tp_world_size).into(),
                                 )
                             })
                             .collect(),
