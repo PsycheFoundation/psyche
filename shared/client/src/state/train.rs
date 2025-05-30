@@ -9,7 +9,7 @@ use psyche_coordinator::{
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model, Commitment,
     CommitteeSelection, Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE,
 };
-use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, FixedVec, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -25,7 +25,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use thiserror::Error;
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -215,6 +215,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             Arc::new(Mutex::new(Some((participant_bloom, broadcast_bloom))))
         };
 
+        let current_timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("RoundTrain started: Error getting current timestamp")
+            .as_millis() as u64;
+
         *current_round = RoundState {
             height: round.height,
             step: state.progress.step,
@@ -229,6 +234,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             committee_info: Some((committee_proof, witness_proof, committee_selection)),
             batch_ids_not_yet_trained_on,
             self_distro_results: vec![],
+            client_times: FixedVec::new_filled(0),
+            training_started_at: Some(current_timestamp),
         };
 
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
