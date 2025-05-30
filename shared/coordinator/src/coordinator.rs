@@ -15,6 +15,8 @@ pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 
+pub const TRAINING_TIMES_SLICE_SIZE: usize = 90;
+
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
 pub const WAITING_FOR_MEMBERS_EXTRA_SECONDS: u64 = 10;
@@ -151,6 +153,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
+    pub training_times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
 }
 
 #[derive(
@@ -966,39 +969,51 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        if self.check_timeout(unix_timestamp, self.config.round_witness_time) {
-            // TODO: Punish idle witnesses
-            self.epoch_state.first_round = false.into();
-            self.progress.step += 1;
+        if !self.check_timeout(unix_timestamp, self.config.round_witness_time) {
+            return Ok(TickResult::Ticked);
+        };
+        // Round witness time is over, we can now start the next round
 
-            let current_round = self.current_round_unchecked();
-            let height = current_round.height;
-            let num_witnesses = current_round.witnesses.len() as u16;
-            self.move_clients_to_exited(height);
+        // TODO: Punish idle witnesses
+        self.epoch_state.first_round = false.into();
+        self.progress.step += 1;
 
-            // If there are not witnesses, then we can't distinguish from
-            // the situation where only witness nodes disconnected or everyone
-            // disconnected. We just set everyone to withdrawn state and change
-            // to Cooldown.
-            if num_witnesses == 0 {
-                self.withdraw_all()?;
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
+        let current_round = self.current_round_unchecked();
+        let height = current_round.height;
+        let num_witnesses = current_round.witnesses.len() as u16;
+        self.move_clients_to_exited(height);
 
-            // If we reach the end of an epoch or if we don't reach the min number of
-            // clients or registered witnesses for the current round, we change to Cooldown
-            if height == self.config.rounds_per_epoch - 1
-                || self.epoch_state.clients.len() < self.config.min_clients as usize
-                || num_witnesses < self.witness_quorum(num_witnesses)
-                || self.pending_pause.is_true()
-            {
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
-
-            self.start_round_train(unix_timestamp, random_seed, 0);
+        // If there are not witnesses, then we can't distinguish from
+        // the situation where only witness nodes disconnected or everyone
+        // disconnected. We just set everyone to withdrawn state and change
+        // to Cooldown.
+        if num_witnesses == 0 {
+            self.withdraw_all()?;
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
         }
+
+        // Debug training times
+        for witness in self.current_round_unchecked().witnesses.iter() {
+            msg!(
+                "witness {} reported times: {:?}",
+                witness.proof.index,
+                witness.training_times
+            );
+        }
+
+        // If we reach the end of an epoch or if we don't reach the min number of
+        // clients or registered witnesses for the current round, we change to Cooldown
+        if height == self.config.rounds_per_epoch - 1
+            || self.epoch_state.clients.len() < self.config.min_clients as usize
+            || num_witnesses < self.witness_quorum(num_witnesses)
+            || self.pending_pause.is_true()
+        {
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
+        }
+
+        self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)
     }
 
