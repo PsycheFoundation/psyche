@@ -20,6 +20,12 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
         }
     }
 
+    pub fn filled_with(value: T) -> Self {
+        let mut vec = Self::new();
+        vec.fill(value).expect("Failed to fill FixedVec");
+        vec
+    }
+
     pub fn len(&self) -> usize {
         self.len as usize
     }
@@ -44,6 +50,14 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
         } else {
             Err("FixedVec is full")
         }
+    }
+
+    pub fn fill(&mut self, value: T) -> Result<(), &'static str> {
+        for _ in 0..N {
+            self.push(value)?
+        }
+
+        Ok(())
     }
 
     pub fn pop(&mut self) -> Option<T> {
@@ -483,6 +497,29 @@ mod tests {
 
         for i in 0..vec.capacity() {
             assert_eq!(vec.get(i), None);
+            assert_eq!(vec.data[i], 0u32);
+        }
+    }
+
+    #[test]
+    fn test_fill_vec() {
+        let mut vec: FixedVec<u32, 6> = FixedVec::new();
+        assert!(vec.fill(0u32).is_ok());
+        assert!(vec.is_full());
+
+        for i in 0..vec.capacity() {
+            assert_eq!(vec.get(i), Some(&0u32));
+            assert_eq!(vec.data[i], 0u32);
+        }
+    }
+
+    #[test]
+    fn test_filled_with_vec() {
+        let vec: FixedVec<u32, 6> = FixedVec::filled_with(0u32);
+        assert!(vec.is_full());
+
+        for i in 0..vec.capacity() {
+            assert_eq!(vec.get(i), Some(&0u32));
             assert_eq!(vec.data[i], 0u32);
         }
     }

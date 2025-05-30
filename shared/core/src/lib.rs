@@ -8,6 +8,7 @@ mod cancellable_barrier;
 mod data_shuffle;
 mod definitions;
 mod deterministic_shuffle;
+mod fixed_sequence;
 mod fixed_string;
 mod fixed_vec;
 mod interval_tree;
@@ -34,6 +35,7 @@ pub use definitions::{
     OptimizerDefinition,
 };
 pub use deterministic_shuffle::deterministic_shuffle;
+pub use fixed_sequence::{index_to_value, value_to_nearest_index, BATCH_SIZE_INDEX_BITS};
 pub use fixed_string::FixedString;
 pub use fixed_vec::FixedVec;
 pub use interval_tree::{ClosedInterval, IntervalTree};

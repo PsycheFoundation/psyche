@@ -665,6 +665,7 @@ impl SolanaBackend {
                                 broadcast_bloom: witness.broadcast_bloom,
                                 broadcast_merkle: witness.broadcast_merkle,
                                 metadata,
+                                proposed_batch_sizes: witness.proposed_batch_sizes,
                             }),
                         OpportunisticData::WarmupStep(witness) => program_coordinator
                             .request()

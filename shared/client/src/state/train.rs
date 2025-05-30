@@ -8,8 +8,9 @@ use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use psyche_coordinator::{
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model, Commitment,
     CommitteeSelection, Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE,
+    SOLANA_MAX_NUM_CLIENTS,
 };
-use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, FixedVec, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -25,7 +26,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use thiserror::Error;
 use tokio::{
@@ -183,7 +184,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     let all_batch_ids = get_batch_ids_for_round(
                         state.current_round().unwrap(),
                         state,
-                        committee_selection.get_num_trainer_nodes(),
+                        &committee_selection,
                     );
                     let num_all_batch_ids = all_batch_ids.len();
                     let batch_ids_not_yet_trained_on: Arc<Mutex<BatchIdSet>> =
@@ -217,6 +218,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             Some((participant_bloom, broadcast_bloom))
         };
 
+        let current_timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("RoundTrain started: Error getting current timestamp")
+            .as_millis() as u64;
+
         *current_round = RoundState {
             height: round.height,
             step: state.progress.step,
@@ -232,6 +238,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             batch_ids_not_yet_trained_on: batch_ids_not_yet_trained_on
                 .map(|x| (num_all_batch_ids, x)),
             self_distro_results: vec![],
+            client_times: FixedVec::<u16, SOLANA_MAX_NUM_CLIENTS>::filled_with(0_u16),
+            training_started_at: Some(current_timestamp),
         };
 
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
@@ -525,18 +533,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .previous_round()
             .ok_or(ApplyError::NoActiveRound)?
             .witnesses;
-        let batch_ids = get_batch_ids_for_round(
-            state
-                .previous_previous_round()
-                .ok_or(ApplyError::NoActiveRound)?,
-            state,
-            previous_round
-                .committee_info
-                .as_ref()
-                .ok_or(ApplyError::NoActiveRound)?
-                .2
-                .get_num_trainer_nodes(),
-        );
+
+        // Get the BatchIds from the actual assignments made for the previous_round.
+        // These are the keys of the data_assignments map stored in the client's previous_round state.
+        let batch_ids: Vec<BatchId> = previous_round.data_assignments.keys().cloned().collect();
 
         let data_assignments = previous_round.data_assignments.clone();
 
