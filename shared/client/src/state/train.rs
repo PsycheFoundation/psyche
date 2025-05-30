@@ -9,7 +9,7 @@ use psyche_coordinator::{
     BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
-use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, FixedVec, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -25,7 +25,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use thiserror::Error;
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -160,20 +160,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         let cancel_training = CancellationToken::new();
         let round_start = Instant::now();
 
-        let round = state.current_round().ok_or(TrainError::NoActiveRound)?;
+        // Extract some values in order to avoid the borrow checker
+        let (round_height, round_random_seed, round_tie_breaker_tasks) = {
+            let r = state.current_round().ok_or(TrainError::NoActiveRound)?;
+            (r.height, r.random_seed, r.tie_breaker_tasks)
+        };
 
         *previous_round = std::mem::take(current_round);
 
         let committee_selection = CommitteeSelection::new(
-            round.tie_breaker_tasks as usize,
+            round_tie_breaker_tasks as usize,
             state.config.witness_nodes as usize,
             state.config.verification_percent,
             state.epoch_state.clients.len(),
-            round.random_seed,
+            round_random_seed,
         )
         .map_err(TrainError::CoordinatorError)?;
 
-        let have_training = round.height < state.config.rounds_per_epoch - 2;
+        let have_training = round_height < state.config.rounds_per_epoch - 2;
         let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) =
             match have_training {
                 true => {
@@ -181,7 +185,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     let all_batch_ids = get_batch_ids_for_round(
                         state.current_round().unwrap(),
                         state,
-                        committee_selection.get_num_trainer_nodes(),
+                        &committee_selection,
                     );
                     let num_all_batch_ids = all_batch_ids.len();
                     let batch_ids_not_yet_trained_on: BatchIdSet =
@@ -215,8 +219,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             Arc::new(Mutex::new(Some((participant_bloom, broadcast_bloom))))
         };
 
+        let current_timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("RoundTrain started: Error getting current timestamp")
+            .as_millis() as u64;
+
         *current_round = RoundState {
-            height: round.height,
+            height: round_height,
             step: state.progress.step,
             sent_witness: false,
             sent_finished: false,
@@ -229,16 +238,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             committee_info: Some((committee_proof, witness_proof, committee_selection)),
             batch_ids_not_yet_trained_on,
             self_distro_results: vec![],
+            client_times: FixedVec::new_filled(0),
+            training_started_at: Some(current_timestamp),
         };
 
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
-        let zero_optim = warmup_lr_between.is_some_and(|_| round.height == 0);
+        let zero_optim = warmup_lr_between.is_some_and(|_| round_height == 0);
         let epoch = state.progress.epoch;
 
         info!(
             integration_test_log_marker = %IntegrationTestLogMarker::WitnessElected,
             step = state.progress.step,
-            round = round.height,
+            round = round_height,
             epoch = epoch,
             index = client_index,
             comittee_position = committee_proof.position,
@@ -248,7 +259,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             warmup_lr_between = ?warmup_lr_between,
             assigned_batches = ?get_batch_ids_for_node(&data_assignments, &self.identity),
             "Got training assignment for step {} (round {}/epoch {}): index={} committee position={} committee={} witness position={} witness={} warmup_lr_between={:?}",
-            state.progress.step, round.height, epoch, client_index, committee_proof.position, committee_proof.committee, witness_proof.position, witness_proof.witness, warmup_lr_between
+            state.progress.step, round_height, epoch, client_index, committee_proof.position, committee_proof.committee, witness_proof.position, witness_proof.witness, warmup_lr_between
         );
         let model_task_runner = self.model_task_runner.clone();
         let finished = Arc::new(AtomicBool::new(false));
@@ -525,19 +536,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .previous_round()
             .ok_or(ApplyError::NoActiveRound)?
             .witnesses;
-        let batch_ids = get_batch_ids_for_round(
-            state
-                .previous_previous_round()
-                .ok_or(ApplyError::NoActiveRound)?,
-            state,
-            previous_round
-                .committee_info
-                .as_ref()
-                .ok_or(ApplyError::NoActiveRound)?
-                .2
-                .get_num_trainer_nodes(),
-        );
 
+        // Get the BatchIds from the actual assignments made for the previous_round.
+        // These are the keys of the data_assignments map stored in the client's previous_round state.
+        let batch_ids: Vec<BatchId> = previous_round.data_assignments.keys().cloned().collect();
         let data_assignments = previous_round.data_assignments.clone();
 
         Ok(tokio::task::spawn(async move {

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut, Range, RangeFrom, RangeFull, RangeTo};
 use ts_rs::TS;
 
-#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, TS)]
+#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, PartialEq, TS)]
 #[ts(type = "Array<T>", bound = "T: TS")]
 #[repr(C)]
 pub struct FixedVec<T, const N: usize> {
@@ -19,6 +19,14 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
             data: [T::default(); N],
             len: 0,
         }
+    }
+
+    pub fn new_filled(val: T) -> Self {
+        let mut vec = Self::new();
+        for _ in 0..N {
+            vec.push(val).expect("Failed to fill FixedVec");
+        }
+        vec
     }
 
     pub fn len(&self) -> usize {
@@ -144,28 +152,34 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
         Ok(())
     }
 
-    pub fn retain<F>(&mut self, mut f: F)
+    pub fn retain<F>(&mut self, mut f: F) -> Vec<usize>
     where
         F: FnMut(&T) -> bool,
     {
-        let mut read = 0;
+        let mut removed_indices = Vec::new();
         let mut write = 0;
+        // Since each time we remove an element we shift the indeces, we use this to track
+        // which indices we have removed, so we can return them.
+        let original_len = self.len as usize;
 
-        while read < self.len as usize {
+        for read in 0..original_len {
             if f(&self.data[read]) {
                 if read != write {
                     self.data[write] = self.data[read];
                 }
                 write += 1;
+            } else {
+                removed_indices.push(read);
             }
-            read += 1;
         }
 
-        // zero-out the rest of the positions which are now unused
-        for i in write..self.len as usize {
+        // Zero-out the rest of the positions which are now unused
+        // This loop should go up to the original_len, not self.len, as self.len hasn't been updated yet.
+        for i in write..original_len {
             self.data[i] = T::default();
         }
-        self.len = write as u64;
+        self.len = write as u64; // Update the length to the number of kept elements
+        removed_indices
     }
 }
 
@@ -346,6 +360,12 @@ impl<'de, T: Deserialize<'de> + Default + Copy, const N: usize> Deserialize<'de>
     }
 }
 
+impl<T, const N: usize> From<FixedVec<T, N>> for Vec<T> {
+    fn from(fixed_vec: FixedVec<T, N>) -> Self {
+        fixed_vec.into_iter().collect()
+    }
+}
+
 impl<T, const N: usize> IntoIterator for FixedVec<T, N> {
     type Item = T;
     type IntoIter = std::iter::Take<std::array::IntoIter<T, N>>;
@@ -449,11 +469,12 @@ mod tests {
         vec.extend([1, 2, 3, 4, 5, 6]).unwrap();
 
         // Retain only even numbers
-        vec.retain(|x| x % 2 == 0);
+        let removed_indices = vec.retain(|x| x % 2 == 0);
         assert_eq!(vec.len(), 3);
         assert_eq!(vec[0], 2);
         assert_eq!(vec[1], 4);
         assert_eq!(vec[2], 6);
+        assert_eq!(removed_indices, vec![0, 2, 4]);
     }
 
     #[test]
@@ -486,5 +507,34 @@ mod tests {
             assert_eq!(vec.get(i), None);
             assert_eq!(vec.data[i], 0u32);
         }
+    }
+
+    #[test]
+    fn test_into_vec() {
+        let mut fixed_vec: FixedVec<u32, 5> = FixedVec::new();
+        fixed_vec.push(10).unwrap();
+        fixed_vec.push(20).unwrap();
+        fixed_vec.push(30).unwrap();
+
+        let vec: Vec<u32> = fixed_vec.into();
+
+        assert_eq!(vec.len(), 3);
+        assert_eq!(vec[0], 10);
+        assert_eq!(vec[1], 20);
+        assert_eq!(vec[2], 30);
+
+        // Test with an empty FixedVec
+        let empty_fixed_vec: FixedVec<u32, 5> = FixedVec::new();
+        let empty_vec: Vec<u32> = empty_fixed_vec.into();
+        assert!(empty_vec.is_empty());
+
+        // Test with a full FixedVec
+        let mut full_fixed_vec: FixedVec<u32, 3> = FixedVec::new();
+        full_fixed_vec.push(1).unwrap();
+        full_fixed_vec.push(2).unwrap();
+        full_fixed_vec.push(3).unwrap();
+        let full_vec: Vec<u32> = full_fixed_vec.into();
+        assert_eq!(full_vec.len(), 3);
+        assert_eq!(full_vec, vec![1, 2, 3]);
     }
 }
