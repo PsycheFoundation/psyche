@@ -64,6 +64,9 @@ mod tcp;
 mod tui;
 mod util;
 
+#[cfg(test)]
+mod test;
+
 pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
 pub use download_manager::{DownloadComplete, DownloadFailed, DownloadType, TransmittableDownload};
 use iroh::defaults::DEFAULT_STUN_PORT;
