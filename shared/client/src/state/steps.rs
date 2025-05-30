@@ -226,6 +226,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     }
 
                     if let Some(witness) = WitnessStep::get_witness_to_send(
+                        &self.coordinator_state,
                         &mut self.previous_round,
                         &mut self.current_round,
                     ) {
@@ -313,6 +314,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         participant_bloom: Default::default(),
                         broadcast_bloom: Default::default(),
                         broadcast_merkle: merkle,
+                        training_times: Default::default(),
                     };
                     self.tx_opportunistic_data
                         .send(OpportunisticData::WarmupStep(witness))
