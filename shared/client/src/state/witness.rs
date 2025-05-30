@@ -127,6 +127,7 @@ impl WitnessStep {
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
         let assigments_vec = Self::calculate_assignments_given_client_times(
+            &identity,
             &current_round.client_times,
             &current_round.data_assignments,
             clients,
@@ -179,19 +180,46 @@ impl WitnessStep {
     }
 
     fn calculate_assignments_given_client_times<T: NodeIdentity>(
+        identity: &T,
         client_times: &FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
         data_assignments: &BTreeMap<BatchId, T>,
         clients: &[Client<T>],
         global_batch_size: u16,
     ) -> Vec<u8> {
         let mut scores_per_node: Vec<f64> = Vec::new();
+        
+        // We set our client time as the average of all other client times as workaround
+        // since reporting our own time will be very low
+        let non_zero_times: Vec<u16> = client_times
+            .iter()
+            .filter(|&&time| time > 0)
+            .cloned()
+            .collect();
+        let average_client_time = if !non_zero_times.is_empty() {
+            non_zero_times.iter().sum::<u16>() / non_zero_times.len() as u16
+        } else {
+            0
+        };
+        // Assign our own time as the average of the rest
+        debug!(
+            "[calculate_assignments] Average client time: {}",
+            average_client_time
+        );
+
+        let my_client_index =
+            Self::get_client_index(identity, clients).expect("Client not found in clients list");
 
         for i in 0..clients.len() {
             let batches_assigned =
                 Self::number_of_data_assignments_for_client(&clients[i].id, data_assignments);
 
-            let score = if client_times[i] != 0 {
-                (batches_assigned as f64) / (client_times[i] as f64)
+            let client_time = if i != my_client_index {
+                client_times[i]
+            } else {
+                average_client_time
+            };
+            let score: f64 = if client_time != 0 {
+                (batches_assigned as f64) / (client_time as f64)
             } else {
                 0.0
             };
