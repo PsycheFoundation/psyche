@@ -9,7 +9,7 @@ use psyche_coordinator::{
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model, Commitment,
     CommitteeSelection, Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE,
 };
-use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, FixedVec, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -25,7 +25,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use thiserror::Error;
 use tokio::{
@@ -217,6 +217,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             Some((participant_bloom, broadcast_bloom))
         };
 
+        let current_timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("RoundTrain started: Error getting current timestamp")
+            .as_millis() as u64;
+
         *current_round = RoundState {
             height: round.height,
             step: state.progress.step,
@@ -232,6 +237,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             batch_ids_not_yet_trained_on: batch_ids_not_yet_trained_on
                 .map(|x| (num_all_batch_ids, x)),
             self_distro_results: vec![],
+            client_times: FixedVec::new_filled(0),
+            training_started_at: Some(current_timestamp),
         };
 
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
@@ -608,7 +615,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                             if trainer_nonce < cold_start_warmup_steps && epoch != 0 && warmup_lr_between.is_none()  {
                                 // results are not actually applied for the first cold_start_warmup_steps of a trainer's lifetime
                                 // note, we are relying on honest communication of this value here -- will need to harden with verification.
-                                // the only exception is for the first steps of the first epoch 
+                                // the only exception is for the first steps of the first epoch
                                 // or when doing a cold start (warmup_lr_between.is_some())
                                 info!("Skipping apply of batch {batch_id}, trainer warming up ({trainer_nonce}/{cold_start_warmup_steps})");
                             } else {

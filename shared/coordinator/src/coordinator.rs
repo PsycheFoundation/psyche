@@ -308,6 +308,9 @@ pub struct Coordinator<T> {
 
     #[serde(default)]
     pub pending_pause: SmallBoolean,
+
+    #[serde(default)]
+    pub client_training_times: FixedVec<u16, { SOLANA_MAX_NUM_CLIENTS }>,
 }
 
 unsafe impl<T: NodeIdentity + Zeroable> Pod for Coordinator<T> {}

@@ -2,8 +2,9 @@ use crate::{fetch_data::BatchIdSet, Finished, TrainingResult};
 
 use psyche_coordinator::{
     Commitment, CommitteeProof, CommitteeSelection, WitnessBloom, WitnessProof,
+    SOLANA_MAX_NUM_CLIENTS,
 };
-use psyche_core::{BatchId, NodeIdentity};
+use psyche_core::{BatchId, FixedVec, NodeIdentity};
 use psyche_modeling::DistroResult;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -28,6 +29,8 @@ pub struct RoundState<T: NodeIdentity> {
     pub committee_info: Option<(CommitteeProof, WitnessProof, CommitteeSelection)>,
     pub batch_ids_not_yet_trained_on: Option<(usize, Arc<Mutex<BatchIdSet>>)>,
     pub self_distro_results: Vec<Vec<DistroResult>>,
+    pub client_times: FixedVec<u16, SOLANA_MAX_NUM_CLIENTS>,
+    pub training_started_at: Option<u64>,
 }
 
 impl<T: NodeIdentity> RoundState<T> {
@@ -46,6 +49,8 @@ impl<T: NodeIdentity> RoundState<T> {
             committee_info: None,
             batch_ids_not_yet_trained_on: None,
             self_distro_results: vec![],
+            client_times: FixedVec::new(),
+            training_started_at: None,
         }
     }
 }
