@@ -1,9 +1,10 @@
-{ pkgs ? import <nixpkgs> {
+{
+  pkgs ? import <nixpkgs> {
     config = {
       allowUnfree = true;
       cudaSupport = true;
     };
-  }
+  },
 }:
 
 # Step 1: Get, unzip and download libtorch
@@ -47,12 +48,12 @@ let
     # Filter out problematic problematic files and compiled.
     src = pkgs.lib.cleanSourceWith {
       src = ./.;
-      filter = path: type:
+      filter =
+        path: type:
         let
           pathStr = toString path;
         in
-        !(pkgs.lib.hasInfix "/test-ledger" pathStr) &&
-        !(pkgs.lib.hasInfix "/target" pathStr);
+        !(pkgs.lib.hasInfix "/test-ledger" pathStr) && !(pkgs.lib.hasInfix "/target" pathStr);
     };
 
     useFetchCargoVendor = true;
@@ -159,7 +160,12 @@ pkgs.dockerTools.buildImage {
       pkgs.dockerTools.usrBinEnv
       pkgs.dockerTools.binSh
     ];
-    pathsToLink = [ "/bin" "/lib" "/lib64" "/share" ];
+    pathsToLink = [
+      "/bin"
+      "/lib"
+      "/lib64"
+      "/share"
+    ];
   };
 
   # Set up the container configuration
