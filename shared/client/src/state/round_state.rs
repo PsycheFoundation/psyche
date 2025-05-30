@@ -5,11 +5,7 @@ use psyche_coordinator::{
 };
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_modeling::DistroResult;
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-use tokio::sync::Mutex;
+use std::collections::{BTreeMap, HashMap};
 
 use super::types::PayloadState;
 
@@ -26,7 +22,7 @@ pub struct RoundState<T: NodeIdentity> {
     pub blooms: Option<(WitnessBloom, WitnessBloom)>,
     pub broadcasts: Vec<[u8; 32]>,
     pub committee_info: Option<(CommitteeProof, WitnessProof, CommitteeSelection)>,
-    pub batch_ids_not_yet_trained_on: Option<(usize, Arc<Mutex<BatchIdSet>>)>,
+    pub batch_ids_not_yet_trained_on: Option<(usize, BatchIdSet)>,
     pub self_distro_results: Vec<Vec<DistroResult>>,
 }
 
