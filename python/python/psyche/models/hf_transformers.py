@@ -16,6 +16,7 @@ from torch.distributed.tensor._utils import compute_local_shape_and_global_offse
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
+
 # adapted from https://github.com/pytorch/torchtitan/blob/49c6d6fc15ef644e5c3b1003ad4e0d9ea5fcb9a9/torchtitan/parallelisms/parallel_dims.py#L48
 def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1):
     dims = []
@@ -54,9 +55,7 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1):
     if dp_mesh_dim_names != []:
         mesh[tuple(dp_mesh_dim_names)]._flatten(mesh_dim_name="dp")
     if dp_shard_cp_mesh_dim_names != []:
-        mesh[tuple(dp_shard_cp_mesh_dim_names)]._flatten(
-            mesh_dim_name="dp_shard_cp"
-        )
+        mesh[tuple(dp_shard_cp_mesh_dim_names)]._flatten(mesh_dim_name="dp_shard_cp")
     if dp_cp_mesh_dim_names != []:
         mesh[tuple(dp_cp_mesh_dim_names)]._flatten(mesh_dim_name="dp_cp")
 

@@ -3,7 +3,7 @@ use clap::Parser;
 use psyche_data_provider::download_model_repo_sync;
 use psyche_modeling::{
     auto_model_for_causal_lm_from_pretrained, auto_tokenizer, CausalLM, CommunicatorId,
-    LogitsProcessor, ParallelismConfig, Sampling, TokenOutputStream,
+    LogitsProcessor, Sampling, TokenOutputStream,
 };
 use std::{
     io::Write,
@@ -119,16 +119,15 @@ fn inference(
     let mut model: Box<dyn CausalLM> = if python {
         #[cfg(feature = "python")]
         {
+            if args.tensor_parallelism.is_some() {
+                anyhow::bail!("Parallelism not supported for inference in python yet");
+            }
+
             psyche_python_extension_impl::init_embedded_python();
 
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             Box::new(psyche_modeling::PythonCausalLM::new(
-                "hf-auto",
-                &source,
-                device,
-                args.tensor_parallelism
-                    .map(|tp| ParallelismConfig { dp: 1, tp }),
-                None,
+                "hf-auto", &source, device, None, None,
             )?) as Box<dyn CausalLM>
         }
         #[cfg(not(feature = "python"))]

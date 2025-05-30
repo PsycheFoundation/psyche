@@ -121,8 +121,12 @@ def main():
                             totalk = last_result[param_index].totalk
                             result.append(
                                 DistroResult(
-                                    sparse_idxs[param_index][result_index].squeeze(dim=0),
-                                    sparse_vals[param_index][result_index].squeeze(dim=0),
+                                    sparse_idxs[param_index][result_index].squeeze(
+                                        dim=0
+                                    ),
+                                    sparse_vals[param_index][result_index].squeeze(
+                                        dim=0
+                                    ),
                                     xshape,
                                     totalk,
                                 )
