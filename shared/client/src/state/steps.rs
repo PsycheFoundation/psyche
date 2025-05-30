@@ -430,7 +430,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         round_state.client_times[index] = 0u16;
                     } else if round_state.client_times[index] == 0 {
                         // Avoid writing more than one time for the same client
-                        round_state.client_times[index] = time_since_training_started as u16;
+                        let time_per_batch =
+                            time_since_training_started / training_result.batch_id.len() as u128;
+                        round_state.client_times[index] = time_per_batch as u16;
 
                         trace!(
                             "Received batch {} from client {} (idx: {}) at {} , total time: {}ms (per batch: {}ms)",
@@ -439,7 +441,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                             index,
                             current_timestamp,
                             time_since_training_started,
-                            time_since_training_started / training_result.batch_id.len() as u128
+                            time_per_batch,
                         );
                     }
                 }

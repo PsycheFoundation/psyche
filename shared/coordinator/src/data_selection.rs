@@ -3,7 +3,7 @@ use crate::{Committee, CommitteeSelection, Coordinator, Round};
 use psyche_core::{BatchId, ClosedInterval, NodeIdentity, deterministic_shuffle};
 use std::{collections::BTreeMap, fmt};
 
-/// Assigns data batches to nodes based on committee roles.  
+/// Assigns data batches to nodes based on committee roles.
 pub fn assign_data_for_state<T: NodeIdentity>(
     coordinator: &Coordinator<T>,
     committee_selection: &CommitteeSelection,
@@ -31,6 +31,9 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     if trainer_nodes.is_empty() {
         return BTreeMap::new();
     }
+
+    let batch_sizes_per_client = calculate_batch_sizes_per_client(coordinator);
+    dbg!("batch_sizes_per_client: {:?}", batch_sizes_per_client);
 
     let mut trainer_nodes = trainer_nodes;
     deterministic_shuffle(&mut trainer_nodes, round.random_seed);
@@ -129,4 +132,76 @@ pub fn get_data_index_for_step<T: NodeIdentity>(
     }
 
     current_data_index
+}
+
+fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T>) -> Vec<u64> {
+    let mut scores_per_node = Vec::<f64>::new();
+
+    for (client_index, time) in coordinator.client_training_times.iter().enumerate() {
+        let score = 1.0 / (*time as f64); // We had time/batch, now we have batch/time
+        scores_per_node.push(score);
+    }
+
+    // Initialize final assignments
+    let n_clients = coordinator.epoch_state.clients.len();
+    let mut final_assignments = vec![0u64; n_clients];
+
+    // First pass: assign 1 batch to each node with non-zero score
+    let mut remaining_batches = coordinator.config.global_batch_size_end as u64;
+    for (i, &score) in scores_per_node.iter().take(n_clients).enumerate() {
+        if score > 0.0 {
+            final_assignments[i] = 1;
+            remaining_batches -= 1;
+        }
+    }
+
+    // If nothing is remaining then we are done
+    if remaining_batches == 0 {
+        return final_assignments;
+    }
+
+    // Normalize scores for remaining distribution
+    let sum = scores_per_node.iter().sum::<f64>();
+    scores_per_node.iter_mut().for_each(|score| *score /= sum);
+
+    // Calculate raw assignments for remaining batches
+    let raw_remaining: Vec<f64> = scores_per_node
+        .iter()
+        .map(|&score| score * remaining_batches as f64)
+        .collect();
+
+    // Floor the remaining assignments
+    let mut additional = raw_remaining
+        .iter()
+        .map(|&x| x.floor() as u64)
+        .collect::<Vec<u64>>();
+
+    // Calculate how many batches are still unassigned
+    let assigned: u64 = additional.iter().sum();
+    let still_remaining = remaining_batches - assigned;
+
+    // Distribute remaining batches by fractional part
+    if still_remaining == 0 {
+        // If no batches are left, we can return the final assignments
+        return final_assignments;
+    }
+
+    let mut fractional: Vec<(usize, f64)> = raw_remaining
+        .iter()
+        .enumerate()
+        .map(|(i, &x)| (i, x - x.floor()))
+        .collect();
+
+    fractional.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    for (idx, _) in fractional.iter().take(still_remaining as usize) {
+        additional[*idx] += 1;
+    }
+
+    // Add additional assignments to base assignments
+    for (base, extra) in final_assignments.iter_mut().zip(additional.iter()) {
+        *base += *extra;
+    }
+
+    final_assignments
 }
