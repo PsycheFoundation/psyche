@@ -27,8 +27,18 @@ pub struct OpenbookQA {
 impl OpenbookQA {
     pub fn load() -> Result<TaskType> {
         let ret = Self {
-            test_dataset: load_dataset("allenai/openbookqa", None, Split::Test, None)?,
-            validation_dataset: load_dataset("allenai/openbookqa", None, Split::Validation, None)?,
+            test_dataset: load_dataset(
+                "allenai/openbookqa",
+                None,
+                Split::Test,
+                Some("main".to_string()),
+            )?,
+            validation_dataset: load_dataset(
+                "allenai/openbookqa",
+                None,
+                Split::Validation,
+                Some("main".to_string()),
+            )?,
         };
         Ok(TaskType::LogLikelihood(Box::new(ret)))
     }

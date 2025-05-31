@@ -36,7 +36,11 @@ impl MMLU {
     }
 
     fn row_to_document(dataset: &Dataset, row: Row) -> Document {
-        let text = row
+        let subject = row
+            .get_string(dataset.get_column_id("subject").unwrap())
+            .unwrap()
+            .replace("_", " ");
+        let question = row
             .get_string(dataset.get_column_id("question").unwrap())
             .unwrap()
             .to_owned();
@@ -49,10 +53,16 @@ impl MMLU {
         let choices = (0..options.len())
             .map(|i| ASCII_UPPERCASE[i].to_owned())
             .collect::<Vec<_>>();
-        let text = format!("{}\n{}\nAnswer: ", text, options.join("\n"));
+        let text = format!(
+            "The following are multiple choice questions (with answers) about {}.\n\n{}\n{}\nAnswer:",
+            subject,
+            question,
+            options.join("\n")
+        );
         let answer = row
             .get_long(dataset.get_column_id("answer").unwrap())
             .unwrap() as usize;
+
         Document {
             text,
             choices,

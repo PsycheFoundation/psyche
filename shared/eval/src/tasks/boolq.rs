@@ -23,8 +23,18 @@ pub struct BoolQ {
 impl BoolQ {
     pub fn load() -> Result<TaskType> {
         let ret = Self {
-            test_dataset: load_dataset("google/boolq", None, Split::Train, None)?,
-            validation_dataset: load_dataset("google/boolq", None, Split::Validation, None)?,
+            test_dataset: load_dataset(
+                "aps/super_glue",
+                None,
+                Split::Train,
+                Some("boolq".to_string()),
+            )?,
+            validation_dataset: load_dataset(
+                "aps/super_glue",
+                None,
+                Split::Validation,
+                Some("boolq".to_string()),
+            )?,
         };
         Ok(TaskType::LogLikelihood(Box::new(ret)))
     }
@@ -44,24 +54,13 @@ impl BoolQ {
             .unwrap()
             .to_owned();
 
-        let choices = vec!["yes".to_string(), "no".to_string()];
+        let choices = vec!["no".to_string(), "yes".to_string()];
 
         let text = format!("{}\nQuestion: {}?\nAnswer:", passage, question);
 
         let answer = row
-            .get_bool(dataset.get_column_id("answer").unwrap())
-            .unwrap();
-
-        let answer = choices
-            .iter()
-            .position(|choice_str| {
-                choice_str
-                    == match answer {
-                        true => "yes",
-                        false => "no",
-                    }
-            })
-            .unwrap();
+            .get_long(dataset.get_column_id("label").unwrap())
+            .unwrap() as usize;
 
         Document {
             text,
@@ -73,16 +72,16 @@ impl BoolQ {
 
 impl LogLikelihoodTask for BoolQ {
     fn get_documents(&self) -> Vec<Document> {
-        self.test_dataset
+        self.validation_dataset
             .iter()
-            .map(|row| BoolQ::row_to_document(&self.test_dataset, row))
+            .map(|row| BoolQ::row_to_document(&self.validation_dataset, row))
             .collect()
     }
 
     fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.validation_dataset
+        self.test_dataset
             .iter()
-            .map(|row| BoolQ::row_to_document(&self.validation_dataset, row))
+            .map(|row| BoolQ::row_to_document(&self.test_dataset, row))
             .collect()
     }
 }
