@@ -186,7 +186,9 @@ fn build_weighted_index(
     let mut dataset_sample_index = Vec::with_capacity(n_samples);
 
     let mut total_samples_drawn = vec![0u64; num_providers];
+    // get rid of this and just use total_samples_drawn
     let mut next_unique_index = vec![0u64; num_providers];
+    // get rid of this and just determine this every time with total_samples_drawn[chosen_provider_idx] >= provider_size condition
     let mut is_exhausted = vec![false; num_providers];
 
     for sample_idx in 0..n_samples {
@@ -208,8 +210,8 @@ fn build_weighted_index(
 
         // determine the sample index
         let provider_size = dataset_sizes[chosen_provider_idx] as u64;
-        let sample_to_yield: u64;
-
+        let sample_to_yield= total_samples_drawn[chosen_provider_idx] % provider_size;
+/*
         if !is_exhausted[chosen_provider_idx] {
             sample_to_yield = next_unique_index[chosen_provider_idx];
             next_unique_index[chosen_provider_idx] += 1;
@@ -220,7 +222,7 @@ fn build_weighted_index(
         } else {
             sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
         }
-
+*/
         dataset_index.push(chosen_provider_idx);
         dataset_sample_index.push(sample_to_yield);
 
