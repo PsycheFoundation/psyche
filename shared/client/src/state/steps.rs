@@ -460,14 +460,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .insert(from_client_id, finished.clone());
 
                 if finished.warmup {
-                    debug!(
-                        "Received {} warmup readies",
+                    info!(
+                        "Received {}/{} warmup readies",
                         round_state.clients_finished.len(),
+                        self.coordinator_state.epoch_state.clients.len()
                     );
                 } else {
                     trace!(
-                        "Received {} finishes for round {}",
+                        "Received {}/{} finishes for round {}",
                         round_state.clients_finished.len(),
+                        self.coordinator_state.epoch_state.clients.len(),
                         result_step
                     );
                 }
