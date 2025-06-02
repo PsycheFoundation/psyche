@@ -126,16 +126,31 @@ build_docker_test_client:
     docker build -t psyche-test-client -f docker/test/psyche_test_client.Dockerfile .
 
 run_docker_test_client num_clients="1":
-    nix build .#psyche-solana-test-validator
-    docker load < result
+    # nix build .#psyche-solana-test-validator
+    # docker load < result
     nix build .#psyche-solana-test-client-docker
     docker load < result
     cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up psyche-test-client -d --force-recreate
 
+run_docker_client:
+    nix build .#psyche-solana-client-docker
+    docker load < result
+    docker run -d \
+        --env-file /home/admin/psyche/config/client/.env.local \
+        -e RAW_WALLET_PRIVATE_KEY="$(cat /home/admin/.config/solana/id.json)" \
+        --gpus all \
+        --network "host" \
+        nousresearch/psyche-solana-client:latest
+
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra num_clients="1":
+    export PSYCHE_HOME = $(pwd)
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
     cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
+    nix build .#psyche-solana-test-client-docker
+    docker load < result
+    nix build .#psyche-solana-test-validator --impure
+    docker load < result
     cd docker/test && docker compose build
     cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up -d --force-recreate
 
