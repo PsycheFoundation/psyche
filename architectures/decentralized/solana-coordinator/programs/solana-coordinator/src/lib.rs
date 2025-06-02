@@ -216,6 +216,7 @@ pub mod psyche_solana_coordinator {
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
         metadata: WitnessMetadata,
+        training_times_offset: u8,
         training_times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
@@ -227,6 +228,7 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
+                training_times_offset,
                 training_times,
             },
         )
@@ -249,6 +251,7 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
+                training_times_offset: 0,
                 training_times: FixedVec::new_filled(0),
             },
         )

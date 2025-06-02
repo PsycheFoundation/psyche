@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, fmt};
 
 /// Assigns data batches to nodes based on committee roles.
 pub fn assign_data_for_state<T: NodeIdentity>(
-    coordinator: &Coordinator<T>,
+    coordinator: &mut Coordinator<T>,
     committee_selection: &CommitteeSelection,
 ) -> BTreeMap<BatchId, T> {
     let round = coordinator.current_round().unwrap();
@@ -43,15 +43,17 @@ pub fn assign_data_for_state<T: NodeIdentity>(
         "[assign_data_for_state] calculated assigned batch sizes: {:?}",
         assigned_batch_sizes
     );
+    // Persist the assigned batch sizes in the coordinator state
+    for i in 0..assigned_batch_sizes.len() {
+        // Ensure the coordinator's epoch state has the correct length
+        coordinator.client_batch_sizes[i] = assigned_batch_sizes.get(i).cloned().unwrap_or(1);
+    }
 
     // Use assigned batch sizes for batch size assignments
     for (client_index, node) in trainer_nodes {
         // We don't want nodes not training so if there was no batch size assigned (or calculated as 0),
         // we assign 1 at least.
-        let node_batch_size = assigned_batch_sizes
-            .get(client_index)
-            .cloned()
-            .unwrap_or(1u64);
+        let node_batch_size = assigned_batch_sizes.get(client_index).cloned().unwrap_or(1) as u64;
 
         let end_index = current_index + node_batch_size - 1;
         assignments.insert(
@@ -92,14 +94,12 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
     let mut batch_ids = Vec::with_capacity(trainer_info.len());
     let mut current_data_idx = round.data_index;
 
-    // TODO(dy) do we really need to recalculate here?
-    let assigned_batch_sizes = calculate_batch_sizes_per_client(coordinator);
-
     for (client_original_idx, _client_ref) in &trainer_info {
-        let node_batch_actual_size = assigned_batch_sizes
+        let node_batch_actual_size = coordinator.client_batch_sizes
             .get(*client_original_idx)
             .cloned()
-            .unwrap_or(1u64); // Default to batch size of 1 if for some reason it's not found
+            .unwrap_or(1) // Default to batch size of 1 if for some reason it's not found
+            as u64;
 
         let end_data_idx = current_data_idx + node_batch_actual_size - 1;
         batch_ids.push(BatchId(ClosedInterval::new(current_data_idx, end_data_idx)));
@@ -150,7 +150,7 @@ pub fn get_data_index_for_step<T: NodeIdentity>(
     current_data_index
 }
 
-fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T>) -> Vec<u64> {
+fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T>) -> Vec<u16> {
     let n_clients = coordinator.epoch_state.clients.len();
     if n_clients == 0 {
         return Vec::new();
@@ -180,8 +180,8 @@ fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T
         client_scores
     );
 
-    let mut final_assignments = vec![0u64; n_clients];
-    let mut remaining_batches = coordinator.config.global_batch_size_end as u64;
+    let mut final_assignments = vec![0u16; n_clients];
+    let mut remaining_batches = coordinator.config.global_batch_size_end;
 
     // First pass: assign 1 batch to each client with a positive score, if batches are available.
     for i in 0..n_clients {
@@ -228,8 +228,8 @@ fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T
         msg!("[calculate_batch_sizes_per_client] No eligible clients with positive scores. Distributing {} remaining batches equally among {} clients.", remaining_batches, n_clients);
         if n_clients > 0 {
             // Should be true if we are here and remaining_batches > 0
-            let batches_per_client = remaining_batches / n_clients as u64;
-            let mut extra_batches_to_distribute = remaining_batches % n_clients as u64;
+            let batches_per_client = remaining_batches / n_clients as u16;
+            let mut extra_batches_to_distribute = remaining_batches % n_clients as u16;
             for assignment in final_assignments.iter_mut().take(n_clients) {
                 *assignment = batches_per_client;
                 if extra_batches_to_distribute > 0 {
@@ -249,7 +249,7 @@ fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T
     // sum_eligible_scores must be > 0.0 as eligible_clients_for_distribution is not empty and all scores are > 0.0.
 
     // This vector will store the additional batches calculated in this pass for each client.
-    let mut additional_assignments = vec![0u64; n_clients];
+    let mut additional_assignments = vec![0u16; n_clients];
     // Stores raw f64 batch counts for fractional part calculation, mapped by original client index.
     let mut raw_values_for_fractional = BTreeMap::new();
 
@@ -258,10 +258,10 @@ fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T
         let raw_assigned_batches_for_client = normalized_score * remaining_batches as f64;
 
         raw_values_for_fractional.insert(*original_idx, raw_assigned_batches_for_client);
-        additional_assignments[*original_idx] = raw_assigned_batches_for_client.floor() as u64;
+        additional_assignments[*original_idx] = raw_assigned_batches_for_client.floor() as u16;
     }
 
-    let assigned_in_normalization_pass: u64 = additional_assignments.iter().sum();
+    let assigned_in_normalization_pass: u16 = additional_assignments.iter().sum();
     let still_remaining_for_fractional =
         remaining_batches.saturating_sub(assigned_in_normalization_pass);
 

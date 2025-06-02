@@ -141,7 +141,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
     pub fn start(
         &mut self,
         client_index: u64,
-        state: &Coordinator<T>,
+        state: &mut Coordinator<T>,
         trainers: Vec<Trainer>,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
@@ -160,20 +160,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         let cancel_training = CancellationToken::new();
         let round_start = Instant::now();
 
-        let round = state.current_round().ok_or(TrainError::NoActiveRound)?;
+        // Extract some values in order to avoid the borrow checker
+        let (round_height, round_random_seed, round_tie_breaker_tasks) = {
+            let r = state.current_round().ok_or(TrainError::NoActiveRound)?;
+            (r.height, r.random_seed, r.tie_breaker_tasks)
+        };
 
         *previous_round = std::mem::take(current_round);
 
         let committee_selection = CommitteeSelection::new(
-            round.tie_breaker_tasks as usize,
+            round_tie_breaker_tasks as usize,
             state.config.witness_nodes as usize,
             state.config.verification_percent,
             state.epoch_state.clients.len(),
-            round.random_seed,
+            round_random_seed,
         )
         .map_err(TrainError::CoordinatorError)?;
 
-        let have_training = round.height < state.config.rounds_per_epoch - 2;
+        let have_training = round_height < state.config.rounds_per_epoch - 2;
         let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) =
             match have_training {
                 true => {
@@ -221,7 +225,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .as_millis() as u64;
 
         *current_round = RoundState {
-            height: round.height,
+            height: round_height,
             step: state.progress.step,
             sent_witness: false,
             sent_finished: false,
@@ -239,13 +243,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         };
 
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
-        let zero_optim = warmup_lr_between.is_some_and(|_| round.height == 0);
+        let zero_optim = warmup_lr_between.is_some_and(|_| round_height == 0);
         let epoch = state.progress.epoch;
 
         info!(
             integration_test_log_marker = %IntegrationTestLogMarker::WitnessElected,
             step = state.progress.step,
-            round = round.height,
+            round = round_height,
             epoch = epoch,
             index = client_index,
             comittee_position = committee_proof.position,
@@ -255,7 +259,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             warmup_lr_between = ?warmup_lr_between,
             assigned_batches = ?get_batch_ids_for_node(&data_assignments, &self.identity),
             "Got training assignment for step {} (round {}/epoch {}): index={} committee position={} committee={} witness position={} witness={} warmup_lr_between={:?}",
-            state.progress.step, round.height, epoch, client_index, committee_proof.position, committee_proof.committee, witness_proof.position, witness_proof.witness, warmup_lr_between
+            state.progress.step, round_height, epoch, client_index, committee_proof.position, committee_proof.committee, witness_proof.position, witness_proof.witness, warmup_lr_between
         );
         let eval_runner = self.eval_runner.clone();
         let finished = Arc::new(AtomicBool::new(false));
