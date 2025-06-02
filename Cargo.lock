@@ -7199,6 +7199,7 @@ dependencies = [
  "psyche-watcher",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
+ "rayon",
  "reqwest 0.12.15",
  "serde",
  "serde_json",

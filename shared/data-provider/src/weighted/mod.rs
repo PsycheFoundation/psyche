@@ -1,8 +1,14 @@
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
+
 use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
 use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use rayon::prelude::*;
 
 pub mod http;
 pub struct WeightedDataProvider<T: TokenizedDataProvider + LengthKnownDataProvider> {
@@ -176,6 +182,7 @@ fn normalize(weights: &[f64]) -> Vec<f64> {
     weights.iter().map(|w| w / sum).collect()
 }
 
+//todo: maybe just return a Vec<(usize, u64)>?
 fn build_weighted_index(
     n_samples: usize,
     weights: &[f64],
@@ -185,48 +192,71 @@ fn build_weighted_index(
     let mut dataset_index = Vec::with_capacity(n_samples);
     let mut dataset_sample_index = Vec::with_capacity(n_samples);
 
-    let mut total_samples_drawn = vec![0u64; num_providers];
-    // get rid of this and just use total_samples_drawn
-    let mut next_unique_index = vec![0u64; num_providers];
-    // get rid of this and just determine this every time with total_samples_drawn[chosen_provider_idx] >= provider_size condition
-    let mut is_exhausted = vec![false; num_providers];
+    let total_samples_drawn = [0..num_providers]
+        .iter()
+        .map(|_| Mutex::new(0u64))
+        .collect::<Vec<_>>();
 
-    for sample_idx in 0..n_samples {
-        let sample_idx_float = (sample_idx as f64).max(1.0);
+    //let mut next_unique_index = vec![0u64; num_providers];
 
-        // select provider based on weighted error
-        let mut max_error = f64::NEG_INFINITY;
-        let mut chosen_provider_idx = 0;
-        for i in 0..num_providers {
-            if dataset_sizes[i] == 0 {
-                continue;
+    //let mut is_exhausted = vec![false; num_providers];
+
+    let temp = (0..n_samples)
+        .into_par_iter()
+        .map(|sample_idx| {
+            let sample_idx_float = (sample_idx as f64).max(1.0);
+
+            // select provider based on weighted error
+            let mut max_error = f64::NEG_INFINITY;
+            let mut chosen_provider_idx = 0;
+            let mut sample = 0;
+            for i in 0..num_providers {
+                if dataset_sizes[i] == 0 {
+                    continue;
+                }
+                // I know this is super slow, it's just for proof of concept
+                let mut sample_guard = total_samples_drawn[i].lock().unwrap();
+                let error = weights[i] * sample_idx_float - *sample_guard as f64;
+                if error > max_error {
+                    sample = *sample_guard;
+                    *sample_guard += 1;
+                    // this is so wrong, we need to find some new approach that doesn't depend on the number of times
+                    // a sample was already sampled.
+                    drop(sample_guard);
+                    if max_error != f64::NEG_INFINITY {
+                        let mut prev_sample_guard =
+                            total_samples_drawn[chosen_provider_idx].lock().unwrap();
+                        *prev_sample_guard -= 1;
+                    }
+                    chosen_provider_idx = i;
+                    max_error = error;
+                }
             }
-            let error = weights[i] * sample_idx_float - total_samples_drawn[i] as f64;
-            if error > max_error {
-                max_error = error;
-                chosen_provider_idx = i;
-            }
-        }
 
-        // determine the sample index
-        let provider_size = dataset_sizes[chosen_provider_idx] as u64;
-        let sample_to_yield= total_samples_drawn[chosen_provider_idx] % provider_size;
-/*
-        if !is_exhausted[chosen_provider_idx] {
-            sample_to_yield = next_unique_index[chosen_provider_idx];
-            next_unique_index[chosen_provider_idx] += 1;
+            // determine the sample index
+            let provider_size = dataset_sizes[chosen_provider_idx] as u64;
+            let sample_to_yield = sample % provider_size;
+            /*
+                    if !is_exhausted[chosen_provider_idx] {
+                        sample_to_yield = next_unique_index[chosen_provider_idx];
+                        next_unique_index[chosen_provider_idx] += 1;
 
-            if next_unique_index[chosen_provider_idx] == provider_size {
-                is_exhausted[chosen_provider_idx] = true;
-            }
-        } else {
-            sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
-        }
-*/
-        dataset_index.push(chosen_provider_idx);
-        dataset_sample_index.push(sample_to_yield);
+                        if next_unique_index[chosen_provider_idx] == provider_size {
+                            is_exhausted[chosen_provider_idx] = true;
+                        }
+                    } else {
+                        sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
+                    }
+            */
+            (chosen_provider_idx, sample_to_yield)
+            //dataset_index.push(chosen_provider_idx);
+            //dataset_sample_index.push(sample_to_yield);
+        })
+        .collect::<Vec<(usize, u64)>>();
 
-        total_samples_drawn[chosen_provider_idx] += 1;
+    for (dataset_idx, dataset_sample_idx) in temp {
+        dataset_index.push(dataset_idx);
+        dataset_sample_index.push(dataset_sample_idx);
     }
 
     (dataset_index, dataset_sample_index)
