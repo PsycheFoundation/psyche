@@ -1,4 +1,6 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata, TRAINING_TIMES_SLICE_SIZE};
+use psyche_coordinator::{
+    Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS, TRAINING_TIMES_SLICE_SIZE,
+};
 use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
@@ -90,6 +92,7 @@ impl WitnessStep {
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
     ) -> Option<Witness> {
+        trace!("Coordinator step: {}", state.progress.step);
         if previous_round.sent_witness {
             return None;
         }
@@ -112,13 +115,37 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
-        // TODO(dy): We are getting the first slice [0..90] for now, get proper slice later
-        // TODO(dy): Probably a cleaner way to do this or implement to_slice in FixedVec
+        let n_partitions = SOLANA_MAX_NUM_CLIENTS.div_ceil(TRAINING_TIMES_SLICE_SIZE);
+        let step = state.progress.step - 1; // First step is 1, so we subtract 1 to get 0-index
+
+        // Cycle through the partitions depending on the current step.
+        let slice_index = if n_partitions == 0 {
+            0
+        } else {
+            step % (n_partitions as u32)
+        };
+
+        // Calculate the starting index in current_round.client_times for the current slice.
+        let start_idx_in_client_times = (slice_index as usize) * TRAINING_TIMES_SLICE_SIZE;
+        trace!(
+            "Submitting training times for step={} , offset={}",
+            step,
+            start_idx_in_client_times
+        );
+
         let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new_filled(0);
-        for i in 0..TRAINING_TIMES_SLICE_SIZE {
-            if i < current_round.client_times.len() {
-                training_times[i] = current_round.client_times.get(i).copied().unwrap_or(0);
+        for i in 0..(TRAINING_TIMES_SLICE_SIZE as usize) {
+            let source_idx = start_idx_in_client_times + i;
+
+            // Check if the source index is within the bounds of current_round.client_times.
+            if source_idx < current_round.client_times.len() {
+                training_times[i] = current_round
+                    .client_times
+                    .get(source_idx)
+                    .copied()
+                    .unwrap_or(0);
             }
+            // If source_idx is out of bounds, training_times[i] remains 0
         }
 
         Some(Witness {
@@ -126,6 +153,7 @@ impl WitnessStep {
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
+            training_times_offset: start_idx_in_client_times as u8,
             training_times,
         })
     }
