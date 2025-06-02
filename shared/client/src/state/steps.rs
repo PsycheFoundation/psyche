@@ -314,6 +314,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         participant_bloom: Default::default(),
                         broadcast_bloom: Default::default(),
                         broadcast_merkle: merkle,
+                        training_times_offset: 0,
                         training_times: Default::default(),
                     };
                     self.tx_opportunistic_data
@@ -693,7 +694,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         });
     }
 
-    async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), StepError> {
+    async fn apply_state(&mut self, mut state: Coordinator<T>) -> Result<(), StepError> {
         let client_index = match state
             .epoch_state
             .clients
@@ -762,7 +763,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .push_eval_results();
                 ActiveStep::Training(self.training.start(
                     client_index,
-                    &state,
+                    &mut state,
                     trainers,
                     &mut self.previous_round,
                     &mut self.current_round,
@@ -817,7 +818,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 let trainers = witnessing.finish().await?.stop_evals().await?;
                 ActiveStep::Training(self.training.start(
                     client_index,
-                    &state,
+                    &mut state,
                     trainers,
                     &mut self.previous_round,
                     &mut self.current_round,

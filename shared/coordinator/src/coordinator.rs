@@ -155,6 +155,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
+    pub training_times_offset: u8,
     pub training_times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
 }
 
@@ -317,6 +318,9 @@ pub struct Coordinator<T> {
 
     #[serde(default)]
     pub client_training_times: FixedVec<u16, { SOLANA_MAX_NUM_CLIENTS }>,
+
+    #[serde(default)]
+    pub client_batch_sizes: FixedVec<u16, { SOLANA_MAX_NUM_CLIENTS }>,
 }
 
 unsafe impl<T: NodeIdentity + Zeroable> Pod for Coordinator<T> {}
@@ -1002,19 +1006,40 @@ impl<T: NodeIdentity> Coordinator<T> {
         let witnesses = &self.current_round_unchecked().witnesses;
         for witness in witnesses.iter() {
             msg!(
-                "witness {} reported times: {:?}",
+                "witness {} reported times: {:?} offset={}",
                 witness.proof.index,
-                witness.training_times
+                witness.training_times,
+                witness.training_times_offset,
             );
         }
 
         if let Some(agreed_values) = self.get_consensus_on_reported_times(witnesses, 1.0 / 3.0, 5.0)
         {
             dbg!("Consensus reached. Saving values");
-            for (client_index, &agreed_value) in agreed_values.iter().enumerate() {
-                if agreed_value != 0 {
-                    dbg!("client_index: {}", client_index);
-                    self.client_training_times[client_index] = agreed_value;
+
+            let start_offset_in_global_times = witnesses[0].training_times_offset;
+            msg!(
+                "Saving training times for step {}, start offset {}",
+                self.progress.step - 1,
+                start_offset_in_global_times
+            );
+
+            for (index_in_slice, &agreed_value) in agreed_values.iter().enumerate() {
+                if agreed_value == 0 {
+                    continue; // Invalid value => ignore
+                }
+                let global_client_index = (start_offset_in_global_times as usize) + index_in_slice;
+                // Ensure the global_client_index is within bounds of self.client_training_times
+                if global_client_index < SOLANA_MAX_NUM_CLIENTS {
+                    self.client_training_times[global_client_index] = agreed_value;
+                } else {
+                    // This should not happen
+                    msg!(
+                        "Warning: Calculated global_client_index {} is out of bounds for client_training_times (max {}). Value {} not saved.",
+                        global_client_index,
+                        SOLANA_MAX_NUM_CLIENTS -1,
+                        agreed_value
+                    );
                 }
             }
         } else {
