@@ -98,11 +98,11 @@
                 pkgs.bashInteractive
                 rustPackages."psyche-solana-client"
                 (pkgs.runCommand "entrypoint" { } ''
-                    mkdir -p $out/bin
-                    cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
-                    cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
-                    chmod +x $out/bin/client_test_entrypoint.sh
-                    chmod +x $out/bin/run_owner_entrypoint.sh
+                  mkdir -p $out/bin
+                  cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
+                  cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
+                  chmod +x $out/bin/client_test_entrypoint.sh
+                  chmod +x $out/bin/run_owner_entrypoint.sh
                 '')
               ];
               pathsToLink = [ "/bin" ];
@@ -126,22 +126,25 @@
                 anchor-cli
                 pkgs.bashInteractive
                 (pkgs.runCommand "entrypoint" { } ''
-                    mkdir -p $out/bin
-                    mkdir -p $out/lib
-                    cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
-                    cp -r ${../architectures/decentralized/solana-coordinator} $out/lib/solana-coordinator
-                    cp -r ${../architectures/decentralized/solana-authorizer} $out/lib/solana-authorizer
-                    chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
+                  mkdir -p $out/bin
+                  mkdir -p $out/lib
+                  cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
+                  cp -r ${../architectures/decentralized/solana-coordinator} $out/lib/solana-coordinator
+                  cp -r ${../architectures/decentralized/solana-authorizer} $out/lib/solana-authorizer
+                  chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
                 '')
               ];
-              pathsToLink = [ "/bin" "/lib" ];
+              pathsToLink = [
+                "/bin"
+                "/lib"
+              ];
             };
 
             config = {
               Entrypoint = [ "/bin/psyche_solana_validator_entrypoint.sh" ];
               ExposedPorts = {
-                  "8899/tcp" =  { };
-                  "8900/tcp" = { };
+                "8899/tcp" = { };
+                "8900/tcp" = { };
               };
             };
           };
