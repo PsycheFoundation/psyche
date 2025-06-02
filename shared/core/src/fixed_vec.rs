@@ -22,7 +22,7 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
 
     pub fn new_filled(val: T) -> Self {
         let mut vec = Self::new();
-        for i in 0..N {
+        for _ in 0..N {
             vec.push(val).expect("Failed to fill FixedVec");
         }
         vec
