@@ -11,11 +11,11 @@ solana-test-validator -r &
 
 sleep 3
 
-pushd /usr/local/solana-authorizer
+pushd /lib/solana-authorizer
 anchor deploy --provider.cluster "${RPC}" -- --max-len 500000
 popd
 
-pushd /usr/local/solana-coordinator
+pushd /lib/solana-coordinator
 anchor deploy --provider.cluster "${RPC}" -- --max-len 500000
 popd
 
