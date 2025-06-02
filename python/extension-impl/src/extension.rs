@@ -14,7 +14,7 @@ fn add_one(tensor: PyTensor) -> PyResult<PyTensor> {
 
 #[pyclass]
 pub struct Trainer {
-    trainer: Cell<Option<psyche_modeling::Trainer>>,
+    trainer: Cell<Option<psyche_modeling::LocalTrainer>>,
     cancel: CancellationToken,
 }
 
@@ -98,7 +98,7 @@ impl Trainer {
         let optimizer: OptimizerDefinition = serde_json::from_str(optimizer_json)
             .map_err(|err| PyRuntimeError::new_err(format!("{}", err)))?;
 
-        let trainer = psyche_modeling::Trainer::new(
+        let trainer = psyche_modeling::LocalTrainer::new(
             models,
             lr_scheduler,
             optimizer,
@@ -143,7 +143,10 @@ impl Trainer {
                 )
             })
             .unwrap();
-        self_.trainer.set(Some(output.trainer));
+        self_.trainer.set(Some(match output.trainer {
+            psyche_modeling::Trainer::Local(local_trainer) => local_trainer,
+            _ => unreachable!(),
+        }));
         Ok(output.distro_results.map(|distro_results| {
             distro_results
                 .into_iter()

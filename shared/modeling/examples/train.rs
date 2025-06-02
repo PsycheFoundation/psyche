@@ -29,7 +29,7 @@ struct Args {
     #[arg(long, default_value_t = 8)]
     micro_batch: usize,
 
-    #[arg(long, default_value_t = 64)]
+    #[arg(long, default_value_t = 256)]
     total_batch: usize,
 
     #[arg(long, default_value_t = 0.9)]
@@ -85,6 +85,10 @@ struct Args {
 
     #[arg(long, default_value_t = false)]
     distro_quantization: bool,
+
+    #[cfg(feature = "python")]
+    #[clap(long)]
+    python: bool,
 }
 
 fn main() -> Result<()> {

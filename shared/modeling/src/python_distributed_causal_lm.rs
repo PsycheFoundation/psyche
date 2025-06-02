@@ -247,10 +247,10 @@ impl CausalLM for PythonDistributedCausalLM {
     }
 
     fn bos_token_id(&self) -> Option<i64> {
-        todo!()
+        self.local.bos_token_id()
     }
 
     fn eos_token_ids(&self) -> Option<crate::EosToks> {
-        todo!()
+        self.local.eos_token_ids()
     }
 }

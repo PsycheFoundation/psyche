@@ -11,8 +11,8 @@ use psyche_data_provider::{
 };
 use psyche_modeling::{
     auto_tokenizer, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel,
-    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, ModelConfig, ModelLoadError,
-    ParallelModels, PretrainedSource, Trainer,
+    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig,
+    ModelLoadError, ParallelModels, PretrainedSource,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
@@ -534,7 +534,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         })
                         .collect()
                 });
-                Trainer::new(
+                LocalTrainer::new(
                     models,
                     llm.lr_schedule,
                     llm.optimizer,
@@ -543,6 +543,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     init_config.grad_accum_in_fp32,
                     data_parallel,
                 )
+                .into()
             })
             .collect();
 

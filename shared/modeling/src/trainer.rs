@@ -132,7 +132,116 @@ enum ParallelResult {
 }
 
 #[derive(Debug)]
-pub struct Trainer {
+pub enum Trainer {
+    Local(LocalTrainer),
+    #[cfg(feature = "python")]
+    PythonDistributed(crate::PythonDistributedTrainer),
+}
+
+impl Trainer {
+    pub fn train(
+        self,
+        step: u32,
+        data: Batch,
+        warmup_lr_between: Option<(u32, u32)>,
+        zero_optim: bool,
+        rollback: Vec<(u32, Vec<DistroResults>)>,
+        prev_self_distro_results: Option<Vec<DistroResults>>,
+        cancel_training: CancellationToken,
+    ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.train(
+                step,
+                data,
+                warmup_lr_between,
+                zero_optim,
+                rollback,
+                prev_self_distro_results,
+                cancel_training,
+            ),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python) => python.train(
+                step,
+                data,
+                warmup_lr_between,
+                zero_optim,
+                rollback,
+                prev_self_distro_results,
+                cancel_training,
+            ),
+        }
+    }
+
+    pub fn optimize(
+        self,
+        step: u32,
+        warmup_lr_between: Option<(u32, u32)>,
+        distro_results: Option<Vec<DistroResults>>,
+    ) -> Result<Self, ApplyDistroResultError> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer
+                .optimize(step, warmup_lr_between, distro_results)
+                .map(|x| x.into()),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python) => python
+                .optimize(step, warmup_lr_between, distro_results)
+                .map(|x| x.into()),
+        }
+    }
+
+    pub fn extract(&mut self) -> Result<HashMap<String, Tensor>, TrainerThreadCommunicationError> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.extract(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python) => python.extract(),
+        }
+    }
+
+    pub fn get_lr(
+        lr_scheduler: &LearningRateSchedule,
+        step: u32,
+        warmup_lr_between: Option<(u32, u32)>,
+    ) -> f64 {
+        let factor = match warmup_lr_between {
+            Some((start, end)) => match step >= start && step <= end {
+                true => (step - start) as f64 / (end - start) as f64,
+                false => 1.,
+            },
+            None => 1.,
+        };
+        lr_scheduler.get_lr(step) * factor
+    }
+
+    pub fn quantize_results(results: &DistroResults) -> DistroResults {
+        results
+            .iter()
+            .map(|x| DistroResult {
+                sparse_idx: x.sparse_idx.copy(),
+                sparse_val: Distro::quantize_nozeros_tensor_to_boolean_sign(&x.sparse_val),
+                xshape: x.xshape.clone(),
+                totalk: x.totalk,
+                stats: x.stats.clone(),
+            })
+            .collect()
+    }
+
+    pub fn causal_lm(&self) -> &dyn CausalLM {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer,
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => python_distributed_trainer,
+        }
+    }
+}
+
+impl From<LocalTrainer> for Trainer {
+    fn from(value: LocalTrainer) -> Self {
+        Self::Local(value)
+    }
+}
+
+#[derive(Debug)]
+pub struct LocalTrainer {
     models: Vec<(
         mpsc::Sender<ParallelAssignment>,
         mpsc::Receiver<ParallelResult>,
@@ -152,9 +261,13 @@ pub enum TrainerThreadCommunicationError {
 
     #[error("Got unexpected result from trainer thread: {0}")]
     UnexpectedResult(String),
+
+    #[cfg(feature = "python")]
+    #[error("Python error: {0}")]
+    PythonError(#[from] pyo3::PyErr),
 }
 
-impl Trainer {
+impl LocalTrainer {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         models: ParallelModels,
@@ -324,7 +437,7 @@ impl Trainer {
         final_loss /= self.models.len() as f32;
         Ok(TrainOutput {
             batch_id: data.id,
-            trainer: self,
+            trainer: Trainer::Local(self),
             loss: final_loss,
             step,
             distro_results: final_distro_results,
@@ -393,19 +506,6 @@ impl Trainer {
             }
         }
         Ok(extracted)
-    }
-
-    pub fn quantize_results(results: &DistroResults) -> DistroResults {
-        results
-            .iter()
-            .map(|x| DistroResult {
-                sparse_idx: x.sparse_idx.copy(),
-                sparse_val: Distro::quantize_nozeros_tensor_to_boolean_sign(&x.sparse_val),
-                xshape: x.xshape.clone(),
-                totalk: x.totalk,
-                stats: x.stats.clone(),
-            })
-            .collect()
     }
 
     // todo: refactor args into a struct
@@ -514,10 +614,10 @@ impl Trainer {
                         grad_accum.zero_grad();
                     }
 
-                    let lr = Self::get_lr(&lr_scheduler, step, warmup_lr_between);
+                    let lr = Trainer::get_lr(&lr_scheduler, step, warmup_lr_between);
                     let prev_lr = match step {
-                        0 => Self::get_lr(&lr_scheduler, 0, warmup_lr_between),
-                        step => Self::get_lr(&lr_scheduler, step - 1, warmup_lr_between),
+                        0 => Trainer::get_lr(&lr_scheduler, 0, warmup_lr_between),
+                        step => Trainer::get_lr(&lr_scheduler, step - 1, warmup_lr_between),
                     };
 
                     tracing::debug!(
@@ -696,7 +796,7 @@ impl Trainer {
                     step,
                     warmup_lr_between,
                 }) => {
-                    let lr = Self::get_lr(&lr_scheduler, step, warmup_lr_between);
+                    let lr = Trainer::get_lr(&lr_scheduler, step, warmup_lr_between);
                     if optimize_step(
                         &mut model,
                         lr,
@@ -774,21 +874,6 @@ impl Trainer {
             .and_then(|x| x.first().map(|y| y.world_size))
             .unwrap_or(1)
     }
-
-    pub fn get_lr(
-        lr_scheduler: &LearningRateSchedule,
-        step: u32,
-        warmup_lr_between: Option<(u32, u32)>,
-    ) -> f64 {
-        let factor = match warmup_lr_between {
-            Some((start, end)) => match step >= start && step <= end {
-                true => (step - start) as f64 / (end - start) as f64,
-                false => 1.,
-            },
-            None => 1.,
-        };
-        lr_scheduler.get_lr(step) * factor
-    }
 }
 
 #[derive(Error, Debug)]
@@ -804,9 +889,13 @@ pub enum ApplyDistroResultError {
 
     #[error("apply thread crashed")]
     ThreadCrashed,
+
+    #[cfg(feature = "python")]
+    #[error("Python error: {0}")]
+    PythonError(#[from] pyo3::PyErr),
 }
 
-impl CausalLM for Trainer {
+impl CausalLM for LocalTrainer {
     fn forward(
         &mut self,
         x: &Tensor,
@@ -911,4 +1000,94 @@ fn optimize_step(
         Optimizer::Null => (),
     };
     ControlFlow::Continue(())
+}
+
+impl CausalLM for Trainer {
+    fn forward(
+        &mut self,
+        x: &Tensor,
+        labels: Option<&Tensor>,
+        num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
+    ) -> (Tensor, Option<Tensor>) {
+        match self {
+            Trainer::Local(local_trainer) => {
+                local_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
+            }
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
+            }
+        }
+    }
+
+    fn bos_token_id(&self) -> Option<i64> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.bos_token_id(),
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.bos_token_id()
+            }
+        }
+    }
+
+    fn eos_token_ids(&self) -> Option<EosToks> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.eos_token_ids(),
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.eos_token_ids()
+            }
+        }
+    }
+
+    fn device(&self) -> Device {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.device().clone(),
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.device()
+            }
+        }
+    }
+
+    fn variables(&self) -> StableVariableIterator {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.variables(),
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.variables()
+            }
+        }
+    }
+
+    fn communicator(&self) -> Option<Arc<Communicator>> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.communicator(),
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.communicator()
+            }
+        }
+    }
+
+    fn prepare_for_training(&mut self) {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.prepare_for_training(),
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.prepare_for_training()
+            }
+        }
+    }
+
+    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.clip_grad_norm(max_grad_norm),
+            #[cfg(feature = "parallelism")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.clip_grad_norm(max_grad_norm)
+            }
+        }
+    }
 }

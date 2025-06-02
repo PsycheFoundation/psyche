@@ -14,6 +14,8 @@ mod parallelism;
 mod python_causal_lm;
 #[cfg(feature = "python")]
 mod python_distributed_causal_lm;
+#[cfg(feature = "python")]
+mod python_distributed_trainer;
 mod rms_norm;
 mod rope;
 mod safetensor_utils;
@@ -46,6 +48,8 @@ pub use parallelism::{
 pub use python_causal_lm::PythonCausalLM;
 #[cfg(feature = "python")]
 pub use python_distributed_causal_lm::{PythonDistributedCausalLM, TorchDistributedCommunicator};
+#[cfg(feature = "python")]
+pub use python_distributed_trainer::PythonDistributedTrainer;
 pub use rms_norm::RMSNorm;
 pub use rope::{default_rope, rotate_half, yarn_get_mscale, RoPECache, RoPEConfig, RoPEType};
 pub use safetensor_utils::{
@@ -55,8 +59,8 @@ pub use safetensor_utils::{
 pub use sampling::{LogitsProcessor, Sampling};
 pub use token_output_stream::TokenOutputStream;
 pub use trainer::{
-    ApplyDistroResultError, Batch, BatchData, DataParallel, ParallelModels, TrainOutput, Trainer,
-    TrainerThreadCommunicationError,
+    ApplyDistroResultError, Batch, BatchData, DataParallel, LocalTrainer, ParallelModels,
+    TrainOutput, Trainer, TrainerThreadCommunicationError,
 };
 pub use variable::{StableVarStoreIterator, StableVariableIterator, Variable};
 
