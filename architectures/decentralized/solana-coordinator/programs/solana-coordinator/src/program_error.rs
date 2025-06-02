@@ -71,6 +71,9 @@ pub enum ProgramError {
 
     #[msg("Coordinator error: Invalid committee proof")]
     CoordinatorErrorInvalidCommitteeProof,
+
+    #[msg("There are more clients than total number of batches to assign")]
+    MoreClientsThanBatches,
 }
 
 impl From<CoordinatorError> for ProgramError {

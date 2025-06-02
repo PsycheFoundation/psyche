@@ -328,7 +328,7 @@ impl CoordinatorInstanceState {
             if self.coordinator.config.global_batch_size_end
                 == total_num_clients
             {
-                return err!(ProgramError::ClientsFull);
+                return err!(ProgramError::MoreClientsThanBatches);
             }
 
             let new_client = Client {
