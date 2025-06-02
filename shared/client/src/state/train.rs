@@ -181,7 +181,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     let all_batch_ids = get_batch_ids_for_round(
                         state.current_round().unwrap(),
                         state,
-                        committee_selection.get_num_trainer_nodes(),
+                        &committee_selection,
                     );
                     let num_all_batch_ids = all_batch_ids.len();
                     let batch_ids_not_yet_trained_on: BatchIdSet =
@@ -529,19 +529,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .previous_round()
             .ok_or(ApplyError::NoActiveRound)?
             .witnesses;
-        let batch_ids = get_batch_ids_for_round(
-            state
-                .previous_previous_round()
-                .ok_or(ApplyError::NoActiveRound)?,
-            state,
-            previous_round
-                .committee_info
-                .as_ref()
-                .ok_or(ApplyError::NoActiveRound)?
-                .2
-                .get_num_trainer_nodes(),
-        );
 
+        // TODO(dy): Not so sure about this change
+        // Get the BatchIds from the actual assignments made for the previous_round.
+        // These are the keys of the data_assignments map stored in the client's previous_round state.
+        let batch_ids: Vec<BatchId> = previous_round.data_assignments.keys().cloned().collect();
         let data_assignments = previous_round.data_assignments.clone();
 
         Ok(tokio::task::spawn(async move {
