@@ -433,16 +433,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         // Avoid writing more than one time for the same client
                         let time_per_batch =
                             time_since_training_started / training_result.batch_id.len() as u128;
-                        round_state.client_times[index] = time_per_batch as u16;
+
+                        let time_per_batch_seconds: u16 = if time_per_batch < 1000 {
+                            1 // Minimum 1 second if less than 1000ms
+                        } else {
+                            // Round to the nearest second: (value_ms + 500) / 1000
+                            ((time_per_batch + 500) / 1000) as u16
+                        };
+                        round_state.client_times[index] = time_per_batch_seconds;
 
                         trace!(
-                            "Received batch {} from client {} (idx: {}) at {} , total time: {}ms (per batch: {}ms)",
+                            "Received batch {} from client {} (idx: {}) at {} , total time: {}ms (per batch: {}ms {}s)",
                             training_result.batch_id,
                             from_client_id,
                             index,
                             current_timestamp,
                             time_since_training_started,
                             time_per_batch,
+                            time_per_batch_seconds,
                         );
                     }
                 }
