@@ -156,8 +156,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
-    pub training_times_offset: u8,
-    pub training_times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
+    pub training_times: WitnessTrainingTimes,
 }
 
 #[derive(
@@ -207,6 +206,25 @@ impl WitnessEvalResult {
             value,
         }
     }
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Zeroable,
+    Default,
+    Copy,
+    AnchorDeserialize,
+    AnchorSerialize,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    TS,
+)]
+#[repr(C)]
+pub struct WitnessTrainingTimes {
+    pub offset: u8,
+    pub times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1010,8 +1028,8 @@ impl<T: NodeIdentity> Coordinator<T> {
             msg!(
                 "witness {} reported times: {:?} offset={}",
                 witness.proof.index,
-                witness.training_times,
-                witness.training_times_offset,
+                witness.training_times.times,
+                witness.training_times.offset,
             );
         }
 
@@ -1019,7 +1037,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         {
             dbg!("Consensus reached. Saving values");
 
-            let start_offset_in_global_times = witnesses[0].training_times_offset;
+            let start_offset_in_global_times = witnesses[0].training_times.offset;
             msg!(
                 "Saving training times for step {}, start offset {}",
                 self.progress.step - 1,
@@ -1205,7 +1223,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             let mut count = 0;
 
             for witness in witnesses {
-                let value = witness.training_times.get(i).copied().unwrap_or(0);
+                let value = witness.training_times.times.get(i).copied().unwrap_or(0);
 
                 if value == 0 {
                     // Boyer-Moore variant: find candidate among non-zero reported times
@@ -1228,7 +1246,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 // Check if all actual proposals for this index i are 0.
                 let all_proposals_effectively_zero = witnesses
                     .iter()
-                    .all(|w| w.training_times.get(i).copied().unwrap_or(0) == 0);
+                    .all(|w| w.training_times.times.get(i).copied().unwrap_or(0) == 0);
 
                 if all_proposals_effectively_zero {
                     agreed_values.push(0); // Consensus on 0 for this slot
@@ -1243,7 +1261,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 let mut non_zero_count = 0;
 
                 for wtn in witnesses {
-                    let val = wtn.training_times.get(i).copied().unwrap_or(0);
+                    let val = wtn.training_times.times.get(i).copied().unwrap_or(0);
 
                     if val != 0 {
                         non_zero_count += 1;
