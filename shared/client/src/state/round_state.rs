@@ -7,9 +7,8 @@ use psyche_core::{BatchId, NodeIdentity};
 use psyche_modeling::DistroResult;
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
-use tokio::sync::Mutex;
 
 use super::types::PayloadState;
 
@@ -18,15 +17,15 @@ pub struct RoundState<T: NodeIdentity> {
     pub step: u32,
     pub sent_witness: bool,
     pub sent_finished: bool,
-    pub downloads: HashMap<psyche_network::Hash, PayloadState<T>>,
+    pub downloads: Arc<Mutex<HashMap<psyche_network::Hash, PayloadState<T>>>>,
     #[allow(clippy::type_complexity)]
     pub results: HashMap<BatchId, Vec<(T, (Commitment, TrainingResult))>>,
     pub clients_finished: HashMap<T, Finished>,
     pub data_assignments: BTreeMap<BatchId, T>,
-    pub blooms: Option<(WitnessBloom, WitnessBloom)>,
+    pub blooms: Arc<Mutex<Option<(WitnessBloom, WitnessBloom)>>>,
     pub broadcasts: Vec<[u8; 32]>,
     pub committee_info: Option<(CommitteeProof, WitnessProof, CommitteeSelection)>,
-    pub batch_ids_not_yet_trained_on: Option<(usize, Arc<Mutex<BatchIdSet>>)>,
+    pub batch_ids_not_yet_trained_on: Arc<Mutex<Option<BatchIdSet>>>,
     pub self_distro_results: Vec<Vec<DistroResult>>,
 }
 
@@ -37,16 +36,20 @@ impl<T: NodeIdentity> RoundState<T> {
             step: 0,
             sent_witness: false,
             sent_finished: false,
-            downloads: HashMap::new(),
+            downloads: Arc::new(Mutex::new(HashMap::new())),
             results: HashMap::new(),
             broadcasts: Vec::new(),
             clients_finished: HashMap::new(),
             data_assignments: BTreeMap::new(),
-            blooms: None,
+            blooms: Arc::new(Mutex::new(None)),
             committee_info: None,
-            batch_ids_not_yet_trained_on: None,
+            batch_ids_not_yet_trained_on: Arc::new(Mutex::new(None)),
             self_distro_results: vec![],
         }
+    }
+
+    pub fn distro_result_blob_downloaded(&self, hash: &psyche_network::Hash) -> bool {
+        self.downloads.lock().unwrap().contains_key(hash)
     }
 }
 

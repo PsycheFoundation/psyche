@@ -40,7 +40,7 @@ use tokio::{
     time::{interval, Interval},
 };
 use tokio_util::{sync::CancellationToken, time::FutureExt};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
@@ -101,6 +101,7 @@ pub enum DiscoveryMode {
     Local,
     N0,
 }
+
 pub struct NetworkConnection<BroadcastMessage, Download>
 where
     BroadcastMessage: Networkable,
@@ -322,27 +323,30 @@ where
 
     /// Don't call this often / with many peers!
     /// It can force disconnection of other gossip peers if we have too many.
-    pub fn add_peers(&mut self, peers: Vec<NodeId>) {
+    pub fn add_peers(&self, peers: Vec<NodeId>) {
         let peer_list = peers
             .iter()
             .map(|n| n.fmt_short())
             .collect::<Vec<_>>()
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
-
         let gossip_tx = self.gossip_tx.clone();
         let node_id = self.router.endpoint().node_id();
-        tokio::task::spawn(async move {
-            if let Err(err) = gossip_tx
-                .join_peers(peers.into_iter().filter(|p| p != &node_id).collect())
-                .await
-            {
-                error!("Failed to join new gossip peers: {err:?}");
+        tokio::task::spawn(
+            async move {
+                if let Err(err) = gossip_tx
+                    .join_peers(peers.into_iter().filter(|p| p != &node_id).collect())
+                    .await
+                {
+                    error!("Failed to join gossip peers: {err:#}")
+                }
             }
-        });
+            .instrument(debug_span!("gossip_join_peers", peers = peer_list)),
+        );
     }
 
-    pub async fn broadcast(&mut self, message: &BroadcastMessage) -> Result<()> {
+    pub fn broadcast(&self, message: &BroadcastMessage) -> Result<()> {
+        let gossip_tx = self.gossip_tx.clone();
         let encoded_message =
             SignedMessage::sign_and_encode(self.router.endpoint().secret_key(), message)?;
         let message_hash = hash_bytes(&encoded_message);
@@ -352,59 +356,52 @@ where
             "broadcasted gossip message with hash {message_hash}: {:?}",
             message
         );
-        Ok(self.gossip_tx.broadcast(encoded_message).await?)
+        tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
+        Ok(())
     }
 
-    pub async fn start_download(
-        &mut self,
-        ticket: BlobTicket,
-        tag: u32,
-        download_type: DownloadType,
-    ) -> Result<()> {
+    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
         let provider_node_id = ticket.node_addr().clone();
+        let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
             DownloadType::DistroResult(peers) => peers,
             DownloadType::ModelSharing(_) => vec![],
         };
-        let mut progress = self
-            .blobs
-            .client()
-            .download_with_opts(
-                ticket.hash(),
-                DownloadOptions {
-                    format: BlobFormat::Raw,
-                    nodes: std::iter::once(provider_node_id)
-                        .chain(additional_peers_to_try.iter().cloned())
-                        .collect(),
-                    tag: SetTagOption::Auto,
-                    mode: DownloadMode::Queued,
-                },
-            )
-            .await?;
-
-        let hash = ticket.hash();
-        self.state.currently_sharing_blobs.insert(hash);
-        self.state.blob_tags.insert((tag, hash));
-        debug!(name: "blob_download_start", hash = hash.fmt_short(), "started downloading blob {}", hash.fmt_short());
-
         let (tx, rx) = mpsc::unbounded_channel();
 
+        self.state.currently_sharing_blobs.insert(ticket_hash);
+        self.state.blob_tags.insert((tag, ticket_hash));
+        self.download_manager.add(ticket, tag, rx, download_type);
+
+        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash.fmt_short());
+
+        let blobs_client = self.blobs.client().clone();
+
         tokio::spawn(async move {
-            loop {
-                match progress.next().await {
-                    None => break,
-                    Some(val) => {
+            let download_opts = DownloadOptions {
+                format: BlobFormat::Raw,
+                nodes: std::iter::once(provider_node_id)
+                    .chain(additional_peers_to_try.iter().cloned())
+                    .collect(),
+                tag: SetTagOption::Auto,
+                mode: DownloadMode::Queued,
+            };
+
+            let download_start_result = blobs_client
+                .download_with_opts(ticket_hash, download_opts)
+                .await;
+
+            match download_start_result {
+                Ok(mut progress) => {
+                    while let Some(val) = progress.next().await {
                         if let Err(err) = tx.send(val) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
                     }
                 }
+                Err(e) => panic!("Failed to start download: {e}"),
             }
         });
-
-        self.download_manager.add(ticket, tag, rx, download_type);
-
-        Ok(())
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {

@@ -51,7 +51,7 @@ struct DownloadRetryInfo {
 }
 
 const MAX_DOWNLOAD_RETRIES: usize = 3;
-const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(2);
+const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(10);
 const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
@@ -200,7 +200,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         trace!("Got finished gossip message from {from}: step {}", broadcast.step);
                                                     }
                                                 }
-                                                run.apply_message(client.id, broadcast).await?;
+                                                run.apply_message(client.id, broadcast)?;
                                             } else {
                                                 debug!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
                                             }
@@ -218,7 +218,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
                                                 trace!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
-                                                run.apply_distro_result(hash, distro_result, None).await;
+                                                run.apply_distro_result(hash, distro_result, None);
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {
                                                 info!("Download complete: parameter {}", parameter.name()?);
@@ -329,11 +329,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 broadcast_merkle: merkle, warmup
                             })};
 
-                            p2p.broadcast(&training_result).await?;
+                            p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
-                            run.apply_message(identity,  training_result).await?;
+                            run.apply_message(identity,  training_result)?;
                         }
 
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
@@ -351,18 +351,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
                             let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
 
-                            p2p.broadcast(&training_result).await?;
+                            p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
-                            {
-                                run.apply_message(identity,  training_result).await?;
+                            run.apply_message(identity, training_result)?;
 
-                                // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
-                                // even if quantization is turned on (distro_result is quantized).
-                                // this is because distro needs the unquantized version for lookahead
-                                run.apply_distro_result(hash, distro_result, Some(original_distro_result)).await;
-                            }
+                            // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
+                            // even if quantization is turned on (distro_result is quantized).
+                            // this is because distro needs the unquantized version for lookahead
+                            run.apply_distro_result(hash, distro_result, Some(original_distro_result));
                         }
 
                         _ = sharing_downloadable_interval.tick() => {
@@ -379,7 +377,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         BroadcastType::TrainingResult(training_result) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, batch_id = %training_result.batch_id, "Rebroadcasting training result"),
                                         BroadcastType::Finished(finished) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, warmup = finished.warmup, "Rebroadcasting finished"),
                                     }
-                                    p2p.broadcast(broadcast).await?;
+                                    p2p.broadcast(broadcast)?;
                                 }
                             }
                         }
@@ -398,7 +396,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     debug!("Retrying download for blob {} (attempt {})",
                                         hex::encode(hash), info.retries);
 
-                                    p2p.start_download(ticket, tag, download_type).await?;
+                                    p2p.start_download(ticket, tag, download_type);
                                 }
                             }
                         }
@@ -409,7 +407,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes)).await?;
+                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes));
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
                             watcher.backend_mut().send_witness(opportunistic_data).await?;
@@ -519,13 +517,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             // tokio::time::sleep(Duration::from_secs(5)).await;
                             // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config)).await?;
+                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config));
 
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for (ticket, request_type) in param_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type)).await?;
+                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type));
                             }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),

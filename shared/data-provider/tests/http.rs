@@ -36,7 +36,7 @@ impl TestServer {
         let (cancel, rx_cancel) = tokio::sync::watch::channel(());
         let mut settings = static_web_server::Settings::get_unparsed(false)?;
         settings.general.port = 0;
-        settings.general.root = temp_dir.into_path();
+        settings.general.root = temp_dir.keep();
         let (tx_port, rx_port) = tokio::sync::oneshot::channel();
         std::thread::spawn(move || {
             static_web_server::Server::new(settings)

@@ -157,21 +157,27 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         if let Some(committee_info) = &self.current_round.committee_info {
             // trace!("Checking for opprotunistic witness with committee info");
             if let ActiveStep::Training(step) = &self.active_step {
-                if step.finished() && self.previous_round.batch_ids_not_yet_trained_on.is_none() {
+                let all_prev_round_batches_are_trained = self
+                    .previous_round
+                    .batch_ids_not_yet_trained_on
+                    .lock()
+                    .unwrap()
+                    .is_none();
+
+                if step.finished() && all_prev_round_batches_are_trained {
                     // Finished training and finished downloading the previous round's results
                     // (or we're on the first or last which has nothing to download)
 
                     // check that all batches from the previous round are done deserializing
-                    for batch in &self.previous_round.downloads {
-                        match batch.1 {
-                            PayloadState::Deserializing(thread) if thread.is_finished() => {
+                    {
+                        let prev_round_downloads = self.previous_round.downloads.lock().unwrap();
+                        for batch in &*prev_round_downloads {
+                            match batch.1 {
                                 // this batch is done deserializing, we can witness on it now.
-                            }
-
-                            // we're still downloading or deserializing this batch, so we're not ready to send an opportunistic witness.
-                            // this function will get called again when a deserialize finishes.
-                            _ => {
-                                return Ok(());
+                                PayloadState::Deserializing(thread) if thread.is_finished() => (),
+                                // we're still downloading or deserializing this batch, so we're not ready to send an opportunistic witness.
+                                // this function will get called again when a deserialize finishes.
+                                _ => return Ok(()),
                             }
                         }
                     }
@@ -319,13 +325,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub async fn apply_message(
+    pub fn apply_message(
         &mut self,
         from_client_id: T,
         broadcast: Broadcast,
     ) -> Result<(), ApplyMessageError> {
         let result_step = broadcast.step;
-
         let round_state = if self.current_round.step == broadcast.step {
             &mut self.current_round
         } else if self.previous_round.step == broadcast.step {
@@ -400,8 +405,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 }
                 let ticket = training_result.ticket.clone();
                 let hash = ticket.hash();
-
-                if round_state.downloads.contains_key(&hash) {
+                if round_state.distro_result_blob_downloaded(&hash) {
                     trace!(
                         "Already have downloaded batch id {}, ignoring duplicated gossip",
                         training_result.batch_id
@@ -436,7 +440,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .push((from_client_id, (broadcast.commitment, training_result)));
                 let download_state =
                     PayloadState::Downloading((from_client_id, batch_id, ticket.clone()));
-                round_state.downloads.insert(hash, download_state);
+
+                round_state
+                    .downloads
+                    .lock()
+                    .unwrap()
+                    .insert(hash, download_state);
 
                 // start downloading the payload unless this is a self-message
                 // (assuming the caller will put our payload in the proper place)
@@ -481,19 +490,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub async fn apply_distro_result(
+    pub fn apply_distro_result(
         &mut self,
         hash: Hash,
         distro_result: TransmittableDistroResult,
         self_result: Option<Vec<DistroResult>>,
     ) {
-        let round_state = if self.current_round.downloads.contains_key(&hash) {
+        let round_state = if self.current_round.distro_result_blob_downloaded(&hash) {
             trace!(
                 "Got download {hash} for current round {}",
                 self.current_round.height
             );
             &mut self.current_round
-        } else if self.previous_round.downloads.contains_key(&hash) {
+        } else if self.previous_round.distro_result_blob_downloaded(&hash) {
             trace!(
                 "Got download {hash} for previous round {}",
                 self.previous_round.height
@@ -510,7 +519,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 distro_result.batch_id,
                 distro_result.step
             );
-
             round_state.self_distro_results.push(self_result);
         } else {
             trace!(
@@ -520,112 +528,95 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             );
         }
 
-        let (from, batch_id, _) = match round_state.downloads.get(&hash) {
-            Some(PayloadState::Downloading(x)) => x.clone(),
-            Some(PayloadState::Deserializing(_)) => {
-                debug!("Duplicate download of {}", hash);
-                return;
-            }
-            None => {
-                debug!("Unknown download {}", hash);
-                return;
+        let (from, batch_id, _) = {
+            let downloads = round_state.downloads.lock().unwrap();
+            match downloads.get(&hash) {
+                Some(PayloadState::Downloading(x)) => x.clone(),
+                Some(PayloadState::Deserializing(_)) => {
+                    debug!("Duplicate download of {}", hash);
+                    return;
+                }
+                None => {
+                    debug!("Unknown download {}", hash);
+                    return;
+                }
             }
         };
 
-        let commitments = match round_state.results.get(&batch_id) {
-            Some(commitments) => commitments,
-            None => {
-                info!(
-                    "No commitment for payload from {} for batch {}",
-                    from, batch_id
+        let Some(commitments_for_batch) = round_state.results.get(&batch_id) else {
+            info!("No commitment for payload from {from} for batch {batch_id}",);
+            return;
+        };
+
+        let Some(commitment) = commitments_for_batch
+            .iter()
+            .find(|comm| comm.0 == from && comm.1 .1.ticket.hash() == hash)
+        else {
+            info!("No commitment for payload from {}", from);
+            return;
+        };
+
+        // TODO: verify shape of distro_results
+        let commitment = commitment.1 .0;
+        let batch_ids_not_yet_trained_on = round_state.batch_ids_not_yet_trained_on.clone();
+        let blooms = round_state.blooms.clone();
+        let downloads = round_state.downloads.clone();
+        tokio::spawn(async move {
+            // verify that the result matches the commitment
+            let (distro_hash, distro_result) =
+                tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
+                    .await
+                    .unwrap();
+
+            if distro_hash != commitment.data_hash {
+                debug!(
+                    from = %from,
+                    batch_id = %batch_id,
+                    "Distro result failed commitment hash verification",
                 );
                 return;
             }
-        };
-        let commitment = match commitments
-            .iter()
-            .find(|x| x.0 == from && x.1 .1.ticket.hash() == hash)
-        {
-            Some(commitment) => &commitment.1 .0,
-            None => {
-                info!("No commitment for payload from {}", from);
-                return;
-            }
-        };
 
-        // verify that the result matches the commitment
-
-        let (distro_hash, distro_result) =
-            tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
-                .await
-                .unwrap();
-
-        if distro_hash != commitment.data_hash {
-            debug!(
-                from = %from,
-                batch_id = %batch_id,
-                "Distro result failed commitment hash verification",
-            );
-            return;
-        }
-
-        // TODO: verify shape of distro_results
-
-        // we only care to add this to consensus & track it in batch IDs if we have any batch IDs that haven't yet been voted for.
-        // TODO: how do we do witnessing for verifiers that might be training on data that's not in the normal remaining batch IDs?
-        // TODO: also we want ALL those from everyone, right?
-        let just_finished = if let Some((num_batch_ids_left, batch_ids_not_yet_trained_on)) =
-            &mut round_state.batch_ids_not_yet_trained_on
-        {
-            let mut remaining_batch_ids = batch_ids_not_yet_trained_on.lock().await;
-
-            match round_state.blooms.as_mut() {
-                Some((participant_bloom, broadcast_bloom)) => {
-                    participant_bloom.add(&sha256(from.as_ref()));
-                    if remaining_batch_ids.contains(&batch_id) {
-                        // first received payload for this batch id, vote for it in consensus
-                        broadcast_bloom.add(&commitment.data_hash);
-                        trace!("Adding batch {batch_id} to broadcast bloom");
+            // we only care to add this to consensus & track it in batch IDs if we have any batch IDs that haven't yet been voted for.
+            // TODO: how do we do witnessing for verifiers that might be training on data that's not in the normal remaining batch IDs?
+            // TODO: also we want ALL those from everyone, right?
+            let just_finished = {
+                let mut batch_ids_not_yet_trained_on = batch_ids_not_yet_trained_on.lock().unwrap();
+                let mut blooms = blooms.lock().unwrap();
+                if let Some(remaining_batch_ids) = &mut *batch_ids_not_yet_trained_on {
+                    if let Some((participant_bloom, broadcast_bloom)) = blooms.as_mut() {
+                        participant_bloom.add(&sha256(from.as_ref()));
+                        if remaining_batch_ids.contains(&batch_id) {
+                            // first received payload for this batch id, vote for it in consensus
+                            broadcast_bloom.add(&commitment.data_hash);
+                            trace!("Adding batch {batch_id} to broadcast bloom");
+                        } else {
+                            trace!(
+                                "Don't have {batch_id} in our remaining batch IDs {remaining_batch_ids:?}, discarding",
+                            );
+                        }
                     } else {
-                        trace!(
-                            "Don't have {} in our remaining batch IDs {:?}, discarding",
-                            batch_id,
-                            remaining_batch_ids
-                        );
+                        trace!("Already submitted witness, not adding {from} to participant bloom");
                     }
-                }
-                None => {
+                    remaining_batch_ids.remove(&batch_id);
                     trace!(
-                        "Already submitted witness, not adding {} to participant bloom",
-                        from
+                        "Remaining batches to download for step {}: {:?}",
+                        distro_result.step,
+                        remaining_batch_ids
                     );
+                    remaining_batch_ids.is_empty()
+                } else {
+                    trace!("All batches already trained on, discarding batch {batch_id}");
+                    false
                 }
+            };
+
+            if just_finished {
+                *batch_ids_not_yet_trained_on.lock().unwrap() = None;
             }
 
-            remaining_batch_ids.remove(&batch_id);
-
-            trace!(
-                "Remaining batches to download for step {}: {:?}",
-                distro_result.step,
-                remaining_batch_ids
-            );
-
-            *num_batch_ids_left = remaining_batch_ids.len();
-
-            remaining_batch_ids.is_empty()
-        } else {
-            trace!("All batches already trained on, discarding batch {batch_id}");
-            false
-        };
-
-        if just_finished {
-            round_state.batch_ids_not_yet_trained_on = None;
-        }
-
-        // we unconditionally store every seen payload, since we're not yet sure what consensus will be on whether it's included.
-        let deserializing = tokio::task::spawn({
-            //let batch_id = *batch_id;
-            async move {
+            // we unconditionally store every seen payload, since we're not yet sure what consensus will be on whether it's included.
+            let deserializing = tokio::task::spawn(async move {
                 let maybe_results = tokio::task::spawn_blocking(move || {
                     let r = distro_result
                         .distro_results
@@ -645,12 +636,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 .await
                 .map_err(|_| DeserializeError::DeserializeThreadCrashed)??;
                 Ok(maybe_results)
-            }
-        });
+            });
 
-        round_state
-            .downloads
-            .insert(hash, PayloadState::Deserializing(deserializing));
+            downloads
+                .lock()
+                .unwrap()
+                .insert(hash, PayloadState::Deserializing(deserializing));
+        });
     }
 
     async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), StepError> {
@@ -672,6 +664,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         .map(|c| c.id)
                         .collect::<Vec<_>>()
                 );
+
                 let new_step = match std::mem::take(&mut self.active_step) {
                     ActiveStep::Intermediate => {
                         unreachable!("can never be in intermediate state.")
@@ -919,16 +912,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         Ok(())
     }
 
-    pub async fn apply_message(
+    pub fn apply_message(
         &mut self,
         from_client_id: T,
         training_result: Broadcast,
     ) -> Result<(), ApplyMessageError> {
         match &mut self.0 {
             InitStage::Running(state_machine) => {
-                state_machine
-                    .apply_message(from_client_id, training_result)
-                    .await
+                state_machine.apply_message(from_client_id, training_result)
             }
             _ => {
                 // not yet warmed up, ignore any p2p messages.
@@ -937,7 +928,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub async fn apply_distro_result(
+    pub fn apply_distro_result(
         &mut self,
         hash: psyche_network::Hash,
         distro_result: TransmittableDistroResult,
@@ -945,9 +936,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     ) {
         match &mut self.0 {
             InitStage::Running(state_machine) => {
-                state_machine
-                    .apply_distro_result(hash, distro_result, self_result)
-                    .await;
+                state_machine.apply_distro_result(hash, distro_result, self_result);
             }
             _ => {
                 // not yet warmed up, ignore any p2p messages.
@@ -1058,6 +1047,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> From<&RunManager<T, 
                 let stats = run.stats();
                 let stats = stats.as_ref();
                 let stats_guard = stats.and_then(|s| s.lock().ok());
+                let batches_left = state_machine
+                    .current_round
+                    .batch_ids_not_yet_trained_on
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .map(|x| x.len())
+                    .unwrap_or_default();
 
                 ClientTUIState {
                     step: coordinator.progress.step,
@@ -1067,12 +1064,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> From<&RunManager<T, 
                         .as_ref()
                         .map(|s| s.losses().to_vec())
                         .unwrap_or_default(),
-                    batches_left: state_machine
-                        .current_round
-                        .batch_ids_not_yet_trained_on
-                        .as_ref()
-                        .map(|x| x.0)
-                        .unwrap_or_default(),
+                    batches_left,
                     global_tokens_per_second: stats_guard
                         .as_ref()
                         .map(|s| s.global_tokens_per_second(coordinator))

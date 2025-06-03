@@ -305,7 +305,7 @@ impl CoordinatorInstanceState {
     }
 
     pub fn join_run(&mut self, id: ClientId) -> Result<()> {
-        let exisiting = match self
+        let existing = match self
             .clients_state
             .clients
             .iter_mut()
@@ -323,21 +323,25 @@ impl CoordinatorInstanceState {
             None => false,
         };
 
-        if !exisiting
-            && self
-                .clients_state
-                .clients
-                .push(Client {
-                    id,
-                    earned: 0,
-                    slashed: 0,
-                    active: self.clients_state.next_active,
-                    _unused: Default::default(),
-                })
-                .is_err()
-        {
-            return err!(ProgramError::ClientsFull);
-        } else {
+        if !existing {
+            let total_num_clients = self.clients_state.clients.len() as u16;
+            if self.coordinator.config.global_batch_size_end
+                == total_num_clients
+            {
+                return err!(ProgramError::MoreClientsThanBatches);
+            }
+
+            let new_client = Client {
+                id,
+                earned: 0,
+                slashed: 0,
+                active: self.clients_state.next_active,
+                _unused: Default::default(),
+            };
+
+            if self.clients_state.clients.push(new_client).is_err() {
+                return err!(ProgramError::ClientsFull);
+            }
             msg!(
                 "New client {} joined, {} total clients",
                 id.signer,
