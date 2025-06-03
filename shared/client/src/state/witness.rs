@@ -1,5 +1,6 @@
 use psyche_coordinator::{
-    Coordinator, Witness, WitnessMetadata, SOLANA_MAX_NUM_CLIENTS, TRAINING_TIMES_SLICE_SIZE,
+    Coordinator, Witness, WitnessMetadata, WitnessTrainingTimes, SOLANA_MAX_NUM_CLIENTS,
+    TRAINING_TIMES_SLICE_SIZE,
 };
 use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
@@ -134,7 +135,7 @@ impl WitnessStep {
         );
 
         let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new_filled(0);
-        for i in 0..(TRAINING_TIMES_SLICE_SIZE as usize) {
+        for i in 0..(TRAINING_TIMES_SLICE_SIZE) {
             let source_idx = start_idx_in_client_times + i;
 
             // Check if the source index is within the bounds of current_round.client_times.
@@ -153,8 +154,10 @@ impl WitnessStep {
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
-            training_times_offset: start_idx_in_client_times as u8,
-            training_times,
+            training_times: WitnessTrainingTimes {
+                offset: 0,
+                times: training_times,
+            },
         })
     }
 }
