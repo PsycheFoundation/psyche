@@ -51,7 +51,7 @@ struct DownloadRetryInfo {
 }
 
 const MAX_DOWNLOAD_RETRIES: usize = 3;
-const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(2);
+const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(10);
 const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
