@@ -125,6 +125,13 @@ build_docker_test_client:
     docker build -t psyche-base -f docker/psyche_base.Dockerfile .
     docker build -t psyche-test-client -f docker/test/psyche_test_client.Dockerfile .
 
+run_docker_test_client num_clients="1":
+    nix build .#psyche-solana-test-validator
+    docker load < result
+    nix build .#psyche-solana-test-client-docker
+    docker load < result
+    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up psyche-test-client -d --force-recreate
+
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra num_clients="1":
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
