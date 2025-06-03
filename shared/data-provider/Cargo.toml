@@ -28,7 +28,6 @@ bytemuck.workspace = true
 reqwest = "0.12.12"
 google-cloud-storage = "0.24.0"
 ts-rs.workspace = true
-rayon.workspace=true
 
 [dev-dependencies]
 psyche-tui.workspace = true
