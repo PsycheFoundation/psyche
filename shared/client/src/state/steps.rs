@@ -321,7 +321,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         participant_bloom: Default::default(),
                         broadcast_bloom: Default::default(),
                         broadcast_merkle: merkle,
-                        training_times_offset: 0,
                         training_times: Default::default(),
                     };
                     self.tx_opportunistic_data

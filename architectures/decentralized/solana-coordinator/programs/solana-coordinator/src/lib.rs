@@ -22,6 +22,7 @@ use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
+use psyche_coordinator::WitnessTrainingTimes;
 use psyche_coordinator::model::{HubRepo, Model};
 use psyche_core::FixedVec;
 use psyche_core::MerkleRoot;
@@ -143,9 +144,6 @@ impl CoordinatorInstance {
 
 #[program]
 pub mod psyche_solana_coordinator {
-
-    use psyche_core::FixedVec;
-
     use super::*;
 
     pub fn init_coordinator(
@@ -216,8 +214,7 @@ pub mod psyche_solana_coordinator {
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
         metadata: WitnessMetadata,
-        training_times_offset: u8,
-        training_times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
+        training_times: WitnessTrainingTimes,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
@@ -228,7 +225,6 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
-                training_times_offset,
                 training_times,
             },
         )
@@ -251,8 +247,10 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
-                training_times_offset: 0,
-                training_times: FixedVec::new_filled(0),
+                training_times: WitnessTrainingTimes {
+                    offset: 0,
+                    times: FixedVec::new_filled(0),
+                },
             },
         )
     }
