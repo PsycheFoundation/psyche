@@ -99,9 +99,7 @@ impl App {
                 }
 
                 self.network
-                    .start_download(blob_ticket, step, DownloadType::DistroResult(peers))
-                    .await
-                    .unwrap();
+                    .start_download(blob_ticket, step, DownloadType::DistroResult(peers));
 
                 if !self.should_wait_before {
                     println!("Waiting to kill sender");
@@ -156,7 +154,7 @@ impl App {
             blob_ticket: blob_ticket.clone(),
         };
 
-        if let Err(e) = self.network.broadcast(&message).await {
+        if let Err(e) = self.network.broadcast(&message) {
             println!("Error sending message: {}", e);
         } else {
             println!("broadcasted message for step {step}: {}", blob_ticket);
