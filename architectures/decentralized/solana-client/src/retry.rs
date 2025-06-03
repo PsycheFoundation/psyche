@@ -2,7 +2,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use anchor_client::solana_client::client_error::ClientErrorKind as ErrorKind;
-use anchor_client::solana_client::rpc_request::RpcError;
+use anchor_client::solana_client::rpc_request::{RpcError, RpcResponseErrorData};
 use anchor_client::solana_sdk::transaction::TransactionError;
 use anchor_client::ClientError;
 use backon::{ExponentialBuilder, Retryable};
@@ -57,12 +57,23 @@ impl From<ClientError> for RetryError<ClientError> {
                         }
                     }
                     ErrorKind::RpcError(ref rpc_err) => match rpc_err {
-                        RpcError::RpcResponseError { code, .. } => {
+                        RpcError::RpcResponseError { code, data, .. } => {
                             // Common RPC error codes
                             if let -32602..=-32600 = code {
                                 // Invalid requests/params
                                 return RetryError::NonRetryable(ClientError::SolanaClientError(e));
                             }
+
+                            if let RpcResponseErrorData::SendTransactionPreflightFailure(sim_res) =
+                                data
+                            {
+                                if sim_res.err.is_some() {
+                                    return RetryError::NonRetryable(
+                                        ClientError::SolanaClientError(e),
+                                    );
+                                }
+                            };
+
                             // If we cannot determine via code, check the message
                             let msg = rpc_err.to_string();
                             if msg.contains("InvalidRunState") {
