@@ -328,6 +328,7 @@ pub async fn run() {
                 broadcast_bloom: Default::default(),
                 broadcast_merkle: Default::default(),
                 metadata: Default::default(),
+                proposed_batch_sizes: Default::default(),
             },
         )
         .await

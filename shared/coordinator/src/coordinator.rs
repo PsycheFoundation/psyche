@@ -3,9 +3,15 @@ use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
 };
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{
+    prelude::{borsh, msg},
+    AnchorDeserialize, AnchorSerialize, InitSpace,
+};
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
+use psyche_core::{
+    index_to_value, sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean,
+    BATCH_SIZE_INDEX_BITS,
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
@@ -14,6 +20,7 @@ pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
+pub const MAX_NUM_WITNESSED_CLIENTS: usize = 90;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
@@ -89,6 +96,7 @@ pub struct Client<I> {
     pub id: I,
     pub state: ClientState,
     pub exited_height: u32,
+    pub assigned_batch_size: u8,
 }
 
 impl std::fmt::Display for ClientState {
@@ -141,7 +149,7 @@ pub struct Round {
     AnchorSerialize,
     Serialize,
     Deserialize,
-    PartialEq,
+    //PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -150,6 +158,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
+    pub proposed_batch_sizes: FixedVec<u8, { MAX_NUM_WITNESSED_CLIENTS }>,
 }
 
 #[derive(
@@ -426,6 +435,7 @@ impl<T: NodeIdentity> Client<T> {
             id,
             state: ClientState::Healthy,
             exited_height: 0,
+            assigned_batch_size: 1,
         }
     }
 }
@@ -911,6 +921,27 @@ impl<T: NodeIdentity> Coordinator<T> {
                 }
             }
 
+            let height = self.current_round_unchecked().height;
+            self.move_clients_to_exited(height);
+
+            // If no clients from the previous epoch are present for the beggining
+            // of the next epoch, then we change the checkpoint to HuggingFace.
+            // This way, we are covered for a failure scenario where all clients
+            // disconnected and the trained state could be lost.
+            let Model::LLM(llm) = &mut self.model;
+            if self.epoch_state.clients.is_empty() {
+                if let Checkpoint::P2P(hub_repo) = llm.checkpoint {
+                    llm.checkpoint = Checkpoint::Hub(hub_repo);
+                }
+            } else if self.progress.epoch != 0 && !all_prev_clients_disconnected {
+                match llm.checkpoint {
+                    Checkpoint::Hub(hub_repo) | Checkpoint::Dummy(hub_repo) => {
+                        llm.checkpoint = Checkpoint::P2P(hub_repo)
+                    }
+                    _ => {}
+                }
+            }
+
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
             bytemuck::write_zeroes(&mut self.epoch_state);
             self.epoch_state.first_round = true.into();
@@ -965,39 +996,256 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        if self.check_timeout(unix_timestamp, self.config.round_witness_time) {
-            // TODO: Punish idle witnesses
-            self.epoch_state.first_round = false.into();
-            self.progress.step += 1;
-
-            let current_round = self.current_round_unchecked();
-            let height = current_round.height;
-            let num_witnesses = current_round.witnesses.len() as u16;
-            self.move_clients_to_exited(height);
-
-            // If there are not witnesses, then we can't distinguish from
-            // the situation where only witness nodes disconnected or everyone
-            // disconnected. We just set everyone to withdrawn state and change
-            // to Cooldown.
-            if num_witnesses == 0 {
-                self.withdraw_all()?;
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
-
-            // If we reach the end of an epoch or if we don't reach the min number of
-            // clients or registered witnesses for the current round, we change to Cooldown
-            if height == self.config.rounds_per_epoch - 1
-                || self.epoch_state.clients.len() < self.config.min_clients as usize
-                || num_witnesses < self.witness_quorum(num_witnesses)
-                || self.pending_pause.is_true()
-            {
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
-
-            self.start_round_train(unix_timestamp, random_seed, 0);
+        if !self.check_timeout(unix_timestamp, self.config.round_witness_time) {
+            return Ok(TickResult::Ticked);
         }
+        // Timeout ocurred, we need to move to the next round
+
+        // TODO: Punish idle witnesses
+        self.epoch_state.first_round = false.into();
+        self.progress.step += 1;
+
+        let height = self.current_round_unchecked().height;
+        let num_witnesses = self.current_round_unchecked().witnesses.len() as u16;
+        self.move_clients_to_exited(height);
+
+        // If there are not witnesses, then we can't distinguish from
+        // the situation where only witness nodes disconnected or everyone
+        // disconnected. We just set everyone to withdrawn state and change
+        // to Cooldown.
+        if num_witnesses == 0 {
+            self.withdraw_all()?;
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
+        }
+
+        let target_batch_size =
+            self.get_target_global_batch_size(Some(self.current_round_unchecked()));
+
+        let n_client_partitions: usize = 3;
+        let clients_per_partition: usize = 90;
+        let clients_len = self.epoch_state.clients.len(); // Store client length
+
+        for partition in 0..n_client_partitions {
+            let start_index = match partition {
+                0 => 0,
+                1 => 90,
+                2 => 180,
+                _ => unreachable!("Invalid partition index"),
+            };
+
+            if start_index >= clients_len {
+                continue; // This partition starts beyond the current client list
+            }
+
+            // Calculate the end index for the slice, ensuring it does not exceed clients_len
+            let slice_end_index = (start_index + clients_per_partition).min(clients_len);
+
+            if start_index == slice_end_index {
+                continue; // This partition is empty
+            }
+
+            // Perform immutable borrows from `self` before creating the mutable `partition_clients` slice.
+            let current_round_witnesses_ref = &self.current_round_unchecked().witnesses;
+
+            // Get only the witnesses that are clients in the current partition
+            let partition_witnesses_data: Vec<Witness> = current_round_witnesses_ref
+                .iter()
+                .filter(|wtn| {
+                    let client_idx = wtn.proof.index as usize;
+                    client_idx >= start_index && client_idx < slice_end_index
+                })
+                .cloned()
+                .collect();
+
+            let consensus_reached = self.check_batch_assignment_consensus(
+                partition_witnesses_data.as_slice(),
+                1.0 / 3.0, // TODO this is for testing use a better threshold
+                self.config.global_batch_size_end,
+                0.05,
+            );
+
+            if !consensus_reached {
+                msg!(
+                    "[coordinator.rs] Consensus not reached for batch assignment in partition {}",
+                    partition
+                );
+                continue; // Skip to the next partition if consensus not reached
+            }
+
+            // Now, create the mutable slice. Immutable borrows of `self` for this partition's setup are done.
+            let partition_clients = &mut self.epoch_state.clients[start_index..slice_end_index];
+
+            // Populate the batch size for each client in this partition
+            msg!(
+                "[coordinator.rs] Consensus reached for batch assignment in partition {}",
+                partition
+            );
+            let n_slice_witnesses: usize = partition_witnesses_data.len();
+            for (index, client) in partition_clients.iter_mut().enumerate() {
+                let mut to_assign: Option<u8> = None;
+
+                if n_slice_witnesses > 0 {
+                    // Try each witness in order until we find a valid batch size
+                    for offset in 0..n_slice_witnesses {
+                        let witness_idx = offset % n_slice_witnesses;
+                        let witness = &partition_witnesses_data[witness_idx]; // Use collected data
+
+                        // Skip if witness is reporting about itself or reported time is 0
+                        let proposed_batch_size = witness.proposed_batch_sizes.get(index);
+                        match proposed_batch_size {
+                            None | Some(0) => {
+                                continue;
+                            }
+                            Some(&batch_size) => {
+                                to_assign = Some(batch_size);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // If none found or all were 0, assign at least one so that it trains something
+                client.assigned_batch_size = to_assign.unwrap_or(1u8);
+            }
+        }
+
+        // Ok now over the global clients we check if either the total exceeds or is below the target batch size
+        // and adjust the assigned batch sizes accordingly.
+
+        // Current sum of assigned batch sizes
+        let mut total_assigned: u16 = 0;
+        for c in self.epoch_state.clients.iter() {
+            let client_batch_value = index_to_value(
+                c.assigned_batch_size,
+                target_batch_size,
+                BATCH_SIZE_INDEX_BITS,
+            );
+            total_assigned += client_batch_value;
+        }
+
+        let n_clients = self.epoch_state.clients.len();
+        if n_clients > 0 && total_assigned > target_batch_size {
+            let mut current_sum_of_values = total_assigned;
+            let mut client_cycle_iter = (0..n_clients).cycle();
+
+            while current_sum_of_values > target_batch_size {
+                let mut made_reduction_in_full_cycle = false;
+                for _cycle_count in 0..n_clients {
+                    // Iterate through clients to attempt reduction
+                    if current_sum_of_values <= target_batch_size {
+                        break;
+                    }
+                    let client_idx = client_cycle_iter.next().unwrap(); // Safe due to n_clients > 0
+                    let client = &mut self.epoch_state.clients[client_idx];
+
+                    // Ensure client's assigned_batch_size (index) can be decremented (min index is 1)
+                    if client.assigned_batch_size > 1 {
+                        let old_client_value = index_to_value(
+                            client.assigned_batch_size,
+                            target_batch_size,
+                            BATCH_SIZE_INDEX_BITS,
+                        );
+                        client.assigned_batch_size -= 1;
+                        let new_client_value = index_to_value(
+                            client.assigned_batch_size,
+                            target_batch_size,
+                            BATCH_SIZE_INDEX_BITS,
+                        );
+
+                        if new_client_value < old_client_value {
+                            // Check if the value actually decreased
+                            current_sum_of_values =
+                                current_sum_of_values - old_client_value + new_client_value;
+                            made_reduction_in_full_cycle = true;
+                        } else {
+                            // Value didn't change (likely due to quantization), revert index to prevent unproductive change
+                            client.assigned_batch_size += 1;
+                        }
+                    }
+                }
+
+                if !made_reduction_in_full_cycle {
+                    break; // No client's batch size could be reduced further in a full cycle
+                }
+            }
+        } else if n_clients > 0 && total_assigned < target_batch_size {
+            // We need to distribute more batches to clients
+            let mut current_sum_of_values = total_assigned;
+            let mut client_cycle_iter = (0..n_clients).cycle();
+            let max_batch_index = ((1u16 << BATCH_SIZE_INDEX_BITS) - 1) as u8;
+
+            while current_sum_of_values < target_batch_size {
+                let mut made_increase_in_full_cycle = false;
+                for _cycle_count in 0..n_clients {
+                    // Iterate through clients to attempt increase
+                    if current_sum_of_values >= target_batch_size {
+                        break;
+                    }
+                    let client_idx = client_cycle_iter.next().unwrap();
+                    let client = &mut self.epoch_state.clients[client_idx];
+
+                    if client.assigned_batch_size < max_batch_index {
+                        let old_client_value = index_to_value(
+                            client.assigned_batch_size,
+                            target_batch_size,
+                            BATCH_SIZE_INDEX_BITS,
+                        );
+                        client.assigned_batch_size += 1;
+                        let new_client_value = index_to_value(
+                            client.assigned_batch_size,
+                            target_batch_size,
+                            BATCH_SIZE_INDEX_BITS,
+                        );
+
+                        if new_client_value > old_client_value {
+                            // Check if value actually increased
+                            // Check if this increase would overshoot the target
+                            if current_sum_of_values - old_client_value + new_client_value
+                                <= target_batch_size
+                            {
+                                current_sum_of_values =
+                                    current_sum_of_values - old_client_value + new_client_value;
+                                made_increase_in_full_cycle = true;
+                            } else {
+                                // This increment would overshoot, revert it.
+                                client.assigned_batch_size -= 1;
+                            }
+                        } else {
+                            // Value didn't change (quantization) or decreased (should not happen), revert index
+                            client.assigned_batch_size -= 1;
+                        }
+                    }
+                }
+
+                if !made_increase_in_full_cycle {
+                    break; // No client's batch size could be increased further in a full cycle
+                }
+            }
+        }
+
+        // For debug purposes show each clients newly assigned batch size
+        msg!(
+            "[coordinator.rs] Assigned batch sizes after consensus: {:?}",
+            self.epoch_state
+                .clients
+                .iter()
+                .map(|c| c.assigned_batch_size)
+                .collect::<Vec<_>>()
+        );
+
+        // If we reach the end of an epoch or if we don't reach the min number of
+        // clients or registered witnesses for the current round, we change to Cooldown
+        if height == self.config.rounds_per_epoch - 1
+            || self.epoch_state.clients.len() < self.config.min_clients as usize
+            || num_witnesses < self.witness_quorum(num_witnesses)
+            || self.pending_pause.is_true()
+        {
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
+        }
+
+        self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)
     }
 
@@ -1121,6 +1369,73 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn is_training_just_starting(&self) -> bool {
         self.epoch_state.first_round.is_true() && self.run_state == RunState::RoundTrain
+    }
+
+    fn check_batch_assignment_consensus(
+        &self,
+        witnesses: &[Witness],
+        threshold: f64,
+        global_batch_size: u16,
+        tolerance: f64,
+    ) -> bool {
+        if witnesses.is_empty() {
+            return false;
+        }
+
+        // Round up the tolerance to an integer
+        let tolerance = ((global_batch_size as f64) * tolerance).ceil() as i32;
+
+        // For each client...
+        let n = witnesses[0].proposed_batch_sizes.len();
+        for i in 0..n {
+            let mut candidate = 0;
+            let mut count = 0;
+
+            // Find a candidate for most frequently proposed batch size
+            for witness in witnesses {
+                let &value = witness.proposed_batch_sizes.get(i).unwrap_or(&0);
+                if value == 0 {
+                    continue;
+                }
+
+                if count == 0 {
+                    candidate = value;
+                    count = 1;
+                } else if value == candidate {
+                    count += 1;
+                } else {
+                    count -= 1;
+                }
+            }
+
+            if candidate == 0 {
+                continue; // No candidate found for this index, skip
+            }
+
+            // verify candidate meets threshold
+            // values close enough to the candidate
+            let matching_count = witnesses
+                .iter()
+                .filter(|wtn| {
+                    let &val = wtn.proposed_batch_sizes.get(i).unwrap_or(&0);
+                    val != 0 && (val as i32 - candidate as i32).abs() <= tolerance
+                })
+                .count();
+
+            // values total proposed
+            let non_zero_count = witnesses
+                .iter()
+                .filter(|wtn| *wtn.proposed_batch_sizes.get(i).unwrap_or(&0) != 0)
+                .count();
+
+            // Check if the number of matching counts meets the threshold
+            if (matching_count as f64) < threshold * (non_zero_count as f64) {
+                return false;
+            }
+        } // End of for each client
+
+        // If we reach here, all clients have a consensus on batch sizes up to the trheshold
+        true
     }
 }
 
