@@ -40,8 +40,8 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut current_index = round.data_index;
     let assigned_batch_sizes = calculate_batch_sizes_per_client(coordinator);
     msg!(
-        "[assign_data_for_state] calculated assigned batch sizes: {:?}",
-        assigned_batch_sizes
+        "[assign_data_for_state] calculated assigned batch sizes: {:?}, coordinator.client_batch_sizes: {:?}",
+        assigned_batch_sizes, coordinator.client_batch_sizes
     );
     // Persist the assigned batch sizes in the coordinator state
     for i in 0..assigned_batch_sizes.len() {
@@ -183,16 +183,14 @@ fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T
     let mut final_assignments = vec![0u16; n_clients];
     let mut remaining_batches = coordinator.config.global_batch_size_end;
 
-    // First pass: assign 1 batch to each client with a positive score, if batches are available.
-    for i in 0..n_clients {
+    // First pass: assign 1 batch to each client, as they should all train at least one batch
+    for client_assignment in final_assignments.iter_mut().take(n_clients) {
         if remaining_batches == 0 {
             break;
         }
-        if client_scores[i] > 0.0 {
-            // Score is positive and finite.
-            final_assignments[i] = 1;
-            remaining_batches -= 1;
-        }
+
+        *client_assignment = 1;
+        remaining_batches -= 1;
     }
     msg!(
         "[calculate_batch_sizes_per_client] remaining_batches after first pass: {}",

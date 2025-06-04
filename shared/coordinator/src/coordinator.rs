@@ -1213,6 +1213,11 @@ impl<T: NodeIdentity> Coordinator<T> {
             return None;
         }
 
+        // If we only have one witness then that's the consensus
+        if witnesses.len() == 1 {
+            return Some(witnesses[0].training_times.times.into());
+        }
+
         let mut agreed_values: Vec<u16> = Vec::with_capacity(TRAINING_TIMES_SLICE_SIZE);
 
         for i in 0..TRAINING_TIMES_SLICE_SIZE {

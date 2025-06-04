@@ -353,6 +353,12 @@ impl<'de, T: Deserialize<'de> + Default + Copy, const N: usize> Deserialize<'de>
     }
 }
 
+impl<T, const N: usize> From<FixedVec<T, N>> for Vec<T> {
+    fn from(fixed_vec: FixedVec<T, N>) -> Self {
+        fixed_vec.into_iter().collect()
+    }
+}
+
 impl<T, const N: usize> IntoIterator for FixedVec<T, N> {
     type Item = T;
     type IntoIter = std::iter::Take<std::array::IntoIter<T, N>>;
@@ -493,5 +499,34 @@ mod tests {
             assert_eq!(vec.get(i), None);
             assert_eq!(vec.data[i], 0u32);
         }
+    }
+
+    #[test]
+    fn test_into_vec() {
+        let mut fixed_vec: FixedVec<u32, 5> = FixedVec::new();
+        fixed_vec.push(10).unwrap();
+        fixed_vec.push(20).unwrap();
+        fixed_vec.push(30).unwrap();
+
+        let vec: Vec<u32> = fixed_vec.into();
+
+        assert_eq!(vec.len(), 3);
+        assert_eq!(vec[0], 10);
+        assert_eq!(vec[1], 20);
+        assert_eq!(vec[2], 30);
+
+        // Test with an empty FixedVec
+        let empty_fixed_vec: FixedVec<u32, 5> = FixedVec::new();
+        let empty_vec: Vec<u32> = empty_fixed_vec.into();
+        assert!(empty_vec.is_empty());
+
+        // Test with a full FixedVec
+        let mut full_fixed_vec: FixedVec<u32, 3> = FixedVec::new();
+        full_fixed_vec.push(1).unwrap();
+        full_fixed_vec.push(2).unwrap();
+        full_fixed_vec.push(3).unwrap();
+        let full_vec: Vec<u32> = full_fixed_vec.into();
+        assert_eq!(full_vec.len(), 3);
+        assert_eq!(full_vec, vec![1, 2, 3]);
     }
 }
