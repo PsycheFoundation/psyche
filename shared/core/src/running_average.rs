@@ -73,7 +73,7 @@ impl RunningAverage {
     }
 
     /// Get averages of entries
-    /// Skips entries that have not reached their maximum buffer size to avoid unconfident scores
+    /// Skips entries that have not filled at least half buffer to avoid unconfident scores
     pub fn get_all_averages(&self) -> HashMap<String, Option<f64>> {
         let entries = self.entries.read().unwrap();
         entries
