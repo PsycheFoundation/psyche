@@ -1,6 +1,5 @@
 use psyche_coordinator::{
-    Coordinator, Witness, WitnessMetadata, WitnessTrainingTimes, SOLANA_MAX_NUM_CLIENTS,
-    TRAINING_TIMES_SLICE_SIZE,
+    Coordinator, Witness, WitnessMetadata, WitnessTrainingTimes, TRAINING_TIMES_SLICE_SIZE,
 };
 use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
@@ -116,30 +115,40 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
-        let n_partitions = SOLANA_MAX_NUM_CLIENTS.div_ceil(TRAINING_TIMES_SLICE_SIZE);
+        let clients_len = state.epoch_state.clients.len();
+
+        let num_actual_slices = if clients_len == 0 {
+            1 // Should not happen but just in case to avoid division by zero
+        } else {
+            clients_len.div_ceil(TRAINING_TIMES_SLICE_SIZE)
+        };
+
         let step = state.progress.step - 1; // First step is 1, so we subtract 1 to get 0-index
 
-        // Cycle through the partitions depending on the current step.
-        let slice_index = if n_partitions == 0 {
-            0
+        // Cycle through the partitions depending on the current step, based on actual client count.
+        let slice_index = if num_actual_slices == 0 {
+            0 // Should never happen but just in case
         } else {
-            step % (n_partitions as u32)
+            step % (num_actual_slices as u32)
         };
 
         // Calculate the starting index in current_round.client_times for the current slice.
         let start_idx_in_client_times = (slice_index as usize) * TRAINING_TIMES_SLICE_SIZE;
+
         trace!(
-            "Submitting training times for step={} , offset={}",
+            "Submitting training times for step={}, slice_index={}, offset={}, n_partitions_actual={}, clients_len={}",
             step,
-            start_idx_in_client_times
+            slice_index,
+            start_idx_in_client_times,
+            num_actual_slices,
+            clients_len,
         );
 
         let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new_filled(0);
         for i in 0..(TRAINING_TIMES_SLICE_SIZE) {
             let source_idx = start_idx_in_client_times + i;
 
-            // Check if the source index is within the bounds of current_round.client_times.
-            if source_idx < current_round.client_times.len() {
+            if source_idx < clients_len {
                 training_times[i] = current_round
                     .client_times
                     .get(source_idx)

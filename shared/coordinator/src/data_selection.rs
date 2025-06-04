@@ -39,14 +39,22 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
 
-    // Persist the assigned batch sizes in the coordinator state in case we've witnessed every window
-    if coordinator.epoch_state.update_batch_assignments.into() {
+    // Persist the assigned batch sizes in the coordinator state in case we've witnessed every client already
+    msg!(
+        "[assign_data_for_state] step={}, client_times_last_index_updated={} (+1) , clients_len={}",
+        coordinator.progress.step,
+        coordinator.epoch_state.client_times_last_index_updated,
+        coordinator.epoch_state.clients.len()
+    );
+    if (coordinator.epoch_state.client_times_last_index_updated as usize + 1)
+        >= coordinator.epoch_state.clients.len()
+    {
         msg!("[assign_data_for_state] Persisting assigned batch sizes in coordinator.client_batch_sizes");
         let assigned_batch_sizes = calculate_batch_sizes_per_client(coordinator);
         for i in 0..assigned_batch_sizes.len() {
             coordinator.client_batch_sizes[i] = assigned_batch_sizes.get(i).cloned().unwrap_or(1);
         }
-        coordinator.epoch_state.update_batch_assignments = false.into();
+        coordinator.epoch_state.client_times_last_index_updated = 0; // Reset the index after assignment
     }
     msg!(
         "using for batch assignment: {:?}",
