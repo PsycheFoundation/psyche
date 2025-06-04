@@ -4,4 +4,4 @@ from .models import (
     PretrainedSourceStateDict,
 )
 
-from ._ext import Trainer, DistroResult
+from ._ext import Trainer, DistroResult, init_logging

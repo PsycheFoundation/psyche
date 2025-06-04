@@ -5,6 +5,75 @@ import torch.distributed as dist
 import psutil
 
 from .. import make_causal_lm, PretrainedSourceRepoFiles, Trainer, DistroResult
+from .api import (
+    DistroResultsMetadata,
+    Hyperparameters,
+    OptimizeOperation,
+    TrainOperation,
+)
+
+# These values should be in sync with include/c10/core/ScalarType.h
+# https://github.com/pytorch/pytorch/blob/a8d6afb511a69687bbb2b7e88a3cf67917e1697e/c10/core/ScalarType.h#L57
+DTYPE_MAPPING = {
+    0: torch.uint8,
+    3: torch.int,
+    4: torch.int64,
+    5: torch.half,
+    6: torch.float,
+    7: torch.double,
+    11: torch.bool,
+    15: torch.bfloat16,
+}
+
+def receive_distro_results(
+    results_len: int,
+    metadata: DistroResultsMetadata,
+    device: torch.device,
+) -> list[list[DistroResult]]:
+    assert len(metadata.sparse_idx_size) == len(metadata.sparse_val_size)
+    assert len(metadata.sparse_val_size) == len(metadata.xshape)
+    assert len(metadata.xshape) == len(metadata.totalk)
+    sparse_idxs = []
+    sparse_vals = []
+    params_len = len(metadata.sparse_idx_size)
+
+    for param_index in range(params_len):
+        sparse_idx_size = (results_len,) + tuple(metadata.sparse_idx_size[param_index])
+        sparse_val_size = (results_len,) + tuple(metadata.sparse_val_size[param_index])
+
+        sparse_idx = torch.empty(
+            sparse_idx_size,
+            dtype=DTYPE_MAPPING[metadata.sparse_idx_dtype],
+            device=device,
+        )
+        sparse_val = torch.empty(
+            sparse_val_size,
+            dtype=DTYPE_MAPPING[metadata.sparse_val_dtype],
+            device=device,
+        )
+        dist.broadcast(sparse_idx, 0)
+        dist.broadcast(sparse_val, 0)
+
+        sparse_idxs.append(sparse_idx.chunk(results_len, dim=0))
+        sparse_vals.append(sparse_val.chunk(results_len, dim=0))
+
+    results = []
+    for result_index in range(results_len):
+        result = []
+        for param_index in range(params_len):
+            xshape = metadata.xshape[param_index]
+            totalk = metadata.totalk[param_index]
+            result.append(
+                DistroResult(
+                    sparse_idxs[param_index][result_index].squeeze(dim=0),
+                    sparse_vals[param_index][result_index].squeeze(dim=0),
+                    xshape,
+                    totalk,
+                )
+            )
+        results.append(result)
+
+    return results
 
 
 def main():
@@ -41,101 +110,79 @@ def main():
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
 
-    model = make_causal_lm(architecture, source, args.rank, dp=dp, tp=tp)
+    device = torch.device(args.rank)
+    model = make_causal_lm(architecture, source, device, dp=dp, tp=tp)
 
-    store.wait(
-        [
-            "lr_scheduler_json",
-            "optimizer_json",
-            "micro_batch_size",
-            "grad_accum_in_fp32",
-        ]
-    )
-    lr_scheduler_json = store.get("lr_scheduler_json").decode()
-    optimizer_json = store.get("optimizer_json").decode()
-    micro_batch_size = int(store.get("micro_batch_size").decode())
-    grad_accum_in_fp32 = (
-        False if int(store.get("grad_accum_in_fp32").decode()) == 0 else True
+    store.wait(["hyperparameters"])
+    hyperparameters: Hyperparameters = Hyperparameters(
+        **json.loads(store.get("hyperparameters").decode())
     )
 
     trainer = Trainer(
         args.rank,
         model,
-        lr_scheduler_json,
-        optimizer_json,
+        json.dumps(hyperparameters.lr_scheduler),
+        json.dumps(hyperparameters.optimizer),
         json.dumps(model.get_config()),
-        micro_batch_size,
-        grad_accum_in_fp32,
+        hyperparameters.micro_batch_size,
+        hyperparameters.grad_accum_in_fp32,
     )
 
     parent_process = psutil.Process(args.parent_pid)
     iteration = 0
-    last_result = None
+
     while parent_process.is_running():
         store.wait([str(iteration)])
-        operation = store.get(str(iteration)).decode()
+        operation = json.loads(store.get(str(iteration)).decode())
 
-        if operation == "train":
-            batch_shape = [int(x) for x in store.get("batch-shape").decode().split(",")]
-            batch = torch.empty(batch_shape, dtype=torch.int, device=args.rank)
+        if operation["operation"] == "train":
+            train = TrainOperation(**operation)
+
+            prev_self_distro_results = []
+            if train.results_len > 0 and train.results_metadata:
+                prev_self_distro_results = receive_distro_results(
+                    train.results_len,
+                    DistroResultsMetadata(**train.results_metadata),
+                    device=device,
+                )
+
+            batch = torch.empty(train.batch_shape, dtype=torch.int, device=device)
             dist.broadcast(batch, 0)
-            step = int(store.get("step").decode())
-            batch_id = int(store.get("batch-id").decode())
-            last_result = trainer.train(step, batch_id, batch)
-        elif operation.startswith("optimize"):
+
+            trainer.train(
+                train.step,
+                (train.batch_id[0], train.batch_id[1]),
+                batch,
+                train.zero_optim,
+                (
+                    (train.warmup_lr_between[0], train.warmup_lr_between[1])
+                    if train.warmup_lr_between is not None
+                    else None
+                ),
+                prev_self_distro_results,
+            )
+        elif operation["operation"] == "optimize":
             with torch.no_grad():
-                step = int(store.get("step").decode())
-                if operation.endswith("-distro") and last_result is not None:
-                    results_len = int(store.get("results-len").decode())
-                    sparse_idxs = []
-                    sparse_vals = []
-                    for param_index in range(len(last_result)):
-                        sparse_idx = last_result[param_index].sparse_idx
-                        sparse_val = last_result[param_index].sparse_val
-                        sparse_idx_size = (results_len,) + tuple(sparse_idx.size())
-                        sparse_val_size = (results_len,) + tuple(sparse_val.size())
+                optimize = OptimizeOperation(**operation)
 
-                        sparse_idx = torch.empty(
-                            sparse_idx_size,
-                            dtype=sparse_idx.dtype,
-                            layout=sparse_idx.layout,
-                            device=sparse_idx.device,
-                        )
-                        sparse_val = torch.empty(
-                            sparse_val_size,
-                            dtype=sparse_val.dtype,
-                            layout=sparse_val.layout,
-                            device=sparse_val.device,
-                        )
-                        dist.broadcast(sparse_idx, 0)
-                        dist.broadcast(sparse_val, 0)
+                results = []
+                if optimize.results_len > 0 and optimize.results_metadata:
+                    results = receive_distro_results(
+                        optimize.results_len,
+                        DistroResultsMetadata(**optimize.results_metadata),
+                        device=device,
+                    )
 
-                        sparse_idxs.append(sparse_idx.chunk(results_len, dim=0))
-                        sparse_vals.append(sparse_val.chunk(results_len, dim=0))
-
-                    results = []
-                    for result_index in range(results_len):
-                        result = []
-                        for param_index in range(len(last_result)):
-                            xshape = last_result[param_index].xshape
-                            totalk = last_result[param_index].totalk
-                            result.append(
-                                DistroResult(
-                                    sparse_idxs[param_index][result_index].squeeze(
-                                        dim=0
-                                    ),
-                                    sparse_vals[param_index][result_index].squeeze(
-                                        dim=0
-                                    ),
-                                    xshape,
-                                    totalk,
-                                )
-                            )
-                        results.append(result)
-                    trainer.optimize(step, results)
-                else:
-                    trainer.optimize(step)
-        elif operation == "extract":
+                trainer.optimize(
+                    optimize.step,
+                    (
+                        (optimize.warmup_lr_between[0], optimize.warmup_lr_between[1])
+                        if optimize.warmup_lr_between is not None
+                        else None
+                    ),
+                    results,
+                )
+        elif operation["operation"] == "extract":
             trainer.extract()
 
         iteration += 1

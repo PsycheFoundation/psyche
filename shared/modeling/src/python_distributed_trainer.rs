@@ -1,5 +1,7 @@
 use crate::{
-    trainer::DistroResults, ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator, EosToks, LocalTrainer, PythonDistributedCausalLM, StableVariableIterator, TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError
+    trainer::DistroResults, ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator,
+    EosToks, LocalTrainer, PythonDistributedCausalLM, StableVariableIterator,
+    TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
 };
 
 use psyche_core::{LearningRateSchedule, OptimizerDefinition};
@@ -8,6 +10,7 @@ use std::{collections::HashMap, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
+use tracing::trace;
 
 #[derive(Debug)]
 pub struct PythonDistributedTrainer {
@@ -49,13 +52,14 @@ impl PythonDistributedTrainer {
             None => return Err(PythonDistributedTrainerError::WrongCommunicator),
         };
 
-        comm.set("lr_scheduler_json", &serde_json::to_string(&lr_scheduler)?)?;
-        comm.set("optimizer_json", &serde_json::to_string(&optimizer)?)?;
-        comm.set("micro_batch_size", &micro_batch_size.to_string())?;
-        comm.set(
-            "grad_accum_in_fp32",
-            if grad_accum_in_fp32 { "1" } else { "0" },
-        )?;
+        let hyperparameters = serde_json::json!({
+            "lr_scheduler": lr_scheduler,
+            "optimizer": optimizer,
+            "micro_batch_size": micro_batch_size,
+            "grad_accum_in_fp32": grad_accum_in_fp32
+        });
+
+        comm.set("hyperparameters", &hyperparameters.to_string())?;
 
         let device = model.device();
         let local = Box::new(
@@ -94,32 +98,28 @@ impl PythonDistributedTrainer {
             BatchData::GPU(tensor) => tensor,
             _ => unreachable!(),
         };
-        self.comm.set("step", &step.to_string())?;
-        self.comm
-            .set("batch-id-start", &data.id.0.start.to_string())?;
-        self.comm.set("batch-id-end", &data.id.0.end.to_string())?;
-        let batch_shape = tensor
-            .size()
-            .into_iter()
-            .map(|y| y.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        self.comm.set("batch-shape", &batch_shape)?;
-        self.comm.set(
-            "warmup-lr-between",
-            &match warmup_lr_between {
-                Some((a, b)) => format!("{a},{b}"),
-                None => String::new(),
-            },
-        )?;
 
         let results_len = match &prev_self_distro_results {
             // we assume (as we do else where) that each result is identically shaped
             Some(distro_results) => distro_results.len(),
             None => 0,
         };
-        self.comm.set("results-len", &results_len.to_string())?;
-        self.comm.set(&self.iteration.to_string(), "train")?;
+
+        let operation = serde_json::json!({
+            "operation": "train",
+            "step": step,
+            "batch_id": (data.id.0.start, data.id.0.end),
+            "batch_shape": tensor.size(),
+            "warmup_lr_between": warmup_lr_between,
+            "zero_optim": zero_optim,
+            "results_len": results_len,
+            "results_metadata": prev_self_distro_results.as_ref().map(|x| Self::distro_results_metadata(x)),
+        });
+
+        trace!("Sending operation to Python clients: {:#}", operation);
+
+        self.comm
+            .set(&self.iteration.to_string(), &operation.to_string())?;
         if results_len > 0 {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
@@ -140,7 +140,7 @@ impl PythonDistributedTrainer {
                 trainer: Self {
                     local: match x.trainer {
                         Trainer::Local(local_trainer) => Box::new(local_trainer),
-                        Trainer::PythonDistributed(_) => unreachable!()
+                        Trainer::PythonDistributed(_) => unreachable!(),
                     },
                     comm: self.comm,
                     device: self.device,
@@ -159,15 +159,24 @@ impl PythonDistributedTrainer {
     ) -> Result<Self, ApplyDistroResultError> {
         let _no_grad = tch::no_grad_guard();
 
-        self.comm.set("step", &step.to_string())?;
-
         let results_len = match &distro_results {
             // we assume (as we do else where) that each result is identically shaped
             Some(distro_results) => distro_results.len(),
             None => 0,
         };
-        self.comm.set("results-len", &results_len.to_string())?;
-        self.comm.set(&self.iteration.to_string(), "optimize")?;
+
+        let operation = serde_json::json!({
+            "operation": "optimize",
+            "step": step,
+            "warmup_lr_between": warmup_lr_between,
+            "results_len": results_len,
+            "results_metadata": distro_results.as_ref().map(|x| Self::distro_results_metadata(x)),
+        });
+
+        trace!("Sending operation to Python clients: {:#}", operation);
+
+        self.comm
+            .set(&self.iteration.to_string(), &operation.to_string())?;
         if results_len > 0 {
             self.broadcast_distro_results(distro_results.as_ref().unwrap())?;
         }
@@ -200,12 +209,25 @@ impl PythonDistributedTrainer {
                 .iter()
                 .map(|x| &x[param_index].sparse_val)
                 .collect::<Vec<_>>();
-            self.comm
-                .broadcast(&Tensor::stack(&sparse_idx, 0).to(self.device))?;
-            self.comm
-                .broadcast(&Tensor::stack(&sparse_val, 0).to(self.device))?;
+            let sparse_idx = Tensor::stack(&sparse_idx, 0).to(self.device);
+            //println!("param {} sparse_idx: {:?}", param_index, sparse_idx.size());
+            self.comm.broadcast(&sparse_idx)?;
+            let sparse_val = Tensor::stack(&sparse_val, 0).to(self.device);
+            //println!("param {} sparse_val: {:?}", param_index, sparse_val.size());
+            self.comm.broadcast(&sparse_val)?;
         }
         Ok(())
+    }
+
+    fn distro_results_metadata(distro_results: &Vec<DistroResults>) -> serde_json::Value {
+        serde_json::json!({
+            "sparse_idx_size": distro_results.first().map(|y| y.iter().map(|z| z.sparse_idx.size()).collect::<Vec<_>>()),
+            "sparse_idx_dtype": distro_results.first().map(|y| y.first().map(|z| z.sparse_idx.kind().c_int())),
+            "sparse_val_size": distro_results.first().map(|y| y.iter().map(|z| z.sparse_val.size()).collect::<Vec<_>>()),
+            "sparse_val_dtype": distro_results.first().map(|y| y.first().map(|z| z.sparse_val.kind().c_int())),
+            "xshape": distro_results.first().map(|y| y.iter().map(|z| z.xshape.clone()).collect::<Vec<_>>()),
+            "totalk": distro_results.first().map(|y| y.iter().map(|z| z.totalk).collect::<Vec<_>>()),
+        })
     }
 }
 
@@ -223,7 +245,8 @@ impl CausalLM for PythonDistributedTrainer {
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local.forward(x, labels, num_logits_to_keep, loss_scale)
+        self.local
+            .forward(x, labels, num_logits_to_keep, loss_scale)
     }
 
     fn bos_token_id(&self) -> Option<i64> {

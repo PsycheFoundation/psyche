@@ -120,16 +120,19 @@ class HfTransformersAuto(CausalLM):
             torch.cuda.set_device(device)
 
         if tp != 1 or dp != 1:
-            world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
+            # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
+            world_mesh = build_mesh("cuda", dp_shard=dp)
             if tp != 1:
-                model.tensor_parallel(world_mesh[("tp",)])
+                raise RuntimeError("TP not supported in HfTransformers yet")
+                # model.tensor_parallel(world_mesh[("tp",)])
 
             if dp != 1:
                 mp_policy = MixedPrecisionPolicy(
                     param_dtype=param_dtype, reduce_dtype=reduce_dtype
                 )
                 fsdp_config = {
-                    "mesh": world_mesh[tuple(("dp_replicate",))],
+                    #"mesh": world_mesh[tuple(("dp_replicate",))],
+                    "mesh": world_mesh[tuple(("dp_shard",))],
                     "mp_policy": mp_policy,
                 }
 
@@ -227,4 +230,4 @@ class HfTransformersAuto(CausalLM):
         self.model.train()
 
     def get_config(self):
-        return self.config
+        return self.config.to_dict()

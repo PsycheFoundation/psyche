@@ -228,7 +228,7 @@ impl Trainer {
     pub fn causal_lm(&self) -> &dyn CausalLM {
         match self {
             Trainer::Local(local_trainer) => local_trainer,
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => python_distributed_trainer,
         }
     }
@@ -386,6 +386,7 @@ impl LocalTrainer {
         prev_self_distro_results: Option<Vec<DistroResults>>,
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
+        // println!("pid={}, LocalTrainer::train", std::process::id());
         if !rollback.is_empty() {
             error!(
                 "we have not implemented getting data from previous rounds. this should be impossible to hit.. this step is {step}, rollback passed is {:?}",
@@ -404,6 +405,7 @@ impl LocalTrainer {
             })
             .map_err(|_| TrainerThreadCommunicationError::SendCommand)?;
         }
+        // println!("pid={}, LocalTrainer::train sent assignment", std::process::id());
         let mut final_loss = 0.0;
         let mut final_distro_results = None;
         let mut final_cancelled = false;
@@ -526,6 +528,8 @@ impl LocalTrainer {
         #[allow(unused_mut)]
         let mut data_parallel: Option<(Arc<Communicator>, Arc<CancellableBarrier>)> = None;
 
+        // println!("pid={}, model_thread boot", std::process::id());
+
         #[cfg(feature = "parallelism")]
         if let Some(data_parallel_def) = data_parallel_def {
             let id = match data_parallel_def.id {
@@ -562,6 +566,8 @@ impl LocalTrainer {
         }
         model.prepare_for_training();
 
+        // println!("pid={}, model_thread start loop", std::process::id());
+
         let mut grad_accum: Option<Fp32GradientAccumulator> = None;
         let mut nonce = 0;
         loop {
@@ -588,6 +594,7 @@ impl LocalTrainer {
                     // }
 
                     debug!(batch_id=%batch.id, "model thread training on batch {}", batch.id);
+                    //println!("pid={}, Got train assignment", std::process::id());
 
                     let batch_size = batch.data.size();
 
@@ -627,6 +634,7 @@ impl LocalTrainer {
                         micro_batches = grad_accum_steps,
                         "Train begin"
                     );
+                    //println!("pid={}, Train begin", std::process::id());
 
                     match &mut optimizer {
                         Optimizer::Torch { optimizer, .. } => {
@@ -636,11 +644,13 @@ impl LocalTrainer {
                             }
                         }
                         Optimizer::Distro { optimizer, .. } => {
+                            //println!("pid={}, Before zero_grad", std::process::id());
                             optimizer.zero_grad();
                             if zero_optim {
                                 optimizer.zero_optim();
                                 tracing::info!("Zeroed optimizer states");
                             }
+                            //println!("pid={}, Before error correction", std::process::id());
                             match &prev_self_distro_results {
                                 Some(_) => optimizer.error_correction(model.as_ref(), prev_lr),
                                 None => {
@@ -654,6 +664,7 @@ impl LocalTrainer {
                         Optimizer::Null => {}
                     };
 
+                    //println!("pid={}, Before micro batches", std::process::id());
                     let mut loss = None;
                     let mut cancelled = false;
                     for (index, micro_batch) in micro_batches.into_iter().enumerate() {
@@ -663,6 +674,7 @@ impl LocalTrainer {
                             warn!("Aborting training upon request");
                             break;
                         }
+                        //println!("pid={}, micro batch {}", std::process::id(), index);
                         match Self::forward_backward(
                             &mut *model,
                             micro_batch,
@@ -1014,7 +1026,7 @@ impl CausalLM for Trainer {
             Trainer::Local(local_trainer) => {
                 local_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
             }
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
             }
@@ -1024,7 +1036,7 @@ impl CausalLM for Trainer {
     fn bos_token_id(&self) -> Option<i64> {
         match self {
             Trainer::Local(local_trainer) => local_trainer.bos_token_id(),
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.bos_token_id()
             }
@@ -1034,7 +1046,7 @@ impl CausalLM for Trainer {
     fn eos_token_ids(&self) -> Option<EosToks> {
         match self {
             Trainer::Local(local_trainer) => local_trainer.eos_token_ids(),
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.eos_token_ids()
             }
@@ -1044,7 +1056,7 @@ impl CausalLM for Trainer {
     fn device(&self) -> Device {
         match self {
             Trainer::Local(local_trainer) => local_trainer.device().clone(),
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.device()
             }
@@ -1054,7 +1066,7 @@ impl CausalLM for Trainer {
     fn variables(&self) -> StableVariableIterator {
         match self {
             Trainer::Local(local_trainer) => local_trainer.variables(),
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.variables()
             }
@@ -1064,7 +1076,7 @@ impl CausalLM for Trainer {
     fn communicator(&self) -> Option<Arc<Communicator>> {
         match self {
             Trainer::Local(local_trainer) => local_trainer.communicator(),
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.communicator()
             }
@@ -1074,7 +1086,7 @@ impl CausalLM for Trainer {
     fn prepare_for_training(&mut self) {
         match self {
             Trainer::Local(local_trainer) => local_trainer.prepare_for_training(),
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.prepare_for_training()
             }
@@ -1084,7 +1096,7 @@ impl CausalLM for Trainer {
     fn clip_grad_norm(&mut self, max_grad_norm: f64) {
         match self {
             Trainer::Local(local_trainer) => local_trainer.clip_grad_norm(max_grad_norm),
-            #[cfg(feature = "parallelism")]
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.clip_grad_norm(max_grad_norm)
             }

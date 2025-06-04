@@ -170,6 +170,7 @@ impl CausalLM for PythonCausalLM {
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
+        // println!("pid={}, PythonCausalLM::forward", std::process::id());
         let result: PyResult<(Tensor, Option<Tensor>)> = Python::with_gil(|py| {
             let causal_lm = self.causal_lm.bind(py);
             let forward = causal_lm.getattr("forward")?;
@@ -180,11 +181,13 @@ impl CausalLM for PythonCausalLM {
             let logits = result.get_item(0)?;
             let logits: PyTensor = logits.extract()?;
             let loss = result.get_item(1)?;
-            let loss: Option<PyTensor> = match loss.is_none() {
+            let loss: Option<Tensor> = match loss.is_none() {
                 true => None,
-                false => Some(loss.extract()?),
-            };
-            Ok((logits.0, loss.map(|x| x.0)))
+                false => Some(loss.extract::<PyTensor>()?),
+            }
+            .map(|x| x.0);
+            //println!("pid={}, loss={:?}", std::process::id(), loss);
+            Ok((logits.0, loss))
         });
         result.unwrap()
     }
@@ -231,6 +234,7 @@ impl CausalLM for PythonCausalLM {
                     false => Ok(x.python.clone()),
                 })
                 .collect();
+            println!("pid={}, clip_grad_norm", std::process::id());
             clip_grad_norm.call1((tensors.unwrap(), max_grad_norm))?;
             Ok(())
         });
@@ -311,7 +315,7 @@ impl StablePythonParametersIterator {
             let result: Result<Vec<PythonCausalLMVariable>, PyErr> = named_parameters
                 .iter()
                 .map(|(k, v)| {
-                    let name = k.downcast_into::<PyString>()?;
+                    let name = k.downcast_into::<PyString>()?.to_str()?.to_owned();
                     let is_dtensor = v.is_instance(&dtensor)?;
                     let tensor: PyTensor = v.extract()?;
                     let full_shape: Vec<i64> = match is_dtensor {
@@ -326,8 +330,9 @@ impl StablePythonParametersIterator {
                         }
                         false => tensor.0.shallow_clone(),
                     };
+                    //println!("pid={}, variable={}, is_dtensor={}", std::process::id(), name, is_dtensor);
                     Ok(PythonCausalLMVariable {
-                        name: name.to_str()?.to_owned(),
+                        name,
                         python: v.unbind(),
                         tensor: tensor.0,
                         local_tensor,

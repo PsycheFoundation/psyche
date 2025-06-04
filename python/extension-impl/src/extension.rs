@@ -1,15 +1,24 @@
 use psyche_core::{BatchId, ClosedInterval, LearningRateSchedule, OptimizerDefinition};
 use psyche_modeling::{Batch, BatchData, CausalLM, PythonCausalLM};
+use psyche_tui::LogOutput;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3_tch::{wrap_tch_err, PyTensor};
 use std::{cell::Cell, ops::Deref};
 use tokio_util::sync::CancellationToken;
+use tracing::Level;
 
 #[pyfunction]
 fn add_one(tensor: PyTensor) -> PyResult<PyTensor> {
     let tensor = tensor.f_add_scalar(1.0).map_err(wrap_tch_err)?;
     Ok(PyTensor(tensor))
+}
+
+#[pyfunction]
+fn init_logging() -> PyResult<()> {
+    let _ = psyche_tui::init_logging(LogOutput::Console, Level::INFO, None, false, None)
+        .map_err(|err| PyRuntimeError::new_err(format!("{}", err)))?;
+    Ok(())
 }
 
 #[pyclass]
@@ -132,6 +141,7 @@ impl Trainer {
         let output = self_
             .py()
             .allow_threads(move || {
+                // println!("pid={}, extension train", std::process::id());
                 trainer.train(
                     step,
                     Batch { id, data },
@@ -191,6 +201,7 @@ impl Trainer {
 pub fn psyche(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     py.import_bound("torch")?;
     m.add_function(wrap_pyfunction!(add_one, m)?)?;
+    m.add_function(wrap_pyfunction!(init_logging, m)?)?;
     m.add_class::<Trainer>()?;
     m.add_class::<DistroResult>()?;
     Ok(())

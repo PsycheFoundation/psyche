@@ -7343,12 +7343,14 @@ version = "0.1.0"
 dependencies = [
  "psyche-core",
  "psyche-modeling",
+ "psyche-tui",
  "pyo3",
  "pyo3-tch",
  "serde_json",
  "tch",
  "tokio-util 0.7.14",
  "torch-sys",
+ "tracing",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@ use psyche_core::{BatchId, CancellableBarrier, CosineLR, OptimizerDefinition, Sh
 use psyche_data_provider::{download_model_repo_sync, LocalDataProvider};
 use psyche_modeling::{
     auto_model_for_causal_lm_from_pretrained, Batch, BatchData, CausalLM, CommunicatorId,
-    DataParallel, ModelLoadError, Trainer,
+    DataParallel, LocalTrainer, ModelLoadError, Trainer,
 };
 use psyche_tui::{init_logging, LogOutput};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
@@ -170,8 +170,13 @@ fn main() -> Result<()> {
     }
     let tp_world_size = args.tensor_parallelism.unwrap_or(1);
 
+    #[cfg(feature = "python")]
+    let python = args.python;
+    #[cfg(not(feature = "python"))]
+    let python = false;
+
     let data_parallel: Option<Vec<(CommunicatorId, Arc<CancellableBarrier>)>> =
-        if args.data_parallelism.is_some() {
+        if args.data_parallelism.is_some() && !python {
             {
                 #[cfg(feature = "parallelism")]
                 {
@@ -189,7 +194,7 @@ fn main() -> Result<()> {
 
                 #[cfg(not(feature = "parallelism"))]
                 {
-                    anyhow::bail!("Parallelism set but not feature off")
+                    anyhow::bail!("Parallelism set but feature off")
                 }
             }
         } else {
@@ -197,77 +202,138 @@ fn main() -> Result<()> {
         };
 
     let mut trainers: Vec<JoinHandle<Result<Trainer, anyhow::Error>>> = vec![];
-    for dp in 0..dp_world_size {
-        let repo_files = repo_files.clone();
-        let data_parallel = data_parallel.clone();
-        let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
-            std::thread::spawn(move || {
-                let id = if tp_world_size > 1 {
-                    #[cfg(feature = "parallelism")]
-                    {
-                        Some(tch::CStore::new().into())
+
+    if python {
+        #[cfg(feature = "python")]
+        {
+            psyche_python_extension_impl::init_embedded_python();
+
+            let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
+            let dp = args.data_parallelism.unwrap_or(1);
+            let tp = args.tensor_parallelism.unwrap_or(1);
+
+            let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
+                std::thread::spawn(move || {
+                    if dp != 1 || tp != 1 {
+                        let model = psyche_modeling::PythonDistributedCausalLM::new(
+                            "hf-auto".to_string(),
+                            source,
+                            Device::cuda_if_available(),
+                            psyche_modeling::ParallelismConfig { dp, tp },
+                            Some(args.sequence_length),
+                        )?;
+
+                        Ok(psyche_modeling::PythonDistributedTrainer::new(
+                            model,
+                            schedule.into(),
+                            optimizer,
+                            args.micro_batch,
+                            None,
+                            args.grad_accum_in_fp32,
+                        )?
+                        .into())
+                    } else {
+                        let models = vec![Box::new(psyche_modeling::PythonCausalLM::new(
+                            "hf-auto",
+                            &source,
+                            if args.cpu {
+                                Device::Cpu
+                            } else {
+                                Device::cuda_if_available()
+                            },
+                            None,
+                            Some(args.sequence_length),
+                        )?) as Box<dyn CausalLM>];
+                        Ok(LocalTrainer::new(
+                            models,
+                            schedule.into(),
+                            optimizer,
+                            args.micro_batch,
+                            None,
+                            args.grad_accum_in_fp32,
+                            None,
+                        )
+                        .into())
                     }
-
-                    #[cfg(not(feature = "parallelism"))]
-                    {
-                        anyhow::bail!("Parallelism set but not feature off")
-                    }
-                } else {
-                    None
-                };
-
-                let results = (0..tp_world_size)
-                    .map(|tp| {
-                        let rank = (dp * tp_world_size) + tp;
-                        let device = if args.cpu && tp_world_size <= 1 {
-                            Device::Cpu
-                        } else {
-                            Device::Cuda(rank)
-                        };
-                        let id = id.clone();
-                        let repo_files = repo_files.clone();
-
-                        std::thread::spawn(move || {
-                            let mut model = auto_model_for_causal_lm_from_pretrained(
-                                repo_files,
-                                Some(Kind::BFloat16),
-                                None,
-                                Some(device),
-                                id.map(|id| (id, tp, tp_world_size)),
-                                Some(args.sequence_length),
-                            )?;
-                            model.prepare_for_training();
-                            Ok(model)
-                        })
-                    })
-                    .collect::<Vec<JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>>>();
-                let results: Result<Vec<_>, _> =
-                    results.into_iter().map(|x| x.join().unwrap()).collect();
-                let models = results?;
-                let data_parallel = data_parallel.map(|data_parallel| {
-                    data_parallel
-                        .iter()
-                        .map(|(id, barrier)| DataParallel {
-                            id: id.clone(),
-                            barrier: barrier.clone(),
-                            rank: dp,
-                            world_size: dp_world_size,
-                        })
-                        .collect()
                 });
-                Ok(Trainer::new(
-                    models,
-                    schedule.into(),
-                    optimizer,
-                    args.micro_batch,
-                    None,
-                    args.grad_accum_in_fp32,
-                    data_parallel,
-                ))
-            });
 
-        trainers.push(trainer_load_handle);
+            trainers.push(trainer_load_handle);
+        }
+    } else {
+        for dp in 0..dp_world_size {
+            let repo_files = repo_files.clone();
+            let data_parallel = data_parallel.clone();
+            let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
+                std::thread::spawn(move || {
+                    let id = if tp_world_size > 1 {
+                        #[cfg(feature = "parallelism")]
+                        {
+                            Some(tch::CStore::new().into())
+                        }
+
+                        #[cfg(not(feature = "parallelism"))]
+                        {
+                            anyhow::bail!("Parallelism set but not feature off")
+                        }
+                    } else {
+                        None
+                    };
+
+                    let results = (0..tp_world_size)
+                        .map(|tp| {
+                            let rank = (dp * tp_world_size) + tp;
+                            let device = if args.cpu && tp_world_size <= 1 {
+                                Device::Cpu
+                            } else {
+                                Device::Cuda(rank)
+                            };
+                            let id = id.clone();
+                            let repo_files = repo_files.clone();
+
+                            std::thread::spawn(move || {
+                                let mut model = auto_model_for_causal_lm_from_pretrained(
+                                    repo_files,
+                                    Some(Kind::BFloat16),
+                                    None,
+                                    Some(device),
+                                    id.map(|id| (id, tp, tp_world_size)),
+                                    Some(args.sequence_length),
+                                )?;
+                                model.prepare_for_training();
+                                Ok(model)
+                            })
+                        })
+                        .collect::<Vec<JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>>>();
+                    let results: Result<Vec<_>, _> =
+                        results.into_iter().map(|x| x.join().unwrap()).collect();
+                    let models = results?;
+                    let data_parallel = data_parallel.map(|data_parallel| {
+                        data_parallel
+                            .iter()
+                            .map(|(id, barrier)| DataParallel {
+                                id: id.clone(),
+                                barrier: barrier.clone(),
+                                rank: dp,
+                                world_size: dp_world_size,
+                            })
+                            .collect()
+                    });
+                    Ok(LocalTrainer::new(
+                        models,
+                        schedule.into(),
+                        optimizer,
+                        args.micro_batch,
+                        None,
+                        args.grad_accum_in_fp32,
+                        data_parallel,
+                    )
+                    .into())
+                });
+
+            trainers.push(trainer_load_handle);
+        }
     }
+
     let trainers = trainers
         .into_iter()
         .map(|x| x.join().unwrap())
@@ -295,13 +361,15 @@ fn main() -> Result<()> {
                 let distro_quantization = args.distro_quantization;
                 let prev_distro_results = prev_distro_results.clone();
                 std::thread::spawn(move || {
-                    trainer.data_parallel_barrier();
+                    if let Trainer::Local(trainer) = &trainer {
+                        trainer.data_parallel_barrier();
+                    }
 
                     let mut output = trainer
                         .train(
                             step,
                             Batch {
-                                id: BatchId((0, 0).into()), // batch id not needed
+                                id: BatchId((step as u64, step as u64).into()),
                                 data: BatchData::CPU(data.to_vec()),
                             },
                             None,
