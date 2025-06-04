@@ -155,7 +155,7 @@ impl WitnessStep {
             broadcast_bloom,
             broadcast_merkle,
             training_times: WitnessTrainingTimes {
-                offset: 0,
+                offset: start_idx_in_client_times as u8,
                 times: training_times,
             },
         })
