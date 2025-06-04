@@ -78,7 +78,7 @@ impl RunningAverage {
         let entries = self.entries.read().unwrap();
         entries
             .iter()
-            .filter(|(_, entry)| entry.buffer.len() == entry.max_size)
+            .filter(|(_, entry)| entry.buffer.len() > entry.max_size / 2)
             .map(|(name, entry)| (name.clone(), entry.average()))
             .collect()
     }
