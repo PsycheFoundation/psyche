@@ -296,6 +296,7 @@ pub struct CoordinatorEpochState<T> {
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
+    pub update_batch_assignments: SmallBoolean, // Should we update the batch assignments in this round?
 }
 
 #[derive(
@@ -437,6 +438,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
+            update_batch_assignments: false.into(),
         }
     }
 }
@@ -1059,6 +1061,14 @@ impl<T: NodeIdentity> Coordinator<T> {
                         agreed_value
                     );
                 }
+            }
+
+            // We are in the last window so we need to use the new batch assignments next time we assign to clients
+            if (start_offset_in_global_times as usize + TRAINING_TIMES_SLICE_SIZE)
+                >= SOLANA_MAX_NUM_CLIENTS
+            {
+                msg!("Setting epoch_state.update_batch_assignments = true");
+                self.epoch_state.update_batch_assignments = true.into();
             }
         } else {
             dbg!("No consensus reached. Keeping old values.");
