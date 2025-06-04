@@ -38,24 +38,41 @@ pub fn assign_data_for_state<T: NodeIdentity>(
 
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
-    let assigned_batch_sizes = calculate_batch_sizes_per_client(coordinator);
-    msg!(
-        "[assign_data_for_state] calculated assigned batch sizes: {:?}, coordinator.client_batch_sizes: {:?}",
-        assigned_batch_sizes, coordinator.client_batch_sizes
-    );
-    // Persist the assigned batch sizes in the coordinator state
-    for i in 0..assigned_batch_sizes.len() {
-        // Ensure the coordinator's epoch state has the correct length
-        coordinator.client_batch_sizes[i] = assigned_batch_sizes.get(i).cloned().unwrap_or(1);
+
+    // Persist the assigned batch sizes in the coordinator state in case we've witnessed every window
+    if coordinator.epoch_state.update_batch_assignments.into() {
+        msg!("[assign_data_for_state] Persisting assigned batch sizes in coordinator.client_batch_sizes");
+        let assigned_batch_sizes = calculate_batch_sizes_per_client(coordinator);
+        for i in 0..assigned_batch_sizes.len() {
+            coordinator.client_batch_sizes[i] = assigned_batch_sizes.get(i).cloned().unwrap_or(1);
+        }
+        coordinator.epoch_state.update_batch_assignments = false.into();
     }
+    msg!(
+        "using for batch assignment: {:?}",
+        coordinator.client_batch_sizes
+    );
 
     // Use assigned batch sizes for batch size assignments
     for (client_index, node) in trainer_nodes {
         // We don't want nodes not training so if there was no batch size assigned (or calculated as 0),
         // we assign 1 at least.
-        let node_batch_size = assigned_batch_sizes.get(client_index).cloned().unwrap_or(1) as u64;
+        let node_batch_size = coordinator
+            .client_batch_sizes
+            .get(client_index)
+            .cloned()
+            .unwrap_or(1)
+            .max(1) as u64;
 
         let end_index = current_index + node_batch_size - 1;
+        msg!(
+            "[assign_data_for_state] Assigning batch size {} to node {} (client index {}) B[{},{}]",
+            node_batch_size,
+            node.id,
+            client_index,
+            current_index,
+            end_index
+        );
         assignments.insert(
             BatchId(ClosedInterval::new(current_index, end_index)),
             node.id,
@@ -74,6 +91,7 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
 ) -> Vec<BatchId> {
     // Get the list of trainer nodes and their original indices, similar to assign_data_for_state
     // The elements are (original_client_index, reference_to_client_data)
+    msg!("[get_batch_ids_for_round] start");
     let mut trainer_info: Vec<_> = (0..coordinator.epoch_state.clients.len())
         .filter_map(|i| {
             let client = &coordinator.epoch_state.clients[i];
@@ -94,6 +112,7 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
     let mut batch_ids = Vec::with_capacity(trainer_info.len());
     let mut current_data_idx = round.data_index;
 
+    msg!("[get_batch_ids_for_round] getting batch ids...");
     for (client_original_idx, _client_ref) in &trainer_info {
         let node_batch_actual_size = coordinator.client_batch_sizes
             .get(*client_original_idx)
@@ -101,7 +120,14 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
             .unwrap_or(1) // Default to batch size of 1 if for some reason it's not found
             as u64;
 
-        let end_data_idx = current_data_idx + node_batch_actual_size - 1;
+        let end_data_idx = match node_batch_actual_size {
+            0 | 1 => current_data_idx,
+            _ => current_data_idx + node_batch_actual_size - 1,
+        };
+        msg!(
+            "[get_batch_ids_for_round] Adding BatchId from {} to {} for client {}. node_batch_actual_size: {}",
+            current_data_idx, end_data_idx, client_original_idx, node_batch_actual_size,
+        );
         batch_ids.push(BatchId(ClosedInterval::new(current_data_idx, end_data_idx)));
         current_data_idx = end_data_idx + 1; // Move to the start of the next batch
     }
