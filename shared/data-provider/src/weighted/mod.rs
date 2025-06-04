@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 pub mod http;
 pub struct WeightedDataProvider<T: TokenizedDataProvider + LengthKnownDataProvider> {
@@ -181,54 +182,69 @@ fn build_weighted_index(
     weights: &[f64],
     dataset_sizes: &[usize],
 ) -> (Vec<usize>, Vec<u64>) {
+    // ensure chunk_size !=0
+    if n_samples == 0 {
+        return (Vec::new(), Vec::new());
+    }
     let num_providers = weights.len();
     let mut dataset_index = Vec::with_capacity(n_samples);
     let mut dataset_sample_index = Vec::with_capacity(n_samples);
+    const NUM_BATCHES: usize = 2;
+    // ensure we have the same number of sample counts as chunks
+    let total_samples_drawn = if n_samples % NUM_BATCHES == 0 {
+        vec![vec![0u64; num_providers]; NUM_BATCHES]
+    } else {
+        vec![vec![0u64; num_providers]; NUM_BATCHES + 1]
+    };
 
-    let mut total_samples_drawn = vec![0u64; num_providers];
-    // get rid of this and just use total_samples_drawn
-    let mut next_unique_index = vec![0u64; num_providers];
-    // get rid of this and just determine this every time with total_samples_drawn[chosen_provider_idx] >= provider_size condition
-    let mut is_exhausted = vec![false; num_providers];
+    //todo: fix this calculation - it can introduce an extra chunk at the end if n_samples %NUM_BATCHES!=0 (the remaining elements)
+    let chunk_size = if n_samples / NUM_BATCHES == 0 {
+        n_samples
+    } else {
+        n_samples / NUM_BATCHES
+    };
 
-    for sample_idx in 0..n_samples {
-        let sample_idx_float = (sample_idx as f64).max(1.0);
+    let chunks_iter = (0..n_samples).into_par_iter().chunks(chunk_size);
 
-        // select provider based on weighted error
-        let mut max_error = f64::NEG_INFINITY;
-        let mut chosen_provider_idx = 0;
-        for i in 0..num_providers {
-            if dataset_sizes[i] == 0 {
-                continue;
+    let samples: Vec<_> = total_samples_drawn
+        .into_par_iter()
+        .zip(chunks_iter)
+        .map(|(mut total_samples_drawn, samples)| {
+            let mut dataset_idx_and_sample_idx = Vec::with_capacity(samples.len());
+            println!("samples len {}", samples.len());
+            for sample_idx in samples {
+                let sample_idx_float = (sample_idx as f64).max(1.0);
+
+                // select provider based on weighted error
+                let mut max_error = f64::NEG_INFINITY;
+                let mut chosen_provider_idx = 0;
+                for i in 0..num_providers {
+                    if dataset_sizes[i] == 0 {
+                        continue;
+                    }
+                    let error = weights[i] * sample_idx_float - total_samples_drawn[i] as f64;
+                    if error > max_error {
+                        max_error = error;
+                        chosen_provider_idx = i;
+                    }
+                }
+
+                // determine the sample index
+                let provider_size = dataset_sizes[chosen_provider_idx] as u64;
+                let sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
+
+                dataset_idx_and_sample_idx.push((chosen_provider_idx, sample_to_yield));
+                total_samples_drawn[chosen_provider_idx] += 1;
             }
-            let error = weights[i] * sample_idx_float - total_samples_drawn[i] as f64;
-            if error > max_error {
-                max_error = error;
-                chosen_provider_idx = i;
-            }
-        }
+            dataset_idx_and_sample_idx
+        })
+        .flatten()
+        .collect();
 
-        // determine the sample index
-        let provider_size = dataset_sizes[chosen_provider_idx] as u64;
-        let sample_to_yield= total_samples_drawn[chosen_provider_idx] % provider_size;
-/*
-        if !is_exhausted[chosen_provider_idx] {
-            sample_to_yield = next_unique_index[chosen_provider_idx];
-            next_unique_index[chosen_provider_idx] += 1;
-
-            if next_unique_index[chosen_provider_idx] == provider_size {
-                is_exhausted[chosen_provider_idx] = true;
-            }
-        } else {
-            sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
-        }
-*/
-        dataset_index.push(chosen_provider_idx);
-        dataset_sample_index.push(sample_to_yield);
-
-        total_samples_drawn[chosen_provider_idx] += 1;
+    for (dataset_idx, sample_idx) in samples {
+        dataset_index.push(dataset_idx);
+        dataset_sample_index.push(sample_idx);
     }
-
     (dataset_index, dataset_sample_index)
 }
 
