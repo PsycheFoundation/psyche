@@ -21,9 +21,6 @@
         src
         ;
 
-      solana-cli = inputs'.solana-pkgs.packages.solana;
-      anchor-cli = inputs'.solana-pkgs.packages.anchor;
-
       rustPackageNames = [
         "psyche-solana-client"
         "psyche-centralized-client"
@@ -81,6 +78,7 @@
             };
 
             config = {
+              Env = [ "NVIDIA_DRIVER_CAPABILITIES=all" ];
               Entrypoint = [ "/bin/train_entrypoint.sh" ];
             };
           };
@@ -94,7 +92,7 @@
             copyToRoot = pkgs.buildEnv {
               name = "root";
               paths = [
-                pkgs.solana-cli
+                inputs'.solana-pkgs.packages.solana
                 pkgs.bashInteractive
                 rustPackages."psyche-solana-client"
                 (pkgs.runCommand "entrypoint" { } ''
@@ -109,6 +107,7 @@
             };
 
             config = {
+              Env = [ "NVIDIA_DRIVER_CAPABILITIES=all" ];
               Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
             };
           };
@@ -122,9 +121,18 @@
               name = "root";
               paths = [
                 pkgs.coreutils
-                solana-cli
-                anchor-cli
+                pkgs.openssl
+                pkgs.curl
+                pkgs.wget
+                pkgs.gcc
+                pkgs.gnumake
+                pkgs.binutils
+                pkgs.glibc
+                pkgs.iproute2
                 pkgs.bashInteractive
+                pkgs.cacert
+                pkgs.bzip2
+                inputs'.solana-pkgs.packages.default
                 (pkgs.runCommand "entrypoint" { } ''
                   mkdir -p $out/bin
                   mkdir -p $out/lib
@@ -137,10 +145,14 @@
               pathsToLink = [
                 "/bin"
                 "/lib"
+                "/tmp"
               ];
             };
 
             config = {
+              Env = [
+                "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              ];
               Entrypoint = [ "/bin/psyche_solana_validator_entrypoint.sh" ];
               ExposedPorts = {
                 "8899/tcp" = { };
