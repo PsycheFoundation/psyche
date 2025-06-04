@@ -295,7 +295,9 @@ pub struct CoordinatorEpochState<T> {
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
-    pub update_batch_assignments: SmallBoolean, // Should we update the batch assignments in this round?
+    // Index of the last client we've updated the training times for.
+    // this is useful because we know that when it's >= clients.len() we can update the batch size for all clients.
+    pub client_times_last_index_updated: u8,
 }
 
 #[derive(
@@ -437,7 +439,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
-            update_batch_assignments: false.into(),
+            client_times_last_index_updated: 0,
         }
     }
 }
@@ -1047,6 +1049,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 // Ensure the global_client_index is within bounds of self.client_training_times
                 if global_client_index < SOLANA_MAX_NUM_CLIENTS {
                     self.client_training_times[global_client_index] = agreed_value;
+                    self.epoch_state.client_times_last_index_updated = global_client_index as u8;
                 } else {
                     // This should not happen
                     msg!(
@@ -1057,19 +1060,15 @@ impl<T: NodeIdentity> Coordinator<T> {
                     );
                 }
             }
-
-            // We are in the last window so we need to use the new batch assignments next time we assign to clients
-            if (start_offset_in_global_times as usize + TRAINING_TIMES_SLICE_SIZE)
-                >= SOLANA_MAX_NUM_CLIENTS
-            {
-                msg!("Setting epoch_state.update_batch_assignments = true");
-                self.epoch_state.update_batch_assignments = true.into();
-            }
         } else {
             dbg!("No consensus reached. Keeping old values.");
         }
 
-        msg!("Saved client times: {:?}", self.client_training_times);
+        msg!(
+            "Saved client times: {:?} -- client_times_last_index_updated={}",
+            self.client_training_times,
+            self.epoch_state.client_times_last_index_updated
+        );
 
         // If we reach the end of an epoch or if we don't reach the min number of
         // clients or registered witnesses for the current round, we change to Cooldown
