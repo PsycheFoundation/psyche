@@ -46,8 +46,9 @@
 
       cudaDockerImage = pkgs.dockerTools.pullImage {
         imageName = "nvidia/cuda";
-        imageDigest = "sha256:0f6bfcbf267e65123bcc2287e2153dedfc0f24772fb5ce84afe16ac4b2fada95";
-        sha256 = "sha256-WFT1zPTFV9lAoNnT2jmKDB+rrbUSY9escmlO95pg4sA=";
+        finalImageTag = "12.4.1-devel-ubuntu22.04";
+        imageDigest = "sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5";
+        sha256 = "sha256-T4HwY8M0XMqh0rpK5zz2+n5/6FhBzLj7gtgbtJARJKg=";
       };
 
     in
@@ -67,7 +68,7 @@
               name = "root";
               paths = [
                 pkgs.bashInteractive
-                rustPackages."psyche-solana-client"
+                nixglhostRustPackages."psyche-solana-client-nixglhost"
                 (pkgs.runCommand "entrypoint" { } ''
                   mkdir -p $out/bin
                   cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
@@ -94,7 +95,7 @@
               paths = [
                 inputs'.solana-pkgs.packages.solana
                 pkgs.bashInteractive
-                rustPackages."psyche-solana-client"
+                nixglhostRustPackages."psyche-solana-client-nixglhost"
                 (pkgs.runCommand "entrypoint" { } ''
                   mkdir -p $out/bin
                   cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh

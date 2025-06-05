@@ -142,7 +142,6 @@ run_docker_client:
         --network "host" \
         nousresearch/psyche-solana-client:latest
 
-
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra num_clients="1":
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
