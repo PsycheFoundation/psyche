@@ -1,10 +1,10 @@
-use crate::{Committee, CommitteeSelection, Coordinator, Round};
+use crate::{Committee, CommitteeSelection, Coordinator, Round, TRAINING_TIMES_SLICE_SIZE};
 
 use anchor_lang::prelude::msg;
 use psyche_core::{deterministic_shuffle, BatchId, ClosedInterval, NodeIdentity};
 use std::{collections::BTreeMap, fmt};
 
-/// Assigns data batches to nodes based on committee roles.  
+/// Assigns data batches to nodes based on committee roles.
 pub fn assign_data_for_state<T: NodeIdentity>(
     coordinator: &mut Coordinator<T>,
     committee_selection: &CommitteeSelection,
@@ -39,15 +39,15 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
 
-    // Persist the assigned batch sizes in the coordinator state in case we've witnessed every client already
-    if (coordinator.epoch_state.client_times_last_index_updated as usize + 1) >= coordinator.epoch_state.clients.len() {
-        msg!("[assign_data_for_state] Persisting assigned batch sizes in coordinator.client_batch_sizes");
-        let assigned_batch_sizes = calculate_batch_sizes_per_client(coordinator);
-        for i in 0..assigned_batch_sizes.len() {
-            coordinator.client_batch_sizes[i] = assigned_batch_sizes.get(i).cloned().unwrap_or(1);
-        }
-        coordinator.epoch_state.client_times_last_index_updated = 0; // Reset the index after assignment
-    }
+    msg!(
+        "[ASSIGN_DATA_FOR_STATE] PROGRESS STEP: {}",
+        coordinator.progress.step
+    );
+    msg!(
+        "[ASSIGN_DATA_FOR_STATE] REASSIGN STEP: {}",
+        coordinator.epoch_state.batch_sizes_reassign_step
+    );
+
     msg!(
         "using for batch assignment: {:?}",
         coordinator.client_batch_sizes
@@ -114,6 +114,10 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
 
     msg!("[get_batch_ids_for_round] getting batch ids...");
     for (client_original_idx, _client_ref) in &trainer_info {
+        msg!(
+            "[get_batch_ids_for_round]  CLIENT ORIGINAL INDEX: {}",
+            client_original_idx
+        );
         let node_batch_actual_size = coordinator.client_batch_sizes
             .get(*client_original_idx)
             .cloned()
@@ -174,150 +178,4 @@ pub fn get_data_index_for_step<T: NodeIdentity>(
     }
 
     current_data_index
-}
-
-fn calculate_batch_sizes_per_client<T: NodeIdentity>(coordinator: &Coordinator<T>) -> Vec<u16> {
-    let n_clients = coordinator.epoch_state.clients.len();
-    if n_clients == 0 {
-        return Vec::new();
-    }
-
-    // Calculate scores for each client.
-    // A score of 0.0 is assigned if training time is not positive.
-    let mut client_scores = Vec::with_capacity(n_clients);
-    for i in 0..n_clients {
-        let score = match coordinator.client_training_times.get(i) {
-            Some(time_ref) => {
-                // Assuming time_ref points to a numeric type that can be cast to f64.
-                // The original code used `*time as f64`.
-                let time_val_f64 = *time_ref as f64;
-                if time_val_f64 > 0.0 {
-                    1.0 / time_val_f64
-                } else {
-                    0.0 // Time is zero, negative, or otherwise non-positive.
-                }
-            }
-            None => 0.0, // No training time recorded for this client.
-        };
-        client_scores.push(score);
-    }
-    msg!(
-        "[calculate_batch_sizes_per_client] Initial client scores: {:?}",
-        client_scores
-    );
-
-    let mut final_assignments = vec![0u16; n_clients];
-    let mut remaining_batches = coordinator.config.global_batch_size_end;
-
-    // First pass: assign 1 batch to each client, as they should all train at least one batch
-    for client_assignment in final_assignments.iter_mut().take(n_clients) {
-        if remaining_batches == 0 {
-            break;
-        }
-
-        *client_assignment = 1;
-        remaining_batches -= 1;
-    }
-    msg!(
-        "[calculate_batch_sizes_per_client] remaining_batches after first pass: {}",
-        remaining_batches
-    );
-
-    if remaining_batches == 0 {
-        return final_assignments;
-    }
-
-    // Collect clients eligible for further distribution (those with positive scores).
-    // Stores (original_client_index, score).
-    let eligible_clients_for_distribution: Vec<(usize, f64)> = client_scores
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, &score)| {
-            if score > 0.0 {
-                Some((idx, score))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    msg!(
-        "[calculate_batch_sizes_per_client] Eligible clients for distribution: {:?}",
-        eligible_clients_for_distribution
-    );
-
-    if eligible_clients_for_distribution.is_empty() {
-        // No clients have positive scores. Distribute remaining_batches equally among all n_clients.
-        // At this point, final_assignments are all 0s because no client got a batch in the first pass.
-        msg!("[calculate_batch_sizes_per_client] No eligible clients with positive scores. Distributing {} remaining batches equally among {} clients.", remaining_batches, n_clients);
-        if n_clients > 0 {
-            // Should be true if we are here and remaining_batches > 0
-            let batches_per_client = remaining_batches / n_clients as u16;
-            let mut extra_batches_to_distribute = remaining_batches % n_clients as u16;
-            for assignment in final_assignments.iter_mut().take(n_clients) {
-                *assignment = batches_per_client;
-                if extra_batches_to_distribute > 0 {
-                    *assignment += 1;
-                    extra_batches_to_distribute -= 1;
-                }
-            }
-        }
-        return final_assignments;
-    }
-
-    // Normalize scores for the eligible clients.
-    let sum_eligible_scores: f64 = eligible_clients_for_distribution
-        .iter()
-        .map(|(_, score)| score)
-        .sum();
-    // sum_eligible_scores must be > 0.0 as eligible_clients_for_distribution is not empty and all scores are > 0.0.
-
-    // This vector will store the additional batches calculated in this pass for each client.
-    let mut additional_assignments = vec![0u16; n_clients];
-    // Stores raw f64 batch counts for fractional part calculation, mapped by original client index.
-    let mut raw_values_for_fractional = BTreeMap::new();
-
-    for (original_idx, client_score) in &eligible_clients_for_distribution {
-        let normalized_score = *client_score / sum_eligible_scores;
-        let raw_assigned_batches_for_client = normalized_score * remaining_batches as f64;
-
-        raw_values_for_fractional.insert(*original_idx, raw_assigned_batches_for_client);
-        additional_assignments[*original_idx] = raw_assigned_batches_for_client.floor() as u16;
-    }
-
-    let assigned_in_normalization_pass: u16 = additional_assignments.iter().sum();
-    let still_remaining_for_fractional =
-        remaining_batches.saturating_sub(assigned_in_normalization_pass);
-
-    if still_remaining_for_fractional > 0 {
-        // Collect fractional parts only from eligible clients who received some raw assignment.
-        let mut fractional_parts: Vec<(usize, f64)> = raw_values_for_fractional
-            .iter()
-            .map(|(&original_idx, &raw_val)| {
-                let frac = raw_val - raw_val.floor();
-                // frac should be finite if raw_val was. Handle NaN defensively.
-                (original_idx, if frac.is_nan() { 0.0 } else { frac })
-            })
-            .collect();
-
-        fractional_parts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        for (original_idx, _) in fractional_parts
-            .iter()
-            .take(still_remaining_for_fractional as usize)
-        {
-            additional_assignments[*original_idx] += 1;
-        }
-    }
-
-    // Add the calculated additional assignments to the base assignments from the first pass.
-    for i in 0..n_clients {
-        final_assignments[i] += additional_assignments[i];
-    }
-
-    msg!(
-        "[calculate_batch_sizes_per_client] Final assignments: {:?}",
-        final_assignments
-    );
-    final_assignments
 }

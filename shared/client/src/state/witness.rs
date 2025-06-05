@@ -116,15 +116,27 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
-        let n_partitions = SOLANA_MAX_NUM_CLIENTS.div_ceil(TRAINING_TIMES_SLICE_SIZE);
+        // let n_partitions = SOLANA_MAX_NUM_CLIENTS.div_ceil(TRAINING_TIMES_SLICE_SIZE);
+        let n_partitions = if state
+            .epoch_state
+            .clients
+            .len()
+            .rem_euclid(TRAINING_TIMES_SLICE_SIZE)
+            == 0
+        {
+            state.epoch_state.clients.len() / TRAINING_TIMES_SLICE_SIZE
+        } else {
+            state.epoch_state.clients.len() / TRAINING_TIMES_SLICE_SIZE + 1
+        };
         let step = state.progress.step - 1; // First step is 1, so we subtract 1 to get 0-index
 
         // Cycle through the partitions depending on the current step.
-        let slice_index = if n_partitions == 0 {
-            0
-        } else {
-            step % (n_partitions as u32)
-        };
+        // let slice_index = if n_partitions == 1 {
+        //     0
+        // } else {
+        //     step % (n_partitions as u32)
+        // };
+        let slice_index = step % (n_partitions as u32);
 
         // Calculate the starting index in current_round.client_times for the current slice.
         let start_idx_in_client_times = (slice_index as usize) * TRAINING_TIMES_SLICE_SIZE;

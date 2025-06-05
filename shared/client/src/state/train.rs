@@ -182,6 +182,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             match have_training {
                 true => {
                     let data_assignments = assign_data_for_state(state, &committee_selection);
+                    warn!(
+                        "[TRAINER RE-ASSIGN STEP] {}",
+                        state.epoch_state.batch_sizes_reassign_step
+                    );
                     let all_batch_ids = get_batch_ids_for_round(
                         state.current_round().unwrap(),
                         state,
