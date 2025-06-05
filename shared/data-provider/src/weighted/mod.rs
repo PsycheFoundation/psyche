@@ -211,7 +211,7 @@ fn build_weighted_index(
         .zip(chunks_iter)
         .map(|(mut total_samples_drawn, samples)| {
             let mut dataset_idx_and_sample_idx = Vec::with_capacity(samples.len());
-            println!("samples len {}", samples.len());
+            
             for sample_idx in samples {
                 let sample_idx_float = (sample_idx as f64).max(1.0);
 
@@ -238,12 +238,11 @@ fn build_weighted_index(
             }
             dataset_idx_and_sample_idx
         })
-        .flatten()
         .collect();
 
-    for (dataset_idx, sample_idx) in samples {
-        dataset_index.push(dataset_idx);
-        dataset_sample_index.push(sample_idx);
+    for (dataset_idx, sample_idx) in samples.iter().map(|subvec| subvec.iter()).flatten() {
+        dataset_index.push(*dataset_idx);
+        dataset_sample_index.push(*sample_idx);
     }
     (dataset_index, dataset_sample_index)
 }
