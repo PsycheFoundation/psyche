@@ -72,10 +72,13 @@ impl RunningAverage {
         entries.get(name).and_then(|entry| entry.average())
     }
 
+    /// Get averages of entries
+    /// Skips entries that have not filled at least half buffer to avoid unconfident scores
     pub fn get_all_averages(&self) -> HashMap<String, Option<f64>> {
         let entries = self.entries.read().unwrap();
         entries
             .iter()
+            .filter(|(_, entry)| entry.buffer.len() > entry.max_size / 2)
             .map(|(name, entry)| (name.clone(), entry.average()))
             .collect()
     }
