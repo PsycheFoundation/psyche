@@ -3,17 +3,25 @@ use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
 };
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{
+    prelude::{borsh, msg},
+    AnchorDeserialize, AnchorSerialize, InitSpace,
+};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, hash::Hash};
+use std::{
+    collections::{BTreeMap, HashSet},
+    hash::Hash,
+};
 use ts_rs::TS;
 
 pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
+
+pub const TRAINING_TIMES_SLICE_SIZE: usize = 90;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
@@ -150,6 +158,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
+    pub training_times: WitnessTrainingTimes,
 }
 
 #[derive(
@@ -199,6 +208,25 @@ impl WitnessEvalResult {
             value,
         }
     }
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Zeroable,
+    Default,
+    Copy,
+    AnchorDeserialize,
+    AnchorSerialize,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    TS,
+)]
+#[repr(C)]
+pub struct WitnessTrainingTimes {
+    pub offset: u8,
+    pub times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -308,6 +336,12 @@ pub struct Coordinator<T> {
 
     #[serde(default)]
     pub pending_pause: SmallBoolean,
+
+    #[serde(default)]
+    pub client_training_times: FixedVec<u16, { SOLANA_MAX_NUM_CLIENTS }>,
+
+    #[serde(default)]
+    pub client_batch_sizes: FixedVec<u16, { SOLANA_MAX_NUM_CLIENTS }>,
 }
 
 unsafe impl<T: NodeIdentity + Zeroable> Pod for Coordinator<T> {}
@@ -965,39 +999,118 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        if self.check_timeout(unix_timestamp, self.config.round_witness_time) {
-            // TODO: Punish idle witnesses
-            self.epoch_state.first_round = false.into();
-            self.progress.step += 1;
+        if !self.check_timeout(unix_timestamp, self.config.round_witness_time) {
+            return Ok(TickResult::Ticked);
+        };
+        // Round witness time is over, we can now start the next round
 
-            let current_round = self.current_round_unchecked();
-            let height = current_round.height;
-            let num_witnesses = current_round.witnesses.len() as u16;
-            self.move_clients_to_exited(height);
+        // TODO: Punish idle witnesses
+        self.epoch_state.first_round = false.into();
+        self.progress.step += 1;
 
-            // If there are not witnesses, then we can't distinguish from
-            // the situation where only witness nodes disconnected or everyone
-            // disconnected. We just set everyone to withdrawn state and change
-            // to Cooldown.
-            if num_witnesses == 0 {
-                self.withdraw_all()?;
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
+        let current_round = self.current_round_unchecked();
+        let height = current_round.height;
+        let num_witnesses = current_round.witnesses.len() as u16;
 
-            // If we reach the end of an epoch or if we don't reach the min number of
-            // clients or registered witnesses for the current round, we change to Cooldown
-            if height == self.config.rounds_per_epoch - 1
-                || self.epoch_state.clients.len() < self.config.min_clients as usize
-                || num_witnesses < self.witness_quorum(num_witnesses)
-                || self.pending_pause.is_true()
-            {
-                self.start_cooldown(unix_timestamp);
-                return Ok(TickResult::Ticked);
-            }
+        let removed_client_indices = self.move_clients_to_exited(height);
 
-            self.start_round_train(unix_timestamp, random_seed, 0);
+        // If there are not witnesses, then we can't distinguish from
+        // the situation where only witness nodes disconnected or everyone
+        // disconnected. We just set everyone to withdrawn state and change
+        // to Cooldown.
+        if num_witnesses == 0 {
+            self.withdraw_all()?;
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
         }
+
+        // Debug training times
+        let witnesses = &self.current_round_unchecked().witnesses;
+        for witness in witnesses.iter() {
+            msg!(
+                "[tick_round_witness] witness {} reported times: {:?} offset={}",
+                witness.proof.index,
+                witness.training_times.times,
+                witness.training_times.offset,
+            );
+        }
+
+        /*msg!(
+            "[tick_round_witness]: step={}, current clients: {}",
+            self.progress.step,
+            self.epoch_state.clients.len()
+        );*/
+
+        let mut client_times_last_index_updated = 0;
+        if let Some(mut agreed_values) =
+            self.get_consensus_on_reported_times(witnesses, 1.0 / 3.0, 5.0)
+        {
+            for i in removed_client_indices {
+                agreed_values.remove(i);
+            }
+
+            let start_offset_in_global_times = witnesses[0].training_times.offset;
+            msg!(
+                "Saving training times for step {}, start offset {}",
+                self.progress.step - 1,
+                start_offset_in_global_times
+            );
+
+            for (index_in_slice, &agreed_value) in agreed_values.iter().enumerate() {
+                if agreed_value == 0 {
+                    continue; // Invalid value => ignore
+                }
+                let global_client_index = (start_offset_in_global_times as usize) + index_in_slice;
+                // Ensure the global_client_index is within bounds of self.client_training_times
+                if global_client_index < SOLANA_MAX_NUM_CLIENTS {
+                    self.client_training_times[global_client_index] = agreed_value;
+                    client_times_last_index_updated = global_client_index;
+                } else {
+                    // This should not happen
+                    msg!(
+                        "Warning: Calculated global_client_index {} is out of bounds for client_training_times (max {}). Value {} not saved.",
+                        global_client_index,
+                        SOLANA_MAX_NUM_CLIENTS -1,
+                        agreed_value
+                    );
+                }
+            }
+        } else {
+            dbg!("No consensus reached. Keeping old values.");
+        }
+
+        msg!("Saved client times: {:?}", self.client_training_times,);
+
+        // Persist the assigned batch sizes in the coordinator state in case we've witnessed every client already
+        msg!("[tick_round_witness] step={}, client_times_last_index_updated={} (+1) , clients_len={}",
+            self.progress.step,
+            client_times_last_index_updated,
+            self.epoch_state.clients.len()
+        );
+        if (client_times_last_index_updated + 1) >= self.epoch_state.clients.len() {
+            msg!("[tick_round_witness] Persisting assigned batch sizes in coordinator.client_batch_sizes");
+            let assigned_batch_sizes = self.calculate_batch_sizes_per_client();
+            for i in 0..assigned_batch_sizes.len() {
+                self.client_batch_sizes[i] = assigned_batch_sizes.get(i).cloned().unwrap_or(1);
+            }
+        }
+        msg!(
+            "[tick_round_witness] using for batch assignment: {:?}",
+            self.client_batch_sizes
+        );
+
+        // If we reach the end of an epoch or if we don't reach the min number of
+        // clients or registered witnesses for the current round, we change to Cooldown
+        if height == self.config.rounds_per_epoch - 1
+            || self.epoch_state.clients.len() < self.config.min_clients as usize
+            || num_witnesses < self.witness_quorum(num_witnesses)
+            || self.pending_pause.is_true()
+        {
+            self.start_cooldown(unix_timestamp);
+            return Ok(TickResult::Ticked);
+        }
+
+        self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)
     }
 
@@ -1098,9 +1211,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         self.run_state = new_state;
     }
 
-    fn move_clients_to_exited(&mut self, height: u32) {
+    fn move_clients_to_exited(&mut self, height: u32) -> Vec<usize> {
         // WARNING: O(n) on number of clients, need to refactor
-        self.epoch_state.clients.retain(|x| {
+        let removed_indices = self.epoch_state.clients.retain(|x| {
             if x.state != ClientState::Healthy {
                 self.epoch_state.exited_clients.push(*x).unwrap();
                 self.epoch_state
@@ -1113,6 +1226,17 @@ impl<T: NodeIdentity> Coordinator<T> {
                 true
             }
         });
+
+        // We need to adjust these as well so they match the new clients list
+        for index in &removed_indices {
+            self.client_training_times.remove(*index);
+            let _ = self.client_training_times.push(0); // To mantain the same length
+
+            self.client_batch_sizes.remove(*index);
+            let _ = self.client_batch_sizes.push(0);
+        }
+
+        removed_indices
     }
 
     pub fn is_warmup_just_starting(&self) -> bool {
@@ -1121,6 +1245,244 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn is_training_just_starting(&self) -> bool {
         self.epoch_state.first_round.is_true() && self.run_state == RunState::RoundTrain
+    }
+
+    fn get_consensus_on_reported_times(
+        &self,
+        witnesses: &[Witness],
+        threshold: f64, // e.g. if we want 2/3rds of the witnesses to agree
+        tolerance: f64, // in seconds how close the times should be to each other to be considered the same
+    ) -> Option<Vec<u16>> {
+        if witnesses.is_empty() {
+            return None;
+        }
+
+        // If we only have one witness then that's the consensus
+        if witnesses.len() == 1 {
+            return Some(witnesses[0].training_times.times.into());
+        }
+
+        let mut agreed_values: Vec<u16> = Vec::with_capacity(self.epoch_state.clients.len());
+
+        for i in 0..TRAINING_TIMES_SLICE_SIZE {
+            // --- Boyer-Moore to find a candidate (among non-zero values) ---
+            let mut candidate_val = 0u16;
+            let mut count = 0;
+
+            for witness in witnesses {
+                let value = witness.training_times.times.get(i).copied().unwrap_or(0);
+
+                if value == 0 {
+                    // Boyer-Moore variant: find candidate among non-zero reported times
+                    continue;
+                }
+
+                if count == 0 {
+                    candidate_val = value;
+                    count = 1;
+                } else if value == candidate_val {
+                    count += 1;
+                } else {
+                    count -= 1;
+                }
+            }
+
+            // --- Verification and Consensus Check ---
+            if candidate_val == 0 {
+                // This means either all proposals were effectively 0, or no non-zero candidate emerged from Boyer-Moore.
+                // Check if all actual proposals for this index i are 0.
+                let all_proposals_effectively_zero = witnesses
+                    .iter()
+                    .all(|w| w.training_times.times.get(i).copied().unwrap_or(0) == 0);
+
+                if all_proposals_effectively_zero {
+                    agreed_values.push(0); // Consensus on 0 for this slot
+                } else {
+                    // A candidate of 0 from Boyer-Moore, but not all proposals were 0.
+                    // This implies no consensus for non-zero values and 0 is not universally agreed.
+                    return None; // No consensus for this slot
+                }
+            } else {
+                // A non-zero candidate was found. Verify it against the threshold.
+                let mut matching_count = 0;
+                let mut non_zero_count = 0;
+
+                for wtn in witnesses {
+                    let val = wtn.training_times.times.get(i).copied().unwrap_or(0);
+
+                    if val != 0 {
+                        non_zero_count += 1;
+                        // Compare val with candidate_val, within tolerance
+                        if (val as i32 - candidate_val as i32).abs() <= tolerance as i32 {
+                            matching_count += 1;
+                        }
+                    }
+                }
+
+                if non_zero_count == 0 {
+                    // This case should ideally not be reached if candidate_val is non-zero,
+                    // as candidate_val itself must have been a non-zero value.
+                    // However, as a safeguard, if there are no non-zero values to compare against,
+                    // it implies no basis for the non-zero candidate.
+                    return None;
+                }
+
+                if (matching_count as f64) < threshold * (non_zero_count as f64) {
+                    return None; // Consensus threshold not met for this non-zero candidate
+                } else {
+                    agreed_values.push(candidate_val); // Consensus on candidate_val for this slot
+                }
+            }
+        } // End of loop over TRAINING_TIMES_SLICE_SIZE
+
+        Some(agreed_values)
+    }
+
+    fn calculate_batch_sizes_per_client(&self) -> Vec<u16> {
+        let n_clients = self.epoch_state.clients.len();
+        if n_clients == 0 {
+            return Vec::new();
+        }
+
+        // Calculate scores for each client.
+        // A score of 0.0 is assigned if training time is not positive.
+        let mut client_scores = Vec::with_capacity(n_clients);
+        for i in 0..n_clients {
+            let score = match self.client_training_times.get(i) {
+                Some(time_ref) => {
+                    // Assuming time_ref points to a numeric type that can be cast to f64.
+                    // The original code used `*time as f64`.
+                    let time_val_f64 = *time_ref as f64;
+                    if time_val_f64 > 0.0 {
+                        1.0 / time_val_f64
+                    } else {
+                        0.0 // Time is zero, negative, or otherwise non-positive.
+                    }
+                }
+                None => 0.0, // No training time recorded for this client.
+            };
+            client_scores.push(score);
+        }
+        msg!(
+            "[calculate_batch_sizes_per_client] Initial client scores: {:?}",
+            client_scores
+        );
+
+        let mut final_assignments = vec![0u16; n_clients];
+        let mut remaining_batches = self.config.global_batch_size_end;
+
+        // First pass: assign 1 batch to each client, as they should all train at least one batch
+        for client_assignment in final_assignments.iter_mut().take(n_clients) {
+            if remaining_batches == 0 {
+                break;
+            }
+
+            *client_assignment = 1;
+            remaining_batches -= 1;
+        }
+        msg!(
+            "[calculate_batch_sizes_per_client] remaining_batches after first pass: {}",
+            remaining_batches
+        );
+
+        if remaining_batches == 0 {
+            return final_assignments;
+        }
+
+        // Collect clients eligible for further distribution (those with positive scores).
+        // Stores (original_client_index, score).
+        let eligible_clients_for_distribution: Vec<(usize, f64)> = client_scores
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, &score)| {
+                if score > 0.0 {
+                    Some((idx, score))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        msg!(
+            "[calculate_batch_sizes_per_client] Eligible clients for distribution: {:?}",
+            eligible_clients_for_distribution
+        );
+
+        if eligible_clients_for_distribution.is_empty() {
+            // No clients have positive scores. Distribute remaining_batches equally among all n_clients.
+            // At this point, final_assignments are all 0s because no client got a batch in the first pass.
+            msg!("[calculate_batch_sizes_per_client] No eligible clients with positive scores. Distributing {} remaining batches equally among {} clients.", remaining_batches, n_clients);
+            if n_clients > 0 {
+                // Should be true if we are here and remaining_batches > 0
+                let batches_per_client = remaining_batches / n_clients as u16;
+                let mut extra_batches_to_distribute = remaining_batches % n_clients as u16;
+                for assignment in final_assignments.iter_mut().take(n_clients) {
+                    *assignment = batches_per_client;
+                    if extra_batches_to_distribute > 0 {
+                        *assignment += 1;
+                        extra_batches_to_distribute -= 1;
+                    }
+                }
+            }
+            return final_assignments;
+        }
+
+        // Normalize scores for the eligible clients.
+        let sum_eligible_scores: f64 = eligible_clients_for_distribution
+            .iter()
+            .map(|(_, score)| score)
+            .sum();
+        // sum_eligible_scores must be > 0.0 as eligible_clients_for_distribution is not empty and all scores are > 0.0.
+
+        // This vector will store the additional batches calculated in this pass for each client.
+        let mut additional_assignments = vec![0u16; n_clients];
+        // Stores raw f64 batch counts for fractional part calculation, mapped by original client index.
+        let mut raw_values_for_fractional = BTreeMap::new();
+
+        for (original_idx, client_score) in &eligible_clients_for_distribution {
+            let normalized_score = *client_score / sum_eligible_scores;
+            let raw_assigned_batches_for_client = normalized_score * remaining_batches as f64;
+
+            raw_values_for_fractional.insert(*original_idx, raw_assigned_batches_for_client);
+            additional_assignments[*original_idx] = raw_assigned_batches_for_client.floor() as u16;
+        }
+
+        let assigned_in_normalization_pass: u16 = additional_assignments.iter().sum();
+        let still_remaining_for_fractional =
+            remaining_batches.saturating_sub(assigned_in_normalization_pass);
+
+        if still_remaining_for_fractional > 0 {
+            // Collect fractional parts only from eligible clients who received some raw assignment.
+            let mut fractional_parts: Vec<(usize, f64)> = raw_values_for_fractional
+                .iter()
+                .map(|(&original_idx, &raw_val)| {
+                    let frac = raw_val - raw_val.floor();
+                    // frac should be finite if raw_val was. Handle NaN defensively.
+                    (original_idx, if frac.is_nan() { 0.0 } else { frac })
+                })
+                .collect();
+
+            fractional_parts
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            for (original_idx, _) in fractional_parts
+                .iter()
+                .take(still_remaining_for_fractional as usize)
+            {
+                additional_assignments[*original_idx] += 1;
+            }
+        }
+
+        // Add the calculated additional assignments to the base assignments from the first pass.
+        for i in 0..n_clients {
+            final_assignments[i] += additional_assignments[i];
+        }
+
+        msg!(
+            "[calculate_batch_sizes_per_client] Final assignments: {:?}",
+            final_assignments
+        );
+        final_assignments
     }
 }
 

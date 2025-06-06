@@ -714,6 +714,7 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
     assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
 
     // spawn new client
+    info!("spawning 2 new clients...");
     let _clients_handle =
         spawn_clients_with_training_delay(2, server_port, run_id, training_delay).await;
 

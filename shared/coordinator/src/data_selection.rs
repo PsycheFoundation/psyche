@@ -1,11 +1,12 @@
 use crate::{Committee, CommitteeSelection, Coordinator, Round};
 
+use anchor_lang::prelude::msg;
 use psyche_core::{deterministic_shuffle, BatchId, ClosedInterval, NodeIdentity};
 use std::{collections::BTreeMap, fmt};
 
 /// Assigns data batches to nodes based on committee roles.  
 pub fn assign_data_for_state<T: NodeIdentity>(
-    coordinator: &Coordinator<T>,
+    coordinator: &mut Coordinator<T>,
     committee_selection: &CommitteeSelection,
 ) -> BTreeMap<BatchId, T> {
     let round = coordinator.current_round().unwrap();
@@ -16,7 +17,7 @@ pub fn assign_data_for_state<T: NodeIdentity>(
             let committee = committee_selection.get_committee(i as u64).committee;
 
             if matches!(committee, Committee::Trainer) {
-                Some(client)
+                Some((i, client))
             } else {
                 match committee {
                     Committee::TieBreaker => assert_eq!(round.tie_breaker_tasks, 0), // TODO
@@ -35,59 +36,89 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     let mut trainer_nodes = trainer_nodes;
     deterministic_shuffle(&mut trainer_nodes, round.random_seed);
 
-    let total_size = coordinator.get_target_global_batch_size(coordinator.current_round()) as u64;
-    let num_trainers = trainer_nodes.len() as u64;
-    let base_size = total_size / num_trainers;
-    let remainder = total_size % num_trainers;
-
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
 
-    for (i, node) in trainer_nodes.iter().enumerate() {
-        let node_batch_size = base_size + if (i as u64) < remainder { 1 } else { 0 };
+    // Use assigned batch sizes for batch size assignments
+    for (client_index, node) in trainer_nodes {
+        // We don't want nodes not training so if there was no batch size assigned (or calculated as 0),
+        // we assign 1 at least.
+        let node_batch_size = coordinator
+            .client_batch_sizes
+            .get(client_index)
+            .cloned()
+            .unwrap_or(1)
+            .max(1) as u64;
 
-        if node_batch_size > 0 {
-            let end_index = current_index + node_batch_size - 1;
-            assignments.insert(
-                BatchId(ClosedInterval::new(current_index, end_index)),
-                node.id,
-            );
-            current_index = end_index + 1;
-        }
+        let end_index = current_index + node_batch_size - 1;
+        msg!(
+            "[assign_data_for_state] Assigning batch size {} to node {} (client index {}) B[{},{}]",
+            node_batch_size,
+            node.id,
+            client_index,
+            current_index,
+            end_index
+        );
+        assignments.insert(
+            BatchId(ClosedInterval::new(current_index, end_index)),
+            node.id,
+        );
+        current_index = end_index + 1;
     }
 
+    msg!("[assign_data_for_state] assignments: {:?}", assignments);
     assignments
 }
 
 pub fn get_batch_ids_for_round<T: NodeIdentity>(
     round: &Round,
     coordinator: &Coordinator<T>,
-    num_trainer_nodes: u64,
+    committee_selection: &CommitteeSelection,
 ) -> Vec<BatchId> {
-    let start = round.data_index;
-    let total_size = coordinator.get_target_global_batch_size(Some(round)) as u64;
-    let end = start + total_size;
-
-    let base_size = total_size / num_trainer_nodes;
-    let remainder = total_size % num_trainer_nodes;
-
-    let mut batch_ids = Vec::with_capacity(num_trainer_nodes as usize);
-    let mut current = start;
-
-    for i in 0..num_trainer_nodes {
-        let node_size = base_size + if i < remainder { 1 } else { 0 };
-
-        if node_size > 0 {
-            let batch_end = current + node_size - 1;
-            batch_ids.push(BatchId(ClosedInterval::new(current, batch_end)));
-            current = batch_end + 1;
-
-            if current >= end {
-                break;
+    // Get the list of trainer nodes and their original indices, similar to assign_data_for_state
+    // The elements are (original_client_index, reference_to_client_data)
+    msg!("[get_batch_ids_for_round] start");
+    let mut trainer_info: Vec<_> = (0..coordinator.epoch_state.clients.len())
+        .filter_map(|i| {
+            let client = &coordinator.epoch_state.clients[i];
+            let proof = committee_selection.get_committee(i as u64);
+            if matches!(proof.committee, Committee::Trainer) {
+                Some((i, client))
+            } else {
+                // If it's not a trainer then there's nothing to check as there's no batch assignment for it.
+                None
             }
-        }
+        })
+        .collect();
+
+    // Apply the same deterministic shuffle as in assign_data_for_state
+    // This ensures the batch IDs are generated in the same order as assignments are made.
+    deterministic_shuffle(&mut trainer_info, round.random_seed);
+
+    let mut batch_ids = Vec::with_capacity(trainer_info.len());
+    let mut current_data_idx = round.data_index;
+
+    msg!("[get_batch_ids_for_round] getting batch ids...");
+    for (client_original_idx, _client_ref) in &trainer_info {
+        let node_batch_actual_size = coordinator.client_batch_sizes
+            .get(*client_original_idx)
+            .cloned()
+            .unwrap_or(1) // Default to batch size of 1 if for some reason it's not found
+            as u64;
+
+        let end_data_idx = match node_batch_actual_size {
+            0 | 1 => current_data_idx,
+            _ => current_data_idx + node_batch_actual_size - 1,
+        };
+        msg!(
+            "[get_batch_ids_for_round] Adding BatchId from {} to {} for client {}. node_batch_actual_size: {}",
+            current_data_idx, end_data_idx, client_original_idx, node_batch_actual_size,
+        );
+        batch_ids.push(BatchId(ClosedInterval::new(current_data_idx, end_data_idx)));
+        current_data_idx = end_data_idx + 1; // Move to the start of the next batch
     }
 
+    msg!("[get_batch_ids_for_round] batch_ids: {:?}", batch_ids);
     batch_ids
 }
 

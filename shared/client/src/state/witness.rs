@@ -1,5 +1,7 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata};
-use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity};
+use psyche_coordinator::{
+    Coordinator, Witness, WitnessMetadata, WitnessTrainingTimes, TRAINING_TIMES_SLICE_SIZE,
+};
+use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
@@ -44,7 +46,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
     pub fn start(
         &self,
         _client_index: u64,
-        _state: &Coordinator<T>,
+        state: &Coordinator<T>,
         trainers: MaybeRunningEvals,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
@@ -57,7 +59,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
         let evals = self.eval_runner.start_if_not_running(trainers);
 
         let sending_witness = if let Some(witness) =
-            WitnessStep::get_witness_to_send(previous_round, current_round)
+            WitnessStep::get_witness_to_send(state, previous_round, current_round)
         {
             let tx_witness = self.tx_witness.clone();
             Some(tokio::task::spawn(async move {
@@ -86,9 +88,11 @@ impl WitnessStep {
     }
 
     pub fn get_witness_to_send<T: NodeIdentity>(
+        state: &Coordinator<T>,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
     ) -> Option<Witness> {
+        trace!("Coordinator step: {}", state.progress.step);
         if previous_round.sent_witness {
             return None;
         }
@@ -111,11 +115,58 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
+        let clients_len = state.epoch_state.clients.len();
+
+        let num_actual_slices = if clients_len == 0 {
+            1 // Should not happen but just in case to avoid division by zero
+        } else {
+            clients_len.div_ceil(TRAINING_TIMES_SLICE_SIZE)
+        };
+
+        let step = state.progress.step - 1; // First step is 1, so we subtract 1 to get 0-index
+
+        // Cycle through the partitions depending on the current step, based on actual client count.
+        let slice_index = if num_actual_slices == 0 {
+            0 // Should never happen but just in case
+        } else {
+            step % (num_actual_slices as u32)
+        };
+
+        // Calculate the starting index in current_round.client_times for the current slice.
+        let start_idx_in_client_times = (slice_index as usize) * TRAINING_TIMES_SLICE_SIZE;
+
+        trace!(
+            "Submitting training times for step={}, slice_index={}, offset={}, n_partitions_actual={}, clients_len={}",
+            step,
+            slice_index,
+            start_idx_in_client_times,
+            num_actual_slices,
+            clients_len,
+        );
+
+        let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new_filled(0);
+        for i in 0..(TRAINING_TIMES_SLICE_SIZE) {
+            let source_idx = start_idx_in_client_times + i;
+
+            if source_idx < clients_len {
+                training_times[i] = current_round
+                    .client_times
+                    .get(source_idx)
+                    .copied()
+                    .unwrap_or(0);
+            }
+            // If source_idx is out of bounds, training_times[i] remains 0
+        }
+
         Some(Witness {
             proof: *proof,
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
+            training_times: WitnessTrainingTimes {
+                offset: start_idx_in_client_times as u8,
+                times: training_times,
+            },
         })
     }
 }
