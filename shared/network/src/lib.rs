@@ -356,7 +356,10 @@ where
             "broadcasted gossip message with hash {message_hash}: {:?}",
             message
         );
-        tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
+        tokio::spawn(async move {
+            // tokio::time::sleep(Duration::from_secs(10)).await;
+            gossip_tx.broadcast(encoded_message).await
+        });
         Ok(())
     }
 
