@@ -51,13 +51,9 @@
         sha256 = "sha256-T4HwY8M0XMqh0rpK5zz2+n5/6FhBzLj7gtgbtJARJKg=";
       };
 
-      debianDockerImage = pkgs.dockerTools.pullImage {
-        imageName = "debian";
-        imageDigest = "sha256:90522eeb7e5923ee2b871c639059537b30521272f10ca86fdbbbb2b75a8c40cd"; # optional but recommended for reproducibility
-        finalImageTag = "bookworm-slim";
-        sha256 = "sha256-8w3qrMGmG/id87EzoE5h4gk+MNStygF+eS1j6/kSUe8=";
-      };
-
+      # We need this because the solana validator require the compiled .so files of the Solana programs,
+      # but since nix can't copy those files using a relative path because they're not tracked by git,
+      # we have to use an absolute path and mark it impure to make this work as expected.
       psycheHome = builtins.getEnv "PSYCHE_HOME";
       coordinatorSrc = builtins.path {
         path = "${psycheHome}/architectures/decentralized/solana-coordinator";
@@ -75,97 +71,137 @@
         // nixglhostRustPackages
         // rec {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-          psyche-solana-client-docker = pkgs.dockerTools.buildImage {
+          docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
             name = "nousresearch/psyche-solana-client";
             tag = "latest";
-            fromImage = cudaDockerImage;
 
             # Copy the binary and the entrypoint script into the image
-            copyToRoot = pkgs.buildEnv {
-              name = "root";
-              paths = [
-                pkgs.bashInteractive
-                nixglhostRustPackages."psyche-solana-client-nixglhost"
-                (pkgs.runCommand "entrypoint" { } ''
-                  mkdir -p $out/bin
-                  cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
-                  chmod +x $out/bin/train_entrypoint.sh
-                '')
-              ];
-              pathsToLink = [ "/bin" ];
-            };
+            contents = with pkgs; [
+              bashInteractive
+              wget
+              curl
+              cacert
+              coreutils
+              nixglhostRustPackages."psyche-solana-client-nixglhost"
+              (pkgs.runCommand "entrypoint" { } ''
+                mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
+                cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
+                chmod +x $out/bin/train_entrypoint.sh
+              '')
+            ];
 
             config = {
-              Env = [ "NVIDIA_DRIVER_CAPABILITIES=all" ];
+              Env = [
+                "NVIDIA_DRIVER_CAPABILITIES=all"
+                "LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.cudatoolkit}/lib:${pkgs.cudatoolkit.lib}/lib:${pkgs.cudaPackages.cudnn}/lib:/usr/lib64"
+              ];
               Entrypoint = [ "/bin/train_entrypoint.sh" ];
             };
           };
 
-          psyche-solana-test-client-docker = pkgs.dockerTools.buildImage {
+          docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-test-client";
             tag = "latest";
-            fromImage = cudaDockerImage;
 
-            # Copy the binary and the entrypoint script into the image
-            copyToRoot = pkgs.buildEnv {
-              name = "root";
-              paths = [
-                inputs'.solana-pkgs.packages.solana
-                pkgs.bashInteractive
-                nixglhostRustPackages."psyche-solana-client-nixglhost"
-                (pkgs.runCommand "entrypoint" { } ''
-                  mkdir -p $out/bin
-                  cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
-                  cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
-                  chmod +x $out/bin/client_test_entrypoint.sh
-                  chmod +x $out/bin/run_owner_entrypoint.sh
-                '')
-              ];
-              pathsToLink = [ "/bin" ];
-            };
+            contents = with pkgs; [
+              inputs'.solana-pkgs.packages.solana
+              bashInteractive
+              busybox
+              cacert
+              wget
+              curl
+              nixglhostRustPackages."psyche-solana-client-nixglhost"
+
+              # Create proper system structure including /tmp
+              (pkgs.runCommand "system-setup" { } ''
+                mkdir -p $out/etc $out/tmp $out/var/tmp $out/run
+
+                # Create basic passwd and group files
+                cat > $out/etc/passwd << EOF
+                  root:x:0:0:root:/root:/bin/bash
+                  nobody:x:65534:65534:nobody:/nonexistent:/bin/false
+                  EOF
+
+                cat > $out/etc/group << EOF
+                  root:x:0:
+                  nobody:x:65534:
+                  EOF
+
+                # Set proper permissions for temp directories
+                chmod 1777 $out/tmp
+                chmod 1777 $out/var/tmp
+                chmod 755 $out/run
+              '')
+
+              (pkgs.runCommand "entrypoint" { } ''
+                mkdir -p $out/bin
+                cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
+                cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
+                chmod +x $out/bin/client_test_entrypoint.sh
+                chmod +x $out/bin/run_owner_entrypoint.sh
+              '')
+            ];
 
             config = {
-              Env = [ "NVIDIA_DRIVER_CAPABILITIES=all" ];
-              Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
+              Env = [
+                "LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.cudatoolkit}/lib:${pkgs.cudatoolkit.lib}/lib:${pkgs.cudaPackages.cudnn}/lib:/usr/lib64"
+                "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
+                "NVIDIA_VISIBLE_DEVICES=all"
+              ];
+              Entrypoint = [ "/bin/client_test_entrypoint.sh" ]; # Use debug entrypoint first
             };
           };
 
-          psyche-solana-test-validator = pkgs.dockerTools.buildImage {
+          docker-psyche-solana-test-validator = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-solana-test-validator";
             tag = "latest";
-            fromImage = debianDockerImage;
 
-            # Copy the binary and the entrypoint script into the image
-            copyToRoot = pkgs.buildEnv {
-              name = "root";
-              paths = [
-                pkgs.bashInteractive
-                pkgs.bzip2
-                inputs'.solana-pkgs.packages.default
-                (pkgs.runCommand "entrypoint" { } ''
-                  mkdir -p $out/bin
-                  mkdir -p $out/local
-                  chmod 755 $out/local
-                  cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
-                  cp -r ${coordinatorSrc} $out/local
-                  cp -r ${authorizerSrc} $out/local
-                  mv $out/local/*solana-coordinator $out/local/solana-coordinator
-                  mv $out/local/*solana-authorizer $out/local/solana-authorizer
-                  chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
-                '')
-              ];
-              pathsToLink = [
-                "/bin"
-                "/local"
-              ];
-            };
+            # Use buildImage instead of streamLayeredImage for better compatibility
+            contents = with pkgs; [
+              bashInteractive
+              bzip2
+              gnutar
+              inputs'.solana-pkgs.packages.default
+              gnugrep
+              coreutils
+
+              (pkgs.runCommand "copy-solana-programs" { } ''
+                mkdir -p $out/bin
+                mkdir -p $out/local
+                chmod 755 $out/local
+                cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
+                cp -r ${coordinatorSrc} $out/local
+                cp -r ${authorizerSrc} $out/local
+                mv $out/local/*solana-coordinator $out/local/solana-coordinator
+                mv $out/local/*solana-authorizer $out/local/solana-authorizer
+                chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
+              '')
+            ];
 
             config = {
+              WorkingDir = "/tmp";
               Entrypoint = [ "/bin/psyche_solana_validator_entrypoint.sh" ];
               ExposedPorts = {
                 "8899/tcp" = { };
                 "8900/tcp" = { };
               };
+            };
+          };
+
+          docker-psyche-centralized-client = pkgs.dockerTools.streamLayeredImage {
+            name = "psyche-centralized-client";
+            tag = "latest";
+            fromImage = cudaDockerImage;
+
+            # Copy the binary and the entrypoint script into the image
+
+            contents = [
+              pkgs.bashInteractive
+              nixglhostRustPackages."psyche-centralized-client-nixglhost"
+            ];
+
+            config = {
+              Env = [ "NVIDIA_DRIVER_CAPABILITIES=all" ];
             };
           };
         };

@@ -27,8 +27,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    environment:
-      - NVIDIA_DRIVER_CAPABILITIES=all
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file:

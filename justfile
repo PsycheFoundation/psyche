@@ -1,18 +1,7 @@
+mod nix
+
 default:
     just --list
-
-# build & test & check format - what runs in CI
-check: build-all-flake-outputs
-    # run checks
-    nix flake check |& nom
-
-# build all flake outputs in one command (no checks)
-build-all-flake-outputs:
-    nix flake show --json | jq -r '\
-    	(.packages."x86_64-linux" | keys[] | ".#" + .),\
-    	(.devShells."x86_64-linux" | keys[] | ".#devShells.\"x86_64-linux\"." + .),\
-    	(.nixosConfigurations | keys[] | ".#nixosConfigurations." + . + ".config.system.build.toplevel")\
-    ' | xargs nom build
 
 # format & lint-fix code
 fmt:
@@ -21,20 +10,6 @@ fmt:
     cargo clippy --fix --allow-staged --all-targets
     cargo fmt
     nixfmt .
-
-# build the centralized client Docker image
-docker-build-centralized-client:
-    nom build .#stream-docker-psyche-centralized-client --out-link nix-results/stream-docker-psyche-centralized-client
-    nix-results/stream-docker-psyche-centralized-client | docker load
-
-# build & push the centralized client Docker image
-docker-push-centralized-client: docker-build-centralized-client
-    docker push docker.io/nousresearch/psyche-centralized-client
-
-# build the solana client Docker image
-docker-build-solana-client:
-    nom build .#stream-docker-psyche-solana-client --out-link nix-results/stream-docker-psyche-solana-client
-    nix-results/stream-docker-psyche-solana-client | docker load
 
 # spin up a local testnet
 local-testnet *args='':
@@ -120,66 +95,47 @@ generate_cli_docs:
     cargo run -p psyche-centralized-server print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-server.md
     cargo run -p psyche-centralized-local-testnet print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-local-testnet.md
 
-build_docker_test_client:
+run_docker_client *ARGS:
+    just nix build_docker_solana_client
+    docker run -d {{ ARGS }} --gpus all psyche-prod-solana-client
+
+# Setup clients assigning one available GPU to each of them.
+
+# There's no way to do this using the replicas from docker-compose file, so we have to do it manually.
+setup_gpu_clients num_clients="1":
     ./scripts/coordinator-address-check.sh
-    docker build -t psyche-base -f docker/psyche_base.Dockerfile .
-    docker build -t psyche-test-client -f docker/test/psyche_test_client.Dockerfile .
+    just nix build_docker_solana_test_client
+    ./scripts/train-multiple-gpu-localnet.sh {{ num_clients }}
 
-run_docker_test_client num_clients="1":
-    # nix build .#psyche-solana-test-validator
-    # docker load < result
-    nix build .#psyche-solana-test-client-docker
-    docker load < result
-    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up psyche-test-client -d --force-recreate
+clean_stale_images:
+    docker rmi $(docker images -f dangling=true -q)
 
-run_docker_client:
-    nix build .#psyche-solana-client-docker
-    docker load < result
-    docker run -d \
-        --env-file /home/admin/psyche/config/client/.env.local \
-        -e RAW_WALLET_PRIVATE_KEY="$(cat /home/admin/.config/solana/id.json)" \
-        --gpus all \
-        --network "host" \
-        nousresearch/psyche-solana-client:latest
+# Build & push the centralized client Docker image
+docker_push_centralized_client:
+    just nix docker_build_centralized_client
+    docker push docker.io/nousresearch/psyche-centralized-client
 
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra num_clients="1":
-    export PSYCHE_HOME = $(pwd)
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
     cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    nix build .#psyche-solana-test-client-docker
-    docker load < result
-    nix build .#psyche-solana-test-validator --impure
-    docker load < result
-    cd docker/test && docker compose build
+    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_vaidator
     cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up -d --force-recreate
 
 setup_test_infra_with_proxies_validator num_clients="1":
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
     cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    cd docker/test && docker compose build
+    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_validator
     cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
 
 setup_test_infra_three_clients:
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
     cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    cd docker/test && docker compose build
+    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_validator
     cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
 
 stop_test_infra:
-    cd docker/test &&docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
-
-# Setup clients assigning one available GPU to each of them.
-
-# There's no way to do this using the replicas from docker-compose file, so we have to do it manually.
-setup_clients num_clients="1": build_docker_test_client
-    ./scripts/train-multiple-gpu-localnet.sh {{ num_clients }}
-
-# Build the docker psyche client
-build_docker_psyche_client:
-    ./scripts/coordinator-address-check.sh
-    docker build -t psyche-base -f docker/psyche_base.Dockerfile .
-    docker build -t psyche-client -f docker/psyche_client.Dockerfile .
-
-clean_stale_images:
-    docker rmi $(docker images -f dangling=true -q)
+    cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
