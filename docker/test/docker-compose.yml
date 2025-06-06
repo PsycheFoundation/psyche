@@ -1,10 +1,4 @@
 services:
-  psyche-base:
-    image: psyche-base
-    build:
-      context: ../..
-      dockerfile: ./docker/psyche_base.Dockerfile
-
   psyche-run-owner:
     image: psyche-test-client:latest
     depends_on:
@@ -43,13 +37,7 @@ services:
       - psyche-test-network
 
   psyche-solana-test-validator:
-    image: psyche_solana_validator
-    build:
-      context: ../..
-      dockerfile: ./docker/test/psyche_solana_validator.Dockerfile
-    depends_on:
-      psyche-base:
-        condition: service_completed_successfully
+    image: psyche-solana-test-validator:latest
     ports:
       - '8899:8899'
       - '8900:8900'

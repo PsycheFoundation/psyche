@@ -148,6 +148,8 @@ setup_test_infra num_clients="1":
     cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
     nix build .#psyche-solana-test-client-docker
     docker load < result
+    nix build .#psyche-solana-test-validator --impure
+    docker load < result
     cd docker/test && docker compose build
     cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up -d --force-recreate
 

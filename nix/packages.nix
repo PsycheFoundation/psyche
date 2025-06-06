@@ -51,6 +51,13 @@
         sha256 = "sha256-T4HwY8M0XMqh0rpK5zz2+n5/6FhBzLj7gtgbtJARJKg=";
       };
 
+      debianDockerImage = pkgs.dockerTools.pullImage {
+        imageName = "debian";
+        imageDigest = "sha256:90522eeb7e5923ee2b871c639059537b30521272f10ca86fdbbbb2b75a8c40cd"; # optional but recommended for reproducibility
+        finalImageTag = "bookworm-slim";
+        sha256 = "sha256-8w3qrMGmG/id87EzoE5h4gk+MNStygF+eS1j6/kSUe8=";
+      };
+
     in
     {
       packages =
@@ -116,44 +123,34 @@
           psyche-solana-test-validator = pkgs.dockerTools.buildImage {
             name = "psyche-solana-test-validator";
             tag = "latest";
+            fromImage = debianDockerImage;
 
             # Copy the binary and the entrypoint script into the image
             copyToRoot = pkgs.buildEnv {
               name = "root";
               paths = [
-                pkgs.coreutils
-                pkgs.openssl
-                pkgs.curl
-                pkgs.wget
-                pkgs.gcc
-                pkgs.gnumake
-                pkgs.binutils
-                pkgs.glibc
-                pkgs.iproute2
                 pkgs.bashInteractive
-                pkgs.cacert
                 pkgs.bzip2
                 inputs'.solana-pkgs.packages.default
                 (pkgs.runCommand "entrypoint" { } ''
                   mkdir -p $out/bin
-                  mkdir -p $out/lib
+                  mkdir -p $out/local
+                  chmod 755 $out/local
                   cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
-                  cp -r ${../architectures/decentralized/solana-coordinator} $out/lib/solana-coordinator
-                  cp -r ${../architectures/decentralized/solana-authorizer} $out/lib/solana-authorizer
+                  cp -r ${/home/admin/psyche/architectures/decentralized/solana-coordinator} $out/local
+                  cp -r ${/home/admin/psyche/architectures/decentralized/solana-authorizer} $out/local
+                  mv $out/local/*solana-coordinator $out/local/solana-coordinator
+                  mv $out/local/*solana-authorizer $out/local/solana-authorizer
                   chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
                 '')
               ];
               pathsToLink = [
                 "/bin"
-                "/lib"
-                "/tmp"
+                "/local"
               ];
             };
 
             config = {
-              Env = [
-                "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-              ];
               Entrypoint = [ "/bin/psyche_solana_validator_entrypoint.sh" ];
               ExposedPorts = {
                 "8899/tcp" = { };
