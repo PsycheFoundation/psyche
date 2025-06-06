@@ -152,28 +152,36 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
         Ok(())
     }
 
-    pub fn retain<F>(&mut self, mut f: F)
+    pub fn retain<F>(&mut self, mut f: F) -> Vec<usize>
     where
         F: FnMut(&T) -> bool,
     {
-        let mut read = 0;
+        let mut removed_indices = Vec::new();
         let mut write = 0;
+        let original_len = self.len as usize; // Use original length for iteration bounds
 
-        while read < self.len as usize {
+        // Iterate using a separate read index up to the original length
+        for read in 0..original_len {
             if f(&self.data[read]) {
+                // If the element is kept
                 if read != write {
+                    // And it's not already in the correct place, move it
                     self.data[write] = self.data[read];
                 }
-                write += 1;
+                write += 1; // Increment write position for kept element
+            } else {
+                // If the element is removed, record its original index
+                removed_indices.push(read);
             }
-            read += 1;
         }
 
-        // zero-out the rest of the positions which are now unused
-        for i in write..self.len as usize {
+        // Zero-out the rest of the positions which are now unused
+        // This loop should go up to the original_len, not self.len, as self.len hasn't been updated yet.
+        for i in write..original_len {
             self.data[i] = T::default();
         }
-        self.len = write as u64;
+        self.len = write as u64; // Update the length to the number of kept elements
+        removed_indices
     }
 }
 
@@ -463,11 +471,12 @@ mod tests {
         vec.extend([1, 2, 3, 4, 5, 6]).unwrap();
 
         // Retain only even numbers
-        vec.retain(|x| x % 2 == 0);
+        let removed_indices = vec.retain(|x| x % 2 == 0);
         assert_eq!(vec.len(), 3);
         assert_eq!(vec[0], 2);
         assert_eq!(vec[1], 4);
         assert_eq!(vec[2], 6);
+        assert_eq!(removed_indices, vec![0, 2, 4]);
     }
 
     #[test]
