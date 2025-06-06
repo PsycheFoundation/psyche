@@ -58,6 +58,16 @@
         sha256 = "sha256-8w3qrMGmG/id87EzoE5h4gk+MNStygF+eS1j6/kSUe8=";
       };
 
+      psycheHome = builtins.getEnv "PSYCHE_HOME";
+      coordinatorSrc = builtins.path {
+        path = "${psycheHome}/architectures/decentralized/solana-coordinator";
+        name = "solana-coordinator";
+      };
+      authorizerSrc = builtins.path {
+        path = "${psycheHome}/architectures/decentralized/solana-authorizer";
+        name = "solana-authorizer";
+      };
+
     in
     {
       packages =
@@ -137,8 +147,8 @@
                   mkdir -p $out/local
                   chmod 755 $out/local
                   cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
-                  cp -r ${/home/admin/psyche/architectures/decentralized/solana-coordinator} $out/local
-                  cp -r ${/home/admin/psyche/architectures/decentralized/solana-authorizer} $out/local
+                  cp -r ${coordinatorSrc} $out/local
+                  cp -r ${authorizerSrc} $out/local
                   mv $out/local/*solana-coordinator $out/local/solana-coordinator
                   mv $out/local/*solana-authorizer $out/local/solana-authorizer
                   chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
