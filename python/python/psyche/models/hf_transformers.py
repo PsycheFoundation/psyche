@@ -9,6 +9,7 @@ from safetensors import safe_open
 from safetensors.torch import load_file as safe_load_file
 from transformers.models.auto.configuration_auto import CONFIG_MAPPING
 from torch.distributed import init_device_mesh
+from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
 from torch.distributed.tensor import DTensor, distribute_tensor
 from torch.distributed.tensor._utils import compute_local_shape_and_global_offset
@@ -18,7 +19,7 @@ torch.backends.cudnn.allow_tf32 = True
 
 
 # adapted from https://github.com/pytorch/torchtitan/blob/49c6d6fc15ef644e5c3b1003ad4e0d9ea5fcb9a9/torchtitan/parallelisms/parallel_dims.py#L48
-def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1):
+def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> DeviceMesh:
     dims = []
     names = []
     for d, name in zip(
@@ -64,9 +65,10 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1):
 
 class HfTransformersAuto(CausalLM):
 
-    def __init__(self, model, config):
+    def __init__(self, model, config, world_mesh: DeviceMesh):
         self.model = model
         self.config = config
+        self.world_mesh = world_mesh
 
     @staticmethod
     def from_pretrained(
@@ -119,6 +121,7 @@ class HfTransformersAuto(CausalLM):
         if device.type == "cuda":
             torch.cuda.set_device(device)
 
+        world_mesh = None
         if tp != 1 or dp != 1:
             # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
             world_mesh = build_mesh("cuda", dp_shard=dp)
@@ -148,7 +151,7 @@ class HfTransformersAuto(CausalLM):
                 for module in model.modules():
                     if module.__class__.__name__ in fsdp_modules:
                         fully_shard(module, **fsdp_config)
-                fully_shard(model, **fsdp_config)
+                model = fully_shard(model, **fsdp_config)
             else:
                 model = model.to(dtype=param_dtype)
         else:
@@ -201,7 +204,7 @@ class HfTransformersAuto(CausalLM):
 
             dest.copy_(source)
 
-        return HfTransformersAuto(model, config)
+        return HfTransformersAuto(model, config, world_mesh)
 
     def forward(
         self,
@@ -210,8 +213,20 @@ class HfTransformersAuto(CausalLM):
         num_logits_to_keep: Optional[int] = None,
         loss_scale: Optional[float] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        input_ids = input_ids.to(torch.long)
-        labels = None if labels is None else labels.to(torch.long)
+        # if self.world_mesh:
+        #     if self.world_mesh.mesh_dim_names:
+        #         if "dp_shard" in self.world_mesh.mesh_dim_names:
+        #             dp_shard = self.world_mesh[tuple(('dp_shard',))]
+        #             size = dp_shard.size()
+        #             rank = dp_shard.get_local_rank()
+
+        #             # do FSDP data sharding
+        #             shard_size = input_ids.shape[0] // size
+        #             start_row = rank * shard_size
+        #             input_ids = input_ids.narrow(0, start_row, shard_size).contiguous()
+        #             if labels is not None:
+        #                 labels = labels.narrow(0, start_row, shard_size).contiguous()
+
         num_logits_to_keep = 0 if num_logits_to_keep is None else num_logits_to_keep
         ret = self.model(
             input_ids,

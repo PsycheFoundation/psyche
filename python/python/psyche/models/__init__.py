@@ -58,7 +58,7 @@ def make_causal_lm(
     tp: int = 1,
     override_max_position_embeddings: Optional[int] = None,
     param_dtype: torch.dtype = torch.bfloat16,
-    reduce_dtype: torch.dtype = torch.float32,
+    reduce_dtype: torch.dtype = torch.bfloat16,
     fsdp_modules: Optional[Iterable[str]] = None,
 ) -> CausalLM:
     if not isinstance(device, torch.device):

@@ -4,7 +4,7 @@ use crate::{
     StableVariableIterator,
 };
 use anyhow::{Error, Result};
-use psyche_core::{BatchId, CancellableBarrier, LearningRateSchedule, OptimizerDefinition};
+use psyche_core::{Barrier, BatchId, LearningRateSchedule, OptimizerDefinition};
 use std::{
     collections::HashMap,
     ops::ControlFlow,
@@ -19,7 +19,12 @@ use tracing::{debug, error, trace, warn};
 #[cfg(feature = "parallelism")]
 use tch::CNCCL;
 
-pub type ParallelModels = Vec<Box<dyn CausalLM>>;
+pub struct ParallelModels {
+    pub models: Vec<Box<dyn CausalLM>>,
+    pub barrier: Arc<Box<dyn Barrier>>,
+    pub data_parallel: Option<Vec<DataParallel>>,
+}
+
 pub type DistroResults = Vec<DistroResult>;
 
 #[derive(Debug)]
@@ -39,7 +44,7 @@ impl BatchData {
     pub fn gpu(self, device: Device) -> Self {
         Self::GPU(
             match self {
-                BatchData::CPU(cpu) => Tensor::from_slice2(&cpu),
+                BatchData::CPU(cpu) => Tensor::from_slice2(&cpu).to_kind(Kind::Int64),
                 BatchData::GPU(tensor) => tensor,
             }
             .to(device),
@@ -84,7 +89,7 @@ pub struct TrainOutput {
 #[derive(Clone, Debug)]
 pub struct DataParallel {
     pub id: CommunicatorId,
-    pub barrier: Arc<CancellableBarrier>,
+    pub barrier: Arc<Box<dyn Barrier>>,
     pub rank: usize,
     pub world_size: usize,
 }
@@ -247,7 +252,7 @@ pub struct LocalTrainer {
         mpsc::Receiver<ParallelResult>,
     )>,
     first_model_device: Device,
-    barrier: Arc<CancellableBarrier>,
+    barrier: Arc<Box<dyn Barrier>>,
     data_parallel: Option<Vec<DataParallel>>,
 }
 
@@ -276,14 +281,17 @@ impl LocalTrainer {
         micro_batch_size: usize,
         stats: Option<u32>,
         grad_accum_in_fp32: bool,
-        data_parallel: Option<Vec<DataParallel>>,
     ) -> Self {
+        let ParallelModels {
+            models,
+            barrier,
+            data_parallel,
+        } = models;
+
         assert!(!models.is_empty());
         let first_model_device = models[0].device();
 
         let mut ret = Vec::with_capacity(models.len());
-
-        let barrier = CancellableBarrier::new(models.len());
 
         let data_parallels = match &data_parallel {
             Some(data_parallel) => {
@@ -334,7 +342,7 @@ impl LocalTrainer {
     fn forward_backward(
         model: &mut dyn CausalLM,
         inputs: Tensor,
-        barrier: &Arc<CancellableBarrier>,
+        barrier: &Arc<Box<dyn Barrier>>,
         loss_scale: Option<f64>,
     ) -> Result<Option<Tensor>> {
         let targets = inputs.copy();
@@ -355,7 +363,7 @@ impl LocalTrainer {
         model: &mut dyn CausalLM,
         data: &Tensor,
         labels: Option<&Tensor>,
-        barrier: &Arc<CancellableBarrier>,
+        barrier: &Arc<Box<dyn Barrier>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> Option<(Tensor, Option<Tensor>)> {
@@ -386,7 +394,6 @@ impl LocalTrainer {
         prev_self_distro_results: Option<Vec<DistroResults>>,
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
-        // println!("pid={}, LocalTrainer::train", std::process::id());
         if !rollback.is_empty() {
             error!(
                 "we have not implemented getting data from previous rounds. this should be impossible to hit.. this step is {step}, rollback passed is {:?}",
@@ -405,7 +412,7 @@ impl LocalTrainer {
             })
             .map_err(|_| TrainerThreadCommunicationError::SendCommand)?;
         }
-        // println!("pid={}, LocalTrainer::train sent assignment", std::process::id());
+
         let mut final_loss = 0.0;
         let mut final_distro_results = None;
         let mut final_cancelled = false;
@@ -520,15 +527,13 @@ impl LocalTrainer {
         index: usize,
         micro_batch_size: usize,
         lr_scheduler: LearningRateSchedule,
-        barrier: Arc<CancellableBarrier>,
+        barrier: Arc<Box<dyn Barrier>>,
         optim_stats_every_n_steps: Option<u32>,
         grad_accum_in_fp32: bool,
         data_parallel_def: Option<DataParallel>,
     ) {
         #[allow(unused_mut)]
-        let mut data_parallel: Option<(Arc<Communicator>, Arc<CancellableBarrier>)> = None;
-
-        // println!("pid={}, model_thread boot", std::process::id());
+        let mut data_parallel: Option<(Arc<Communicator>, Arc<Box<dyn Barrier>>)> = None;
 
         #[cfg(feature = "parallelism")]
         if let Some(data_parallel_def) = data_parallel_def {
@@ -566,8 +571,6 @@ impl LocalTrainer {
         }
         model.prepare_for_training();
 
-        // println!("pid={}, model_thread start loop", std::process::id());
-
         let mut grad_accum: Option<Fp32GradientAccumulator> = None;
         let mut nonce = 0;
         loop {
@@ -594,7 +597,6 @@ impl LocalTrainer {
                     // }
 
                     debug!(batch_id=%batch.id, "model thread training on batch {}", batch.id);
-                    //println!("pid={}, Got train assignment", std::process::id());
 
                     let batch_size = batch.data.size();
 
@@ -611,9 +613,15 @@ impl LocalTrainer {
                     let micro_batches = match batch.data {
                         BatchData::CPU(data) => data
                             .chunks(micro_batch_size)
-                            .map(|chunk| Tensor::from_slice2(chunk).to(model.device()))
+                            .map(|chunk| {
+                                Tensor::from_slice2(chunk)
+                                    .to(model.device())
+                                    .to_kind(Kind::Int64)
+                            })
                             .collect::<Vec<_>>(),
-                        BatchData::GPU(tensor) => tensor.chunk(grad_accum_steps as i64, 0),
+                        BatchData::GPU(tensor) => tensor
+                            .to_kind(Kind::Int64)
+                            .chunk(grad_accum_steps as i64, 0),
                     };
                     assert_eq!(micro_batches.len(), grad_accum_steps);
 
@@ -634,7 +642,6 @@ impl LocalTrainer {
                         micro_batches = grad_accum_steps,
                         "Train begin"
                     );
-                    //println!("pid={}, Train begin", std::process::id());
 
                     match &mut optimizer {
                         Optimizer::Torch { optimizer, .. } => {
@@ -644,13 +651,11 @@ impl LocalTrainer {
                             }
                         }
                         Optimizer::Distro { optimizer, .. } => {
-                            //println!("pid={}, Before zero_grad", std::process::id());
                             optimizer.zero_grad();
                             if zero_optim {
                                 optimizer.zero_optim();
                                 tracing::info!("Zeroed optimizer states");
                             }
-                            //println!("pid={}, Before error correction", std::process::id());
                             match &prev_self_distro_results {
                                 Some(_) => optimizer.error_correction(model.as_ref(), prev_lr),
                                 None => {
@@ -664,7 +669,6 @@ impl LocalTrainer {
                         Optimizer::Null => {}
                     };
 
-                    //println!("pid={}, Before micro batches", std::process::id());
                     let mut loss = None;
                     let mut cancelled = false;
                     for (index, micro_batch) in micro_batches.into_iter().enumerate() {
@@ -674,7 +678,6 @@ impl LocalTrainer {
                             warn!("Aborting training upon request");
                             break;
                         }
-                        //println!("pid={}, micro batch {}", std::process::id(), index);
                         match Self::forward_backward(
                             &mut *model,
                             micro_batch,
@@ -969,7 +972,7 @@ fn optimize_step(
     lr: f64,
     optimizer: &mut Optimizer,
     distro_results: Option<&Vec<Vec<DistroResult>>>,
-    barrier: &Arc<CancellableBarrier>,
+    barrier: &Arc<Box<dyn Barrier>>,
 ) -> ControlFlow<()> {
     match optimizer {
         Optimizer::Torch {

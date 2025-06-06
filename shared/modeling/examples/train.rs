@@ -1,10 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use psyche_core::{BatchId, CancellableBarrier, CosineLR, OptimizerDefinition, Shuffle};
+use psyche_core::{Barrier, BatchId, CancellableBarrier, CosineLR, OptimizerDefinition, Shuffle};
 use psyche_data_provider::{download_model_repo_sync, LocalDataProvider};
 use psyche_modeling::{
     auto_model_for_causal_lm_from_pretrained, Batch, BatchData, CausalLM, CommunicatorId,
-    DataParallel, LocalTrainer, ModelLoadError, Trainer,
+    DataParallel, LocalTrainer, ModelLoadError, ParallelModels, Trainer,
 };
 use psyche_tui::{init_logging, LogOutput};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
@@ -175,7 +175,7 @@ fn main() -> Result<()> {
     #[cfg(not(feature = "python"))]
     let python = false;
 
-    let data_parallel: Option<Vec<(CommunicatorId, Arc<CancellableBarrier>)>> =
+    let data_parallel: Option<Vec<(CommunicatorId, Arc<Box<dyn Barrier>>)>> =
         if args.data_parallelism.is_some() && !python {
             {
                 #[cfg(feature = "parallelism")]
@@ -185,7 +185,8 @@ fn main() -> Result<()> {
                             .map(|_| {
                                 (
                                     tch::CStore::new().into(),
-                                    CancellableBarrier::new(tp_world_size).into(),
+                                    Arc::new(Box::new(CancellableBarrier::new(tp_world_size))
+                                        as Box<dyn Barrier>),
                                 )
                             })
                             .collect(),
@@ -245,13 +246,18 @@ fn main() -> Result<()> {
                             Some(args.sequence_length),
                         )?) as Box<dyn CausalLM>];
                         Ok(LocalTrainer::new(
-                            models,
+                            ParallelModels {
+                                models,
+                                barrier: Arc::new(
+                                    Box::new(CancellableBarrier::new(1)) as Box<dyn Barrier>
+                                ),
+                                data_parallel: None,
+                            },
                             schedule.into(),
                             optimizer,
                             args.micro_batch,
                             None,
                             args.grad_accum_in_fp32,
-                            None,
                         )
                         .into())
                     }
@@ -260,9 +266,12 @@ fn main() -> Result<()> {
             trainers.push(trainer_load_handle);
         }
     } else {
+        let barrier =
+            Arc::new(Box::new(CancellableBarrier::new(tp_world_size)) as Box<dyn Barrier>);
         for dp in 0..dp_world_size {
             let repo_files = repo_files.clone();
             let data_parallel = data_parallel.clone();
+            let barrier = barrier.clone();
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     let id = if tp_world_size > 1 {
@@ -319,13 +328,16 @@ fn main() -> Result<()> {
                             .collect()
                     });
                     Ok(LocalTrainer::new(
-                        models,
+                        ParallelModels {
+                            models,
+                            barrier,
+                            data_parallel,
+                        },
                         schedule.into(),
                         optimizer,
                         args.micro_batch,
                         None,
                         args.grad_accum_in_fp32,
-                        data_parallel,
                     )
                     .into())
                 });
@@ -352,7 +364,7 @@ fn main() -> Result<()> {
             .collect();
 
         let trainings = data
-            .chunks(data.len() / trainers.len())
+            .chunks(data.len() / dp_world_size)
             .zip(trainers)
             .map(|(data, trainer)| {
                 let data = data.to_vec();

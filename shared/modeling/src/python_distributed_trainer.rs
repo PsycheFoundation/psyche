@@ -1,10 +1,10 @@
 use crate::{
     trainer::DistroResults, ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator,
-    EosToks, LocalTrainer, PythonDistributedCausalLM, StableVariableIterator,
+    EosToks, LocalTrainer, ParallelModels, PythonDistributedCausalLM, StableVariableIterator,
     TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
 };
 
-use psyche_core::{LearningRateSchedule, OptimizerDefinition};
+use psyche_core::{Barrier, CancelledBarrier, LearningRateSchedule, OptimizerDefinition};
 use pyo3::{PyErr, PyResult};
 use std::{collections::HashMap, sync::Arc};
 use tch::{Device, Tensor};
@@ -33,6 +33,29 @@ pub enum PythonDistributedTrainerError {
 
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
+}
+
+#[derive(Debug)]
+pub struct NopBarrier {}
+
+impl Barrier for NopBarrier {
+    fn wait(&self) -> Result<(), CancelledBarrier> {
+        Ok(())
+    }
+
+    fn cancel(&self) {}
+
+    fn reset(&self) {}
+
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+}
+
+impl NopBarrier {
+    pub fn new() -> Self {
+        Self {}
+    }
 }
 
 impl PythonDistributedTrainer {
@@ -64,13 +87,16 @@ impl PythonDistributedTrainer {
         let device = model.device();
         let local = Box::new(
             LocalTrainer::new(
-                vec![Box::new(model) as Box<dyn CausalLM>],
+                ParallelModels {
+                    models: vec![Box::new(model) as Box<dyn CausalLM>],
+                    barrier: Arc::new(Box::new(NopBarrier::new()) as Box<dyn Barrier>),
+                    data_parallel: None,
+                },
                 lr_scheduler,
                 optimizer,
                 micro_batch_size,
                 stats,
                 grad_accum_in_fp32,
-                None,
             )
             .into(),
         );
@@ -124,7 +150,17 @@ impl PythonDistributedTrainer {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
 
-        self.comm.broadcast(tensor)?;
+        self.comm.broadcast(&tensor)?;
+
+        // let world_size = self.comm.size();
+        // let rank = self.comm.rank();
+        // let shard_size = tensor.size()[0] / world_size as i64;
+        // let start = rank as i64 * shard_size;
+        // let local_batch_tensor = tensor.slice(0, start, start + shard_size, 1);
+        // let data: Batch = Batch {
+        //     id: data.id,
+        //     data: BatchData::GPU(local_batch_tensor),
+        // };
 
         self.local
             .train(
@@ -210,10 +246,8 @@ impl PythonDistributedTrainer {
                 .map(|x| &x[param_index].sparse_val)
                 .collect::<Vec<_>>();
             let sparse_idx = Tensor::stack(&sparse_idx, 0).to(self.device);
-            //println!("param {} sparse_idx: {:?}", param_index, sparse_idx.size());
             self.comm.broadcast(&sparse_idx)?;
             let sparse_val = Tensor::stack(&sparse_val, 0).to(self.device);
-            //println!("param {} sparse_val: {:?}", param_index, sparse_val.size());
             self.comm.broadcast(&sparse_val)?;
         }
         Ok(())

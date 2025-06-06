@@ -14,6 +14,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 pyo3 = { workspace = true, optional = true }
 pyo3-tch = { workspace = true, optional = true }
+sysinfo = "0.30"
 
 [features]
 python = ["tch/python-extension", "torch-sys/python-extension", "pyo3", "pyo3-tch", "psyche-modeling/python"]

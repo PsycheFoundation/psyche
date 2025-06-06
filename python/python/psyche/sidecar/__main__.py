@@ -2,9 +2,15 @@ import argparse
 import torch
 import json
 import torch.distributed as dist
-import psutil
 
-from .. import make_causal_lm, PretrainedSourceRepoFiles, Trainer, DistroResult
+from datetime import timedelta
+from .. import (
+    make_causal_lm,
+    PretrainedSourceRepoFiles,
+    Trainer,
+    DistroResult,
+    start_process_watcher,
+)
 from .api import (
     DistroResultsMetadata,
     Hyperparameters,
@@ -24,6 +30,7 @@ DTYPE_MAPPING = {
     11: torch.bool,
     15: torch.bfloat16,
 }
+
 
 def receive_distro_results(
     results_len: int,
@@ -79,13 +86,16 @@ def receive_distro_results(
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--parent-pid", type=int, required=True)
+    parser.add_argument("--parent-pid", type=int)
     parser.add_argument("--backend", type=str)
     parser.add_argument("--init-method", type=str)
     parser.add_argument("--world-size", type=int)
     parser.add_argument("--rank", type=int, required=True)
 
     args = parser.parse_args()
+
+    if args.parent_pid:
+        start_process_watcher(args.parent_pid, timedelta(seconds=1))
 
     dist.init_process_group(
         backend=args.backend,
@@ -111,12 +121,21 @@ def main():
     tp = int(store.get("tp").decode())
 
     device = torch.device(args.rank)
-    model = make_causal_lm(architecture, source, device, dp=dp, tp=tp)
+    model = make_causal_lm(
+        architecture,
+        source,
+        device,
+        dp=dp,
+        tp=tp,
+    )
 
     store.wait(["hyperparameters"])
     hyperparameters: Hyperparameters = Hyperparameters(
         **json.loads(store.get("hyperparameters").decode())
     )
+
+    if hyperparameters.grad_accum_in_fp32:
+        raise RuntimeError("FP32 reduce not supported in Python Hf yet")
 
     trainer = Trainer(
         args.rank,
@@ -128,10 +147,9 @@ def main():
         hyperparameters.grad_accum_in_fp32,
     )
 
-    parent_process = psutil.Process(args.parent_pid)
     iteration = 0
 
-    while parent_process.is_running():
+    while True:
         store.wait([str(iteration)])
         operation = json.loads(store.get(str(iteration)).decode())
 
@@ -146,8 +164,14 @@ def main():
                     device=device,
                 )
 
-            batch = torch.empty(train.batch_shape, dtype=torch.int, device=device)
+            batch = torch.empty(train.batch_shape, dtype=torch.long, device=device)
             dist.broadcast(batch, 0)
+
+            # world_size = dist.get_world_size()
+            # rank = dist.get_rank()
+            # shard_size = batch.shape[0] // world_size
+            # start_row = rank * shard_size
+            # local_batch = batch.narrow(0, start_row, shard_size).contiguous()
 
             trainer.train(
                 train.step,

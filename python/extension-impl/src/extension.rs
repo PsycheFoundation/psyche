@@ -1,10 +1,13 @@
-use psyche_core::{BatchId, ClosedInterval, LearningRateSchedule, OptimizerDefinition};
-use psyche_modeling::{Batch, BatchData, CausalLM, PythonCausalLM};
+use psyche_core::{Barrier, BatchId, ClosedInterval, LearningRateSchedule, OptimizerDefinition};
+use psyche_modeling::{
+    Batch, BatchData, CausalLM, ParallelModels, PythonCausalLM, NopBarrier,
+};
 use psyche_tui::LogOutput;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3_tch::{wrap_tch_err, PyTensor};
-use std::{cell::Cell, ops::Deref};
+use std::{cell::Cell, ops::Deref, sync::Arc, time::Duration};
+use sysinfo::{Pid, System};
 use tokio_util::sync::CancellationToken;
 use tracing::Level;
 
@@ -18,6 +21,22 @@ fn add_one(tensor: PyTensor) -> PyResult<PyTensor> {
 fn init_logging() -> PyResult<()> {
     let _ = psyche_tui::init_logging(LogOutput::Console, Level::INFO, None, false, None)
         .map_err(|err| PyRuntimeError::new_err(format!("{}", err)))?;
+    Ok(())
+}
+
+#[pyfunction]
+fn start_process_watcher(pid: usize, duration: Duration) -> PyResult<()> {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(duration);
+        let mut system = System::new_all();
+        if !system.refresh_process(Pid::from(pid)) {
+            println!("Parent process {pid} gone, exiting");
+            system
+                .process(Pid::from_u32(std::process::id()))
+                .unwrap()
+                .kill();
+        }
+    });
     Ok(())
 }
 
@@ -99,7 +118,7 @@ impl Trainer {
         let config: serde_json::Value = serde_json::from_str(config_json)
             .map_err(|err| PyRuntimeError::new_err(format!("{}", err)))?;
         let models = vec![
-            Box::new(PythonCausalLM::from_python(causal_lm, device, config)) as Box<dyn CausalLM>,
+            Box::new(PythonCausalLM::from_python(causal_lm, device.clone(), config)) as Box<dyn CausalLM>,
         ];
 
         let lr_scheduler: LearningRateSchedule = serde_json::from_str(lr_scheduler_json)
@@ -108,13 +127,16 @@ impl Trainer {
             .map_err(|err| PyRuntimeError::new_err(format!("{}", err)))?;
 
         let trainer = psyche_modeling::LocalTrainer::new(
-            models,
+            ParallelModels {
+                models,
+                barrier: Arc::new(Box::new(NopBarrier::new()) as Box<dyn Barrier>),
+                data_parallel: None,
+            },
             lr_scheduler,
             optimizer,
             micro_batch_size,
             None,
             grad_accum_in_fp32,
-            None,
         );
 
         Ok(Self {
@@ -202,6 +224,7 @@ pub fn psyche(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     py.import_bound("torch")?;
     m.add_function(wrap_pyfunction!(add_one, m)?)?;
     m.add_function(wrap_pyfunction!(init_logging, m)?)?;
+    m.add_function(wrap_pyfunction!(start_process_watcher, m)?)?;
     m.add_class::<Trainer>()?;
     m.add_class::<DistroResult>()?;
     Ok(())

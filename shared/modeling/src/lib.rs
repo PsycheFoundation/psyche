@@ -49,7 +49,7 @@ pub use python_causal_lm::PythonCausalLM;
 #[cfg(feature = "python")]
 pub use python_distributed_causal_lm::{PythonDistributedCausalLM, TorchDistributedCommunicator};
 #[cfg(feature = "python")]
-pub use python_distributed_trainer::PythonDistributedTrainer;
+pub use python_distributed_trainer::{PythonDistributedTrainer, NopBarrier};
 pub use rms_norm::RMSNorm;
 pub use rope::{default_rope, rotate_half, yarn_get_mscale, RoPECache, RoPEConfig, RoPEType};
 pub use safetensor_utils::{

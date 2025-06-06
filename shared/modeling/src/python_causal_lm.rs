@@ -170,7 +170,6 @@ impl CausalLM for PythonCausalLM {
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        // println!("pid={}, PythonCausalLM::forward", std::process::id());
         let result: PyResult<(Tensor, Option<Tensor>)> = Python::with_gil(|py| {
             let causal_lm = self.causal_lm.bind(py);
             let forward = causal_lm.getattr("forward")?;
@@ -186,10 +185,14 @@ impl CausalLM for PythonCausalLM {
                 false => Some(loss.extract::<PyTensor>()?),
             }
             .map(|x| x.0);
-            //println!("pid={}, loss={:?}", std::process::id(), loss);
             Ok((logits.0, loss))
         });
-        result.unwrap()
+        match result {
+            Ok(result) => result,
+            Err(err) => {
+                panic!("Error in python forward: {}", err);
+            }
+        }
     }
 
     fn device(&self) -> Device {
@@ -234,7 +237,7 @@ impl CausalLM for PythonCausalLM {
                     false => Ok(x.python.clone()),
                 })
                 .collect();
-            println!("pid={}, clip_grad_norm", std::process::id());
+            // println!("pid={}, clip_grad_norm", std::process::id());
             clip_grad_norm.call1((tensors.unwrap(), max_grad_norm))?;
             Ok(())
         });
