@@ -1,21 +1,9 @@
 services:
-  psyche-base:
-    image: psyche-base
-    build:
-      context: ../../..
-      dockerfile: ./docker/psyche_base.Dockerfile
-
   psyche-run-owner:
-    #container_name: test-psyche-run-owner
-    image: psyche-test-client
-    build:
-      context: ../../..
-      dockerfile: ./docker/test/psyche_test_client.Dockerfile
+    image: psyche-test-client:latest
     depends_on:
       psyche-solana-test-validator:
         condition: service_started
-      psyche-base:
-        condition: service_completed_successfully
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file:
@@ -29,14 +17,9 @@ services:
 
   psyche-test-client-1:
     container_name: test-psyche-test-client-1
-    image: psyche-test-client
-    build:
-      context: ../../..
-      dockerfile: ./docker/test/psyche_test_client.Dockerfile
+    image: psyche-test-client:latest
     depends_on:
       psyche-run-owner:
-        condition: service_completed_successfully
-      psyche-base:
         condition: service_completed_successfully
     deploy:
       resources:
@@ -54,14 +37,9 @@ services:
 
   psyche-test-client-2:
     container_name: test-psyche-test-client-2
-    image: psyche-test-client
-    build:
-      context: ../../..
-      dockerfile: ./docker/test/psyche_test_client.Dockerfile
+    image: psyche-test-client:latest
     depends_on:
       psyche-run-owner:
-        condition: service_completed_successfully
-      psyche-base:
         condition: service_completed_successfully
     deploy:
       resources:
@@ -79,14 +57,9 @@ services:
 
   psyche-test-client-3:
     container_name: test-psyche-test-client-3
-    image: psyche-test-client
-    build:
-      context: ../../..
-      dockerfile: ./docker/test/psyche_test_client.Dockerfile
+    image: psyche-test-client:latest
     depends_on:
       psyche-run-owner:
-        condition: service_completed_successfully
-      psyche-base:
         condition: service_completed_successfully
     deploy:
       resources:
@@ -104,12 +77,6 @@ services:
 
   psyche-solana-test-validator:
     image: psyche_solana_validator
-    build:
-      context: ../../..
-      dockerfile: ./docker/test/psyche_solana_validator.Dockerfile
-    depends_on:
-      psyche-base:
-        condition: service_completed_successfully
     ports:
       - '8899:8899'
       - '8900:8900'
