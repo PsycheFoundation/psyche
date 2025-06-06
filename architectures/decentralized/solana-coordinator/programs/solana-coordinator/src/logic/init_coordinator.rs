@@ -77,8 +77,6 @@ pub fn init_coordinator_processor(
     account.state.coordinator.run_id =
         FixedString::from_str_truncated(&params.run_id);
 
-    account.state.coordinator.client_training_times = FixedVec::new_filled(0);
-    account.state.coordinator.client_batch_sizes = FixedVec::new_filled(0);
     // Done
     Ok(())
 }

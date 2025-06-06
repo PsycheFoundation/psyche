@@ -144,16 +144,16 @@ impl WitnessStep {
             clients_len,
         );
 
-        let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new_filled(0);
+        let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new();
         for i in 0..(TRAINING_TIMES_SLICE_SIZE) {
             let source_idx = start_idx_in_client_times + i;
 
             if source_idx < clients_len {
-                training_times[i] = current_round
+                let _ = training_times.push(current_round
                     .client_times
                     .get(source_idx)
                     .copied()
-                    .unwrap_or(0);
+                    .unwrap_or(0));
             }
             // If source_idx is out of bounds, training_times[i] remains 0
         }

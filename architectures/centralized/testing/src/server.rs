@@ -94,8 +94,6 @@ impl CoordinatorServer {
             model: Model::LLM(LLM::dummy()),
             config: coordinator_config,
             epoch_state,
-            client_training_times: FixedVec::new_filled(0),
-            client_batch_sizes: FixedVec::new_filled(0),
             ..Coordinator::<ClientId>::zeroed()
         };
 
