@@ -1011,7 +1011,8 @@ impl<T: NodeIdentity> Coordinator<T> {
         let current_round = self.current_round_unchecked();
         let height = current_round.height;
         let num_witnesses = current_round.witnesses.len() as u16;
-        self.move_clients_to_exited(height);
+
+        let removed_client_indices = self.move_clients_to_exited(height);
 
         // If there are not witnesses, then we can't distinguish from
         // the situation where only witness nodes disconnected or everyone
@@ -1027,17 +1028,26 @@ impl<T: NodeIdentity> Coordinator<T> {
         let witnesses = &self.current_round_unchecked().witnesses;
         for witness in witnesses.iter() {
             msg!(
-                "witness {} reported times: {:?} offset={}",
+                "[tick_round_witness] witness {} reported times: {:?} offset={}",
                 witness.proof.index,
                 witness.training_times.times,
                 witness.training_times.offset,
             );
         }
 
+        /*msg!(
+            "[tick_round_witness]: step={}, current clients: {}",
+            self.progress.step,
+            self.epoch_state.clients.len()
+        );*/
+
         let mut client_times_last_index_updated = 0;
-        if let Some(agreed_values) = self.get_consensus_on_reported_times(witnesses, 1.0 / 3.0, 5.0)
+        if let Some(mut agreed_values) =
+            self.get_consensus_on_reported_times(witnesses, 1.0 / 3.0, 5.0)
         {
-            dbg!("Consensus reached. Saving values");
+            for i in removed_client_indices {
+                agreed_values.remove(i);
+            }
 
             let start_offset_in_global_times = witnesses[0].training_times.offset;
             msg!(
@@ -1201,9 +1211,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         self.run_state = new_state;
     }
 
-    fn move_clients_to_exited(&mut self, height: u32) {
+    fn move_clients_to_exited(&mut self, height: u32) -> Vec<usize> {
         // WARNING: O(n) on number of clients, need to refactor
-        self.epoch_state.clients.retain(|x| {
+        let removed_indices = self.epoch_state.clients.retain(|x| {
             if x.state != ClientState::Healthy {
                 self.epoch_state.exited_clients.push(*x).unwrap();
                 self.epoch_state
@@ -1216,6 +1226,17 @@ impl<T: NodeIdentity> Coordinator<T> {
                 true
             }
         });
+
+        // We need to adjust these as well so they match the new clients list
+        for index in &removed_indices {
+            self.client_training_times.remove(*index);
+            let _ = self.client_training_times.push(0); // To mantain the same length
+
+            self.client_batch_sizes.remove(*index);
+            let _ = self.client_batch_sizes.push(0);
+        }
+
+        removed_indices
     }
 
     pub fn is_warmup_just_starting(&self) -> bool {
@@ -1241,7 +1262,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Some(witnesses[0].training_times.times.into());
         }
 
-        let mut agreed_values: Vec<u16> = Vec::with_capacity(TRAINING_TIMES_SLICE_SIZE);
+        let mut agreed_values: Vec<u16> = Vec::with_capacity(self.epoch_state.clients.len());
 
         for i in 0..TRAINING_TIMES_SLICE_SIZE {
             // --- Boyer-Moore to find a candidate (among non-zero values) ---

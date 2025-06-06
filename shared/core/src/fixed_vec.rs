@@ -151,10 +151,11 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
         Ok(())
     }
 
-    pub fn retain<F>(&mut self, mut f: F)
+    pub fn retain<F>(&mut self, mut f: F) -> Vec<usize>
     where
         F: FnMut(&T) -> bool,
     {
+        let mut removed_indices = Vec::new();
         let mut read = 0;
         let mut write = 0;
 
@@ -162,6 +163,7 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
             if f(&self.data[read]) {
                 if read != write {
                     self.data[write] = self.data[read];
+                    removed_indices.push(read);
                 }
                 write += 1;
             }
@@ -173,6 +175,7 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
             self.data[i] = T::default();
         }
         self.len = write as u64;
+        removed_indices
     }
 }
 
@@ -462,11 +465,12 @@ mod tests {
         vec.extend([1, 2, 3, 4, 5, 6]).unwrap();
 
         // Retain only even numbers
-        vec.retain(|x| x % 2 == 0);
+        let removed_indices = vec.retain(|x| x % 2 == 0);
         assert_eq!(vec.len(), 3);
         assert_eq!(vec[0], 2);
         assert_eq!(vec[1], 4);
         assert_eq!(vec[2], 6);
+        assert_eq!(removed_indices, vec![0, 2, 4]);
     }
 
     #[test]
