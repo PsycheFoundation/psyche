@@ -144,7 +144,7 @@ run_docker_client:
 
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra num_clients="1":
-    export PSYCHE_HOME = $(pwd)
+    export PSYCHE_HOME=$(pwd)
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
     cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
     nix build .#psyche-solana-test-client-docker
