@@ -3,7 +3,7 @@ use psyche_coordinator::{
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
     Coordinator, HealthChecks,
 };
-use psyche_core::{CancellableBarrier, NodeIdentity, TokenSize};
+use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, TokenSize};
 use psyche_data_provider::{
     download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
@@ -481,7 +481,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         for model in models {
             if tp_models
                 .last()
-                .map(|x: &ParallelModels| x.len() == init_config.tensor_parallelism)
+                .map(|x| x.len() == init_config.tensor_parallelism)
                 .unwrap_or(true)
             {
                 tp_models.push(Vec::with_capacity(init_config.tensor_parallelism));
@@ -495,7 +495,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let data_fetcher =
             DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
 
-        let data_parallel: Option<Vec<(CommunicatorId, Arc<CancellableBarrier>)>> =
+        let data_parallel: Option<Vec<(CommunicatorId, Arc<dyn Barrier>)>> =
             if init_config.data_parallelism > 1 {
                 #[cfg(feature = "parallelism")]
                 {
@@ -504,7 +504,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             .map(|_| {
                                 (
                                     tch::CStore::new().into(),
-                                    CancellableBarrier::new(init_config.tensor_parallelism),
+                                    Arc::new(CancellableBarrier::new(
+                                        init_config.tensor_parallelism,
+                                    )) as Arc<dyn Barrier>,
                                 )
                             })
                             .collect(),
@@ -534,14 +536,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         })
                         .collect()
                 });
+                let barrier = Arc::new(CancellableBarrier::new(init_config.tensor_parallelism))
+                    as Arc<dyn Barrier>;
                 LocalTrainer::new(
-                    models,
+                    ParallelModels {
+                        models,
+                        barrier,
+                        data_parallel,
+                    },
                     llm.lr_schedule,
                     llm.optimizer,
                     init_config.micro_batch_size,
                     init_config.optim_stats_every_n_steps,
                     init_config.grad_accum_in_fp32,
-                    data_parallel,
                 )
                 .into()
             })

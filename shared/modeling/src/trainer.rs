@@ -21,7 +21,7 @@ use tch::CNCCL;
 
 pub struct ParallelModels {
     pub models: Vec<Box<dyn CausalLM>>,
-    pub barrier: Arc<Box<dyn Barrier>>,
+    pub barrier: Arc<dyn Barrier>,
     pub data_parallel: Option<Vec<DataParallel>>,
 }
 
@@ -89,7 +89,7 @@ pub struct TrainOutput {
 #[derive(Clone, Debug)]
 pub struct DataParallel {
     pub id: CommunicatorId,
-    pub barrier: Arc<Box<dyn Barrier>>,
+    pub barrier: Arc<dyn Barrier>,
     pub rank: usize,
     pub world_size: usize,
 }
@@ -252,7 +252,7 @@ pub struct LocalTrainer {
         mpsc::Receiver<ParallelResult>,
     )>,
     first_model_device: Device,
-    barrier: Arc<Box<dyn Barrier>>,
+    barrier: Arc<dyn Barrier>,
     data_parallel: Option<Vec<DataParallel>>,
 }
 
@@ -342,7 +342,7 @@ impl LocalTrainer {
     fn forward_backward(
         model: &mut dyn CausalLM,
         inputs: Tensor,
-        barrier: &Arc<Box<dyn Barrier>>,
+        barrier: &Arc<dyn Barrier>,
         loss_scale: Option<f64>,
     ) -> Result<Option<Tensor>> {
         let targets = inputs.copy();
@@ -363,7 +363,7 @@ impl LocalTrainer {
         model: &mut dyn CausalLM,
         data: &Tensor,
         labels: Option<&Tensor>,
-        barrier: &Arc<Box<dyn Barrier>>,
+        barrier: &Arc<dyn Barrier>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> Option<(Tensor, Option<Tensor>)> {
@@ -527,13 +527,13 @@ impl LocalTrainer {
         index: usize,
         micro_batch_size: usize,
         lr_scheduler: LearningRateSchedule,
-        barrier: Arc<Box<dyn Barrier>>,
+        barrier: Arc<dyn Barrier>,
         optim_stats_every_n_steps: Option<u32>,
         grad_accum_in_fp32: bool,
         data_parallel_def: Option<DataParallel>,
     ) {
         #[allow(unused_mut)]
-        let mut data_parallel: Option<(Arc<Communicator>, Arc<Box<dyn Barrier>>)> = None;
+        let mut data_parallel: Option<(Arc<Communicator>, Arc<dyn Barrier>)> = None;
 
         #[cfg(feature = "parallelism")]
         if let Some(data_parallel_def) = data_parallel_def {
@@ -972,7 +972,7 @@ fn optimize_step(
     lr: f64,
     optimizer: &mut Optimizer,
     distro_results: Option<&Vec<Vec<DistroResult>>>,
-    barrier: &Arc<Box<dyn Barrier>>,
+    barrier: &Arc<dyn Barrier>,
 ) -> ControlFlow<()> {
     match optimizer {
         Optimizer::Torch {

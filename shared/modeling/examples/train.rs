@@ -175,7 +175,7 @@ fn main() -> Result<()> {
     #[cfg(not(feature = "python"))]
     let python = false;
 
-    let data_parallel: Option<Vec<(CommunicatorId, Arc<Box<dyn Barrier>>)>> =
+    let data_parallel: Option<Vec<(CommunicatorId, Arc<dyn Barrier>)>> =
         if args.data_parallelism.is_some() && !python {
             {
                 #[cfg(feature = "parallelism")]
@@ -185,8 +185,8 @@ fn main() -> Result<()> {
                             .map(|_| {
                                 (
                                     tch::CStore::new().into(),
-                                    Arc::new(Box::new(CancellableBarrier::new(tp_world_size))
-                                        as Box<dyn Barrier>),
+                                    Arc::new(CancellableBarrier::new(tp_world_size))
+                                        as Arc<dyn Barrier>,
                                 )
                             })
                             .collect(),
@@ -248,9 +248,7 @@ fn main() -> Result<()> {
                         Ok(LocalTrainer::new(
                             ParallelModels {
                                 models,
-                                barrier: Arc::new(
-                                    Box::new(CancellableBarrier::new(1)) as Box<dyn Barrier>
-                                ),
+                                barrier: Arc::new(CancellableBarrier::new(1)) as Arc<dyn Barrier>,
                                 data_parallel: None,
                             },
                             schedule.into(),
@@ -266,8 +264,7 @@ fn main() -> Result<()> {
             trainers.push(trainer_load_handle);
         }
     } else {
-        let barrier =
-            Arc::new(Box::new(CancellableBarrier::new(tp_world_size)) as Box<dyn Barrier>);
+        let barrier = Arc::new(CancellableBarrier::new(tp_world_size)) as Arc<dyn Barrier>;
         for dp in 0..dp_world_size {
             let repo_files = repo_files.clone();
             let data_parallel = data_parallel.clone();

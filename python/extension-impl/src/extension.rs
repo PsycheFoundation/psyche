@@ -1,7 +1,5 @@
 use psyche_core::{Barrier, BatchId, ClosedInterval, LearningRateSchedule, OptimizerDefinition};
-use psyche_modeling::{
-    Batch, BatchData, CausalLM, ParallelModels, PythonCausalLM, NopBarrier,
-};
+use psyche_modeling::{Batch, BatchData, CausalLM, NopBarrier, ParallelModels, PythonCausalLM};
 use psyche_tui::LogOutput;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -117,9 +115,11 @@ impl Trainer {
         let device = tch::Device::from_c_int(device);
         let config: serde_json::Value = serde_json::from_str(config_json)
             .map_err(|err| PyRuntimeError::new_err(format!("{}", err)))?;
-        let models = vec![
-            Box::new(PythonCausalLM::from_python(causal_lm, device.clone(), config)) as Box<dyn CausalLM>,
-        ];
+        let models = vec![Box::new(PythonCausalLM::from_python(
+            causal_lm,
+            device.clone(),
+            config,
+        )) as Box<dyn CausalLM>];
 
         let lr_scheduler: LearningRateSchedule = serde_json::from_str(lr_scheduler_json)
             .map_err(|err| PyRuntimeError::new_err(format!("{}", err)))?;
@@ -129,7 +129,7 @@ impl Trainer {
         let trainer = psyche_modeling::LocalTrainer::new(
             ParallelModels {
                 models,
-                barrier: Arc::new(Box::new(NopBarrier::new()) as Box<dyn Barrier>),
+                barrier: Arc::new(NopBarrier::new()) as Arc<dyn Barrier>,
                 data_parallel: None,
             },
             lr_scheduler,

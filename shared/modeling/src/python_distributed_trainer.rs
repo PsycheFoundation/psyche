@@ -89,7 +89,7 @@ impl PythonDistributedTrainer {
             LocalTrainer::new(
                 ParallelModels {
                     models: vec![Box::new(model) as Box<dyn CausalLM>],
-                    barrier: Arc::new(Box::new(NopBarrier::new()) as Box<dyn Barrier>),
+                    barrier: Arc::new(NopBarrier::new()) as Arc<dyn Barrier>,
                     data_parallel: None,
                 },
                 lr_scheduler,
