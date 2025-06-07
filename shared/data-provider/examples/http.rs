@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use psyche_data_provider::{
     http::{FileURLs, HttpDataProvider},
-    TokenizedDataProvider,
+    TokenizedDataProvider, WeightedDataProvider,
 };
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
@@ -26,6 +26,9 @@ struct Cli {
     /// Optional tokenizer path for decoding output
     #[arg(long)]
     tokenizer: Option<PathBuf>,
+
+    #[arg(long)]
+    use_weighted: bool,
 
     /// Where to pull samples from
     #[command(subcommand)]
@@ -95,8 +98,10 @@ async fn main() -> Result<()> {
             directory,
         } => FileURLs::from_gcp_bucket(&bucket_name, directory).await?,
     };
-    let mut provider =
+    let provider =
         HttpDataProvider::new(urls, token_size, cli.sequence_length, Shuffle::DontShuffle)?;
+
+    let mut provider = WeightedDataProvider::new(vec![provider], Shuffle::DontShuffle);
 
     let tokenizer = cli.tokenizer.map(|tokenizer_path: PathBuf| {
         Tokenizer::from_file(tokenizer_path).expect("tokenizer exists")

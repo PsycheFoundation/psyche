@@ -1,8 +1,11 @@
+use std::{mem, sync::atomic::AtomicUsize};
+
 use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
 use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use rand::{seq::SliceRandom, Rng, SeedableRng};
+use rand_chacha::{ChaCha20Rng, ChaCha8Rng};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 pub mod http;
 pub struct WeightedDataProvider<T: TokenizedDataProvider + LengthKnownDataProvider> {
@@ -181,50 +184,51 @@ fn build_weighted_index(
     weights: &[f64],
     dataset_sizes: &[usize],
 ) -> (Vec<usize>, Vec<u64>) {
-    let num_providers = weights.len();
+    // todo: improve this computation to ensure we don't need to compute this sum
+    // and maybe try to gaurantee norm_weights add to 1
+    let weights_sum: f64 = weights.iter().sum();
+    let norm_weights: Vec<f64> = weights.iter().map(|weight| weight / weights_sum).collect();
+
+    let data_idx_sequences = dataset_sizes
+        .iter()
+        .zip(norm_weights.iter())
+        .map(|(dataset_size, norm_weight)| {
+            let mut data_seq: Vec<_> = (0..*dataset_size).collect();
+            //todo: this is so bad T_T do we need to cryptanalyze this?
+            let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
+            data_seq.shuffle(&mut rng);
+
+            data_seq
+        })
+        .collect::<Vec<_>>();
+
     let mut dataset_index = Vec::with_capacity(n_samples);
     let mut dataset_sample_index = Vec::with_capacity(n_samples);
 
-    let mut total_samples_drawn = vec![0u64; num_providers];
-    let mut next_unique_index = vec![0u64; num_providers];
-    let mut is_exhausted = vec![false; num_providers];
+    let num_weights = norm_weights.len();
 
-    for sample_idx in 0..n_samples {
-        let sample_idx_float = (sample_idx as f64).max(1.0);
-
-        // select provider based on weighted error
-        let mut max_error = f64::NEG_INFINITY;
-        let mut chosen_provider_idx = 0;
-        for i in 0..num_providers {
-            if dataset_sizes[i] == 0 {
-                continue;
-            }
-            let error = weights[i] * sample_idx_float - total_samples_drawn[i] as f64;
-            if error > max_error {
-                max_error = error;
-                chosen_provider_idx = i;
-            }
-        }
-
-        // determine the sample index
-        let provider_size = dataset_sizes[chosen_provider_idx] as u64;
-        let sample_to_yield: u64;
-
-        if !is_exhausted[chosen_provider_idx] {
-            sample_to_yield = next_unique_index[chosen_provider_idx];
-            next_unique_index[chosen_provider_idx] += 1;
-
-            if next_unique_index[chosen_provider_idx] == provider_size {
-                is_exhausted[chosen_provider_idx] = true;
+    for (idx, norm_weight) in norm_weights.into_iter().enumerate() {
+        //todo: this is to bad, fix this. this logic is just to ensure we return exactly n_samples samples
+        if idx != num_weights {
+            for i in 0..(n_samples as f64 * norm_weight) as usize {
+                dataset_index.push(idx);
+                let size = data_idx_sequences[idx].len();
+                dataset_sample_index.push(data_idx_sequences[idx][i % size] as u64);
             }
         } else {
-            sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
+            let curr_len = dataset_index.len();
+            // if due to rounding we already have too many samples, just truncate and break out of the loop
+            if curr_len > n_samples {
+                dataset_index.truncate(n_samples);
+                dataset_sample_index.truncate(n_samples);
+                break;
+            }
+            for i in 0..n_samples - curr_len {
+                dataset_index.push(idx);
+                let size = data_idx_sequences[idx].len();
+                dataset_sample_index.push(data_idx_sequences[idx][i % size] as u64);
+            }
         }
-
-        dataset_index.push(chosen_provider_idx);
-        dataset_sample_index.push(sample_to_yield);
-
-        total_samples_drawn[chosen_provider_idx] += 1;
     }
 
     (dataset_index, dataset_sample_index)
