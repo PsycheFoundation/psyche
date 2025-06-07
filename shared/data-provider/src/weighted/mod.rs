@@ -185,7 +185,7 @@ fn build_weighted_index(
     dataset_sizes: &[usize],
 ) -> (Vec<usize>, Vec<u64>) {
     // todo: improve this computation to ensure we don't need to compute this sum
-    // and maybe try to gaurantee they add to 1
+    // and maybe try to gaurantee norm_weights add to 1
     let weights_sum: f64 = weights.iter().sum();
     let norm_weights: Vec<f64> = weights.iter().map(|weight| weight / weights_sum).collect();
 
