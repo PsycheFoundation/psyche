@@ -1,8 +1,10 @@
+use std::{mem, sync::atomic::AtomicUsize};
+
 use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
 use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use rand::{seq::SliceRandom, Rng, SeedableRng};
+use rand_chacha::{ChaCha20Rng, ChaCha8Rng};
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 pub mod http;
@@ -182,68 +184,53 @@ fn build_weighted_index(
     weights: &[f64],
     dataset_sizes: &[usize],
 ) -> (Vec<usize>, Vec<u64>) {
-    // ensure chunk_size !=0
-    if n_samples == 0 {
-        return (Vec::new(), Vec::new());
-    }
-    let num_providers = weights.len();
+    // todo: improve this computation to ensure we don't need to compute this sum
+    // and maybe try to gaurantee they add to 1
+    let weights_sum: f64 = weights.iter().sum();
+    let norm_weights: Vec<f64> = weights.iter().map(|weight| weight / weights_sum).collect();
+
+    let data_idx_sequences = dataset_sizes
+        .iter()
+        .zip(norm_weights.iter())
+        .map(|(dataset_size, norm_weight)| {
+            let mut data_seq: Vec<_> = (0..*dataset_size).collect();
+            //todo: this is so bad T_T do we need to cryptanalyze this?
+            let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
+            data_seq.shuffle(&mut rng);
+
+            data_seq
+        })
+        .collect::<Vec<_>>();
+
     let mut dataset_index = Vec::with_capacity(n_samples);
     let mut dataset_sample_index = Vec::with_capacity(n_samples);
-    const NUM_BATCHES: usize = 2;
-    // ensure we have the same number of sample counts as chunks
-    let total_samples_drawn = if n_samples % NUM_BATCHES == 0 {
-        vec![vec![0u64; num_providers]; NUM_BATCHES]
-    } else {
-        vec![vec![0u64; num_providers]; NUM_BATCHES + 1]
-    };
 
-    //todo: fix this calculation - it can introduce an extra chunk at the end if n_samples %NUM_BATCHES!=0 (the remaining elements)
-    let chunk_size = if n_samples / NUM_BATCHES == 0 {
-        n_samples
-    } else {
-        n_samples / NUM_BATCHES
-    };
+    let num_weights = norm_weights.len();
 
-    let chunks_iter = (0..n_samples).into_par_iter().chunks(chunk_size);
-
-    let samples: Vec<_> = total_samples_drawn
-        .into_par_iter()
-        .zip(chunks_iter)
-        .map(|(mut total_samples_drawn, samples)| {
-            let mut dataset_idx_and_sample_idx = Vec::with_capacity(samples.len());
-            
-            for sample_idx in samples {
-                let sample_idx_float = (sample_idx as f64).max(1.0);
-
-                // select provider based on weighted error
-                let mut max_error = f64::NEG_INFINITY;
-                let mut chosen_provider_idx = 0;
-                for i in 0..num_providers {
-                    if dataset_sizes[i] == 0 {
-                        continue;
-                    }
-                    let error = weights[i] * sample_idx_float - total_samples_drawn[i] as f64;
-                    if error > max_error {
-                        max_error = error;
-                        chosen_provider_idx = i;
-                    }
-                }
-
-                // determine the sample index
-                let provider_size = dataset_sizes[chosen_provider_idx] as u64;
-                let sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
-
-                dataset_idx_and_sample_idx.push((chosen_provider_idx, sample_to_yield));
-                total_samples_drawn[chosen_provider_idx] += 1;
+    for (idx, norm_weight) in norm_weights.into_iter().enumerate() {
+        //todo: this is to bad, fix this. this logic is just to ensure we return exactly n_samples samples
+        if idx != num_weights {
+            for i in 0..(n_samples as f64 * norm_weight) as usize {
+                dataset_index.push(idx);
+                let size = data_idx_sequences[idx].len();
+                dataset_sample_index.push(data_idx_sequences[idx][i % size] as u64);
             }
-            dataset_idx_and_sample_idx
-        })
-        .collect();
-
-    for (dataset_idx, sample_idx) in samples.iter().map(|subvec| subvec.iter()).flatten() {
-        dataset_index.push(*dataset_idx);
-        dataset_sample_index.push(*sample_idx);
+        } else {
+            let curr_len = dataset_index.len();
+            // if due to rounding we already have too many samples, just truncate and break out of the loop
+            if curr_len > n_samples {
+                dataset_index.truncate(n_samples);
+                dataset_sample_index.truncate(n_samples);
+                break;
+            }
+            for i in 0..n_samples - curr_len {
+                dataset_index.push(idx);
+                let size = data_idx_sequences[idx].len();
+                dataset_sample_index.push(data_idx_sequences[idx][i % size] as u64);
+            }
+        }
     }
+
     (dataset_index, dataset_sample_index)
 }
 
