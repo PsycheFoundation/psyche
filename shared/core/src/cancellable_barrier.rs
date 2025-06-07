@@ -1,7 +1,17 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::{
+    fmt::Debug,
+    sync::{Condvar, Mutex},
+};
 
 #[derive(Debug)]
 pub struct CancelledBarrier {}
+
+pub trait Barrier: Send + Sync + Debug {
+    fn wait(&self) -> Result<(), CancelledBarrier>;
+    fn cancel(&self);
+    fn reset(&self);
+    fn is_cancelled(&self) -> bool;
+}
 
 #[derive(Debug)]
 pub struct CancellableBarrier {
@@ -18,9 +28,9 @@ struct BarrierState {
 }
 
 impl CancellableBarrier {
-    pub fn new(n: usize) -> Arc<Self> {
+    pub fn new(n: usize) -> Self {
         assert!(n > 0, "Barrier size must be greater than 0");
-        Arc::new(CancellableBarrier {
+        CancellableBarrier {
             mutex: Mutex::new(BarrierState {
                 count: 0,
                 total: n,
@@ -28,10 +38,12 @@ impl CancellableBarrier {
                 cancelled: false,
             }),
             condvar: Condvar::new(),
-        })
+        }
     }
+}
 
-    pub fn wait(&self) -> Result<usize, CancelledBarrier> {
+impl Barrier for CancellableBarrier {
+    fn wait(&self) -> Result<(), CancelledBarrier> {
         let mut state = self.mutex.lock().unwrap();
 
         if state.cancelled {
@@ -57,23 +69,23 @@ impl CancellableBarrier {
             self.condvar.notify_all();
         }
 
-        Ok(generation)
+        Ok(())
     }
 
-    pub fn cancel(&self) {
+    fn cancel(&self) {
         let mut state = self.mutex.lock().unwrap();
         state.cancelled = true;
         self.condvar.notify_all();
     }
 
-    pub fn reset(&self) {
+    fn reset(&self) {
         let mut state = self.mutex.lock().unwrap();
         state.cancelled = false;
         state.count = 0;
         state.generation += 1;
     }
 
-    pub fn is_cancelled(&self) -> bool {
+    fn is_cancelled(&self) -> bool {
         self.mutex.lock().unwrap().cancelled
     }
 }

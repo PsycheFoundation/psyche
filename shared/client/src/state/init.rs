@@ -3,7 +3,7 @@ use psyche_coordinator::{
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
     Coordinator, HealthChecks,
 };
-use psyche_core::{CancellableBarrier, NodeIdentity, TokenSize};
+use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, TokenSize};
 use psyche_data_provider::{
     download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
@@ -11,8 +11,8 @@ use psyche_data_provider::{
 };
 use psyche_modeling::{
     auto_tokenizer, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel,
-    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, ModelConfig, ModelLoadError,
-    ParallelModels, PretrainedSource, Trainer,
+    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig,
+    ModelLoadError, ParallelModels, PretrainedSource,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
@@ -338,10 +338,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             init_config.data_parallelism * init_config.tensor_parallelism,
                         );
                         for dp in 0..init_config.data_parallelism {
-                            let communicator_id = match init_config.tensor_parallelism {
-                                1 => None,
-                                _ => Some(Arc::new(CommunicatorId::new())),
-                            };
+                            let communicator_id: Option<CommunicatorId> =
+                                match init_config.tensor_parallelism {
+                                    0 | 1 => None,
+                                    #[cfg(feature = "parallelism")]
+                                    _ => Some(tch::CStore::new().into()),
+                                    #[cfg(not(feature = "parallelism"))]
+                                    _ => unimplemented!(),
+                                };
                             for tp in 0..init_config.tensor_parallelism {
                                 let tensor_parallelism_world =
                                     communicator_id.as_ref().map(|communicator_id| {
@@ -477,7 +481,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         for model in models {
             if tp_models
                 .last()
-                .map(|x: &ParallelModels| x.len() == init_config.tensor_parallelism)
+                .map(|x| x.len() == init_config.tensor_parallelism)
                 .unwrap_or(true)
             {
                 tp_models.push(Vec::with_capacity(init_config.tensor_parallelism));
@@ -491,18 +495,28 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let data_fetcher =
             DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
 
-        let data_parallel: Option<Vec<(Arc<CommunicatorId>, Arc<CancellableBarrier>)>> =
+        let data_parallel: Option<Vec<(CommunicatorId, Arc<dyn Barrier>)>> =
             if init_config.data_parallelism > 1 {
-                Some(
-                    (0..init_config.tensor_parallelism)
-                        .map(|_| {
-                            (
-                                CommunicatorId::new().into(),
-                                CancellableBarrier::new(init_config.tensor_parallelism),
-                            )
-                        })
-                        .collect(),
-                )
+                #[cfg(feature = "parallelism")]
+                {
+                    Some(
+                        (0..init_config.tensor_parallelism)
+                            .map(|_| {
+                                (
+                                    tch::CStore::new().into(),
+                                    Arc::new(CancellableBarrier::new(
+                                        init_config.tensor_parallelism,
+                                    )) as Arc<dyn Barrier>,
+                                )
+                            })
+                            .collect(),
+                    )
+                }
+
+                #[cfg(not(feature = "parallelism"))]
+                {
+                    unimplemented!()
+                }
             } else {
                 None
             };
@@ -522,15 +536,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         })
                         .collect()
                 });
-                Trainer::new(
-                    models,
+                let barrier = Arc::new(CancellableBarrier::new(init_config.tensor_parallelism))
+                    as Arc<dyn Barrier>;
+                LocalTrainer::new(
+                    ParallelModels {
+                        models,
+                        barrier,
+                        data_parallel,
+                    },
                     llm.lr_schedule,
                     llm.optimizer,
                     init_config.micro_batch_size,
                     init_config.optim_stats_every_n_steps,
                     init_config.grad_accum_in_fp32,
-                    data_parallel,
                 )
+                .into()
             })
             .collect();
 
