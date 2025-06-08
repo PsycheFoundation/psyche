@@ -272,7 +272,7 @@ impl App {
                         Ok(_) => {
                             if ticked.run_state != latest_update.run_state {
                                 // to avoid *everyone* sending a tick, we probabilisticly send it
-                                // targetting having two clients send it per interval
+                                // targeting having two clients send it per interval
                                 let send_tick = match ticked.epoch_state.clients.len() {
                                     0..=2 => true,
                                     len => { let rand: f32 = thread_rng().gen();
