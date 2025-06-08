@@ -205,30 +205,27 @@ fn build_weighted_index(
     let mut dataset_index = Vec::with_capacity(n_samples);
     let mut dataset_sample_index = Vec::with_capacity(n_samples);
 
-    let num_weights = norm_weights.len();
+    let mut mask = norm_weights
+        .iter()
+        .enumerate()
+        .flat_map(|(idx, weight)| std::iter::repeat(idx).take((weight * n_samples as f64) as usize))
+        .collect::<Vec<_>>();
 
-    for (idx, norm_weight) in norm_weights.into_iter().enumerate() {
-        //todo: this is to bad, fix this. this logic is just to ensure we return exactly n_samples samples
-        if idx != num_weights {
-            for i in 0..(n_samples as f64 * norm_weight) as usize {
-                dataset_index.push(idx);
-                let size = data_idx_sequences[idx].len();
-                dataset_sample_index.push(data_idx_sequences[idx][i % size] as u64);
-            }
-        } else {
-            let curr_len = dataset_index.len();
-            // if due to rounding we already have too many samples, just truncate and break out of the loop
-            if curr_len > n_samples {
-                dataset_index.truncate(n_samples);
-                dataset_sample_index.truncate(n_samples);
-                break;
-            }
-            for i in 0..n_samples - curr_len {
-                dataset_index.push(idx);
-                let size = data_idx_sequences[idx].len();
-                dataset_sample_index.push(data_idx_sequences[idx][i % size] as u64);
-            }
-        }
+    mask.truncate(n_samples);
+
+    if mask.len() < n_samples {
+        let it = std::iter::repeat(mask[mask.len() - 1]).take(n_samples - mask.len());
+        mask.extend(it);
+    }
+
+    let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
+    mask.shuffle(&mut rng);
+
+    let mut iters = data_idx_sequences.iter().map(|subvec| subvec.iter().cycle()).collect::<Vec<_>>();
+
+    for i in mask {
+        dataset_index.push(i);
+        dataset_sample_index.push(*iters[i].next().unwrap() as u64);
     }
 
     (dataset_index, dataset_sample_index)
