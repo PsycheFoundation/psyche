@@ -179,6 +179,7 @@ fn normalize(weights: &[f64]) -> Vec<f64> {
     weights.iter().map(|w| w / sum).collect()
 }
 
+// todo: handle various edge cases (e.g. dataset_sizes memebers == 0 n_samples == 0 etc)
 fn build_weighted_index(
     n_samples: usize,
     weights: &[f64],
