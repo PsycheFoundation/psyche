@@ -51,7 +51,7 @@ enum PreparedTaskType {
 #[derive(Debug)]
 pub struct PreparedTask {
     prepared_task_type: PreparedTaskType,
-    name: String,
+    pub name: String,
     num: usize,
 }
 
