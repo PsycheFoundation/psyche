@@ -1,7 +1,6 @@
 from typing import List
 from torch import Tensor
 from torch.distributed.tensor import DTensor, distribute_tensor, zeros
-from torch.distributed.tensor._utils import compute_global_tensor_info
 
 
 def gather_full_tensor(dtensor: DTensor) -> Tensor:
@@ -37,6 +36,6 @@ def set_grad(tensor: Tensor | DTensor, grad: Tensor):
         grad = distribute_tensor(
             grad, device_mesh=tensor.grad.device_mesh, placements=tensor.grad.placements
         )
-
-    tensor.grad.zero_()
-    tensor.grad.copy_(grad)
+        tensor.grad._local_tensor.copy_(grad._local_tensor)
+    else:
+        tensor.grad.copy_(grad)
