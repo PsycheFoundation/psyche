@@ -222,6 +222,8 @@ fn build_weighted_index(
         mask.extend(it);
     }
 
+    mask.shuffle(&mut rng);
+
     let mut iters = data_idx_sequences
         .iter()
         .map(|subvec| subvec.iter().cycle())
