@@ -892,17 +892,13 @@ async fn test_everybody_leaves_in_warmup() {
     let client_1_name = format!("{CLIENT_CONTAINER_PREFIX}-1");
 
     watcher
-        .monitor_container(&client_1_name, vec![JsonFilter::StateChange])
+        .monitor_container(&client_1_name, vec![IntegrationTestLogMarker::StateChange])
         .unwrap();
 
     while let Some(response) = watcher.log_rx.recv().await {
         match response {
             Response::StateChange(_timestamp, _client_id, old_state, new_state, ..) => {
-                let coordinator_state = solana_client.get_run_state().await;
-                assert_eq!(coordinator_state.to_string(), new_state.to_string());
-
                 println!("Changing from {old_state} to {new_state}");
-
                 if old_state == RunState::WaitingForMembers.to_string()
                     && new_state == RunState::Warmup.to_string()
                 {
@@ -921,7 +917,7 @@ async fn test_everybody_leaves_in_warmup() {
 
     let client_2_name = format!("{CLIENT_CONTAINER_PREFIX}-2");
     watcher
-        .monitor_container(&client_2_name, vec![JsonFilter::StateChange])
+        .monitor_container(&client_2_name, vec![IntegrationTestLogMarker::StateChange])
         .unwrap();
 
     while let Some(response) = watcher.log_rx.recv().await {

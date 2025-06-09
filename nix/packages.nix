@@ -58,6 +58,9 @@
         sha256 = "sha256-8w3qrMGmG/id87EzoE5h4gk+MNStygF+eS1j6/kSUe8=";
       };
 
+      # We need this because the solana validator require the compiled .so files of the Solana programs,
+      # but since nix can't copy those files using a relative path because they're not tracked by git,
+      # we have to use an absolute path and mark it impure to make this work as expected.
       psycheHome = builtins.getEnv "PSYCHE_HOME";
       coordinatorSrc = builtins.path {
         path = "${psycheHome}/architectures/decentralized/solana-coordinator";
@@ -75,7 +78,7 @@
         // nixglhostRustPackages
         // rec {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-          psyche-solana-client-docker = pkgs.dockerTools.buildImage {
+          docker-psyche-solana-client = pkgs.dockerTools.buildImage {
             name = "nousresearch/psyche-solana-client";
             tag = "latest";
             fromImage = cudaDockerImage;
@@ -101,7 +104,7 @@
             };
           };
 
-          psyche-solana-test-client-docker = pkgs.dockerTools.buildImage {
+          docker-psyche-solana-test-client = pkgs.dockerTools.buildImage {
             name = "psyche-test-client";
             tag = "latest";
             fromImage = cudaDockerImage;
@@ -130,7 +133,7 @@
             };
           };
 
-          psyche-solana-test-validator = pkgs.dockerTools.buildImage {
+          docker-psyche-solana-test-validator = pkgs.dockerTools.buildImage {
             name = "psyche-solana-test-validator";
             tag = "latest";
             fromImage = debianDockerImage;
@@ -142,7 +145,7 @@
                 pkgs.bashInteractive
                 pkgs.bzip2
                 inputs'.solana-pkgs.packages.default
-                (pkgs.runCommand "entrypoint" { } ''
+                (pkgs.runCommand "copy-solana-programs" { } ''
                   mkdir -p $out/bin
                   mkdir -p $out/local
                   chmod 755 $out/local
@@ -166,6 +169,26 @@
                 "8899/tcp" = { };
                 "8900/tcp" = { };
               };
+            };
+          };
+
+          docker-psyche-centralized-client = pkgs.dockerTools.buildImage {
+            name = "psyche-centralized-client";
+            tag = "latest";
+            fromImage = cudaDockerImage;
+
+            # Copy the binary and the entrypoint script into the image
+            copyToRoot = pkgs.buildEnv {
+              name = "root";
+              paths = [
+                pkgs.bashInteractive
+                nixglhostRustPackages."psyche-centralized-client-nixglhost"
+              ];
+              pathsToLink = [ "/bin" ];
+            };
+
+            config = {
+              Env = [ "NVIDIA_DRIVER_CAPABILITIES=all" ];
             };
           };
         };
