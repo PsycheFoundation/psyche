@@ -61,13 +61,17 @@ impl Arc {
         let choices = choices
             .elements()
             .iter()
-            .map(field_to_string)
+            .map(|field| format!(" {}", field_to_string(field)))
             .collect::<Vec<_>>();
         let answer = labels
             .elements()
             .iter()
             .position(|x| field_to_string(x) == *answer)
             .unwrap();
+
+        // println!("text: {:?}", text);
+        // println!("choices: {:?}", choices);
+        // println!("answer: {:?}", answer);
         Document {
             text,
             choices,
