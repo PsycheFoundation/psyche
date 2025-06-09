@@ -52,7 +52,7 @@ impl GpuTask {
 
     pub fn name(&self) -> &str {
         match &self.task {
-            EnumTask::EvalTask(task) => &task.task.name,
+            EnumTask::EvalTask(task) => &task.task.name(),
             EnumTask::PromptTask => todo!(),
         }
     }
