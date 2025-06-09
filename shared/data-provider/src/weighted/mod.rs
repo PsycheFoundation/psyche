@@ -211,6 +211,9 @@ fn build_weighted_index(
         .flat_map(|(idx, weight)| std::iter::repeat(idx).take((weight * n_samples as f64) as usize))
         .collect::<Vec<_>>();
 
+    let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
+    mask.shuffle(&mut rng);
+
     mask.truncate(n_samples);
 
     if mask.len() < n_samples {
@@ -218,10 +221,10 @@ fn build_weighted_index(
         mask.extend(it);
     }
 
-    let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
-    mask.shuffle(&mut rng);
-
-    let mut iters = data_idx_sequences.iter().map(|subvec| subvec.iter().cycle()).collect::<Vec<_>>();
+    let mut iters = data_idx_sequences
+        .iter()
+        .map(|subvec| subvec.iter().cycle())
+        .collect::<Vec<_>>();
 
     for i in mask {
         dataset_index.push(i);
