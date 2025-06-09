@@ -213,7 +213,9 @@ fn build_weighted_index(
         .collect::<Vec<_>>();
 
     let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
-    mask.shuffle(&mut rng);
+
+    let mask_len = mask.len();
+    mask.swap(mask_len - 1, rng.gen_range(0..mask_len));
 
     mask.truncate(n_samples);
 
