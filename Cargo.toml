@@ -105,6 +105,7 @@ test-log = { version = "0.2.16", features = ["trace"] }
 pretty_assertions = "1.4.1"
 serial_test = "3.2.0"
 rstest = "0.25.0"
+ctor = "0.4.2"
 
 [profile.dev]
 opt-level = 1

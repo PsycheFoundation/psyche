@@ -20,3 +20,4 @@ psyche-client.workspace = true
 test-log.workspace = true
 serial_test.workspace = true
 rstest.workspace = true
+ctor.workspace = true
