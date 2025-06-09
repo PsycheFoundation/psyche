@@ -17,19 +17,58 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, span, trace, Level};
 
 #[derive(Debug)]
+
+pub struct GpuTask {
+    task: EnumTask,
+}
+
+#[derive(Debug)]
+pub enum EnumTask {
+    EvalTask(EvalTask),
+    PromptTask,
+}
+
+// ACA esto deberia ser un enum, una task para los eval y otra para los prompts
+#[derive(Debug)]
 pub struct EvalTask {
     task: psyche_eval::PreparedTask,
     results: Arc<RunningAverage>,
     next_index: Arc<AtomicUsize>,
 }
 
-impl EvalTask {
+impl GpuTask {
+    pub fn new_eval_task(eval_task: EvalTask) -> Self {
+        Self {
+            task: EnumTask::EvalTask(eval_task),
+        }
+    }
+
     pub fn task(&self) -> &psyche_eval::PreparedTask {
-        &self.task
+        match &self.task {
+            EnumTask::EvalTask(task) => &task.task,
+            EnumTask::PromptTask => todo!(),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match &self.task {
+            EnumTask::EvalTask(task) => &task.task.name(),
+            EnumTask::PromptTask => todo!(),
+        }
+    }
+
+    pub fn next_index(&self) -> &Arc<AtomicUsize> {
+        match &self.task {
+            EnumTask::EvalTask(task) => &task.next_index,
+            EnumTask::PromptTask => todo!(),
+        }
     }
 
     pub fn results(&self) -> &RunningAverage {
-        &self.results
+        match &self.task {
+            EnumTask::EvalTask(task) => &task.results,
+            EnumTask::PromptTask => todo!(),
+        }
     }
 
     pub fn run(
@@ -40,19 +79,24 @@ impl EvalTask {
         limit: Option<usize>,
         loop_if_empty: bool,
     ) {
-        let result = self.task.run(
-            EvalTaskOptions {
-                model: trainer,
-                skip_and_step_by,
-                live_results: Some(self.results.clone()),
-                cancel: Some(cancel),
-                limit,
-                loop_if_empty,
-            },
-            false,
-        );
-        self.next_index
-            .fetch_max(result.next_index, Ordering::SeqCst);
+        match &self.task {
+            EnumTask::EvalTask(task) => {
+                let result = task.task.run(
+                    EvalTaskOptions {
+                        model: trainer,
+                        skip_and_step_by,
+                        live_results: Some(task.results.clone()),
+                        cancel: Some(cancel),
+                        limit,
+                        loop_if_empty,
+                    },
+                    false,
+                );
+                task.next_index
+                    .fetch_max(result.next_index, Ordering::SeqCst);
+            }
+            EnumTask::PromptTask => todo!(),
+        }
     }
 }
 
@@ -65,7 +109,7 @@ struct LoadingState {
 #[derive(Debug)]
 enum LoadingStateInner {
     Loading,
-    Done(Vec<Arc<EvalTask>>),
+    Done(Vec<Arc<GpuTask>>),
     Failed(JoinError),
 }
 
@@ -94,11 +138,11 @@ impl EvalRunner {
                     .into_iter()
                     .map(|task| {
                         let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
-                        Arc::new(EvalTask {
+                        Arc::new(GpuTask::new_eval_task(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
                             next_index: Arc::new(AtomicUsize::new(0)),
-                        })
+                        }))
                     })
                     .collect::<Vec<_>>()
             })
@@ -127,7 +171,7 @@ impl EvalRunner {
     async fn wait_for_tasks(
         tasks: Arc<LoadingState>,
         cancel: &CancellationToken,
-    ) -> Option<Vec<Arc<EvalTask>>> {
+    ) -> Option<Vec<Arc<GpuTask>>> {
         loop {
             // First check if already done
             {
@@ -161,7 +205,7 @@ impl EvalRunner {
         }
     }
 
-    pub fn tasks(&self) -> Option<Vec<Arc<EvalTask>>> {
+    pub fn tasks(&self) -> Option<Vec<Arc<GpuTask>>> {
         // Synchronous access to tasks if they're ready
         match &*self.tasks.state.try_read().ok()? {
             LoadingStateInner::Done(tasks) => Some(tasks.clone()),
@@ -203,7 +247,7 @@ impl EvalRunner {
                                     .zip(
                                         prepared_eval_tasks
                                             .iter()
-                                            .map(|x| x.next_index.load(Ordering::SeqCst))
+                                            .map(|x| x.next_index().load(Ordering::SeqCst))
                                             .collect::<Vec<_>>(),
                                     )
                                     .collect::<Vec<_>>();
@@ -213,9 +257,9 @@ impl EvalRunner {
                                     if cancel.is_cancelled() {
                                         break 'eval_loop;
                                     }
-                                    trace!(
+                                    info!(
                                         "Running eval task {} on index {}",
-                                        eval_task.task.name(),
+                                        eval_task.name(),
                                         next_index + dp_index
                                     );
                                     eval_task.run(
@@ -225,7 +269,7 @@ impl EvalRunner {
                                         Some(10),
                                         true,
                                     );
-                                    trace!("Done eval task {}", eval_task.task.name());
+                                    info!("Done eval task {}", eval_task.name());
                                 }
                                 drop(span);
                             }
