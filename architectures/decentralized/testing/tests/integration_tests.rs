@@ -20,6 +20,23 @@ use rstest::*;
 use serial_test::serial;
 use tokio::time;
 
+#[serial]
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[ctor::ctor]
+async fn setup() {
+    println!("This runs before any tests");
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    // Initialize a Solana run with 1 client
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        2,
+        Some(PathBuf::from(
+            "../../config/solana-test/light-two-min-clients.toml",
+        )),
+    )
+    .await;
+}
+
 /// spawn 2 clients and run for 3 epochs
 /// assert client and coordinator state synchronization
 /// assert that the loss decreases in each epoch
