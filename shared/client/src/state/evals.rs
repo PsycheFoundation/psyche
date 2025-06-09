@@ -19,7 +19,7 @@ use tracing::{error, info, span, trace, Level};
 #[derive(Debug)]
 
 pub struct GpuTask {
-    task: EnumTask,
+    pub task: EnumTask,
 }
 
 #[derive(Debug)]
@@ -63,14 +63,8 @@ impl GpuTask {
             EnumTask::PromptTask => todo!(),
         }
     }
-
-    pub fn results(&self) -> &RunningAverage {
-        match &self.task {
-            EnumTask::EvalTask(task) => &task.results,
-            EnumTask::PromptTask => todo!(),
-        }
-    }
-
+}
+impl EvalTask {
     pub fn run(
         &self,
         trainer: &mut Trainer,
@@ -79,24 +73,23 @@ impl GpuTask {
         limit: Option<usize>,
         loop_if_empty: bool,
     ) {
-        match &self.task {
-            EnumTask::EvalTask(task) => {
-                let result = task.task.run(
-                    EvalTaskOptions {
-                        model: trainer,
-                        skip_and_step_by,
-                        live_results: Some(task.results.clone()),
-                        cancel: Some(cancel),
-                        limit,
-                        loop_if_empty,
-                    },
-                    false,
-                );
-                task.next_index
-                    .fetch_max(result.next_index, Ordering::SeqCst);
-            }
-            EnumTask::PromptTask => todo!(),
-        }
+        let result = self.task.run(
+            EvalTaskOptions {
+                model: trainer,
+                skip_and_step_by,
+                live_results: Some(self.results.clone()),
+                cancel: Some(cancel),
+                limit,
+                loop_if_empty,
+            },
+            false,
+        );
+        self.next_index
+            .fetch_max(result.next_index, Ordering::SeqCst);
+    }
+
+    pub fn results(&self) -> &RunningAverage {
+        &self.results
     }
 }
 
@@ -257,20 +250,28 @@ impl EvalRunner {
                                     if cancel.is_cancelled() {
                                         break 'eval_loop;
                                     }
+
                                     info!(
                                         "Running eval task {} on index {}",
                                         eval_task.name(),
                                         next_index + dp_index
                                     );
-                                    eval_task.run(
-                                        &mut trainer,
-                                        cancel.clone(),
-                                        Some((next_index + dp_index, data_parallelism)),
-                                        Some(10),
-                                        true,
-                                    );
+
+                                    match &eval_task.task {
+                                        EnumTask::EvalTask(eval) => {
+                                            eval.run(
+                                                &mut trainer,
+                                                cancel.clone(),
+                                                Some((next_index + dp_index, data_parallelism)),
+                                                Some(10),
+                                                true,
+                                            );
+                                        }
+                                        EnumTask::PromptTask => {}
+                                    }
                                     info!("Done eval task {}", eval_task.name());
                                 }
+
                                 drop(span);
                             }
                             trainer

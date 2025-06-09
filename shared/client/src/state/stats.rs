@@ -6,7 +6,10 @@ use tokenizers::Tokenizer;
 use tracing::warn;
 use wandb::{DataValue, LogData};
 
-use crate::client::P2PNodeInfo;
+use crate::{
+    client::P2PNodeInfo,
+    state::evals::{EnumTask, EvalTask},
+};
 
 use super::evals::EvalRunner;
 
@@ -146,6 +149,8 @@ impl StatsLogger {
             ),
             efficency: no_nan(self.efficency(), 0.0),
             evals,
+            // ACA add prompt results
+            prompt_results: FixedVec::default(),
         }
     }
 
@@ -240,15 +245,25 @@ impl StatsLogger {
                 let task = eval_task.task();
                 let metric_name: &str = task.main_metric_name();
                 let task_name = task.name();
-                match eval_task.results().sample(metric_name) {
-                    Some(metric) => Some((task_name.to_owned(), metric)),
-                    None => {
-                        warn!("{} missing metric {}", task_name, metric_name);
-                        None
+                match &eval_task.task {
+                    EnumTask::EvalTask(eval_task) => {
+                        match eval_task.results().sample(metric_name) {
+                            Some(metric) => Some((task_name.to_owned(), metric)),
+                            None => {
+                                warn!("{} missing metric {}", task_name, metric_name);
+                                None
+                            }
+                        }
                     }
+                    _ => panic!("Unexpected eval task type"),
                 }
             })
             .collect()
+    }
+
+    // ACA
+    pub fn current_prompt_results(&self) -> Vec<u32> {
+        todo!()
     }
 
     // normalized metric for how "confident" a model is, regardless of vocab size.
