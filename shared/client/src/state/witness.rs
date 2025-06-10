@@ -92,7 +92,6 @@ impl WitnessStep {
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
     ) -> Option<Witness> {
-        trace!("Coordinator step: {}", state.progress.step);
         if previous_round.sent_witness {
             return None;
         }
@@ -136,7 +135,7 @@ impl WitnessStep {
         let start_idx_in_client_times = (slice_index as usize) * TRAINING_TIMES_SLICE_SIZE;
 
         trace!(
-            "Submitting training times for step={}, slice_index={}, offset={}, n_partitions_actual={}, clients_len={}",
+            "[get_witness_to_send] Submitting training times for step={}, slice_index={}, offset={}, n_partitions_actual={}, clients_len={}",
             step,
             slice_index,
             start_idx_in_client_times,
@@ -149,11 +148,13 @@ impl WitnessStep {
             let source_idx = start_idx_in_client_times + i;
 
             if source_idx < clients_len {
-                let _ = training_times.push(current_round
-                    .client_times
-                    .get(source_idx)
-                    .copied()
-                    .unwrap_or(0));
+                let _ = training_times.push(
+                    current_round
+                        .client_times
+                        .get(source_idx)
+                        .copied()
+                        .unwrap_or(0),
+                );
             }
             // If source_idx is out of bounds, training_times[i] remains 0
         }
