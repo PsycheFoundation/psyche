@@ -5,7 +5,8 @@ use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
 use rand::{seq::SliceRandom, Rng, SeedableRng};
 use rand_chacha::{ChaCha20Rng, ChaCha8Rng};
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator, repeat};
+use rip_shuffle::RipShuffleParallel;
 
 pub mod http;
 pub struct WeightedDataProvider<T: TokenizedDataProvider + LengthKnownDataProvider> {
@@ -188,16 +189,16 @@ fn build_weighted_index(
     // todo: improve this computation to ensure we don't need to compute this sum
     // and maybe try to gaurantee norm_weights add to 1
     let weights_sum: f64 = weights.iter().sum();
-    let norm_weights: Vec<f64> = weights.iter().map(|weight| weight / weights_sum).collect();
+    let norm_weights: Vec<f64> = weights.par_iter().map(|weight| weight / weights_sum).collect();
 
     let data_idx_sequences = dataset_sizes
-        .iter()
-        .zip(norm_weights.iter())
+        .par_iter()
+        .zip(norm_weights.par_iter())
         .map(|(dataset_size, norm_weight)| {
             let mut data_seq: Vec<_> = (0..*dataset_size).collect();
             //todo: this is so bad T_T do we need to cryptanalyze this?
             let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
-            data_seq.shuffle(&mut rng);
+            data_seq.par_shuffle(&mut rng);
 
             data_seq
         })
@@ -207,13 +208,17 @@ fn build_weighted_index(
     let mut dataset_sample_index = Vec::with_capacity(n_samples);
 
     let mut mask = norm_weights
-        .iter()
+        .par_iter()
         .enumerate()
-        .flat_map(|(idx, weight)| std::iter::repeat(idx).take((weight * n_samples as f64) as usize))
+        .flat_map(|(idx, weight)| repeat(idx).take((weight * n_samples as f64) as usize))
         .collect::<Vec<_>>();
 
     let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
 
+    // todo: we just swap a random element for the last element to try to make less biased the
+    // element affected by this stuff that we do to ensure we have exactly n_samples elements
+    // but it's not gauranteed that we'll only differ from the correct number by 1 element, so
+    // we should really do a full shuffle, but for now I've just decided to do a swap to make it faster
     let mask_len = mask.len();
     mask.swap(mask_len - 1, rng.gen_range(0..mask_len));
 
@@ -224,7 +229,7 @@ fn build_weighted_index(
         mask.extend(it);
     }
 
-    mask.shuffle(&mut rng);
+    mask.par_shuffle(&mut rng);
 
     let mut iters = data_idx_sequences
         .iter()
