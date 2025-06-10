@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 use psyche_core::FixedString;
-use psyche_core::FixedVec;
 
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
@@ -76,7 +75,6 @@ pub fn init_coordinator_processor(
     // Setup the run_id const
     account.state.coordinator.run_id =
         FixedString::from_str_truncated(&params.run_id);
-
     // Done
     Ok(())
 }

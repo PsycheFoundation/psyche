@@ -141,7 +141,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
     pub fn start(
         &mut self,
         client_index: u64,
-        state: &mut Coordinator<T>,
+        state: &Coordinator<T>,
         trainers: Vec<Trainer>,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
@@ -537,7 +537,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             .ok_or(ApplyError::NoActiveRound)?
             .witnesses;
 
-        // TODO(dy): Not so sure about this change
         // Get the BatchIds from the actual assignments made for the previous_round.
         // These are the keys of the data_assignments map stored in the client's previous_round state.
         let batch_ids: Vec<BatchId> = previous_round.data_assignments.keys().cloned().collect();

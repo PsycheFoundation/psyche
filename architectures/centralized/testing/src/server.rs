@@ -217,7 +217,7 @@ impl CoordinatorServerHandle {
         // as a substitute to maddness, we suggest the reader trust us on this point.
         // Increase stack size for the thread running server.run()
         std::thread::Builder::new()
-            .stack_size(10 * 1024 * 1024) // 32MB stack for this specific thread
+            .stack_size(10 * 1024 * 1024)
             .spawn(move || {
                 rt.block_on(server.run());
             })

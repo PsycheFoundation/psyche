@@ -6,25 +6,30 @@ use std::{collections::BTreeMap, fmt};
 
 /// Assigns data batches to nodes based on committee roles.
 pub fn assign_data_for_state<T: NodeIdentity>(
-    coordinator: &mut Coordinator<T>,
+    coordinator: &Coordinator<T>,
     committee_selection: &CommitteeSelection,
 ) -> BTreeMap<BatchId, T> {
     let round = coordinator.current_round().unwrap();
 
-    let trainer_nodes: Vec<_> = (0..coordinator.epoch_state.clients.len())
-        .filter_map(|i| {
-            let client = &coordinator.epoch_state.clients[i];
+    // Get trainer nodes references to avoid cloning
+    let mut trainer_nodes: Vec<_> = coordinator
+        .epoch_state
+        .clients
+        .iter()
+        .enumerate()
+        .filter_map(|(i, client)| {
             let committee = committee_selection.get_committee(i as u64).committee;
 
-            if matches!(committee, Committee::Trainer) {
-                Some((i, client))
-            } else {
-                match committee {
-                    Committee::TieBreaker => assert_eq!(round.tie_breaker_tasks, 0), // TODO
-                    Committee::Verifier => assert_eq!(coordinator.config.verification_percent, 0), // TODO
-                    _ => {}
+            match committee {
+                Committee::Trainer => Some((client, client.id)),
+                Committee::TieBreaker => {
+                    assert_eq!(round.tie_breaker_tasks, 0); // TODO
+                    None
                 }
-                None
+                Committee::Verifier => {
+                    assert_eq!(coordinator.config.verification_percent, 0); // TODO
+                    None
+                }
             }
         })
         .collect();
@@ -33,37 +38,19 @@ pub fn assign_data_for_state<T: NodeIdentity>(
         return BTreeMap::new();
     }
 
-    let mut trainer_nodes = trainer_nodes;
     deterministic_shuffle(&mut trainer_nodes, round.random_seed);
 
     let mut assignments = BTreeMap::new();
     let mut current_index = round.data_index;
 
-    // Use assigned batch sizes for batch size assignments
-    for (client_index, node) in trainer_nodes {
-        // TODO(dy) probably we can get directly the client from the previous loop
-        let client = &coordinator.epoch_state.clients.get(client_index);
-        let Some(client) = client else {
-            msg!(
-                "[assign_data_for_state] No client found for index {}. Skipping assignment.",
-                client_index
-            );
-            continue;
-        };
-        let assigned_batch_size = client.assigned_batch_size.max(1) as u64; // Ensure batch size is at least 1
+    // Use references in the loop to avoid moving/copying data
+    for (client, node_id) in &trainer_nodes {
+        let assigned_batch_size = client.assigned_batch_size.max(1) as u64;
         let end_index = current_index + assigned_batch_size - 1;
-        msg!(
-            "[assign_data_for_state] Assigning batch size {} to node {} ({}) (client index {}) B[{},{}]",
-            assigned_batch_size,
-            client_index,
-            node.id,
-            client_index,
-            current_index,
-            end_index
-        );
+
         assignments.insert(
             BatchId(ClosedInterval::new(current_index, end_index)),
-            node.id,
+            *node_id,
         );
         current_index = end_index + 1;
     }
@@ -79,7 +66,6 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
 ) -> Vec<BatchId> {
     // Get the list of trainer nodes and their original indices, similar to assign_data_for_state
     // The elements are (original_client_index, reference_to_client_data)
-    msg!("[get_batch_ids_for_round] start");
     let mut trainer_info: Vec<_> = (0..coordinator.epoch_state.clients.len())
         .filter_map(|i| {
             let client = &coordinator.epoch_state.clients[i];
@@ -100,14 +86,9 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
     let mut batch_ids = Vec::with_capacity(trainer_info.len());
     let mut current_data_idx = round.data_index;
 
-    msg!("[get_batch_ids_for_round] getting batch ids...");
     for (client_original_idx, _client_ref) in &trainer_info {
         let client = coordinator.epoch_state.clients.get(*client_original_idx);
         let Some(client) = client else {
-            msg!(
-                "[get_batch_ids_for_round] No client found for index {}. Skipping batch ID generation.",
-                client_original_idx
-            );
             continue;
         };
 
@@ -116,15 +97,11 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
             0 | 1 => current_data_idx,
             _ => current_data_idx + client_assigned_batch_size - 1,
         };
-        msg!(
-            "[get_batch_ids_for_round] Adding BatchId from {} to {} for client {}. client_assigned_batch_size: {}",
-            current_data_idx, end_data_idx, client_original_idx, client_assigned_batch_size,
-        );
+
         batch_ids.push(BatchId(ClosedInterval::new(current_data_idx, end_data_idx)));
         current_data_idx = end_data_idx + 1; // Move to the start of the next batch
     }
 
-    msg!("[get_batch_ids_for_round] batch_ids: {:?}", batch_ids);
     batch_ids
 }
 
