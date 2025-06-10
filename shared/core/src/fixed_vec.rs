@@ -158,19 +158,17 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
     {
         let mut removed_indices = Vec::new();
         let mut write = 0;
-        let original_len = self.len as usize; // Use original length for iteration bounds
+        // Since each time we remove an element we shift the indeces, we use this to track
+        // which indices we have removed, so we can return them.
+        let original_len = self.len as usize;
 
-        // Iterate using a separate read index up to the original length
         for read in 0..original_len {
             if f(&self.data[read]) {
-                // If the element is kept
                 if read != write {
-                    // And it's not already in the correct place, move it
                     self.data[write] = self.data[read];
                 }
-                write += 1; // Increment write position for kept element
+                write += 1;
             } else {
-                // If the element is removed, record its original index
                 removed_indices.push(read);
             }
         }
