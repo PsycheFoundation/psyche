@@ -67,6 +67,9 @@ importers:
       shared:
         specifier: link:../shared
         version: link:../shared
+      write-file-atomic:
+        specifier: ^6.0.0
+        version: 6.0.0
     devDependencies:
       '@mikro-orm/cli':
         specifier: ^6.4.5
@@ -77,6 +80,9 @@ importers:
       '@types/node':
         specifier: ^22.12.0
         version: 22.13.9
+      '@types/write-file-atomic':
+        specifier: ^4.0.3
+        version: 4.0.3
       esbuild:
         specifier: ^0.25.0
         version: 0.25.0
@@ -4513,6 +4519,12 @@ packages:
     resolution:
       {
         integrity: sha512-V4sOroWDADFx9dLodWpKm298NOJ1VJ6zoDVgaP+WBb/utWxqQ6gnMzd9lvVDAr/F3ibiKaxH9i45eS0gQPSTaQ==,
+      }
+
+  '@types/write-file-atomic@4.0.3':
+    resolution:
+      {
+        integrity: sha512-qdo+vZRchyJIHNeuI1nrpsLw+hnkgqP/8mlaN6Wle/NKhydHmUN9l4p3ZE8yP90AJNJW4uB8HQhedb4f1vNayQ==,
       }
 
   '@types/ws@7.4.7':
@@ -12438,6 +12450,13 @@ packages:
       }
     engines: { node: ^14.17.0 || ^16.13.0 || >=18.0.0 }
 
+  write-file-atomic@6.0.0:
+    resolution:
+      {
+        integrity: sha512-GmqrO8WJ1NuzJ2DrziEI2o57jKAVIQNf8a18W3nCYU3H7PNWqCCVTeH6/NQE93CIllIgQS98rrmVkYgTX9fFJQ==,
+      }
+    engines: { node: ^18.17.0 || >=20.5.0 }
+
   ws@6.2.3:
     resolution:
       {
@@ -16177,6 +16196,10 @@ snapshots:
   '@types/w3c-web-usb@1.0.10': {}
 
   '@types/web@0.0.197': {}
+
+  '@types/write-file-atomic@4.0.3':
+    dependencies:
+      '@types/node': 22.13.9
 
   '@types/ws@7.4.7':
     dependencies:
@@ -21809,6 +21832,11 @@ snapshots:
       signal-exit: 3.0.7
 
   write-file-atomic@5.0.1:
+    dependencies:
+      imurmurhash: 0.1.4
+      signal-exit: 4.1.0
+
+  write-file-atomic@6.0.0:
     dependencies:
       imurmurhash: 0.1.4
       signal-exit: 4.1.0

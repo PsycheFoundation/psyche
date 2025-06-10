@@ -1,5 +1,4 @@
 import { readFileSync } from 'fs'
-import { writeFile } from 'fs/promises'
 import path from 'path'
 import {
 	CoordinatorConfig,
@@ -26,6 +25,7 @@ import { PublicKey } from '@solana/web3.js'
 import { isClientWitness } from '../witness.js'
 import EventEmitter from 'events'
 import { UniqueRunKey, runKey } from '../coordinator.js'
+import { writeFileAtomic } from '../writeFileAtomic.js'
 
 type Witness = Omit<WitnessMetadata, 'evals'> & {
 	evals: Array<{
@@ -140,7 +140,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 
 		this.#runsMutatedSinceLastSync.clear()
-		await writeFile(
+		await writeFileAtomic(
 			this.#db,
 			JSON.stringify(
 				{
