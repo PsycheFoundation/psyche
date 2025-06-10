@@ -16,6 +16,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, span, trace, Level};
 
+use crate::state::prompt::PromptTask;
+
 #[derive(Debug)]
 
 pub struct GpuTask {
@@ -25,7 +27,7 @@ pub struct GpuTask {
 #[derive(Debug)]
 pub enum EnumTask {
     EvalTask(EvalTask),
-    PromptTask,
+    PromptTask(PromptTask),
 }
 
 // ACA esto deberia ser un enum, una task para los eval y otra para los prompts
@@ -46,21 +48,21 @@ impl GpuTask {
     pub fn task(&self) -> &psyche_eval::PreparedTask {
         match &self.task {
             EnumTask::EvalTask(task) => &task.task,
-            EnumTask::PromptTask => todo!(),
+            EnumTask::PromptTask(prompt) => todo!(),
         }
     }
 
     pub fn name(&self) -> &str {
         match &self.task {
             EnumTask::EvalTask(task) => &task.task.name(),
-            EnumTask::PromptTask => todo!(),
+            EnumTask::PromptTask(prompt) => todo!(),
         }
     }
 
     pub fn next_index(&self) -> &Arc<AtomicUsize> {
         match &self.task {
             EnumTask::EvalTask(task) => &task.next_index,
-            EnumTask::PromptTask => todo!(),
+            EnumTask::PromptTask(prompt) => todo!(),
         }
     }
 }
@@ -267,7 +269,16 @@ impl EvalRunner {
                                                 true,
                                             );
                                         }
-                                        EnumTask::PromptTask => {}
+                                        EnumTask::PromptTask(prompt) => {
+                                            let prompt_result = prompt.run(
+                                                &mut trainer,
+                                                cancel.clone(),
+                                                None,
+                                                None,
+                                                false,
+                                            );
+                                            info!("Prompt task result: {:?}", prompt_result);
+                                        }
                                     }
                                     info!("Done eval task {}", eval_task.name());
                                 }
