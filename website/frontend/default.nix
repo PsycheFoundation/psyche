@@ -25,7 +25,6 @@ mkWebsitePackage {
     export VITE_BACKEND_PATH=${backendPath}
     export VITE_MINING_POOL_CLUSTER=${miningPoolCluster}
     export VITE_COORDINATOR_CLUSTER=${coordinatorCluster}
-    export VITE_DISABLE=true
   '';
 
   installPhase = ''

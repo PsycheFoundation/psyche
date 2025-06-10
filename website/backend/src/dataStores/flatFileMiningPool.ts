@@ -1,5 +1,4 @@
 import { readFileSync } from 'fs'
-import { writeFile } from 'fs/promises'
 
 import path from 'path'
 import { psycheJsonReviver, psycheJsonReplacer, ContributionInfo } from 'shared'
@@ -7,6 +6,7 @@ import { LastUpdateInfo, MiningPoolDataStore } from '../dataStore.js'
 import { PsycheMiningPoolAccount } from '../idlTypes.js'
 import { PublicKey } from '@solana/web3.js'
 import EventEmitter from 'events'
+import { writeFileAtomic } from '../writeFileAtomic.js'
 
 export class FlatFileMiningPoolDataStore implements MiningPoolDataStore {
 	#lastUpdateInfo: LastUpdateInfo = {
@@ -84,7 +84,7 @@ export class FlatFileMiningPoolDataStore implements MiningPoolDataStore {
 
 	async sync(lastUpdateInfo: LastUpdateInfo): Promise<void> {
 		this.#lastUpdateInfo = lastUpdateInfo
-		await writeFile(
+		await writeFileAtomic(
 			this.#db,
 			JSON.stringify(
 				{
