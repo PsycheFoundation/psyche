@@ -45,11 +45,13 @@ pub use parallelism::{
     CudaSynchronize, ParallelExpandHeads, ParallelismConfig, ReduceType, RowParallelLinear,
 };
 #[cfg(feature = "python")]
-pub use python_causal_lm::PythonCausalLM;
+pub use python_causal_lm::{PythonCausalLM, PythonCausalLMError, PythonModelConfig};
 #[cfg(feature = "python")]
-pub use python_distributed_causal_lm::{PythonDistributedCausalLM, TorchDistributedCommunicator};
+pub use python_distributed_causal_lm::{
+    PythonDistributedCausalLM, PythonDistributedCausalLMError, TorchDistributedCommunicator,
+};
 #[cfg(feature = "python")]
-pub use python_distributed_trainer::{PythonDistributedTrainer, NopBarrier};
+pub use python_distributed_trainer::{NopBarrier, PythonDistributedTrainer, PythonDistributedTrainerError};
 pub use rms_norm::RMSNorm;
 pub use rope::{default_rope, rotate_half, yarn_get_mscale, RoPECache, RoPEConfig, RoPEType};
 pub use safetensor_utils::{

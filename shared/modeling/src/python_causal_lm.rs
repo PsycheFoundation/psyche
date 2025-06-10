@@ -1,5 +1,5 @@
 use crate::{
-    CausalLM, Communicator, EosToks, ModelConfig, ModelLoadError, ParallelismConfig,
+    AutoConfig, CausalLM, Communicator, EosToks, ModelConfig, ModelLoadError, ParallelismConfig,
     PretrainedSource, StableVariableIterator, Variable,
 };
 
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tch::{Device, Tensor};
 use thiserror::Error;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PythonModelConfig {
     config: serde_json::Value,
 }
@@ -40,6 +40,37 @@ impl<'de> serde::Deserialize<'de> for PythonModelConfig {
         Ok(Self {
             config: serde_json::Value::deserialize(deserializer)?,
         })
+    }
+}
+
+impl From<serde_json::Value> for PythonModelConfig {
+    fn from(config: serde_json::Value) -> Self {
+        Self { config }
+    }
+}
+
+impl TryFrom<AutoConfig> for PythonModelConfig {
+    type Error = ModelLoadError;
+
+    fn try_from(value: AutoConfig) -> Result<Self, Self::Error> {
+        match value {
+            AutoConfig::Auto(config) => Ok(config),
+            _ => Err(ModelLoadError::WrongConfigType),
+        }
+    }
+}
+
+impl TryFrom<PretrainedSource<AutoConfig>> for PretrainedSource<PythonModelConfig> {
+    type Error = ModelLoadError;
+
+    fn try_from(value: PretrainedSource<AutoConfig>) -> Result<Self, Self::Error> {
+        match value {
+            PretrainedSource::RepoFiles(x) => Ok(Self::RepoFiles(x)),
+            PretrainedSource::ConfigAndTensors(AutoConfig::Auto(x), y) => {
+                Ok(Self::ConfigAndTensors(x, y))
+            }
+            PretrainedSource::ConfigAndTensors(_, _) => Err(ModelLoadError::WrongConfigType),
+        }
     }
 }
 

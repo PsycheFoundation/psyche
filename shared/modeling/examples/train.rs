@@ -218,7 +218,7 @@ fn main() -> Result<()> {
                     if dp != 1 || tp != 1 {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
-                            source,
+                            &source,
                             Device::cuda_if_available(),
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),

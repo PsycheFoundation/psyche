@@ -7138,6 +7138,7 @@ dependencies = [
  "psyche-eval",
  "psyche-modeling",
  "psyche-network",
+ "psyche-python-extension-impl",
  "psyche-tui",
  "psyche-watcher",
  "rand 0.8.5",
