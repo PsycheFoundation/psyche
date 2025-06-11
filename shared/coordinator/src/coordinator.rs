@@ -936,6 +936,20 @@ impl<T: NodeIdentity> Coordinator<T> {
                 )
                 .unwrap();
 
+            // Equitatively distribute the batch sizes at the start of the round
+            let total_batches = self.config.global_batch_size_end;
+            let num_clients = self.epoch_state.clients.len() as u16;
+            let base_batches_per_client = total_batches / num_clients;
+            let mut remaining_batches = total_batches % num_clients;
+
+            for client in self.epoch_state.clients.iter_mut() {
+                client.assigned_batch_size = base_batches_per_client;
+                if remaining_batches > 0 {
+                    client.assigned_batch_size += 1;
+                    remaining_batches -= 1;
+                }
+            }
+
             self.start_warmup(unix_timestamp);
         }
 
@@ -982,8 +996,6 @@ impl<T: NodeIdentity> Coordinator<T> {
 
         // TODO: Punish idle witnesses
         self.epoch_state.first_round = false.into();
-        self.epoch_state.time_witnessing_window_start =
-            self.calculate_time_witnessing_window_start();
         self.progress.step += 1;
 
         let current_round = self.current_round_unchecked();
