@@ -95,6 +95,10 @@
               # don't start until we have DNS!
               ExecStartPre = "/bin/sh -c 'until ${pkgs.bind.host}/bin/host example.com; do sleep 1; done'";
               ExecStart = pkgs.lib.getExe psyche-website-backend;
+
+              # restart if something breaks, e.g. OOM
+              Restart = "on-failure";
+              RestartSec = "5s";
             };
           };
         };

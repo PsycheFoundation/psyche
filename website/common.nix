@@ -6,7 +6,7 @@ let
     pname = packageJson.name;
     version = packageJson.version;
     src = workspaceSrc;
-    hash = "sha256-c+HDWD+sgmR+2mtC3nJaidShWQ56whm4QLQTHpQZwB0=";
+    hash = "sha256-FjZt0cNKlMBdgocLTbr6RkGMBjqu3rp7NWgyAX3imY4=";
   };
 in
 {

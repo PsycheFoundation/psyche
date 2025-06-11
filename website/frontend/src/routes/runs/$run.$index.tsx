@@ -81,6 +81,32 @@ function RouteComponent() {
 
 	const [fullscreen, setFullscreen] = useState(false)
 
+	if (import.meta.env.VITE_DISABLE) {
+		return (
+			<RunContainer>
+				{backButton}
+				<RunBox
+					title={
+						<span className={text['display/4xl']}>temporarily unavailable</span>
+					}
+				>
+					<div
+						className={c(
+							css`
+								padding: 48px;
+								text-align: center;
+							`,
+							text['body/base/regular']
+						)}
+					>
+						Sorry, the Psyche website is experiencing issues right now. Please
+						check back later!
+					</div>
+				</RunBox>
+			</RunContainer>
+		)
+	}
+
 	if (!info) {
 		return (
 			<RunContainer>
@@ -103,7 +129,6 @@ function RouteComponent() {
 			</RunContainer>
 		)
 	}
-
 	return (
 		<FullPagePortal open={fullscreen}>
 			<RunContainer>
