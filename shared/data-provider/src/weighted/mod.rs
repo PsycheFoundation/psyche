@@ -1,11 +1,22 @@
-use std::{mem, sync::atomic::AtomicUsize};
+use std::{
+    cell::UnsafeCell,
+    cmp::min,
+    mem,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
 use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
 use rand::{seq::SliceRandom, Rng, SeedableRng};
 use rand_chacha::{ChaCha20Rng, ChaCha8Rng};
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator, repeat};
+use rayon::{
+    iter::{
+        repeat, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+        ParallelIterator,
+    },
+    slice::ParallelSliceMut,
+};
 use rip_shuffle::RipShuffleParallel;
 
 pub mod http;
@@ -188,53 +199,97 @@ fn build_weighted_index(
 ) -> (Vec<usize>, Vec<u64>) {
     // todo: improve this computation to ensure we don't need to compute this sum
     // and maybe try to gaurantee norm_weights add to 1
-    let weights_sum: f64 = weights.iter().sum();
-    let norm_weights: Vec<f64> = weights.par_iter().map(|weight| weight / weights_sum).collect();
+    let weights_sum: f64 = weights.par_iter().sum();
+    let mut norm_weights: Vec<f64> = weights
+        .par_iter()
+        .map(|weight| weight / weights_sum)
+        .collect();
 
     let data_idx_sequences = dataset_sizes
         .par_iter()
         .zip(norm_weights.par_iter())
         .map(|(dataset_size, norm_weight)| {
-            let mut data_seq: Vec<_> = (0..*dataset_size).collect();
+            let mut data_seq: Vec<_> = (0..*dataset_size).into_par_iter().collect();
             //todo: this is so bad T_T do we need to cryptanalyze this?
-            //let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
-            //data_seq.par_shuffle(&mut rng);
+            let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
+            data_seq.par_shuffle(&mut rng);
 
             data_seq
         })
         .collect::<Vec<_>>();
 
+    let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
+    //norm_weights.par_shuffle(&mut rng);
+
     let mut mask = norm_weights
         .par_iter()
         .enumerate()
-        .flat_map(|(idx, weight)| repeat(idx).take((weight * n_samples as f64) as usize).enumerate().map(|(idx, val)| {
-            (idx, val)
-        }))
+        .flat_map(|(idx, weight)| {
+            repeat(idx)
+                .take((weight * n_samples as f64) as usize)
+                .enumerate()
+                .map(|(idx, val)| (idx, val))
+        })
         .collect::<Vec<_>>();
-
-    let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
-
-    // todo: we just swap a random element for the last element to try to make less biased the
-    // element affected by this stuff that we do to ensure we have exactly n_samples elements
-    // but it's not gauranteed that we'll only differ from the correct number by 1 element, so
-    // we should really do a full shuffle, but for now I've just decided to do a swap to make it faster
-    let mask_len = mask.len();
-    mask.swap(mask_len - 1, rng.gen_range(0..mask_len));
 
     mask.truncate(n_samples);
 
     if mask.len() < n_samples {
-        let it = std::iter::repeat(mask[mask.len() - 1]).take(n_samples - mask.len());
+        let val = mask[mask.len() - 1].1;
+        let last_idx = mask[mask.len() - 1].0;
+        let it = std::iter::repeat(val)
+            .take(n_samples - mask.len())
+            .enumerate()
+            .map(|(idx, val)| (last_idx + 1 + idx, val));
         mask.extend(it);
     }
 
-    mask.par_shuffle(&mut rng);
+    let mut indexes = (0..n_samples).into_par_iter().collect::<Vec<_>>();
+    indexes.par_shuffle(&mut rng);
 
-    let dataset_idx_and_sample_idx = mask.iter().map(|(idx, i)| {
-        let seq_len = data_idx_sequences[*i].len();
-        (*i, data_idx_sequences[*i][*idx % seq_len] as u64)
-    }).collect::<(Vec<_>, Vec<_>)>();
+    let mut accum = 0;
 
+    for (idx, w) in norm_weights.iter().enumerate() {
+        if accum >= n_samples {
+            break;
+        }
+
+        if idx != norm_weights.len() - 1 {
+            let size = (w * n_samples as f64) as usize;
+
+            indexes[accum..min(accum + size, n_samples)].par_sort();
+            accum += size;
+        } else {
+            indexes[accum..].par_sort();
+        }
+    }
+
+    let mask = unsafe {
+        // use atomics to make rust happy - these relaxed stores should just compile down to regular stores (i hope)
+        let mut new_mask = Vec::<(AtomicUsize, AtomicUsize)>::with_capacity(n_samples);
+        new_mask.set_len(n_samples);
+
+        mask.into_par_iter()
+            .zip(indexes.into_par_iter())
+            .for_each(|(val, idx)| {
+                new_mask[idx].0.store(val.0, Ordering::Relaxed);
+                new_mask[idx].1.store(val.1, Ordering::Relaxed);
+            });
+
+        new_mask
+    };
+
+    let dataset_idx_and_sample_idx = mask
+        .iter()
+        .map(|(idx, i)| {
+            let seq_len = data_idx_sequences[i.load(Ordering::Relaxed)].len();
+            (
+                i.load(Ordering::Relaxed),
+                data_idx_sequences[i.load(Ordering::Relaxed)][idx.load(Ordering::Relaxed) % seq_len]
+                    as u64,
+            )
+        })
+        .collect::<(Vec<_>, Vec<_>)>();
 
     dataset_idx_and_sample_idx
 }
