@@ -218,6 +218,27 @@ fn build_weighted_index(
         })
         .collect::<Vec<_>>();
 
+
+    // Super-involved part of the algorithm. The idea here is that we want to we first want to create a "mask"
+    // of dataset indexes that samples from the datasets based on their weights. for example, it dataset 0 has weight 0.75 and
+    // dataset 1 has weight 0.25, and we want 4 samples, then the mask might look like [0, 1, 0, 0].
+    // continuing from the above example, every time we sample from dataset 0, we want to take the "next" sample from that dataset
+    // (the order of the samples has been randomized above) until we get to the end, at which point we loop around.
+    // It's important we go through the entire dataset before looping aroud for small datasets.
+    // Thus, if dataset 0 has samples [1, 0] and dataset 1 [0], then we want around final result to look like
+    // [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample in the dataset.
+    // therefore, first we generate the mask, and next we want to sample from each dataset sequentially. This is relatively
+    // easy to accomplish serially - just have an iter().cycle() into each of the elements of data_idx_sequences. Not so
+    // if we want to parallelize the algorithm though. Therefore, when we generate the mask, we generate it as a Vec<(usize, usize)>, where the
+    // first element of the tuple is an ascending index into the dataset sequence, and the second is the index of the dataset sequence.
+    // next, we want to distribute these tuples randomly thoughout randomized-ordered mask, but such that the index of each
+    // tuple for the same dataset is monotonically increasing. thus: [(0, 0), (0, 1) (1, 0), (2, 0)], where the second element of each tuple
+    // is the dataset index, and the first is the index into it, which is monotonically increasing for any given dataset.
+    // to accomplish this, we first generate the mask in-order: [(0, 0), (1, 0), (2, 0), (0, 1)]. We then generate a list of indices
+    // which we then scamble the order of, eg [3, 0, 2, 1]. We then divide the indices into regions corresponding to each dataset
+    //, and then sort each sub-region, thus: [0, 2, 3, 1]. We then take our ordered mask, and write to the final resulting scrambled mask
+    // each tuple to the index indicated by the index in our indices Vec. Doing this with the above example, we get our final result
+    // [(0, 0), (0, 1) (1, 0), (2, 0)]. We then use this scrambled mask to sample from data_idx_sequences like such: data_idx_sequences[tuple.1][tuple.0]
     let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
 
     let mut mask = norm_weights
