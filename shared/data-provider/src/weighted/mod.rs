@@ -279,7 +279,7 @@ fn build_weighted_index(
     };
 
     let dataset_idx_and_sample_idx = mask
-        .iter()
+        .par_iter()
         .map(|(idx, i)| {
             let seq_len = data_idx_sequences[i.load(Ordering::Relaxed)].len();
             (
