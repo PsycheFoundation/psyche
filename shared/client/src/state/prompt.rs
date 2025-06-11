@@ -50,9 +50,8 @@ impl PromptTask {
         limit: Option<usize>,
         loop_if_empty: bool,
     ) {
-        for x in 0..11 {
+        for x in 0..1 {
             if cancel.is_cancelled() {
-                // cancelled = true;
                 break;
             }
 
@@ -60,17 +59,12 @@ impl PromptTask {
             let device = trainer.device();
 
             // Read tokens for creating input
-            let tokens_snapshot: Vec<i64> = {
-                let tokens = self.tokens.read().unwrap();
-                if tokens.len() > MAX_CONTEXT_LENGTH {
-                    tokens[tokens.len() - MAX_CONTEXT_LENGTH..].to_vec()
-                } else {
-                    tokens.clone()
-                }
-            };
-            let input = Tensor::from_slice(&tokens_snapshot)
-                .to(device.clone())
-                .unsqueeze(0);
+            let token_len = self.tokens.read().unwrap().len();
+            if token_len > MAX_CONTEXT_LENGTH {
+                self.tokens.write().unwrap().drain(..MAX_CONTEXT_LENGTH / 2);
+            }
+            let tokens = self.tokens.read().unwrap();
+            let input = Tensor::from_slice(&tokens).to(device.clone()).unsqueeze(0);
 
             // Run forward pass
             let (logits, _) = trainer.forward(&input, None, Some(1));

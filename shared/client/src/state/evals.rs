@@ -282,7 +282,7 @@ impl EvalRunner {
                                             );
                                         }
                                         EnumTask::PromptTask(prompt) => {
-                                            let prompt_result = prompt.run(
+                                            prompt.run(
                                                 &mut trainer,
                                                 cancel.clone(),
                                                 None,
@@ -290,8 +290,11 @@ impl EvalRunner {
                                                 false,
                                             );
                                             // ACA see this: Increment next_index after processing the prompt
-                                            prompt.next_index().fetch_add(1, Ordering::SeqCst);
-                                            info!("Prompt task result: {:?}", prompt_result);
+                                            prompt.next_index().fetch_add(50, Ordering::SeqCst);
+                                            println!(
+                                                "Prompt next index: {:?}",
+                                                prompt.next_index()
+                                            );
                                         }
                                     }
                                     info!("Done eval task {}", eval_task.name());
