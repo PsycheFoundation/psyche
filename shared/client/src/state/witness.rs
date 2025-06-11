@@ -1,6 +1,4 @@
-use psyche_coordinator::{
-    Coordinator, Witness, WitnessMetadata, WitnessTrainingTimes, TRAINING_TIMES_SLICE_SIZE,
-};
+use psyche_coordinator::{Coordinator, Witness, WitnessMetadata, TRAINING_TIMES_SLICE_SIZE};
 use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
@@ -114,38 +112,21 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
+        // Calculate the window bounds
         let clients_len = state.epoch_state.clients.len();
-
-        let num_actual_slices = if clients_len == 0 {
-            1 // Should not happen but just in case to avoid division by zero
-        } else {
-            clients_len.div_ceil(TRAINING_TIMES_SLICE_SIZE)
-        };
-
-        let step = state.progress.step - 1; // First step is 1, so we subtract 1 to get 0-index
-
-        // Cycle through the partitions depending on the current step, based on actual client count.
-        let slice_index = if num_actual_slices == 0 {
-            0 // Should never happen but just in case
-        } else {
-            step % (num_actual_slices as u32)
-        };
-
-        // Calculate the starting index in current_round.client_times for the current slice.
-        let start_idx_in_client_times = (slice_index as usize) * TRAINING_TIMES_SLICE_SIZE;
+        let client_index_start = state.epoch_state.time_witnessing_window_start as usize;
+        let client_index_end = client_index_start + TRAINING_TIMES_SLICE_SIZE - 1;
 
         trace!(
-            "[get_witness_to_send] Submitting training times for step={}, slice_index={}, offset={}, n_partitions_actual={}, clients_len={}",
-            step,
-            slice_index,
-            start_idx_in_client_times,
-            num_actual_slices,
-            clients_len,
+            "[get_witness_to_send] Submitting training times for step={}, witnessing times for window [{}:{}]",
+            state.progress.step,
+            client_index_start,
+            client_index_end,
         );
 
         let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new();
-        for i in 0..(TRAINING_TIMES_SLICE_SIZE) {
-            let source_idx = start_idx_in_client_times + i;
+        for i in 0..=client_index_end {
+            let source_idx = client_index_start + i;
 
             if source_idx < clients_len {
                 let _ = training_times.push(
@@ -164,10 +145,7 @@ impl WitnessStep {
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
-            training_times: WitnessTrainingTimes {
-                offset: start_idx_in_client_times as u8,
-                times: training_times,
-            },
+            training_times,
         })
     }
 }
