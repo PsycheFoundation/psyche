@@ -241,6 +241,8 @@ impl StatsLogger {
             .tasks()
             .iter()
             .flatten()
+            // ACA check this
+            .filter(|eval_task| eval_task.name() != "Prompt")
             .flat_map(|eval_task| {
                 let task = eval_task.task();
                 let metric_name: &str = task.main_metric_name();

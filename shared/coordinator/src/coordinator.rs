@@ -172,7 +172,7 @@ pub struct WitnessMetadata {
     pub bandwidth_per_sec: f32,
     pub loss: f32,
     pub evals: FixedVec<WitnessEvalResult, 8>,
-    pub prompt_results: FixedVec<u32, 128>,
+    pub prompt_results: FixedVec<u32, 8>,
     pub efficency: f32,
 }
 

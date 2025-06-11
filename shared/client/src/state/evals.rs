@@ -44,6 +44,11 @@ impl GpuTask {
             task: EnumTask::EvalTask(eval_task),
         }
     }
+    pub fn new_prompt_task(prompt_task: PromptTask) -> Self {
+        Self {
+            task: EnumTask::PromptTask(prompt_task),
+        }
+    }
 
     pub fn task(&self) -> &psyche_eval::PreparedTask {
         match &self.task {
@@ -55,14 +60,14 @@ impl GpuTask {
     pub fn name(&self) -> &str {
         match &self.task {
             EnumTask::EvalTask(task) => &task.task.name(),
-            EnumTask::PromptTask(prompt) => todo!(),
+            EnumTask::PromptTask(prompt) => "Prompt",
         }
     }
 
     pub fn next_index(&self) -> &Arc<AtomicUsize> {
         match &self.task {
             EnumTask::EvalTask(task) => &task.next_index,
-            EnumTask::PromptTask(prompt) => todo!(),
+            EnumTask::PromptTask(prompt) => prompt.next_index(),
         }
     }
 }
@@ -129,7 +134,7 @@ impl EvalRunner {
 
         tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                eval_tasks
+                let mut eval_model_taks = eval_tasks
                     .into_iter()
                     .map(|task| {
                         let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
@@ -139,7 +144,14 @@ impl EvalRunner {
                             next_index: Arc::new(AtomicUsize::new(0)),
                         }))
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+
+                let prompt_task = Arc::new(GpuTask::new_prompt_task(PromptTask::new(
+                    "Respond just yes or no, is Buenos Aires the capital of Argentina?".to_string(),
+                    &tokenizer,
+                )));
+                eval_model_taks.push(prompt_task);
+                eval_model_taks
             })
             .await;
 
@@ -270,14 +282,19 @@ impl EvalRunner {
                                             );
                                         }
                                         EnumTask::PromptTask(prompt) => {
-                                            let prompt_result = prompt.run(
+                                            prompt.run(
                                                 &mut trainer,
                                                 cancel.clone(),
                                                 None,
                                                 None,
                                                 false,
                                             );
-                                            info!("Prompt task result: {:?}", prompt_result);
+                                            // ACA see this: Increment next_index after processing the prompt
+                                            prompt.next_index().fetch_add(50, Ordering::SeqCst);
+                                            println!(
+                                                "Prompt next index: {:?}",
+                                                prompt.next_index()
+                                            );
                                         }
                                     }
                                     info!("Done eval task {}", eval_task.name());
