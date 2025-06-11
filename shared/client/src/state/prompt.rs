@@ -1,5 +1,9 @@
 use psyche_modeling::CausalLM;
 use psyche_modeling::{LogitsProcessor, Sampling, Trainer};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use tch::Tensor;
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -8,13 +12,22 @@ use tokio_util::sync::CancellationToken;
 pub struct PromptTask {
     task: String,
     tokens: Vec<i64>,
+    next_index: Arc<AtomicUsize>,
 }
 
 impl PromptTask {
     pub fn new(task: String, tokenizer: &Tokenizer) -> Self {
         let encoding = tokenizer.encode(task.clone(), true).unwrap();
         let tokens = encoding.get_ids().iter().map(|x| *x as i64).collect();
-        Self { task, tokens }
+        Self {
+            task,
+            tokens,
+            next_index: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn next_index(&self) -> &Arc<AtomicUsize> {
+        &self.next_index
     }
 }
 
