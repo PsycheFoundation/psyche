@@ -211,7 +211,7 @@ fn build_weighted_index(
         .map(|(dataset_size, norm_weight)| {
             let mut data_seq: Vec<_> = (0..*dataset_size).into_par_iter().collect();
             //todo: this is so bad T_T do we need to cryptanalyze this?
-            let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
+            let mut rng = ChaCha20Rng::seed_from_u64((*norm_weight).to_bits());
             data_seq.par_shuffle(&mut rng);
 
             data_seq
@@ -239,7 +239,7 @@ fn build_weighted_index(
     //, and then sort each sub-region, thus: [0, 2, 3, 1]. We then take our ordered mask, and write to the final resulting scrambled mask
     // each tuple to the index indicated by the index in our indices Vec. Doing this with the above example, we get our final result
     // [(0, 0), (0, 1) (1, 0), (2, 0)]. We then use this scrambled mask to sample from data_idx_sequences like such: data_idx_sequences[tuple.1][tuple.0]
-    let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
+    let mut rng = ChaCha20Rng::seed_from_u64(weights_sum.to_bits() );
 
     let mut mask = norm_weights
         .par_iter()
