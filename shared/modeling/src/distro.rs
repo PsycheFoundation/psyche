@@ -568,7 +568,7 @@ impl Distro {
                 let transmit_grad = self.transform.decode(&decompressed);
 
                 // Remove transmitted from delta
-                let _t = delta.g_sub_(&transmit_grad.sharded_like(delta.shallow_clone()));
+                let _t = delta.g_sub_(&var.shard_other_tensor_like_me(transmit_grad));
             }
 
             // weight decay

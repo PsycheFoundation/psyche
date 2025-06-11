@@ -17,7 +17,7 @@ pub trait Variable {
     fn logical_tensor(&self) -> Tensor;
     fn local_tensor(&self) -> Tensor;
     fn gather_full_tensor(&self) -> Tensor;
-    fn sharded_like(&self, tensor: Tensor) -> Tensor;
+    fn shard_other_tensor_like_me(&self, tensor: Tensor) -> Tensor;
     fn full_tensor_shape(&self) -> Vec<i64>;
     fn is_sharded(&self) -> bool;
     fn zeros_like(&self, name: String) -> Box<dyn Variable>;
@@ -109,7 +109,7 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
         }
     }
 
-    fn sharded_like(&self, tensor: Tensor) -> Tensor {
+    fn shard_other_tensor_like_me(&self, tensor: Tensor) -> Tensor {
         match &self.2 {
             Some(shard) => tensor_shard(&tensor, shard),
             None => tensor,
@@ -125,44 +125,8 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
     }
 
     fn set_grad(&self, tensor: Tensor) {
-        self.1.grad().copy_(&self.sharded_like(tensor));
-    }
-}
-
-impl Variable for Tensor {
-    fn name(&self) -> &str {
-        unimplemented!()
-    }
-
-    fn local_tensor(&self) -> Tensor {
-        self.shallow_clone()
-    }
-
-    fn logical_tensor(&self) -> Tensor {
-        self.shallow_clone()
-    }
-
-    fn gather_full_tensor(&self) -> Tensor {
-        self.shallow_clone()
-    }
-
-    fn sharded_like(&self, tensor: Tensor) -> Tensor {
-        tensor
-    }
-
-    fn full_tensor_shape(&self) -> Vec<i64> {
-        self.size()
-    }
-
-    fn is_sharded(&self) -> bool {
-        false
-    }
-
-    fn zeros_like(&self, _name: String) -> Box<dyn Variable> {
-        Box::new(self.zeros_like())
-    }
-
-    fn set_grad(&self, tensor: Tensor) {
-        self.grad().copy_(&tensor);
+        self.1
+            .grad()
+            .copy_(&self.shard_other_tensor_like_me(tensor));
     }
 }

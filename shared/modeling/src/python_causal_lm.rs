@@ -425,7 +425,7 @@ impl Variable for PythonCausalLMVariable {
         }
     }
 
-    fn sharded_like(&self, tensor: Tensor) -> Tensor {
+    fn shard_other_tensor_like_me(&self, tensor: Tensor) -> Tensor {
         match self.sharded {
             true => {
                 let result: PyResult<Tensor> = Python::with_gil(|py| {

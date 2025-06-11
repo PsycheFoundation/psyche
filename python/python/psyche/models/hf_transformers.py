@@ -213,19 +213,19 @@ class HfTransformersAuto(CausalLM):
         num_logits_to_keep: Optional[int] = None,
         loss_scale: Optional[float] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        # if self.world_mesh:
-        #     if self.world_mesh.mesh_dim_names:
-        #         if "dp_shard" in self.world_mesh.mesh_dim_names:
-        #             dp_shard = self.world_mesh[tuple(('dp_shard',))]
-        #             size = dp_shard.size()
-        #             rank = dp_shard.get_local_rank()
+        if self.world_mesh:
+            if self.world_mesh.mesh_dim_names:
+                if "dp_shard" in self.world_mesh.mesh_dim_names:
+                    dp_shard = self.world_mesh[tuple(('dp_shard',))]
+                    size = dp_shard.size()
+                    rank = dp_shard.get_local_rank()
 
-        #             # do FSDP data sharding
-        #             shard_size = input_ids.shape[0] // size
-        #             start_row = rank * shard_size
-        #             input_ids = input_ids.narrow(0, start_row, shard_size).contiguous()
-        #             if labels is not None:
-        #                 labels = labels.narrow(0, start_row, shard_size).contiguous()
+                    # do FSDP data sharding
+                    shard_size = input_ids.shape[0] // size
+                    start_row = rank * shard_size
+                    input_ids = input_ids.narrow(0, start_row, shard_size).contiguous()
+                    if labels is not None:
+                        labels = labels.narrow(0, start_row, shard_size).contiguous()
 
         num_logits_to_keep = 0 if num_logits_to_keep is None else num_logits_to_keep
         ret = self.model(
