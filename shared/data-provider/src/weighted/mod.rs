@@ -197,20 +197,19 @@ fn build_weighted_index(
         .map(|(dataset_size, norm_weight)| {
             let mut data_seq: Vec<_> = (0..*dataset_size).collect();
             //todo: this is so bad T_T do we need to cryptanalyze this?
-            let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
-            data_seq.par_shuffle(&mut rng);
+            //let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(*norm_weight) });
+            //data_seq.par_shuffle(&mut rng);
 
             data_seq
         })
         .collect::<Vec<_>>();
 
-    let mut dataset_index = Vec::with_capacity(n_samples);
-    let mut dataset_sample_index = Vec::with_capacity(n_samples);
-
     let mut mask = norm_weights
         .par_iter()
         .enumerate()
-        .flat_map(|(idx, weight)| repeat(idx).take((weight * n_samples as f64) as usize))
+        .flat_map(|(idx, weight)| repeat(idx).take((weight * n_samples as f64) as usize).enumerate().map(|(idx, val)| {
+            (idx, val)
+        }))
         .collect::<Vec<_>>();
 
     let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
@@ -231,17 +230,13 @@ fn build_weighted_index(
 
     mask.par_shuffle(&mut rng);
 
-    let mut iters = data_idx_sequences
-        .iter()
-        .map(|subvec| subvec.iter().cycle())
-        .collect::<Vec<_>>();
+    let dataset_idx_and_sample_idx = mask.iter().map(|(idx, i)| {
+        let seq_len = data_idx_sequences[*i].len();
+        (*i, data_idx_sequences[*i][*idx % seq_len] as u64)
+    }).collect::<(Vec<_>, Vec<_>)>();
 
-    for i in mask {
-        dataset_index.push(i);
-        dataset_sample_index.push(*iters[i].next().unwrap() as u64);
-    }
 
-    (dataset_index, dataset_sample_index)
+    dataset_idx_and_sample_idx
 }
 
 fn shuffle<T: Rng>(dataset_index: &mut [usize], dataset_sample_index: &mut [u64], rng: &mut T) {
