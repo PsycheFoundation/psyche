@@ -117,15 +117,8 @@ impl WitnessStep {
         let client_index_start = state.epoch_state.time_witnessing_window_start as usize;
         let client_index_end = client_index_start + TRAINING_TIMES_SLICE_SIZE - 1;
 
-        trace!(
-            "[get_witness_to_send] Submitting training times for step={}, witnessing times for window [{}:{}]",
-            state.progress.step,
-            client_index_start,
-            client_index_end,
-        );
-
         let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new();
-        for i in 0..=client_index_end {
+        for i in 0..TRAINING_TIMES_SLICE_SIZE {
             let source_idx = client_index_start + i;
 
             if source_idx < clients_len {
@@ -139,6 +132,16 @@ impl WitnessStep {
             }
             // If source_idx is out of bounds, training_times[i] remains 0
         }
+
+        trace!(
+                    "[get_witness_to_send] Submitting training times for step={}, witnessing times for window [{}:{}] (window start {}) times: {:?}, client_times: {:?}",
+                    state.progress.step,
+                    client_index_start,
+                    client_index_end,
+                    state.epoch_state.time_witnessing_window_start,
+                    training_times,
+                    current_round.client_times
+                );
 
         Some(Witness {
             proof: *proof,

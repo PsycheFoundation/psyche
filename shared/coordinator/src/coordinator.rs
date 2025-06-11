@@ -15,7 +15,7 @@ pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 
-pub const TRAINING_TIMES_SLICE_SIZE: usize = 90;
+pub const TRAINING_TIMES_SLICE_SIZE: usize = 4;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
@@ -982,9 +982,9 @@ impl<T: NodeIdentity> Coordinator<T> {
 
         // TODO: Punish idle witnesses
         self.epoch_state.first_round = false.into();
-        self.progress.step += 1;
         self.epoch_state.time_witnessing_window_start =
             self.calculate_time_witnessing_window_start();
+        self.progress.step += 1;
 
         let current_round = self.current_round_unchecked();
         let height = current_round.height;
@@ -1003,19 +1003,31 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         let witnesses = &self.current_round_unchecked().witnesses;
+        for witness in witnesses.iter() {
+            msg!(
+                "[tick_round_witness] Witness {} proposed times: {:?}",
+                witness.proof.index,
+                witness.training_times
+            );
+        }
+
         let mut client_times_last_index_updated = 0;
         if let Some(mut agreed_values) = self.get_consensus_on_reported_times(witnesses) {
+            let window_start = self.epoch_state.time_witnessing_window_start as usize;
+            let window_end = window_start + TRAINING_TIMES_SLICE_SIZE;
             // If we have exited clients, we need to remove their times from the agreed times as
             // well, as to keep consistency with the indices.
             // We want to remove from the last index to the first, to avoid shuffling the array.
             removed_clients_idx.sort_by(|c1: &_, c2| c2.cmp(c1));
+            // We only care about those in the current window
+            removed_clients_idx.retain(|&i| (window_start..window_end).contains(&i));
             for i in removed_clients_idx.iter() {
-                agreed_values.remove(*i);
+                agreed_values.remove(*i % TRAINING_TIMES_SLICE_SIZE);
             }
             msg!(
                 "[tick_round_witness] Agreed time values for slice [{}:{}]: {:?}",
-                self.epoch_state.time_witnessing_window_start,
-                self.epoch_state.time_witnessing_window_start + agreed_values.len() as u16 - 1,
+                window_start,
+                window_end - 1,
                 agreed_values,
             );
 
@@ -1046,10 +1058,19 @@ impl<T: NodeIdentity> Coordinator<T> {
             let assigned_batch_sizes = self.calculate_batch_sizes_per_client();
             for i in 0..assigned_batch_sizes.len() {
                 let client = self.epoch_state.clients.get_mut(i);
+                let Some(client) = client else {
+                    // Should never be None but just in case
+                    msg!("[tick_round_witness] WARN No client found at index {}, skipping batch assignment.", i);
+                    continue;
+                };
 
-                if let Some(client) = client {
-                    client.assigned_batch_size = assigned_batch_sizes.get(i).cloned().unwrap_or(1);
-                }
+                client.assigned_batch_size = assigned_batch_sizes.get(i).cloned().unwrap_or_else(|| {
+                    msg!( // Again, this should never happen
+                        "[tick_round_witness] WARN No assigned batch size for client {}, defaulting to 1",
+                        i
+                    );
+                    1
+                });
             }
         }
 
@@ -1074,6 +1095,13 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.start_cooldown(unix_timestamp);
             return Ok(TickResult::Ticked);
         }
+
+        let time_witnessing_window_start = self.calculate_time_witnessing_window_start();
+        msg!(
+            "[tick_round_witness] WITNESSING WINDOW START: {}",
+            time_witnessing_window_start
+        );
+        self.epoch_state.time_witnessing_window_start = time_witnessing_window_start;
 
         self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)
