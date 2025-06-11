@@ -856,12 +856,21 @@ async fn async_main() -> Result<()> {
             }
             println!("authorization valid for run id {run_id} using pubkey {solana_pubkey}");
 
+            let coordinator_account_state = backend
+                .get_coordinator_account(&coordinator_instance_state.coordinator_account)
+                .await?
+                .state
+                .coordinator;
+
+            let client_with_our_key = coordinator_account_state
+                .epoch_state
+                .clients
+                .iter()
+                .find(|c| c.id.signer == solana_pubkey);
+            if client_with_our_key.is_some() {
+                bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+            }
             if predownload_model {
-                let coordinator_account_state = backend
-                    .get_coordinator_account(&coordinator_instance_state.coordinator_account)
-                    .await?
-                    .state
-                    .coordinator;
                 let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
 
                 // it would also be reasonable to download the model if we're in WaitingForClients and the checkpoint is not P2P,
