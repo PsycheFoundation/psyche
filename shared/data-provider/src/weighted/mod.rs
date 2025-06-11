@@ -229,7 +229,7 @@ fn build_weighted_index(
     // [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample in the dataset.
     // therefore, first we generate the mask, and next we want to sample from each dataset sequentially. This is relatively
     // easy to accomplish serially - just have an iter().cycle() into each of the elements of data_idx_sequences. Not so
-    // if we want to parallelize the algorithm though. Therefore, when we generate the mask, we generate it as a Vec<(usize, usize)>, where the
+    // if we want to parallelize the algorithm (and make it deterministic) though. Therefore, when we generate the mask, we generate it as a Vec<(usize, usize)>, where the
     // first element of the tuple is an ascending index into the dataset sequence, and the second is the index of the dataset sequence.
     // next, we want to distribute these tuples randomly thoughout randomized-ordered mask, but such that the index of each
     // tuple for the same dataset is monotonically increasing. thus: [(0, 0), (0, 1) (1, 0), (2, 0)], where the second element of each tuple
