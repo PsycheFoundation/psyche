@@ -144,6 +144,8 @@ impl CoordinatorInstance {
 
 #[program]
 pub mod psyche_solana_coordinator {
+    use psyche_coordinator::TRAINING_TIMES_SLICE_SIZE;
+
     use super::*;
 
     pub fn init_coordinator(
@@ -214,7 +216,7 @@ pub mod psyche_solana_coordinator {
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
         metadata: WitnessMetadata,
-        training_times: WitnessTrainingTimes,
+        training_times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
@@ -247,10 +249,7 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
-                training_times: WitnessTrainingTimes {
-                    offset: 0,
-                    times: FixedVec::new_filled(0),
-                },
+                training_times: FixedVec::new_filled(0),
             },
         )
     }

@@ -158,7 +158,7 @@ pub struct Witness {
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
     pub broadcast_merkle: MerkleRoot,
-    pub training_times: WitnessTrainingTimes,
+    pub training_times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
 }
 
 #[derive(
@@ -208,25 +208,6 @@ impl WitnessEvalResult {
             value,
         }
     }
-}
-
-#[derive(
-    Clone,
-    Debug,
-    Zeroable,
-    Default,
-    Copy,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    TS,
-)]
-#[repr(C)]
-pub struct WitnessTrainingTimes {
-    pub offset: u8,
-    pub times: FixedVec<u16, { TRAINING_TIMES_SLICE_SIZE }>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -300,6 +281,7 @@ pub struct CoordinatorEpochState<T> {
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
+    pub time_witnessing_window_start: u16, // index of the first client in the current time witnessing window
 }
 
 #[derive(
@@ -435,6 +417,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
+            time_witnessing_window_start: 0,
         }
     }
 }
@@ -1000,6 +983,8 @@ impl<T: NodeIdentity> Coordinator<T> {
         // TODO: Punish idle witnesses
         self.epoch_state.first_round = false.into();
         self.progress.step += 1;
+        self.epoch_state.time_witnessing_window_start =
+            self.calculate_time_witnessing_window_start();
 
         let current_round = self.current_round_unchecked();
         let height = current_round.height;
@@ -1019,9 +1004,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
         let witnesses = &self.current_round_unchecked().witnesses;
         let mut client_times_last_index_updated = 0;
-        if let Some(mut agreed_values) =
-            self.get_consensus_on_reported_times(witnesses)
-        {
+        if let Some(mut agreed_values) = self.get_consensus_on_reported_times(witnesses) {
             // If we have exited clients, we need to remove their times from the agreed times as
             // well, as to keep consistency with the indices.
             // We want to remove from the last index to the first, to avoid shuffling the array.
@@ -1030,17 +1013,18 @@ impl<T: NodeIdentity> Coordinator<T> {
                 agreed_values.remove(*i);
             }
             msg!(
-                "[tick_round_witness] Agreed time values: {:?}",
-                agreed_values
+                "[tick_round_witness] Agreed time values for slice [{}:{}]: {:?}",
+                self.epoch_state.time_witnessing_window_start,
+                self.epoch_state.time_witnessing_window_start + agreed_values.len() as u16 - 1,
+                agreed_values,
             );
 
-            // Here we assume the offset is the same for all of the witnesses, we should run a consensus on that.
-            let start_offset_in_global_times = witnesses[0].training_times.offset;
             for (index_in_slice, &agreed_value) in agreed_values.iter().enumerate() {
                 if agreed_value == 0 {
                     continue; // Invalid value => ignore
                 }
-                let global_client_index = (start_offset_in_global_times as usize) + index_in_slice;
+                let global_client_index =
+                    (self.epoch_state.time_witnessing_window_start as usize) + index_in_slice;
                 let client: Option<&mut Client<T>> =
                     self.epoch_state.clients.get_mut(global_client_index);
                 if let Some(client) = client {
@@ -1223,7 +1207,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             return None;
         }
         if witnesses.len() == 1 {
-            return Some(witnesses[0].training_times.times.into());
+            return Some(witnesses[0].training_times.into());
         }
 
         let mut agreed_values = Vec::with_capacity(TRAINING_TIMES_SLICE_SIZE);
@@ -1232,7 +1216,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         for i in 0..TRAINING_TIMES_SLICE_SIZE {
             let mut values: Vec<u16> = witnesses
                 .iter()
-                .map(|w| w.training_times.times.get(i).copied().unwrap_or(0))
+                .map(|w| w.training_times.get(i).copied().unwrap_or(0))
                 .collect();
 
             // If all values are 0, that's the consensus
@@ -1367,6 +1351,26 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         assignments
+    }
+
+    fn calculate_time_witnessing_window_start(&self) -> u16 {
+        let clients_len = self.epoch_state.clients.len();
+        let num_actual_slices = if clients_len == 0 {
+            1 // Should not happen but just in case to avoid division by zero
+        } else {
+            clients_len.div_ceil(TRAINING_TIMES_SLICE_SIZE)
+        };
+
+        let step = self.progress.step - 1; // First step is 1, so we subtract 1 to get 0-index
+
+        // Cycle through the partitions depending on the current step, based on actual client count.
+        let slice_index = if num_actual_slices == 0 {
+            0 // Should never happen but just in case
+        } else {
+            step % (num_actual_slices as u32)
+        };
+
+        (slice_index as u16) * (TRAINING_TIMES_SLICE_SIZE as u16)
     }
 }
 
