@@ -200,7 +200,7 @@ fn build_weighted_index(
     // todo: improve this computation to ensure we don't need to compute this sum
     // and maybe try to gaurantee norm_weights add to 1
     let weights_sum: f64 = weights.par_iter().sum();
-    let mut norm_weights: Vec<f64> = weights
+    let norm_weights: Vec<f64> = weights
         .par_iter()
         .map(|weight| weight / weights_sum)
         .collect();
@@ -219,7 +219,6 @@ fn build_weighted_index(
         .collect::<Vec<_>>();
 
     let mut rng = ChaCha20Rng::seed_from_u64(unsafe { mem::transmute(weights_sum) });
-    //norm_weights.par_shuffle(&mut rng);
 
     let mut mask = norm_weights
         .par_iter()
