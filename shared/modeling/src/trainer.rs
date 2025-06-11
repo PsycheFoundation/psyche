@@ -239,7 +239,7 @@ impl Trainer {
         Ok(Some(loss.detach()))
     }
 
-    pub fn forward(
+    fn forward(
         model: &mut dyn CausalLM,
         data: &Tensor,
         labels: Option<&Tensor>,
