@@ -862,17 +862,19 @@ async fn async_main() -> Result<()> {
                 .state
                 .coordinator;
 
-            let client_with_our_key = coordinator_account_state
-                .epoch_state
-                .clients
-                .iter()
-                .find(|c| c.id.signer == solana_pubkey);
-            if client_with_our_key.is_some() {
-                bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+
+            if !is_paused {
+                let client_with_our_key = coordinator_account_state
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .find(|c| c.id.signer == solana_pubkey);
+                if client_with_our_key.is_some() {
+                    bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+                }
             }
             if predownload_model {
-                let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
-
                 // it would also be reasonable to download the model if we're in WaitingForClients and the checkpoint is not P2P,
                 // but that could cause you to miss the transition to Warmup, so we won't do that for now.
                 if !is_paused {
