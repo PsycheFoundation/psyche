@@ -220,25 +220,26 @@ fn build_weighted_index(
 
 
     // Super-involved part of the algorithm. The idea here is that we want to we first want to create a "mask"
-    // of dataset indexes that samples from the datasets based on their weights. for example, it dataset 0 has weight 0.75 and
-    // dataset 1 has weight 0.25, and we want 4 samples, then the mask might look like [0, 1, 0, 0].
-    // continuing from the above example, every time we sample from dataset 0, we want to take the "next" sample from that dataset
+    // of dataset indexes that samples from the datasets based on their weights. For example, if dataset 0 has weight 0.75 and
+    // dataset 1 has weight 0.25, and we want 4 samples, then the mask might conceptually look like [0, 1, 0, 0].
+    // Continuing from the above example, every time we sample from dataset 0, we want to take the "next" sample from that dataset
     // (the order of the samples has been randomized above) until we get to the end, at which point we loop around.
-    // It's important we go through the entire dataset before looping aroud for small datasets.
-    // Thus, if dataset 0 has samples [1, 0] and dataset 1 [0], then we want around final result to look like
-    // [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample in the dataset.
-    // therefore, first we generate the mask, and next we want to sample from each dataset sequentially. This is relatively
+    // It's important we go through the entire dataset before looping around for small datasets.
+    // Thus, if dataset 0 has sample IDs [1, 0] and dataset 1 [0], then we want the final result of the function to look like
+    // [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample ID in the dataset.
+    // Therefore, first we generate the mask, and next we want to sample from each dataset sequentially. This is relatively
     // easy to accomplish serially - just have an iter().cycle() into each of the elements of data_idx_sequences. Not so
     // if we want to parallelize the algorithm (and make it deterministic) though. Therefore, when we generate the mask, we generate it as a Vec<(usize, usize)>, where the
     // first element of the tuple is an ascending index into the dataset sequence, and the second is the index of the dataset sequence.
-    // next, we want to distribute these tuples randomly thoughout randomized-ordered mask, but such that the index of each
-    // tuple for the same dataset is monotonically increasing. thus: [(0, 0), (0, 1) (1, 0), (2, 0)], where the second element of each tuple
+    // Next, we want to distribute these tuples randomly thoughout a randomized-ordered mask, but such that the index of each
+    // tuple for the same dataset is monotonically increasing. Thus: [(0, 0), (0, 1) (1, 0), (2, 0)], where the second element of each tuple
     // is the dataset index, and the first is the index into it, which is monotonically increasing for any given dataset.
-    // to accomplish this, we first generate the mask in-order: [(0, 0), (1, 0), (2, 0), (0, 1)]. We then generate a list of indices
+    // To accomplish this, we first generate the mask in-order: [(0, 0), (1, 0), (2, 0), (0, 1)]. We then generate a list of indices,
     // which we then scamble the order of, eg [3, 0, 2, 1]. We then divide the indices into regions corresponding to each dataset
-    //, and then sort each sub-region, thus: [0, 2, 3, 1]. We then take our ordered mask, and write to the final resulting scrambled mask
-    // each tuple to the index indicated by the index in our indices Vec. Doing this with the above example, we get our final result
-    // [(0, 0), (0, 1) (1, 0), (2, 0)]. We then use this scrambled mask to sample from data_idx_sequences like such: data_idx_sequences[tuple.1][tuple.0]
+    // and then sort each sub-region, thus: [0, 2, 3, 1]. We then take our ordered mask, and write to the final resulting scrambled mask
+    // each tuple to the index indicated by the index in our indices Vec. Doing this with the above example, we get:
+    // [(0, 0), (0, 1), (1, 0), (2, 0)]. We then use this scrambled mask to get the sample IDs from data_idx_sequences like such: data_idx_sequences[tuple.1][tuple.0],
+    // finally resulting in [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample ID in the dataset.
     let mut rng = ChaCha20Rng::seed_from_u64(weights_sum.to_bits() );
 
     let mut mask = norm_weights
@@ -277,10 +278,10 @@ fn build_weighted_index(
         if idx != norm_weights.len() - 1 {
             let size = (w * n_samples as f64) as usize;
 
-            indexes[accum..min(accum + size, n_samples)].par_sort();
+            indexes[accum..min(accum + size, n_samples)].par_sort_unstable();
             accum += size;
         } else {
-            indexes[accum..].par_sort();
+            indexes[accum..].par_sort_unstable();
         }
     }
 
