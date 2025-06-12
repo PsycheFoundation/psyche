@@ -64,8 +64,11 @@ impl PromptTask {
                 self.tokens.write().unwrap().drain(..MAX_CONTEXT_LENGTH / 2);
             }
             let tokens = self.tokens.read().unwrap();
-            let input = Tensor::from_slice(&tokens).to(device.clone()).unsqueeze(0);
+            // let input = Tensor::from_slice(&tokens).to(device.clone()).unsqueeze(0);
 
+            let input = Tensor::from_slice(&tokens)
+                .to(*trainer.device())
+                .unsqueeze(0);
             // Run forward pass
             let (logits, _) = trainer.forward(&input, None, Some(1));
 
