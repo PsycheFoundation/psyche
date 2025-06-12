@@ -15,6 +15,7 @@ COPY --from=base /usr/src/psyche/target/release/psyche-solana-client /usr/local/
 COPY --from=base /usr/src/psyche/target/release/psyche-centralized-client /usr/local/bin/psyche-centralized-client
 COPY --from=base /usr/src/psyche/target/release/examples/inference /usr/local/bin/inference
 COPY --from=base /usr/src/psyche/target/release/examples/train /usr/local/bin/train
+COPY --from=base /usr/src/psyche/target/release/examples/bandwidth_test /usr/local/bin/bandwidth_test
 COPY ./docker/train_entrypoint.sh /usr/local
 RUN chmod 755 /usr/local/train_entrypoint.sh
 
