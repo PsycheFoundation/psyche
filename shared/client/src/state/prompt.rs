@@ -50,25 +50,27 @@ impl PromptTask {
         limit: Option<usize>,
         loop_if_empty: bool,
     ) {
-        for x in 0..1 {
+        tracing::info!("PromptTask::run");
+        for x in 0..3 {
             if cancel.is_cancelled() {
+                tracing::info!("Prompt cancelled");
                 break;
             }
-
-            // Create input tensor
-            let device = trainer.device();
 
             // Read tokens for creating input
             let token_len = self.tokens.read().unwrap().len();
             if token_len > MAX_CONTEXT_LENGTH {
                 self.tokens.write().unwrap().drain(..MAX_CONTEXT_LENGTH / 2);
             }
+
             let tokens = self.tokens.read().unwrap();
-            // let input = Tensor::from_slice(&tokens).to(device.clone()).unsqueeze(0);
 
             let input = Tensor::from_slice(&tokens)
                 .to(*trainer.device())
                 .unsqueeze(0);
+
+            // drop tokens to release lock
+            drop(tokens);
             // Run forward pass
             let (logits, _) = trainer.forward(&input, None, Some(1));
 
@@ -86,9 +88,7 @@ impl PromptTask {
             };
 
             self.tokens.write().unwrap().push(next_token as i64);
-
-            // println!("Prompt Tokens: {:?}", &self.tokens);
-            println!("Prompt Tokens");
+            tracing::info!("Prompt Next token: {}", next_token);
         }
     }
 }
