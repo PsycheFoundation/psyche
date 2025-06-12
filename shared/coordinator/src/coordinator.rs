@@ -15,7 +15,7 @@ pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 
-pub const TRAINING_TIMES_SLICE_SIZE: usize = 4;
+pub const TRAINING_TIMES_SLICE_SIZE: usize = 90;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
@@ -1108,12 +1108,8 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Ok(TickResult::Ticked);
         }
 
-        let time_witnessing_window_start = self.calculate_time_witnessing_window_start();
-        msg!(
-            "[tick_round_witness] WITNESSING WINDOW START: {}",
-            time_witnessing_window_start
-        );
-        self.epoch_state.time_witnessing_window_start = time_witnessing_window_start;
+        self.epoch_state.time_witnessing_window_start =
+            self.calculate_time_witnessing_window_start();
 
         self.start_round_train(unix_timestamp, random_seed, 0);
         Ok(TickResult::Ticked)
@@ -1259,16 +1255,13 @@ impl<T: NodeIdentity> Coordinator<T> {
                 .map(|w| w.training_times.get(i).copied().unwrap_or(0))
                 .collect();
 
-            // If all values are 0, that's the consensus
-            if values.iter().all(|&v| v == 0) {
-                agreed_values.push(0);
-                continue;
-            }
-
             // Avoid 0s as they should be invalid reported times
             values.retain(|&x| x != 0);
             if values.is_empty() {
-                return None;
+                // in this case all reported values are 0 so we set to 0 as consensus
+                // and move on with the following client
+                agreed_values.push(0);
+                continue;
             }
 
             // Try each unique value as a potential consensus value
