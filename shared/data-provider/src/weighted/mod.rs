@@ -286,7 +286,8 @@ fn build_weighted_index(
     }
 
     let mask = unsafe {
-        // use atomics to make rust happy - these relaxed stores should just compile down to regular stores (i hope)
+        // use atomics to make rust happy without doing anything too weird and unsafe or whatever T_T
+        // these relaxed stores should just compile down to regular stores (I hope)
         let mut new_mask = Vec::<(AtomicUsize, AtomicUsize)>::with_capacity(n_samples);
         new_mask.set_len(n_samples);
 
