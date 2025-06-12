@@ -106,6 +106,9 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub hub_repo: Option<String>,
 
+    #[clap(long, env, default_value_t = 3)]
+    pub hub_max_concurrent_downloads: usize,
+
     #[clap(long, env)]
     pub wandb_project: Option<String>,
 

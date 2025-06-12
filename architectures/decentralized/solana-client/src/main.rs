@@ -255,6 +255,9 @@ enum Commands {
 
         #[clap(long, env, action)]
         predownload_model: bool,
+
+        #[clap(long, env, default_value_t = 3)]
+        hub_max_concurrent_downloads: usize,
     },
 
     // Prints the help, optionally as markdown. Used for docs generation.
@@ -767,6 +770,7 @@ async fn async_main() -> Result<()> {
                 eval_tasks,
                 checkpoint_upload_info,
                 hub_read_token,
+                hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
                 wandb_info,
                 optim_stats: args.optim_stats_steps,
                 grad_accum_in_fp32: args.grad_accum_in_fp32,
@@ -800,6 +804,7 @@ async fn async_main() -> Result<()> {
             authorizer,
             pubkey,
             predownload_model,
+            hub_max_concurrent_downloads,
         } => {
             // when we call join_run, we check
             //  constraint = authorization.is_valid_for(
@@ -913,7 +918,7 @@ async fn async_main() -> Result<()> {
                     revision,
                     cache_folder,
                     hub_read_token,
-                    None,
+                    Some(hub_max_concurrent_downloads),
                     true,
                 )
                 .await?;
