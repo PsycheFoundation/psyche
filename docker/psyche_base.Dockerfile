@@ -47,7 +47,4 @@ RUN cargo chef cook --release --recipe-path client-recipe.json
 
 # Build the actual binaries
 COPY . .
-RUN cargo build -p psyche-solana-client --release --features parallelism
-RUN cargo build -p psyche-centralized-client --release --features parallelism
-RUN cargo build --example inference --release --features parallelism
-RUN cargo build --example train --release --features parallelism
+RUN cargo build --bin psyche-solana-client --bin psyche-centralized-client --example inference --example train --example bandwidth_test --release --features parallelism

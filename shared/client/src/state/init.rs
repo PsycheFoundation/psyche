@@ -44,6 +44,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
 
     // model & dataload
     pub hub_read_token: Option<String>,
+    pub hub_max_concurrent_downloads: usize,
     pub data_parallelism: usize,
     pub tensor_parallelism: usize,
     pub micro_batch_size: usize,
@@ -250,17 +251,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     ret
                                 } else {
                                     info!("Downloading {} (if needed)", hub_repo.repo_id);
-                                    let max_concurrent_downloads = match &init_config.hub_read_token
-                                    {
-                                        Some(_) => None,
-                                        None => Some(1), // anonymous downloads are connection throttled
-                                    };
                                     download_model_repo_async(
                                         &repo_id,
                                         revision,
                                         None,
                                         init_config.hub_read_token,
-                                        max_concurrent_downloads,
+                                        Some(init_config.hub_max_concurrent_downloads),
                                         false,
                                     )
                                     .await?

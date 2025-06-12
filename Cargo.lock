@@ -7308,6 +7308,7 @@ dependencies = [
  "psyche-client",
  "psyche-coordinator",
  "psyche-core",
+ "psyche-data-provider",
  "psyche-eval",
  "psyche-network",
  "psyche-solana-authorizer",

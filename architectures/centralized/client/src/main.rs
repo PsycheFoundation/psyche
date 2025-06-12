@@ -103,6 +103,7 @@ async fn async_main() -> Result<()> {
                 eval_tasks,
                 checkpoint_upload_info,
                 hub_read_token,
+                hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
                 wandb_info,
                 optim_stats: args.optim_stats_steps,
                 grad_accum_in_fp32: args.grad_accum_in_fp32,
