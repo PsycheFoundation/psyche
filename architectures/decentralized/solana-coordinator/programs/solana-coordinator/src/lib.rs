@@ -226,7 +226,7 @@ pub mod psyche_solana_coordinator {
                 participant_bloom,
                 broadcast_bloom,
                 broadcast_merkle,
-                training_times: FixedVec::new_filled(0),
+                training_times: FixedVec::new(),
             },
         )
     }
