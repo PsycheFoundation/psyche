@@ -121,27 +121,29 @@ impl WitnessStep {
         for i in 0..TRAINING_TIMES_SLICE_SIZE {
             let source_idx = client_index_start + i;
 
-            if source_idx < clients_len {
-                let _ = training_times.push(
-                    current_round
-                        .client_times
-                        .get(source_idx)
-                        .copied()
-                        .unwrap_or(0),
-                );
+            if source_idx >= clients_len {
+                // If we've exceeded the number of clients, we can stop early, the rest will be 0
+                break;
             }
-            // If source_idx is out of bounds, training_times[i] remains 0
+
+            let _ = training_times.push(
+                current_round
+                    .client_times
+                    .get(source_idx)
+                    .copied()
+                    .unwrap_or(0),
+            );
         }
 
         trace!(
-                    "[get_witness_to_send] Submitting training times for step={}, witnessing times for window [{}:{}] (window start {}) times: {:?}, client_times: {:?}",
-                    state.progress.step,
-                    client_index_start,
-                    client_index_end,
-                    state.epoch_state.time_witnessing_window_start,
-                    training_times,
-                    current_round.client_times
-                );
+            "[get_witness_to_send] Submitting training times for step={}, witnessing times for window [{}:{}] (window start {}) times: {:?}, client_times: {:?}",
+            state.progress.step,
+            client_index_start,
+            client_index_end,
+            state.epoch_state.time_witnessing_window_start,
+            training_times,
+            current_round.client_times
+        );
 
         Some(Witness {
             proof: *proof,
