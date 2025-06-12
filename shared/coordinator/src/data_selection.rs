@@ -4,39 +4,26 @@ use anchor_lang::prelude::msg;
 use psyche_core::{BatchId, ClosedInterval, NodeIdentity, deterministic_shuffle};
 use std::{collections::BTreeMap, fmt};
 
+struct BatchAssignment<T> {
+    batch_id: BatchId,
+    node_id: T,
+}
+
 /// Assigns data batches to nodes based on committee roles.
 pub fn assign_data_for_state<T: NodeIdentity>(
     coordinator: &Coordinator<T>,
     committee_selection: &CommitteeSelection,
 ) -> BTreeMap<BatchId, T> {
     let round = coordinator.current_round().unwrap();
-    let mut trainer_nodes = collect_trainer_nodes(coordinator, committee_selection, round)
-        .into_iter()
-        .map(|(_, client)| (client, client.id))
-        .collect::<Vec<_>>();
+    let assignments = calculate_batch_assignments(coordinator, committee_selection, round);
 
-    if trainer_nodes.is_empty() {
-        return BTreeMap::new();
+    let mut result = BTreeMap::new();
+    for assignment in assignments {
+        result.insert(assignment.batch_id, assignment.node_id);
     }
 
-    deterministic_shuffle(&mut trainer_nodes, round.random_seed);
-
-    let mut assignments = BTreeMap::new();
-    let mut current_index = round.data_index;
-
-    for (client, node_id) in &trainer_nodes {
-        let assigned_batch_size = client.assigned_batch_size.max(1) as u64;
-        let end_index = current_index + assigned_batch_size - 1;
-
-        assignments.insert(
-            BatchId(ClosedInterval::new(current_index, end_index)),
-            *node_id,
-        );
-        current_index = end_index + 1;
-    }
-
-    msg!("[assign_data_for_state] assignments: {:?}", assignments);
-    assignments
+    msg!("[assign_data_for_state] assignments: {:?}", result);
+    result
 }
 
 pub fn get_batch_ids_for_round<T: NodeIdentity>(
@@ -44,28 +31,10 @@ pub fn get_batch_ids_for_round<T: NodeIdentity>(
     coordinator: &Coordinator<T>,
     committee_selection: &CommitteeSelection,
 ) -> Vec<BatchId> {
-    let mut trainer_info = collect_trainer_nodes(coordinator, committee_selection, round);
-
-    // Apply the same deterministic shuffle as in assign_data_for_state
-    deterministic_shuffle(&mut trainer_info, round.random_seed);
-
-    let mut batch_ids = Vec::with_capacity(trainer_info.len());
-    let mut current_data_idx = round.data_index;
-
-    for (client_original_idx, _client_ref) in &trainer_info {
-        if let Some(client) = coordinator.epoch_state.clients.get(*client_original_idx) {
-            let client_assigned_batch_size = client.assigned_batch_size.max(1) as u64;
-            let end_data_idx = match client_assigned_batch_size {
-                0 | 1 => current_data_idx,
-                _ => current_data_idx + client_assigned_batch_size - 1,
-            };
-
-            batch_ids.push(BatchId(ClosedInterval::new(current_data_idx, end_data_idx)));
-            current_data_idx = end_data_idx + 1; // Move to the start of the next batch
-        }
-    }
-
-    batch_ids
+    calculate_batch_assignments(coordinator, committee_selection, round)
+        .into_iter()
+        .map(|assignment| assignment.batch_id)
+        .collect()
 }
 
 /// Retrieves all batch IDs assigned to a specific node from an interval tree, converting data indices to batches.
@@ -106,6 +75,31 @@ pub fn get_data_index_for_step<T: NodeIdentity>(
     }
 
     current_data_index
+}
+
+fn calculate_batch_assignments<T: NodeIdentity>(
+    coordinator: &Coordinator<T>,
+    committee_selection: &CommitteeSelection,
+    round: &Round,
+) -> Vec<BatchAssignment<T>> {
+    let mut trainer_nodes = collect_trainer_nodes(coordinator, committee_selection, round);
+    deterministic_shuffle(&mut trainer_nodes, round.random_seed);
+
+    let mut assignments = Vec::with_capacity(trainer_nodes.len());
+    let mut current_index = round.data_index;
+
+    for (_, client) in trainer_nodes {
+        let assigned_batch_size = client.assigned_batch_size.max(1) as u64;
+        let end_index = current_index + assigned_batch_size - 1;
+
+        assignments.push(BatchAssignment {
+            batch_id: BatchId(ClosedInterval::new(current_index, end_index)),
+            node_id: client.id,
+        });
+        current_index = end_index + 1;
+    }
+
+    assignments
 }
 
 fn collect_trainer_nodes<'a, T: NodeIdentity>(
