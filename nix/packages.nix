@@ -28,28 +28,42 @@
         "psyche-centralized-local-testnet"
         "expand-distro"
         "preview-lr"
+
+      ];
+
+      rustExampleNames = [
+        "bandwidth_test"
+        "inference"
+        "train"
       ];
 
       rustPackages = builtins.listToAttrs (
-        map (name: {
+        # Regular binaries
+        (map (name: {
           inherit name;
-          value = buildRustPackage name;
-        }) rustPackageNames
+          value = buildRustPackage { name = name; };
+        }) rustPackageNames)
+        ++
+          # Examples
+          (map (name: {
+            inherit name;
+            value = buildRustPackage {
+              name = name;
+              isExample = true;
+            };
+          }) rustExampleNames)
       );
 
       nixglhostRustPackages = builtins.listToAttrs (
-        map (name: {
+        (map (name: {
           name = "${name}-nixglhost";
           value = useHostGpuDrivers rustPackages.${name};
-        }) rustPackageNames
+        }) rustPackageNames)
+        ++ (map (name: {
+          name = "${name}-nixglhost";
+          value = useHostGpuDrivers rustPackages.${name};
+        }) rustExampleNames)
       );
-
-      cudaDockerImage = pkgs.dockerTools.pullImage {
-        imageName = "nvidia/cuda";
-        finalImageTag = "12.4.1-devel-ubuntu22.04";
-        imageDigest = "sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5";
-        sha256 = "sha256-T4HwY8M0XMqh0rpK5zz2+n5/6FhBzLj7gtgbtJARJKg=";
-      };
 
       # We need this because the solana validator require the compiled .so files of the Solana programs,
       # but since nix can't copy those files using a relative path because they're not tracked by git,
@@ -83,6 +97,10 @@
               cacert
               coreutils
               nixglhostRustPackages."psyche-solana-client-nixglhost"
+              nixglhostRustPackages."psyche-centralized-client-nixglhost"
+              nixglhostRustPackages."inference-nixglhost"
+              nixglhostRustPackages."train-nixglhost"
+              nixglhostRustPackages."bandwidth_test-nixglhost"
               (pkgs.runCommand "entrypoint" { } ''
                 mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
                 cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
@@ -191,7 +209,6 @@
           docker-psyche-centralized-client = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-centralized-client";
             tag = "latest";
-            fromImage = cudaDockerImage;
 
             # Copy the binary and the entrypoint script into the image
 
@@ -201,7 +218,11 @@
             ];
 
             config = {
-              Env = [ "NVIDIA_DRIVER_CAPABILITIES=all" ];
+              Env = [
+                "LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.cudatoolkit}/lib:${pkgs.cudatoolkit.lib}/lib:${pkgs.cudaPackages.cudnn}/lib:/usr/lib64"
+                "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
+                "NVIDIA_VISIBLE_DEVICES=all"
+              ];
             };
           };
         };
