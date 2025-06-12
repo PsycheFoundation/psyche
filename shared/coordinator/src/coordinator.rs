@@ -22,7 +22,6 @@ pub const WAITING_FOR_MEMBERS_EXTRA_SECONDS: u64 = 3;
 // bloom filter with 1024 bits (16 u64)
 pub type WitnessBloom = Bloom<16, 8>;
 
-#[repr(u8)]
 #[derive(
     Clone,
     Copy,
@@ -37,6 +36,7 @@ pub type WitnessBloom = Bloom<16, 8>;
     InitSpace,
     TS,
 )]
+#[repr(u8)]
 pub enum RunState {
     #[default]
     Uninitialized = 0,
@@ -49,7 +49,6 @@ pub enum RunState {
     Paused = 7,
 }
 
-#[repr(u8)]
 #[derive(
     Clone,
     Copy,
@@ -64,6 +63,7 @@ pub enum RunState {
     InitSpace,
     TS,
 )]
+#[repr(u8)]
 pub enum ClientState {
     #[default]
     Healthy = 0,
@@ -85,6 +85,7 @@ pub enum ClientState {
     TS,
 )]
 #[serde(bound = "I: NodeIdentity")]
+#[repr(C)]
 pub struct Client<I> {
     pub id: I,
     pub state: ClientState,
@@ -202,6 +203,7 @@ impl WitnessEvalResult {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[repr(u8)]
 pub enum CoordinatorError {
     NoActiveRound,
     InvalidWitness,
