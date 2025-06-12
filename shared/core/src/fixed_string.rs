@@ -27,6 +27,7 @@ pub struct FixedStringError((usize, usize));
     InitSpace,
     Zeroable,
 )]
+#[repr(C)]
 pub struct FixedString<const L: usize>(
     #[serde(
         serialize_with = "serde_serialize_string",
