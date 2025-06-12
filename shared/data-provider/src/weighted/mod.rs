@@ -195,17 +195,9 @@ fn build_weighted_index(
     weights: &[f64],
     dataset_sizes: &[usize],
 ) -> (Vec<usize>, Vec<u64>) {
-    // todo: improve this computation to ensure we don't need to compute this sum
-    // and maybe try to gaurantee norm_weights add to 1
-    let weights_sum: f64 = weights.par_iter().sum();
-    let norm_weights: Vec<f64> = weights
-        .par_iter()
-        .map(|weight| weight / weights_sum)
-        .collect();
-
     let data_idx_sequences = dataset_sizes
         .par_iter()
-        .zip(norm_weights.par_iter())
+        .zip(weights.par_iter())
         .map(|(dataset_size, norm_weight)| {
             let mut data_seq: Vec<_> = (0..*dataset_size).into_par_iter().collect();
             //todo: this is so bad T_T do we need to cryptanalyze this?
@@ -237,9 +229,9 @@ fn build_weighted_index(
     // each tuple to the index indicated by the index in our indices Vec. Doing this with the above example, we get:
     // [(0, 0), (0, 1), (1, 0), (2, 0)]. We then use this scrambled mask to get the sample IDs from data_idx_sequences like such: data_idx_sequences[tuple.1][tuple.0],
     // finally resulting in [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample ID in the dataset.
-    let mut rng = ChaCha20Rng::seed_from_u64(weights_sum.to_bits());
+    let mut rng = ChaCha20Rng::seed_from_u64(weights[0].to_bits() | weights.len() as u64);
 
-    let mut mask = norm_weights
+    let mut mask = weights
         .par_iter()
         .enumerate()
         .flat_map(|(idx, weight)| {
@@ -267,12 +259,12 @@ fn build_weighted_index(
 
     let mut accum = 0;
 
-    for (idx, w) in norm_weights.iter().enumerate() {
+    for (idx, w) in weights.iter().enumerate() {
         if accum >= n_samples {
             break;
         }
 
-        if idx != norm_weights.len() - 1 {
+        if idx != weights.len() - 1 {
             let size = (w * n_samples as f64) as usize;
 
             indexes[accum..min(accum + size, n_samples)].par_sort_unstable();
