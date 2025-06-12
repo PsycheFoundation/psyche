@@ -1,19 +1,17 @@
 use std::{
-    cell::UnsafeCell,
     cmp::min,
-    mem,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
 use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
-use rand::{seq::SliceRandom, Rng, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_chacha::{ChaCha20Rng, ChaCha8Rng};
 use rayon::{
     iter::{
         repeat, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-        ParallelIterator,
+        ParallelExtend, ParallelIterator,
     },
     slice::ParallelSliceMut,
 };
@@ -218,7 +216,6 @@ fn build_weighted_index(
         })
         .collect::<Vec<_>>();
 
-
     // Super-involved part of the algorithm. The idea here is that we want to we first want to create a "mask"
     // of dataset indexes that samples from the datasets based on their weights. For example, if dataset 0 has weight 0.75 and
     // dataset 1 has weight 0.25, and we want 4 samples, then the mask might conceptually look like [0, 1, 0, 0].
@@ -240,7 +237,7 @@ fn build_weighted_index(
     // each tuple to the index indicated by the index in our indices Vec. Doing this with the above example, we get:
     // [(0, 0), (0, 1), (1, 0), (2, 0)]. We then use this scrambled mask to get the sample IDs from data_idx_sequences like such: data_idx_sequences[tuple.1][tuple.0],
     // finally resulting in [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample ID in the dataset.
-    let mut rng = ChaCha20Rng::seed_from_u64(weights_sum.to_bits() );
+    let mut rng = ChaCha20Rng::seed_from_u64(weights_sum.to_bits());
 
     let mut mask = norm_weights
         .par_iter()
@@ -258,11 +255,11 @@ fn build_weighted_index(
     if mask.len() < n_samples {
         let val = mask[mask.len() - 1].1;
         let last_idx = mask[mask.len() - 1].0;
-        let it = std::iter::repeat(val)
+        let it = repeat(val)
             .take(n_samples - mask.len())
             .enumerate()
             .map(|(idx, val)| (last_idx + 1 + idx, val));
-        mask.extend(it);
+        mask.par_extend(it);
     }
 
     let mut indexes = (0..n_samples).into_par_iter().collect::<Vec<_>>();
