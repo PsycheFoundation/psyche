@@ -32,6 +32,15 @@ pub enum DownloadType {
     ModelSharing(ModelRequestType),
 }
 
+impl DownloadType {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::DistroResult(..) => "distro_result",
+            Self::ModelSharing(..) => "model_sharing",
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Download {
     blob_ticket: BlobTicket,

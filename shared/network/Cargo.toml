@@ -7,6 +7,7 @@ edition = "2021"
 psyche-tui.workspace = true
 psyche-core.workspace = true
 psyche-modeling.workspace = true
+psyche-metrics.workspace = true
 iroh.workspace = true
 iroh-blobs.workspace = true
 iroh-gossip.workspace = true
