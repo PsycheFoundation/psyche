@@ -96,15 +96,12 @@ impl PromptTask {
             }
         };
 
-        tracing::info!("A.0");
         self.tokens_to_send
             .write()
             .unwrap()
             .push(next_token as i32)
             .unwrap();
-        tracing::info!("A");
         self.tokens.write().unwrap().push(next_token as i32);
-        tracing::info!("B");
 
         // *in_use = false;
         tracing::info!("Prompt Next token: {}", next_token);

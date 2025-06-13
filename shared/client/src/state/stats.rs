@@ -137,7 +137,7 @@ impl StatsLogger {
             evals
         };
 
-        let prompt_results = self.current_prompt_results();
+        let prompt_results = self.get_prompt_results();
 
         // NOTE: no NaNs allowed in borsh serialized data.
         let tokens_per_sec = self.global_tokens_per_second(state);
@@ -151,7 +151,6 @@ impl StatsLogger {
             ),
             efficency: no_nan(self.efficency(), 0.0),
             evals,
-            // ACA add prompt results
             prompt_results,
         }
     }
@@ -265,37 +264,23 @@ impl StatsLogger {
             .collect()
     }
 
-    // ACA
     // Clear tokens_to_send buffer
-    pub fn current_prompt_results(&self) -> FixedVec<i32, 8> {
-        tracing::info!("Start current_prompt_results");
+    pub fn get_prompt_results(&self) -> FixedVec<i32, 8> {
         let mut results = FixedVec::new();
         for eval_task in self.eval_runner.tasks().iter().flatten() {
             if eval_task.name() == "Prompt" {
                 match &eval_task.task {
                     EnumTask::PromptTask(prompt_task) => {
-                        tracing::info!("1");
-
                         let tokens = prompt_task.tokens_to_send.read().unwrap();
-                        tracing::info!("2");
-
                         results.extend(tokens.iter().cloned()).unwrap();
-                        tracing::info!("3");
-
-                        // drop(tokens);
-                        // prompt_task.tokens_to_send.write().unwrap().clear();
-                        let mut write_lock = prompt_task.tokens_to_send.write().unwrap();
-                        tracing::info!("4");
-                        tracing::info!("write_lock: {:?}", &write_lock);
-
-                        write_lock.clear();
-                        tracing::info!("5");
+                        // Release lock
+                        drop(tokens);
+                        prompt_task.tokens_to_send.write().unwrap().clear();
                     }
-                    _ => panic!("Unexpected eval task type"),
+                    _ => tracing::warn!("Unexpected eval task type"),
                 }
             }
         }
-        tracing::info!("END current_prompt_results");
 
         results
     }
