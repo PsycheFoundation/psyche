@@ -231,7 +231,7 @@ async fn handle_connection<A: Allowlist + 'static + Send>(
         // kill connection completely!
         connection.close(0u8.into(), b"not in allowlist");
         warn!(
-            "Killing attemption connection: Node ID {node_id} is not in allowlist {allowlist:#?}."
+            "Killing attemption connection: Node ID {node_id} is not in allowlist."
         );
         return;
     }
