@@ -8,7 +8,7 @@ use psyche_tui::{maybe_start_render_loop, LogOutput};
 use std::path::PathBuf;
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
-use tracing::{info, Level};
+use tracing::info;
 
 mod app;
 
@@ -66,16 +66,15 @@ async fn async_main() -> Result<()> {
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
                     .unwrap_or_else(|| SecretKey::generate(&mut rand::rngs::OsRng));
 
-            let logger = psyche_tui::init_logging(
-                args.logs,
-                Level::INFO,
-                args.write_log.clone(),
-                true,
-                Some(format!(
+            let logger = psyche_tui::logging()
+                .with_output(args.logs)
+                .with_log_file(args.write_log.clone())
+                .with_remote_logs(true)
+                .with_service_name(format!(
                     "client-{}",
                     identity_secret_key.public().fmt_short()
-                )),
-            )?;
+                ))
+                .init()?;
 
             let wandb_info = args.wandb_info(format!(
                 "{}-{}",

@@ -1,7 +1,7 @@
 use crate::{
     state::{DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
-    RunInitConfigAndIO, TrainingResult, NC,
+    Broadcast, BroadcastType, ClientMetrics, ClientTUIState, Finished, IntegrationTestLogMarker,
+    RunInitConfig, RunInitConfigAndIO, TrainingResult, NC,
 };
 use anyhow::{bail, Error, Result};
 use futures::future::join_all;
@@ -29,7 +29,7 @@ use tokio::{
     time::interval,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, trace_span, warn};
 
 pub type TUIStates = (ClientTUIState, NetworkTUIState);
 
@@ -66,6 +66,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
         allowlist: allowlist::AllowDynamic,
         mut p2p: NC,
         init_config: RunInitConfig<T, A>,
+        metrics: ClientMetrics,
     ) -> Self {
         let cancel = CancellationToken::new();
         let (tx_tui, rx_tui) = watch::channel::<TUIStates>(Default::default());
@@ -125,7 +126,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut broadcasts_rebroadcast_index = 0;
                 let mut sharing_downloadable_interval = interval(REBROADCAST_SHAREABLE);
                 let mut retry_check_interval = interval(DOWNLOAD_RETRY_CHECK_INTERVAL);
-                let mut opprotunistic_witness_interval = interval(OPPROTUNISTIC_WITNESS_INTERVAL);
+                let mut opportunistic_witness_interval = interval(OPPROTUNISTIC_WITNESS_INTERVAL);
                 let mut check_connection_interval = interval(CHECK_CONNECTION_INTERVAL);
                 let mut wait_for_checkpoint = false;
                 debug!("Starting client loop");
@@ -189,7 +190,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             if let Some(message) = res? {
                                 match message {
                                     NetworkEvent::MessageReceived((from, broadcast)) => {
-                                        trace!("NetworkEvent::MessageReceived");
+                                        let _ = trace_span!("NetworkEvent::MessageReceived", from=%from).entered();
+                                        metrics.record_broadcast_seen(&broadcast, run.coordinator_state().map(|s| s.progress.step).unwrap_or(0));
                                         if let Some(client) = watcher.get_client_for_p2p_public_key(from.as_bytes()) {
                                             if raw_p2p_verify(from.as_bytes(), &broadcast.commitment.data_hash, &broadcast.commitment.signature) {
                                                 match &broadcast.data {
@@ -202,16 +204,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 }
                                                 run.apply_message(client.id, broadcast)?;
                                             } else {
-                                                debug!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
+                                                warn!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
                                             }
                                         } else {
-                                            debug!("Got broadcast from unknown client {}", from);
+                                            warn!("Got broadcast from unknown client {}", from);
                                         }
                                     }
                                     NetworkEvent::DownloadComplete(DownloadComplete {
                                         data: download_data, hash, ..
                                     }) => {
-                                        trace!("NetworkEvent::DownloadComplete({})", hex::encode(hash));
+                                        let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
+                                        metrics.record_download_completed(hash);
                                         if retried_downloads.remove(&hash).is_some() {
                                             debug!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
@@ -235,10 +238,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         }
                                     }
                                     NetworkEvent::DownloadFailed(dl) => {
-                                        trace!("NetworkEvent::DownloadFailed({:?})", dl.error);
+                                        let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
                                         let hash = dl.blob_ticket.hash();
                                         let info = retried_downloads.get(&hash);
                                         let retries = info.map(|i| i.retries).unwrap_or(0);
+                                        metrics.record_download_failed(hash, &dl.error.to_string());
 
                                         if retries >= MAX_DOWNLOAD_RETRIES {
                                             warn!("Download failed (not retrying): {}", dl.error);
@@ -401,7 +405,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             }
                         }
 
-                        _ = opprotunistic_witness_interval.tick() => {
+                        _ = opportunistic_witness_interval.tick() => {
                             run.try_send_opportunistic_witness().await?;
                         }
 
@@ -410,6 +414,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes));
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
+                            metrics.record_witness_send(&opportunistic_data);
                             watcher.backend_mut().send_witness(opportunistic_data).await?;
                         }
                         Some(health_check) = rx_health_check.recv() => {
@@ -533,6 +538,22 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 continue;
                             }
 
+                            {
+                                let neighbors: Vec<_> = p2p.neighbors().collect();
+                                let remote_infos: Vec<_> = p2p
+                                    .remote_infos()
+                                    .into_iter()
+                                    .filter(|info| neighbors.iter().any(|n| n == &info.0.node_id))
+                                    .map(|info| {
+                                        (
+                                            NodeAddr::from(info.0.clone()),
+                                            info.0.conn_type,
+                                            info.0.latency.map(|l| l.as_secs_f32()).unwrap_or(0.0),
+                                        )
+                                    })
+                                    .collect();
+                                metrics.update_peer_connections(&remote_infos);
+                            }
                             ensure_gossip_connected(run_state, &mut p2p);
                         }
                         else => break

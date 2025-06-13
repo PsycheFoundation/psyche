@@ -8,7 +8,7 @@ use psyche_centralized_shared::ClientId;
 use psyche_coordinator::Coordinator;
 use psyche_tui::LogOutput;
 use std::path::{Path, PathBuf};
-use tracing::{error, info, Level};
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -132,7 +132,9 @@ async fn main() -> Result<()> {
             data_config: data_config_path,
         } => {
             let config = load_config_state(state_path.clone(), data_config_path);
-            let _ = psyche_tui::init_logging(LogOutput::Console, Level::INFO, None, false, None);
+            let _ = psyche_tui::logging::logging()
+                .with_service_name("centralized-server")
+                .init()?;
             match config {
                 Ok(_) => info!("Configs are OK!"),
                 Err(err) => error!("Error found in config: {err:#}"),
@@ -140,17 +142,15 @@ async fn main() -> Result<()> {
         }
         Commands::Run { run_args } => {
             let config = load_config_state(run_args.state, run_args.data_config);
-            let logger = psyche_tui::init_logging(
-                if run_args.tui {
+            let logger = psyche_tui::logging::logging()
+                .with_output(if run_args.tui {
                     LogOutput::TUI
                 } else {
                     LogOutput::Console
-                },
-                Level::INFO,
-                None,
-                true,
-                Some("centralized-server".to_string()),
-            )?;
+                })
+                .with_remote_logs(true)
+                .with_service_name("centralized-server")
+                .init()?;
             match config {
                 Ok(config) => {
                     App::new(

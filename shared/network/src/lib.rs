@@ -10,7 +10,6 @@ use iroh_blobs::{
     rpc::client::blobs::DownloadOptions,
     store::mem::Store,
     util::SetTagOption,
-    BlobFormat,
 };
 use iroh_gossip::{
     net::{Gossip, GossipEvent, GossipReceiver, GossipSender},
@@ -45,7 +44,7 @@ use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
 pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
-pub use iroh_blobs::{ticket::BlobTicket, Hash};
+pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 pub mod allowlist;
 mod authenticable_identity;

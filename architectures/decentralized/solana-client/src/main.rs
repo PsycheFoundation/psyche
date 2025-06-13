@@ -39,7 +39,7 @@ use tokio::{
     runtime::Builder,
     time::{interval, MissedTickBehavior},
 };
-use tracing::{info, Level};
+use tracing::info;
 
 mod app;
 mod backend;
@@ -725,13 +725,12 @@ async fn async_main() -> Result<()> {
                         SecretKey::generate(&mut rng)
                     });
 
-            let logger = psyche_tui::init_logging(
-                args.logs,
-                Level::INFO,
-                args.write_log.clone(),
-                true,
-                Some(identity_secret_key.public().fmt_short()),
-            )?;
+            let logger = psyche_tui::logging()
+                .with_output(args.logs)
+                .with_log_file(args.write_log.clone())
+                .with_remote_logs(true)
+                .with_service_name(identity_secret_key.public().fmt_short())
+                .init()?;
 
             let (cancel, tx_tui_state) = maybe_start_render_loop(
                 (args.logs == LogOutput::TUI).then(|| Tabs::new(Default::default(), &TAB_NAMES)),
@@ -752,7 +751,7 @@ async fn async_main() -> Result<()> {
                 backup_clusters.push(Cluster::Custom(rpc, ws))
             }
 
-            let (mut app, allowlist, p2p, state_options) = AppBuilder::new(AppParams {
+            let app = AppBuilder::new(AppParams {
                 cancel,
                 tx_tui_state,
                 identity_secret_key,
@@ -783,7 +782,7 @@ async fn async_main() -> Result<()> {
             .await
             .unwrap();
 
-            app.run(allowlist, p2p, state_options).await?;
+            app.run().await?;
             logger.shutdown()?;
 
             Ok(())

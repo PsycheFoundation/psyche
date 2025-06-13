@@ -12,5 +12,6 @@ mod warmup;
 mod witness;
 
 pub use init::{InitRunError, RunInitConfig, RunInitConfigAndIO};
+pub use round_state::RoundState;
 pub use steps::RunManager;
 pub use types::{CheckpointConfig, DistroBroadcastAndPayload, FinishedBroadcast, HubUploadInfo};

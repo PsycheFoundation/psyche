@@ -18,6 +18,7 @@ logfire = { git = "https://github.com/NousResearch/logfire-rust", rev = "497574b
 tracing-opentelemetry = "0.29.0"
 opentelemetry_sdk = "0.28.0"
 console-subscriber = "0.4.1"
+opentelemetry = "0.28.0"
 
 
 [dev-dependencies]

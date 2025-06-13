@@ -1,11 +1,21 @@
-use std::{fs::OpenOptions, path::PathBuf};
+use std::{fs::OpenOptions, path::PathBuf, time::Duration};
 
 use crate::CustomWidget;
 use clap::ValueEnum;
 use console_subscriber::ConsoleLayer;
 use crossterm::event::{Event, KeyCode, MouseEventKind};
-use logfire::{bridges::tracing::LogfireTracingPendingSpanNotSentLayer, config::AdvancedOptions};
-use opentelemetry_sdk::Resource;
+use logfire::{
+    bridges::tracing::LogfireTracingPendingSpanNotSentLayer,
+    config::{AdvancedOptions, MetricsOptions},
+};
+use opentelemetry_sdk::{
+    error::OTelSdkResult,
+    metrics::{
+        data::ResourceMetrics, exporter::PushMetricExporter, PeriodicReader, SdkMeterProvider,
+        Temporality,
+    },
+    Resource,
+};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -23,52 +33,259 @@ pub enum LogOutput {
 }
 
 pub struct ShutdownHandler {
-    handler: Option<logfire::ShutdownHandler>,
+    logfire_handler: Option<logfire::ShutdownHandler>,
+    metrics_handler: Option<SdkMeterProvider>,
 }
 
 impl ShutdownHandler {
-    pub fn shutdown(self) -> Result<(), logfire::ConfigureError> {
-        if let Some(handler) = self.handler {
-            handler.shutdown()
-        } else {
-            Ok(())
+    pub fn shutdown(self) -> anyhow::Result<()> {
+        if let Some(handler) = self.logfire_handler {
+            handler.shutdown()?;
         }
+        if let Some(handler) = self.metrics_handler {
+            handler.shutdown()?;
+        }
+        Ok(())
     }
     pub fn tracer(&self) -> Option<opentelemetry_sdk::trace::Tracer> {
-        self.handler.as_ref().map(|t| t.tracer.tracer().clone())
+        self.logfire_handler
+            .as_ref()
+            .map(|t| t.tracer.tracer().clone())
     }
 }
 
-pub fn init_logging(
+pub struct LoggingBuilder<R = NoMetrics> {
     output: LogOutput,
     level: Level,
     write_logs_file: Option<PathBuf>,
     allow_remote_logs: bool,
     service_name: Option<String>,
+    metrics_exporter: R,
+}
+
+pub struct NoMetrics;
+
+pub struct WithMetrics<R>(pub R);
+
+impl LoggingBuilder<NoMetrics> {
+    /// Create a new logging builder with default settings
+    pub fn new() -> Self {
+        Self {
+            output: LogOutput::Console,
+            level: Level::INFO,
+            write_logs_file: None,
+            allow_remote_logs: false,
+            service_name: None,
+            metrics_exporter: NoMetrics,
+        }
+    }
+}
+
+impl<R> LoggingBuilder<R> {
+    /// Set the log output format
+    pub fn with_output(mut self, output: LogOutput) -> Self {
+        self.output = output;
+        self
+    }
+
+    /// Set the log level
+    pub fn with_level(mut self, level: Level) -> Self {
+        self.level = level;
+        self
+    }
+
+    /// Set the log file path (optional)
+    pub fn with_log_file<P: Into<Option<PathBuf>>>(mut self, path: P) -> Self {
+        self.write_logs_file = path.into();
+        self
+    }
+
+    /// Enable or disable remote logging
+    pub fn with_remote_logs(mut self, allow: bool) -> Self {
+        self.allow_remote_logs = allow;
+        self
+    }
+
+    /// Set the service name for telemetry
+    pub fn with_service_name<S: Into<String>>(mut self, name: S) -> Self {
+        self.service_name = Some(name.into());
+        self
+    }
+
+    /// Add a metrics reader for OpenTelemetry integration
+    pub fn with_metrics_exporter<ME: PushMetricExporter + 'static>(
+        self,
+        exporter: ME,
+    ) -> LoggingBuilder<WithMetrics<ME>> {
+        LoggingBuilder {
+            output: self.output,
+            level: self.level,
+            write_logs_file: self.write_logs_file,
+            allow_remote_logs: self.allow_remote_logs,
+            service_name: self.service_name,
+            metrics_exporter: WithMetrics(exporter),
+        }
+    }
+}
+
+impl LoggingBuilder<NoMetrics> {
+    /// Initialize logging without metrics
+    pub fn init(self) -> anyhow::Result<ShutdownHandler> {
+        init_logging_impl::<DummyExporter>(
+            self.output,
+            self.level,
+            self.write_logs_file,
+            self.allow_remote_logs,
+            self.service_name,
+            None,
+        )
+    }
+}
+
+impl<R: PushMetricExporter + 'static> LoggingBuilder<WithMetrics<R>> {
+    /// Initialize logging with metrics
+    pub fn init(self) -> anyhow::Result<ShutdownHandler> {
+        init_logging_impl(
+            self.output,
+            self.level,
+            self.write_logs_file,
+            self.allow_remote_logs,
+            self.service_name,
+            Some(self.metrics_exporter.0),
+        )
+    }
+}
+
+/// Create a new logging builder
+pub fn logging() -> LoggingBuilder<NoMetrics> {
+    LoggingBuilder::new()
+}
+
+/// Exists for type-safety - when you don't specify a metrics exporter, this type is used,
+/// but this can't ever be constructed.
+#[derive(Debug)]
+enum DummyExporter {}
+impl PushMetricExporter for DummyExporter {
+    fn export<'a, 'b, 'c>(
+        &'a self,
+        _metrics: &'b mut ResourceMetrics,
+    ) -> ::core::pin::Pin<
+        Box<dyn ::core::future::Future<Output = OTelSdkResult> + ::core::marker::Send + 'c>,
+    >
+    where
+        'a: 'c,
+        'b: 'c,
+        Self: 'c,
+    {
+        unreachable!()
+    }
+
+    fn force_flush<'a, 'b>(
+        &'a self,
+    ) -> ::core::pin::Pin<
+        Box<dyn ::core::future::Future<Output = OTelSdkResult> + ::core::marker::Send + 'b>,
+    >
+    where
+        'a: 'b,
+        Self: 'b,
+    {
+        unreachable!()
+    }
+
+    fn shutdown(&self) -> OTelSdkResult {
+        unreachable!()
+    }
+
+    fn temporality(&self) -> Temporality {
+        unreachable!()
+    }
+}
+
+fn init_logging_impl<E: PushMetricExporter + 'static>(
+    output: LogOutput,
+    level: Level,
+    write_logs_file: Option<PathBuf>,
+    allow_remote_logs: bool,
+    service_name: Option<String>,
+    metrics_exporter: Option<E>,
 ) -> anyhow::Result<ShutdownHandler> {
-    let logfire_handler = if std::env::var("LOGFIRE_TOKEN").is_ok() && allow_remote_logs {
-        Some({
-            let mut builder = logfire::configure()
-                .install_panic_handler()
-                .with_console(None);
-            // .with_metrics(Some(
-            //     MetricsOptions::default().with_additional_reader(reader),
-            // ))
-            if let Some(service_name) = service_name {
-                builder = builder.with_advanced_options(
-                    AdvancedOptions::default().with_resource(
-                        Resource::builder_empty()
-                            .with_service_name(service_name)
-                            .build(),
-                    ),
-                )
-            }
-            builder.finish()?
-        })
+    let logfire_enabled = std::env::var("LOGFIRE_TOKEN").is_ok() && allow_remote_logs;
+
+    let (logfire_handler, standalone_metrics_handler) = if logfire_enabled {
+        (
+            Some({
+                // If we have an additional metrics exporter, add it to Logfire
+                let metrics_options = if let Some(exporter) = metrics_exporter {
+                    let metrics_reader = PeriodicReader::builder(exporter)
+                        .with_interval(Duration::from_secs(15))
+                        .build();
+
+                    MetricsOptions::default().with_additional_reader(metrics_reader)
+                } else {
+                    MetricsOptions::default()
+                };
+
+                let mut builder = logfire::configure()
+                    .install_panic_handler()
+                    .with_console(None)
+                    .with_metrics(Some(metrics_options));
+
+                if let Some(service_name) = service_name.clone() {
+                    builder = builder.with_advanced_options(
+                        AdvancedOptions::default().with_resource(
+                            Resource::builder_empty()
+                                .with_service_name(service_name)
+                                .build(),
+                        ),
+                    );
+                }
+
+                builder.finish()?
+            }),
+            None,
+        )
     } else {
-        None
+        (
+            None,
+            metrics_exporter.map(|exporter| {
+                let mut resource_builder = Resource::builder_empty();
+                if let Some(service_name) = service_name {
+                    resource_builder = resource_builder.with_service_name(service_name);
+                }
+                let resource = resource_builder.build();
+
+                let reader = PeriodicReader::builder(exporter)
+                    .with_interval(Duration::from_secs(15))
+                    .build();
+
+                let meter_provider = SdkMeterProvider::builder()
+                    .with_resource(resource)
+                    .with_reader(reader)
+                    .build();
+
+                opentelemetry::global::set_meter_provider(meter_provider.clone());
+
+                meter_provider
+            }),
+        )
     };
 
+    init_logging_core(
+        output,
+        level,
+        write_logs_file,
+        logfire_handler,
+        standalone_metrics_handler,
+    )
+}
+
+fn init_logging_core(
+    output: LogOutput,
+    level: Level,
+    write_logs_file: Option<PathBuf>,
+    logfire_handler: Option<logfire::ShutdownHandler>,
+    metrics_handler: Option<SdkMeterProvider>,
+) -> anyhow::Result<ShutdownHandler> {
     // exclude tokio traces from regular output
     let output_logs_filter = EnvFilter::builder()
         .with_default_directive(level.into())
@@ -177,7 +394,8 @@ pub fn init_logging(
     }?;
 
     let shutdown_handler = ShutdownHandler {
-        handler: logfire_handler,
+        logfire_handler,
+        metrics_handler,
     };
     Ok(shutdown_handler)
 }
