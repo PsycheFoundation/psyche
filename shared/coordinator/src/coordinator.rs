@@ -3,7 +3,9 @@ use crate::{
     model::{Checkpoint, HubRepo, Model},
 };
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace,
+                  prelude::{borsh, msg, Clock, SolanaSysvar}
+};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
@@ -1002,8 +1004,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         let height = current_round.height;
         let num_witnesses = current_round.witnesses.len() as u16;
 
-        let mut removed_clients_idx = self.move_clients_to_exited(height);
-
         // If there are not witnesses, then we can't distinguish from
         // the situation where only witness nodes disconnected or everyone
         // disconnected. We just set everyone to withdrawn state and change
@@ -1023,21 +1023,18 @@ impl<T: NodeIdentity> Coordinator<T> {
             );
         }
 
+        // Run a consensus on the received time window, and if the quorum is met then
+        // persist the observed times into each of the clients.
         let mut client_times_last_index_updated = 0;
-        if let Some(mut agreed_values) = self.get_consensus_on_reported_times(witnesses) {
+        if let Some(agreed_values) = self.get_consensus_on_reported_times(witnesses) {
             let window_start = self.epoch_state.time_witnessing_window_start as usize;
             let window_end = window_start + TRAINING_TIMES_SLICE_SIZE;
-            // If we have exited clients, we need to remove their times from the agreed times as
-            // well, as to keep consistency with the indices.
-            // We want to remove from the last index to the first, to avoid shuffling the array.
-            removed_clients_idx.sort_by(|c1: &_, c2| c2.cmp(c1));
-            // We only care about those in the current window
-            removed_clients_idx.retain(|&i| (window_start..window_end).contains(&i));
-            for i in removed_clients_idx.iter() {
-                agreed_values.remove(*i % TRAINING_TIMES_SLICE_SIZE);
-            }
+
             msg!(
-                "[tick_round_witness] Agreed time values for slice [{}:{}]: {:?}",
+                "[tick_round_witness] (step {} , window start: {}, timestamp: {}) Agreed time values for slice [{}:{}]: {:?}",
+                self.progress.step,
+                window_start,
+                unix_timestamp,
                 window_start,
                 window_end - 1,
                 agreed_values,
@@ -1064,7 +1061,13 @@ impl<T: NodeIdentity> Coordinator<T> {
             msg!("[tick_round_witness] No consensus reached. Keeping old values.");
         }
 
-        // Persist the assigned batch sizes in the coordinator state in case we've witnessed every client already
+        // Remove those clients marked as unhealthy from our array; take in mind this will
+        // shift around the client indexes if some are removed.
+        self.move_clients_to_exited(height);
+
+        // In case we've witnessed every window (in terms of training times), thus we've updated
+        // the training times for all clients, then we run the batch assignment algo and assign
+        // to each client the corresponding batch size.
         if (client_times_last_index_updated + 1) >= self.epoch_state.clients.len() {
             msg!("[tick_round_witness] Persisting assigned batch sizes for all clients");
             let assigned_batch_sizes = self.calculate_batch_sizes_per_client();
@@ -1089,7 +1092,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         // Just for debug purposes for now
         for (index, client) in self.epoch_state.clients.iter().enumerate() {
             msg!(
-                "[tick_round_witness] Client {} ({}): assigned batch size: {}, round train time: {}",
+                "[tick_round_witness] Client {} ({}): batch size: {} - time: {}s",
                 index,
                 client.id,
                 client.assigned_batch_size,
@@ -1403,7 +1406,9 @@ impl<T: NodeIdentity> Coordinator<T> {
             step % (num_actual_slices as u32)
         };
 
-        (slice_index as u16) * (TRAINING_TIMES_SLICE_SIZE as u16)
+        let res = (slice_index as u16) * (TRAINING_TIMES_SLICE_SIZE as u16);
+        msg!("[calculate_time_witnessing_window_start] clients len: {} start: {}", clients_len, res);
+        res
     }
 }
 
