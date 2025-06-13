@@ -5,7 +5,6 @@ use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-#[repr(transparent)]
 #[derive(
     Copy,
     Clone,
@@ -21,6 +20,7 @@ use ts_rs::TS;
     InitSpace,
     TS,
 )]
+#[repr(transparent)]
 pub struct SmallBoolean(pub u8);
 
 impl Debug for SmallBoolean {

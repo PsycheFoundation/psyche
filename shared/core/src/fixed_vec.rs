@@ -7,6 +7,7 @@ use ts_rs::TS;
 
 #[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, TS)]
 #[ts(type = "Array<T>", bound = "T: TS")]
+#[repr(C)]
 pub struct FixedVec<T, const N: usize> {
     data: [T; N],
     len: u64,
