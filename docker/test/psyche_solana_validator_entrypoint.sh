@@ -1,4 +1,4 @@
-#!/bin/bash
+#! /bin/bash
 
 set -o errexit
 set -m
@@ -11,11 +11,11 @@ solana-test-validator -r &
 
 sleep 3
 
-pushd /usr/local/solana-authorizer
+pushd /local/solana-authorizer
 anchor deploy --provider.cluster "${RPC}" -- --max-len 500000
 popd
 
-pushd /usr/local/solana-coordinator
+pushd /local/solana-coordinator
 anchor deploy --provider.cluster "${RPC}" -- --max-len 500000
 popd
 
