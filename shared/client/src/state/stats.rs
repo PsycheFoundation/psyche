@@ -1,14 +1,14 @@
 use psyche_coordinator::{model, Coordinator, WitnessEvalResult, WitnessMetadata};
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_modeling::Trainer;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{arch::x86_64, collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
 use tracing::warn;
 use wandb::{DataValue, LogData};
 
 use crate::{
     client::P2PNodeInfo,
-    state::evals::{EnumTask, EvalTask},
+    state::evals::{EnumTask, EvalTask, GpuTask},
 };
 
 use super::evals::EvalRunner;
@@ -137,6 +137,8 @@ impl StatsLogger {
             evals
         };
 
+        let prompt_results = self.get_prompt_results();
+
         // NOTE: no NaNs allowed in borsh serialized data.
         let tokens_per_sec = self.global_tokens_per_second(state);
         WitnessMetadata {
@@ -149,8 +151,7 @@ impl StatsLogger {
             ),
             efficency: no_nan(self.efficency(), 0.0),
             evals,
-            // ACA add prompt results
-            prompt_results: FixedVec::default(),
+            prompt_results,
         }
     }
 
@@ -263,9 +264,25 @@ impl StatsLogger {
             .collect()
     }
 
-    // ACA
-    pub fn current_prompt_results(&self) -> Vec<u32> {
-        todo!()
+    // Clear tokens_to_send buffer
+    pub fn get_prompt_results(&self) -> FixedVec<i32, 8> {
+        let mut results = FixedVec::new();
+        for eval_task in self.eval_runner.tasks().iter().flatten() {
+            if eval_task.name() == "Prompt" {
+                match &eval_task.task {
+                    EnumTask::PromptTask(prompt_task) => {
+                        let tokens = prompt_task.tokens_to_send.read().unwrap();
+                        results.extend(tokens.iter().cloned()).unwrap();
+                        // Release lock
+                        drop(tokens);
+                        prompt_task.tokens_to_send.write().unwrap().clear();
+                    }
+                    _ => tracing::warn!("Unexpected eval task type"),
+                }
+            }
+        }
+
+        results
     }
 
     // normalized metric for how "confident" a model is, regardless of vocab size.
