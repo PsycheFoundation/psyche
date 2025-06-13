@@ -92,8 +92,6 @@
             # Copy the binary and the entrypoint script into the image
             contents = with pkgs; [
               bashInteractive
-              wget
-              curl
               cacert
               coreutils
               nixglhostRustPackages."psyche-solana-client-nixglhost"
@@ -111,7 +109,6 @@
             config = {
               Env = [
                 "NVIDIA_DRIVER_CAPABILITIES=all"
-                "LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.cudatoolkit}/lib:${pkgs.cudatoolkit.lib}/lib:${pkgs.cudaPackages.cudnn}/lib:/usr/lib64"
               ];
               Entrypoint = [ "/bin/train_entrypoint.sh" ];
             };
@@ -126,8 +123,6 @@
               bashInteractive
               busybox
               cacert
-              wget
-              curl
               nixglhostRustPackages."psyche-solana-client-nixglhost"
 
               # Create proper system structure including /tmp
@@ -162,7 +157,6 @@
 
             config = {
               Env = [
-                "LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.cudatoolkit}/lib:${pkgs.cudatoolkit.lib}/lib:${pkgs.cudaPackages.cudnn}/lib:/usr/lib64"
                 "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
                 "NVIDIA_VISIBLE_DEVICES=all"
               ];
@@ -219,7 +213,6 @@
 
             config = {
               Env = [
-                "LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.cudatoolkit}/lib:${pkgs.cudatoolkit.lib}/lib:${pkgs.cudaPackages.cudnn}/lib:/usr/lib64"
                 "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
                 "NVIDIA_VISIBLE_DEVICES=all"
               ];

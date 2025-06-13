@@ -97,7 +97,7 @@ generate_cli_docs:
 
 run_docker_client *ARGS:
     just nix build_docker_solana_client
-    docker run -d {{ ARGS }} --gpus all psyche-prod-solana-client
+    docker run -d {{ ARGS }} --gpus all nousresearch/psyche-solana-client
 
 # Setup clients assigning one available GPU to each of them.
 
