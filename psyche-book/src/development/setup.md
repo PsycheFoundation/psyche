@@ -130,7 +130,7 @@ sudo apt install pkg-config libudev-dev libssl-dev libfontconfig-dev
 
 2. Download libtorch & extract: https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcu124.zip
 
-3. Download OpenSSL: https://slproweb.com/download/Win64OpenSSL-3_3_2.exe
+3. Download OpenSSL: https://slproweb.com/download/Win64OpenSSL-3_3_3.exe
 
 4. Install Perl: https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_53822_64bit/strawberry-perl-5.38.2.2-64bit.msi
 
