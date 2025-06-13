@@ -1,3 +1,4 @@
+use psyche_coordinator::TOKENS_TO_SEND_LENGTH;
 use psyche_core::FixedVec;
 use psyche_modeling::CausalLM;
 use psyche_modeling::{LogitsProcessor, Sampling, Trainer};
@@ -11,11 +12,9 @@ const MAX_CONTEXT_LENGTH: usize = 1000;
 
 #[derive(Debug)]
 pub struct PromptTask {
-    task: String,
-    pub tokens: RwLock<Vec<i32>>,
-    pub tokens_to_send: RwLock<FixedVec<i32, 8>>,
+    tokens: RwLock<Vec<i32>>,
+    pub tokens_to_send: RwLock<FixedVec<i32, TOKENS_TO_SEND_LENGTH>>,
     next_index: Arc<AtomicUsize>,
-    in_use: RwLock<bool>,
 }
 
 impl PromptTask {
@@ -23,24 +22,15 @@ impl PromptTask {
         let encoding = tokenizer.encode(task.clone(), true).unwrap();
         let tokens = encoding.get_ids().iter().map(|x| *x as i32).collect();
         Self {
-            task,
             tokens: RwLock::new(tokens),
             tokens_to_send: RwLock::new(FixedVec::new()),
             next_index: Arc::new(AtomicUsize::new(0)),
-            in_use: RwLock::new(false),
         }
     }
 
     pub fn next_index(&self) -> &Arc<AtomicUsize> {
         &self.next_index
     }
-}
-
-#[derive(Debug)]
-pub struct PromptResult {
-    pub tokens: Vec<i64>,
-    pub next_token: u32,
-    pub cancelled: bool,
 }
 
 impl PromptTask {
@@ -52,19 +42,14 @@ impl PromptTask {
         limit: Option<usize>,
         loop_if_empty: bool,
     ) {
-        tracing::info!("PromptTask Run");
         if self.tokens_to_send.read().unwrap().is_full() {
             tracing::info!("Prompt Buffer Full");
             return;
         }
-        tracing::info!("PromptTask::run");
         if cancel.is_cancelled() {
             tracing::info!("Prompt cancelled");
             return;
         }
-
-        // let mut in_use = self.in_use.write().unwrap();
-        // *in_use = true;
 
         // Read tokens for creating input
         let token_len = self.tokens.read().unwrap().len();
@@ -103,7 +88,6 @@ impl PromptTask {
             .unwrap();
         self.tokens.write().unwrap().push(next_token as i32);
 
-        // *in_use = false;
         tracing::info!("Prompt Next token: {}", next_token);
     }
 }

@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, span, trace, Level};
 
 use crate::state::prompt::PromptTask;
+pub const PROMPT_TASK_NAME: &str = "Prompt";
 
 #[derive(Debug)]
 
@@ -60,7 +61,7 @@ impl GpuTask {
     pub fn name(&self) -> &str {
         match &self.task {
             EnumTask::EvalTask(task) => &task.task.name(),
-            EnumTask::PromptTask(prompt) => "Prompt",
+            EnumTask::PromptTask(_prompt) => PROMPT_TASK_NAME,
         }
     }
 
@@ -290,6 +291,7 @@ impl EvalRunner {
                                                 false,
                                             );
                                             // ACA see this: Increment next_index after processing the prompt
+                                            // todo: jump if buffer is full
                                             prompt.next_index().fetch_add(1, Ordering::SeqCst);
                                             println!(
                                                 "Prompt next index: {:?}",
