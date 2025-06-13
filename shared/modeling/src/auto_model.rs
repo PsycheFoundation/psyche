@@ -2,7 +2,8 @@ use crate::{
     AttentionImplementation, CausalLM, CommunicatorId, DeepseekForCausalLM, LlamaForCausalLM,
     ModelLoadError, PretrainedSource,
 };
-use std::{path::PathBuf, sync::Arc};
+
+use std::path::PathBuf;
 use tch::{Device, Kind};
 
 pub fn auto_model_for_causal_lm_from_pretrained(
@@ -10,7 +11,7 @@ pub fn auto_model_for_causal_lm_from_pretrained(
     kind: Option<Kind>,
     attn_implementation: Option<AttentionImplementation>,
     device: Option<Device>,
-    tensor_parallelism_world: Option<(Arc<CommunicatorId>, usize, usize)>,
+    tensor_parallelism_world: Option<(CommunicatorId, usize, usize)>,
     override_max_position_embeddings: Option<usize>,
 ) -> Result<Box<dyn CausalLM>, ModelLoadError> {
     let config_json = std::fs::read_to_string(
