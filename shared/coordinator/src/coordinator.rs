@@ -4,7 +4,7 @@ use crate::{
 };
 
 use anchor_lang::{
-    prelude::{borsh, msg, Clock, SolanaSysvar},
+    prelude::{borsh, msg},
     AnchorDeserialize, AnchorSerialize, InitSpace,
 };
 use bytemuck::{Pod, Zeroable};
@@ -1274,7 +1274,16 @@ impl<T: NodeIdentity> Coordinator<T> {
 
             // Try each unique value as a potential consensus value
             let mut found_consensus = false;
-            for &candidate in values.iter().collect::<std::collections::HashSet<_>>() {
+            // Here we sort for deterministic behavior
+            let mut unique_candidates: Vec<u16> = values
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            unique_candidates.sort_unstable();
+
+            for candidate in unique_candidates {
                 let matching_count = values
                     .iter()
                     .filter(|&&v| {
@@ -1412,7 +1421,11 @@ impl<T: NodeIdentity> Coordinator<T> {
         };
 
         let res = (slice_index as u16) * (TRAINING_TIMES_SLICE_SIZE as u16);
-        msg!("[calculate_time_witnessing_window_start] clients len: {} start: {}", clients_len, res);
+        msg!(
+            "[calculate_time_witnessing_window_start] clients len: {} start: {}",
+            clients_len,
+            res
+        );
         res
     }
 }
