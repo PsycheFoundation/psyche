@@ -290,7 +290,7 @@ impl EvalRunner {
                                                 false,
                                             );
                                             // ACA see this: Increment next_index after processing the prompt
-                                            prompt.next_index().fetch_add(50, Ordering::SeqCst);
+                                            prompt.next_index().fetch_add(1, Ordering::SeqCst);
                                             println!(
                                                 "Prompt next index: {:?}",
                                                 prompt.next_index()
