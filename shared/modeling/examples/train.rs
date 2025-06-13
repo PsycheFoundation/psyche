@@ -6,11 +6,11 @@ use psyche_modeling::{
     auto_model_for_causal_lm_from_pretrained, Batch, BatchData, CausalLM, CommunicatorId,
     DataParallel, ModelLoadError, Trainer,
 };
-use psyche_tui::{init_logging, LogOutput};
+use psyche_tui::logging;
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
 use tch::{Device, Kind};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, Level};
+use tracing::info;
 
 #[derive(Parser, Debug, Clone)]
 struct Args {
@@ -88,7 +88,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    let logger = init_logging(LogOutput::Console, Level::INFO, None, false, None)?;
+    let logger = logging().init()?;
     psyche_modeling::set_suggested_env_vars();
 
     let args = Args::parse();
