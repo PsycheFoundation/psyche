@@ -16,6 +16,22 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, span, trace, Level};
 
+use crate::state::prompt::PromptTask;
+pub const PROMPT_TASK_NAME: &str = "Prompt";
+
+#[derive(Debug)]
+
+pub struct GpuTask {
+    pub task: EnumTask,
+}
+
+#[derive(Debug)]
+pub enum EnumTask {
+    EvalTask(EvalTask),
+    PromptTask(PromptTask),
+}
+
+// ACA esto deberia ser un enum, una task para los eval y otra para los prompts
 #[derive(Debug)]
 pub struct EvalTask {
     task: psyche_eval::PreparedTask,
@@ -23,15 +39,40 @@ pub struct EvalTask {
     next_index: Arc<AtomicUsize>,
 }
 
-impl EvalTask {
+impl GpuTask {
+    pub fn new_eval_task(eval_task: EvalTask) -> Self {
+        Self {
+            task: EnumTask::EvalTask(eval_task),
+        }
+    }
+    pub fn new_prompt_task(prompt_task: PromptTask) -> Self {
+        Self {
+            task: EnumTask::PromptTask(prompt_task),
+        }
+    }
+
     pub fn task(&self) -> &psyche_eval::PreparedTask {
-        &self.task
+        match &self.task {
+            EnumTask::EvalTask(task) => &task.task,
+            EnumTask::PromptTask(prompt) => todo!(),
+        }
     }
 
-    pub fn results(&self) -> &RunningAverage {
-        &self.results
+    pub fn name(&self) -> &str {
+        match &self.task {
+            EnumTask::EvalTask(task) => &task.task.name(),
+            EnumTask::PromptTask(_prompt) => PROMPT_TASK_NAME,
+        }
     }
 
+    pub fn next_index(&self) -> &Arc<AtomicUsize> {
+        match &self.task {
+            EnumTask::EvalTask(task) => &task.next_index,
+            EnumTask::PromptTask(prompt) => prompt.next_index(),
+        }
+    }
+}
+impl EvalTask {
     pub fn run(
         &self,
         trainer: &mut Trainer,
@@ -54,6 +95,10 @@ impl EvalTask {
         self.next_index
             .fetch_max(result.next_index, Ordering::SeqCst);
     }
+
+    pub fn results(&self) -> &RunningAverage {
+        &self.results
+    }
 }
 
 #[derive(Debug)]
@@ -65,7 +110,7 @@ struct LoadingState {
 #[derive(Debug)]
 enum LoadingStateInner {
     Loading,
-    Done(Vec<Arc<EvalTask>>),
+    Done(Vec<Arc<GpuTask>>),
     Failed(JoinError),
 }
 
@@ -90,17 +135,24 @@ impl EvalRunner {
 
         tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                eval_tasks
+                let mut eval_model_taks = eval_tasks
                     .into_iter()
                     .map(|task| {
                         let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
-                        Arc::new(EvalTask {
+                        Arc::new(GpuTask::new_eval_task(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
                             next_index: Arc::new(AtomicUsize::new(0)),
-                        })
+                        }))
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+
+                let prompt_task = Arc::new(GpuTask::new_prompt_task(PromptTask::new(
+                    "Respond just yes or no, is Buenos Aires the capital of Argentina?".to_string(),
+                    &tokenizer,
+                )));
+                eval_model_taks.push(prompt_task);
+                eval_model_taks
             })
             .await;
 
@@ -127,7 +179,7 @@ impl EvalRunner {
     async fn wait_for_tasks(
         tasks: Arc<LoadingState>,
         cancel: &CancellationToken,
-    ) -> Option<Vec<Arc<EvalTask>>> {
+    ) -> Option<Vec<Arc<GpuTask>>> {
         loop {
             // First check if already done
             {
@@ -161,7 +213,7 @@ impl EvalRunner {
         }
     }
 
-    pub fn tasks(&self) -> Option<Vec<Arc<EvalTask>>> {
+    pub fn tasks(&self) -> Option<Vec<Arc<GpuTask>>> {
         // Synchronous access to tasks if they're ready
         match &*self.tasks.state.try_read().ok()? {
             LoadingStateInner::Done(tasks) => Some(tasks.clone()),
@@ -203,7 +255,7 @@ impl EvalRunner {
                                     .zip(
                                         prepared_eval_tasks
                                             .iter()
-                                            .map(|x| x.next_index.load(Ordering::SeqCst))
+                                            .map(|x| x.next_index().load(Ordering::SeqCst))
                                             .collect::<Vec<_>>(),
                                     )
                                     .collect::<Vec<_>>();
@@ -213,20 +265,43 @@ impl EvalRunner {
                                     if cancel.is_cancelled() {
                                         break 'eval_loop;
                                     }
-                                    trace!(
+
+                                    info!(
                                         "Running eval task {} on index {}",
-                                        eval_task.task.name(),
+                                        eval_task.name(),
                                         next_index + dp_index
                                     );
-                                    eval_task.run(
-                                        &mut trainer,
-                                        cancel.clone(),
-                                        Some((next_index + dp_index, data_parallelism)),
-                                        Some(10),
-                                        true,
-                                    );
-                                    trace!("Done eval task {}", eval_task.task.name());
+
+                                    match &eval_task.task {
+                                        EnumTask::EvalTask(eval) => {
+                                            eval.run(
+                                                &mut trainer,
+                                                cancel.clone(),
+                                                Some((next_index + dp_index, data_parallelism)),
+                                                Some(10),
+                                                true,
+                                            );
+                                        }
+                                        EnumTask::PromptTask(prompt) => {
+                                            prompt.run(
+                                                &mut trainer,
+                                                cancel.clone(),
+                                                None,
+                                                None,
+                                                false,
+                                            );
+                                            // ACA see this: Increment next_index after processing the prompt
+                                            // todo: jump if buffer is full
+                                            prompt.next_index().fetch_add(1, Ordering::SeqCst);
+                                            println!(
+                                                "Prompt next index: {:?}",
+                                                prompt.next_index()
+                                            );
+                                        }
+                                    }
+                                    info!("Done eval task {}", eval_task.name());
                                 }
+
                                 drop(span);
                             }
                             trainer

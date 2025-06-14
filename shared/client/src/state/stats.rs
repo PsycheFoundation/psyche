@@ -1,12 +1,17 @@
-use psyche_coordinator::{model, Coordinator, WitnessEvalResult, WitnessMetadata};
+use psyche_coordinator::{
+    model, Coordinator, WitnessEvalResult, WitnessMetadata, TOKENS_TO_SEND_LENGTH,
+};
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_modeling::Trainer;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{arch::x86_64, collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
 use tracing::warn;
 use wandb::{DataValue, LogData};
 
-use crate::client::P2PNodeInfo;
+use crate::{
+    client::P2PNodeInfo,
+    state::evals::{EnumTask, PROMPT_TASK_NAME},
+};
 
 use super::evals::EvalRunner;
 
@@ -134,6 +139,8 @@ impl StatsLogger {
             evals
         };
 
+        let prompt_results = self.get_prompt_results();
+
         // NOTE: no NaNs allowed in borsh serialized data.
         let tokens_per_sec = self.global_tokens_per_second(state);
         WitnessMetadata {
@@ -146,6 +153,7 @@ impl StatsLogger {
             ),
             efficency: no_nan(self.efficency(), 0.0),
             evals,
+            prompt_results,
         }
     }
 
@@ -236,19 +244,50 @@ impl StatsLogger {
             .tasks()
             .iter()
             .flatten()
+            // ACA check this
+            .filter(|eval_task| eval_task.name() != PROMPT_TASK_NAME)
             .flat_map(|eval_task| {
                 let task = eval_task.task();
                 let metric_name: &str = task.main_metric_name();
                 let task_name = task.name();
-                match eval_task.results().sample(metric_name) {
-                    Some(metric) => Some((task_name.to_owned(), metric)),
-                    None => {
-                        warn!("{} missing metric {}", task_name, metric_name);
-                        None
+                match &eval_task.task {
+                    EnumTask::EvalTask(eval_task) => {
+                        match eval_task.results().sample(metric_name) {
+                            Some(metric) => {
+                                tracing::info!("{} metric {}", task_name, metric);
+                                Some((task_name.to_owned(), metric))
+                            }
+                            None => {
+                                warn!("{} missing metric {}", task_name, metric_name);
+                                None
+                            }
+                        }
                     }
+                    _ => panic!("Unexpected eval task type"),
                 }
             })
             .collect()
+    }
+
+    // Clear tokens_to_send buffer
+    pub fn get_prompt_results(&self) -> FixedVec<i32, TOKENS_TO_SEND_LENGTH> {
+        let mut results = FixedVec::new();
+        for eval_task in self.eval_runner.tasks().iter().flatten() {
+            if eval_task.name() == PROMPT_TASK_NAME {
+                match &eval_task.task {
+                    EnumTask::PromptTask(prompt_task) => {
+                        let tokens = prompt_task.tokens_to_send.read().unwrap();
+                        results.extend(tokens.iter().cloned()).unwrap();
+                        // Release lock
+                        drop(tokens);
+                        prompt_task.tokens_to_send.write().unwrap().clear();
+                    }
+                    _ => tracing::warn!("Unexpected eval task type"),
+                }
+            }
+        }
+
+        results
     }
 
     // normalized metric for how "confident" a model is, regardless of vocab size.
