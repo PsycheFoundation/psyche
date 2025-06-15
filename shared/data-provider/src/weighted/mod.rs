@@ -1,8 +1,21 @@
+use std::{
+    cmp::min,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+
 use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
 use anyhow::{anyhow, Result};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
 use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use rand_chacha::{ChaCha20Rng, ChaCha8Rng};
+use rayon::{
+    iter::{
+        repeat, IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+        ParallelExtend, ParallelIterator,
+    },
+    slice::ParallelSliceMut,
+};
+use rip_shuffle::RipShuffleParallel;
 
 pub mod http;
 pub struct WeightedDataProvider<T: TokenizedDataProvider + LengthKnownDataProvider> {
@@ -176,58 +189,121 @@ fn normalize(weights: &[f64]) -> Vec<f64> {
     weights.iter().map(|w| w / sum).collect()
 }
 
+
+// todo: handle various edge cases (e.g. dataset_sizes memebers == 0 n_samples == 0 etc)
 fn build_weighted_index(
     n_samples: usize,
     weights: &[f64],
     dataset_sizes: &[usize],
 ) -> (Vec<usize>, Vec<u64>) {
-    let num_providers = weights.len();
-    let mut dataset_index = Vec::with_capacity(n_samples);
-    let mut dataset_sample_index = Vec::with_capacity(n_samples);
+    let data_idx_sequences = dataset_sizes
+        .par_iter()
+        .zip(weights.par_iter())
+        .map(|(dataset_size, norm_weight)| {
+            let mut data_seq: Vec<_> = (0..*dataset_size).into_par_iter().collect();
+            //todo: this is so bad T_T do we need to cryptanalyze this?
+            let mut rng = ChaCha20Rng::seed_from_u64((*norm_weight).to_bits());
+            data_seq.par_shuffle(&mut rng);
 
-    let mut total_samples_drawn = vec![0u64; num_providers];
-    let mut next_unique_index = vec![0u64; num_providers];
-    let mut is_exhausted = vec![false; num_providers];
+            data_seq
+        })
+        .collect::<Vec<_>>();
 
-    for sample_idx in 0..n_samples {
-        let sample_idx_float = (sample_idx as f64).max(1.0);
+    // Super-involved part of the algorithm. The idea here is that we want to we first want to create a "mask"
+    // of dataset indexes that samples from the datasets based on their weights. For example, if dataset 0 has weight 0.75 and
+    // dataset 1 has weight 0.25, and we want 4 samples, then the mask might conceptually look like [0, 1, 0, 0].
+    // Continuing from the above example, every time we sample from dataset 0, we want to take the "next" sample from that dataset
+    // (the order of the samples has been randomized above) until we get to the end, at which point we loop around.
+    // It's important we go through the entire dataset before looping around for small datasets.
+    // Thus, if dataset 0 has sample IDs [1, 0] and dataset 1 [0], then we want the final result of the function to look like
+    // [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample ID in the dataset.
+    // Therefore, first we generate the mask, and next we want to sample from each dataset sequentially. This is relatively
+    // easy to accomplish serially - just have an iter().cycle() into each of the elements of data_idx_sequences. Not so
+    // if we want to parallelize the algorithm (and make it deterministic) though. Therefore, when we generate the mask, we generate it as a Vec<(usize, usize)>, where the
+    // first element of the tuple is an ascending index into the dataset sequence, and the second is the index of the dataset sequence.
+    // Next, we want to distribute these tuples randomly thoughout a randomized-ordered mask, but such that the index of each
+    // tuple for the same dataset is monotonically increasing. Thus: [(0, 0), (0, 1) (1, 0), (2, 0)], where the second element of each tuple
+    // is the dataset index, and the first is the index into it, which is monotonically increasing for any given dataset.
+    // To accomplish this, we first generate the mask in-order: [(0, 0), (1, 0), (2, 0), (0, 1)]. We then generate a list of indices,
+    // which we then scamble the order of, eg [3, 0, 2, 1]. We then divide the indices into regions corresponding to each dataset
+    // and then sort each sub-region, thus: [0, 2, 3, 1]. We then take our ordered mask, and write to the final resulting scrambled mask
+    // each tuple to the index indicated by the index in our indices Vec. Doing this with the above example, we get:
+    // [(0, 0), (0, 1), (1, 0), (2, 0)]. We then use this scrambled mask to get the sample IDs from data_idx_sequences like such: data_idx_sequences[tuple.1][tuple.0],
+    // finally resulting in [0_1, 1_0, 0_0, 0_1] where the first number is the dataset index and the second is the sample ID in the dataset.
+    let mut rng = ChaCha20Rng::seed_from_u64(weights[0].to_bits() | weights.len() as u64);
 
-        // select provider based on weighted error
-        let mut max_error = f64::NEG_INFINITY;
-        let mut chosen_provider_idx = 0;
-        for i in 0..num_providers {
-            if dataset_sizes[i] == 0 {
-                continue;
-            }
-            let error = weights[i] * sample_idx_float - total_samples_drawn[i] as f64;
-            if error > max_error {
-                max_error = error;
-                chosen_provider_idx = i;
-            }
-        }
+    let mut mask = weights
+        .par_iter()
+        .enumerate()
+        .flat_map(|(idx, weight)| {
+            repeat(idx)
+                .take((weight * n_samples as f64) as usize)
+                .enumerate()
+                .map(|(idx, val)| (idx, val))
+        })
+        .collect::<Vec<_>>();
 
-        // determine the sample index
-        let provider_size = dataset_sizes[chosen_provider_idx] as u64;
-        let sample_to_yield: u64;
+    mask.truncate(n_samples);
 
-        if !is_exhausted[chosen_provider_idx] {
-            sample_to_yield = next_unique_index[chosen_provider_idx];
-            next_unique_index[chosen_provider_idx] += 1;
-
-            if next_unique_index[chosen_provider_idx] == provider_size {
-                is_exhausted[chosen_provider_idx] = true;
-            }
-        } else {
-            sample_to_yield = total_samples_drawn[chosen_provider_idx] % provider_size;
-        }
-
-        dataset_index.push(chosen_provider_idx);
-        dataset_sample_index.push(sample_to_yield);
-
-        total_samples_drawn[chosen_provider_idx] += 1;
+    if mask.len() < n_samples {
+        let val = mask[mask.len() - 1].1;
+        let last_idx = mask[mask.len() - 1].0;
+        let it = repeat(val)
+            .take(n_samples - mask.len())
+            .enumerate()
+            .map(|(idx, val)| (last_idx + 1 + idx, val));
+        mask.par_extend(it);
     }
 
-    (dataset_index, dataset_sample_index)
+    let mut indexes = (0..n_samples).into_par_iter().collect::<Vec<_>>();
+    indexes.par_shuffle(&mut rng);
+
+    let mut accum = 0;
+
+    for (idx, w) in weights.iter().enumerate() {
+        if accum >= n_samples {
+            break;
+        }
+
+        if idx != weights.len() - 1 {
+            let size = (w * n_samples as f64) as usize;
+
+            indexes[accum..min(accum + size, n_samples)].par_sort_unstable();
+            accum += size;
+        } else {
+            indexes[accum..].par_sort_unstable();
+        }
+    }
+
+    let mask = unsafe {
+        // use atomics to make rust happy without doing anything too weird and unsafe or whatever T_T
+        // these relaxed stores should just compile down to regular stores (I hope)
+        let mut new_mask = Vec::<(AtomicUsize, AtomicUsize)>::with_capacity(n_samples);
+        new_mask.set_len(n_samples);
+
+        mask.into_par_iter()
+            .zip(indexes.into_par_iter())
+            .for_each(|(val, idx)| {
+                new_mask[idx].0.store(val.0, Ordering::Relaxed);
+                new_mask[idx].1.store(val.1, Ordering::Relaxed);
+            });
+
+        new_mask
+    };
+
+    let dataset_idx_and_sample_idx = mask
+        .par_iter()
+        .map(|(idx, i)| {
+            let seq_len = data_idx_sequences[i.load(Ordering::Relaxed)].len();
+            (
+                i.load(Ordering::Relaxed),
+                data_idx_sequences[i.load(Ordering::Relaxed)][idx.load(Ordering::Relaxed) % seq_len]
+                    as u64,
+            )
+        })
+        .collect::<(Vec<_>, Vec<_>)>();
+
+    dataset_idx_and_sample_idx
 }
 
 fn shuffle<T: Rng>(dataset_index: &mut [usize], dataset_sample_index: &mut [u64], rng: &mut T) {

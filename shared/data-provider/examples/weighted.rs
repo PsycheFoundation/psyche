@@ -1,10 +1,12 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use futures::future::join_all;
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use psyche_data_provider::{
     http::{FileURLs, HttpDataProvider},
     TokenizedDataProvider, WeightedDataProvider,
 };
+use tokio::time::Instant;
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
 
@@ -27,9 +29,6 @@ struct Cli {
     #[arg(long)]
     tokenizer: Option<PathBuf>,
 
-    #[arg(long)]
-    use_weighted: bool,
-
     /// Where to pull samples from
     #[command(subcommand)]
     command: Commands,
@@ -38,7 +37,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// A URL template
-    Template {
+    /* Template {
         /// URL template with {} placeholder (e.g., "http://example.com/{}.ds")
         template: String,
         /// Start index
@@ -50,23 +49,30 @@ enum Commands {
         // number of zeros to left-pad to
         #[arg(long, default_value = "0")]
         left_pad_zeros: u8,
+    },*/
+    /// A Config URL
+    ConfigUrl {
+        /// List of data URLs, in order (e.g., "http://example.com/1.ds", "http://example.com/2.ds")
+        url: String,
     },
     /// A fixed list of URLs
     Urls {
         /// List of data URLs, in order (e.g., "http://example.com/1.ds", "http://example.com/2.ds")
         urls: Vec<String>,
     },
-    /// A public GCP bucket
-    Gcp {
+    // A public GCP bucket
+    /*Gcp {
         /// The name of the GCP bucket
         bucket_name: String,
         /// An optional directory to filter by
         directory: Option<String>,
-    },
+    },*/
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let start = Instant::now();
+
     let cli = Cli::parse();
 
     let token_size: TokenSize = cli.token_size.try_into()?;
@@ -80,28 +86,40 @@ async fn main() -> Result<()> {
         anyhow::bail!("At least one batch ID must be specified");
     }
 
-    let urls = match cli.command {
-        Commands::Template {
+    let mut provider = match cli.command {
+        /*Commands::Template {
             template,
             start,
             left_pad_zeros,
             end,
-        } => FileURLs::from_template(&template, start, left_pad_zeros, end - start).await?,
+        } => FileURLs::from_template(&template, start, left_pad_zeros, end - start).await?,*/
+        Commands::ConfigUrl { url } => {
+            if url.is_empty() {
+                anyhow::bail!("at least one URL must be passed");
+            }
+            WeightedDataProvider::from_config_url(&url, cli.sequence_length)
+                .await
+                .unwrap()
+        }
         Commands::Urls { urls } => {
             if urls.is_empty() {
                 anyhow::bail!("at least one URL must be passed");
             }
-            FileURLs::from_list(&urls).await?
-        }
-        Commands::Gcp {
-            bucket_name,
-            directory,
-        } => FileURLs::from_gcp_bucket(&bucket_name, directory).await?,
-    };
-    let provider =
-        HttpDataProvider::new(urls, token_size, cli.sequence_length, Shuffle::DontShuffle)?;
 
-    let mut provider = WeightedDataProvider::new(vec![provider], Shuffle::DontShuffle);
+            // todo: is this right? should we we creating a new HttpDataProvider for each url???
+            let providers = join_all(urls.into_iter().map(|url| async {
+                let file_urls = FileURLs::from_list(&vec![url]).await.unwrap();
+                HttpDataProvider::new(file_urls, token_size, cli.sequence_length, Shuffle::DontShuffle).unwrap()
+            })).await;
+
+            WeightedDataProvider::new(providers, Shuffle::DontShuffle)
+        } /*Commands::Gcp {
+              bucket_name,
+              directory,
+          } => FileURLs::from_gcp_bucket(&bucket_name, directory).await?,*/
+    };
+    /*let provider =
+    HttpDataProvider::new(urls, token_size, cli.sequence_length, Shuffle::DontShuffle)?;*/
 
     let tokenizer = cli.tokenizer.map(|tokenizer_path: PathBuf| {
         Tokenizer::from_file(tokenizer_path).expect("tokenizer exists")
@@ -127,6 +145,9 @@ async fn main() -> Result<()> {
             }
         }
     }
+    
+    let elapsed  = start.elapsed();
+    println!("Duration (in secs): {}", elapsed.as_secs_f64());
 
     Ok(())
 }
