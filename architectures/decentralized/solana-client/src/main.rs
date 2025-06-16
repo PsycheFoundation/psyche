@@ -255,6 +255,9 @@ enum Commands {
 
         #[clap(long, env, action)]
         predownload_model: bool,
+
+        #[clap(long, env, default_value_t = 3)]
+        hub_max_concurrent_downloads: usize,
     },
 
     // Prints the help, optionally as markdown. Used for docs generation.
@@ -767,6 +770,7 @@ async fn async_main() -> Result<()> {
                 eval_tasks,
                 checkpoint_upload_info,
                 hub_read_token,
+                hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
                 wandb_info,
                 optim_stats: args.optim_stats_steps,
                 grad_accum_in_fp32: args.grad_accum_in_fp32,
@@ -800,6 +804,7 @@ async fn async_main() -> Result<()> {
             authorizer,
             pubkey,
             predownload_model,
+            hub_max_concurrent_downloads,
         } => {
             // when we call join_run, we check
             //  constraint = authorization.is_valid_for(
@@ -862,17 +867,19 @@ async fn async_main() -> Result<()> {
                 .state
                 .coordinator;
 
-            let client_with_our_key = coordinator_account_state
-                .epoch_state
-                .clients
-                .iter()
-                .find(|c| c.id.signer == solana_pubkey);
-            if client_with_our_key.is_some() {
-                bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+
+            if !is_paused {
+                let client_with_our_key = coordinator_account_state
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .find(|c| c.id.signer == solana_pubkey);
+                if client_with_our_key.is_some() {
+                    bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+                }
             }
             if predownload_model {
-                let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
-
                 // it would also be reasonable to download the model if we're in WaitingForClients and the checkpoint is not P2P,
                 // but that could cause you to miss the transition to Warmup, so we won't do that for now.
                 if !is_paused {
@@ -911,7 +918,7 @@ async fn async_main() -> Result<()> {
                     revision,
                     cache_folder,
                     hub_read_token,
-                    None,
+                    Some(hub_max_concurrent_downloads),
                     true,
                 )
                 .await?;

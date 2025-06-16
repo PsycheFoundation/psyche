@@ -42,7 +42,6 @@ impl Debug for Client {
     }
 }
 
-#[repr(C)]
 #[derive(
     InitSpace,
     Copy,
@@ -56,6 +55,7 @@ impl Debug for Client {
     Pod,
     TS,
 )]
+#[repr(C)]
 pub struct ClientId {
     #[ts(type = "number[]")]
     pub signer: Pubkey,

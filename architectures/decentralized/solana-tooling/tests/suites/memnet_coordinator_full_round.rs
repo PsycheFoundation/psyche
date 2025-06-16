@@ -237,6 +237,12 @@ pub async fn run() {
     .await
     .unwrap();
 
+<<<<<<< HEAD:architectures/decentralized/solana-tooling/tests/suites/memnet_coordinator_full_round.rs
+=======
+    // Pretend 10 second passed
+    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
+
+>>>>>>> main:architectures/decentralized/solana-tooling/tests/suites/memnet_coordinator_full_cycle.rs
     // Tick to transition from waiting for members to warmup
     endpoint
         .forward_clock_unix_timestamp(WAITING_FOR_MEMBERS_EXTRA_SECONDS)
