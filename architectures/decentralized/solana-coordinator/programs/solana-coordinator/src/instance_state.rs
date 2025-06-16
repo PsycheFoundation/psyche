@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
@@ -128,35 +130,40 @@ impl CoordinatorInstanceState {
             Ok(TickResult::EpochEnd(success)) => {
                 msg!("Epoch end, sucecsss: {}", success);
 
-                let mut i = 0;
-                let mut j = 0;
-                let finished_clients = &self.coordinator.epoch_state.clients;
-                let exited_clients =
-                    &self.coordinator.epoch_state.exited_clients;
+                let mut finished_clients_healthy_signers = HashSet::new();
+                for epoch_finished_client in
+                    self.coordinator.epoch_state.clients
+                {
+                    if epoch_finished_client.state == ClientState::Healthy {
+                        finished_clients_healthy_signers
+                            .insert(epoch_finished_client.id.signer);
+                    }
+                }
+
+                let mut exited_clients_ejected_signers = HashSet::new();
+                for epoch_exited_client in
+                    self.coordinator.epoch_state.exited_clients
+                {
+                    if epoch_exited_client.state == ClientState::Ejected {
+                        exited_clients_ejected_signers
+                            .insert(epoch_exited_client.id.signer);
+                    }
+                }
 
                 for client in self.clients_state.clients.iter_mut() {
-                    if i < finished_clients.len()
-                        && client.id == finished_clients[i].id
+                    if finished_clients_healthy_signers
+                        .contains(&client.id.signer)
                     {
-                        if finished_clients[i].state == ClientState::Healthy {
-                            client.earned += self
-                                .clients_state
-                                .current_epoch_rates
-                                .earning_rate;
-                        }
-                        i += 1;
+                        client.earned +=
+                            self.clients_state.current_epoch_rates.earning_rate;
                     }
-
-                    if j < exited_clients.len()
-                        && client.id == exited_clients[j].id
+                    if exited_clients_ejected_signers
+                        .contains(&client.id.signer)
                     {
-                        if exited_clients[j].state == ClientState::Ejected {
-                            client.slashed += self
-                                .clients_state
-                                .current_epoch_rates
-                                .slashing_rate;
-                        }
-                        j += 1;
+                        client.slashed += self
+                            .clients_state
+                            .current_epoch_rates
+                            .slashing_rate;
                     }
                 }
             },
