@@ -130,40 +130,37 @@ impl CoordinatorInstanceState {
             Ok(TickResult::EpochEnd(success)) => {
                 msg!("Epoch end, sucecsss: {}", success);
 
-                let mut finished_clients_healthy_signers = HashSet::new();
-                for epoch_finished_client in
-                    self.coordinator.epoch_state.clients
+                let mut finished_healthy_clients_signers = HashSet::new();
+                for finished_client in self.coordinator.epoch_state.clients {
+                    if finished_client.state == ClientState::Healthy {
+                        finished_healthy_clients_signers
+                            .insert(finished_client.id.signer);
+                    }
+                }
+                let mut exited_ejected_clients_signers = HashSet::new();
+                for exited_client in self.coordinator.epoch_state.exited_clients
                 {
-                    if epoch_finished_client.state == ClientState::Healthy {
-                        finished_clients_healthy_signers
-                            .insert(epoch_finished_client.id.signer);
+                    if exited_client.state == ClientState::Ejected {
+                        exited_ejected_clients_signers
+                            .insert(exited_client.id.signer);
                     }
                 }
 
-                let mut exited_clients_ejected_signers = HashSet::new();
-                for epoch_exited_client in
-                    self.coordinator.epoch_state.exited_clients
-                {
-                    if epoch_exited_client.state == ClientState::Ejected {
-                        exited_clients_ejected_signers
-                            .insert(epoch_exited_client.id.signer);
-                    }
-                }
+                let earning_rate =
+                    self.clients_state.current_epoch_rates.earning_rate;
+                let slashing_rate =
+                    self.clients_state.current_epoch_rates.slashing_rate;
 
                 for client in self.clients_state.clients.iter_mut() {
-                    if finished_clients_healthy_signers
+                    if finished_healthy_clients_signers
                         .contains(&client.id.signer)
                     {
-                        client.earned +=
-                            self.clients_state.current_epoch_rates.earning_rate;
+                        client.earned += earning_rate;
                     }
-                    if exited_clients_ejected_signers
+                    if exited_ejected_clients_signers
                         .contains(&client.id.signer)
                     {
-                        client.slashed += self
-                            .clients_state
-                            .current_epoch_rates
-                            .slashing_rate;
+                        client.slashed += slashing_rate;
                     }
                 }
             },
