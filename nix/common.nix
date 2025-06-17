@@ -73,13 +73,16 @@ let
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
 
   buildRustPackage =
-    name:
+    {
+      name,
+      isExample ? false,
+    }:
     craneLib.buildPackage (
       rustWorkspaceArgs
       // {
         inherit cargoArtifacts;
         pname = name;
-        cargoExtraArgs = "--bin ${name}";
+        cargoExtraArgs = (if isExample then "--example ${name}" else "--bin ${name}");
         doCheck = false;
       }
     );

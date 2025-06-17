@@ -897,7 +897,6 @@ async fn test_everybody_leaves_in_warmup() {
         match response {
             Response::StateChange(_timestamp, _client_id, old_state, new_state, ..) => {
                 println!("Changing from {old_state} to {new_state}");
-
                 if old_state == RunState::WaitingForMembers.to_string()
                     && new_state == RunState::Warmup.to_string()
                 {
