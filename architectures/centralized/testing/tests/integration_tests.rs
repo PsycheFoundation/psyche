@@ -739,3 +739,100 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
     // check that the clients length shows the new joined client trained with new p2p shared model
     assert_with_retries(|| server_handle.get_clients_len(), 4).await;
 }
+
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn dynamic_batch_assignment() {
+    let init_min_clients = 4;
+    let global_batch_size = 16;
+    let witness_nodes = 4;
+    let server_handle =
+        CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
+
+    let server_port = server_handle.server_port;
+    let run_id = &server_handle.run_id;
+
+    let training_delay_1 = 1;
+    let training_delay_2 = 3;
+
+    let mut client_handles =
+        spawn_clients_with_training_delay(1, server_port, run_id, training_delay_1).await;
+    client_handles
+        .extend(spawn_clients_with_training_delay(1, server_port, run_id, training_delay_2).await);
+    client_handles
+        .extend(spawn_clients_with_training_delay(1, server_port, run_id, training_delay_2).await);
+    client_handles
+        .extend(spawn_clients_with_training_delay(1, server_port, run_id, training_delay_1).await);
+
+    let client_0_id = client_handles[0].client_id;
+    let client_1_id = client_handles[1].client_id;
+    let client_2_id = client_handles[2].client_id;
+    let client_3_id = client_handles[3].client_id;
+    info!("client_0_id: {}, client_1_id: {}", client_0_id, client_1_id);
+
+    // Wait for warmup and check initial batch sizes
+    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+
+    let coordinator = server_handle.get_coordinator().await;
+    let clients = &coordinator.epoch_state.clients;
+    // Initially batches are distributed evenly
+    assert_eq!(clients[0].assigned_batch_size, 4);
+    assert_eq!(clients[1].assigned_batch_size, 4);
+    assert_eq!(clients[2].assigned_batch_size, 4);
+    assert_eq!(clients[3].assigned_batch_size, 4);
+
+    info!("waiting for round 0...");
+    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+
+    info!("waiting for round 1...");
+    tokio::time::sleep(Duration::from_secs(MAX_ROUND_TRAIN_TIME)).await;
+    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
+
+    info!("waiting for round 2...");
+    tokio::time::sleep(Duration::from_secs(MAX_ROUND_TRAIN_TIME)).await;
+    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
+
+    // Check new batch sizes. The faster client should have more batches.
+    let coordinator = server_handle.get_coordinator().await;
+    let clients = &coordinator.epoch_state.clients;
+    let client_0 = clients.iter().find(|c| c.id == client_0_id).unwrap();
+    let client_1 = clients.iter().find(|c| c.id == client_1_id).unwrap();
+    let client_2 = clients.iter().find(|c| c.id == client_2_id).unwrap();
+    let client_3 = clients.iter().find(|c| c.id == client_3_id).unwrap();
+
+    info!(
+        "client_0 ({}) train time: {}s, batch size: {}",
+        client_0_id, client_0.round_train_time, client_0.assigned_batch_size
+    );
+
+    info!(
+        "client_1 ({}) train time: {}s, batch size: {}",
+        client_1_id, client_1.round_train_time, client_1.assigned_batch_size
+    );
+
+    info!(
+        "client_2 ({}) train time: {}s, batch size: {}",
+        client_2_id, client_2.round_train_time, client_2.assigned_batch_size
+    );
+
+    info!(
+        "client_3 ({}) train time: {}s, batch size: {}",
+        client_3_id, client_3.round_train_time, client_3.assigned_batch_size
+    );
+
+    // Assert that clients with lower training time get more batches.
+    // Clients 0 and 3 are fast, clients 1 and 2 are slow.
+    assert!(
+        client_0.assigned_batch_size > client_1.assigned_batch_size,
+        "Faster client (0) should have more batches than slower client (1)"
+    );
+    assert!(
+        client_3.assigned_batch_size > client_2.assigned_batch_size,
+        "Faster client (3) should have more batches than slower client (2)"
+    );
+
+    assert_eq!(
+        clients.iter().map(|c| c.assigned_batch_size).sum::<u16>(),
+        global_batch_size as u16,
+        "Sum of distributed batch sizes should match the global batch size"
+    );
+}
