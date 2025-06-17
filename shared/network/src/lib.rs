@@ -708,12 +708,11 @@ async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
 
 /// Get the Psyche [`RelayMap`].
 pub fn psyche_relay_map() -> RelayMap {
-    RelayMap::from_nodes([
+    RelayMap::from_iter([
         psyche_use_relay_node(),
         psyche_usw_relay_node(),
         psyche_euc_relay_node(),
     ])
-    .expect("default nodes invalid")
 }
 
 /// Get the Psyche [`RelayNode`] for US East.
