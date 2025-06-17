@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
-use iroh::{PublicKey, RelayMap, RelayMode, RelayUrl};
+use iroh::{PublicKey, RelayMode, RelayUrl};
 use psyche_network::Hash;
 use psyche_network::{
     allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
@@ -279,7 +279,7 @@ async fn main() -> Result<()> {
 
     let relay_mode = match (args.no_relay, args.relay) {
         (false, None) => RelayMode::Default,
-        (false, Some(url)) => RelayMode::Custom(RelayMap::from_url(url)),
+        (false, Some(url)) => RelayMode::Custom(url.into()),
         (true, None) => RelayMode::Disabled,
         (true, Some(_)) => bail!("You cannot set --no-relay and --relay at the same time"),
     };
