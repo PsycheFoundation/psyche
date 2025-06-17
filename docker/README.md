@@ -118,7 +118,8 @@ Once you accept, the docker images will start building and then containers will 
 To spawn a whole network with all the services included, you can run
 
 ```bash
-just setup_test_infra <num_clients>
+just setup_test_infra
+just run_test_infra <num_clients>
 ```
 
 where `<num_clients>` is the number of clients you want in the run.

@@ -25,6 +25,7 @@ integration-test test_name="":
 
 # run integration decentralized tests
 decentralized-integration-test test_name="":
+    just setup_test_infra
     if [ "{{ test_name }}" = "" ]; then \
         cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
     else \
@@ -116,25 +117,19 @@ docker_push_centralized_client:
     docker push docker.io/nousresearch/psyche-centralized-client
 
 # Setup the infrastructure for testing locally using Docker.
-setup_test_infra num_clients="1":
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    just nix build_docker_solana_test_client
-    just nix build_docker_solana_test_vaidator
-    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up -d --force-recreate
-
-setup_test_infra_with_proxies_validator num_clients="1":
+setup_test_infra:
     cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
     cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
     just nix build_docker_solana_test_client
     just nix build_docker_solana_test_validator
+
+run_test_infra num_clients="1":
+    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+
+run_test_infra_with_proxies_validator num_clients="1":
     cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
 
-setup_test_infra_three_clients:
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    just nix build_docker_solana_test_client
-    just nix build_docker_solana_test_validator
+run_test_infra_three_clients:
     cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
 
 stop_test_infra:

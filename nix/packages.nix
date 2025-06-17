@@ -160,7 +160,7 @@
                 "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
                 "NVIDIA_VISIBLE_DEVICES=all"
               ];
-              Entrypoint = [ "/bin/client_test_entrypoint.sh" ]; # Use debug entrypoint first
+              Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
             };
           };
 
@@ -168,7 +168,6 @@
             name = "psyche-solana-test-validator";
             tag = "latest";
 
-            # Use buildImage instead of streamLayeredImage for better compatibility
             contents = with pkgs; [
               bashInteractive
               bzip2

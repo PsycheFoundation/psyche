@@ -58,7 +58,7 @@ pub async fn e2e_testing_setup_subscription(
     let mut command = Command::new("just");
     let command = command
         .args([
-            "setup_test_infra_with_proxies_validator",
+            "run_test_infra_with_proxies_validator",
             &format!("{}", init_num_clients),
         ])
         .stdout(Stdio::inherit())
@@ -90,7 +90,7 @@ pub async fn e2e_testing_setup_three_clients(
     remove_old_client_containers(docker_client).await;
     let mut command = Command::new("just");
     let command = command
-        .args(["setup_test_infra_three_clients"])
+        .args(["run_test_infra_three_clients"])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
@@ -224,7 +224,7 @@ pub fn spawn_psyche_network(
 ) -> Result<(), DockerWatcherError> {
     let mut command = Command::new("just");
     let command = command
-        .args(["setup_test_infra", &format!("{}", init_num_clients)])
+        .args(["run_test_infra", &format!("{}", init_num_clients)])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
