@@ -10,6 +10,7 @@ witness_nodes = 3
 global_batch_size = 8
 total_steps = 25000
 checkpointers = []
+waiting_for_members_extra_time = 3
 
 [model.LLM]
 architecture = "HfLlama"

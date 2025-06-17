@@ -204,6 +204,7 @@ pub async fn run() {
                 witness_nodes: 1,
                 rounds_per_epoch,
                 total_steps: 100,
+                waiting_for_members_extra_time: 3,
             }),
             model: Some(Model::LLM(LLM {
                 architecture: LLMArchitecture::HfLlama,
@@ -283,8 +284,8 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Pretend 10 second passed
-    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
+    // Pretend 3second passed
+    endpoint.forward_clock_unix_timestamp(3).await.unwrap();
 
     // Tick to transition from waiting for members to warmup
     process_coordinator_tick(

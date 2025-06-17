@@ -12,6 +12,7 @@ global_batch_size_start = 8
 global_batch_size_end = 8
 global_batch_size_warmup_tokens = 0
 total_steps = 25000
+waiting_for_members_extra_time = 3
 
 [model.LLM]
 architecture = "HfLlama"
