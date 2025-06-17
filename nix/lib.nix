@@ -87,7 +87,7 @@ let
         pname = name;
         cargoExtraArgs =
           rustWorkspaceArgsWithPython.cargoExtraArgs
-          + (if isExample then "--example ${name}" else "--bin ${name}");
+          + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
       }
     );
