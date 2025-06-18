@@ -6,6 +6,7 @@ mod cooldown;
 mod evals;
 mod init;
 mod prompt;
+mod prompt_texts;
 mod round_state;
 mod stats;
 mod train;
