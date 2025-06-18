@@ -21,54 +21,46 @@ pub const PROMPT_TASK_NAME: &str = "Prompt";
 
 #[derive(Debug)]
 
-pub struct GpuTask {
-    pub task: EnumTask,
+pub struct ModelTask {
+    pub task: EnumModelTask,
 }
 
 #[derive(Debug)]
-pub enum EnumTask {
+pub enum EnumModelTask {
     EvalTask(EvalTask),
     PromptTask(PromptTask),
 }
 
-// ACA esto deberia ser un enum, una task para los eval y otra para los prompts
 #[derive(Debug)]
 pub struct EvalTask {
-    task: psyche_eval::PreparedTask,
+    pub task: psyche_eval::PreparedTask,
     results: Arc<RunningAverage>,
     next_index: Arc<AtomicUsize>,
 }
 
-impl GpuTask {
+impl ModelTask {
     pub fn new_eval_task(eval_task: EvalTask) -> Self {
         Self {
-            task: EnumTask::EvalTask(eval_task),
+            task: EnumModelTask::EvalTask(eval_task),
         }
     }
     pub fn new_prompt_task(prompt_task: PromptTask) -> Self {
         Self {
-            task: EnumTask::PromptTask(prompt_task),
-        }
-    }
-
-    pub fn task(&self) -> &psyche_eval::PreparedTask {
-        match &self.task {
-            EnumTask::EvalTask(task) => &task.task,
-            EnumTask::PromptTask(prompt) => todo!(),
+            task: EnumModelTask::PromptTask(prompt_task),
         }
     }
 
     pub fn name(&self) -> &str {
         match &self.task {
-            EnumTask::EvalTask(task) => &task.task.name(),
-            EnumTask::PromptTask(_prompt) => PROMPT_TASK_NAME,
+            EnumModelTask::EvalTask(task) => &task.task.name(),
+            EnumModelTask::PromptTask(_prompt) => PROMPT_TASK_NAME,
         }
     }
 
     pub fn next_index(&self) -> &Arc<AtomicUsize> {
         match &self.task {
-            EnumTask::EvalTask(task) => &task.next_index,
-            EnumTask::PromptTask(prompt) => prompt.next_index(),
+            EnumModelTask::EvalTask(task) => &task.next_index,
+            EnumModelTask::PromptTask(prompt) => &prompt.next_index,
         }
     }
 }
@@ -110,7 +102,7 @@ struct LoadingState {
 #[derive(Debug)]
 enum LoadingStateInner {
     Loading,
-    Done(Vec<Arc<GpuTask>>),
+    Done(Vec<Arc<ModelTask>>),
     Failed(JoinError),
 }
 
@@ -139,7 +131,7 @@ impl EvalRunner {
                     .into_iter()
                     .map(|task| {
                         let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
-                        Arc::new(GpuTask::new_eval_task(EvalTask {
+                        Arc::new(ModelTask::new_eval_task(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
                             next_index: Arc::new(AtomicUsize::new(0)),
@@ -147,8 +139,59 @@ impl EvalRunner {
                     })
                     .collect::<Vec<_>>();
 
-                let prompt_task = Arc::new(GpuTask::new_prompt_task(PromptTask::new(
-                    "Respond just yes or no, is Buenos Aires the capital of Argentina?".to_string(),
+                let prompt_task = Arc::new(ModelTask::new_prompt_task(PromptTask::new(
+                    r"
+                    EDWARD:
+                    I wonder how our princely father 'scaped,
+                    Or whether he be 'scaped away or no
+                    From Clifford's and Northumberland's pursuit:
+                    Had he been ta'en, we should have heard the news;
+                    Had he been slain, we should have heard the news;
+                    Or had he 'scaped, methinks we should have heard
+                    The happy tidings of his good escape.
+                    How fares my brother? why is he so sad?
+
+                    RICHARD:
+                    I cannot joy, until I be resolved
+                    Where our right valiant father is become.
+                    I saw him in the battle range about;
+                    And watch'd him how he singled Clifford forth.
+                    Methought he bore him in the thickest troop
+                    As doth a lion in a herd of neat;
+                    Or as a bear, encompass'd round with dogs,
+                    Who having pinch'd a few and made them cry,
+                    The rest stand all aloof, and bark at him.
+                    So fared our father with his enemies;
+                    So fled his enemies my warlike father:
+                    Methinks, 'tis prize enough to be his son.
+                    See how the morning opes her golden gates,
+                    And takes her farewell of the glorious sun!
+                    How well resembles it the prime of youth,
+                    Trimm'd like a younker prancing to his love!
+
+                    EDWARD:
+                    Dazzle mine eyes, or do I see three suns?
+
+                    RICHARD:
+                    Three glorious suns, each one a perfect sun;
+                    Not separated with the racking clouds,
+                    But sever'd in a pale clear-shining sky.
+                    See, see! they join, embrace, and seem to kiss,
+                    As if they vow'd some league inviolable:
+                    Now are they but one lamp, one light, one sun.
+                    In this the heaven figures some event.
+
+                    EDWARD:
+                    'Tis wondrous strange, the like yet never heard of.
+                    I think it cites us, brother, to the field,
+                    That we, the sons of brave Plantagenet,
+                    Each one already blazing by our meeds,
+                    Should notwithstanding join our lights together
+                    And over-shine the earth as this the world.
+                    Whate'er it bodes, henceforward will I bear
+                    Upon my target three fair-shining suns.
+                    "
+                    .to_string(),
                     &tokenizer,
                 )));
                 eval_model_taks.push(prompt_task);
@@ -179,7 +222,7 @@ impl EvalRunner {
     async fn wait_for_tasks(
         tasks: Arc<LoadingState>,
         cancel: &CancellationToken,
-    ) -> Option<Vec<Arc<GpuTask>>> {
+    ) -> Option<Vec<Arc<ModelTask>>> {
         loop {
             // First check if already done
             {
@@ -213,7 +256,7 @@ impl EvalRunner {
         }
     }
 
-    pub fn tasks(&self) -> Option<Vec<Arc<GpuTask>>> {
+    pub fn tasks(&self) -> Option<Vec<Arc<ModelTask>>> {
         // Synchronous access to tasks if they're ready
         match &*self.tasks.state.try_read().ok()? {
             LoadingStateInner::Done(tasks) => Some(tasks.clone()),
@@ -273,7 +316,7 @@ impl EvalRunner {
                                     );
 
                                     match &eval_task.task {
-                                        EnumTask::EvalTask(eval) => {
+                                        EnumModelTask::EvalTask(eval) => {
                                             eval.run(
                                                 &mut trainer,
                                                 cancel.clone(),
@@ -282,21 +325,9 @@ impl EvalRunner {
                                                 true,
                                             );
                                         }
-                                        EnumTask::PromptTask(prompt) => {
-                                            prompt.run(
-                                                &mut trainer,
-                                                cancel.clone(),
-                                                None,
-                                                None,
-                                                false,
-                                            );
-                                            // ACA see this: Increment next_index after processing the prompt
-                                            // todo: jump if buffer is full
-                                            prompt.next_index().fetch_add(1, Ordering::SeqCst);
-                                            println!(
-                                                "Prompt next index: {:?}",
-                                                prompt.next_index()
-                                            );
+                                        // todo prevent parallel prompt execution
+                                        EnumModelTask::PromptTask(prompt) => {
+                                            prompt.run(&mut trainer, cancel.clone());
                                         }
                                     }
                                     info!("Done eval task {}", eval_task.name());
