@@ -265,7 +265,7 @@ impl StatsLogger {
             .collect()
     }
 
-    // Clear tokens_to_send buffer
+    // clear tokens_to_send buffer
     pub fn get_prompt_results(&self) -> FixedVec<i32, TOKENS_TO_SEND_LENGTH> {
         let mut results = FixedVec::new();
         for eval_task in self.eval_runner.tasks().iter().flatten() {

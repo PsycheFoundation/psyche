@@ -18,6 +18,7 @@ pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
 pub const WAITING_FOR_MEMBERS_EXTRA_SECONDS: u64 = 10;
+// max amount of tokens to send in a witness message
 pub const TOKENS_TO_SEND_LENGTH: usize = 8;
 
 // bloom filter with 1024 bits (16 u64)

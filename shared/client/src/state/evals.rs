@@ -55,7 +55,7 @@ impl ModelTask {
 
     pub fn name(&self) -> &str {
         match &self.task {
-            EnumModelTask::EvalTask(task) => &task.task.name(),
+            EnumModelTask::EvalTask(task) => task.task.name(),
             EnumModelTask::PromptTask(_prompt) => PROMPT_TASK_NAME,
         }
     }
@@ -271,18 +271,23 @@ impl EvalRunner {
                                     .collect::<Vec<_>>();
                                 iter.shuffle(&mut thread_rng());
                                 let span = span!(Level::TRACE, "eval_task").entered();
-                                for (eval_task, next_index) in iter {
+                                for (model_task, next_index) in iter {
                                     if cancel.is_cancelled() {
                                         break 'eval_loop;
                                     }
 
-                                    info!(
-                                        "Running eval task {} on index {}",
-                                        eval_task.name(),
+                                    // prompt task will run only on the first trainer to prevent parallel execution.
+                                    if model_task.name() == PROMPT_TASK_NAME && dp_index != 0 {
+                                        continue;
+                                    }
+
+                                    trace!(
+                                        "Running model task {} on index {}",
+                                        model_task.name(),
                                         next_index + dp_index
                                     );
 
-                                    match &eval_task.task {
+                                    match &model_task.task {
                                         EnumModelTask::EvalTask(eval) => {
                                             eval.run(
                                                 &mut trainer,
@@ -292,12 +297,11 @@ impl EvalRunner {
                                                 true,
                                             );
                                         }
-                                        // todo prevent parallel prompt execution
                                         EnumModelTask::PromptTask(prompt) => {
                                             prompt.run(&mut trainer, cancel.clone());
                                         }
                                     }
-                                    info!("Done eval task {}", eval_task.name());
+                                    trace!("Done model task {}", model_task.name());
                                 }
 
                                 drop(span);
