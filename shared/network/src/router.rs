@@ -79,14 +79,11 @@ impl Router {
         p2p_model_sharing: ModelSharing,
         allowlist: A,
     ) -> Result<Self> {
-        if let Err(err) = endpoint.set_alpns(vec![
+        endpoint.set_alpns(vec![
             iroh_blobs::ALPN.to_vec(),
             iroh_gossip::ALPN.to_vec(),
             p2p_model_sharing::ALPN.to_vec(),
-        ]) {
-            shutdown(&endpoint, gossip, blobs, p2p_model_sharing).await;
-            return Err(err);
-        }
+        ]);
 
         let cancel = CancellationToken::new();
         let cancel_token = cancel.clone();
