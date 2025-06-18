@@ -1,18 +1,21 @@
-use psyche_coordinator::{model, Coordinator, WitnessEvalResult, WitnessMetadata};
+use psyche_coordinator::{
+    model, Coordinator, CoordinatorConfig, WitnessEvalResult, WitnessMetadata,
+};
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
+use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::warn;
-use wandb::{DataValue, LogData};
+use wandb::{DataValue, LogData, Run};
 
-use crate::client::P2PNodeInfo;
+use crate::{client::P2PNodeInfo, RunInitConfig, WandBInfo};
 
 use super::evals::EvalRunner;
 
 pub struct StatsLogger {
     tokenizer: Arc<Tokenizer>,
-    wandb_run: Option<Arc<wandb::Run>>,
+    wandb_run: Option<JoinHandle<Arc<Run>>>,
     eval_runner: EvalRunner,
 
     step_durations: BoundedQueue<Duration, 16>,
@@ -31,11 +34,10 @@ impl StatsLogger {
         tokenizer: Arc<Tokenizer>,
         eval_runner: EvalRunner,
         lr_schedule: LearningRateSchedule,
-        wandb_run: Option<wandb::Run>,
     ) -> Self {
         Self {
             tokenizer,
-            wandb_run: wandb_run.map(Arc::new),
+            wandb_run: None,
             losses: Vec::new(),
             step_durations: Default::default(),
             training_round_durations: Default::default(),
@@ -45,6 +47,55 @@ impl StatsLogger {
             last_optim_stats: HashMap::new(),
             node_info: HashMap::new(),
         }
+    }
+
+    fn initialize_run_wandb(
+        &mut self,
+        run_id: String,
+        config: &CoordinatorConfig,
+        wandb_info: WandBInfo,
+    ) -> JoinHandle<Option<Arc<Run>>> {
+        let config_clone = config.clone();
+
+        tokio::spawn(async move {
+            let config_clone = config_clone.clone();
+            loop {
+                let run_id = String::from(&run_id);
+                let wandb =
+                    wandb::WandB::new(wandb::BackendOptions::new(wandb_info.api_key.clone()));
+                let mut run_info = wandb::RunInfo::new(wandb_info.project.clone())
+                    .name(wandb_info.run.clone())
+                    .config((
+                        (
+                            "global_batch_size_start",
+                            config_clone.global_batch_size_start,
+                        ),
+                        ("global_batch_size_end", config_clone.global_batch_size_end),
+                        (
+                            "global_batch_size_warmup_tokens",
+                            config_clone.global_batch_size_warmup_tokens,
+                        ),
+                        ("total_steps", config_clone.total_steps),
+                        ("rounds_per_epoch", config_clone.rounds_per_epoch),
+                        ("run_id", run_id),
+                    ));
+
+                if let Some(entity) = wandb_info.entity.clone() {
+                    run_info = run_info.entity(entity);
+                }
+                if let Some(group) = wandb_info.group.clone() {
+                    run_info = run_info.group(group);
+                }
+
+                if let Ok(run_info_built) = run_info.build() {
+                    if let Ok(run) = wandb.new_run(run_info_built).await {
+                        return Some(Arc::new(run));
+                    }
+                }
+                // Add some delay before retrying
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            }
+        })
     }
 
     pub fn publish_round_stats<T: NodeIdentity>(&self, state: &Coordinator<T>) {
@@ -287,3 +338,5 @@ fn no_nan(val: f32, replacement: f32) -> f32 {
 fn token_batch_size<T: NodeIdentity>(state: &Coordinator<T>) -> u32 {
     state.get_target_global_batch_size(state.current_round()) as u32 * state.get_sequence_length()
 }
+
+fn initialize_wandb_run(config: CoordinatorConfig) {}

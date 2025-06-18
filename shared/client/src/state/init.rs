@@ -425,43 +425,43 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             },
         };
 
-        let wandb_future: JoinHandle<Result<Option<wandb::Run>, wandb::ApiError>> = tokio::spawn({
-            let run_id = String::from(&state.run_id);
-            async move {
-                match init_config.wandb_info {
-                    Some(wandb_info) => {
-                        let wandb =
-                            wandb::WandB::new(wandb::BackendOptions::new(wandb_info.api_key));
-                        let mut run_info = wandb::RunInfo::new(wandb_info.project)
-                            .name(wandb_info.run)
-                            .config((
-                                (
-                                    "global_batch_size_start",
-                                    state.config.global_batch_size_start,
-                                ),
-                                ("global_batch_size_end", state.config.global_batch_size_end),
-                                (
-                                    "global_batch_size_warmup_tokens",
-                                    state.config.global_batch_size_warmup_tokens,
-                                ),
-                                ("total_steps", state.config.total_steps),
-                                ("rounds_per_epoch", state.config.rounds_per_epoch),
-                                ("run_id", run_id),
-                            ));
-                        if let Some(entity) = wandb_info.entity {
-                            run_info = run_info.entity(entity);
-                        }
-                        if let Some(group) = wandb_info.group {
-                            run_info = run_info.group(group);
-                        }
-                        Ok(Some(wandb.new_run(run_info.build()?).await?))
-                    }
-                    None => Ok(None),
-                }
-            }
-        });
+        // let wandb_future: JoinHandle<Result<Option<wandb::Run>, wandb::ApiError>> = tokio::spawn({
+        //     let run_id = String::from(&state.run_id);
+        //     async move {
+        //         match init_config.wandb_info {
+        //             Some(wandb_info) => {
+        //                 let wandb =
+        //                     wandb::WandB::new(wandb::BackendOptions::new(wandb_info.api_key));
+        //                 let mut run_info = wandb::RunInfo::new(wandb_info.project)
+        //                     .name(wandb_info.run)
+        //                     .config((
+        //                         (
+        //                             "global_batch_size_start",
+        //                             state.config.global_batch_size_start,
+        //                         ),
+        //                         ("global_batch_size_end", state.config.global_batch_size_end),
+        //                         (
+        //                             "global_batch_size_warmup_tokens",
+        //                             state.config.global_batch_size_warmup_tokens,
+        //                         ),
+        //                         ("total_steps", state.config.total_steps),
+        //                         ("rounds_per_epoch", state.config.rounds_per_epoch),
+        //                         ("run_id", run_id),
+        //                     ));
+        //                 if let Some(entity) = wandb_info.entity {
+        //                     run_info = run_info.entity(entity);
+        //                 }
+        //                 if let Some(group) = wandb_info.group {
+        //                     run_info = run_info.group(group);
+        //                 }
+        //                 Ok(Some(wandb.new_run(run_info.build()?).await?))
+        //             }
+        //             None => Ok(None),
+        //         }
+        //     }
+        // });
 
-        let (data, models, wandb_run) = tokio::join!(data_future, model_future, wandb_future);
+        let (data, models) = tokio::join!(data_future, model_future);
         let RawLoadedModel {
             models,
             tokenizer,
@@ -530,10 +530,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             })
             .collect();
 
-        let wandb_run = wandb_run.map_err(InitRunError::WandbThreadCrashed)??;
+        // let wandb_run = wandb_run.map_err(InitRunError::WandbThreadCrashed)??;
 
-        let stats_logger =
-            StatsLogger::new(tokenizer, eval_runner.clone(), llm.lr_schedule, wandb_run);
+        let mut stats_logger = StatsLogger::new(tokenizer, eval_runner.clone(), llm.lr_schedule);
+        if let Some(wandb_info) = init_config.wandb_info {
+            stats_logger.initialize_run_wandb(state.run_id.to_string(), &state.config, wandb_info);
+        }
 
         let warmup = WarmupStepMetadata {
             eval_runner: eval_runner.clone(),
