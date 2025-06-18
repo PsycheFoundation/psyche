@@ -10,7 +10,7 @@ use wandb::{DataValue, LogData};
 
 use crate::{
     client::P2PNodeInfo,
-    state::evals::{EnumTask, PROMPT_TASK_NAME},
+    state::evals::{EnumModelTask, PROMPT_TASK_NAME},
 };
 
 use super::evals::EvalRunner;
@@ -244,27 +244,23 @@ impl StatsLogger {
             .tasks()
             .iter()
             .flatten()
-            // ACA check this
-            .filter(|eval_task| eval_task.name() != PROMPT_TASK_NAME)
-            .flat_map(|eval_task| {
-                let task = eval_task.task();
-                let metric_name: &str = task.main_metric_name();
-                let task_name = task.name();
-                match &eval_task.task {
-                    EnumTask::EvalTask(eval_task) => {
-                        match eval_task.results().sample(metric_name) {
-                            Some(metric) => {
-                                tracing::info!("{} metric {}", task_name, metric);
-                                Some((task_name.to_owned(), metric))
-                            }
-                            None => {
-                                warn!("{} missing metric {}", task_name, metric_name);
-                                None
-                            }
+            .filter(|model_task| model_task.name() != PROMPT_TASK_NAME)
+            .flat_map(|model_task| match &model_task.task {
+                EnumModelTask::EvalTask(eval_task) => {
+                    let metric_name: &str = eval_task.task.main_metric_name();
+                    let task_name = model_task.name();
+                    match eval_task.results().sample(metric_name) {
+                        Some(metric) => {
+                            tracing::info!("{} metric {}", task_name, metric);
+                            Some((task_name.to_owned(), metric))
+                        }
+                        None => {
+                            warn!("{} missing metric {}", task_name, metric_name);
+                            None
                         }
                     }
-                    _ => panic!("Unexpected eval task type"),
                 }
+                EnumModelTask::PromptTask(_) => None,
             })
             .collect()
     }
@@ -275,7 +271,7 @@ impl StatsLogger {
         for eval_task in self.eval_runner.tasks().iter().flatten() {
             if eval_task.name() == PROMPT_TASK_NAME {
                 match &eval_task.task {
-                    EnumTask::PromptTask(prompt_task) => {
+                    EnumModelTask::PromptTask(prompt_task) => {
                         let tokens = prompt_task.tokens_to_send.read().unwrap();
                         results.extend(tokens.iter().cloned()).unwrap();
                         // Release lock

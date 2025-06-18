@@ -2,6 +2,7 @@ use psyche_coordinator::TOKENS_TO_SEND_LENGTH;
 use psyche_core::FixedVec;
 use psyche_modeling::CausalLM;
 use psyche_modeling::{LogitsProcessor, Sampling, Trainer};
+use std::sync::atomic::Ordering;
 use std::sync::RwLock;
 use std::sync::{atomic::AtomicUsize, Arc};
 use tch::Tensor;
@@ -14,7 +15,7 @@ const MAX_CONTEXT_LENGTH: usize = 1000;
 pub struct PromptTask {
     tokens: RwLock<Vec<i32>>,
     pub tokens_to_send: RwLock<FixedVec<i32, TOKENS_TO_SEND_LENGTH>>,
-    next_index: Arc<AtomicUsize>,
+    pub next_index: Arc<AtomicUsize>,
 }
 
 impl PromptTask {
@@ -27,21 +28,10 @@ impl PromptTask {
             next_index: Arc::new(AtomicUsize::new(0)),
         }
     }
-
-    pub fn next_index(&self) -> &Arc<AtomicUsize> {
-        &self.next_index
-    }
 }
 
 impl PromptTask {
-    pub fn run(
-        &self,
-        trainer: &mut Trainer,
-        cancel: CancellationToken,
-        skip_and_step_by: Option<(usize, usize)>,
-        limit: Option<usize>,
-        loop_if_empty: bool,
-    ) {
+    pub fn run(&self, trainer: &mut Trainer, cancel: CancellationToken) {
         if self.tokens_to_send.read().unwrap().is_full() {
             tracing::info!("Prompt Buffer Full");
             return;
@@ -88,6 +78,9 @@ impl PromptTask {
             .unwrap();
         self.tokens.write().unwrap().push(next_token as i32);
 
-        tracing::info!("Prompt Next token: {}", next_token);
+        self.next_index.fetch_add(1, Ordering::SeqCst);
+        println!("Prompt next index: {:?}", &self.next_index);
+
+        tracing::info!("Prompt Next token: {:?}", &self.tokens);
     }
 }
