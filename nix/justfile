@@ -35,6 +35,6 @@ build_docker_solana_test_client:
     nix-results/docker-psyche-solana-test-client | docker load
 
 # Build the image for the solana vaidator used for testing
-build_docker_solana_test_vaidator:
+build_docker_solana_test_validator:
     PSYCHE_HOME=$(realpath ..) nix build .#docker-psyche-solana-test-validator --out-link nix-results/docker-psyche-solana-test-validator --impure
     nix-results/docker-psyche-solana-test-validator | docker load
