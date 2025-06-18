@@ -1029,7 +1029,6 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
 async fn test_backup_data_provider() {
-    let run_id = "test".to_string();
     let mut saw_provider_0_error = false;
     let mut successful_fetches_after_error = 0;
     let mut current_epoch = -1;
