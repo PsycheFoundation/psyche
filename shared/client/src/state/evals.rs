@@ -2,7 +2,7 @@ use futures::future::try_join_all;
 use psyche_core::RunningAverage;
 use psyche_eval::{EvalTaskOptions, Task};
 use psyche_modeling::Trainer;
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -16,7 +16,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, span, trace, Level};
 
-use crate::state::prompt::PromptTask;
+use crate::state::{
+    prompt::PromptTask,
+    prompt_texts::{PROMPT_TEXTS, PROMPT_TEXTS_LEN},
+};
 pub const PROMPT_TASK_NAME: &str = "Prompt";
 
 #[derive(Debug)]
@@ -115,6 +118,7 @@ pub struct EvalRunner {
 impl EvalRunner {
     pub fn new(
         eval_tasks: Vec<Task>,
+        prompt_task: bool,
         tokenizer: Arc<Tokenizer>,
         eval_task_max_docs: Option<usize>,
         data_parallelism: usize,
@@ -127,10 +131,12 @@ impl EvalRunner {
 
         tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                let mut eval_model_taks = eval_tasks
+                let mut model_tasks = eval_tasks
                     .into_iter()
                     .map(|task| {
                         let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
+                        tracing::info!("Loading evaluation task: {}", &prepared.name());
+
                         Arc::new(ModelTask::new_eval_task(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
@@ -139,70 +145,31 @@ impl EvalRunner {
                     })
                     .collect::<Vec<_>>();
 
-                let prompt_task = Arc::new(ModelTask::new_prompt_task(PromptTask::new(
-                    r"
-                    EDWARD:
-                    I wonder how our princely father 'scaped,
-                    Or whether he be 'scaped away or no
-                    From Clifford's and Northumberland's pursuit:
-                    Had he been ta'en, we should have heard the news;
-                    Had he been slain, we should have heard the news;
-                    Or had he 'scaped, methinks we should have heard
-                    The happy tidings of his good escape.
-                    How fares my brother? why is he so sad?
+                if prompt_task {
+                    let mut rng = rand::thread_rng();
 
-                    RICHARD:
-                    I cannot joy, until I be resolved
-                    Where our right valiant father is become.
-                    I saw him in the battle range about;
-                    And watch'd him how he singled Clifford forth.
-                    Methought he bore him in the thickest troop
-                    As doth a lion in a herd of neat;
-                    Or as a bear, encompass'd round with dogs,
-                    Who having pinch'd a few and made them cry,
-                    The rest stand all aloof, and bark at him.
-                    So fared our father with his enemies;
-                    So fled his enemies my warlike father:
-                    Methinks, 'tis prize enough to be his son.
-                    See how the morning opes her golden gates,
-                    And takes her farewell of the glorious sun!
-                    How well resembles it the prime of youth,
-                    Trimm'd like a younker prancing to his love!
+                    let prompt_index = rng.gen_range(0..PROMPT_TEXTS_LEN);
+                    tracing::info!(
+                        "Loading prompt task, selected prompt index {}",
+                        prompt_index
+                    );
 
-                    EDWARD:
-                    Dazzle mine eyes, or do I see three suns?
+                    let prompt_task = Arc::new(ModelTask::new_prompt_task(PromptTask::new(
+                        prompt_index,
+                        PROMPT_TEXTS[prompt_index].to_string(),
+                        &tokenizer,
+                    )));
+                    model_tasks.push(prompt_task);
+                }
 
-                    RICHARD:
-                    Three glorious suns, each one a perfect sun;
-                    Not separated with the racking clouds,
-                    But sever'd in a pale clear-shining sky.
-                    See, see! they join, embrace, and seem to kiss,
-                    As if they vow'd some league inviolable:
-                    Now are they but one lamp, one light, one sun.
-                    In this the heaven figures some event.
-
-                    EDWARD:
-                    'Tis wondrous strange, the like yet never heard of.
-                    I think it cites us, brother, to the field,
-                    That we, the sons of brave Plantagenet,
-                    Each one already blazing by our meeds,
-                    Should notwithstanding join our lights together
-                    And over-shine the earth as this the world.
-                    Whate'er it bodes, henceforward will I bear
-                    Upon my target three fair-shining suns.
-                    "
-                    .to_string(),
-                    &tokenizer,
-                )));
-                eval_model_taks.push(prompt_task);
-                eval_model_taks
+                model_tasks
             })
             .await;
 
             let mut state = tasks_clone.state.write().await;
             *state = match result {
                 Ok(tasks) => {
-                    info!("Eval tasks loaded successfully");
+                    info!("Model tasks loaded successfully");
                     LoadingStateInner::Done(tasks)
                 }
                 Err(err) => {

@@ -3,7 +3,7 @@ use psyche_coordinator::{
 };
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_modeling::Trainer;
-use std::{arch::x86_64, collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
 use tracing::warn;
 use wandb::{DataValue, LogData};

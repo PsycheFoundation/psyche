@@ -51,9 +51,10 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub optim_stats_every_n_steps: Option<u32>,
     pub grad_accum_in_fp32: bool,
 
-    // evaluation
+    // model tasks, evaluation + prompt
     pub eval_task_max_docs: Option<usize>,
     pub eval_tasks: Vec<psyche_eval::Task>,
+    pub prompt_task: bool,
 
     // logging
     pub wandb_info: Option<WandBInfo>,
@@ -215,7 +216,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             .collect(),
                         tokenizer: tokenizer.clone(),
                         checkpoint_extra_files: vec![],
-                        eval_runner: EvalRunner::new(vec![], tokenizer.clone(), None, 0),
+                        eval_runner: EvalRunner::new(vec![], false, tokenizer.clone(), None, 0),
                     };
                     #[allow(clippy::arc_with_non_send_sync)]
                     let config = &PretrainedSource::ConfigAndTensors(
@@ -389,6 +390,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                         let eval_runner = EvalRunner::new(
                             init_config.eval_tasks,
+                            init_config.prompt_task,
                             tokenizer.clone(),
                             init_config.eval_task_max_docs,
                             init_config.data_parallelism,

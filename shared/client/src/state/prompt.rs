@@ -13,16 +13,18 @@ const MAX_CONTEXT_LENGTH: usize = 1000;
 
 #[derive(Debug)]
 pub struct PromptTask {
+    _selected_promt: usize,
     tokens: RwLock<Vec<i32>>,
     pub tokens_to_send: RwLock<FixedVec<i32, TOKENS_TO_SEND_LENGTH>>,
     pub next_index: Arc<AtomicUsize>,
 }
 
 impl PromptTask {
-    pub fn new(task: String, tokenizer: &Tokenizer) -> Self {
+    pub fn new(selected_promt: usize, task: String, tokenizer: &Tokenizer) -> Self {
         let encoding = tokenizer.encode(task.clone(), true).unwrap();
         let tokens = encoding.get_ids().iter().map(|x| *x as i32).collect();
         Self {
+            _selected_promt: selected_promt,
             tokens: RwLock::new(tokens),
             tokens_to_send: RwLock::new(FixedVec::new()),
             next_index: Arc::new(AtomicUsize::new(0)),
