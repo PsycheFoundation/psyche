@@ -19,7 +19,7 @@ data_type = "Pretraining"
 max_seq_len = 2048
 cold_start_warmup_steps = 0
 data_locations = [
-    { Http = { location = { Gcp = { bucket_name = "nous-pretraining-public-us", filter_directory = "fineweb-edu-tokenized-llama2" } }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } }
+  { Http = { location = { Gcp = { bucket_name = "nous-pretraining-public-us", filter_directory = "fineweb-edu-tokenized-llama2" } }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } },
 ]
 
 [model.LLM.checkpoint.Hub]
