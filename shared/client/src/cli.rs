@@ -150,16 +150,6 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 8, env)]
     pub max_concurrent_downloads: usize,
-
-    // how hard to compress parameters and DisTrO results.
-    // if you have fast upload and a slow CPU, set this low.
-    // if you have slow upload and a fast CPU, set this high.
-    // range is from 1-9, but there's seriously diminishing returns after `2`.
-    // you can do `cargo run -p psyche-network --example compress_distro_result_comparison <distro_results_postcard_file>`,
-    // where that postcard file is one from `--write-gradients-dir` (use some step a few 10s or 100s in)
-    // to benchmark the tradeoffs for your specific machine.
-    #[clap(long, default_value_t = 2, env)]
-    pub compression: u32,
 }
 
 impl TrainArgs {
