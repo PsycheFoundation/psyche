@@ -33,6 +33,7 @@ impl Arc {
                 Split::Test,
                 Some(subset.to_string()),
             )?,
+            // test_split: load_dataset("pefontana/arc_easy_testing", None, Split::Test, None)?,
             validation_dataset: load_dataset(
                 "allenai/ai2_arc",
                 None,
