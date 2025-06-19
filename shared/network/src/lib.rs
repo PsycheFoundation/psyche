@@ -628,9 +628,12 @@ pub async fn request_model(
 
     // Receive parameter value blob ticket
     let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
-    let parameter_blob_ticket: Result<BlobTicket, SharableModelError> =
-        postcard::from_bytes(&parameter_blob_ticket_bytes)?;
-    parameter_blob_ticket.with_context(|| "Error parsing model parameter blob ticket".to_string())
+    let parameter_blob_ticket: Result<Result<BlobTicket, SharableModelError>, postcard::Error> =
+        postcard::from_bytes(&parameter_blob_ticket_bytes);
+    let result = parameter_blob_ticket
+        .with_context(|| "Error parsing model parameter blob ticket".to_string())?;
+
+    result.map_err(|e| anyhow!("Error received from peer: {e}"))
 }
 
 fn parse_gossip_event<BroadcastMessage: Networkable>(
