@@ -77,11 +77,11 @@ impl TokenizedLLHDocument {
             .iter()
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
-        let choices = doc
+        let mut choices: Vec<Vec<i64>> = doc
             .choices
             .into_iter()
             .map(|x| {
-                let choice_with_space = format!(" {}", x);
+                let choice_with_space = format!("{}", x);
                 let choice = tokenizer
                     .encode(choice_with_space, false)
                     .unwrap()
