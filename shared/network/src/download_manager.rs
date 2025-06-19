@@ -385,8 +385,9 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             })) => {
                 downloads.swap_remove(index);
                 warn!(
-                    "Download error, removing it. idx {index}, hash {}: {}",
+                    "Download error, removing it. idx {index}, hash {}, node provider {}: {}",
                     blob_ticket.hash(),
+                    blob_ticket.node_addr().node_id,
                     error
                 );
             }
