@@ -188,10 +188,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         res = p2p.poll_next() => {
                             if let Some(message) = res? {
+                                let current_step = run.coordinator_state().map(|s| s.progress.step).unwrap_or(0);
                                 match message {
                                     NetworkEvent::MessageReceived((from, broadcast)) => {
                                         let _ = trace_span!("NetworkEvent::MessageReceived", from=%from).entered();
-                                        metrics.record_broadcast_seen(&broadcast, run.coordinator_state().map(|s| s.progress.step).unwrap_or(0));
+                                        metrics.record_broadcast_seen(&broadcast, current_step);
                                         if let Some(client) = watcher.get_client_for_p2p_public_key(from.as_bytes()) {
                                             if raw_p2p_verify(from.as_bytes(), &broadcast.commitment.data_hash, &broadcast.commitment.signature) {
                                                 match &broadcast.data {
@@ -211,10 +212,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         }
                                     }
                                     NetworkEvent::DownloadComplete(DownloadComplete {
-                                        data: download_data, hash, ..
+                                        data: download_data, hash, from, download_type,total_size
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
-                                        metrics.record_download_completed(hash);
+                                        metrics.record_download_completed(hash, from, download_type, total_size, current_step);
                                         if retried_downloads.remove(&hash).is_some() {
                                             debug!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }

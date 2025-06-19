@@ -259,6 +259,7 @@ impl ClientMetrics {
         download_type: DownloadType,
         downloaded_size: u64,
         total_size: u64,
+        current_step: u32,
     ) {
         if let Ok(mut downloads) = self.active_downloads.lock() {
             let progress = downloads.entry(hash).or_insert_with(|| {
@@ -291,9 +292,25 @@ impl ClientMetrics {
             self.downloads_bytes_gauge
                 .add(delta, &[KeyValue::new("hash", hash.to_string())]);
         }
+        self.update_round_state(current_step);
     }
 
-    pub fn record_download_completed(&self, hash: Hash) {
+    pub fn record_download_completed(
+        &self,
+        hash: Hash,
+        source_peer: NodeId,
+        download_type: DownloadType,
+        total_size: u64,
+        current_step: u32,
+    ) {
+        self.update_download_progress(
+            hash,
+            source_peer,
+            download_type,
+            total_size,
+            total_size,
+            current_step,
+        );
         if let Ok(mut downloads) = self.active_downloads.lock() {
             if let Some(progress) = downloads.remove(&hash) {
                 let download_type_str = match progress.download_type {
@@ -310,6 +327,7 @@ impl ClientMetrics {
                 );
             }
         }
+        self.update_round_state(current_step);
     }
 
     pub fn record_download_failed(&self, hash: Hash, error: &str) {
@@ -543,12 +561,12 @@ mod tests {
         }
 
         // Update progress multiple times
-        metrics.update_download_progress(hash, peer_id, download_type.clone(), 1024, 10240);
-        metrics.update_download_progress(hash, peer_id, download_type.clone(), 5120, 10240);
-        metrics.update_download_progress(hash, peer_id, download_type, 10240, 10240);
+        metrics.update_download_progress(hash, peer_id, download_type.clone(), 1024, 10240, 1);
+        metrics.update_download_progress(hash, peer_id, download_type.clone(), 5120, 10240, 1);
+        metrics.update_download_progress(hash, peer_id, download_type.clone(), 10240, 10240, 1);
 
         // Complete download
-        metrics.record_download_completed(hash);
+        metrics.record_download_completed(hash, peer_id, download_type.clone(), 10240, 1);
 
         // Verify download is removed
         {
@@ -566,7 +584,7 @@ mod tests {
         let download_type = DownloadType::ModelSharing(ModelRequestType::Config);
 
         // Start and fail download
-        metrics.update_download_progress(hash, peer_id, download_type, 2048, 8192);
+        metrics.update_download_progress(hash, peer_id, download_type, 2048, 8192, 1);
         metrics.record_download_failed(hash, "connection timeout");
 
         // Verify download is removed after failure
@@ -672,6 +690,7 @@ mod tests {
             DownloadType::ModelSharing(psyche_network::ModelRequestType::Config),
             u64::MAX / 2,
             u64::MAX,
+            u32::MAX,
         );
 
         // Test round state with edge values
@@ -679,7 +698,15 @@ mod tests {
 
         // Test finishing non-existent download
         let non_existent_hash = [123u8; 32].into();
-        metrics.record_download_completed(non_existent_hash);
+        metrics.record_download_completed(
+            non_existent_hash,
+            PublicKey::from_bytes(&DUMMY_KEY).unwrap(),
+            DownloadType::ModelSharing(psyche_network::ModelRequestType::Parameter(
+                "Banana".to_string(),
+            )),
+            u64::MAX,
+            u32::MAX,
+        );
         metrics.record_download_failed(non_existent_hash, "doesn't exist");
     }
 }
