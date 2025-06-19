@@ -69,6 +69,18 @@ pub struct TrainArgs {
     )]
     pub logs: LogOutput,
 
+    /// An auth header string for an opentelemetry endpoint. Used for both logging and metrics.
+    #[clap(long, env)]
+    pub oltp_auth_header: Option<String>,
+
+    /// A URL for sending opentelemetry metrics. probably ends in /v1/metrics
+    #[clap(long, env)]
+    pub oltp_metrics_url: Option<String>,
+
+    /// A URL for sending opentelemetry metrics. probably ends in /v1/tracing
+    #[clap(long, env)]
+    pub oltp_tracing_url: Option<String>,
+
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
     #[clap(long, env)]
     pub run_id: String,

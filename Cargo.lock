@@ -6138,6 +6138,7 @@ dependencies = [
  "prost",
  "reqwest 0.12.15",
  "thiserror 2.0.12",
+ "tracing",
 ]
 
 [[package]]
@@ -7392,12 +7393,14 @@ name = "psyche-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
  "console-subscriber",
  "crossterm",
  "futures",
  "logfire",
  "opentelemetry 0.28.0",
+ "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rand 0.8.5",
  "ratatui",

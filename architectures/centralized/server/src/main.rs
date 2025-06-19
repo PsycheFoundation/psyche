@@ -6,7 +6,10 @@ use app::{App, DataServerInfo};
 use clap::{ArgAction, Parser};
 use psyche_centralized_shared::ClientId;
 use psyche_coordinator::Coordinator;
-use psyche_tui::LogOutput;
+use psyche_tui::{
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination},
+    LogOutput,
+};
 use std::path::{Path, PathBuf};
 use tracing::{error, info};
 
@@ -82,6 +85,18 @@ struct RunArgs {
         require_equals = false
     )]
     withdraw_on_disconnect: bool,
+
+    /// An auth header string for an opentelemetry endpoint. Used for both logging and metrics.
+    #[clap(long, env)]
+    pub oltp_auth_header: Option<String>,
+
+    /// A URL for sending opentelemetry metrics. probably ends in /v1/metrics
+    #[clap(long, env)]
+    pub oltp_metrics_url: Option<String>,
+
+    /// A URL for sending opentelemetry metrics. probably ends in /v1/tracing
+    #[clap(long, env)]
+    pub oltp_tracing_url: Option<String>,
 }
 
 fn load_config_state(
@@ -148,7 +163,18 @@ async fn main() -> Result<()> {
                 } else {
                     LogOutput::Console
                 })
-                .with_remote_logs(true)
+                .with_metrics_destination(run_args.oltp_metrics_url.clone().map(|endpoint| {
+                    MetricsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: run_args.oltp_auth_header.clone(),
+                    })
+                }))
+                .with_remote_logs(run_args.oltp_tracing_url.clone().map(|endpoint| {
+                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: run_args.oltp_auth_header.clone(),
+                    })
+                }))
                 .with_service_name("centralized-server")
                 .init()?;
             match config {

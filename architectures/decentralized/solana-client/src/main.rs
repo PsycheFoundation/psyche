@@ -27,7 +27,10 @@ use psyche_core::{sha256, FixedString};
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
-use psyche_tui::{maybe_start_render_loop, LogOutput};
+use psyche_tui::{
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination},
+    maybe_start_render_loop, LogOutput,
+};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
@@ -728,7 +731,18 @@ async fn async_main() -> Result<()> {
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
                 .with_log_file(args.write_log.clone())
-                .with_remote_logs(true)
+                .with_metrics_destination(args.oltp_metrics_url.clone().map(|endpoint| {
+                    MetricsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                    })
+                }))
+                .with_remote_logs(args.oltp_tracing_url.clone().map(|endpoint| {
+                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                    })
+                }))
                 .with_service_name(identity_secret_key.public().fmt_short())
                 .init()?;
 
