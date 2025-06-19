@@ -4,7 +4,7 @@ use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{collections::HashMap, fmt::Display, fs::OpenOptions, io::Write, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -77,13 +77,12 @@ impl TokenizedLLHDocument {
             .iter()
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
-        let choices = doc
+        let choices: Vec<Vec<i64>> = doc
             .choices
             .into_iter()
             .map(|x| {
-                let choice_with_space = format!(" {}", x);
                 let choice = tokenizer
-                    .encode(choice_with_space, false)
+                    .encode(x, false)
                     .unwrap()
                     .get_ids()
                     .iter()
@@ -254,22 +253,27 @@ impl PreparedTask {
                 for choice in &doc.choices {
                     let mut ids = context.clone();
                     ids.extend_from_slice(choice);
+                    ids.pop();
+                    ids.remove(0);
+                    let inplen = ids.len();
+
                     let ids = Tensor::from_slice(&ids)
                         .to(options.model.device())
                         .unsqueeze(0);
+
                     // if the continuation is N tokens, we need the the last N + 1 logits, since we are getting the
                     // probs at the last token of the prompt (so prediction of the first continuation)
-                    let (logits, _) =
-                        options
-                            .model
-                            .forward(&ids, None, Some((choice.len() + 1) as i64));
+                    let (logits, _) = options.model.forward(&ids, None, None);
+
                     // drop the last logit, since we don't want to score what comes after the continuation
-                    let logits = logits.log_softmax(-1, None).squeeze_dim(0).slice(
-                        0,
-                        0,
-                        choice.len() as i64,
-                        1,
-                    );
+                    let logits = logits
+                        .log_softmax(-1, None)
+                        .squeeze_dim(0)
+                        .slice(0, 0, None, 1);
+
+                    let contlen: i64 = choice.len() as i64;
+                    let logits = logits.slice(0, inplen as i64 - contlen, inplen as i64, 1);
+
                     let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
                     let exact_match = greedy_tokens.eq(choice);
                     let index = Tensor::from_slice(choice).to(logits.device()).unsqueeze(-1);
@@ -286,7 +290,7 @@ impl PreparedTask {
                 &scores
                     .iter()
                     .enumerate()
-                    .map(|(idx, x)| x.0 / doc.choices[idx].len() as f32)
+                    .map(|(idx, x)| x.0 / (doc.choices[idx].len() + 3) as f32)
                     .collect::<Vec<_>>(),
             )
             .argmax(-1, false)
