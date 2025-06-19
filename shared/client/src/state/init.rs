@@ -25,7 +25,7 @@ use tokio::{
     sync::{mpsc::UnboundedSender, oneshot},
     task::{JoinError, JoinHandle},
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use super::{
     cooldown::CooldownStepMetadata, evals::EvalRunner, stats::StatsLogger, steps::StepStateMachine,
@@ -158,44 +158,84 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
             for data_location in llm.data_locations.iter() {
                 let provider = match data_location {
-                    LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
-                        DataProviderTcpClient::connect(
+                    LLMTrainingDataLocation::Server(data_server) => {
+                        let client = match DataProviderTcpClient::connect(
                             data_server.into(),
                             init_config.network_identity.clone(),
                             init_config.private_key.clone(),
                         )
-                        .await?,
-                    ),
+                        .await
+                        {
+                            Ok(client) => client,
+                            Err(e) => {
+                                warn!("Failed to connect to data server at {}: {}", data_server, e);
+                                continue;
+                            }
+                        };
+                        Some(DataProvider::Server(client))
+                    }
                     LLMTrainingDataLocation::Local(_) => todo!(),
-                    LLMTrainingDataLocation::Dummy(dummy_type) => DataProvider::Dummy(
+                    LLMTrainingDataLocation::Dummy(dummy_type) => Some(DataProvider::Dummy(
                         DummyDataProvider::new(TokenSize::TwoBytes, 2048, u64::MAX, *dummy_type),
-                    ),
+                    )),
                     LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
                         location,
                         token_size_in_bytes,
                         shuffle,
                     }) => {
-                        let file_urls = FileURLs::from_location(location).await?;
-                        DataProvider::Http(HttpDataProvider::new(
-                            file_urls,
-                            *token_size_in_bytes,
-                            llm.max_seq_len,
-                            *shuffle,
-                        )?)
+                        if let Ok(file_urls) = FileURLs::from_location(location).await {
+                            if let Ok(provider) = HttpDataProvider::new(
+                                file_urls,
+                                *token_size_in_bytes,
+                                llm.max_seq_len,
+                                *shuffle,
+                            ) {
+                                Some(DataProvider::Http(provider))
+                            } else {
+                                warn!(
+                                    "Failed to create HTTP data provider for location: {:?}",
+                                    location
+                                );
+                                None
+                            }
+                        } else {
+                            warn!(
+                                "Failed to create HTTP data provider for location: {:?}",
+                                location
+                            );
+                            None
+                        }
                     }
                     LLMTrainingDataLocation::WeightedHttp(config_url) => {
-                        DataProvider::WeightedHttp(
+                        if let Ok(provider) =
                             WeightedDataProvider::<HttpDataProvider>::from_config_url(
                                 &String::from(config_url),
                                 llm.max_seq_len,
                             )
-                            .await?,
-                        )
+                            .await
+                        {
+                            Some(DataProvider::WeightedHttp(provider))
+                        } else {
+                            warn!(
+                                "Failed to create Weighted HTTP data provider for config URL: {}",
+                                config_url
+                            );
+                            None
+                        }
                     }
                 };
-                data_providers.push(provider);
+                if let Some(provider) = provider {
+                    data_providers.push(provider);
+                }
             }
-            Ok(data_providers)
+            if data_providers.is_empty() {
+                Err(InitRunError::DataProviderConnect(anyhow::anyhow!(
+                    "No valid data providers could be initialized."
+                )))
+            } else {
+                info!("Initialized {} data providers", data_providers.len());
+                Ok(data_providers)
+            }
         };
 
         let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &llm.architecture
@@ -489,7 +529,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         // TODO add data fetching for verifying, too..
-        let data_providers = data.map_err(InitRunError::DataProviderConnect)?;
+        let data_providers = data?;
 
         let data_fetcher =
             DataFetcher::<T, A>::new(data_providers, init_config.data_parallelism * 2);
