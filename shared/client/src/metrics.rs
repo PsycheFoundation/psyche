@@ -259,6 +259,7 @@ impl ClientMetrics {
         download_type: DownloadType,
         downloaded_size: u64,
         total_size: u64,
+        download_step: u32,
         current_step: u32,
     ) {
         if let Ok(mut downloads) = self.active_downloads.lock() {
@@ -292,25 +293,23 @@ impl ClientMetrics {
             self.downloads_bytes_gauge
                 .add(delta, &[KeyValue::new("hash", hash.to_string())]);
         }
+
+        // track by round
+        if download_step == current_step {
+            self.current_round_downloads
+                .lock()
+                .unwrap()
+                .insert(hash.into());
+        } else if download_step == current_step.saturating_sub(1) {
+            self.previous_round_downloads
+                .lock()
+                .unwrap()
+                .insert(hash.into());
+        }
         self.update_round_state(current_step);
     }
 
-    pub fn record_download_completed(
-        &self,
-        hash: Hash,
-        source_peer: NodeId,
-        download_type: DownloadType,
-        total_size: u64,
-        current_step: u32,
-    ) {
-        self.update_download_progress(
-            hash,
-            source_peer,
-            download_type,
-            total_size,
-            total_size,
-            current_step,
-        );
+    pub fn record_download_completed(&self, hash: Hash, current_step: u32) {
         if let Ok(mut downloads) = self.active_downloads.lock() {
             if let Some(progress) = downloads.remove(&hash) {
                 let download_type_str = match progress.download_type {
@@ -367,10 +366,10 @@ impl ClientMetrics {
             let previous_count = self.previous_round_broadcasts.lock().unwrap().len() as u64;
 
             self.broadcasts_current_round_gauge
-                .record(current_count, &[]);
+                .record(current_count, &[KeyValue::new("step", step as i64)]);
 
             self.broadcasts_previous_round_gauge
-                .record(previous_count, &[]);
+                .record(previous_count, &[KeyValue::new("step", step as i64)]);
         }
 
         // update download counts for current round
@@ -379,10 +378,10 @@ impl ClientMetrics {
             let previous_count = self.previous_round_downloads.lock().unwrap().len() as u64;
 
             self.blobs_downloaded_current_round_gauge
-                .record(current_count, &[]);
+                .record(current_count, &[KeyValue::new("step", step as i64)]);
 
             self.blobs_downloaded_previous_round_gauge
-                .record(previous_count, &[]);
+                .record(previous_count, &[KeyValue::new("step", step as i64)]);
         }
 
         if step != self.last_seen_step.load(Ordering::Relaxed) {
@@ -553,6 +552,7 @@ mod tests {
         let hash = [42u8; 32].into();
         let peer_id = PublicKey::from_bytes(&DUMMY_KEY).unwrap();
         let download_type = DownloadType::DistroResult(Default::default());
+        metrics.update_download_progress(hash, peer_id, download_type.clone(), 1024, 10240, 1, 1);
 
         // Verify download is tracked
         {
@@ -561,12 +561,12 @@ mod tests {
         }
 
         // Update progress multiple times
-        metrics.update_download_progress(hash, peer_id, download_type.clone(), 1024, 10240, 1);
-        metrics.update_download_progress(hash, peer_id, download_type.clone(), 5120, 10240, 1);
-        metrics.update_download_progress(hash, peer_id, download_type.clone(), 10240, 10240, 1);
+        metrics.update_download_progress(hash, peer_id, download_type.clone(), 1024, 10240, 1, 1);
+        metrics.update_download_progress(hash, peer_id, download_type.clone(), 5120, 10240, 1, 1);
+        metrics.update_download_progress(hash, peer_id, download_type.clone(), 10240, 10240, 1, 1);
 
         // Complete download
-        metrics.record_download_completed(hash, peer_id, download_type.clone(), 10240, 1);
+        metrics.record_download_completed(hash, 1);
 
         // Verify download is removed
         {
@@ -584,7 +584,7 @@ mod tests {
         let download_type = DownloadType::ModelSharing(ModelRequestType::Config);
 
         // Start and fail download
-        metrics.update_download_progress(hash, peer_id, download_type, 2048, 8192, 1);
+        metrics.update_download_progress(hash, peer_id, download_type, 2048, 8192, 1, 1);
         metrics.record_download_failed(hash, "connection timeout");
 
         // Verify download is removed after failure
@@ -691,6 +691,7 @@ mod tests {
             u64::MAX / 2,
             u64::MAX,
             u32::MAX,
+            u32::MAX,
         );
 
         // Test round state with edge values
@@ -698,15 +699,7 @@ mod tests {
 
         // Test finishing non-existent download
         let non_existent_hash = [123u8; 32].into();
-        metrics.record_download_completed(
-            non_existent_hash,
-            PublicKey::from_bytes(&DUMMY_KEY).unwrap(),
-            DownloadType::ModelSharing(psyche_network::ModelRequestType::Parameter(
-                "Banana".to_string(),
-            )),
-            u64::MAX,
-            u32::MAX,
-        );
+        metrics.record_download_completed(non_existent_hash, u32::MAX);
         metrics.record_download_failed(non_existent_hash, "doesn't exist");
     }
 }

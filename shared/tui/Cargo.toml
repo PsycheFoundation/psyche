@@ -21,6 +21,7 @@ console-subscriber = "0.4.1"
 opentelemetry = "0.28.0"
 opentelemetry-otlp = "0.28.0"
 async-trait.workspace = true
+iroh-metrics = "0.34.0"
 
 
 [dev-dependencies]

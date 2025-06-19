@@ -91,8 +91,6 @@ pub struct DownloadComplete<D: Networkable> {
     pub hash: iroh_blobs::Hash,
     pub from: PublicKey,
     pub data: D,
-    pub download_type: DownloadType,
-    pub total_size: u64,
 }
 
 #[derive(Debug)]
@@ -400,8 +398,6 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     data: decoded,
                     from: downloader.blob_ticket.node_addr().node_id,
                     hash: downloader.blob_ticket.hash(),
-                    download_type: downloader.r#type,
-                    total_size: bytes.len() as u64,
                 })),
                 Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                     blob_ticket: downloader.blob_ticket,

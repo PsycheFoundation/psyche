@@ -212,10 +212,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         }
                                     }
                                     NetworkEvent::DownloadComplete(DownloadComplete {
-                                        data: download_data, hash, from, download_type,total_size
+                                        data: download_data, hash, ..
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
-                                        metrics.record_download_completed(hash, from, download_type, total_size, current_step);
+                                        metrics.record_download_completed(hash, current_step);
                                         if retried_downloads.remove(&hash).is_some() {
                                             debug!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
@@ -411,6 +411,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
+                            let current_step = run.coordinator_state().map(|s| s.progress.step).unwrap_or(0);
+                            metrics.update_download_progress(download_ticket.hash(), download_ticket.node_addr().node_id, DownloadType::DistroResult(vec![]), 0, 0, tag, current_step);
+
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
                             p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes));
                         }
