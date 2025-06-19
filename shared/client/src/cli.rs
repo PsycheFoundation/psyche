@@ -5,7 +5,7 @@ use clap::Args;
 use psyche_eval::tasktype_from_name;
 use psyche_network::SecretKey;
 use psyche_tui::LogOutput;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 pub fn read_identity_secret_key(
     identity_secret_key_path: Option<&PathBuf>,
@@ -80,6 +80,12 @@ pub struct TrainArgs {
     /// A URL for sending opentelemetry metrics. probably ends in /v1/tracing
     #[clap(long, env)]
     pub oltp_tracing_url: Option<String>,
+
+    /// how often to report metrics thru opentelemetry
+    #[clap(long, env,
+    default_value = "10.0",
+    value_parser = parse_duration_from_seconds)]
+    pub oltp_report_interval: Duration,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
     #[clap(long, env)]
@@ -249,4 +255,16 @@ pub fn prepare_environment() {
             None,
         );
     }
+}
+
+fn parse_duration_from_seconds(s: &str) -> Result<Duration, String> {
+    s.parse::<f64>()
+        .map_err(|e| format!("Invalid number: {}", e))
+        .and_then(|secs| {
+            if secs < 0.0 {
+                Err("Duration cannot be negative".to_string())
+            } else {
+                Ok(Duration::from_secs_f64(secs))
+            }
+        })
 }

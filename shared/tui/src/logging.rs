@@ -244,7 +244,7 @@ fn create_otel_metrics_handler(
     let resource = resource_builder.build();
 
     let reader = PeriodicReader::builder(exporter)
-        .with_interval(Duration::from_secs(15))
+        .with_interval(config.report_interval)
         .build();
 
     let provider = SdkMeterProvider::builder()
@@ -301,6 +301,7 @@ pub struct Logfire {
 pub struct OpenTelemetry {
     pub endpoint: String,
     pub authorization_header: Option<String>,
+    pub report_interval: Duration,
 }
 
 pub enum MetricsDestination {

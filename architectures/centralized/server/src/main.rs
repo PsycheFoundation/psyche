@@ -10,7 +10,10 @@ use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination},
     LogOutput,
 };
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tracing::{error, info};
 
 #[derive(Parser, Debug)]
@@ -167,12 +170,14 @@ async fn main() -> Result<()> {
                     MetricsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
                         authorization_header: run_args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(10),
                     })
                 }))
                 .with_remote_logs(run_args.oltp_tracing_url.clone().map(|endpoint| {
                     RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
                         authorization_header: run_args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(10),
                     })
                 }))
                 .with_service_name("centralized-server")
