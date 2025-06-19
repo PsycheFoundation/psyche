@@ -53,7 +53,7 @@ mod download_manager;
 mod local_discovery;
 mod p2p_model_sharing;
 mod peer_list;
-mod router;
+pub mod router;
 mod serde;
 mod serializable_kind;
 mod serializable_tensor;
@@ -384,18 +384,20 @@ where
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
             DownloadType::DistroResult(peers) => peers,
-            DownloadType::ModelSharing(_) => vec![],
+            DownloadType::ModelSharing(_) => {
+                vec![]
+            }
         };
         let (tx, rx) = mpsc::unbounded_channel();
 
         self.state.currently_sharing_blobs.insert(ticket_hash);
         self.state.blob_tags.insert((tag, ticket_hash));
-        self.download_manager.add(ticket, tag, rx, download_type);
+        self.download_manager
+            .add(ticket, tag, rx, download_type.clone());
 
-        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash.fmt_short());
+        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let blobs_client = self.blobs.client().clone();
-
         tokio::spawn(async move {
             let download_opts = DownloadOptions {
                 format: BlobFormat::Raw,
