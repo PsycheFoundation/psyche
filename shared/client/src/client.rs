@@ -8,8 +8,8 @@ use futures::future::join_all;
 use psyche_coordinator::{Commitment, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_network::{
-    allowlist, param_request_task, raw_p2p_verify, AuthenticatableIdentity, BlobTicket,
-    DownloadComplete, DownloadType, ModelRequestType, NetworkConnection, NetworkEvent,
+    allowlist, param_request_task, raw_p2p_verify, router::Router, AuthenticatableIdentity,
+    BlobTicket, DownloadComplete, DownloadType, ModelRequestType, NetworkConnection, NetworkEvent,
     NetworkTUIState, Networkable, NodeAddr, NodeId, PublicKey, SharableModel,
     TransmittableDownload,
 };
@@ -18,7 +18,7 @@ use tokenizers::Tokenizer;
 
 use rand::{seq::SliceRandom, thread_rng, RngCore};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     marker::PhantomData,
     sync::Arc,
     time::{Duration, Instant},
@@ -42,7 +42,7 @@ pub struct Client<T: NodeIdentity, A: AuthenticatableIdentity, B: Backend<T> + '
     _t: PhantomData<(T, A, B)>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct DownloadRetryInfo {
     retries: usize,
     retry_time: Option<Instant>,
@@ -120,12 +120,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     tx_broadcast_finished,
                 });
 
-                let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
-                let peer_cycle = Arc::new(Mutex::new(VecDeque::new()));
-
-                let mut retried_downloads: HashMap<psyche_network::Hash, DownloadRetryInfo> =
-                    HashMap::new();
+                let retried_downloads: Arc<
+                    Mutex<HashMap<psyche_network::Hash, DownloadRetryInfo>>,
+                > = Arc::new(Mutex::new(HashMap::new()));
                 let mut sharable_model = SharableModel::empty();
+
                 let mut broadcasts = vec![];
                 let mut broadcasts_rebroadcast_index = 0;
                 let mut sharing_downloadable_interval = interval(REBROADCAST_SHAREABLE);
@@ -217,7 +216,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         data: download_data, hash, ..
                                     }) => {
                                         trace!("NetworkEvent::DownloadComplete({})", hex::encode(hash));
-                                        if retried_downloads.remove(&hash).is_some() {
+                                        if retried_downloads.lock().await.remove(&hash).is_some() {
                                             debug!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
                                         match download_data {
@@ -242,48 +241,49 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     NetworkEvent::DownloadFailed(dl) => {
                                         trace!("NetworkEvent::DownloadFailed({:?})", dl.error);
                                         let hash = dl.blob_ticket.hash();
-                                        let info = retried_downloads.get(&hash);
-                                        let retries = info.map(|i| i.retries).unwrap_or(0);
+                                        let retries = retried_downloads.lock().await.get(&hash).map(|i| i.retries).unwrap_or(0);
 
                                         if retries >= MAX_DOWNLOAD_RETRIES {
-                                            warn!("Download failed (not retrying): {}", dl.error);
-                                            retried_downloads.remove(&hash);
+                                            warn!("Download failed for blob with hash {hash} (not retrying): {}", dl.error);
+                                            retried_downloads.lock().await.remove(&hash);
                                         } else {
                                             let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
                                             let retry_time = Some(std::time::Instant::now() + backoff_duration);
 
                                             info!(
-                                                "Download failed (will retry in {:?}): {}",
+                                                "Download failed for blob with hash {hash} (will retry in {:?}): {}",
                                                 backoff_duration,
                                                 dl.error
                                             );
 
-                                            let blob_ticket_to_retry = if let DownloadType::ModelSharing(request_type) = dl.download_type.clone() {
-                                                    let me = NodeId::from_bytes(identity.get_p2p_public_key())?;
-                                                    let Some(coordinator_state) = watcher.coordinator_state() else {
-                                                        bail!("Coordinator state not yet registered, nothing to do. Try joining the run again.");
-                                                    };
-                                                    let mut peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state).into_iter().filter(|peer_id| peer_id != &me).collect();
-                                                    peer_ids.retain(|a| a != &dl.blob_ticket.node_addr().node_id);
-                                                    let new_blob_ticket = get_blob_ticket_to_download(&p2p, &param_requests_cancel_token, request_type.clone(), peer_cycle.clone(), errored_peers.clone()).await?;
+                                            let param_requests_cancel_token = param_requests_cancel_token.clone();
+                                            let router = p2p.router();
+                                            let peer_ids = participating_node_ids(&run.coordinator_state().unwrap());
 
+                                            let retried_downloads = retried_downloads.clone();
+                                            let peer_cycle = sharable_model.peer_cycle.clone();
+                                            let errored_peers = sharable_model.errored_peers.clone();
+                                            tokio::spawn(async move {
+                                                println!("ASKING FOR BLOB TICKET AGAIN");
+                                                let blob_ticket_to_retry = if let DownloadType::ModelSharing(request_type) = dl.download_type.clone() {
+                                                    let new_blob_ticket = get_blob_ticket_to_download(router, &param_requests_cancel_token, request_type.clone(), peer_cycle, errored_peers, peer_ids.len()).await.unwrap();
                                                     // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
-                                                    retried_downloads.remove(&hash);
+                                                    retried_downloads.lock().await.remove(&hash);
                                                     new_blob_ticket
-                                            } else {
-                                                dl.blob_ticket
-                                            };
-
-                                            retried_downloads.insert(blob_ticket_to_retry.hash(), DownloadRetryInfo {
-                                                retries: retries + 1,
-                                                retry_time,
-                                                ticket: blob_ticket_to_retry,
+                                                } else {
+                                                    dl.blob_ticket
+                                                };
+                                                println!("BLOB TICKET ADDED FOR RETRY");
+                                                retried_downloads.lock().await.insert(blob_ticket_to_retry.hash(), DownloadRetryInfo {
+                                                    retries: retries + 1,
+                                                    retry_time,
+                                                    ticket: blob_ticket_to_retry,
                                                 tag: dl.tag,
                                                 r#type: dl.download_type,
                                             });
-
-                                        }
+                                        });
                                     }
+                                }
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
                                         // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
                                         trace!("NetworkEvent::ParameterRequest({parameter_name})");
@@ -389,6 +389,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         _ = retry_check_interval.tick() => {
                             let now = Instant::now();
+                            let mut retried_downloads = retried_downloads.lock().await;
                             let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.iter()
                                 .filter(|(_, info)| info.retry_time.map(|retry_time| now >= retry_time).unwrap_or(false) && info.retries <= MAX_DOWNLOAD_RETRIES)
                                 .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.r#type.clone()))
@@ -451,8 +452,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             }
                             let num_peers = peer_ids.len();
                             let param_requests_cancel_token = param_requests_cancel_token.clone();
-                            let peer_cycle = peer_cycle.clone();
-                            let errored_peers = errored_peers.clone();
+                            let peer_cycle = sharable_model.peer_cycle.clone();
+                            let errored_peers = sharable_model.errored_peers.clone();
                             let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
                                 // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
                                 // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
@@ -461,9 +462,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let mut request_handles = Vec::new();
 
                                 for param_name in param_names {
-                                    let router = router.clone();
-                                    let errored_peers = errored_peers.clone();
                                     let peer_cycle = peer_cycle.clone();
+                                    let errored_peers = errored_peers.clone();
+                                    let router = router.clone();
 
                                     let request_handle = tokio::spawn(
                                         param_request_task(
@@ -487,9 +488,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
                                             parameter_blob_tickets_lock.drain(..).collect()
                                         };
-                                        println!("SENDING PARAMS TO DOWNLOAD");
                                         tx_params_download.send(current_parameter_blob_tickets)?;
-                                        tokio::time::sleep(Duration::from_secs(2)).await;
                                         continue;
                                     }
                                     request_handles.push(request_handle);
@@ -520,13 +519,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 .filter(|peer_id| peer_id != &me)
                                 .collect();
 
-                            let errored_peers = errored_peers.clone();
-                            let mut peer_cycle_lock = peer_cycle.lock().await;
-                            *peer_cycle_lock = VecDeque::from(peer_ids.clone());
-                            drop(peer_cycle_lock);
-                            let config_blob_ticket = get_blob_ticket_to_download(&p2p, &param_requests_cancel_token, ModelRequestType::Config, peer_cycle.clone(), errored_peers.clone()).await?;
+                            sharable_model.peer_cycle = Arc::new(Mutex::new(VecDeque::from(peer_ids.clone())));
+                            let config_blob_ticket = get_blob_ticket_to_download(p2p.router(), &param_requests_cancel_token, ModelRequestType::Config, sharable_model.peer_cycle.clone(), sharable_model.errored_peers.clone(), peer_ids.len()).await?;
 
-                            // tokio::time::sleep(Duration::from_secs(5)).await;
                             // tag 0 means when we enter a train step, it'll get wiped.
                             p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config));
 
@@ -575,6 +570,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
             join,
         }
     }
+
+    pub fn retry_download(&self) {}
 
     pub fn finished(&mut self) -> &mut JoinHandle<Result<(), Error>> {
         &mut self.join
@@ -703,16 +700,15 @@ fn all_node_addrs_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeA
 }
 
 async fn get_blob_ticket_to_download(
-    p2p: &NC,
+    router: Arc<Router>,
     param_requests_cancel_token: &CancellationToken,
     request_type: ModelRequestType,
     peer_cycle: Arc<Mutex<VecDeque<NodeId>>>,
     errored_peers: Arc<std::sync::Mutex<HashMap<PublicKey, usize>>>,
+    num_peers: usize,
 ) -> Result<BlobTicket, anyhow::Error> {
-    let router = p2p.router();
     // initialize variables to request model config
     let config_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
-    let num_peers = peer_cycle.lock().await.len();
     if num_peers == 0 {
         return Err(anyhow::anyhow!("No peers available to request the model"));
     }
