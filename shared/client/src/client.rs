@@ -10,14 +10,15 @@ use psyche_core::NodeIdentity;
 use psyche_network::{
     allowlist, param_request_task, raw_p2p_verify, AuthenticatableIdentity, BlobTicket,
     DownloadComplete, DownloadType, ModelRequestType, NetworkConnection, NetworkEvent,
-    NetworkTUIState, Networkable, NodeAddr, NodeId, SharableModel, TransmittableDownload,
+    NetworkTUIState, Networkable, NodeAddr, NodeId, PublicKey, SharableModel,
+    TransmittableDownload,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
 use rand::{seq::SliceRandom, thread_rng, RngCore};
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     marker::PhantomData,
     sync::Arc,
     time::{Duration, Instant},
@@ -101,7 +102,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     mpsc::unbounded_channel();
                 let (tx_broadcast_finished, mut rx_broadcast_finished) = mpsc::unbounded_channel();
 
-                let max_concurrent_downloads = init_config.max_concurrent_parameter_requests;
+                let max_concurrent_parameter_requests =
+                    init_config.max_concurrent_parameter_requests;
 
                 let mut run = RunManager::<T, A>::new(RunInitConfigAndIO {
                     init_config,
@@ -117,6 +119,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     tx_request_model_config,
                     tx_broadcast_finished,
                 });
+
+                let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
+                let peer_cycle = Arc::new(Mutex::new(VecDeque::new()));
 
                 let mut retried_downloads: HashMap<psyche_network::Hash, DownloadRetryInfo> =
                     HashMap::new();
@@ -260,7 +265,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     };
                                                     let mut peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state).into_iter().filter(|peer_id| peer_id != &me).collect();
                                                     peer_ids.retain(|a| a != &dl.blob_ticket.node_addr().node_id);
-                                                    let new_blob_ticket = get_blob_ticket_to_download(&p2p, peer_ids, &param_requests_cancel_token, request_type.clone()).await?;
+                                                    let new_blob_ticket = get_blob_ticket_to_download(&p2p, &param_requests_cancel_token, request_type.clone(), peer_cycle.clone(), errored_peers.clone()).await?;
 
                                                     // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
                                                     retried_downloads.remove(&hash);
@@ -446,13 +451,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             }
                             let num_peers = peer_ids.len();
                             let param_requests_cancel_token = param_requests_cancel_token.clone();
+                            let peer_cycle = peer_cycle.clone();
+                            let errored_peers = errored_peers.clone();
                             let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
                                 // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
                                 // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
                                 // and dropped immediately
                                 let parameter_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::new()));
-                                let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
-                                let peer_cycle = Arc::new(Mutex::new(VecDeque::from(peer_ids)));
                                 let mut request_handles = Vec::new();
 
                                 for param_name in param_names {
@@ -474,7 +479,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                     // Check if we reached the max number of concurrent requests, and if that is the case,
                                     // await for all of them to complete and start downloading the blobs
-                                    if request_handles.len() == max_concurrent_downloads - 1 {
+                                    if request_handles.len() == max_concurrent_parameter_requests - 1 {
                                         let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
                                         max_concurrent_request_futures.push(request_handle);
                                         join_all(max_concurrent_request_futures).await;
@@ -482,7 +487,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
                                             parameter_blob_tickets_lock.drain(..).collect()
                                         };
+                                        println!("SENDING PARAMS TO DOWNLOAD");
                                         tx_params_download.send(current_parameter_blob_tickets)?;
+                                        tokio::time::sleep(Duration::from_secs(2)).await;
                                         continue;
                                     }
                                     request_handles.push(request_handle);
@@ -513,7 +520,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 .filter(|peer_id| peer_id != &me)
                                 .collect();
 
-                            let config_blob_ticket = get_blob_ticket_to_download(&p2p, peer_ids, &param_requests_cancel_token, ModelRequestType::Config).await?;
+                            let errored_peers = errored_peers.clone();
+                            let mut peer_cycle_lock = peer_cycle.lock().await;
+                            *peer_cycle_lock = VecDeque::from(peer_ids.clone());
+                            drop(peer_cycle_lock);
+                            let config_blob_ticket = get_blob_ticket_to_download(&p2p, &param_requests_cancel_token, ModelRequestType::Config, peer_cycle.clone(), errored_peers.clone()).await?;
 
                             // tokio::time::sleep(Duration::from_secs(5)).await;
                             // tag 0 means when we enter a train step, it'll get wiped.
@@ -521,6 +532,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
+                            println!("RECEIVED PARAMETERS TO DOWNLOAD");
                             for (ticket, request_type) in param_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
                                 p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type));
@@ -692,17 +704,15 @@ fn all_node_addrs_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeA
 
 async fn get_blob_ticket_to_download(
     p2p: &NC,
-    peer_ids: Vec<NodeId>,
     param_requests_cancel_token: &CancellationToken,
     request_type: ModelRequestType,
+    peer_cycle: Arc<Mutex<VecDeque<NodeId>>>,
+    errored_peers: Arc<std::sync::Mutex<HashMap<PublicKey, usize>>>,
 ) -> Result<BlobTicket, anyhow::Error> {
     let router = p2p.router();
     // initialize variables to request model config
     let config_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
-    let errored_peers = Arc::new(std::sync::Mutex::new(HashMap::new()));
-    let num_peers = peer_ids.len();
-    let peer_cycle = Arc::new(Mutex::new(VecDeque::from(peer_ids)));
-
+    let num_peers = peer_cycle.lock().await.len();
     if num_peers == 0 {
         return Err(anyhow::anyhow!("No peers available to request the model"));
     }
