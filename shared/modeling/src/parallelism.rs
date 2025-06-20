@@ -1,57 +1,203 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::{collections::HashMap, sync::Arc};
 use tch::{
-    nn::{self, Module, Shard, VarStore},
-    Device, Kind, Tensor,
+    nn::{self, Module, Shard},
+    Device, TchError, Tensor,
 };
 use torch_sys::IntList;
+
+#[derive(Clone, Copy, Debug)]
+pub struct ParallelismConfig {
+    pub dp: usize,
+    pub tp: usize,
+}
 
 #[cfg(feature = "parallelism")]
 use tch::{CStore, ReduceOpType, CNCCL};
 
-#[cfg(feature = "parallelism")]
-pub type Communicator = CNCCL;
+use crate::CausalLM;
+#[cfg(feature = "python")]
+use crate::TorchDistributedCommunicator;
 
-#[cfg(feature = "parallelism")]
-pub type CommunicatorId = CStore;
-
-#[cfg(not(feature = "parallelism"))]
 #[derive(Debug)]
-pub struct Communicator;
+pub enum Communicator {
+    None,
+    #[cfg(feature = "python")]
+    TorchDistributed(TorchDistributedCommunicator),
+    #[cfg(feature = "parallelism")]
+    NCCL(CNCCL),
+}
 
-#[cfg(not(feature = "parallelism"))]
-#[derive(Debug, Copy, Clone)]
-pub struct CommunicatorId;
+unsafe impl Send for Communicator {}
 
-#[cfg(not(feature = "parallelism"))]
+#[cfg(feature = "parallelism")]
+impl From<CNCCL> for Communicator {
+    fn from(value: CNCCL) -> Self {
+        Self::NCCL(value)
+    }
+}
+
+#[cfg(feature = "python")]
+impl From<TorchDistributedCommunicator> for Communicator {
+    fn from(value: TorchDistributedCommunicator) -> Self {
+        Self::TorchDistributed(value)
+    }
+}
+
 impl Communicator {
+    pub fn none() -> Self {
+        Self::None
+    }
+
     pub fn size(&self) -> i64 {
-        unimplemented!()
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(dist) => dist.size() as i64,
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.size(),
+        }
     }
 
     pub fn rank(&self) -> i64 {
-        unimplemented!()
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(dist) => dist.rank() as i64,
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.rank(),
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn all_reduce<T: AsRef<Tensor>>(
+        &self,
+        tensors: &[T],
+        op: ReduceType,
+    ) -> Result<(), TchError> {
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(torch) => {
+                assert_eq!(tensors.len(), 1);
+                torch
+                    .all_reduce(tensors[0].as_ref(), op)
+                    .map_err(|x| TchError::Torch(format!("{x}")))
+            }
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.all_reduce(tensors, op.into()),
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn copy_to_model_parallel_region(&self, tensor: &Tensor) -> Result<Tensor, TchError> {
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(_) => todo!(),
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.copy_to_model_parallel(tensor),
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn reduce_from_model_parallel_region(&self, tensor: &Tensor) -> Result<Tensor, TchError> {
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(_) => todo!(),
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.reduce_from_model_parallel(tensor),
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn scatter_to_model_parallel_region(&self, tensor: &Tensor) -> Result<Tensor, TchError> {
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(_) => todo!(),
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.scatter_to_model_parallel(tensor),
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn gather_from_model_parallel_region(&self, tensor: &Tensor) -> Result<Tensor, TchError> {
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(_) => todo!(),
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.gather_from_model_parallel(tensor),
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn all_gather<T: AsRef<Tensor>>(
+        &self,
+        output_tensors: &[T],
+        input_tensor: &Tensor,
+    ) -> Result<(), TchError> {
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(_) => todo!(),
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => cnccl.all_gather(output_tensors, input_tensor),
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn parallel_expand_heads(
+        &self,
+        tensor: &Tensor,
+        shape: impl IntList,
+    ) -> Result<Tensor, TchError> {
+        match self {
+            Communicator::None => unimplemented!(),
+            #[cfg(feature = "python")]
+            Communicator::TorchDistributed(_) => unimplemented!(),
+            #[cfg(feature = "parallelism")]
+            Communicator::NCCL(cnccl) => {
+                cnccl.parallel_expand_heads(tensor, cnccl.size(), cnccl.rank(), shape)
+            }
+        }
     }
 }
 
-#[cfg(not(feature = "parallelism"))]
-impl Default for CommunicatorId {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Debug, Clone)]
+pub enum CommunicatorId {
+    None,
+    #[cfg(feature = "python")]
+    TorchDistributed((String, String)),
+    #[cfg(feature = "parallelism")]
+    NCCL(Arc<CStore>),
 }
 
-#[cfg(not(feature = "parallelism"))]
 impl CommunicatorId {
-    pub fn new() -> Self {
-        unimplemented!()
+    pub fn none() -> Self {
+        Self::None
+    }
+
+    #[cfg(feature = "python")]
+    pub fn torch_distributed<T: ToString>(backend: T, init_method: T) -> Self {
+        Self::TorchDistributed((backend.to_string(), init_method.to_string()))
     }
 }
 
+#[cfg(feature = "parallelism")]
+impl From<CStore> for CommunicatorId {
+    fn from(value: CStore) -> Self {
+        Self::NCCL(Arc::new(value))
+    }
+}
+
+#[derive(PartialEq)]
 pub enum ReduceType {
     Sum,
     Max,
-    Avg,
+    Mean,
 }
 
 #[cfg(feature = "parallelism")]
@@ -60,13 +206,18 @@ impl From<ReduceType> for ReduceOpType {
         match value {
             ReduceType::Sum => ReduceOpType::Sum,
             ReduceType::Max => ReduceOpType::Max,
-            ReduceType::Avg => ReduceOpType::Avg,
+            ReduceType::Mean => ReduceOpType::Avg,
         }
     }
 }
 
 pub trait AllReduce {
-    fn all_reduce_(&mut self, comm: &Option<Arc<Communicator>>, op: ReduceType);
+    fn all_reduce(&mut self, comm: &Option<Arc<Communicator>>, op: ReduceType);
+}
+
+#[allow(unused)]
+pub trait AllGather {
+    fn all_gather<T: AsRef<Tensor>>(&self, output_tensors: &[T], comm: &Option<Arc<Communicator>>);
 }
 
 pub trait CudaSynchronize {
@@ -74,16 +225,23 @@ pub trait CudaSynchronize {
 }
 
 impl AllReduce for Tensor {
-    #[cfg(feature = "parallelism")]
-    fn all_reduce_(&mut self, comm: &Option<Arc<Communicator>>, op: ReduceType) {
+    fn all_reduce(&mut self, comm: &Option<Arc<Communicator>>, op: ReduceType) {
         if let Some(comm) = comm {
-            comm.all_reduce(&[self], op.into()).unwrap();
+            comm.all_reduce(&[self], op).unwrap();
         }
     }
+}
 
-    #[cfg(not(feature = "parallelism"))]
-    fn all_reduce_(&mut self, comm: &Option<Arc<Communicator>>, _op: ReduceType) {
-        assert!(comm.is_none());
+impl AllGather for Tensor {
+    fn all_gather<T: AsRef<Tensor>>(&self, output_tensors: &[T], comm: &Option<Arc<Communicator>>) {
+        match comm {
+            Some(comm) => {
+                comm.all_gather(output_tensors, self).unwrap();
+            }
+            None => {
+                todo!()
+            }
+        }
     }
 }
 
@@ -104,60 +262,32 @@ pub trait ModelParallelRegion {
 }
 
 impl ModelParallelRegion for Tensor {
-    #[cfg(feature = "parallelism")]
     fn copy_to_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
         match comm {
-            Some(comm) => comm.copy_to_model_parallel(self).unwrap(),
+            Some(comm) => comm.copy_to_model_parallel_region(self).unwrap(),
             None => self.shallow_clone(),
         }
     }
 
-    #[cfg(feature = "parallelism")]
     fn reduce_from_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
         match comm {
-            Some(comm) => comm.reduce_from_model_parallel(self).unwrap(),
+            Some(comm) => comm.reduce_from_model_parallel_region(self).unwrap(),
             None => self.shallow_clone(),
         }
     }
 
-    #[cfg(feature = "parallelism")]
     fn scatter_to_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
         match comm {
-            Some(comm) => comm.scatter_to_model_parallel(self).unwrap(),
+            Some(comm) => comm.scatter_to_model_parallel_region(self).unwrap(),
             None => self.shallow_clone(),
         }
     }
 
-    #[cfg(feature = "parallelism")]
     fn gather_from_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
         match comm {
-            Some(comm) => comm.gather_from_model_parallel(self).unwrap(),
+            Some(comm) => comm.gather_from_model_parallel_region(self).unwrap(),
             None => self.shallow_clone(),
         }
-    }
-
-    #[cfg(not(feature = "parallelism"))]
-    fn copy_to_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
-        assert!(comm.is_none());
-        self.shallow_clone()
-    }
-
-    #[cfg(not(feature = "parallelism"))]
-    fn reduce_from_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
-        assert!(comm.is_none());
-        self.shallow_clone()
-    }
-
-    #[cfg(not(feature = "parallelism"))]
-    fn scatter_to_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
-        assert!(comm.is_none());
-        self.shallow_clone()
-    }
-
-    #[cfg(not(feature = "parallelism"))]
-    fn gather_from_model_parallel_region(&self, comm: &Option<Arc<Communicator>>) -> Tensor {
-        assert!(comm.is_none());
-        self.shallow_clone()
     }
 }
 
@@ -181,9 +311,7 @@ impl ParallelExpandHeads for Tensor {
         shape: impl IntList,
     ) -> Tensor {
         match comm {
-            Some(comm) => comm
-                .parallel_expand_heads(&self, comm.size() as i64, comm.rank() as i64, shape)
-                .unwrap(),
+            Some(comm) => comm.parallel_expand_heads(&self, shape).unwrap(),
             None => _expand_heads(&self, shape),
         }
     }
@@ -213,13 +341,6 @@ pub struct RowParallelLinear {
     input_is_parallel: bool,
 }
 
-#[derive(Debug)]
-pub struct RMSNormParallelInput {
-    weight: Tensor,
-    eps: f64,
-    comm: Option<Arc<Communicator>>,
-}
-
 impl ColumnParallelLinear {
     pub fn new(
         vs: nn::Path,
@@ -235,11 +356,6 @@ impl ColumnParallelLinear {
             0,
             "out_features must be divisible by world_size"
         );
-
-        let comm = match world_size {
-            1 => None,
-            _ => comm,
-        };
 
         let linear = nn::linear(
             &vs,
@@ -300,11 +416,6 @@ impl RowParallelLinear {
             "in_features must be divisible by world_size"
         );
 
-        let comm = match world_size {
-            1 => None,
-            _ => comm,
-        };
-
         let linear = nn::linear(
             &vs,
             in_features,
@@ -348,54 +459,6 @@ impl Module for RowParallelLinear {
 }
 
 unsafe impl Send for RowParallelLinear {}
-
-impl RMSNormParallelInput {
-    pub fn new(vs: nn::Path, size: i64, eps: f64, comm: Option<Arc<Communicator>>) -> Self {
-        let world_size = comm.as_ref().map(|c| c.size()).unwrap_or(1);
-        assert_eq!(size % world_size, 0, "size must be divisible by world_size");
-
-        let comm = match world_size {
-            1 => None,
-            _ => comm,
-        };
-
-        let weight = vs.var_with_shard(
-            "weight",
-            &[size],
-            nn::Init::Const(1.),
-            comm.as_ref().map(|comm| Shard {
-                dim: 0,
-                rank: comm.rank() as usize,
-                world_size: comm.size() as usize,
-            }),
-        );
-
-        Self { weight, eps, comm }
-    }
-}
-
-impl Module for RMSNormParallelInput {
-    fn forward(&self, xs: &Tensor) -> Tensor {
-        let kind = xs.kind();
-        let xs = xs.to_kind(Kind::Float);
-
-        let local_variance = xs.pow_tensor_scalar(2).mean_dim(-1, true, Kind::Float);
-
-        let variance = if let Some(comm) = &self.comm {
-            let mut variance = local_variance.shallow_clone();
-            variance.all_reduce_(&self.comm, ReduceType::Sum);
-            variance / comm.size() as f64 // average across ranks
-        } else {
-            local_variance
-        };
-
-        let xs_normed = xs * (variance + self.eps).rsqrt();
-        let xs_normed = xs_normed.to_kind(kind);
-        &self.weight * xs_normed
-    }
-}
-
-unsafe impl Send for RMSNormParallelInput {}
 
 #[allow(unused)]
 pub fn unshard_tensor(sharded_tensors: Vec<Tensor>, shard: &Shard) -> Tensor {
@@ -457,7 +520,7 @@ pub fn unsharded_tensor_size(reference_shape: &[i64], shard: &Shard) -> Vec<i64>
 
 // we only actually build the model on rank 0, all other ranks return an empty map (but perform tp)
 pub fn unsharded_cpu_variables(
-    vs: &VarStore,
+    vars: &dyn CausalLM,
     comm: Option<Arc<Communicator>>,
 ) -> Result<HashMap<String, Tensor>> {
     let _no_grad = tch::no_grad_guard();
@@ -465,29 +528,9 @@ pub fn unsharded_cpu_variables(
         true => Some(HashMap::new()),
         false => None,
     };
-    let variables = vs.variables_.lock().unwrap();
-    let shards = variables.shards.clone();
-    let mut variables = variables.named_variables.iter().collect::<Vec<_>>();
-    variables.sort_by_key(|x| x.0);
-    for (name, var) in variables {
-        let var = match shards.get(name) {
-            #[cfg(feature = "parallelism")]
-            Some(shard) => {
-                let shards = (0..shard.world_size)
-                    .map(|_| var.empty_like())
-                    .collect::<Vec<_>>();
-                match &comm {
-                    Some(comm) => comm.all_gather(&shards, var)?,
-                    None => {
-                        bail!("Found sharded tensor {} but no communicator", name);
-                    }
-                };
-                unshard_tensor(shards, shard)
-            }
-            #[cfg(not(feature = "parallelism"))]
-            Some(_) => bail!("Sharded model but parallelism feature turned off"),
-            None => var.shallow_clone(),
-        };
+    for var in vars.variables() {
+        let name = var.name();
+        let var = var.gather_full_tensor();
         // now you're probably thinking, why are you moving this to the CPU? why even unshard the tensor
         // on the other ranks and not do it just on rank 0? here's the thing, you're right, you're absoutely right,
         // except horribly, inexplicibly wrong. if you do that, the non-zero ranks fill up and can OOM -- the gathered
@@ -511,10 +554,7 @@ pub(crate) mod tests {
 
     fn run_parallel_test<F>(world_size: usize, test_fn: F)
     where
-        F: Fn(Arc<CommunicatorId>, usize, Arc<Barrier>, Device) -> Result<()>
-            + Send
-            + Sync
-            + 'static,
+        F: Fn(CommunicatorId, usize, Arc<Barrier>, Device) -> Result<()> + Send + Sync + 'static,
     {
         if !tch::utils::has_cuda() || tch::Cuda::device_count() < world_size as i64 {
             println!(
@@ -525,7 +565,7 @@ pub(crate) mod tests {
         }
 
         let barrier = Arc::new(Barrier::new(world_size));
-        let comm_id = Arc::new(CommunicatorId::new());
+        let comm_id: CommunicatorId = CStore::new().into();
         let test_fn = Arc::new(test_fn);
 
         let threads: Vec<_> = (0..world_size)
@@ -574,12 +614,12 @@ pub(crate) mod tests {
                 WORLD_SIZE,
                 move |comm_id, rank, barrier, device| -> Result<()> {
                     let vs = VarStore::new(device);
-                    let comm = Arc::new(CNCCL::new(
-                        comm_id.clone(),
-                        rank as i64,
-                        WORLD_SIZE as i64,
-                        device,
-                    )?);
+                    let nccl = match comm_id {
+                        CommunicatorId::NCCL(cstore) => {
+                            CNCCL::new(cstore, rank as i64, WORLD_SIZE as i64, device)?
+                        }
+                        _ => unimplemented!(),
+                    };
 
                     let layer = ColumnParallelLinear::new(
                         vs.root() / "col_parallel",
@@ -587,7 +627,7 @@ pub(crate) mod tests {
                         OUT_FEATURES,
                         false, // no bias
                         GATHER_OUTPUT,
-                        Some(comm.clone()),
+                        Some(Arc::new(nccl.into())),
                     );
 
                     let input =
@@ -689,12 +729,12 @@ pub(crate) mod tests {
                     WORLD_SIZE,
                     move |comm_id, rank, barrier, device| -> Result<()> {
                         let vs = VarStore::new(device);
-                        let comm = Arc::new(CNCCL::new(
-                            comm_id.clone(),
-                            rank as i64,
-                            WORLD_SIZE as i64,
-                            device,
-                        )?);
+                        let nccl = match comm_id {
+                            CommunicatorId::NCCL(cstore) => {
+                                CNCCL::new(cstore, rank as i64, WORLD_SIZE as i64, device)?
+                            }
+                            _ => unimplemented!(),
+                        };
 
                         let layer = RowParallelLinear::new(
                             vs.root() / "row_parallel",
@@ -702,7 +742,7 @@ pub(crate) mod tests {
                             OUT_FEATURES,
                             bias,
                             input_is_parallel,
-                            Some(comm.clone()),
+                            Some(Arc::new(nccl.into())),
                         );
 
                         let original_input = Tensor::randn(

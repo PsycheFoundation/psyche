@@ -11,3 +11,7 @@ serde = { workspace = true, features = ["derive"] }
 time.workspace = true
 toml = "0.8.19"
 clap-markdown.workspace = true
+psyche-python-extension-impl = { workspace = true, optional = true }
+
+[features]
+python = ["psyche-python-extension-impl/python"]

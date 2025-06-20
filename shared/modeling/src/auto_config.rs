@@ -1,6 +1,6 @@
 use crate::{
-    safetensor_utils::load_safetensors_into_variables, tensor_parallelism::tensor_shard,
-    DeepseekConfig, LlamaConfig, LoadSafetensorsError,
+    parallelism::tensor_shard, safetensor_utils::load_safetensors_into_variables, DeepseekConfig,
+    LlamaConfig, LoadSafetensorsError,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -47,6 +47,17 @@ pub enum ModelLoadError {
 
     #[error("Wrong config type")]
     WrongConfigType,
+
+    #[error("Communicator/CommunicatorId mismatch")]
+    CommunicatorMismatch,
+
+    #[cfg(feature = "python")]
+    #[error("Python error: {0}")]
+    PythonError(#[from] pyo3::PyErr),
+
+    #[cfg(feature = "python")]
+    #[error("Python distributed error: {0}")]
+    PythonDistributedError(String),
 }
 
 pub trait ModelConfig: serde::Serialize + Clone {
@@ -60,6 +71,7 @@ pub enum PretrainedSource<T: ModelConfig> {
 }
 
 unsafe impl<T: ModelConfig> Send for PretrainedSource<T> {}
+unsafe impl<T: ModelConfig> Sync for PretrainedSource<T> {}
 
 impl<T: ModelConfig + serde::de::DeserializeOwned> PretrainedSource<T> {
     pub fn get_config(&self) -> Result<T, ModelLoadError> {
@@ -167,6 +179,8 @@ impl UseSDPA for Option<AttentionImplementation> {
 pub enum AutoConfig {
     Llama(LlamaConfig),
     Deepseek(DeepseekConfig),
+    #[cfg(feature = "python")]
+    Auto(crate::PythonModelConfig),
 }
 
 impl serde::Serialize for AutoConfig {
@@ -177,6 +191,8 @@ impl serde::Serialize for AutoConfig {
         match self {
             AutoConfig::Llama(config) => config.serialize(serializer),
             AutoConfig::Deepseek(config) => config.serialize(serializer),
+            #[cfg(feature = "python")]
+            AutoConfig::Auto(config) => config.serialize(serializer),
         }
     }
 }
@@ -186,6 +202,8 @@ impl ModelConfig for AutoConfig {
         match self {
             AutoConfig::Llama(config) => config.get_parameter_names(),
             AutoConfig::Deepseek(config) => config.get_parameter_names(),
+            #[cfg(feature = "python")]
+            AutoConfig::Auto(config) => config.get_parameter_names(),
         }
     }
 }

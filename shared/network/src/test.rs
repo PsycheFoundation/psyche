@@ -210,7 +210,7 @@ async fn spawn_new_node(
     let our_id = network
         .get_all_peers()
         .await
-        .get(0)
+        .first()
         .map(|(addr, _)| addr.clone())
         .ok_or_else(|| anyhow::anyhow!("No peers found"))?;
 
@@ -272,7 +272,7 @@ async fn test_retry_connection() -> Result<()> {
     if let Some(mut rx) = rx_waiting {
         let sender_cancel_clone = sender_cancel.clone();
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("ABORTING SENDER NODE");
                 sender_cancel_clone.cancel();
             }
@@ -282,7 +282,7 @@ async fn test_retry_connection() -> Result<()> {
     // Handle retry signal (test completion)
     if let Some(mut rx) = rx_retrying {
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("TEST PASSED - Retry detected");
                 let mut completed = test_completed_clone.lock().await;
                 *completed = true;
@@ -356,7 +356,7 @@ async fn test_retry_connection_mid_download() -> Result<()> {
     if let Some(mut rx) = rx_waiting {
         let sender_cancel_clone = sender_cancel.clone();
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("ABORTING SENDER NODE");
                 sender_cancel_clone.cancel();
             }
@@ -366,7 +366,7 @@ async fn test_retry_connection_mid_download() -> Result<()> {
     // Handle retry signal (test completion)
     if let Some(mut rx) = rx_retrying {
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("TEST PASSED - Retry detected");
                 let mut completed = test_completed_clone.lock().await;
                 *completed = true;
