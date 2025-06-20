@@ -215,9 +215,13 @@ impl CoordinatorServerHandle {
         // tokio::spawn(async move { server.run().await });
         // the above line will stack overflow, for reasons best left to contemplative reflection.
         // as a substitute to maddness, we suggest the reader trust us on this point.
-        std::thread::spawn(move || {
-            rt.block_on(server.run());
-        });
+        // Increase stack size for the thread running server.run()
+        std::thread::Builder::new()
+            .stack_size(10 * 1024 * 1024)
+            .spawn(move || {
+                rt.block_on(server.run());
+            })
+            .expect("Failed to spawn server run thread with increased stack");
         debug!("coordinator server created on port {server_port}");
 
         Self {
