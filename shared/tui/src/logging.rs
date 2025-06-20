@@ -11,19 +11,17 @@ use logfire::{
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
-    error::OTelSdkResult,
-    metrics::{
+    error::OTelSdkResult, logs::SdkLoggerProvider, metrics::{
         data::ResourceMetrics, exporter::PushMetricExporter, PeriodicReader, SdkMeterProvider,
         Temporality,
-    },
-    trace::{BatchSpanProcessor, SdkTracerProvider},
-    Resource,
+    }, trace::{BatchSpanProcessor, SdkTracerProvider}, Resource
 };
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     widgets::{Block, Widget},
 };
+use opentelemetry::logs::LoggerProvider;
 use tracing::Level;
 use tracing_subscriber::{filter::FromEnvError, fmt, EnvFilter, Layer};
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget, TuiWidgetEvent, TuiWidgetState};
@@ -98,6 +96,7 @@ pub struct LoggingBuilder {
     level: Level,
     write_logs_file: Option<PathBuf>,
     remote_logs_destination: Option<RemoteLogsDestination>,
+    trace_destination: Option<TraceDestination>,
     service_name: Option<String>,
     metrics_destination: Option<MetricsDestination>,
 }
@@ -127,19 +126,21 @@ impl LoggingBuilder {
         self
     }
 
+    pub fn with_trace_destination(
+        mut self,
+        destination: Option<TraceDestination>,
+    ) -> Self {
+        self.trace_destination = destination;
+        self
+    }
+
     /// Set metrics destination
     pub fn with_metrics_destination(
-        self,
+        mut self,
         destination: Option<MetricsDestination>,
     ) -> LoggingBuilder {
-        LoggingBuilder {
-            output: self.output,
-            level: self.level,
-            write_logs_file: self.write_logs_file,
-            remote_logs_destination: self.remote_logs_destination,
-            service_name: self.service_name,
-            metrics_destination: destination,
-        }
+        self.metrics_destination = destination;
+        self
     }
 
     /// Set the service name for telemetry
@@ -158,6 +159,7 @@ impl LoggingBuilder {
             remote_logs_destination: None,
             service_name: None,
             metrics_destination: None,
+            trace_destination: None,
         }
     }
     pub fn init(self) -> anyhow::Result<ShutdownHandler> {
@@ -168,6 +170,7 @@ impl LoggingBuilder {
             self.service_name,
             self.remote_logs_destination,
             self.metrics_destination,
+            self.trace_destination,
         )
     }
 }
@@ -214,7 +217,17 @@ pub struct OtelTracingHandler {
     tracer: opentelemetry_sdk::trace::Tracer,
 }
 
+pub struct OtelLoggerHandler {
+    provider: SdkLoggerProvider,
+}
+
 impl Shutdownable for OtelTracingHandler {
+    fn shutdown(&self) -> anyhow::Result<()> {
+        Ok(self.provider.shutdown()?)
+    }
+}
+
+impl Shutdownable for OtelLoggerHandler {
     fn shutdown(&self) -> anyhow::Result<()> {
         Ok(self.provider.shutdown()?)
     }
@@ -292,6 +305,37 @@ fn create_otel_tracing_handler(
     Ok(OtelTracingHandler { provider, tracer })
 }
 
+pub fn create_otel_logger_handler(
+    config: &OpenTelemetry,
+    service_name: Option<String>,
+) -> anyhow::Result<OtelLoggerHandler> {
+    let mut exporter_builder = opentelemetry_otlp::LogExporter::builder()
+        .with_http()
+        .with_endpoint(&config.endpoint);
+
+    if let Some(header) = &config.authorization_header {
+        exporter_builder = exporter_builder.with_headers(std::collections::HashMap::from([(
+            "authorization".to_string(),
+            header.to_string(),
+        )]));
+    }
+
+    let logger_exporter = exporter_builder.build()?;
+
+    let mut resource_builder = Resource::builder_empty();
+    if let Some(service_name) = service_name {
+        resource_builder = resource_builder.with_service_name(service_name);
+    }
+    let resource = resource_builder.build();
+
+    let provider = SdkLoggerProvider::builder()
+        .with_batch_exporter(logger_exporter)
+        .with_resource(resource)
+        .build();
+
+    Ok(OtelLoggerHandler { provider })
+}
+
 #[derive(Clone)]
 pub struct Logfire {
     pub api_key: String,
@@ -315,6 +359,12 @@ pub enum RemoteLogsDestination {
     OpenTelemetry(OpenTelemetry),
 }
 
+#[derive(Clone)]
+pub enum TraceDestination {
+    OpenTelemetry(OpenTelemetry),
+    LogFire(Logfire),
+}
+
 fn init_logging_impl(
     output: LogOutput,
     level: Level,
@@ -322,95 +372,110 @@ fn init_logging_impl(
     service_name: Option<String>,
     remote_logs_destination: Option<RemoteLogsDestination>,
     metrics_destination: Option<MetricsDestination>,
+    trace_destination: Option<TraceDestination>,
 ) -> anyhow::Result<ShutdownHandler> {
     let mut shutdown_handlers: Vec<Box<dyn Shutdownable>> = vec![];
 
-    // Handle remote logs destination (now tracing)
-    let (logfire_handler, otel_tracing_handler, tracer) = match &remote_logs_destination {
-        Some(RemoteLogsDestination::Logfire(logfire_config)) => {
-            std::env::set_var("LOGFIRE_TOKEN", &logfire_config.api_key);
+    let logfire_handles_logs = matches!(remote_logs_destination, Some(RemoteLogsDestination::Logfire(_)));
+    let logfire_handles_traces = matches!(trace_destination, Some(TraceDestination::LogFire(_)));
+    let logfire_handles_metrics = matches!(metrics_destination, Some(MetricsDestination::Logfire(_)));
 
-            let mut builder = logfire::configure()
-                .install_panic_handler()
-                .with_console(None)
-                .with_metrics(
-                    matches!(metrics_destination, Some(MetricsDestination::Logfire(..)))
-                        .then_some(MetricsOptions::default()),
-                );
+    let (logfire_handler, logfire_tracer) = if logfire_handles_logs || logfire_handles_traces || logfire_handles_metrics {
+        let api_key = if let Some(RemoteLogsDestination::Logfire(config)) = &remote_logs_destination {
+            &config.api_key
+        } else if let Some(TraceDestination::LogFire(config)) = &trace_destination {
+            &config.api_key
+        } else if let Some(MetricsDestination::Logfire(config)) = &metrics_destination {
+            &config.api_key
+        } else {
+            return Err(anyhow::anyhow!("Logfire configuration not found"));
+        };
 
-            if let Some(service_name) = service_name.clone() {
-                builder = builder.with_advanced_options(
-                    AdvancedOptions::default().with_resource(
-                        Resource::builder_empty()
-                            .with_service_name(service_name)
-                            .build(),
-                    ),
-                );
-            }
+        std::env::set_var("LOGFIRE_TOKEN", api_key);
 
-            let handler = builder.finish()?;
-            let tracer = handler.tracer.tracer().clone();
-            (Some(handler), None, Some(tracer))
+        let mut builder = logfire::configure()
+            .install_panic_handler()
+            .with_console(None);
+
+        // Enable metrics if Logfire handles them
+        if logfire_handles_metrics {
+            builder = builder.with_metrics(Some(MetricsOptions::default()));
         }
-        Some(RemoteLogsDestination::OpenTelemetry(otel_config)) => {
+
+        if let Some(service_name) = service_name.clone() {
+            builder = builder.with_advanced_options(
+                AdvancedOptions::default().with_resource(
+                    Resource::builder_empty()
+                        .with_service_name(service_name)
+                        .build(),
+                ),
+            );
+        }
+
+        let handler = builder.finish()?;
+        let tracer = handler.tracer.tracer().clone();
+        (Some(handler), Some(tracer))
+    } else {
+        (None, None)
+    };
+
+    // Handle OpenTelemetry logs if not using Logfire
+    let (otel_logger_handler, otel_logger) = if !logfire_handles_logs {
+        if let Some(RemoteLogsDestination::OpenTelemetry(otel_config)) = &remote_logs_destination {
+            let handler = create_otel_logger_handler(otel_config, service_name.clone())?;
+            let logger = handler.provider.clone();
+            (Some(handler), Some(logger))
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+
+    // Handle OpenTelemetry tracing if not using Logfire
+    let (otel_tracing_handler, otel_tracer) = if !logfire_handles_traces {
+        if let Some(TraceDestination::OpenTelemetry(otel_config)) = &trace_destination {
             let handler = create_otel_tracing_handler(otel_config, service_name.clone())?;
             let tracer = handler.tracer.clone();
-            (None, Some(handler), Some(tracer))
+            (Some(handler), Some(tracer))
+        } else {
+            (None, None)
         }
-        None => (None, None, None),
+    } else {
+        (None, None)
     };
 
-    let metrics_handler = match metrics_destination {
-        Some(MetricsDestination::Logfire(logfire_config)) => {
-            // if we already have logfire for logs, this is handled above
-            // otherwise, set up logfire just for metrics
-            if logfire_handler.is_none() {
-                let mut builder = logfire::configure()
-                    .with_token(&logfire_config.api_key)
-                    .with_console(None)
-                    .with_metrics(Some(MetricsOptions::default()));
-
-                if let Some(service_name) = service_name.clone() {
-                    builder = builder.with_advanced_options(
-                        AdvancedOptions::default().with_resource(
-                            Resource::builder_empty()
-                                .with_service_name(service_name)
-                                .build(),
-                        ),
-                    );
-                }
-
-                let handler = builder.finish()?;
-                Some(Box::new(handler) as Box<dyn Shutdownable>)
-            } else {
-                None // already handled by logfire_handler
-            }
+    // Handle OpenTelemetry metrics if not using Logfire
+    let otel_metrics_handler = if !logfire_handles_metrics {
+        if let Some(MetricsDestination::OpenTelemetry(otel_config)) = &metrics_destination {
+            Some(create_otel_metrics_handler(otel_config, service_name.clone())?)
+        } else {
+            None
         }
-        Some(MetricsDestination::OpenTelemetry(otel_config)) => {
-            let handler = create_otel_metrics_handler(&otel_config, service_name.clone())?;
-            Some(Box::new(handler) as Box<dyn Shutdownable>)
-        }
-        None => None,
+    } else {
+        None
     };
+
+    let tracer = logfire_tracer.or(otel_tracer);
+
+    // Otel logger works separately from the tracer, logfire's does not.
+    let logger = otel_logger;
 
     // Add handlers to shutdown list
     if let Some(handler) = logfire_handler {
         shutdown_handlers.push(Box::new(handler));
     }
+    if let Some(handler) = otel_logger_handler {
+        shutdown_handlers.push(Box::new(handler));
+    }
     if let Some(handler) = otel_tracing_handler {
         shutdown_handlers.push(Box::new(handler));
     }
-    if let Some(handler) = metrics_handler {
-        shutdown_handlers.push(handler);
+    if let Some(handler) = otel_metrics_handler {
+        shutdown_handlers.push(Box::new(handler));
     }
 
-    // Determine if we're using Logfire by checking the remote logs destination
-    let is_logfire = matches!(
-        remote_logs_destination,
-        Some(RemoteLogsDestination::Logfire(_))
-    );
-
-    init_logging_core(output, level, write_logs_file, tracer, is_logfire)?;
+    init_logging_core(output, level, write_logs_file, tracer, logger, logfire_handles_logs)?;
 
     Ok(ShutdownHandler::new(shutdown_handlers))
 }
@@ -420,6 +485,7 @@ fn init_logging_core(
     level: Level,
     write_logs_file: Option<PathBuf>,
     tracer: Option<opentelemetry_sdk::trace::Tracer>,
+    logger: Option<opentelemetry_sdk::logs::SdkLoggerProvider>,
     is_logfire: bool,
 ) -> anyhow::Result<()> {
     use tracing_subscriber::layer::SubscriberExt;
@@ -516,6 +582,12 @@ fn init_logging_core(
                     .boxed(),
             );
         }
+    }
+
+    if let Some(logger) = logger {
+        layers.push(
+            opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(&logger).boxed()
+        );
     }
 
     // build all into one subscriber, set as global default
