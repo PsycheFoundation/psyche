@@ -72,7 +72,7 @@ struct RunArgs {
     #[clap(long)]
     init_warmup_time: Option<u64>,
 
-    /// Automatically withdraw clients that disconenct from the server
+    /// Automatically withdraw clients that disconnect from the server
     #[clap(
         long,
         action = ArgAction::Set,
