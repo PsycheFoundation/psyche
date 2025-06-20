@@ -2,7 +2,7 @@ use futures::future::try_join_all;
 use psyche_core::RunningAverage;
 use psyche_eval::{EvalTaskOptions, Task};
 use psyche_modeling::Trainer;
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -16,22 +16,58 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, span, trace, Level};
 
+use crate::state::{
+    prompt::PromptTask,
+    prompt_texts::{PROMPT_TEXTS, PROMPT_TEXTS_LEN},
+};
+pub const PROMPT_TASK_NAME: &str = "Prompt";
+
+#[derive(Debug)]
+
+pub struct ModelTask {
+    pub task: EnumModelTask,
+}
+
+#[derive(Debug)]
+pub enum EnumModelTask {
+    EvalTask(EvalTask),
+    PromptTask(PromptTask),
+}
+
 #[derive(Debug)]
 pub struct EvalTask {
-    task: psyche_eval::PreparedTask,
+    pub task: psyche_eval::PreparedTask,
     results: Arc<RunningAverage>,
     next_index: Arc<AtomicUsize>,
 }
 
+impl ModelTask {
+    pub fn new_eval_task(eval_task: EvalTask) -> Self {
+        Self {
+            task: EnumModelTask::EvalTask(eval_task),
+        }
+    }
+    pub fn new_prompt_task(prompt_task: PromptTask) -> Self {
+        Self {
+            task: EnumModelTask::PromptTask(prompt_task),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match &self.task {
+            EnumModelTask::EvalTask(task) => task.task.name(),
+            EnumModelTask::PromptTask(_prompt) => PROMPT_TASK_NAME,
+        }
+    }
+
+    pub fn next_index(&self) -> &Arc<AtomicUsize> {
+        match &self.task {
+            EnumModelTask::EvalTask(task) => &task.next_index,
+            EnumModelTask::PromptTask(prompt) => &prompt.next_index,
+        }
+    }
+}
 impl EvalTask {
-    pub fn task(&self) -> &psyche_eval::PreparedTask {
-        &self.task
-    }
-
-    pub fn results(&self) -> &RunningAverage {
-        &self.results
-    }
-
     pub fn run(
         &self,
         trainer: &mut Trainer,
@@ -54,6 +90,10 @@ impl EvalTask {
         self.next_index
             .fetch_max(result.next_index, Ordering::SeqCst);
     }
+
+    pub fn results(&self) -> &RunningAverage {
+        &self.results
+    }
 }
 
 #[derive(Debug)]
@@ -65,7 +105,7 @@ struct LoadingState {
 #[derive(Debug)]
 enum LoadingStateInner {
     Loading,
-    Done(Vec<Arc<EvalTask>>),
+    Done(Vec<Arc<ModelTask>>),
     Failed(JoinError),
 }
 
@@ -78,6 +118,7 @@ pub struct EvalRunner {
 impl EvalRunner {
     pub fn new(
         eval_tasks: Vec<Task>,
+        prompt_task: bool,
         tokenizer: Arc<Tokenizer>,
         eval_task_max_docs: Option<usize>,
         data_parallelism: usize,
@@ -90,24 +131,45 @@ impl EvalRunner {
 
         tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                eval_tasks
+                let mut model_tasks = eval_tasks
                     .into_iter()
                     .map(|task| {
                         let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
-                        Arc::new(EvalTask {
+                        tracing::info!("Loading evaluation task: {}", &prepared.name());
+
+                        Arc::new(ModelTask::new_eval_task(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
                             next_index: Arc::new(AtomicUsize::new(0)),
-                        })
+                        }))
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+
+                if prompt_task {
+                    let mut rng = rand::thread_rng();
+
+                    let prompt_index = rng.gen_range(0..PROMPT_TEXTS_LEN);
+                    tracing::info!(
+                        "Loading prompt task, selected prompt index {}",
+                        prompt_index
+                    );
+
+                    let prompt_task = Arc::new(ModelTask::new_prompt_task(PromptTask::new(
+                        prompt_index,
+                        PROMPT_TEXTS[prompt_index].to_string(),
+                        &tokenizer,
+                    )));
+                    model_tasks.push(prompt_task);
+                }
+
+                model_tasks
             })
             .await;
 
             let mut state = tasks_clone.state.write().await;
             *state = match result {
                 Ok(tasks) => {
-                    info!("Eval tasks loaded successfully");
+                    info!("Model tasks loaded successfully");
                     LoadingStateInner::Done(tasks)
                 }
                 Err(err) => {
@@ -127,7 +189,7 @@ impl EvalRunner {
     async fn wait_for_tasks(
         tasks: Arc<LoadingState>,
         cancel: &CancellationToken,
-    ) -> Option<Vec<Arc<EvalTask>>> {
+    ) -> Option<Vec<Arc<ModelTask>>> {
         loop {
             // First check if already done
             {
@@ -161,7 +223,7 @@ impl EvalRunner {
         }
     }
 
-    pub fn tasks(&self) -> Option<Vec<Arc<EvalTask>>> {
+    pub fn tasks(&self) -> Option<Vec<Arc<ModelTask>>> {
         // Synchronous access to tasks if they're ready
         match &*self.tasks.state.try_read().ok()? {
             LoadingStateInner::Done(tasks) => Some(tasks.clone()),
@@ -203,30 +265,45 @@ impl EvalRunner {
                                     .zip(
                                         prepared_eval_tasks
                                             .iter()
-                                            .map(|x| x.next_index.load(Ordering::SeqCst))
+                                            .map(|x| x.next_index().load(Ordering::SeqCst))
                                             .collect::<Vec<_>>(),
                                     )
                                     .collect::<Vec<_>>();
                                 iter.shuffle(&mut thread_rng());
                                 let span = span!(Level::TRACE, "eval_task").entered();
-                                for (eval_task, next_index) in iter {
+                                for (model_task, next_index) in iter {
                                     if cancel.is_cancelled() {
                                         break 'eval_loop;
                                     }
+
+                                    // prompt task will run only on the first trainer to prevent parallel execution.
+                                    if model_task.name() == PROMPT_TASK_NAME && dp_index != 0 {
+                                        continue;
+                                    }
+
                                     trace!(
-                                        "Running eval task {} on index {}",
-                                        eval_task.task.name(),
+                                        "Running model task {} on index {}",
+                                        model_task.name(),
                                         next_index + dp_index
                                     );
-                                    eval_task.run(
-                                        &mut trainer,
-                                        cancel.clone(),
-                                        Some((next_index + dp_index, data_parallelism)),
-                                        Some(10),
-                                        true,
-                                    );
-                                    trace!("Done eval task {}", eval_task.task.name());
+
+                                    match &model_task.task {
+                                        EnumModelTask::EvalTask(eval) => {
+                                            eval.run(
+                                                &mut trainer,
+                                                cancel.clone(),
+                                                Some((next_index + dp_index, data_parallelism)),
+                                                Some(10),
+                                                true,
+                                            );
+                                        }
+                                        EnumModelTask::PromptTask(prompt) => {
+                                            prompt.run(&mut trainer, cancel.clone());
+                                        }
+                                    }
+                                    trace!("Done model task {}", model_task.name());
                                 }
+
                                 drop(span);
                             }
                             trainer

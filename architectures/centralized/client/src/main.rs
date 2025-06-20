@@ -101,6 +101,7 @@ async fn async_main() -> Result<()> {
                 write_gradients_dir: args.write_gradients_dir,
                 eval_task_max_docs: args.eval_task_max_docs,
                 eval_tasks,
+                prompt_task: args.prompt_task,
                 checkpoint_upload_info,
                 hub_read_token,
                 hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
