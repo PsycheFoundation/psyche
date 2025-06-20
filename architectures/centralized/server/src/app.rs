@@ -179,11 +179,12 @@ impl App {
 
             let training_data_server = match &coordinator.model {
                 Model::LLM(LLM {
-                    data_location,
+                    data_locations,
                     data_type,
                     checkpoint,
                     ..
                 }) => {
+                    let data_location = data_locations.get(0).ok_or_else(|| anyhow!("No data location provided"))?;
                     if let LLMTrainingDataType::Finetuning = data_type {
                         panic!("Finetuning is not supported yet.")
                     }
