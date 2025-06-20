@@ -21,9 +21,9 @@ use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantor_update;
-use psyche_solana_tooling::process_coordinator_instructions::process_coordiantor_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_init;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_join_run;
+use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_paused;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_tick;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_witness;
@@ -125,7 +125,7 @@ pub async fn run() {
     .unwrap();
 
     // Set the reward rate for the epoch
-    process_coordiantor_set_future_epoch_rates(
+    process_coordinator_set_future_epoch_rates(
         &mut endpoint,
         &payer,
         &main_authority,

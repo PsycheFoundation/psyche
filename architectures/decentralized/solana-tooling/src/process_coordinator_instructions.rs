@@ -164,7 +164,7 @@ pub async fn process_coordinator_set_paused(
         .await
 }
 
-pub async fn process_coordiantor_set_future_epoch_rates(
+pub async fn process_coordinator_set_future_epoch_rates(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
     authority: &Keypair,

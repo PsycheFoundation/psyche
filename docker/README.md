@@ -184,7 +184,7 @@ watch the logs to know that everything worked correctly.
 
 ### Join training run with the dockerized Psyche client
 
-With the Coordiantor deployed and the training run created in Devnet/Mainnet, now you can join the run to start training.
+With the Coordinator deployed and the training run created in Devnet/Mainnet, now you can join the run to start training.
 You will need your environment file set in `config/client/.env` if you haven't already done it.
 The environment variables that should be set are
 
