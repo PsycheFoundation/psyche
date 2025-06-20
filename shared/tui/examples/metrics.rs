@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use psyche_tui::{
-    logging::{logging, MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
+    logging::{
+        logging, MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination,
+    },
     LogOutput,
 };
 use tracing::{info, span, Level};
@@ -31,7 +33,7 @@ async fn main() {
             authorization_header: Some(authorization_header.clone()),
             report_interval: Duration::from_secs(1),
         })))
-        .with_trace_destination(Some(TraceDestination::OpenTelemetry(OpenTelemetry{
+        .with_trace_destination(Some(TraceDestination::OpenTelemetry(OpenTelemetry {
             endpoint: tracing_endpoint,
             authorization_header: Some(authorization_header),
             report_interval: Duration::from_secs(1),
@@ -50,12 +52,9 @@ async fn main() {
     loop {
         interval.tick().await;
         counter.add(1, &[]);
-        
+
         // Test tracing
-        let root_span = span!(
-            Level::INFO,
-            "Span test",
-        );
+        let root_span = span!(Level::INFO, "Span test",);
         let _enter = root_span.enter();
 
         // Test logging

@@ -61,6 +61,12 @@ pub struct DownloadProgress {
     source_peer: NodeId,
 }
 
+impl Default for ClientMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClientMetrics {
     pub fn new() -> Self {
         let meter = global::meter("psyche_client");
@@ -252,6 +258,7 @@ impl ClientMetrics {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_download_progress(
         &self,
         hash: Hash,
