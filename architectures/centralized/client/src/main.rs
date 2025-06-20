@@ -8,7 +8,7 @@ use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     maybe_start_render_loop, LogOutput, ServiceInfo,
 };
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 use tracing::info;
@@ -90,7 +90,7 @@ async fn async_main() -> Result<()> {
                     RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
                         authorization_header: args.oltp_auth_header.clone(),
-                        report_interval: args.oltp_report_interval,
+                        report_interval: Duration::from_secs(4),
                     })
                 }))
                 .with_service_info(ServiceInfo {

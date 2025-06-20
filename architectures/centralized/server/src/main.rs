@@ -186,7 +186,7 @@ async fn main() -> Result<()> {
                     RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
                         authorization_header: run_args.oltp_auth_header.clone(),
-                        report_interval: Duration::from_secs(10),
+                        report_interval: Duration::from_secs(4),
                     })
                 }))
                 .with_service_info(ServiceInfo {
