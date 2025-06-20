@@ -28,7 +28,7 @@ use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
 use psyche_tui::{
-    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination},
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     maybe_start_render_loop, LogOutput,
 };
 use rand::SeedableRng;
@@ -738,21 +738,24 @@ async fn async_main() -> Result<()> {
                         report_interval: args.oltp_report_interval,
                     })
                 }))
-                .with_trace_destination(run_args.oltp_tracing_url.clone().map(|endpoint| {
+                .with_trace_destination(args.oltp_tracing_url.clone().map(|endpoint| {
                     TraceDestination::OpenTelemetry(OpenTelemetry {
                         endpoint: endpoint,
-                        authorization_header: run_args.oltp_auth_header.clone(),
+                        authorization_header: args.oltp_auth_header.clone(),
                         report_interval: args.oltp_report_interval,
                     })
                 }))
-                .with_remote_logs(run_args.oltp_logs_url.clone().map(|endpoint| {
+                .with_remote_logs(args.oltp_logs_url.clone().map(|endpoint| {
                     RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
-                        authorization_header: run_args.oltp_auth_header.clone(),
+                        authorization_header: args.oltp_auth_header.clone(),
                         report_interval: args.oltp_report_interval,
                     })
                 }))
-                .with_service_name(identity_secret_key.public().fmt_short())
+                .with_service_name(format!(
+                    "client-{}",
+                    identity_secret_key.public().to_string()
+                ))
                 .init()?;
 
             let (cancel, tx_tui_state) = maybe_start_render_loop(
