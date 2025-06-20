@@ -439,18 +439,28 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        match self.run_state {
+        let ret = match self.run_state {
             RunState::Uninitialized | RunState::Finished | RunState::Paused => {
                 Err(CoordinatorError::Halted)
             }
-            RunState::WaitingForMembers => {
-                self.tick_waiting_for_members(new_clients, unix_timestamp)
+            run_state => {
+                if run_state == RunState::WaitingForMembers {
+                    self.tick_waiting_for_members(new_clients, unix_timestamp)
+                } else if run_state == RunState::Cooldown {
+                    self.tick_cooldown(unix_timestamp)
+                } else {
+                    match run_state {
+                        RunState::Warmup => self.tick_warmup(unix_timestamp, random_seed),
+                        RunState::RoundTrain => self.tick_round_train(unix_timestamp),
+                        RunState::RoundWitness => {
+                            self.tick_round_witness(unix_timestamp, random_seed)
+                        }
+                        _ => unreachable!(),
+                    }
+                }
             }
-            RunState::Warmup => self.tick_warmup(unix_timestamp, random_seed),
-            RunState::RoundTrain => self.tick_round_train(unix_timestamp),
-            RunState::RoundWitness => self.tick_round_witness(unix_timestamp, random_seed),
-            RunState::Cooldown => self.tick_cooldown(unix_timestamp),
-        }
+        }?;
+        Ok(ret)
     }
 
     pub fn warmup_witness(

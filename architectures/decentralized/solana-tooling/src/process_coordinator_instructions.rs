@@ -12,7 +12,6 @@ use psyche_solana_coordinator::find_coordinator_instance;
 use psyche_solana_coordinator::instruction::FreeCoordinator;
 use psyche_solana_coordinator::instruction::InitCoordinator;
 use psyche_solana_coordinator::instruction::JoinRun;
-use psyche_solana_coordinator::instruction::SetFutureEpochRates;
 use psyche_solana_coordinator::instruction::SetPaused;
 use psyche_solana_coordinator::instruction::Tick;
 use psyche_solana_coordinator::instruction::Update;
@@ -157,34 +156,6 @@ pub async fn process_coordinator_set_paused(
     let instruction = Instruction {
         accounts: accounts.to_account_metas(None),
         data: SetPaused { paused }.data(),
-        program_id: psyche_solana_coordinator::ID,
-    };
-    endpoint
-        .process_instruction_with_signers(instruction, payer, &[authority])
-        .await
-}
-
-pub async fn process_coordiantor_set_future_epoch_rates(
-    endpoint: &mut ToolboxEndpoint,
-    payer: &Keypair,
-    authority: &Keypair,
-    coordinator_instance: &Pubkey,
-    coordinator_account: &Pubkey,
-    epoch_earning_rate: Option<u64>,
-    epoch_slashing_rate: Option<u64>,
-) -> Result<Signature, ToolboxEndpointError> {
-    let accounts = OwnerCoordinatorAccounts {
-        authority: authority.pubkey(),
-        coordinator_instance: *coordinator_instance,
-        coordinator_account: *coordinator_account,
-    };
-    let instruction = Instruction {
-        accounts: accounts.to_account_metas(None),
-        data: SetFutureEpochRates {
-            epoch_earning_rate,
-            epoch_slashing_rate,
-        }
-        .data(),
         program_id: psyche_solana_coordinator::ID,
     };
     endpoint
