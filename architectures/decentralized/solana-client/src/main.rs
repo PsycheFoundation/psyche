@@ -738,10 +738,17 @@ async fn async_main() -> Result<()> {
                         report_interval: args.oltp_report_interval,
                     })
                 }))
-                .with_remote_logs(args.oltp_tracing_url.clone().map(|endpoint| {
+                .with_trace_destination(run_args.oltp_tracing_url.clone().map(|endpoint| {
+                    TraceDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint: endpoint,
+                        authorization_header: run_args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_remote_logs(run_args.oltp_logs_url.clone().map(|endpoint| {
                     RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
-                        authorization_header: args.oltp_auth_header.clone(),
+                        authorization_header: run_args.oltp_auth_header.clone(),
                         report_interval: args.oltp_report_interval,
                     })
                 }))

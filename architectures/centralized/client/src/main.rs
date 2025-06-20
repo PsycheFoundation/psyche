@@ -5,10 +5,10 @@ use clap::{Parser, Subcommand};
 use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_network::{DiscoveryMode, SecretKey};
 use psyche_tui::{
-    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination},
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     maybe_start_render_loop, LogOutput,
 };
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 use tracing::info;
@@ -79,7 +79,14 @@ async fn async_main() -> Result<()> {
                         report_interval: args.oltp_report_interval,
                     })
                 }))
-                .with_remote_logs(args.oltp_tracing_url.clone().map(|endpoint| {
+                .with_trace_destination(args.oltp_tracing_url.clone().map(|endpoint| {
+                    TraceDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint: endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_remote_logs(args.oltp_logs_url.clone().map(|endpoint| {
                     RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
                         authorization_header: args.oltp_auth_header.clone(),

@@ -7,7 +7,7 @@ use clap::{ArgAction, Parser};
 use psyche_centralized_shared::ClientId;
 use psyche_coordinator::Coordinator;
 use psyche_tui::{
-    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination},
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     LogOutput,
 };
 use std::{
@@ -97,9 +97,13 @@ struct RunArgs {
     #[clap(long, env)]
     pub oltp_metrics_url: Option<String>,
 
-    /// A URL for sending opentelemetry metrics. probably ends in /v1/tracing
+    /// A URL for sending opentelemetry traces. probably ends in /v1/traces
     #[clap(long, env)]
     pub oltp_tracing_url: Option<String>,
+
+    /// A URL for sending opentelemetry logs. probably ends in /v1/logs
+    #[clap(long, env)]
+    pub oltp_logs_url: Option<String>,
 }
 
 fn load_config_state(
@@ -173,7 +177,14 @@ async fn main() -> Result<()> {
                         report_interval: Duration::from_secs(10),
                     })
                 }))
-                .with_remote_logs(run_args.oltp_tracing_url.clone().map(|endpoint| {
+                .with_trace_destination(run_args.oltp_tracing_url.clone().map(|endpoint| {
+                    TraceDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint: endpoint,
+                        authorization_header: run_args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(10),
+                    })
+                }))
+                .with_remote_logs(run_args.oltp_logs_url.clone().map(|endpoint| {
                     RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
                         authorization_header: run_args.oltp_auth_header.clone(),

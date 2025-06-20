@@ -77,9 +77,13 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub oltp_metrics_url: Option<String>,
 
-    /// A URL for sending opentelemetry metrics. probably ends in /v1/tracing
+    /// A URL for sending opentelemetry traces. probably ends in /v1/traces
     #[clap(long, env)]
     pub oltp_tracing_url: Option<String>,
+
+    /// A URL for sending opentelemetry logs. probably ends in /v1/logs
+    #[clap(long, env)]
+    pub oltp_logs_url: Option<String>,
 
     /// how often to report metrics thru opentelemetry
     #[clap(long, env,

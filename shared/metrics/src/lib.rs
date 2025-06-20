@@ -378,3 +378,9 @@ impl ClientMetrics {
         }))
     }
 }
+
+impl Default for ClientMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}

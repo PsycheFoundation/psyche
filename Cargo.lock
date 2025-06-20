@@ -7352,7 +7352,6 @@ dependencies = [
  "anyhow",
  "nvml-wrapper",
  "opentelemetry 0.28.0",
- "opentelemetry_sdk",
  "psyche-core",
  "sysinfo",
  "tokio",

@@ -358,7 +358,7 @@ impl App {
     }
 
     async fn update_tui(
-        tx_tui_state: &Option<Sender<<TabbedWidget<(ClientTUI, CoordinatorTui, NetworkTui, LoggerWidget)> as CustomWidget>::Data>>,
+        tx_tui_state: &Option<Sender<<Tabs as CustomWidget>::Data>>,
         client_tui_state: ClientTUIState,
         coordinator_state: &Coordinator<psyche_solana_coordinator::ClientId>,
         network_tui_state: NetworkTUIState,

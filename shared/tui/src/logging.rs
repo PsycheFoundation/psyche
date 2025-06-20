@@ -8,7 +8,6 @@ use logfire::{
     bridges::tracing::LogfireTracingPendingSpanNotSentLayer,
     config::{AdvancedOptions, MetricsOptions},
 };
-use opentelemetry::logs::LoggerProvider;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
@@ -105,6 +104,12 @@ pub struct LoggingBuilder {
     metrics_destination: Option<MetricsDestination>,
 }
 
+impl Default for LoggingBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LoggingBuilder {
     /// Set the log output format
     pub fn with_output(mut self, output: LogOutput) -> Self {
@@ -187,19 +192,19 @@ pub trait Shutdownable {
 
 impl Shutdownable for logfire::ShutdownHandler {
     fn shutdown(&self) -> anyhow::Result<()> {
-        Ok(logfire::ShutdownHandler::shutdown(&self)?)
+        Ok(logfire::ShutdownHandler::shutdown(self)?)
     }
 }
 
 impl Shutdownable for SdkMeterProvider {
     fn shutdown(&self) -> anyhow::Result<()> {
-        Ok(SdkMeterProvider::shutdown(&self)?)
+        Ok(SdkMeterProvider::shutdown(self)?)
     }
 }
 
 impl Shutdownable for SdkTracerProvider {
     fn shutdown(&self) -> anyhow::Result<()> {
-        Ok(SdkTracerProvider::shutdown(&self)?)
+        Ok(SdkTracerProvider::shutdown(self)?)
     }
 }
 
