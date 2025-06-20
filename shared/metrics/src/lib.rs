@@ -78,19 +78,19 @@ impl ClientMetrics {
         Self {
             // broadcasts state
             broadcasts_seen_counter: meter
-                .u64_counter("broadcasts_seen_total")
+                .u64_counter("psyche_broadcasts_seen_total")
                 .with_description("Total number of broadcasts seen by this node")
                 .build(),
             apply_message_success_counter: meter
-                .u64_counter("apply_message_success")
+                .u64_counter("psyche_apply_message_success")
                 .with_description("Number of successfully applied broadcasts")
                 .build(),
             apply_message_failure_counter: meter
-                .u64_counter("apply_message_failure")
+                .u64_counter("psyche_apply_message_failure")
                 .with_description("Number of broadcasts we failed to apply")
                 .build(),
             apply_message_ignored_counter: meter
-                .u64_counter("apply_message_ignored")
+                .u64_counter("psyche_apply_message_ignored")
                 .with_description(
                     "Number of broadcasts we ignored during apply, probably due to rebroadcast",
                 )
@@ -98,59 +98,59 @@ impl ClientMetrics {
 
             // downloads
             downloads_started_counter: meter
-                .u64_counter("downloads_started")
+                .u64_counter("psyche_downloads_started")
                 .with_description("Number of downloads started")
                 .build(),
             downloads_finished_counter: meter
-                .u64_counter("downloads_finished")
+                .u64_counter("psyche_downloads_finished")
                 .with_description("Number of downloads finished")
                 .build(),
             downloads_retry_counter: meter
-                .u64_counter("downloads_retry")
+                .u64_counter("psyche_downloads_retry")
                 .with_description("Number of downloads retried")
                 .build(),
             downloads_failed_counter: meter
-                .u64_counter("downloads_failed_total")
+                .u64_counter("psyche_downloads_failed_total")
                 .with_description("Total number of download attempts that failed")
                 .build(),
             downloads_perma_failed_counter: meter
-                .u64_counter("downloads_failed_total")
+                .u64_counter("psyche_downloads_failed_total")
                 .with_description("Total number of downloads that permantently failed")
                 .build(),
             downloads_bytes_counter: meter
-                .u64_counter("download_bytes")
+                .u64_counter("psyche_download_bytes")
                 .with_description("Total number of bytes recv'd thru blobs")
                 .build(),
 
             // witness
             witnesses_sent: meter
-                .u64_counter("witnesses_sent_total")
+                .u64_counter("psyche_witnesses_sent_total")
                 .with_description("Total number of witness transactions sent")
                 .build(),
             participating_in_round: meter
-                .u64_gauge("participating_in_round")
+                .u64_gauge("psyche_participating_in_round")
                 .with_description("Whether or not this node is participating in this round")
                 .build(),
             round_step_gauge: meter
-                .u64_gauge("round_step")
+                .u64_gauge("psyche_round_step")
                 .with_description("Current step in the training round")
                 .build(),
 
             // network
             peer_connections: meter
-                .u64_gauge("peer_connections")
+                .u64_gauge("psyche_peer_connections")
                 .with_description("Number of peer connections by type")
                 .build(),
             gossip_neighbors: meter
-                .u64_gauge("gossip_neighbors")
+                .u64_gauge("psyche_gossip_neighbors")
                 .with_description("Number of neighbors in gossip network")
                 .build(),
             bandwidth: meter
-                .f64_gauge("bandwidth_bytes_per_second")
+                .f64_gauge("psyche_bandwidth_bytes_per_second")
                 .with_description("Current bandwidth usage in bytes per second")
                 .build(),
             connection_latency: meter
-                .f64_histogram("connection_latency_seconds")
+                .f64_histogram("psyche_connection_latency_seconds")
                 .with_description("Connection latency to peers")
                 .build(),
 
@@ -312,11 +312,11 @@ impl ClientMetrics {
         let system = Arc::new(Mutex::new(System::new_all()));
 
         let cpu_usage = meter
-            .f64_gauge("cpu_usage_percent")
+            .f64_gauge("psyche_cpu_usage_percent")
             .with_description("CPU usage percentage")
             .build();
         let memory_usage = meter
-            .u64_gauge("memory_usage_bytes")
+            .u64_gauge("psyche_memory_usage_bytes")
             .with_description("Memory usage in bytes")
             .build();
 
@@ -330,15 +330,15 @@ impl ClientMetrics {
         let gpu_meters = Nvml::init().ok().map(|nvml| GpuMeters {
             nvml,
             gpu_usage: meter
-                .f64_histogram("gpu_usage_percent")
+                .f64_histogram("psyche_gpu_usage_percent")
                 .with_description("GPU usage percentage")
                 .build(),
             gpu_memory: meter
-                .u64_histogram("gpu_memory")
+                .u64_histogram("psyche_gpu_memory")
                 .with_description("GPU memory usage")
                 .build(),
             gpu_temp: meter
-                .u64_histogram("gpu_temp")
+                .u64_histogram("psyche_gpu_temp")
                 .with_description("GPU usage percentage")
                 .build(),
         });
