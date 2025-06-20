@@ -7,7 +7,6 @@ use psyche_coordinator::model::Model;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
@@ -51,9 +50,6 @@ pub async fn run() {
     let participant = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
-    let warmup_time = 77;
-    let round_witness_time = 33;
-    let cooldown_time = 42;
     let rounds_per_epoch = 4;
     let earned_point_per_epoch = 33;
 
@@ -195,10 +191,10 @@ pub async fn run() {
         RunUpdateParams {
             metadata: None,
             config: Some(CoordinatorConfig {
-                warmup_time,
-                cooldown_time,
-                max_round_train_time: 888,
-                round_witness_time,
+                warmup_time: 1,
+                cooldown_time: 1,
+                max_round_train_time: 3,
+                round_witness_time: 1,
                 min_clients: 1,
                 init_min_clients: 1,
                 global_batch_size_start: 1,
@@ -287,11 +283,10 @@ pub async fn run() {
     .await
     .unwrap();
 
+    // Pretend 10 second passed
+    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
+
     // Tick to transition from waiting for members to warmup
-    endpoint
-        .forward_clock_unix_timestamp(WAITING_FOR_MEMBERS_EXTRA_SECONDS)
-        .await
-        .unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -302,11 +297,8 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Tick from warmup to train
-    endpoint
-        .forward_clock_unix_timestamp(warmup_time)
-        .await
-        .unwrap();
+    // Tick to witness
+    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -341,11 +333,8 @@ pub async fn run() {
         .await
         .unwrap();
 
-        // Tick from witness back next round train (or epoch cooldown after the last round)
-        endpoint
-            .forward_clock_unix_timestamp(round_witness_time)
-            .await
-            .unwrap();
+        // Tick from witness to train (or cooldown on the last one)
+        endpoint.forward_clock_unix_timestamp(2).await.unwrap();
         process_coordinator_tick(
             &mut endpoint,
             &payer,
@@ -371,11 +360,8 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Tick from cooldown to new epoch (should increment the earned points)
-    endpoint
-        .forward_clock_unix_timestamp(cooldown_time)
-        .await
-        .unwrap();
+    // Tick from cooldown to new epoch (should increment the earned)
+    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
