@@ -20,10 +20,12 @@ async fn main() {
         .with_metrics_destination(Some(MetricsDestination::OpenTelemetry(OpenTelemetry {
             endpoint: metrics_endpoint,
             authorization_header: Some(authorization_header.clone()),
+            report_interval: Duration::from_secs(2),
         })))
         .with_remote_logs(Some(RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
             endpoint: tracing_endpoint,
             authorization_header: Some(authorization_header.clone()),
+            report_interval: Duration::from_secs(2),
         })))
         .init()
         .unwrap();

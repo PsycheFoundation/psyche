@@ -5976,6 +5976,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
+name = "nvml-wrapper"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d5c6c0ef9702176a570f06ad94f3198bc29c524c8b498f1b9346e1b1bdcbb3a"
+dependencies = [
+ "bitflags 2.9.1",
+ "libloading",
+ "nvml-wrapper-sys",
+ "static_assertions",
+ "thiserror 1.0.69",
+ "wrapcenum-derive",
+]
+
+[[package]]
+name = "nvml-wrapper-sys"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd23dbe2eb8d8335d2bce0299e0a07d6a63c089243d626ca75b770a962ff49e6"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7011,6 +7034,7 @@ dependencies = [
  "psyche-client",
  "psyche-coordinator",
  "psyche-eval",
+ "psyche-metrics",
  "psyche-network",
  "psyche-tui",
  "psyche-watcher",
@@ -7114,13 +7138,12 @@ dependencies = [
  "hex",
  "hf-hub",
  "lazy_static",
- "opentelemetry 0.28.0",
- "opentelemetry_sdk",
  "postcard",
  "psyche-coordinator",
  "psyche-core",
  "psyche-data-provider",
  "psyche-eval",
+ "psyche-metrics",
  "psyche-modeling",
  "psyche-network",
  "psyche-tui",
@@ -7264,6 +7287,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-metrics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nvml-wrapper",
+ "opentelemetry 0.28.0",
+ "opentelemetry_sdk",
+ "psyche-core",
+ "sysinfo",
+ "tokio",
+]
+
+[[package]]
 name = "psyche-modeling"
 version = "0.1.0"
 dependencies = [
@@ -7305,6 +7341,7 @@ dependencies = [
  "iroh-relay",
  "postcard",
  "psyche-core",
+ "psyche-metrics",
  "psyche-modeling",
  "psyche-tui",
  "rand 0.8.5",
@@ -7348,6 +7385,7 @@ dependencies = [
  "psyche-core",
  "psyche-data-provider",
  "psyche-eval",
+ "psyche-metrics",
  "psyche-network",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
@@ -13704,6 +13742,18 @@ dependencies = [
  "thiserror 2.0.12",
  "windows 0.59.0",
  "windows-core 0.59.0",
+]
+
+[[package]]
+name = "wrapcenum-derive"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76ff259533532054cfbaefb115c613203c73707017459206380f03b3b3f266e"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]

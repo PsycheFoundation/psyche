@@ -18,6 +18,7 @@ use iroh_gossip::{
 use p2p_model_sharing::{
     ModelConfigSharingMessage, ParameterSharingMessage, MODEL_REQUEST_TIMEOUT_SECS,
 };
+use psyche_metrics::ClientMetrics;
 use router::Router;
 use state::State;
 use std::{
@@ -117,6 +118,7 @@ where
     _broadcast_message: PhantomData<BroadcastMessage>,
     _download: PhantomData<Download>,
     update_stats_interval: Interval,
+    metrics: ClientMetrics,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -153,6 +155,7 @@ where
         secret_key: Option<SecretKey>,
         allowlist: A,
         max_concurrent_downloads: usize,
+        metrics: ClientMetrics,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rngs::OsRng),
@@ -303,6 +306,7 @@ where
             rx_model_config_req,
 
             router,
+            metrics,
 
             update_stats_interval,
             state: State::new(15),
@@ -489,7 +493,7 @@ where
         // these are factored out to separate fns so rustfmt works on their contents :)
         select! {
             Some(event) = self.gossip_rx.next() => {
-                match parse_gossip_event(event.map_err(|ee| ee.into()), &self.gossip_rx) {
+                match parse_gossip_event(event.map_err(|ee| ee.into()), &self.gossip_rx, &self.metrics) {
                     Some(result) => Ok(Some(NetworkEvent::MessageReceived(result))),
                     None => Ok(None),
                 }
@@ -500,6 +504,7 @@ where
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
+                        self.metrics.update_download_progress(update.blob_ticket.hash(), update.downloaded_size_delta);
                         Ok(self.on_download_update(update))
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
@@ -615,6 +620,7 @@ pub async fn request_model(
 fn parse_gossip_event<BroadcastMessage: Networkable>(
     event: Result<iroh_gossip::net::Event>,
     gossip: &GossipReceiver,
+    metrics: &ClientMetrics,
 ) -> Option<(PublicKey, BroadcastMessage)> {
     match event {
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Received(msg))) => {
@@ -636,14 +642,17 @@ fn parse_gossip_event<BroadcastMessage: Networkable>(
         }
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Joined(peers))) => {
             debug!(name: "gossip_init", peers = ?peers, "gossip initialized with peers {peers:?}");
+            metrics.update_p2p_gossip_neighbors(&peers);
         }
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborUp(node_id))) => {
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_new_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip connected to new peer {node_id}, we now have {} peers", peers.len());
+            metrics.update_p2p_gossip_neighbors(&peers);
         }
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborDown(node_id))) => {
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_lost_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip disconnected from peer {node_id}, we now have {} peers", peers.len());
+            metrics.update_p2p_gossip_neighbors(&peers);
         }
         Ok(iroh_gossip::net::Event::Lagged) => {
             error!(name: "gossip_lagged","Gossip lagged. We missed some events.")

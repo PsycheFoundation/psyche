@@ -3,10 +3,10 @@ use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointConfig, Client, ClientMetrics, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo,
-    NC,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
 };
 use psyche_coordinator::{model, Coordinator, HealthChecks};
+use psyche_metrics::ClientMetrics;
 use psyche_network::{
     allowlist, psyche_relay_map, AuthenticatableIdentity, DiscoveryMode, NetworkTUIState,
     NetworkTui, NodeId, RelayMode, SecretKey, TcpClient,
@@ -147,6 +147,7 @@ impl AppBuilder {
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
             p.max_concurrent_downloads,
+            metrics.clone(),
         )
         .await?;
 

@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMap, RelayMode, RelayUrl};
+use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
     allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
@@ -291,6 +292,7 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         4,
+        ClientMetrics::new(),
     )
     .await?;
 

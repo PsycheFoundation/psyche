@@ -106,6 +106,13 @@ pub enum OpportunisticWitnessError {
     ApplyState(#[from] ApplyStateError),
 }
 
+pub enum ApplyMessageOutcome {
+    Applied,
+    /// Maybe we're not warmed up, or we've already applied this message
+    Ignored,
+    Invalid,
+}
+
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, A> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -329,7 +336,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         &mut self,
         from_client_id: T,
         broadcast: Broadcast,
-    ) -> Result<(), ApplyMessageError> {
+    ) -> Result<ApplyMessageOutcome, ApplyMessageError> {
         let result_step = broadcast.step;
         let round_state = if self.current_round.step == broadcast.step {
             &mut self.current_round
@@ -340,7 +347,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 "Unknown round for gossiped, says it's for step {} but our current round is step {} and previous round is step {}",
                 result_step, self.current_round.step, self.previous_round.step,
             );
-            return Ok(());
+            return Ok(ApplyMessageOutcome::Invalid);
         };
 
         let is_warmup_broadcast = match &broadcast.data {
@@ -360,11 +367,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         debug!("Committee verification failed for commitment 0x{} (step={}) received from {}", hex::encode(broadcast.commitment.data_hash),
                             broadcast.step,
                             from_client_id);
-                        return Ok(());
+                        return Ok(ApplyMessageOutcome::Invalid);
                     }
                 }
                 None => {
-                    return Ok(());
+                    return Ok(ApplyMessageOutcome::Ignored);
                 }
             };
         } else if !self
@@ -380,7 +387,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 broadcast.step,
                 from_client_id
             );
-            return Ok(());
+            return Ok(ApplyMessageOutcome::Invalid);
         }
 
         if !is_warmup_broadcast && broadcast.proof.committee != Committee::Trainer {
@@ -388,7 +395,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 "Broadcast not implemented for committee member {}",
                 broadcast.proof.committee
             );
-            return Ok(());
+            return Ok(ApplyMessageOutcome::Invalid);
         }
 
         match broadcast.data {
@@ -401,7 +408,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         "Training result for step {} batch id {} is not in our data assignments",
                         broadcast.step, training_result.batch_id
                     );
-                    return Ok(());
+                    return Ok(ApplyMessageOutcome::Invalid);
                 }
                 let ticket = training_result.ticket.clone();
                 let hash = ticket.hash();
@@ -410,7 +417,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         "Already have downloaded batch id {}, ignoring duplicated gossip",
                         training_result.batch_id
                     );
-                    return Ok(());
+                    return Ok(ApplyMessageOutcome::Ignored);
                 }
 
                 let correct_assignee =
@@ -425,7 +432,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                             from_client_id,
                             hex::encode(broadcast.commitment.data_hash)
                         );
-                    return Ok(());
+                    return Ok(ApplyMessageOutcome::Invalid);
                 }
 
                 round_state
@@ -461,7 +468,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         "Already got finished broadcast from {}, ignorning",
                         from_client_id
                     );
-                    return Ok(());
+                    return Ok(ApplyMessageOutcome::Ignored);
                 }
 
                 round_state
@@ -487,7 +494,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
         round_state.broadcasts.push(broadcast.commitment.data_hash);
 
-        Ok(())
+        Ok(ApplyMessageOutcome::Applied)
     }
 
     pub fn apply_distro_result(
@@ -916,14 +923,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         &mut self,
         from_client_id: T,
         training_result: Broadcast,
-    ) -> Result<(), ApplyMessageError> {
+    ) -> Result<ApplyMessageOutcome, ApplyMessageError> {
         match &mut self.0 {
             InitStage::Running(state_machine) => {
                 state_machine.apply_message(from_client_id, training_result)
             }
             _ => {
                 // not yet warmed up, ignore any p2p messages.
-                Ok(())
+                Ok(ApplyMessageOutcome::Ignored)
             }
         }
     }

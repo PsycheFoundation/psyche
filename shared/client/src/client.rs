@@ -1,12 +1,13 @@
 use crate::{
-    state::{DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
-    Broadcast, BroadcastType, ClientMetrics, ClientTUIState, Finished, IntegrationTestLogMarker,
-    RunInitConfig, RunInitConfigAndIO, TrainingResult, NC,
+    state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
+    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
+    RunInitConfigAndIO, TrainingResult, NC,
 };
 use anyhow::{bail, Error, Result};
 use futures::future::join_all;
-use psyche_coordinator::{Commitment, Coordinator, RunState};
+use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
+use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     allowlist, param_request_task, raw_p2p_verify, AuthenticatableIdentity, BlobTicket,
     DownloadComplete, DownloadType, ModelRequestType, NetworkConnection, NetworkEvent,
@@ -167,6 +168,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 new_state.run_state
                             );
 
+
                             let run_participating_node_ids = participating_node_ids(new_state);
                             allowlist.set(run_participating_node_ids);
                             ensure_gossip_connected(new_state, &mut p2p);
@@ -176,6 +178,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
                                 p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
                                 let p2p_info = get_p2p_info(&p2p).await?;
+                                metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
                                 if let Err(e) = run.set_node_info(p2p_info) {
                                     warn!("failed to set p2p info: {e}");
                                 }
@@ -184,15 +187,45 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             }
 
                             run.apply_state(*new_state).await?;
+                            {
+                                let current_step = run.coordinator_state().map(|s| s.progress.step).unwrap_or(0);
+                                let role = {
+                                    let client_index = new_state
+                                        .epoch_state
+                                        .clients
+                                        .iter()
+                                        .position(|x| x.id == identity);
+                                    let round = new_state.current_round();
+                                    let committee_selection = round.and_then(|round|
+                                        CommitteeSelection::new(
+                                            round.tie_breaker_tasks as usize,
+                                            new_state.config.witness_nodes as usize,
+                                            new_state.config.verification_percent,
+                                            new_state.epoch_state.clients.len(),
+                                            round.random_seed,
+                                        ).ok()
+                                    );
+                                    match (client_index, committee_selection) {
+                                        (Some(i), Some(s)) => if s.get_witness(i as u64).witness.into() {
+                                            ClientRoleInRound::Witness
+                                        } else {
+                                            ClientRoleInRound::Trainer
+                                        }
+                                        _ => ClientRoleInRound::NotInRound,
+                                    }
+                                };
+                                metrics.update_round_state(current_step, role);
+                            }
                         }
 
                         res = p2p.poll_next() => {
                             if let Some(message) = res? {
-                                let current_step = run.coordinator_state().map(|s| s.progress.step).unwrap_or(0);
                                 match message {
                                     NetworkEvent::MessageReceived((from, broadcast)) => {
                                         let _ = trace_span!("NetworkEvent::MessageReceived", from=%from).entered();
-                                        metrics.record_broadcast_seen(&broadcast, current_step);
+                                        metrics.record_broadcast_seen(&from);
+                                        let broadcast_step = broadcast.step;
+                                        let broadcast_kind = broadcast.data.kind();
                                         if let Some(client) = watcher.get_client_for_p2p_public_key(from.as_bytes()) {
                                             if raw_p2p_verify(from.as_bytes(), &broadcast.commitment.data_hash, &broadcast.commitment.signature) {
                                                 match &broadcast.data {
@@ -203,19 +236,32 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         trace!("Got finished gossip message from {from}: step {}", broadcast.step);
                                                     }
                                                 }
-                                                run.apply_message(client.id, broadcast)?;
+                                                let apply_result = run.apply_message(client.id, broadcast)?;
+                                                match apply_result {
+                                                    ApplyMessageOutcome::Ignored => {
+                                                        metrics.record_apply_message_ignored(broadcast_step, &from, broadcast_kind);
+                                                    },
+                                                    ApplyMessageOutcome::Applied => {
+                                                        metrics.record_apply_message_success(broadcast_step, &from, broadcast_kind);
+                                                    },
+                                                    ApplyMessageOutcome::Invalid => {
+                                                        metrics.record_apply_message_failure(broadcast_step, &from, broadcast_kind);
+                                                    }
+                                                }
                                             } else {
                                                 warn!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
+                                                metrics.record_apply_message_failure(broadcast_step, &from, broadcast_kind);
                                             }
                                         } else {
                                             warn!("Got broadcast from unknown client {}", from);
+                                            metrics.record_apply_message_failure(broadcast_step, &from, broadcast_kind);
                                         }
                                     }
                                     NetworkEvent::DownloadComplete(DownloadComplete {
-                                        data: download_data, hash, ..
+                                        data: download_data, hash, from
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
-                                        metrics.record_download_completed(hash, current_step);
+                                        metrics.record_download_completed(&hash, from);
                                         if retried_downloads.remove(&hash).is_some() {
                                             debug!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
@@ -243,12 +289,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         let hash = dl.blob_ticket.hash();
                                         let info = retried_downloads.get(&hash);
                                         let retries = info.map(|i| i.retries).unwrap_or(0);
-                                        metrics.record_download_failed(hash, &dl.error.to_string());
 
                                         if retries >= MAX_DOWNLOAD_RETRIES {
+                                            metrics.record_download_perma_failed(hash);
                                             warn!("Download failed (not retrying): {}", dl.error);
                                             retried_downloads.remove(&hash);
                                         } else {
+                                            metrics.record_download_failed(hash);
                                             let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
                                             let retry_time = Some(std::time::Instant::now() + backoff_duration);
 
@@ -398,9 +445,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 if let Some(info) = retried_downloads.get_mut(&hash) {
                                     info.retry_time = None;
 
-                                    debug!("Retrying download for blob {} (attempt {})",
-                                        hex::encode(hash), info.retries);
+                                    debug!("Retrying download for blob {} (attempt {})", hex::encode(hash), info.retries);
 
+                                    metrics.record_download_retry(hash);
                                     p2p.start_download(ticket, tag, download_type);
                                 }
                             }
@@ -411,14 +458,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
-                            let current_step = run.coordinator_state().map(|s| s.progress.step).unwrap_or(0);
-                            metrics.update_download_progress(download_ticket.hash(), download_ticket.node_addr().node_id, DownloadType::DistroResult(vec![]), 0, 0, tag, current_step);
-
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes));
+                            let kind = DownloadType::DistroResult(other_possible_nodes);
+                            metrics.record_download_started(download_ticket.hash(), kind.kind());
+                            p2p.start_download(download_ticket, tag, kind);
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
-                            metrics.record_witness_send(&opportunistic_data);
+                            metrics.record_witness_send(opportunistic_data.kind());
                             watcher.backend_mut().send_witness(opportunistic_data).await?;
                         }
                         Some(health_check) = rx_health_check.recv() => {
@@ -525,14 +571,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let config_blob_ticket = get_blob_ticket_to_download(&p2p, peer_ids, &param_requests_cancel_token, ModelRequestType::Config).await?;
 
                             // tokio::time::sleep(Duration::from_secs(5)).await;
+
+                            let kind = DownloadType::ModelSharing(ModelRequestType::Config);
+                            metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
                             // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config));
+                            p2p.start_download(config_blob_ticket.clone(), 0, kind);
 
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for (ticket, request_type) in param_blob_tickets {
+                                let kind = DownloadType::ModelSharing(request_type);
+                                metrics.record_download_started(ticket.hash(), kind.kind());
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type));
+                                p2p.start_download(ticket, 0, kind);
                             }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
@@ -543,17 +594,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             }
 
                             {
-                                let neighbors: Vec<_> = p2p.neighbors().collect();
                                 let remote_infos: Vec<_> = p2p
                                     .remote_infos()
                                     .into_iter()
-                                    .filter(|info| neighbors.iter().any(|n| n == &info.0.node_id))
+                                    .filter(|info| !matches!(info.0.conn_type, psyche_network::ConnectionType::None))
                                     .map(|info| {
-                                        (
-                                            NodeAddr::from(info.0.clone()),
-                                            info.0.conn_type,
-                                            info.0.latency.map(|l| l.as_secs_f32()).unwrap_or(0.0),
-                                        )
+                                        PeerConnection {
+                                            node_id: info.0.node_id.to_string(),
+                                            connection_type: match info.0.conn_type {
+                                                psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
+                                                psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
+                                                psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
+                                                psyche_network::ConnectionType::None => unreachable!(),
+                                            },
+                                            latency: info.0.latency.map(|l| l.as_secs_f32()).unwrap_or(0.0)
+                                        }
                                     })
                                     .collect();
                                 metrics.update_peer_connections(&remote_infos);

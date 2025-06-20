@@ -14,10 +14,10 @@ use anchor_client::{
 };
 use anyhow::{anyhow, Result};
 use psyche_client::{
-    CheckpointConfig, Client, ClientMetrics, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo,
-    NC,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
+use psyche_metrics::ClientMetrics;
 use psyche_network::{
     allowlist, psyche_relay_map, DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey,
 };
@@ -112,6 +112,7 @@ impl AppBuilder {
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
             p.max_concurrent_downloads,
+            metrics.clone(),
         )
         .await?;
 
@@ -232,7 +233,6 @@ impl App {
 
         let mut latest_update = coordinator_state.coordinator;
         let mut updates = backend_runner.updates();
-        self.metrics.start_system_monitoring();
         let mut client = Client::new(
             backend_runner,
             self.allowlist,

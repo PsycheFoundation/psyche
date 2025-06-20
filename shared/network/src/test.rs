@@ -1,6 +1,7 @@
 use anyhow::Result;
 use iroh::{NodeAddr, RelayMode};
 use iroh_blobs::ticket::BlobTicket;
+use psyche_metrics::ClientMetrics;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tokio::{join, select, time::timeout};
@@ -201,6 +202,7 @@ async fn spawn_new_node(
         None,
         allowlist::AllowAll,
         20,
+        ClientMetrics::new(),
     )
     .await?;
 

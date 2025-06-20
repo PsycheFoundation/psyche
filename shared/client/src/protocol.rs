@@ -23,6 +23,15 @@ pub enum BroadcastType {
     Finished(Finished),
 }
 
+impl BroadcastType {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            BroadcastType::TrainingResult(..) => "training_result",
+            BroadcastType::Finished(..) => "finished",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Broadcast {
     pub step: u32,
