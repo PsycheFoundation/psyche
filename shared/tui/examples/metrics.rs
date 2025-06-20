@@ -4,7 +4,7 @@ use psyche_tui::{
     logging::{
         logging, MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination,
     },
-    LogOutput,
+    LogOutput, ServiceInfo,
 };
 use tracing::{info, span, Level};
 
@@ -23,6 +23,12 @@ async fn main() {
     let _logs = logging()
         .with_output(LogOutput::Console)
         .with_level(Level::INFO)
+        .with_service_info(ServiceInfo {
+            name: "metrics-example".to_string(),
+            instance_id: "local".to_string(),
+            namespace: "psyche".to_string(),
+            deployment_environment: "development".to_string(),
+        })
         .with_metrics_destination(Some(MetricsDestination::OpenTelemetry(OpenTelemetry {
             endpoint: metrics_endpoint,
             authorization_header: Some(authorization_header.clone()),

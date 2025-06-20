@@ -8,7 +8,7 @@ use psyche_centralized_shared::ClientId;
 use psyche_coordinator::Coordinator;
 use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    LogOutput,
+    LogOutput, ServiceInfo,
 };
 use std::{
     path::{Path, PathBuf},
@@ -154,9 +154,7 @@ async fn main() -> Result<()> {
             data_config: data_config_path,
         } => {
             let config = load_config_state(state_path.clone(), data_config_path);
-            let _ = psyche_tui::logging::logging()
-                .with_service_name("centralized-server")
-                .init()?;
+            let _ = psyche_tui::logging::logging().init()?;
             match config {
                 Ok(_) => info!("Configs are OK!"),
                 Err(err) => error!("Error found in config: {err:#}"),
@@ -191,7 +189,13 @@ async fn main() -> Result<()> {
                         report_interval: Duration::from_secs(10),
                     })
                 }))
-                .with_service_name("centralized-server")
+                .with_service_info(ServiceInfo {
+                    name: "psyche-centralized-server".to_string(),
+                    instance_id: "server".to_string(),
+                    namespace: "psyche".to_string(),
+                    deployment_environment: std::env::var("DEPLOYMENT_ENV")
+                        .unwrap_or("development".to_string()),
+                })
                 .init()?;
             match config {
                 Ok(config) => {

@@ -6,9 +6,9 @@ use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_network::{DiscoveryMode, SecretKey};
 use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop, LogOutput,
+    maybe_start_render_loop, LogOutput, ServiceInfo,
 };
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 use tracing::info;
@@ -93,10 +93,13 @@ async fn async_main() -> Result<()> {
                         report_interval: args.oltp_report_interval,
                     })
                 }))
-                .with_service_name(format!(
-                    "client-{}",
-                    identity_secret_key.public().fmt_short()
-                ))
+                .with_service_info(ServiceInfo {
+                    name: "psyche-centralized-client".to_string(),
+                    instance_id: identity_secret_key.public().to_string(),
+                    namespace: "psyche".to_string(),
+                    deployment_environment: std::env::var("DEPLOYMENT_ENV")
+                        .unwrap_or("development".to_string()),
+                })
                 .init()?;
 
             let wandb_info = args.wandb_info(format!(

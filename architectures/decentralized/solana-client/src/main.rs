@@ -29,7 +29,7 @@ use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
 use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop, LogOutput,
+    maybe_start_render_loop, LogOutput, ServiceInfo,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -752,10 +752,13 @@ async fn async_main() -> Result<()> {
                         report_interval: args.oltp_report_interval,
                     })
                 }))
-                .with_service_name(format!(
-                    "client-{}",
-                    identity_secret_key.public().to_string()
-                ))
+                .with_service_info(ServiceInfo {
+                    name: "psyche-solana-client".to_string(),
+                    instance_id: identity_secret_key.public().to_string(),
+                    namespace: "psyche".to_string(),
+                    deployment_environment: std::env::var("DEPLOYMENT_ENV")
+                        .unwrap_or("development".to_string()),
+                })
                 .init()?;
 
             let (cancel, tx_tui_state) = maybe_start_render_loop(

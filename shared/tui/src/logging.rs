@@ -8,7 +8,7 @@ use logfire::{
     bridges::tracing::LogfireTracingPendingSpanNotSentLayer,
     config::{AdvancedOptions, MetricsOptions},
 };
-use opentelemetry::trace::TracerProvider;
+use opentelemetry::{trace::TracerProvider, KeyValue};
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
     error::OTelSdkResult,
@@ -100,7 +100,7 @@ pub struct LoggingBuilder {
     write_logs_file: Option<PathBuf>,
     remote_logs_destination: Option<RemoteLogsDestination>,
     trace_destination: Option<TraceDestination>,
-    service_name: Option<String>,
+    service_info: Option<ServiceInfo>,
     metrics_destination: Option<MetricsDestination>,
 }
 
@@ -149,9 +149,9 @@ impl LoggingBuilder {
         self
     }
 
-    /// Set the service name for telemetry
-    pub fn with_service_name<S: Into<String>>(mut self, name: S) -> Self {
-        self.service_name = Some(name.into());
+    /// Set the service info for telemetry
+    pub fn with_service_info(mut self, info: ServiceInfo) -> Self {
+        self.service_info = Some(info);
         self
     }
 }
@@ -163,7 +163,7 @@ impl LoggingBuilder {
             level: Level::INFO,
             write_logs_file: None,
             remote_logs_destination: None,
-            service_name: None,
+            service_info: None,
             metrics_destination: None,
             trace_destination: None,
         }
@@ -173,7 +173,7 @@ impl LoggingBuilder {
             self.output,
             self.level,
             self.write_logs_file,
-            self.service_name,
+            self.service_info,
             self.remote_logs_destination,
             self.metrics_destination,
             self.trace_destination,
@@ -239,9 +239,28 @@ impl Shutdownable for OtelLoggerHandler {
     }
 }
 
+#[derive(Clone)]
+pub struct ServiceInfo {
+    pub name: String,
+    pub instance_id: String,
+    pub namespace: String,
+    pub deployment_environment: String,
+}
+
+impl ServiceInfo {
+    pub fn into_attributes(self) -> [KeyValue; 4] {
+        [
+            KeyValue::new("service.name", self.name),
+            KeyValue::new("service.instance.id", self.instance_id),
+            KeyValue::new("service.namespace", self.namespace),
+            KeyValue::new("deployment.environment.name", self.deployment_environment),
+        ]
+    }
+}
+
 fn create_otel_metrics_handler(
     config: &OpenTelemetry,
-    service_name: Option<String>,
+    service_name: Option<ServiceInfo>,
 ) -> anyhow::Result<OtelMetricsHandler> {
     let mut exporter_builder = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
@@ -257,8 +276,8 @@ fn create_otel_metrics_handler(
     let exporter = exporter_builder.build()?;
 
     let mut resource_builder = Resource::builder_empty();
-    if let Some(service_name) = service_name {
-        resource_builder = resource_builder.with_service_name(service_name);
+    if let Some(info) = service_name {
+        resource_builder = resource_builder.with_attributes(info.into_attributes())
     }
     let resource = resource_builder.build();
 
@@ -278,7 +297,7 @@ fn create_otel_metrics_handler(
 
 fn create_otel_tracing_handler(
     config: &OpenTelemetry,
-    service_name: Option<String>,
+    service_info: Option<ServiceInfo>,
 ) -> anyhow::Result<OtelTracingHandler> {
     let mut exporter_builder = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
@@ -294,8 +313,8 @@ fn create_otel_tracing_handler(
     let trace_exporter = exporter_builder.build()?;
 
     let mut resource_builder = Resource::builder_empty();
-    if let Some(service_name) = service_name.clone() {
-        resource_builder = resource_builder.with_service_name(service_name);
+    if let Some(service_info) = service_info.clone() {
+        resource_builder = resource_builder.with_attributes(service_info.into_attributes());
     }
     let resource = resource_builder.build();
 
@@ -306,14 +325,18 @@ fn create_otel_tracing_handler(
         .with_span_processor(batch_processor)
         .build();
 
-    let tracer = provider.tracer(service_name.unwrap_or_else(|| "rust-app".to_string()));
+    let tracer = provider.tracer(
+        service_info
+            .map(|s| s.name)
+            .unwrap_or_else(|| "rust-app".to_string()),
+    );
 
     Ok(OtelTracingHandler { provider, tracer })
 }
 
 pub fn create_otel_logger_handler(
     config: &OpenTelemetry,
-    service_name: Option<String>,
+    service_info: Option<ServiceInfo>,
 ) -> anyhow::Result<OtelLoggerHandler> {
     let mut exporter_builder = opentelemetry_otlp::LogExporter::builder()
         .with_http()
@@ -329,8 +352,8 @@ pub fn create_otel_logger_handler(
     let logger_exporter = exporter_builder.build()?;
 
     let mut resource_builder = Resource::builder_empty();
-    if let Some(service_name) = service_name {
-        resource_builder = resource_builder.with_service_name(service_name);
+    if let Some(service_info) = service_info {
+        resource_builder = resource_builder.with_attributes(service_info.into_attributes());
     }
     let resource = resource_builder.build();
 
@@ -375,7 +398,7 @@ fn init_logging_impl(
     output: LogOutput,
     level: Level,
     write_logs_file: Option<PathBuf>,
-    service_name: Option<String>,
+    service_info: Option<ServiceInfo>,
     remote_logs_destination: Option<RemoteLogsDestination>,
     metrics_destination: Option<MetricsDestination>,
     trace_destination: Option<TraceDestination>,
@@ -414,11 +437,11 @@ fn init_logging_impl(
                 builder = builder.with_metrics(Some(MetricsOptions::default()));
             }
 
-            if let Some(service_name) = service_name.clone() {
+            if let Some(service_name) = service_info.clone() {
                 builder = builder.with_advanced_options(
                     AdvancedOptions::default().with_resource(
                         Resource::builder_empty()
-                            .with_service_name(service_name)
+                            .with_attributes(service_name.into_attributes())
                             .build(),
                     ),
                 );
@@ -434,7 +457,7 @@ fn init_logging_impl(
     // Handle OpenTelemetry logs if not using Logfire
     let (otel_logger_handler, otel_logger) = if !logfire_handles_logs {
         if let Some(RemoteLogsDestination::OpenTelemetry(otel_config)) = &remote_logs_destination {
-            let handler = create_otel_logger_handler(otel_config, service_name.clone())?;
+            let handler = create_otel_logger_handler(otel_config, service_info.clone())?;
             let logger = handler.provider.clone();
             (Some(handler), Some(logger))
         } else {
@@ -447,7 +470,7 @@ fn init_logging_impl(
     // Handle OpenTelemetry tracing if not using Logfire
     let (otel_tracing_handler, otel_tracer) = if !logfire_handles_traces {
         if let Some(TraceDestination::OpenTelemetry(otel_config)) = &trace_destination {
-            let handler = create_otel_tracing_handler(otel_config, service_name.clone())?;
+            let handler = create_otel_tracing_handler(otel_config, service_info.clone())?;
             let tracer = handler.tracer.clone();
             (Some(handler), Some(tracer))
         } else {
@@ -462,7 +485,7 @@ fn init_logging_impl(
         if let Some(MetricsDestination::OpenTelemetry(otel_config)) = &metrics_destination {
             Some(create_otel_metrics_handler(
                 otel_config,
-                service_name.clone(),
+                service_info.clone(),
             )?)
         } else {
             None
