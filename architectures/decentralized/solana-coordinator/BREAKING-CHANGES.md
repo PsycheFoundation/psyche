@@ -100,7 +100,7 @@ pub fn force_upload(ctx: Context<ForceUpload>) -> Result<()> {
         return Err(ProgramError::UnauthorizedUpload);
     }
     let account = ctx.accounts.target;
-    account.data = ctx.args.data;
+    account.data = ctx.args.data; // note: this could update only a portion of the account if too big
     Ok(())
 }
 ```
