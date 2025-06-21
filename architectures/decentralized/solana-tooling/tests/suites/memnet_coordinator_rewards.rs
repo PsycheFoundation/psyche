@@ -7,6 +7,7 @@ use psyche_coordinator::model::Model;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::CommitteeSelection;
 use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
@@ -45,9 +46,10 @@ pub async fn run() {
     // Run constants
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
-    let client1 = Keypair::new();
-    let client2 = Keypair::new();
-    let client3 = Keypair::new();
+    let mut clients = vec![];
+    for _ in 0..120 {
+        clients.push(Keypair::new());
+    }
     let ticker = Keypair::new();
     let warmup_time = 77;
     let round_witness_time = 42;
@@ -92,10 +94,10 @@ pub async fn run() {
             cooldown_time,
             max_round_train_time: 888,
             round_witness_time,
-            min_clients: 3,
-            init_min_clients: 3,
+            min_clients: 1,
+            init_min_clients: 1,
             global_batch_size_start: 1,
-            global_batch_size_end: 3,
+            global_batch_size_end: clients.len() as u16,
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 0,
@@ -150,7 +152,7 @@ pub async fn run() {
     .unwrap();
 
     // Add a few clients to the run
-    let mut process_client_whitelist_and_join = async |client: &Keypair| {
+    for client in &clients {
         // Add clients to whitelist
         let authorization = process_authorizer_authorization_create(
             &mut endpoint,
@@ -182,10 +184,7 @@ pub async fn run() {
         )
         .await
         .unwrap();
-    };
-    process_client_whitelist_and_join(&client1).await;
-    process_client_whitelist_and_join(&client2).await;
-    process_client_whitelist_and_join(&client3).await;
+    }
 
     // Tick to transition from waiting for members to warmup
     endpoint
@@ -226,7 +225,24 @@ pub async fn run() {
                 .unwrap()
                 .unwrap();
         // Process clients round witness
-        let mut process_client_witness = async |client: &Keypair| {
+        for client in &clients {
+            let witness_proof = CommitteeSelection::from_coordinator(
+                &coordinator_account_state.coordinator,
+                0,
+            )
+            .unwrap()
+            .get_witness(
+                coordinator_account_state
+                    .coordinator
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .position(|c| c.id.signer.eq(&client.pubkey()))
+                    .unwrap() as u64,
+            );
+            if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
+                continue;
+            }
             process_coordinator_witness(
                 &mut endpoint,
                 &payer,
@@ -234,20 +250,7 @@ pub async fn run() {
                 &coordinator_instance,
                 &coordinator_account,
                 &Witness {
-                    proof: CommitteeSelection::from_coordinator(
-                        &coordinator_account_state.coordinator,
-                        0,
-                    )
-                    .unwrap()
-                    .get_witness(
-                        coordinator_account_state
-                            .coordinator
-                            .epoch_state
-                            .clients
-                            .iter()
-                            .position(|c| c.id.signer.eq(&client.pubkey()))
-                            .unwrap() as u64,
-                    ),
+                    proof: witness_proof,
                     participant_bloom: Default::default(),
                     broadcast_bloom: Default::default(),
                     broadcast_merkle: Default::default(),
@@ -256,10 +259,7 @@ pub async fn run() {
             )
             .await
             .unwrap();
-        };
-        process_client_witness(&client1).await;
-        process_client_witness(&client2).await;
-        process_client_witness(&client3).await;
+        }
         // Tick from witness to train (or cooldown on the last round)
         endpoint
             .forward_clock_unix_timestamp(round_witness_time)
@@ -297,31 +297,13 @@ pub async fn run() {
             .await
             .unwrap()
             .unwrap();
-    assert_eq!(
-        coordinator_account_state
+    for client in &clients {
+        let client_state = coordinator_account_state
             .clients_state
             .clients
-            .get(0)
-            .unwrap()
-            .earned,
-        earned_point_per_epoch
-    );
-    assert_eq!(
-        coordinator_account_state
-            .clients_state
-            .clients
-            .get(1)
-            .unwrap()
-            .earned,
-        earned_point_per_epoch
-    );
-    assert_eq!(
-        coordinator_account_state
-            .clients_state
-            .clients
-            .get(2)
-            .unwrap()
-            .earned,
-        earned_point_per_epoch
-    );
+            .iter()
+            .find(|c| c.id.signer.eq(&client.pubkey()))
+            .unwrap();
+        assert_eq!(client_state.earned, earned_point_per_epoch);
+    }
 }
