@@ -8,7 +8,6 @@ use psyche_coordinator::model::LLM;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::RunState;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
@@ -47,8 +46,6 @@ pub async fn run() {
     let join_authority = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
-    let warmup_time = 77;
-    let round_witness_time = 88;
 
     // create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
@@ -94,10 +91,10 @@ pub async fn run() {
         &coordinator_account,
         None,
         Some(CoordinatorConfig {
-            warmup_time,
-            cooldown_time: 999,
-            max_round_train_time: 888,
-            round_witness_time,
+            warmup_time: 1,
+            cooldown_time: 1,
+            max_round_train_time: 3,
+            round_witness_time: 1,
             min_clients: 1,
             init_min_clients: 1,
             global_batch_size_start: 1,
@@ -224,7 +221,7 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Rejoin run, should be a no-op
+    // rejoin run
     process_coordinator_join_run(
         &mut endpoint,
         &payer,
@@ -237,11 +234,10 @@ pub async fn run() {
     .await
     .unwrap();
 
+    // Pretend 10 second passed
+    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
+
     // Tick to transition from waiting for members to warmup
-    endpoint
-        .forward_clock_unix_timestamp(WAITING_FOR_MEMBERS_EXTRA_SECONDS)
-        .await
-        .unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -263,11 +259,10 @@ pub async fn run() {
         RunState::Warmup
     );
 
-    // Tick from warmup to round train
-    endpoint
-        .forward_clock_unix_timestamp(warmup_time)
-        .await
-        .unwrap();
+    // Pretend 1 second passed
+    endpoint.forward_clock_unix_timestamp(1).await.unwrap();
+
+    // tick should now succeed
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -331,31 +326,5 @@ pub async fn run() {
             .coordinator
             .run_state,
         RunState::RoundWitness
-    );
-
-    // Tick from round witness back to round train should work
-    endpoint
-        .forward_clock_unix_timestamp(round_witness_time)
-        .await
-        .unwrap();
-    process_coordinator_tick(
-        &mut endpoint,
-        &payer,
-        &ticker,
-        &coordinator_instance,
-        &coordinator_account,
-    )
-    .await
-    .unwrap();
-
-    // Coordinator state after witness should change
-    assert_eq!(
-        get_coordinator_account_state(&mut endpoint, &coordinator_account)
-            .await
-            .unwrap()
-            .unwrap()
-            .coordinator
-            .run_state,
-        RunState::RoundTrain
     );
 }

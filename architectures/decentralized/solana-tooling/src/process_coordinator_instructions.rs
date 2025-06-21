@@ -12,7 +12,6 @@ use psyche_solana_coordinator::find_coordinator_instance;
 use psyche_solana_coordinator::instruction::FreeCoordinator;
 use psyche_solana_coordinator::instruction::InitCoordinator;
 use psyche_solana_coordinator::instruction::JoinRun;
-use psyche_solana_coordinator::instruction::SetFutureEpochRates;
 use psyche_solana_coordinator::instruction::SetPaused;
 use psyche_solana_coordinator::instruction::Tick;
 use psyche_solana_coordinator::instruction::Update;
