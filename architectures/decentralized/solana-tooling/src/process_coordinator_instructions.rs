@@ -163,34 +163,6 @@ pub async fn process_coordinator_set_paused(
         .await
 }
 
-pub async fn process_coordinator_set_future_epoch_rates(
-    endpoint: &mut ToolboxEndpoint,
-    payer: &Keypair,
-    authority: &Keypair,
-    coordinator_instance: &Pubkey,
-    coordinator_account: &Pubkey,
-    epoch_earning_rate: Option<u64>,
-    epoch_slashing_rate: Option<u64>,
-) -> Result<Signature, ToolboxEndpointError> {
-    let accounts = OwnerCoordinatorAccounts {
-        authority: authority.pubkey(),
-        coordinator_instance: *coordinator_instance,
-        coordinator_account: *coordinator_account,
-    };
-    let instruction = Instruction {
-        accounts: accounts.to_account_metas(None),
-        data: SetFutureEpochRates {
-            epoch_earning_rate,
-            epoch_slashing_rate,
-        }
-        .data(),
-        program_id: psyche_solana_coordinator::ID,
-    };
-    endpoint
-        .process_instruction_with_signers(instruction, payer, &[authority])
-        .await
-}
-
 pub async fn process_coordinator_tick(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
