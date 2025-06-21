@@ -1,4 +1,3 @@
-
 # Psyche Coordinator - Breaking Changes
 
 ## Abstract
