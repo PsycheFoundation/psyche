@@ -15,6 +15,7 @@ let
   testResourcesFilter =
     path: _type:
     (builtins.match ".*tests/resources/.*$" path != null)
+    || (builtins.match ".*tests/fixtures/.*$" path != null)
     || (builtins.match ".*.config/.*$" path != null)
     || (builtins.match ".*local-dev-keypair.json$" path != null);
 
