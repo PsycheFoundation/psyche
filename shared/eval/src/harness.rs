@@ -128,19 +128,14 @@ impl Task {
                 } else {
                     String::new()
                 };
-                let mut tokenized_fewshot = match bos_token_id {
-                    Some(bos_token_id) => vec![bos_token_id],
-                    None => Vec::new(),
-                };
-                tokenized_fewshot.append(
-                    &mut tokenizer
-                        .encode(fewshot, false)
-                        .unwrap()
-                        .get_ids()
-                        .iter()
-                        .map(|x| *x as i64)
-                        .collect::<Vec<_>>(),
-                );
+
+                let tokenized_fewshot = tokenizer
+                    .encode(fewshot, false)
+                    .unwrap()
+                    .get_ids()
+                    .iter()
+                    .map(|x| *x as i64)
+                    .collect::<Vec<_>>();
                 let docs = docs
                     .into_iter()
                     .map(|x| TokenizedLLHDocument::from_document(x, tokenizer))
@@ -253,8 +248,13 @@ impl PreparedTask {
                 for choice in &doc.choices {
                     let mut ids = context.clone();
                     ids.extend_from_slice(choice);
+                    // if let Ok(mut file) =
+                    //     OpenOptions::new().create(true).append(true).open("ids.md")
+                    // {
+                    //     writeln!(file, "IDs: {:?}", ids).ok();
+                    // }
+                    // We dont need the last token of the answer, so we can remove it
                     ids.pop();
-                    ids.remove(0);
                     let inplen = ids.len();
 
                     let ids = Tensor::from_slice(&ids)
