@@ -79,14 +79,11 @@ impl Router {
         p2p_model_sharing: ModelSharing,
         allowlist: A,
     ) -> Result<Self> {
-        if let Err(err) = endpoint.set_alpns(vec![
+        endpoint.set_alpns(vec![
             iroh_blobs::ALPN.to_vec(),
             iroh_gossip::ALPN.to_vec(),
             p2p_model_sharing::ALPN.to_vec(),
-        ]) {
-            shutdown(&endpoint, gossip, blobs, p2p_model_sharing).await;
-            return Err(err);
-        }
+        ]);
 
         let cancel = CancellationToken::new();
         let cancel_token = cancel.clone();
@@ -230,9 +227,7 @@ async fn handle_connection<A: Allowlist + 'static + Send>(
     if !allowlist.allowed(node_id) {
         // kill connection completely!
         connection.close(0u8.into(), b"not in allowlist");
-        warn!(
-            "Killing attemption connection: Node ID {node_id} is not in allowlist {allowlist:#?}."
-        );
+        warn!("Killing attemption connection: Node ID {node_id} is not in allowlist.");
         return;
     }
 

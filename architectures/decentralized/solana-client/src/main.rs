@@ -21,7 +21,7 @@ use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_coordinator::{
     get_data_index_for_step,
     model::{Checkpoint, HubRepo, Model},
-    CoordinatorConfig, CoordinatorProgress,
+    CoordinatorConfig, CoordinatorProgress, RunState,
 };
 use psyche_core::{sha256, FixedString};
 use psyche_network::SecretKey;
@@ -237,7 +237,7 @@ enum Commands {
         #[clap(long, env)]
         authorizer: Option<Pubkey>,
     },
-    CheckAuthorization {
+    CanJoin {
         #[clap(flatten)]
         cluster: ClusterArgs,
 
@@ -252,6 +252,12 @@ enum Commands {
 
         #[clap(long, env)]
         authorizer: Option<Pubkey>,
+
+        #[clap(long, env, action)]
+        predownload_model: bool,
+
+        #[clap(long, env, default_value_t = 3)]
+        hub_max_concurrent_downloads: usize,
     },
 
     // Prints the help, optionally as markdown. Used for docs generation.
@@ -764,6 +770,7 @@ async fn async_main() -> Result<()> {
                 eval_tasks,
                 checkpoint_upload_info,
                 hub_read_token,
+                hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
                 wandb_info,
                 optim_stats: args.optim_stats_steps,
                 grad_accum_in_fp32: args.grad_accum_in_fp32,
@@ -790,12 +797,14 @@ async fn async_main() -> Result<()> {
 
             Ok(())
         }
-        Commands::CheckAuthorization {
+        Commands::CanJoin {
             cluster,
             wallet,
             run_id,
             authorizer,
             pubkey,
+            predownload_model,
+            hub_max_concurrent_downloads,
         } => {
             // when we call join_run, we check
             //  constraint = authorization.is_valid_for(
@@ -851,6 +860,70 @@ async fn async_main() -> Result<()> {
                 bail!("Authorization invalid for run id {run_id} using pubkey {solana_pubkey}");
             }
             println!("authorization valid for run id {run_id} using pubkey {solana_pubkey}");
+
+            let coordinator_account_state = backend
+                .get_coordinator_account(&coordinator_instance_state.coordinator_account)
+                .await?
+                .state
+                .coordinator;
+
+            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+
+            if !is_paused {
+                let client_with_our_key = coordinator_account_state
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .find(|c| c.id.signer == solana_pubkey);
+                if client_with_our_key.is_some() {
+                    bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+                }
+            }
+            if predownload_model {
+                // it would also be reasonable to download the model if we're in WaitingForClients and the checkpoint is not P2P,
+                // but that could cause you to miss the transition to Warmup, so we won't do that for now.
+                if !is_paused {
+                    println!("run is in progress, skipping model predownload.");
+                    return Ok(());
+                }
+
+                #[allow(irrefutable_let_patterns)]
+                let Model::LLM(model) = coordinator_account_state.model
+                else {
+                    bail!("model is not an LLM, unsure how to predownload.");
+                };
+
+                let checkpoint = match model.checkpoint {
+                    Checkpoint::Ephemeral => {
+                        bail!("Can't predownload model with ephemeral checkpoint.")
+                    }
+                    Checkpoint::Dummy(hub_repo)
+                    | Checkpoint::Hub(hub_repo)
+                    | Checkpoint::P2P(hub_repo) => hub_repo,
+                };
+                let repo_id = checkpoint.repo_id.to_string();
+                let revision = checkpoint.revision.map(|s| s.to_string());
+                println!(
+                    "Predownloading model {} revision {}",
+                    repo_id,
+                    revision.as_ref().unwrap_or(&"main".to_string())
+                );
+                let hub_read_token = std::env::var("HF_TOKEN").ok();
+
+                // If you pass None as a cache folder, it'll use the env var `HF_HOME`.
+                let cache_folder = None;
+
+                psyche_data_provider::download_model_repo_async(
+                    &repo_id,
+                    revision,
+                    cache_folder,
+                    hub_read_token,
+                    Some(hub_max_concurrent_downloads),
+                    true,
+                )
+                .await?;
+                println!("Model predownloaded successfully.")
+            }
             Ok(())
         }
     }

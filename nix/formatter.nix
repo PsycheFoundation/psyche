@@ -62,6 +62,7 @@
           ".envrc"
           ".dockerignore"
           ".gitattributes"
+          "**/pnpm-lock.yaml"
         ];
       };
     };

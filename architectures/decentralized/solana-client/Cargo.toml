@@ -13,6 +13,7 @@ clap-markdown.workspace = true
 futures-util.workspace = true
 psyche-watcher.workspace = true
 psyche-core.workspace = true
+psyche-data-provider.workspace = true
 psyche-solana-authorizer.workspace = true
 psyche-solana-coordinator.workspace = true
 psyche-client.workspace = true

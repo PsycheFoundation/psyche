@@ -81,8 +81,9 @@ impl TokenizedLLHDocument {
             .choices
             .into_iter()
             .map(|x| {
+                let choice_with_space = format!(" {}", x);
                 let choice = tokenizer
-                    .encode(x.clone(), false)
+                    .encode(choice_with_space, false)
                     .unwrap()
                     .get_ids()
                     .iter()

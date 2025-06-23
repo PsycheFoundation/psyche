@@ -19,8 +19,8 @@ use tracing::{debug, error, trace, trace_span, warn, Instrument};
 pub type BatchStep = u32;
 pub type BatchIdSet = HashSet<BatchId>;
 
-const MAX_RETRIES: u32 = 5;
-const BASE_DELAY_MS: u64 = 1000;
+const MAX_RETRIES: u32 = 7;
+const BASE_DELAY_MS: u64 = 2000;
 
 pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
     data_provider: Arc<Mutex<DataProvider<A>>>,
