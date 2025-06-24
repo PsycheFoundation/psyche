@@ -21,7 +21,7 @@ use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     marker::PhantomData,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tokio::{
     select,
@@ -130,6 +130,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut opportunistic_witness_interval = interval(OPPROTUNISTIC_WITNESS_INTERVAL);
                 let mut check_connection_interval = interval(CHECK_CONNECTION_INTERVAL);
                 let mut wait_for_checkpoint = false;
+                let mut last_gossip_connection_time = SystemTime::now();
                 debug!("Starting client loop");
 
                 loop {
@@ -171,7 +172,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             let run_participating_node_ids = participating_node_ids(new_state);
                             allowlist.set(run_participating_node_ids);
-                            ensure_gossip_connected(new_state, &mut p2p);
+                            ensure_gossip_connected(new_state, &mut p2p, &mut last_gossip_connection_time);
 
                             if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
                                 trace!("Updating p2p");
@@ -613,7 +614,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     .collect();
                                 metrics.update_peer_connections(&remote_infos);
                             }
-                            ensure_gossip_connected(run_state, &mut p2p);
+                            ensure_gossip_connected(run_state, &mut p2p, &mut last_gossip_connection_time);
                         }
                         else => break
                     }
@@ -658,9 +659,22 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
     }
 }
 
-fn ensure_gossip_connected<T: NodeIdentity>(run_state: &Coordinator<T>, p2p: &mut NC) {
+fn ensure_gossip_connected<T: NodeIdentity>(
+    run_state: &Coordinator<T>,
+    p2p: &mut NC,
+    last_connection_attempt: &mut SystemTime,
+) {
     // don't try to connect to anyone if we're paused
     if run_state.halted() {
+        return;
+    }
+
+    // if we tried too recently, don't bother.
+    if SystemTime::now()
+        .duration_since(*last_connection_attempt)
+        .unwrap_or(Duration::ZERO)
+        < Duration::from_secs(6)
+    {
         return;
     }
 
@@ -672,6 +686,8 @@ fn ensure_gossip_connected<T: NodeIdentity>(run_state: &Coordinator<T>, p2p: &mu
     if !run_participating_node_ids.contains(&my_node_id) {
         return;
     }
+
+    *last_connection_attempt = SystemTime::now();
 
     // TODO: maybe don't force connections if we're trying to join new peers already
     // see https://github.com/PsycheFoundation/psyche/issues/78
