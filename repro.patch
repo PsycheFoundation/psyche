@@ -1,0 +1,123 @@
+config/solana-test/light-config.toml
+index ad0a7adc..72935fc5 100644
+--- a/config/solana-test/light-config.toml
++++ b/config/solana-test/light-config.toml
+@@ -1,13 +1,13 @@
+ [config]
+ warmup_time = 30
+ cooldown_time = 30
+-rounds_per_epoch = 20
++rounds_per_epoch = 10
+ max_round_train_time = 30
+ round_witness_time = 1
+-min_clients = 1
+-init_min_clients = 1
++min_clients = 2
++init_min_clients = 2
+ verification_percent = 0
+-witness_nodes = 1
++witness_nodes = 2
+ global_batch_size_start = 8
+ global_batch_size_end = 8
+ global_batch_size_warmup_tokens = 0
+shared/client/src/client.rs
+index 609889f2..596300f1 100644
+--- a/shared/client/src/client.rs
++++ b/shared/client/src/client.rs
+@@ -402,7 +402,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
+                                     debug!("Retrying download for blob {} (attempt {})",
+                                         hex::encode(hash), info.retries);
+ 
+-                                    p2p.start_download(ticket, tag, download_type);
++                                    p2p.start_download(ticket, tag, download_type).await;
+                                 }
+                             }
+                         }
+@@ -413,7 +413,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
+ 
+                         Some((download_ticket, tag)) = rx_request_download.recv() => {
+                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
+-                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes));
++                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes)).await;
+                         }
+                         Some(opportunistic_data) = rx_witness.recv() => {
+                             watcher.backend_mut().send_witness(opportunistic_data).await?;
+@@ -523,14 +523,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
+                             let config_blob_ticket = get_blob_ticket_to_download(p2p.router(), &param_requests_cancel_token, ModelRequestType::Config, sharable_model.peer_cycle.clone(), sharable_model.errored_peers.clone(), peer_ids.len()).await?;
+ 
+                             // tag 0 means when we enter a train step, it'll get wiped.
+-                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config));
++                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config)).await;
+ 
+                         }
+                         Some(param_blob_tickets) = rx_params_download.recv() => {
+                             println!("RECEIVED PARAMETERS TO DOWNLOAD");
+                             for (ticket, request_type) in param_blob_tickets {
+                                 // tag 0 means when we enter a train step, it'll get wiped.
+-                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type));
++                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type)).await;
+                             }
+                         }
+                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
+shared/network/examples/bandwidth_test.rs
+index d7dade78..702132f2 100644
+--- a/shared/network/examples/bandwidth_test.rs
++++ b/shared/network/examples/bandwidth_test.rs
+@@ -164,11 +164,9 @@ impl App {
+             NetworkEvent::MessageReceived((from, Message::DistroResult { step, blob_ticket })) => {
+                 info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
+                 self.start_time.insert(blob_ticket.hash(), Instant::now());
+-                self.network.start_download(
+-                    blob_ticket,
+-                    step,
+-                    DownloadType::DistroResult(Vec::new()),
+-                )
++                self.network
++                    .start_download(blob_ticket, step, DownloadType::DistroResult(Vec::new()))
++                    .await
+             }
+             NetworkEvent::DownloadComplete(result) => {
+                 let hash = result.hash;
+shared/network/src/lib.rs
+index fd55c349..5fccc9b7 100644
+--- a/shared/network/src/lib.rs
++++ b/shared/network/src/lib.rs
+@@ -360,7 +360,12 @@ where
+         Ok(())
+     }
+ 
+-    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
++    pub async fn start_download(
++        &mut self,
++        ticket: BlobTicket,
++        tag: u32,
++        download_type: DownloadType,
++    ) {
+         let provider_node_id = ticket.node_addr().clone();
+         let ticket_hash = ticket.hash();
+         let additional_peers_to_try = match download_type.clone() {
+@@ -377,6 +382,10 @@ where
+             .add(ticket, tag, rx, download_type.clone());
+ 
+         debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
++        if matches!(download_type, DownloadType::ModelSharing(_)) {
++            info!("WAITING TO DOWNLOAD");
++            tokio::time::sleep(Duration::from_secs(5)).await;
++        }
+ 
+         let blobs_client = self.blobs.client().clone();
+         tokio::spawn(async move {
+shared/network/src/test.rs
+index cc5238c3..7968d125 100644
+--- a/shared/network/src/test.rs
++++ b/shared/network/src/test.rs
+@@ -99,7 +99,8 @@ impl App {
+                 }
+ 
+                 self.network
+-                    .start_download(blob_ticket, step, DownloadType::DistroResult(peers));
++                    .start_download(blob_ticket, step, DownloadType::DistroResult(peers))
++                    .await;
+ 
+                 if !self.should_wait_before {
+                     println!("Waiting to kill sender");

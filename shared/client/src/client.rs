@@ -402,7 +402,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     debug!("Retrying download for blob {} (attempt {})",
                                         hex::encode(hash), info.retries);
 
-                                    p2p.start_download(ticket, tag, download_type);
+                                    p2p.start_download(ticket, tag, download_type).await;
                                 }
                             }
                         }
@@ -413,7 +413,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes));
+                            p2p.start_download(download_ticket, tag, DownloadType::DistroResult(other_possible_nodes)).await;
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
                             watcher.backend_mut().send_witness(opportunistic_data).await?;
@@ -523,14 +523,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let config_blob_ticket = get_blob_ticket_to_download(p2p.router(), &param_requests_cancel_token, ModelRequestType::Config, sharable_model.peer_cycle.clone(), sharable_model.errored_peers.clone(), peer_ids.len()).await?;
 
                             // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config));
+                            p2p.start_download(config_blob_ticket.clone(), 0, DownloadType::ModelSharing(ModelRequestType::Config)).await;
 
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             println!("RECEIVED PARAMETERS TO DOWNLOAD");
                             for (ticket, request_type) in param_blob_tickets {
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type));
+                                p2p.start_download(ticket, 0, DownloadType::ModelSharing(request_type)).await;
                             }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),

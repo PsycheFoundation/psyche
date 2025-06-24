@@ -360,7 +360,7 @@ where
         Ok(())
     }
 
-    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
+    pub async fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
         let provider_node_id = ticket.node_addr().clone();
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
@@ -377,6 +377,10 @@ where
             .add(ticket, tag, rx, download_type.clone());
 
         debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        if matches!(download_type, DownloadType::ModelSharing(_)) {
+            info!("WAITING TO DOWNLOAD");
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
 
         let blobs_client = self.blobs.client().clone();
         tokio::spawn(async move {

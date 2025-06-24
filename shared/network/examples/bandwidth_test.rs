@@ -168,7 +168,7 @@ impl App {
                     blob_ticket,
                     step,
                     DownloadType::DistroResult(Vec::new()),
-                )
+                ).await;
             }
             NetworkEvent::DownloadComplete(result) => {
                 let hash = result.hash;
