@@ -16,10 +16,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, span, trace, Level};
 
-use crate::state::{
-    prompt::PromptTask,
-    prompt_texts::{PROMPT_TEXTS, PROMPT_TEXTS_LEN},
-};
+use crate::state::{prompt::PromptTask, prompt_texts::PROMPT_TEXTS};
 pub const PROMPT_TASK_NAME: &str = "Prompt";
 
 #[derive(Debug)]
@@ -148,7 +145,7 @@ impl EvalRunner {
                 if prompt_task {
                     let mut rng = rand::thread_rng();
 
-                    let prompt_index = rng.gen_range(0..PROMPT_TEXTS_LEN);
+                    let prompt_index = rng.gen_range(0..PROMPT_TEXTS.len());
                     tracing::info!(
                         "Loading prompt task, selected prompt index {}",
                         prompt_index

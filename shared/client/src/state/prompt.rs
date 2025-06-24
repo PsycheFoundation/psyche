@@ -1,4 +1,4 @@
-use psyche_coordinator::TOKENS_TO_SEND_LENGTH;
+use psyche_coordinator::MAX_TOKENS_TO_SEND;
 use psyche_core::FixedVec;
 use psyche_modeling::{CausalLM, EosToks};
 use psyche_modeling::{LogitsProcessor, Sampling, Trainer};
@@ -14,23 +14,23 @@ const MAX_CONTEXT_LENGTH: usize = 2048;
 
 #[derive(Debug)]
 pub struct PromptTask {
-    _selected_promt: usize,
+    _selected_prompt: usize,
     tokens: RwLock<Vec<i32>>,
-    pub tokens_to_send: RwLock<FixedVec<i32, TOKENS_TO_SEND_LENGTH>>,
+    pub tokens_to_send: RwLock<FixedVec<i32, MAX_TOKENS_TO_SEND>>,
     /// A flag set to `true` once the end-of-sequence token has been generated.
     pub prompt_finished: RwLock<bool>,
     /// next_index exists primarily to maintain a compatible interface with
-    /// evaluation tasks. Here only track progress the progress of the prompt.
+    /// evaluation tasks. Here only track the progress of the prompt.
     pub next_index: Arc<AtomicUsize>,
 }
 
 impl PromptTask {
-    pub fn new(selected_promt: usize, task: String, tokenizer: &Tokenizer) -> Self {
+    pub fn new(selected_prompt: usize, task: String, tokenizer: &Tokenizer) -> Self {
         let encoding = tokenizer.encode(task.clone(), true).unwrap();
         let tokens = encoding.get_ids().iter().map(|x| *x as i32).collect();
 
         Self {
-            _selected_promt: selected_promt,
+            _selected_prompt: selected_prompt,
             tokens: RwLock::new(tokens),
             tokens_to_send: RwLock::new(FixedVec::new()),
             next_index: Arc::new(AtomicUsize::new(0)),
@@ -60,14 +60,13 @@ impl PromptTask {
             self.tokens.write().unwrap().drain(..MAX_CONTEXT_LENGTH / 2);
         }
 
-        let tokens = self.tokens.read().unwrap();
+        let input = {
+            let tokens = self.tokens.read().unwrap();
+            Tensor::from_slice(&tokens)
+                .to(*trainer.device())
+                .unsqueeze(0)
+        };
 
-        let input = Tensor::from_slice(&tokens)
-            .to(*trainer.device())
-            .unsqueeze(0);
-
-        // drop tokens to release lock
-        drop(tokens);
         // Run forward pass
         let (logits, _) = trainer.forward(&input, None, Some(1));
 
@@ -77,12 +76,9 @@ impl PromptTask {
         let mut logits_processor =
             LogitsProcessor::from_sampling(rand::random(), Sampling::All { temperature: 0.6 });
 
-        let next_token = match logits_processor.sample(&logits) {
-            Ok(token) => token,
-            Err(_) => {
-                panic!("Failed to sample next token");
-            }
-        };
+        let next_token = logits_processor
+            .sample(&logits)
+            .expect("Failed to sample next token");
 
         // check if we have reached the end-of-sequence token
         match trainer.eos_token_ids() {

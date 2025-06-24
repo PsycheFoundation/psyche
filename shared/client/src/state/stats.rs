@@ -1,5 +1,5 @@
 use psyche_coordinator::{
-    model, Coordinator, WitnessEvalResult, WitnessMetadata, TOKENS_TO_SEND_LENGTH,
+    model, Coordinator, WitnessEvalResult, WitnessMetadata, MAX_TOKENS_TO_SEND,
 };
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_modeling::Trainer;
@@ -266,20 +266,15 @@ impl StatsLogger {
     }
 
     // clear tokens_to_send buffer
-    pub fn get_prompt_results(&self) -> FixedVec<i32, TOKENS_TO_SEND_LENGTH> {
+    pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
         let mut results = FixedVec::new();
         for eval_task in self.eval_runner.tasks().iter().flatten() {
-            if eval_task.name() == PROMPT_TASK_NAME {
-                match &eval_task.task {
-                    EnumModelTask::PromptTask(prompt_task) => {
-                        let tokens = prompt_task.tokens_to_send.read().unwrap();
-                        results.extend(tokens.iter().cloned()).unwrap();
-                        // Release lock
-                        drop(tokens);
-                        prompt_task.tokens_to_send.write().unwrap().clear();
-                    }
-                    _ => tracing::warn!("Unexpected eval task type"),
+            if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
+                {
+                    let tokens = prompt_task.tokens_to_send.read().unwrap();
+                    results.extend(tokens.iter().cloned()).unwrap();
                 }
+                prompt_task.tokens_to_send.write().unwrap().clear();
             }
         }
 
