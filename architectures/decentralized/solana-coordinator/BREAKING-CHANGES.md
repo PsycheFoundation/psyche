@@ -25,22 +25,20 @@ A few code logic changes can help make future breaking changes more forgiving.
 
 Due to the nature of serialization/deserialization where all information is stored sequentially in a byte array: the bigger the datastructure is, the more likely it is to introduce a breaking change.
 
-It then makes a lot of sense to split the program's state into multiple PDAs to avoid a large monolithic state, this would allow for easier migrations of smaller PDAs. Different PDAs could use different mitigation strategies independently, depending on the specific situation.
-
-It helps upgrade and migrate individual chunks of data and also helps avoiding the 10KB max size per account "soft limit".
+It then makes a lot of sense to split the program's state into multiple PDAs to avoid a large monolithic state, this also would allow for easier migrations of smaller PDAs. Different PDAs could use different mitigation strategies independently, depending on the specific situation. This would also help upgrade and migrate individual chunks of data atomically and independently. It also helps with avoiding the 10KB max size limit per account.
 
 #### B) Add data-structure versionning
 
 Adding a versionning system to the data structures enables conditional migration logic. This can be done through either:
 
-- an `Enum` of which each case version (most powerful, but complex)
+- an `Enum` of which each case is a version (most powerful, but complex)
 - a `version` field on the data structure (most simple, but has limitations)
 
 Note: Also don't forget to use `#[repr(C)]` to ensure the predictability of the memory layout as by default the `#[repr(Rust)]` has undefined behaviour and its memory layout is left to the responsibility of the compiler's optimizer implementation (relevant for bytemuck serialized accounts).
 
 ### 2) Backward compatible changes
 
-In some cases, it is possible to make changes to the memory layout without requiring any migrations but it requires planning in advance.
+In some cases, it is possible to make changes to the memory layout without requiring any migrations but it requires careful editing and planning.
 
 ```rust
 // Before
@@ -56,16 +54,16 @@ pub struct MyAccountV1 {
 #[repr(C, packed)]
 pub struct MyAccountV2 {
     pub my_field1: u64,
-    pub my_field2: u32, // my_field2 is initialized to zero on smart contract upgrade
+    pub my_field2: u32, // my_field2 is zeroed by default
     pub _reserved: [u8, 252], // Adjusted size, 4 bytes now used by my_field2
 }
 ```
 
-In those cases, some planning and careful changes can achieve changes that require no migrations.
+In those special cases, we can achieve changes that require no migrations.
 
 ### 3) Explicit Migrations
 
-In many case it is not possible to do backward compatible changes. We then have to migrate the content of the accounts to convert between account layout versions.
+In many cases it is not possible to do backward compatible changes. We then have to migrate the content of the accounts to convert between account layout versions.
 
 #### 1) Trustless On-chain Migrations
 
@@ -81,16 +79,15 @@ pub fn migrate_my_account(ctx: Context<MigrateMyAccount>) -> Result<()> {
     }
     let info_v1 = InfoV1::deserialize(&my_account.data)?;
     let info_v2 = InfoV2::from_v1(info_v1);
-    info_v2.serialize(&my_account.data)?;
-    Ok(())
+    info_v2.serialize(&my_account.data)
 }
 ```
 
-Note: the program must also check that the account has been migrated before trying to read its content in the other instructions.
+Note: the program must also check that the account has been migrated before trying to read its content inside of other instructions.
 
 #### 2) Trust-Based Centralized Migrations
 
-If all else fails, an account can also be migrated by the program owner manually by pushing arbitrary data to the on-chain account using a specialized instruction in the smart contract. It can be summarized with the following implementation:
+If all else fails, an account can also be migrated by a trusted authority by pushing arbitrary data to the on-chain account using a specialized instruction in the smart contract. It can be summarized with the following implementation:
 
 ```rust
 // Pseudo-code (Smart contract instruction implementation)
@@ -99,7 +96,7 @@ pub fn force_upload(ctx: Context<ForceUpload>) -> Result<()> {
         return Err(ProgramError::UnauthorizedUpload);
     }
     let account = ctx.accounts.target;
-    account.data = ctx.args.data; // note: this could update only a portion of the account if too big
+    account.data[ctx.args.offset..] = ctx.args.bytes;
     Ok(())
 }
 ```
