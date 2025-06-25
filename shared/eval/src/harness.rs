@@ -65,7 +65,7 @@ pub struct PreparedTaskResult {
 struct TokenizedLLHDocument {
     text: Vec<i64>,
     choices: Vec<Vec<i64>>,
-    norm_factor: Vec<usize>,
+    choices_str: Vec<String>,
     answer: usize,
 }
 
@@ -78,14 +78,14 @@ impl TokenizedLLHDocument {
             .iter()
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
-        let mut norm_factor = Vec::new();
+        let mut choices_str = Vec::new();
         let choices: Vec<Vec<i64>> = doc
             .choices
             .into_iter()
-            .map(|x| {
-                norm_factor.push(x.len());
+            .map(|choice| {
+                choices_str.push(choice.clone());
                 let choice = tokenizer
-                    .encode(x, false)
+                    .encode(choice, false)
                     .unwrap()
                     .get_ids()
                     .iter()
@@ -98,7 +98,7 @@ impl TokenizedLLHDocument {
         Self {
             text,
             choices,
-            norm_factor,
+            choices_str,
             answer: doc.answer,
         }
     }
@@ -286,7 +286,7 @@ impl PreparedTask {
                 &scores
                     .iter()
                     .enumerate()
-                    .map(|(idx, x)| x.0 / (doc.norm_factor[idx]) as f32)
+                    .map(|(idx, score)| score.0 / (doc.choices_str[idx].len() as f32))
                     .collect::<Vec<_>>(),
             )
             .argmax(-1, false)
