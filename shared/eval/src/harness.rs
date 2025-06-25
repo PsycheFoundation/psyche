@@ -255,26 +255,20 @@ impl PreparedTask {
 
                 // Get tensor of shape `[choice.len(), vocab_size]` containing the
                 // model's predictions for each token of the `choice` text.
-                let choice_log_probabilities = log_probabilities.slice(
+                let choice_log_prob = log_probabilities.slice(
                     0,
                     input_lenght as i64 - choice.len() as i64,
                     input_lenght as i64,
                     1,
                 );
 
-                let greedy_tokens: Vec<i64> = choice_log_probabilities
-                    .argmax(-1, false)
-                    .try_into()
-                    .unwrap();
+                let greedy_tokens: Vec<i64> = choice_log_prob.argmax(-1, false).try_into().unwrap();
                 let exact_match = greedy_tokens.eq(choice);
                 let index = Tensor::from_slice(choice)
-                    .to(choice_log_probabilities.device())
+                    .to(choice_log_prob.device())
                     .unsqueeze(-1);
-                let choice_log_probabilities = choice_log_probabilities.gather(-1, &index, false);
-                let loglikelihood: f32 = choice_log_probabilities
-                    .sum(Kind::Float)
-                    .try_into()
-                    .unwrap();
+                let choice_log_prob = choice_log_prob.gather(-1, &index, false);
+                let loglikelihood: f32 = choice_log_prob.sum(Kind::Float).try_into().unwrap();
                 scores.push((loglikelihood, exact_match));
             }
 
