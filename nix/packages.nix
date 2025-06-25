@@ -85,7 +85,7 @@
         // nixglhostRustPackages
         // rec {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-          docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
+          docker-psyche-solana-client = pkgs.dockerTools.buildLayeredImage {
             name = "psyche-solana-client";
             tag = "latest";
 
@@ -114,20 +114,32 @@
             };
           };
 
-          # Build and push script
-          pushImage = pkgs.runCommand "push-image" { } ''
-            set -euo pipefail
+          pushImage =
+            pkgs.runCommand "push-image"
+              {
+                DOCKER_TOKEN = builtins.getEnv "DOCKER_TOKEN";
+                buildInputs = [
+                  pkgs.skopeo
+                  pkgs.coreutils
+                ];
+              }
+              ''
+                set -euo pipefail
 
-            echo "Loading Docker image..."
-            ${docker-psyche-solana-client} | docker load
+                # Create a temporary directory in the build sandbox
+                TEMP_DIR=$(mktemp -d)
+                echo "Using temporary directory: $TEMP_DIR"
 
-            echo "Pushing to registry..."
-            imageName="${docker-psyche-solana-client.imageName}"
-            imageTag="${docker-psyche-solana-client.imageTag}"
-            docker push "$REGISTRY_URL/$imageName:$imageTag"
+                echo "Loading Docker image..."
+                skopeo --insecure-policy \
+                  --tmpdir="$TEMP_DIR" \
+                  copy \
+                  --dest-creds="ignacioavecilla:$DOCKER_TOKEN" \
+                  "docker-archive:${docker-psyche-solana-client}" \
+                  "docker://ignacioavecilla/psyche-solana-client"
 
-            echo "Successfully pushed $REGISTRY_URL/$imageName:$imageTag"
-          '';
+                echo "Successfully pushed image" > $out
+              '';
 
           docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-test-client";

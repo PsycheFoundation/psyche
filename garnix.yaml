@@ -45,6 +45,3 @@ builds:
     branch: ci-build-and-publish-image
     env:
       REGISTRY_URL: 'ignacioavecilla'
-
-features:
-  docker: true
