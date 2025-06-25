@@ -6,6 +6,7 @@ use psyche_client::{
     CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
 };
 use psyche_coordinator::{model, Coordinator, HealthChecks};
+use psyche_metrics::ClientMetrics;
 use psyche_network::{
     allowlist, psyche_relay_map, AuthenticatableIdentity, DiscoveryMode, NetworkTUIState,
     NetworkTui, NodeId, RelayMode, SecretKey, TcpClient,
@@ -78,6 +79,8 @@ pub struct App {
     tx_tui_state: Option<Sender<TabsData>>,
     coordinator_state: Coordinator<ClientId>,
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
+
+    metrics: ClientMetrics,
 }
 
 pub struct AppBuilder(AppParams);
@@ -124,6 +127,7 @@ impl AppBuilder {
     )> {
         let p = self.0;
 
+        let metrics = ClientMetrics::new();
         let server_conn =
             TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
                 &p.server_addr,
@@ -144,17 +148,10 @@ impl AppBuilder {
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
             p.max_concurrent_downloads,
+            metrics.clone(),
         )
         .await?;
 
-        let app = App {
-            cancel: p.cancel,
-            tx_tui_state: p.tx_tui_state,
-            update_tui_interval: interval(Duration::from_millis(150)),
-            coordinator_state: Coordinator::zeroed(),
-            server_conn,
-            run_id: p.run_id,
-        };
         let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
             data_parallelism: p.data_parallelism,
             tensor_parallelism: p.tensor_parallelism,
@@ -175,7 +172,15 @@ impl AppBuilder {
             dummy_training_delay_secs: p.dummy_training_delay_secs,
             max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
         };
-
+        let app = App {
+            cancel: p.cancel,
+            tx_tui_state: p.tx_tui_state,
+            update_tui_interval: interval(Duration::from_millis(150)),
+            coordinator_state: Coordinator::zeroed(),
+            server_conn,
+            run_id: p.run_id,
+            metrics,
+        };
         Ok((app, allowlist, p2p, state_options))
     }
 }
@@ -223,6 +228,7 @@ impl App {
             allowlist,
             p2p,
             state_options,
+            self.metrics.clone(),
         );
 
         debug!("Starting app loop");

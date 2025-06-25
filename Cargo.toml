@@ -26,6 +26,7 @@ psyche-network = { path = "./shared/network" }
 psyche-modeling = { path = "./shared/modeling" }
 psyche-tui = { path = "./shared/tui" }
 psyche-watcher = { path = "./shared/watcher" }
+psyche-metrics = { path = "./shared/metrics" }
 
 psyche-solana-client = { path = "./architectures/decentralized/solana-client" }
 psyche-solana-authorizer = { path = "./architectures/decentralized/solana-authorizer/programs/solana-authorizer" }

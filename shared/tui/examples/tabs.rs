@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use psyche_tui::{init_logging, start_render_loop, CustomWidget, TabbedWidget};
+use psyche_tui::{logging, start_render_loop, CustomWidget, TabbedWidget};
 use rand::{seq::SliceRandom, Rng};
 use ratatui::widgets::{Paragraph, Widget};
 use tokio::{select, time::interval};
-use tracing::{error, info, warn, Level};
+use tracing::{error, info, warn};
 
 mod minimal;
 use minimal::MinimalWidget;
@@ -38,7 +38,7 @@ const BARKS: [&str; 5] = ["bork", "woof", "boof", "bark", "hello im a dog"];
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let logger = init_logging(psyche_tui::LogOutput::TUI, Level::INFO, None, false, None)?;
+    let logger = logging().with_output(psyche_tui::LogOutput::TUI).init()?;
 
     info!("foo");
     warn!("bar");

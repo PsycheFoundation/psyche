@@ -32,6 +32,15 @@ pub enum DownloadType {
     ModelSharing(ModelRequestType),
 }
 
+impl DownloadType {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::DistroResult(..) => "distro_result",
+            Self::ModelSharing(..) => "model_sharing",
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Download {
     blob_ticket: BlobTicket,
@@ -376,8 +385,9 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             })) => {
                 downloads.swap_remove(index);
                 warn!(
-                    "Download error, removing it. idx {index}, hash {}: {:?}",
+                    "Download error, removing it. idx {index}, hash {}, node provider {}: {}",
                     blob_ticket.hash(),
+                    blob_ticket.node_addr().node_id,
                     error
                 );
             }

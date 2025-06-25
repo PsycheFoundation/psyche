@@ -5,7 +5,7 @@ use clap::Args;
 use psyche_eval::tasktype_from_name;
 use psyche_network::SecretKey;
 use psyche_tui::LogOutput;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 pub fn read_identity_secret_key(
     identity_secret_key_path: Option<&PathBuf>,
@@ -68,6 +68,28 @@ pub struct TrainArgs {
         ignore_case = true
     )]
     pub logs: LogOutput,
+
+    /// An auth header string for an opentelemetry endpoint. Used for both logging and metrics.
+    #[clap(long, env)]
+    pub oltp_auth_header: Option<String>,
+
+    /// A URL for sending opentelemetry metrics. probably ends in /v1/metrics
+    #[clap(long, env)]
+    pub oltp_metrics_url: Option<String>,
+
+    /// A URL for sending opentelemetry traces. probably ends in /v1/traces
+    #[clap(long, env)]
+    pub oltp_tracing_url: Option<String>,
+
+    /// A URL for sending opentelemetry logs. probably ends in /v1/logs
+    #[clap(long, env)]
+    pub oltp_logs_url: Option<String>,
+
+    /// how often to report metrics thru opentelemetry
+    #[clap(long, env,
+    default_value = "10.0",
+    value_parser = parse_duration_from_seconds)]
+    pub oltp_report_interval: Duration,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
     #[clap(long, env)]
@@ -142,16 +164,6 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 4, env)]
     pub max_concurrent_downloads: usize,
-
-    // how hard to compress parameters and DisTrO results.
-    // if you have fast upload and a slow CPU, set this low.
-    // if you have slow upload and a fast CPU, set this high.
-    // range is from 1-9, but there's seriously diminishing returns after `2`.
-    // you can do `cargo run -p psyche-network --example compress_distro_result_comparison <distro_results_postcard_file>`,
-    // where that postcard file is one from `--write-gradients-dir` (use some step a few 10s or 100s in)
-    // to benchmark the tradeoffs for your specific machine.
-    #[clap(long, default_value_t = 2, env)]
-    pub compression: u32,
 }
 
 impl TrainArgs {
@@ -251,4 +263,16 @@ pub fn prepare_environment() {
             None,
         );
     }
+}
+
+fn parse_duration_from_seconds(s: &str) -> Result<Duration, String> {
+    s.parse::<f64>()
+        .map_err(|e| format!("Invalid number: {}", e))
+        .and_then(|secs| {
+            if secs < 0.0 {
+                Err("Duration cannot be negative".to_string())
+            } else {
+                Ok(Duration::from_secs_f64(secs))
+            }
+        })
 }

@@ -17,6 +17,7 @@ use psyche_client::{
     CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
+use psyche_metrics::ClientMetrics;
 use psyche_network::{
     allowlist, psyche_relay_map, DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey,
 };
@@ -49,6 +50,10 @@ pub struct App {
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
     authorizer: Option<Pubkey>,
+    metrics: ClientMetrics,
+    allowlist: allowlist::AllowDynamic,
+    p2p: NC,
+    state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
 }
 
 pub struct AppBuilder(AppParams);
@@ -87,15 +92,14 @@ impl AppBuilder {
         Self(params)
     }
 
-    pub async fn build(
-        self,
-    ) -> Result<(
-        App,
-        allowlist::AllowDynamic,
-        NC,
-        RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
-    )> {
+    pub async fn build(self) -> Result<App> {
         let p = self.0;
+        let identity = psyche_solana_coordinator::ClientId::new(
+            p.wallet_keypair.pubkey(),
+            *p.identity_secret_key.public().as_bytes(),
+        );
+
+        let metrics = ClientMetrics::new();
 
         let allowlist = allowlist::AllowDynamic::new();
 
@@ -109,27 +113,10 @@ impl AppBuilder {
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
             p.max_concurrent_downloads,
+            metrics.clone(),
         )
         .await?;
 
-        let app = App {
-            run_id: p.run_id.clone(),
-            cluster: p.cluster,
-            backup_clusters: p.backup_clusters,
-            tick_check_interval: {
-                let mut interval = interval(Duration::from_millis(500));
-                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-                interval
-            },
-            cancel: p.cancel,
-            tx_tui_state: p.tx_tui_state,
-            update_tui_interval: interval(Duration::from_millis(150)),
-            authorizer: p.authorizer,
-        };
-        let identity = psyche_solana_coordinator::ClientId::new(
-            p.wallet_keypair.pubkey(),
-            *p.identity_secret_key.public().as_bytes(),
-        );
         let state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity> =
             RunInitConfig {
                 data_parallelism: p.data_parallelism,
@@ -151,22 +138,34 @@ impl AppBuilder {
                 dummy_training_delay_secs: p.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
             };
-
-        Ok((app, allowlist, p2p, state_options))
+        let app = App {
+            run_id: p.run_id.clone(),
+            cluster: p.cluster,
+            backup_clusters: p.backup_clusters,
+            tick_check_interval: {
+                let mut interval = interval(Duration::from_millis(500));
+                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                interval
+            },
+            cancel: p.cancel,
+            tx_tui_state: p.tx_tui_state,
+            update_tui_interval: interval(Duration::from_millis(150)),
+            authorizer: p.authorizer,
+            allowlist,
+            metrics,
+            p2p,
+            state_options,
+        };
+        Ok(app)
     }
 }
 
 impl App {
-    pub async fn run(
-        &mut self,
-        allowlist: allowlist::AllowDynamic,
-        p2p: NC,
-        state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
-    ) -> Result<()> {
+    pub async fn run(mut self) -> Result<()> {
         let backend = SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            state_options.private_key.0.clone(),
+            self.state_options.private_key.0.clone(),
             CommitmentConfig::confirmed(),
         )?;
         let coordinator_instance =
@@ -184,11 +183,11 @@ impl App {
         let backend = Arc::new(SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            state_options.private_key.0.clone(),
+            self.state_options.private_key.0.clone(),
             CommitmentConfig::confirmed(),
         )?);
-        let signer = state_options.private_key.0.pubkey();
-        let p2p_identity = state_options.private_key.1.public();
+        let signer = self.state_options.private_key.0.pubkey();
+        let p2p_identity = self.state_options.private_key.1.public();
 
         let start_coordinator_state = backend
             .get_coordinator_account(&coordinator_account)
@@ -236,7 +235,13 @@ impl App {
 
         let mut latest_update = coordinator_state.coordinator;
         let mut updates = backend_runner.updates();
-        let mut client = Client::new(backend_runner, allowlist, p2p, state_options);
+        let mut client = Client::new(
+            backend_runner,
+            self.allowlist,
+            self.p2p,
+            self.state_options,
+            self.metrics,
+        );
 
         let id = psyche_solana_coordinator::ClientId {
             signer,
@@ -250,7 +255,7 @@ impl App {
                 }
                 _ = self.update_tui_interval.tick() => {
                     let (client_tui_state, network_tui_state) = client.tui_states().await;
-                    self.update_tui(client_tui_state, &latest_update, network_tui_state).await?;
+                    Self::update_tui(&self.tx_tui_state, client_tui_state, &latest_update, network_tui_state).await?;
                 }
                 _ = self.tick_check_interval.tick() => {
                     let mut ticked = latest_update;
@@ -355,12 +360,12 @@ impl App {
     }
 
     async fn update_tui(
-        &mut self,
+        tx_tui_state: &Option<Sender<<Tabs as CustomWidget>::Data>>,
         client_tui_state: ClientTUIState,
         coordinator_state: &Coordinator<psyche_solana_coordinator::ClientId>,
         network_tui_state: NetworkTUIState,
     ) -> Result<()> {
-        if let Some(tx_tui_state) = &self.tx_tui_state {
+        if let Some(tx_tui_state) = &tx_tui_state {
             let states = (
                 client_tui_state,
                 coordinator_state.into(),
