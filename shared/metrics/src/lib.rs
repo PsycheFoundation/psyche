@@ -3,7 +3,10 @@ mod iroh;
 use std::{
     collections::HashMap,
     fmt::Display,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU32, AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 
@@ -14,7 +17,11 @@ use opentelemetry::{
     KeyValue,
 };
 use sysinfo::System;
-use tokio::time::interval;
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+    time::interval,
+};
 
 pub use iroh::{create_iroh_registry, IrohMetricsCollector};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
@@ -52,11 +59,24 @@ pub struct ClientMetrics {
 
     // internal state tracking
     pub(crate) system_monitor: Arc<tokio::task::JoinHandle<()>>,
+    pub(crate) tcp_server: Arc<tokio::task::JoinHandle<()>>,
+
+    // shared state for TCP server
+    pub(crate) shared_state: Arc<MetricsState>,
+}
+
+#[derive(Debug)]
+struct MetricsState {
+    peer_connection_count: AtomicU64,
+    current_bandwidth: Arc<Mutex<f64>>,
+    current_round_step: AtomicU32,
+    participating: AtomicU64,
 }
 
 impl Drop for ClientMetrics {
     fn drop(&mut self) {
         self.system_monitor.abort();
+        self.tcp_server.abort();
     }
 }
 
@@ -81,6 +101,16 @@ pub enum ClientRoleInRound {
 impl ClientMetrics {
     pub fn new() -> Self {
         let meter = global::meter("psyche_client");
+
+        let shared_state = Arc::new(MetricsState {
+            peer_connection_count: AtomicU64::new(0),
+            current_bandwidth: Arc::new(Mutex::new(0.0)),
+            current_round_step: AtomicU32::new(0),
+            participating: AtomicU64::new(0),
+        });
+
+        let tcp_server = Self::start_tcp_server(shared_state.clone());
+
         Self {
             // broadcasts state
             broadcasts_seen_counter: meter
@@ -161,6 +191,8 @@ impl ClientMetrics {
                 .build(),
 
             system_monitor: Self::start_system_monitoring(&meter),
+            tcp_server,
+            shared_state,
         }
     }
 
@@ -259,6 +291,11 @@ impl ClientMetrics {
                 .record((*latency).into(), &[KeyValue::new("ping", node_id.clone())]);
         }
 
+        // Update shared state
+        self.shared_state
+            .peer_connection_count
+            .store(connections.len() as u64, Ordering::Relaxed);
+
         // record connection counts by type
         for (conn_type, count) in connection_counts {
             self.peer_connections
@@ -282,12 +319,18 @@ impl ClientMetrics {
 
     pub fn update_bandwidth(&self, bytes_per_second: f64) {
         self.bandwidth.record(bytes_per_second, &[]);
+        *self.shared_state.current_bandwidth.lock().unwrap() = bytes_per_second;
     }
 
     pub fn update_round_state(&self, step: u32, role: ClientRoleInRound) {
         self.round_step_gauge.record(step as u64, &[]);
+        self.shared_state
+            .current_round_step
+            .store(step, Ordering::Relaxed);
+
+        let participating = !matches!(role, ClientRoleInRound::NotInRound) as u64;
         self.participating_in_round.record(
-            !matches!(role, ClientRoleInRound::NotInRound) as u64,
+            participating,
             &[KeyValue::new(
                 "role",
                 match role {
@@ -297,6 +340,9 @@ impl ClientMetrics {
                 },
             )],
         );
+        self.shared_state
+            .participating
+            .store(participating, Ordering::Relaxed);
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
@@ -366,6 +412,56 @@ impl ClientMetrics {
                     }
                 }
                 interval.tick().await;
+            }
+        }))
+    }
+
+    fn start_tcp_server(shared_state: Arc<MetricsState>) -> Arc<tokio::task::JoinHandle<()>> {
+        Arc::new(tokio::spawn(async move {
+            let listener = match TcpListener::bind("127.0.0.1:8889").await {
+                Ok(listener) => listener,
+                Err(e) => {
+                    eprintln!("Failed to bind TCP server: {}", e);
+                    return;
+                }
+            };
+
+            let mut interval = interval(Duration::from_secs(5));
+            let mut clients: Vec<TcpStream> = Vec::new();
+
+            loop {
+                tokio::select! {
+                    // Accept new connections
+                    Ok((stream, _)) = listener.accept() => {
+                        clients.push(stream);
+                    }
+
+                    // Broadcast metrics every 5 seconds
+                    _ = interval.tick() => {
+                        let bandwidth = *shared_state.current_bandwidth.lock().unwrap();
+                        let stats = format!(
+                            "{{\"timestamp\":{},\"peer_connections\":{},\"bandwidth\":{:.2},\"round_step\":{},\"participating\":{}}}\n",
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
+                            shared_state.peer_connection_count.load(Ordering::Relaxed),
+                            bandwidth,
+                            shared_state.current_round_step.load(Ordering::Relaxed),
+                            shared_state.participating.load(Ordering::Relaxed)
+                        );
+
+                        // Send to all connected clients, remove disconnected ones
+                        let mut i = 0;
+                        while i < clients.len() {
+                            if clients[i].write_all(stats.as_bytes()).await.is_err() {
+                                clients.remove(i);
+                            } else {
+                                i += 1;
+                            }
+                        }
+                    }
+                }
             }
         }))
     }
