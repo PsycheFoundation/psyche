@@ -115,7 +115,7 @@
           };
 
           # Build and push script
-          pushImage = pkgs.writeShellScriptBin "push-image" ''
+          pushImage = pkgs.runCommand "push-image" { } ''
             set -euo pipefail
 
             echo "Loading Docker image..."
