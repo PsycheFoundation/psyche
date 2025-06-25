@@ -4,7 +4,7 @@ use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use std::{collections::HashMap, fmt::Display, fs::OpenOptions, io::Write, sync::Arc};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -65,6 +65,7 @@ pub struct PreparedTaskResult {
 struct TokenizedLLHDocument {
     text: Vec<i64>,
     choices: Vec<Vec<i64>>,
+    norm_factor: Vec<usize>,
     answer: usize,
 }
 
@@ -77,10 +78,12 @@ impl TokenizedLLHDocument {
             .iter()
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
+        let mut norm_factor = Vec::new();
         let choices: Vec<Vec<i64>> = doc
             .choices
             .into_iter()
             .map(|x| {
+                norm_factor.push(x.len());
                 let choice = tokenizer
                     .encode(x, false)
                     .unwrap()
@@ -91,21 +94,18 @@ impl TokenizedLLHDocument {
                 choice
             })
             .collect();
+
         Self {
             text,
             choices,
+            norm_factor,
             answer: doc.answer,
         }
     }
 }
 
 impl Task {
-    pub fn prepare(
-        mut self,
-        tokenizer: &Tokenizer,
-        bos_token_id: Option<i64>,
-        limit: Option<usize>,
-    ) -> PreparedTask {
+    pub fn prepare(mut self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
         let name = format!("{}", &self);
         info!("Preparing {name}");
         match self.task_type {
@@ -226,62 +226,58 @@ impl PreparedTask {
             let mut context = tokenized_fewshot.to_vec();
             context.extend_from_slice(&doc.text);
             let mut scores: Vec<(f32, bool)> = Vec::new();
-            if doc.choices.iter().all(|x| x.len() == 1) {
-                let ids = Tensor::from_slice(&context)
+
+            for choice in &doc.choices {
+                // e.g:
+                // ids = "A line graph is best used to "
+                let mut ids = context.clone();
+                // ids = "A line graph is best used to compare many variables"
+                ids.extend_from_slice(choice);
+
+                // remove the last id since we dont want to pass it to the model
+                // ids = "A line graph is best used to compare many "
+                ids.pop();
+                let input_lenght = ids.len();
+
+                let ids = Tensor::from_slice(&ids)
                     .to(options.model.device())
                     .unsqueeze(0);
-                let (logits, _) = options.model.forward(&ids, None, Some(1));
-                let logits = logits.squeeze().log_softmax(-1, None);
-                let greedy: i64 = logits.argmax(-1, false).try_into().unwrap();
-                let index =
-                    Tensor::from_slice(&doc.choices.iter().map(|x| x[0]).collect::<Vec<_>>())
-                        .to(logits.device());
-                let logits = logits.gather(-1, &index, false);
-                let logits: Vec<f32> = logits.try_into().unwrap();
-                scores.extend(
-                    logits
-                        .into_iter()
-                        .zip(doc.choices.iter())
-                        .map(|(score, choice)| (score, choice[0] == greedy)),
+
+                let (logits, _) = {
+                    let _no_grad = tch::no_grad_guard();
+                    options.model.forward(&ids, None, None)
+                };
+
+                let log_probabilities = logits
+                    .log_softmax(-1, None)
+                    .squeeze_dim(0)
+                    .slice(0, 0, None, 1);
+
+                // Get tensor of shape `[choice.len(), vocab_size]` containing the
+                // model's predictions for each token of the `choice` text.
+                let choice_log_probabilities = log_probabilities.slice(
+                    0,
+                    input_lenght as i64 - choice.len() as i64,
+                    input_lenght as i64,
+                    1,
                 );
-            } else {
-                for choice in &doc.choices {
-                    let mut ids = context.clone();
-                    ids.extend_from_slice(choice);
-                    // if let Ok(mut file) =
-                    //     OpenOptions::new().create(true).append(true).open("ids.md")
-                    // {
-                    //     writeln!(file, "IDs: {:?}", ids).ok();
-                    // }
-                    // We dont need the last token of the answer, so we can remove it
-                    ids.pop();
-                    let inplen = ids.len();
 
-                    let ids = Tensor::from_slice(&ids)
-                        .to(options.model.device())
-                        .unsqueeze(0);
-
-                    // if the continuation is N tokens, we need the the last N + 1 logits, since we are getting the
-                    // probs at the last token of the prompt (so prediction of the first continuation)
-                    let (logits, _) = options.model.forward(&ids, None, None);
-
-                    // drop the last logit, since we don't want to score what comes after the continuation
-                    let logits = logits
-                        .log_softmax(-1, None)
-                        .squeeze_dim(0)
-                        .slice(0, 0, None, 1);
-
-                    let contlen: i64 = choice.len() as i64;
-                    let logits = logits.slice(0, inplen as i64 - contlen, inplen as i64, 1);
-
-                    let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
-                    let exact_match = greedy_tokens.eq(choice);
-                    let index = Tensor::from_slice(choice).to(logits.device()).unsqueeze(-1);
-                    let logits = logits.gather(-1, &index, false);
-                    let loglikelihood: f32 = logits.sum(Kind::Float).try_into().unwrap();
-                    scores.push((loglikelihood, exact_match));
-                }
+                let greedy_tokens: Vec<i64> = choice_log_probabilities
+                    .argmax(-1, false)
+                    .try_into()
+                    .unwrap();
+                let exact_match = greedy_tokens.eq(choice);
+                let index = Tensor::from_slice(choice)
+                    .to(choice_log_probabilities.device())
+                    .unsqueeze(-1);
+                let choice_log_probabilities = choice_log_probabilities.gather(-1, &index, false);
+                let loglikelihood: f32 = choice_log_probabilities
+                    .sum(Kind::Float)
+                    .try_into()
+                    .unwrap();
+                scores.push((loglikelihood, exact_match));
             }
+
             let selected: i64 = Tensor::from_slice(&scores.iter().map(|x| x.0).collect::<Vec<_>>())
                 .argmax(-1, false)
                 .try_into()
@@ -290,7 +286,7 @@ impl PreparedTask {
                 &scores
                     .iter()
                     .enumerate()
-                    .map(|(idx, x)| x.0 / (doc.choices[idx].len() + 3) as f32)
+                    .map(|(idx, x)| x.0 / (doc.norm_factor[idx]) as f32)
                     .collect::<Vec<_>>(),
             )
             .argmax(-1, false)

@@ -47,10 +47,9 @@ fn main() -> Result<()> {
         None,
         None,
     )?;
-    let bos_token_id = model.bos_token_id();
     for task in tasks {
         let name = format!("{task}");
-        let result = task.prepare(&tokenizer, bos_token_id, None).run(
+        let result = task.prepare(&tokenizer, None).run(
             EvalTaskOptions {
                 model: model.as_mut(),
                 skip_and_step_by: None,
