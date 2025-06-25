@@ -27,10 +27,9 @@ builds:
       - 'packages.x86_64-linux.psyche-solana-client'
       - 'packages.x86_64-linux.psyche-centralized-client'
       - 'packages.x86_64-linux.psyche-centralized-server'
+      - 'packages.x86_64-linux.docker-psyche-solana-client'
       - 'packages.x86_64-linux.psyche-centralized-local-testnet'
       - 'packages.x86_64-linux.expand-distro'
-      - 'packages.x86_64-linux.docker-psyche-solana-client'
-      - 'packages.x86_64-linux.docker-psyche-centralized-client'
       - devShell.x86_64-linux
       - nixosConfigurations.*
       - 'checks.*.*'
