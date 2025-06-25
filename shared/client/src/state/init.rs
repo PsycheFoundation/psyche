@@ -25,7 +25,7 @@ use tokio::{
     sync::{mpsc::UnboundedSender, oneshot},
     task::{JoinError, JoinHandle},
 };
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use super::{
     cooldown::CooldownStepMetadata, evals::EvalRunner, stats::StatsLogger, steps::StepStateMachine,
@@ -454,9 +454,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         if let Some(group) = wandb_info.group {
                             run_info = run_info.group(group);
                         }
-                        Ok(Some(wandb.new_run(run_info.build()?).await?))
+                        match wandb.new_run(run_info.build()?).await {
+                            Ok(run) => Ok(Some(run)),
+                            Err(e) => {
+                                error!("[init_run] Could not connect to wandb. Will continue training without it.");
+                                debug!("[init_run] wandb error: {:?}", e);
+                                Ok(None)
+                            }
+                        }
                     }
-                    None => Ok(None),
+                    None => {
+                        info!(
+                            "[init_run] No wandb info provided. Will continue training without it."
+                        );
+                        Ok(None)
+                    }
                 }
             }
         });
