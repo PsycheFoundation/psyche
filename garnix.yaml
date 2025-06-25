@@ -29,8 +29,6 @@ builds:
       - 'packages.x86_64-linux.psyche-centralized-server'
       - 'packages.x86_64-linux.psyche-centralized-local-testnet'
       - 'packages.x86_64-linux.expand-distro'
-      - 'packages.x86_64-linux.docker-psyche-solana-client'
-      - 'packages.x86_64-linux.docker-psyche-centralized-client'
       - devShell.x86_64-linux
       - nixosConfigurations.*
       - 'checks.*.*'
@@ -40,3 +38,14 @@ builds:
     include:
       - 'packages.x86_64-linux.*'
     branch: main
+
+  - exclude: []
+    include:
+      - 'packages.x86_64-linux.docker-psyche-solana-client'
+    command: nix run .#pushImage
+    branch: ci-build-and-publish-image
+    env:
+      REGISTRY_URL: 'ignacioavecilla'
+
+features:
+  docker: true

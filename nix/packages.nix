@@ -86,7 +86,7 @@
         // rec {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
           docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
-            name = "nousresearch/psyche-solana-client";
+            name = "psyche-solana-client";
             tag = "latest";
 
             # Copy the binary and the entrypoint script into the image
@@ -113,6 +113,21 @@
               Entrypoint = [ "/bin/train_entrypoint.sh" ];
             };
           };
+
+          # Build and push script
+          pushImage = pkgs.writeShellScriptBin "push-image" ''
+            set -euo pipefail
+
+            echo "Loading Docker image..."
+            ${docker-psyche-solana-client} | docker load
+
+            echo "Pushing to registry..."
+            imageName="${docker-psyche-solana-client.imageName}"
+            imageTag="${docker-psyche-solana-client.imageTag}"
+            docker push "$REGISTRY_URL/$imageName:$imageTag"
+
+            echo "Successfully pushed $REGISTRY_URL/$imageName:$imageTag"
+          '';
 
           docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-test-client";
