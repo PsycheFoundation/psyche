@@ -10,12 +10,12 @@ use psyche_data_provider::{
     DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedDataProvider,
 };
 use psyche_network::{AuthenticatableIdentity, FromSignedBytesError, Networkable};
-use psyche_tui::init_logging;
+use psyche_tui::logging;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use tracing::{info, Level};
+use tracing::info;
 use ts_rs::TS;
 
 // Simulated backend for demonstration
@@ -129,13 +129,7 @@ impl LengthKnownDataProvider for DummyDataProvider {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = init_logging(
-        psyche_tui::LogOutput::Console,
-        Level::INFO,
-        None,
-        false,
-        None,
-    )?;
+    let _ = logging().init()?;
 
     let clients: Vec<_> = (0..4).map(DummyNodeIdentity).collect();
     let backend = DummyBackend(clients.clone());

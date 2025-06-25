@@ -9,7 +9,9 @@ mod tui;
 pub use cli::{prepare_environment, print_identity_keys, read_identity_secret_key, TrainArgs};
 pub use client::Client;
 pub use protocol::{Broadcast, BroadcastType, Finished, TrainingResult, NC};
-pub use state::{CheckpointConfig, HubUploadInfo, InitRunError, RunInitConfig, RunInitConfigAndIO};
+pub use state::{
+    CheckpointConfig, HubUploadInfo, InitRunError, RoundState, RunInitConfig, RunInitConfigAndIO,
+};
 pub use testing::IntegrationTestLogMarker;
 pub use tui::{ClientTUI, ClientTUIState};
 

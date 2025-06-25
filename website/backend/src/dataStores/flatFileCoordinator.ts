@@ -27,6 +27,9 @@ import EventEmitter from 'events'
 import { UniqueRunKey, runKey } from '../coordinator.js'
 import { writeFileAtomic } from '../writeFileAtomic.js'
 
+// any run ID outside this list will not be returned to the frontend in the summary list.
+const ALLOWLISTED_RUN_IDS = ['consilience-40b-1']
+
 type Witness = Omit<WitnessMetadata, 'evals'> & {
 	evals: Array<{
 		name: string
@@ -343,7 +346,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					] as const
 			)
 		)
-		const runs = rawRuns.map((r) => r[0]).filter((r) => !!r)
+		const runs = rawRuns
+			.map((r) => r[0])
+			.filter((r): r is RunSummary => !!r && ALLOWLISTED_RUN_IDS.includes(r.id))
 		const summaries = {
 			runs,
 			totalTokens: runs.reduce((sum, run) => sum + run.completedTokens, 0n),
@@ -368,7 +373,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 	getNumRuns(): number {
 		return [...this.#runs.values()].reduce(
-			(sum, runs) => sum + runs.filter((r) => r.lastState).length,
+			(sum, runs) =>
+				sum +
+				runs.filter((r) => r.lastState && ALLOWLISTED_RUN_IDS.includes(r.runId))
+					.length,
 			0
 		)
 	}

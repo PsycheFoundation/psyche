@@ -214,7 +214,7 @@ impl CoordinatorServerHandle {
         let run_id = server.run_id.clone();
         // tokio::spawn(async move { server.run().await });
         // the above line will stack overflow, for reasons best left to contemplative reflection.
-        // as a substitute to maddness, we suggest the reader trust us on this point.
+        // as a substitute to madness, we suggest the reader trust us on this point.
         std::thread::spawn(move || {
             rt.block_on(server.run());
         });

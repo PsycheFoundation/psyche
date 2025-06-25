@@ -10,7 +10,6 @@ use iroh_blobs::{
     rpc::client::blobs::DownloadOptions,
     store::mem::Store,
     util::SetTagOption,
-    BlobFormat,
 };
 use iroh_gossip::{
     net::{Gossip, GossipEvent, GossipReceiver, GossipSender},
@@ -19,6 +18,7 @@ use iroh_gossip::{
 use p2p_model_sharing::{
     ModelConfigSharingMessage, ParameterSharingMessage, MODEL_REQUEST_TIMEOUT_SECS,
 };
+use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 use router::Router;
 use state::State;
 use std::{
@@ -28,7 +28,7 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
-    sync::{Arc, Mutex as StdMutex},
+    sync::{Arc, Mutex as StdMutex, RwLock},
     time::{Duration, Instant},
 };
 use tokio::{
@@ -45,7 +45,7 @@ use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
 pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
-pub use iroh_blobs::{ticket::BlobTicket, Hash};
+pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -53,7 +53,7 @@ mod download_manager;
 mod local_discovery;
 mod p2p_model_sharing;
 mod peer_list;
-mod router;
+pub mod router;
 mod serde;
 mod serializable_kind;
 mod serializable_tensor;
@@ -118,6 +118,8 @@ where
     _broadcast_message: PhantomData<BroadcastMessage>,
     _download: PhantomData<Download>,
     update_stats_interval: Interval,
+    metrics: ClientMetrics,
+    _iroh_metrics: IrohMetricsCollector,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -154,6 +156,7 @@ where
         secret_key: Option<SecretKey>,
         allowlist: A,
         max_concurrent_downloads: usize,
+        metrics: ClientMetrics,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rngs::OsRng),
@@ -259,6 +262,20 @@ where
             ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
         trace!("model parameter sharing created!");
 
+        // init metrics
+        let iroh_metrics = {
+            let registry = Arc::new(RwLock::new(IrohMetricsRegistry::default()));
+            {
+                let mut locked_registry = registry
+                    .write()
+                    .map_err(|_| anyhow!("failed to lock metrics registry"))?;
+                locked_registry.register_all_prefixed(endpoint.metrics());
+                locked_registry.register(gossip.metrics().clone());
+                locked_registry.register(blobs.metrics().clone());
+            }
+            IrohMetricsCollector::new(registry.clone())
+        };
+
         trace!("creating router...");
         let router = Arc::new(
             Router::spawn(
@@ -304,6 +321,8 @@ where
             rx_model_config_req,
 
             router,
+            metrics,
+            _iroh_metrics: iroh_metrics,
 
             update_stats_interval,
             state: State::new(15),
@@ -365,18 +384,20 @@ where
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
             DownloadType::DistroResult(peers) => peers,
-            DownloadType::ModelSharing(_) => vec![],
+            DownloadType::ModelSharing(_) => {
+                vec![]
+            }
         };
         let (tx, rx) = mpsc::unbounded_channel();
 
         self.state.currently_sharing_blobs.insert(ticket_hash);
         self.state.blob_tags.insert((tag, ticket_hash));
-        self.download_manager.add(ticket, tag, rx, download_type);
+        self.download_manager
+            .add(ticket, tag, rx, download_type.clone());
 
-        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash.fmt_short());
+        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let blobs_client = self.blobs.client().clone();
-
         tokio::spawn(async move {
             let download_opts = DownloadOptions {
                 format: BlobFormat::Raw,
@@ -490,7 +511,7 @@ where
         // these are factored out to separate fns so rustfmt works on their contents :)
         select! {
             Some(event) = self.gossip_rx.next() => {
-                match parse_gossip_event(event.map_err(|ee| ee.into()), &self.gossip_rx) {
+                match parse_gossip_event(event.map_err(|ee| ee.into()), &self.gossip_rx, &self.metrics) {
                     Some(result) => Ok(Some(NetworkEvent::MessageReceived(result))),
                     None => Ok(None),
                 }
@@ -501,6 +522,7 @@ where
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
+                        self.metrics.update_download_progress(update.blob_ticket.hash(), update.downloaded_size_delta);
                         Ok(self.on_download_update(update))
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
@@ -608,14 +630,18 @@ pub async fn request_model(
 
     // Receive parameter value blob ticket
     let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
-    let parameter_blob_ticket: Result<BlobTicket, SharableModelError> =
-        postcard::from_bytes(&parameter_blob_ticket_bytes)?;
-    parameter_blob_ticket.with_context(|| "Error parsing model parameter blob ticket".to_string())
+    let parameter_blob_ticket: Result<Result<BlobTicket, SharableModelError>, postcard::Error> =
+        postcard::from_bytes(&parameter_blob_ticket_bytes);
+    let result = parameter_blob_ticket
+        .with_context(|| "Error parsing model parameter blob ticket".to_string())?;
+
+    result.map_err(|e| anyhow!("Error received from peer: {e}"))
 }
 
 fn parse_gossip_event<BroadcastMessage: Networkable>(
     event: Result<iroh_gossip::net::Event>,
     gossip: &GossipReceiver,
+    metrics: &ClientMetrics,
 ) -> Option<(PublicKey, BroadcastMessage)> {
     match event {
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Received(msg))) => {
@@ -637,14 +663,17 @@ fn parse_gossip_event<BroadcastMessage: Networkable>(
         }
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Joined(peers))) => {
             debug!(name: "gossip_init", peers = ?peers, "gossip initialized with peers {peers:?}");
+            metrics.update_p2p_gossip_neighbors(&peers);
         }
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborUp(node_id))) => {
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_new_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip connected to new peer {node_id}, we now have {} peers", peers.len());
+            metrics.update_p2p_gossip_neighbors(&peers);
         }
         Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborDown(node_id))) => {
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_lost_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip disconnected from peer {node_id}, we now have {} peers", peers.len());
+            metrics.update_p2p_gossip_neighbors(&peers);
         }
         Ok(iroh_gossip::net::Event::Lagged) => {
             error!(name: "gossip_lagged","Gossip lagged. We missed some events.")

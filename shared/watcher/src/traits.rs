@@ -10,6 +10,15 @@ pub enum OpportunisticData {
     WarmupStep(Witness),
 }
 
+impl OpportunisticData {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            OpportunisticData::WitnessStep(..) => "witness",
+            OpportunisticData::WarmupStep(..) => "warmup",
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait Backend<T: NodeIdentity>: Send + Sync {
     /// # Cancel safety

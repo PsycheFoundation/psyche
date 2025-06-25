@@ -6,9 +6,15 @@ use app::{App, DataServerInfo};
 use clap::{ArgAction, Parser};
 use psyche_centralized_shared::ClientId;
 use psyche_coordinator::Coordinator;
-use psyche_tui::LogOutput;
-use std::path::{Path, PathBuf};
-use tracing::{error, info, Level};
+use psyche_tui::{
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
+    LogOutput, ServiceInfo,
+};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -72,7 +78,7 @@ struct RunArgs {
     #[clap(long)]
     init_warmup_time: Option<u64>,
 
-    /// Automatically withdraw clients that disconenct from the server
+    /// Automatically withdraw clients that disconnect from the server
     #[clap(
         long,
         action = ArgAction::Set,
@@ -82,6 +88,22 @@ struct RunArgs {
         require_equals = false
     )]
     withdraw_on_disconnect: bool,
+
+    /// An auth header string for an opentelemetry endpoint. Used for both logging and metrics.
+    #[clap(long, env)]
+    pub oltp_auth_header: Option<String>,
+
+    /// A URL for sending opentelemetry metrics. probably ends in /v1/metrics
+    #[clap(long, env)]
+    pub oltp_metrics_url: Option<String>,
+
+    /// A URL for sending opentelemetry traces. probably ends in /v1/traces
+    #[clap(long, env)]
+    pub oltp_tracing_url: Option<String>,
+
+    /// A URL for sending opentelemetry logs. probably ends in /v1/logs
+    #[clap(long, env)]
+    pub oltp_logs_url: Option<String>,
 }
 
 fn load_config_state(
@@ -132,7 +154,7 @@ async fn main() -> Result<()> {
             data_config: data_config_path,
         } => {
             let config = load_config_state(state_path.clone(), data_config_path);
-            let _ = psyche_tui::init_logging(LogOutput::Console, Level::INFO, None, false, None);
+            let _ = psyche_tui::logging::logging().init()?;
             match config {
                 Ok(_) => info!("Configs are OK!"),
                 Err(err) => error!("Error found in config: {err:#}"),
@@ -140,17 +162,41 @@ async fn main() -> Result<()> {
         }
         Commands::Run { run_args } => {
             let config = load_config_state(run_args.state, run_args.data_config);
-            let logger = psyche_tui::init_logging(
-                if run_args.tui {
+            let logger = psyche_tui::logging::logging()
+                .with_output(if run_args.tui {
                     LogOutput::TUI
                 } else {
                     LogOutput::Console
-                },
-                Level::INFO,
-                None,
-                true,
-                Some("centralized-server".to_string()),
-            )?;
+                })
+                .with_metrics_destination(run_args.oltp_metrics_url.clone().map(|endpoint| {
+                    MetricsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: run_args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(10),
+                    })
+                }))
+                .with_trace_destination(run_args.oltp_tracing_url.clone().map(|endpoint| {
+                    TraceDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: run_args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(10),
+                    })
+                }))
+                .with_remote_logs(run_args.oltp_logs_url.clone().map(|endpoint| {
+                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: run_args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(4),
+                    })
+                }))
+                .with_service_info(ServiceInfo {
+                    name: "psyche-centralized-server".to_string(),
+                    instance_id: "server".to_string(),
+                    namespace: "psyche".to_string(),
+                    deployment_environment: std::env::var("DEPLOYMENT_ENV")
+                        .unwrap_or("development".to_string()),
+                })
+                .init()?;
             match config {
                 Ok(config) => {
                     App::new(

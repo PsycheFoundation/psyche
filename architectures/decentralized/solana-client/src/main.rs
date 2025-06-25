@@ -27,7 +27,10 @@ use psyche_core::{sha256, FixedString};
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
-use psyche_tui::{maybe_start_render_loop, LogOutput};
+use psyche_tui::{
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
+    maybe_start_render_loop, LogOutput, ServiceInfo,
+};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
@@ -39,7 +42,7 @@ use tokio::{
     runtime::Builder,
     time::{interval, MissedTickBehavior},
 };
-use tracing::{info, Level};
+use tracing::info;
 
 mod app;
 mod backend;
@@ -725,13 +728,38 @@ async fn async_main() -> Result<()> {
                         SecretKey::generate(&mut rng)
                     });
 
-            let logger = psyche_tui::init_logging(
-                args.logs,
-                Level::INFO,
-                args.write_log.clone(),
-                true,
-                Some(identity_secret_key.public().fmt_short()),
-            )?;
+            let logger = psyche_tui::logging()
+                .with_output(args.logs)
+                .with_log_file(args.write_log.clone())
+                .with_metrics_destination(args.oltp_metrics_url.clone().map(|endpoint| {
+                    MetricsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_trace_destination(args.oltp_tracing_url.clone().map(|endpoint| {
+                    TraceDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_remote_logs(args.oltp_logs_url.clone().map(|endpoint| {
+                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(4),
+                    })
+                }))
+                .with_service_info(ServiceInfo {
+                    name: "psyche-solana-client".to_string(),
+                    instance_id: identity_secret_key.public().to_string(),
+                    namespace: "psyche".to_string(),
+                    deployment_environment: std::env::var("DEPLOYMENT_ENV")
+                        .unwrap_or("development".to_string()),
+                })
+                .init()?;
 
             let (cancel, tx_tui_state) = maybe_start_render_loop(
                 (args.logs == LogOutput::TUI).then(|| Tabs::new(Default::default(), &TAB_NAMES)),
@@ -752,7 +780,7 @@ async fn async_main() -> Result<()> {
                 backup_clusters.push(Cluster::Custom(rpc, ws))
             }
 
-            let (mut app, allowlist, p2p, state_options) = AppBuilder::new(AppParams {
+            let app = AppBuilder::new(AppParams {
                 cancel,
                 tx_tui_state,
                 identity_secret_key,
@@ -783,7 +811,7 @@ async fn async_main() -> Result<()> {
             .await
             .unwrap();
 
-            app.run(allowlist, p2p, state_options).await?;
+            app.run().await?;
             logger.shutdown()?;
 
             Ok(())

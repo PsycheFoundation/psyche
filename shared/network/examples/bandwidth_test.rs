@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMode, RelayUrl};
+use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
     allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
@@ -29,7 +30,7 @@ use tokio::{
     time::{interval, interval_at, Interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn, Level};
+use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -247,17 +248,13 @@ impl App {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let logger = psyche_tui::init_logging(
-        if args.tui {
+    let logger = psyche_tui::logging()
+        .with_output(if args.tui {
             LogOutput::TUI
         } else {
             LogOutput::Console
-        },
-        Level::INFO,
-        None,
-        false,
-        None,
-    )?;
+        })
+        .init()?;
 
     let PeerList(peers) = args
         .peer_list
@@ -295,6 +292,7 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         4,
+        ClientMetrics::new(),
     )
     .await?;
 
