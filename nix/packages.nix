@@ -114,7 +114,7 @@
             };
           };
 
-          docker-psyche-solana-test-client = pkgs.dockerTools.buildLayeredImage {
+          docker-psyche-solana-test-client = pkgs.dockerTools.buildImage {
             name = "psyche-test-client";
             tag = "latest";
 
