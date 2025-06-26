@@ -1,8 +1,9 @@
 name: Push Client Image
 
 on:
-  check_suite:
-    types: [completed]
+  push:
+    branches: [ci-build-and-publish-image]
+  workflow_dispatch:
 
 jobs:
   push-image:
