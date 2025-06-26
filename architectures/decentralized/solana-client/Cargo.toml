@@ -35,7 +35,8 @@ home = "0.5.9"
 solana-account-decoder-client-types = "=2.1.4"
 solana-transaction-status-client-types = "=2.1.4"
 backon = "1.4.1"
+psyche-python-extension-impl = { workspace = true, optional = true }
 
 [features]
-solana-localnet-tests = []
 parallelism = ["psyche-client/parallelism"]
+python = ["psyche-python-extension-impl/python"]

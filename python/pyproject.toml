@@ -1,0 +1,21 @@
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "psyche"
+requires-python = ">=3.8"
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dynamic = ["version"]
+dependencies = ["torch==2.6.0", "transformers==4.51.3"]
+
+[project.optional-dependencies]
+tests = ["pytest"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "psyche._psyche_ext"
+features = ["python-extension"]

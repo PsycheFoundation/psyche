@@ -2762,6 +2762,7 @@ dependencies = [
  "psyche-client",
  "psyche-modeling",
  "psyche-network",
+ "psyche-python-extension-impl",
  "tch",
 ]
 
@@ -6579,9 +6580,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pkarr"
-version = "3.7.2"
+version = "3.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f552a2c2f80b6f3415e1722032ea92f24cc3f83f71b5b9de5600121c4a49fdd"
+checksum = "41a50f65a2b97031863fbdff2f085ba832360b4bef3106d1fcff9ab5bf4063fe"
 dependencies = [
  "async-compat",
  "base32",
@@ -7092,6 +7093,7 @@ dependencies = [
  "psyche-eval",
  "psyche-metrics",
  "psyche-network",
+ "psyche-python-extension-impl",
  "psyche-tui",
  "psyche-watcher",
  "rand 0.8.5",
@@ -7108,6 +7110,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap-markdown",
+ "psyche-python-extension-impl",
  "rand 0.8.5",
  "serde",
  "time",
@@ -7134,6 +7137,7 @@ dependencies = [
  "psyche-core",
  "psyche-data-provider",
  "psyche-network",
+ "psyche-python-extension-impl",
  "psyche-tui",
  "psyche-watcher",
  "rand 0.8.5",
@@ -7202,13 +7206,14 @@ dependencies = [
  "psyche-metrics",
  "psyche-modeling",
  "psyche-network",
+ "psyche-python-extension-impl",
  "psyche-tui",
  "psyche-watcher",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.32.1",
  "tch",
  "thiserror 2.0.12",
  "time",
@@ -7353,7 +7358,7 @@ dependencies = [
  "psyche-core",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.32.1",
  "tokio",
  "tracing",
 ]
@@ -7369,7 +7374,10 @@ dependencies = [
  "memmap2 0.9.5",
  "psyche-core",
  "psyche-data-provider",
+ "psyche-python-extension-impl",
  "psyche-tui",
+ "pyo3",
+ "pyo3-tch",
  "rand 0.8.5",
  "safetensors",
  "serde",
@@ -7419,6 +7427,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-python-extension"
+version = "0.1.0"
+dependencies = [
+ "psyche-python-extension-impl",
+]
+
+[[package]]
+name = "psyche-python-extension-impl"
+version = "0.1.0"
+dependencies = [
+ "psyche-core",
+ "psyche-modeling",
+ "pyo3",
+ "pyo3-tch",
+ "serde_json",
+ "sysinfo 0.30.13",
+ "tch",
+ "tokio-util 0.7.15",
+ "torch-sys",
+]
+
+[[package]]
 name = "psyche-solana-authorizer"
 version = "0.1.0"
 dependencies = [
@@ -7446,6 +7476,7 @@ dependencies = [
  "psyche-eval",
  "psyche-metrics",
  "psyche-network",
+ "psyche-python-extension-impl",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
  "psyche-tui",
@@ -7547,6 +7578,79 @@ dependencies = [
  "psyche-network",
  "psyche-tui",
  "serde",
+]
+
+[[package]]
+name = "pyo3"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5e00b96a521718e08e03b1a622f01c8a8deb50719335de3f60b3b3950f069d8"
+dependencies = [
+ "cfg-if",
+ "indoc",
+ "libc",
+ "memoffset",
+ "parking_lot",
+ "portable-atomic",
+ "pyo3-build-config",
+ "pyo3-ffi",
+ "pyo3-macros",
+ "unindent",
+]
+
+[[package]]
+name = "pyo3-build-config"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7883df5835fafdad87c0d888b266c8ec0f4c9ca48a5bed6bbb592e8dedee1b50"
+dependencies = [
+ "once_cell",
+ "target-lexicon",
+]
+
+[[package]]
+name = "pyo3-ffi"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01be5843dc60b916ab4dad1dca6d20b9b4e6ddc8e15f50c47fe6d85f1fb97403"
+dependencies = [
+ "libc",
+ "pyo3-build-config",
+]
+
+[[package]]
+name = "pyo3-macros"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77b34069fc0682e11b31dbd10321cbf94808394c56fd996796ce45217dfac53c"
+dependencies = [
+ "proc-macro2",
+ "pyo3-macros-backend",
+ "quote",
+ "syn 2.0.103",
+]
+
+[[package]]
+name = "pyo3-macros-backend"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08260721f32db5e1a5beae69a55553f56b99bd0e1c3e6e0a5e8851a9d0f5a85c"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2",
+ "pyo3-build-config",
+ "quote",
+ "syn 2.0.103",
+]
+
+[[package]]
+name = "pyo3-tch"
+version = "0.19.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=5813b4d1789407924b450517639fcd0f7bf093e0#5813b4d1789407924b450517639fcd0f7bf093e0"
+dependencies = [
+ "pyo3",
+ "tch",
+ "torch-sys",
 ]
 
 [[package]]
@@ -11780,6 +11884,21 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
+version = "0.30.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a5b4ddaee55fb2bea2bf0e5000747e5f5c0de765e5a5ff87f4cd106439f4bb3"
+dependencies = [
+ "cfg-if",
+ "core-foundation-sys",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "windows 0.52.0",
+]
+
+[[package]]
+name = "sysinfo"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
@@ -11856,6 +11975,12 @@ dependencies = [
  "libc",
  "xattr",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.12.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tarpc"
@@ -12807,6 +12932,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
 
 [[package]]
+name = "unindent"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
+
+[[package]]
 name = "universal-hash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13210,6 +13341,16 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48a53791691ab099e5e2ad123536d0fff50652600abaf43bbf952894110d0be"
+dependencies = [
+ "windows-core 0.52.0",
+ "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows"
 version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12342cb4d8e3b046f3d80effd474a7a02447231330ef77d71daa6fbc40681143"
@@ -13248,6 +13389,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3beeceb5e5cfd9eb1d76b381630e82c4241ccd0d27f1a39ed41b2760b255c5e8"
 dependencies = [
  "windows-core 0.61.2",
+]
+
+[[package]]
+name = "windows-core"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33ab640c8d7e35bf8ba19b884ba838ceb4fba93a4e8c65a9059d08afcfc683d9"
+dependencies = [
+ "windows-targets 0.52.6",
 ]
 
 [[package]]

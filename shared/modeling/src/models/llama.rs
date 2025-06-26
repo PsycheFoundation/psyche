@@ -1,5 +1,5 @@
 use crate::{
-    auto_config::UseSDPA, default_rope, tensor_parallelism::Communicator, AttentionImplementation,
+    auto_config::UseSDPA, default_rope, parallelism::Communicator, AttentionImplementation,
     AutoConfig, CausalLanguageModel, CausalSelfAttention, ColumnParallelLinear, CommunicatorId,
     EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig, ModelLoadError,
     PretrainedSource, RMSNorm, RoPECache, RoPEConfig, RowParallelLinear,
@@ -235,7 +235,7 @@ impl LlamaForCausalLM {
         kind: Option<Kind>,
         attn_implementation: Option<AttentionImplementation>,
         device: Option<Device>,
-        tensor_parallelism_world: Option<(Arc<CommunicatorId>, usize, usize)>,
+        tensor_parallelism_world: Option<(CommunicatorId, usize, usize)>,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, ModelLoadError> {
         Self::from_builder(

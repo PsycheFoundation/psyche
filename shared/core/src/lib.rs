@@ -27,7 +27,7 @@ pub use batch_id::BatchId;
 pub use bloom::Bloom;
 pub use bounded_queue::BoundedQueue;
 pub use boxed_future::BoxedFuture;
-pub use cancellable_barrier::{CancellableBarrier, CancelledBarrier};
+pub use cancellable_barrier::{Barrier, CancellableBarrier, CancelledBarrier};
 pub use data_shuffle::Shuffle;
 pub use definitions::{
     ConstantLR, CosineLR, LearningRateSchedule, LearningRateScheduler, LinearLR,
