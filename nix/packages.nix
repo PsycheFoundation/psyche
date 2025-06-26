@@ -85,7 +85,7 @@
         // nixglhostRustPackages
         // rec {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-          docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
+          docker-psyche-solana-client = pkgs.dockerTools.buildLayeredImage {
             name = "psyche-solana-client";
             tag = "latest";
 
