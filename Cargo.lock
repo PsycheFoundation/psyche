@@ -7370,6 +7370,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "clap",
+ "flume",
  "itertools 0.14.0",
  "memmap2 0.9.5",
  "psyche-core",
@@ -7443,6 +7444,7 @@ dependencies = [
  "pyo3-tch",
  "serde_json",
  "sysinfo 0.30.13",
+ "take_mut",
  "tch",
  "tokio-util 0.7.15",
  "torch-sys",
@@ -7582,15 +7584,15 @@ dependencies = [
 
 [[package]]
 name = "pyo3"
-version = "0.21.2"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5e00b96a521718e08e03b1a622f01c8a8deb50719335de3f60b3b3950f069d8"
+checksum = "e5203598f366b11a02b13aa20cab591229ff0a89fd121a308a5df751d5fc9219"
 dependencies = [
  "cfg-if",
  "indoc",
  "libc",
  "memoffset",
- "parking_lot",
+ "once_cell",
  "portable-atomic",
  "pyo3-build-config",
  "pyo3-ffi",
@@ -7600,9 +7602,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-build-config"
-version = "0.21.2"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7883df5835fafdad87c0d888b266c8ec0f4c9ca48a5bed6bbb592e8dedee1b50"
+checksum = "99636d423fa2ca130fa5acde3059308006d46f98caac629418e53f7ebb1e9999"
 dependencies = [
  "once_cell",
  "target-lexicon",
@@ -7610,9 +7612,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-ffi"
-version = "0.21.2"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01be5843dc60b916ab4dad1dca6d20b9b4e6ddc8e15f50c47fe6d85f1fb97403"
+checksum = "78f9cf92ba9c409279bc3305b5409d90db2d2c22392d443a87df3a1adad59e33"
 dependencies = [
  "libc",
  "pyo3-build-config",
@@ -7620,9 +7622,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros"
-version = "0.21.2"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77b34069fc0682e11b31dbd10321cbf94808394c56fd996796ce45217dfac53c"
+checksum = "0b999cb1a6ce21f9a6b147dcf1be9ffedf02e0043aec74dc390f3007047cecd9"
 dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
@@ -7632,11 +7634,11 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros-backend"
-version = "0.21.2"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08260721f32db5e1a5beae69a55553f56b99bd0e1c3e6e0a5e8851a9d0f5a85c"
+checksum = "822ece1c7e1012745607d5cf0bcb2874769f0f7cb34c4cde03b9358eb9ef911a"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "pyo3-build-config",
  "quote",
@@ -7645,8 +7647,8 @@ dependencies = [
 
 [[package]]
 name = "pyo3-tch"
-version = "0.19.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=5813b4d1789407924b450517639fcd0f7bf093e0#5813b4d1789407924b450517639fcd0f7bf093e0"
+version = "0.20.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
 dependencies = [
  "pyo3",
  "tch",
@@ -11960,6 +11962,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 
 [[package]]
+name = "take_mut"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
+
+[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11978,9 +11986,9 @@ dependencies = [
 
 [[package]]
 name = "target-lexicon"
-version = "0.12.16"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
+checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
 
 [[package]]
 name = "tarpc"
@@ -12028,8 +12036,8 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.19.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=5813b4d1789407924b450517639fcd0f7bf093e0#5813b4d1789407924b450517639fcd0f7bf093e0"
+version = "0.20.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
 dependencies = [
  "half",
  "lazy_static",
@@ -12509,8 +12517,8 @@ dependencies = [
 
 [[package]]
 name = "torch-sys"
-version = "0.19.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=5813b4d1789407924b450517639fcd0f7bf093e0#5813b4d1789407924b450517639fcd0f7bf093e0"
+version = "0.20.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
 dependencies = [
  "anyhow",
  "cc",

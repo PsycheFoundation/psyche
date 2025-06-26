@@ -1,9 +1,9 @@
 use hf_hub::{
-    api::{
-        tokio::{ApiError, CommitError, UploadSource},
-        Siblings,
-    },
     Cache, Repo, RepoType,
+    api::{
+        Siblings,
+        tokio::{ApiError, CommitError, UploadSource},
+    },
 };
 use std::{path::PathBuf, time::Instant};
 use thiserror::Error;

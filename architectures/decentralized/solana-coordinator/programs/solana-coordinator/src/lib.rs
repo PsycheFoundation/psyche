@@ -11,17 +11,17 @@ pub use client::ClientId;
 pub use instance_state::CoordinatorInstanceState;
 use logic::*;
 pub use program_error::ProgramError;
-use psyche_coordinator::model::{HubRepo, Model};
 use psyche_coordinator::Committee;
 use psyche_coordinator::CommitteeProof;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
+use psyche_coordinator::model::{HubRepo, Model};
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
@@ -52,7 +52,9 @@ pub enum DeserializeCoordinatorFromBytes {
     )]
     IncorrectSize { expected: usize, actual: usize },
 
-    #[error("Coordinator has an invalid discriminator. Expected {expected:?}, got {actual:?}.")]
+    #[error(
+        "Coordinator has an invalid discriminator. Expected {expected:?}, got {actual:?}."
+    )]
     InvalidDiscriminator { expected: Vec<u8>, actual: Vec<u8> },
 
     #[error("Failed to cast bytes into CoordinatorAccount: {0}")]

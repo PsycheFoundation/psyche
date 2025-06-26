@@ -25,37 +25,21 @@ let
     filter = path: type: (testResourcesFilter path type) || (craneLib.filterCargoSources path type);
   };
 
-  torch = pkgs.libtorch-bin.dev.overrideAttrs (
-    old:
-    let
-      version = "2.6.0";
-      cuda = "124";
-    in
-    {
-      version = version;
-      src = pkgs.fetchzip {
-        name = "libtorch-cxx11-abi-shared-with-deps-${version}-cu${cuda}.zip";
-        url = "https://download.pytorch.org/libtorch/cu${cuda}/libtorch-cxx11-abi-shared-with-deps-${version}%2Bcu${cuda}.zip";
-        hash = "sha256-rJIvNGcR/xFfkr/O2a32CmO5/5Fv24Y7+efOtYgGO6A=";
-      };
-    }
-  );
-
   env = {
-    CUDA_ROOT = pkgs.cudaPackages.cudatoolkit.out;
-    LIBTORCH = torch.out;
-    LIBTORCH_INCLUDE = torch.dev;
-    LIBTORCH_LIB = torch.out;
+    LIBTORCH_USE_PYTORCH = 1;
   };
 
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
       pkg-config
       perl
+      python312
     ];
 
     buildInputs =
-      [ torch ]
+      [
+        pkgs.python312Packages.torch-bin
+      ]
       ++ (with pkgs; [
         openssl
         fontconfig # for lr plot
@@ -70,18 +54,32 @@ let
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
+    cargoExtraArgs = "--features python-extension";
+  };
+
+  rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
+    buildInputs = rustWorkspaceArgs.buildInputs ++ [
+      pythonWithPsycheExtension
+    ];
+    NIX_LDFLAGS = "-L${pkgs.python312}/lib -lpython3.12";
   };
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
 
-  buildRustPackage =
+  pythonWithPsycheExtension = (
+    pkgs.python312.withPackages (ps: [
+      (pkgs.callPackage ../python { })
+    ])
+  );
+
+  buildRustPackageWithPythonSidecar =
     name:
     craneLib.buildPackage (
-      rustWorkspaceArgs
+      rustWorkspaceArgsWithPython
       // {
         inherit cargoArtifacts;
         pname = name;
-        cargoExtraArgs = "--bin ${name}";
+        cargoExtraArgs = rustWorkspaceArgsWithPython.cargoExtraArgs + " --bin ${name}";
         doCheck = false;
       }
     );
@@ -138,7 +136,7 @@ let
     );
 
   buildWholeWorkspace = craneLib.buildPackage (
-    rustWorkspaceArgs
+    rustWorkspaceArgsWithPython
     // {
       inherit cargoArtifacts;
     }
@@ -191,7 +189,7 @@ let
         solanaWorkspaceArgs
         // {
           pname = "solana-idl-${programName}";
-          buildPhaseCargoCommand = "cargo test --no-run";
+          buildPhaseCargoCommand = "cargo test --no-run --features idl-build";
         }
       );
     in
@@ -220,7 +218,6 @@ let
           inputs.solana-pkgs.packages.${system}.anchor
         ] ++ rustWorkspaceDeps.nativeBuildInputs;
 
-        # TODO: this doesn't reuse the build artifacts from the deps build, why not?
         buildPhaseCargoCommand = ''
           mkdir $out
           anchor idl build --out $out/idl.json --out-ts $out/idlType.ts
@@ -236,14 +233,16 @@ in
     craneLib
     buildSolanaIdl
     rustWorkspaceArgs
+    rustWorkspaceArgsWithPython
     cargoArtifacts
-    buildRustPackage
+    buildRustPackageWithPythonSidecar
     buildRustWasmTsPackage
     buildWholeWorkspace
     useHostGpuDrivers
     env
     src
     gitcommit
+    pythonWithPsycheExtension
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

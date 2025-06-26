@@ -5,11 +5,11 @@ use iroh_blobs::{net_protocol::Blobs, store::mem::Store};
 use iroh_gossip::net::Gossip;
 use tokio::{sync::Mutex, task::JoinSet};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
-use tracing::{error, info_span, trace, warn, Instrument};
+use tracing::{Instrument, error, info_span, trace, warn};
 
-use iroh::{protocol::ProtocolHandler, Endpoint};
+use iroh::{Endpoint, protocol::ProtocolHandler};
 
-use crate::{p2p_model_sharing, Allowlist, ModelSharing};
+use crate::{Allowlist, ModelSharing, p2p_model_sharing};
 
 /// TODO: This entire struct can be replaced with the builtin Router using the new connection
 /// limiting functionality in Iroh:
@@ -263,8 +263,8 @@ mod tests {
     use tokio_stream::StreamExt;
 
     use crate::{
-        allowlist::{AllowAll, AllowDynamic},
         ModelSharing,
+        allowlist::{AllowAll, AllowDynamic},
     };
 
     use super::*;
@@ -396,7 +396,7 @@ mod tests {
 
         // Send messages from all clients
         for (i, (gossip_tx, _)) in subscriptions.iter_mut().enumerate() {
-            let message = format!("Message from client {}", i);
+            let message = format!("Message from client {i}");
             println!("broadcasting {message}");
             gossip_tx.broadcast(message.into()).await?;
         }
@@ -428,9 +428,7 @@ mod tests {
 
                 assert!(
                     sender_id <= N_ALLOWED,
-                    "Router {} received message from non-allowed client {}",
-                    i,
-                    sender_id
+                    "Router {i} received message from non-allowed client {sender_id}"
                 );
             }
 
@@ -439,9 +437,7 @@ mod tests {
                 assert_eq!(
                     received_messages.len(),
                     N_ALLOWED as usize - 1, // -1 because we're one of them!
-                    "Router {} didn't receive all allowed messages. only saw {:?}",
-                    i,
-                    received_messages
+                    "Router {i} didn't receive all allowed messages. only saw {received_messages:?}"
                 );
             }
         }
