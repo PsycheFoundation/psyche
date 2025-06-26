@@ -33,11 +33,13 @@ unsafe impl ZeroableInOption for Model {}
     Deserialize,
     InitSpace,
     TS,
+    PartialEq,
 )]
 #[repr(C)]
 pub enum LLMArchitecture {
     HfLlama,
     HfDeepseek,
+    HfAuto,
 }
 
 #[derive(

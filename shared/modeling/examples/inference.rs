@@ -2,7 +2,7 @@ use anyhow::{Error, Result};
 use clap::Parser;
 use psyche_data_provider::download_model_repo_sync;
 use psyche_modeling::{
-    auto_model_for_causal_lm_from_pretrained, auto_tokenizer, CommunicatorId, EosToks,
+    auto_model_for_causal_lm_from_pretrained, auto_tokenizer, CausalLM, CommunicatorId,
     LogitsProcessor, Sampling, TokenOutputStream,
 };
 use std::{
@@ -91,12 +91,16 @@ struct Args {
     #[arg(long)]
     tensor_parallelism: Option<usize>,
 
+    #[cfg(feature = "python")]
+    #[clap(long)]
+    python: bool,
+
     prompt: Option<String>,
 }
 
 fn inference(
     repo_files: Vec<PathBuf>,
-    tensor_parallelism: Option<(Arc<CommunicatorId>, usize, usize, Arc<Barrier>)>,
+    tensor_parallelism: Option<(CommunicatorId, usize, usize, Arc<Barrier>)>,
     args: Args,
     seed: u64,
     mut tokens: Vec<i64>,
@@ -107,17 +111,42 @@ fn inference(
         .map(|(_, rank, _, _)| *rank)
         .unwrap_or(0);
     let device = Device::Cuda(rank);
-    let mut model = auto_model_for_causal_lm_from_pretrained(
-        repo_files,
-        Some(Kind::BFloat16),
-        None,
-        tensor_parallelism.as_ref().map(|_| device),
-        tensor_parallelism
-            .as_ref()
-            .map(|(id, rank, size, _)| (id.clone(), *rank, *size)),
-        None,
-    )?;
-    let eos_token_id = model.eos_token_ids();
+
+    #[cfg(feature = "python")]
+    let python = args.python;
+    #[cfg(not(feature = "python"))]
+    let python = false;
+    let mut model: Box<dyn CausalLM> = if python {
+        #[cfg(feature = "python")]
+        {
+            if args.tensor_parallelism.is_some() {
+                anyhow::bail!("Parallelism not supported for inference in python yet");
+            }
+
+            psyche_python_extension_impl::init_embedded_python();
+
+            let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
+            Box::new(psyche_modeling::PythonCausalLM::new(
+                "hf-auto", &source, device, None, None,
+            )?) as Box<dyn CausalLM>
+        }
+        #[cfg(not(feature = "python"))]
+        unreachable!();
+    } else {
+        auto_model_for_causal_lm_from_pretrained(
+            repo_files,
+            Some(Kind::BFloat16),
+            None,
+            tensor_parallelism.as_ref().map(|_| device),
+            tensor_parallelism
+                .as_ref()
+                .map(|(id, rank, size, _)| (id.clone(), *rank, *size)),
+            None,
+        )?
+    };
+
+    let eos_token_ids = model.eos_token_ids();
+
     let mut logits_processor = {
         let temperature = args.temperature;
         let sampling = if temperature <= 0. {
@@ -144,7 +173,7 @@ fn inference(
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
-        let (logits, _) = model.forward(&input, None, Some(1));
+        let (logits, _) = model.forward(&input, None, Some(1), None);
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
@@ -153,8 +182,8 @@ fn inference(
         token_generated += 1;
         tokens.push(next_token as i64);
 
-        match eos_token_id {
-            Some(EosToks::Single(eos_tok_id)) if next_token as i64 == eos_tok_id => {
+        if let Some(eos_token_ids) = &eos_token_ids {
+            if eos_token_ids.contains(next_token as i64) {
                 if rank == 0 {
                     println!(
                         "{}",
@@ -162,17 +191,7 @@ fn inference(
                     );
                 }
                 break;
-            }
-            Some(EosToks::Multiple(ref eos_ids)) if eos_ids.contains(&(next_token as i64)) => {
-                if rank == 0 {
-                    println!(
-                        "{}",
-                        tokenizer.tokenizer().decode(&[next_token], false).unwrap()
-                    );
-                }
-                break;
-            }
-            _ => (),
+            };
         }
 
         if let Some(t) = tokenizer.next_token(next_token)? {
@@ -187,6 +206,7 @@ fn inference(
 
 fn main() -> Result<()> {
     psyche_modeling::set_suggested_env_vars();
+
     let _no_grad = tch::no_grad_guard();
     let args = Args::parse();
     let repo_files = if std::fs::exists(args.model.clone()).unwrap_or_default() {
@@ -211,8 +231,29 @@ fn main() -> Result<()> {
     match args.tensor_parallelism {
         Some(0) | Some(1) | None => inference(repo_files, None, args, seed, tokens, tokenizer)?,
         Some(world_size) => {
+            #[cfg(feature = "python")]
+            let id = match args.python {
+                true => CommunicatorId::torch_distributed("nccl", "tcp://127.0.0.1:23456"),
+                #[cfg(feature = "parallelism")]
+                false => tch::CStore::new().into(),
+                #[cfg(not(feature = "parallelism"))]
+                false => CommunicatorId::none(),
+            };
+
+            #[cfg(not(feature = "python"))]
+            let id: CommunicatorId = {
+                #[cfg(feature = "parallelism")]
+                {
+                    tch::CStore::new().into()
+                }
+
+                #[cfg(not(feature = "parallelism"))]
+                {
+                    CommunicatorId::none()
+                }
+            };
+
             let barrier = Arc::new(Barrier::new(world_size));
-            let id = Arc::new(CommunicatorId::new());
             let threads = (0..world_size)
                 .map(|rank| {
                     let repo_files = repo_files.clone();

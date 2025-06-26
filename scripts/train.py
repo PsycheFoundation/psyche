@@ -70,8 +70,7 @@ def get_model(args):
     if args.use_fsdp:
         mixed_precision_policy = MixedPrecision(
             param_dtype=torch.bfloat16,
-            reduce_dtype=torch.bfloat16,
-            buffer_dtype=torch.bfloat16,
+            reduce_dtype=torch.float32,
         )
 
         def wrap_policy(module, recurse=True, nonwrapped_numel=-1):

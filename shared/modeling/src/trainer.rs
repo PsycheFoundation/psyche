@@ -1,9 +1,10 @@
 use crate::{
     unsharded_cpu_variables, AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize,
     Distro, DistroResult, EosToks, Fp32GradientAccumulator, Optimizer, ReduceType,
+    StableVariableIterator,
 };
 use anyhow::{Error, Result};
-use psyche_core::{BatchId, CancellableBarrier, LearningRateSchedule, OptimizerDefinition};
+use psyche_core::{Barrier, BatchId, LearningRateSchedule, OptimizerDefinition};
 use std::{
     collections::HashMap,
     ops::ControlFlow,
@@ -18,7 +19,12 @@ use tracing::{debug, error, trace, warn};
 #[cfg(feature = "parallelism")]
 use tch::CNCCL;
 
-pub type ParallelModels = Vec<Box<dyn CausalLM>>;
+pub struct ParallelModels {
+    pub models: Vec<Box<dyn CausalLM>>,
+    pub barrier: Arc<dyn Barrier>,
+    pub data_parallel: Option<Vec<DataParallel>>,
+}
+
 pub type DistroResults = Vec<DistroResult>;
 
 #[derive(Debug)]
@@ -38,7 +44,7 @@ impl BatchData {
     pub fn gpu(self, device: Device) -> Self {
         Self::GPU(
             match self {
-                BatchData::CPU(cpu) => Tensor::from_slice2(&cpu),
+                BatchData::CPU(cpu) => Tensor::from_slice2(&cpu).to_kind(Kind::Int64),
                 BatchData::GPU(tensor) => tensor,
             }
             .to(device),
@@ -82,8 +88,8 @@ pub struct TrainOutput {
 
 #[derive(Clone, Debug)]
 pub struct DataParallel {
-    pub id: Arc<CommunicatorId>,
-    pub barrier: Arc<CancellableBarrier>,
+    pub id: CommunicatorId,
+    pub barrier: Arc<dyn Barrier>,
     pub rank: usize,
     pub world_size: usize,
 }
@@ -108,6 +114,7 @@ enum ParallelAssignment {
         data: Tensor,
         labels: Option<Tensor>,
         num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
     },
     Extract,
 }
@@ -130,13 +137,123 @@ enum ParallelResult {
 }
 
 #[derive(Debug)]
-pub struct Trainer {
+pub enum Trainer {
+    Local(LocalTrainer),
+    #[cfg(feature = "python")]
+    PythonDistributed(crate::PythonDistributedTrainer),
+}
+
+impl Trainer {
+    #[allow(clippy::too_many_arguments)]
+    pub fn train(
+        self,
+        step: u32,
+        data: Batch,
+        warmup_lr_between: Option<(u32, u32)>,
+        zero_optim: bool,
+        rollback: Vec<(u32, Vec<DistroResults>)>,
+        prev_self_distro_results: Option<Vec<DistroResults>>,
+        cancel_training: CancellationToken,
+    ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.train(
+                step,
+                data,
+                warmup_lr_between,
+                zero_optim,
+                rollback,
+                prev_self_distro_results,
+                cancel_training,
+            ),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python) => python.train(
+                step,
+                data,
+                warmup_lr_between,
+                zero_optim,
+                rollback,
+                prev_self_distro_results,
+                cancel_training,
+            ),
+        }
+    }
+
+    pub fn optimize(
+        self,
+        step: u32,
+        warmup_lr_between: Option<(u32, u32)>,
+        distro_results: Option<Vec<DistroResults>>,
+    ) -> Result<Self, ApplyDistroResultError> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer
+                .optimize(step, warmup_lr_between, distro_results)
+                .map(|x| x.into()),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python) => python
+                .optimize(step, warmup_lr_between, distro_results)
+                .map(|x| x.into()),
+        }
+    }
+
+    pub fn extract(&mut self) -> Result<HashMap<String, Tensor>, TrainerThreadCommunicationError> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.extract(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python) => python.extract(),
+        }
+    }
+
+    pub fn get_lr(
+        lr_scheduler: &LearningRateSchedule,
+        step: u32,
+        warmup_lr_between: Option<(u32, u32)>,
+    ) -> f64 {
+        let factor = match warmup_lr_between {
+            Some((start, end)) => match step >= start && step <= end {
+                true => (step - start) as f64 / (end - start) as f64,
+                false => 1.,
+            },
+            None => 1.,
+        };
+        lr_scheduler.get_lr(step) * factor
+    }
+
+    pub fn quantize_results(results: &DistroResults) -> DistroResults {
+        results
+            .iter()
+            .map(|x| DistroResult {
+                sparse_idx: x.sparse_idx.copy(),
+                sparse_val: Distro::quantize_nozeros_tensor_to_boolean_sign(&x.sparse_val),
+                xshape: x.xshape.clone(),
+                totalk: x.totalk,
+                stats: x.stats.clone(),
+            })
+            .collect()
+    }
+
+    pub fn causal_lm(&self) -> &dyn CausalLM {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer,
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => python_distributed_trainer,
+        }
+    }
+}
+
+impl From<LocalTrainer> for Trainer {
+    fn from(value: LocalTrainer) -> Self {
+        Self::Local(value)
+    }
+}
+
+#[derive(Debug)]
+pub struct LocalTrainer {
     models: Vec<(
         mpsc::Sender<ParallelAssignment>,
         mpsc::Receiver<ParallelResult>,
     )>,
     first_model_device: Device,
-    barrier: Arc<CancellableBarrier>,
+    barrier: Arc<dyn Barrier>,
     data_parallel: Option<Vec<DataParallel>>,
 }
 
@@ -150,9 +267,13 @@ pub enum TrainerThreadCommunicationError {
 
     #[error("Got unexpected result from trainer thread: {0}")]
     UnexpectedResult(String),
+
+    #[cfg(feature = "python")]
+    #[error("Python error: {0}")]
+    PythonError(#[from] pyo3::PyErr),
 }
 
-impl Trainer {
+impl LocalTrainer {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         models: ParallelModels,
@@ -161,14 +282,17 @@ impl Trainer {
         micro_batch_size: usize,
         stats: Option<u32>,
         grad_accum_in_fp32: bool,
-        data_parallel: Option<Vec<DataParallel>>,
     ) -> Self {
+        let ParallelModels {
+            models,
+            barrier,
+            data_parallel,
+        } = models;
+
         assert!(!models.is_empty());
         let first_model_device = models[0].device();
 
         let mut ret = Vec::with_capacity(models.len());
-
-        let barrier = CancellableBarrier::new(models.len());
 
         let data_parallels = match &data_parallel {
             Some(data_parallel) => {
@@ -219,7 +343,7 @@ impl Trainer {
     fn forward_backward(
         model: &mut dyn CausalLM,
         inputs: Tensor,
-        barrier: &Arc<CancellableBarrier>,
+        barrier: &Arc<dyn Barrier>,
         loss_scale: Option<f64>,
     ) -> Result<Option<Tensor>> {
         let targets = inputs.copy();
@@ -227,11 +351,8 @@ impl Trainer {
             return Ok(None);
         }
         let device = inputs.device();
-        let (_, loss) = model.forward(&inputs, Some(&targets), None);
-        let mut loss = loss.ok_or(Error::msg("No loss"))?;
-        if let Some(loss_scale) = loss_scale {
-            loss /= loss_scale;
-        }
+        let (_, loss) = model.forward(&inputs, Some(&targets), None, loss_scale);
+        let loss = loss.ok_or(Error::msg("No loss"))?;
         loss.backward();
         if device.is_cuda() {
             device.cuda_synchronize();
@@ -243,8 +364,9 @@ impl Trainer {
         model: &mut dyn CausalLM,
         data: &Tensor,
         labels: Option<&Tensor>,
-        barrier: &Arc<CancellableBarrier>,
-        num_logits_to_keeep: Option<i64>,
+        barrier: &Arc<dyn Barrier>,
+        num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
     ) -> Option<(Tensor, Option<Tensor>)> {
         let _guard = tch::no_grad_guard();
         if barrier.wait().is_err() {
@@ -254,7 +376,8 @@ impl Trainer {
         let inputs = data.to(device);
         let labels = labels.map(|x| x.to(device));
         let device = inputs.device();
-        let (logits, loss) = model.forward(&inputs, labels.as_ref(), num_logits_to_keeep);
+        let (logits, loss) =
+            model.forward(&inputs, labels.as_ref(), num_logits_to_keep, loss_scale);
         if device.is_cuda() {
             device.cuda_synchronize();
         }
@@ -290,6 +413,7 @@ impl Trainer {
             })
             .map_err(|_| TrainerThreadCommunicationError::SendCommand)?;
         }
+
         let mut final_loss = 0.0;
         let mut final_distro_results = None;
         let mut final_cancelled = false;
@@ -323,7 +447,7 @@ impl Trainer {
         final_loss /= self.models.len() as f32;
         Ok(TrainOutput {
             batch_id: data.id,
-            trainer: self,
+            trainer: Trainer::Local(self),
             loss: final_loss,
             step,
             distro_results: final_distro_results,
@@ -394,19 +518,6 @@ impl Trainer {
         Ok(extracted)
     }
 
-    pub fn quantize_results(results: &DistroResults) -> DistroResults {
-        results
-            .iter()
-            .map(|x| DistroResult {
-                sparse_idx: x.sparse_idx.copy(),
-                sparse_val: Distro::quantize_nozeros_tensor_to_boolean_sign(&x.sparse_val),
-                xshape: x.xshape.clone(),
-                totalk: x.totalk,
-                stats: x.stats.clone(),
-            })
-            .collect()
-    }
-
     // todo: refactor args into a struct
     #[allow(clippy::too_many_arguments)]
     fn model_thread(
@@ -417,18 +528,22 @@ impl Trainer {
         index: usize,
         micro_batch_size: usize,
         lr_scheduler: LearningRateSchedule,
-        barrier: Arc<CancellableBarrier>,
+        barrier: Arc<dyn Barrier>,
         optim_stats_every_n_steps: Option<u32>,
         grad_accum_in_fp32: bool,
         data_parallel_def: Option<DataParallel>,
     ) {
         #[allow(unused_mut)]
-        let mut data_parallel: Option<(Arc<Communicator>, Arc<CancellableBarrier>)> = None;
+        let mut data_parallel: Option<(Arc<Communicator>, Arc<dyn Barrier>)> = None;
 
         #[cfg(feature = "parallelism")]
         if let Some(data_parallel_def) = data_parallel_def {
+            let id = match data_parallel_def.id {
+                CommunicatorId::NCCL(cstore) => cstore,
+                _ => panic!("Wrong communicator type for model_thread"),
+            };
             let comm = match CNCCL::new(
-                data_parallel_def.id,
+                id,
                 data_parallel_def.rank as i64,
                 data_parallel_def.world_size as i64,
                 model.device(),
@@ -439,7 +554,10 @@ impl Trainer {
                     return;
                 }
             };
-            data_parallel = Some((Arc::new(comm), data_parallel_def.barrier))
+            data_parallel = Some((
+                Arc::new(Communicator::NCCL(comm)),
+                data_parallel_def.barrier,
+            ))
         };
 
         #[cfg(not(feature = "parallelism"))]
@@ -489,19 +607,22 @@ impl Trainer {
                     }
                     if grad_accum_in_fp32 && grad_accum_steps != 1 && grad_accum.is_none() {
                         debug!("Allocating FP32 gradient accumulator");
-                        grad_accum = Some(Fp32GradientAccumulator::new(
-                            &model.variables().trainable_variables(),
-                            model.device(),
-                        ))
+                        grad_accum = Some(Fp32GradientAccumulator::new(model.as_ref()))
                     }
                     let grad_accum_divisor = grad_accum_steps as f64;
 
                     let micro_batches = match batch.data {
                         BatchData::CPU(data) => data
                             .chunks(micro_batch_size)
-                            .map(|chunk| Tensor::from_slice2(chunk).to(model.device()))
+                            .map(|chunk| {
+                                Tensor::from_slice2(chunk)
+                                    .to(model.device())
+                                    .to_kind(Kind::Int64)
+                            })
                             .collect::<Vec<_>>(),
-                        BatchData::GPU(tensor) => tensor.chunk(grad_accum_steps as i64, 0),
+                        BatchData::GPU(tensor) => tensor
+                            .to_kind(Kind::Int64)
+                            .chunk(grad_accum_steps as i64, 0),
                     };
                     assert_eq!(micro_batches.len(), grad_accum_steps);
 
@@ -509,10 +630,10 @@ impl Trainer {
                         grad_accum.zero_grad();
                     }
 
-                    let lr = Self::get_lr(&lr_scheduler, step, warmup_lr_between);
+                    let lr = Trainer::get_lr(&lr_scheduler, step, warmup_lr_between);
                     let prev_lr = match step {
-                        0 => Self::get_lr(&lr_scheduler, 0, warmup_lr_between),
-                        step => Self::get_lr(&lr_scheduler, step - 1, warmup_lr_between),
+                        0 => Trainer::get_lr(&lr_scheduler, 0, warmup_lr_between),
+                        step => Trainer::get_lr(&lr_scheduler, step - 1, warmup_lr_between),
                     };
 
                     tracing::debug!(
@@ -537,7 +658,7 @@ impl Trainer {
                                 tracing::info!("Zeroed optimizer states");
                             }
                             match &prev_self_distro_results {
-                                Some(_) => optimizer.error_correction(prev_lr),
+                                Some(_) => optimizer.error_correction(model.as_ref(), prev_lr),
                                 None => {
                                     error!(
                                         "Got DisTrO train assignment, but null previous results"
@@ -596,20 +717,20 @@ impl Trainer {
                         match &mut grad_accum {
                             Some(grad_accum) => grad_accum.reduce_gradients(dp_comm.clone()),
                             None => {
-                                for variable in model.variables().trainable_variables() {
-                                    let mut grad = variable.grad();
+                                for variable in model.variables() {
+                                    let mut grad = variable.local_tensor().grad();
                                     if grad.defined() {
                                         // reduce grads in fp32
                                         let mut fp32_grad = grad.to_kind(Kind::Float);
                                         fp32_grad
-                                            .all_reduce_(&Some(dp_comm.clone()), ReduceType::Avg);
+                                            .all_reduce(&Some(dp_comm.clone()), ReduceType::Mean);
                                         grad.copy_(&fp32_grad.to_kind(grad.kind()));
                                     }
                                 }
                             }
                         }
                         if let Some(loss) = loss.as_mut() {
-                            loss.all_reduce_(&Some(dp_comm.clone()), ReduceType::Avg);
+                            loss.all_reduce(&Some(dp_comm.clone()), ReduceType::Mean);
                         }
                         dp_barrier.wait().unwrap(); // cannot cancel dp
                     }
@@ -637,6 +758,7 @@ impl Trainer {
                                 };
                                 if clipped {
                                     let ret = optimizer.generate(
+                                        model.as_ref(),
                                         &prev_self_distro_results.unwrap_or_default(),
                                         prev_lr,
                                         lr,
@@ -690,7 +812,7 @@ impl Trainer {
                     step,
                     warmup_lr_between,
                 }) => {
-                    let lr = Self::get_lr(&lr_scheduler, step, warmup_lr_between);
+                    let lr = Trainer::get_lr(&lr_scheduler, step, warmup_lr_between);
                     if optimize_step(
                         &mut model,
                         lr,
@@ -710,6 +832,7 @@ impl Trainer {
                     data,
                     labels,
                     num_logits_to_keep,
+                    loss_scale,
                 }) => {
                     let logits_and_loss = Self::forward(
                         &mut *model,
@@ -717,6 +840,7 @@ impl Trainer {
                         labels.as_ref(),
                         &barrier,
                         num_logits_to_keep,
+                        loss_scale,
                     );
                     if submission
                         .send(ParallelResult::Forward { logits_and_loss })
@@ -726,7 +850,7 @@ impl Trainer {
                     }
                 }
                 Ok(ParallelAssignment::Extract) => {
-                    match unsharded_cpu_variables(model.variables(), model.communicator()) {
+                    match unsharded_cpu_variables(model.as_ref(), model.communicator()) {
                         Ok(variables) => {
                             if submission
                                 .send(ParallelResult::Extract { variables })
@@ -766,21 +890,6 @@ impl Trainer {
             .and_then(|x| x.first().map(|y| y.world_size))
             .unwrap_or(1)
     }
-
-    pub fn get_lr(
-        lr_scheduler: &LearningRateSchedule,
-        step: u32,
-        warmup_lr_between: Option<(u32, u32)>,
-    ) -> f64 {
-        let factor = match warmup_lr_between {
-            Some((start, end)) => match step >= start && step <= end {
-                true => (step - start) as f64 / (end - start) as f64,
-                false => 1.,
-            },
-            None => 1.,
-        };
-        lr_scheduler.get_lr(step) * factor
-    }
 }
 
 #[derive(Error, Debug)]
@@ -796,14 +905,19 @@ pub enum ApplyDistroResultError {
 
     #[error("apply thread crashed")]
     ThreadCrashed,
+
+    #[cfg(feature = "python")]
+    #[error("Python error: {0}")]
+    PythonError(#[from] pyo3::PyErr),
 }
 
-impl CausalLM for Trainer {
+impl CausalLM for LocalTrainer {
     fn forward(
         &mut self,
         x: &Tensor,
         labels: Option<&Tensor>,
         num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
         self.barrier.reset();
         for (tx, _) in &self.models {
@@ -811,6 +925,7 @@ impl CausalLM for Trainer {
                 data: x.shallow_clone(),
                 labels: labels.map(|y| y.shallow_clone()),
                 num_logits_to_keep,
+                loss_scale,
             })
             .expect("Error getting result from forward");
         }
@@ -840,7 +955,7 @@ impl CausalLM for Trainer {
         self.first_model_device
     }
 
-    fn variables(&self) -> &tch::nn::VarStore {
+    fn variables(&self) -> StableVariableIterator {
         unimplemented!()
     }
 
@@ -858,7 +973,7 @@ fn optimize_step(
     lr: f64,
     optimizer: &mut Optimizer,
     distro_results: Option<&Vec<Vec<DistroResult>>>,
-    barrier: &Arc<CancellableBarrier>,
+    barrier: &Arc<dyn Barrier>,
 ) -> ControlFlow<()> {
     match optimizer {
         Optimizer::Torch {
@@ -885,7 +1000,7 @@ fn optimize_step(
                     if barrier.wait().is_err() {
                         return ControlFlow::Break(());
                     }
-                    optimizer.apply(results, lr);
+                    optimizer.apply(model.as_ref(), results, lr);
                     if barrier.wait().is_err() {
                         return ControlFlow::Break(());
                     }
@@ -901,4 +1016,94 @@ fn optimize_step(
         Optimizer::Null => (),
     };
     ControlFlow::Continue(())
+}
+
+impl CausalLM for Trainer {
+    fn forward(
+        &mut self,
+        x: &Tensor,
+        labels: Option<&Tensor>,
+        num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
+    ) -> (Tensor, Option<Tensor>) {
+        match self {
+            Trainer::Local(local_trainer) => {
+                local_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
+            }
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
+            }
+        }
+    }
+
+    fn bos_token_id(&self) -> Option<i64> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.bos_token_id(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.bos_token_id()
+            }
+        }
+    }
+
+    fn eos_token_ids(&self) -> Option<EosToks> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.eos_token_ids(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.eos_token_ids()
+            }
+        }
+    }
+
+    fn device(&self) -> Device {
+        match self {
+            Trainer::Local(local_trainer) => *local_trainer.device(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.device()
+            }
+        }
+    }
+
+    fn variables(&self) -> StableVariableIterator {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.variables(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.variables()
+            }
+        }
+    }
+
+    fn communicator(&self) -> Option<Arc<Communicator>> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.communicator(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.communicator()
+            }
+        }
+    }
+
+    fn prepare_for_training(&mut self) {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.prepare_for_training(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.prepare_for_training()
+            }
+        }
+    }
+
+    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.clip_grad_norm(max_grad_norm),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.clip_grad_norm(max_grad_norm)
+            }
+        }
+    }
 }

@@ -145,6 +145,9 @@ fn load_config_state(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    #[cfg(feature = "python")]
+    psyche_python_extension_impl::init_embedded_python();
+
     let args = Args::parse();
 
     let command = args.command;
