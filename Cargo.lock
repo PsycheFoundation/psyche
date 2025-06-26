@@ -7351,6 +7351,8 @@ dependencies = [
  "nvml-wrapper",
  "opentelemetry 0.28.0",
  "psyche-core",
+ "serde",
+ "serde_json",
  "sysinfo",
  "tokio",
  "tracing",
