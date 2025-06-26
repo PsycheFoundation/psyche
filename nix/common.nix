@@ -24,37 +24,32 @@ let
     filter = path: type: (testResourcesFilter path type) || (craneLib.filterCargoSources path type);
   };
 
-  torch = pkgs.libtorch-bin.dev.overrideAttrs (
-    old:
-    let
-      version = "2.6.0";
-      cuda = "124";
-    in
-    {
-      version = version;
-      src = pkgs.fetchzip {
-        name = "libtorch-cxx11-abi-shared-with-deps-${version}-cu${cuda}.zip";
-        url = "https://download.pytorch.org/libtorch/cu${cuda}/libtorch-cxx11-abi-shared-with-deps-${version}%2Bcu${cuda}.zip";
-        hash = "sha256-rJIvNGcR/xFfkr/O2a32CmO5/5Fv24Y7+efOtYgGO6A=";
-      };
-    }
-  );
+  pytorch = pkgs.python312Packages.torch-bin.overrideAttrs (oldAttrs: rec {
+    version = "2.6.0";
+    src =
+      let
+        pyVerNoDot = builtins.replaceStrings [ "." ] [ "" ] pkgs.python312.pythonVersion;
+        srcs = import ./torch-binary-hashes-2.6.0.nix version;
+        unsupported = throw "Unsupported system";
+      in
+      pkgs.fetchurl (srcs."${pkgs.stdenv.system}-${pyVerNoDot}" or unsupported);
+  });
 
   env = {
-    CUDA_ROOT = pkgs.cudaPackages.cudatoolkit.out;
-    LIBTORCH = torch.out;
-    LIBTORCH_INCLUDE = torch.dev;
-    LIBTORCH_LIB = torch.out;
+    LIBTORCH_USE_PYTORCH = 1;
   };
 
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
       pkg-config
       perl
+      pkgs.python312
     ];
 
     buildInputs =
-      [ torch ]
+      [
+        pytorch
+      ]
       ++ (with pkgs; [
         openssl
         fontconfig # for lr plot
@@ -250,5 +245,6 @@ in
     env
     src
     gitcommit
+    pytorch
     ;
 }

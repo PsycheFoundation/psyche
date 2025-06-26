@@ -58,6 +58,7 @@
         // nixglhostRustPackages
         // {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+          python-extension = pkgs.callPackage ../python { };
         };
     };
 }

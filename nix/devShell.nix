@@ -60,6 +60,10 @@
           nodejs
           pnpm
           wasm-pack
+
+          # for python stuff
+          python312
+          poetry
         ];
 
         shellHook = ''
