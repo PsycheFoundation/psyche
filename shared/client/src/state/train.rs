@@ -305,11 +305,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                         // reset the DP barriers
                         if let Some(trainer) = available_trainers.first() {
-                            if available_trainers.len() != trainer.data_parallel_world_size() {
-                                error!("Available trainers does not equal DP world size");
-                                return Err(TrainError::TrainCrashed);
+                            #[allow(irrefutable_let_patterns)]
+                            if let Trainer::Local(trainer) = trainer {
+                                if available_trainers.len() != trainer.data_parallel_world_size() {
+                                    error!("Available trainers does not equal DP world size");
+                                    return Err(TrainError::TrainCrashed);
+                                }
+                                trainer.data_parallel_barrier();
                             }
-                            trainer.data_parallel_barrier();
                         } else {
                             error!("No available trainers");
                             return Err(TrainError::TrainCrashed);

@@ -4,6 +4,8 @@ members = [
   "architectures/decentralized/solana-client",
   "architectures/decentralized/testing",
   "architectures/decentralized/solana-tooling",
+  "python/",
+  "python/extension-impl/",
   "shared/*",
   "tools/rust-tools/*",
   "website/wasm",
@@ -24,6 +26,8 @@ psyche-data-provider = { path = "./shared/data-provider" }
 psyche-eval = { path = "./shared/eval" }
 psyche-network = { path = "./shared/network" }
 psyche-modeling = { path = "./shared/modeling" }
+psyche-python-extension = { path = "./python" }
+psyche-python-extension-impl = { path = "./python/extension-impl" }
 psyche-tui = { path = "./shared/tui" }
 psyche-watcher = { path = "./shared/watcher" }
 psyche-metrics = { path = "./shared/metrics" }
@@ -76,6 +80,7 @@ tokenizers = { version = "0.20.0", default-features = false, features = [
 ] }
 tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5813b4d1789407924b450517639fcd0f7bf093e0" }
 torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5813b4d1789407924b450517639fcd0f7bf093e0" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5813b4d1789407924b450517639fcd0f7bf093e0" }
 # tch = { path = "../tch-rs" }
 # torch-sys = { path = "../tch-rs/torch-sys" }
 time = { version = "0.3.36", features = ["formatting", "macros"] }
@@ -84,7 +89,7 @@ bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 thiserror = "2.0.3"
 toml = "0.8.19"
 clap-markdown = "0.1.4"
-
+pyo3 = { version = "0.21" }
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 anchor-client = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5", features = [
   "async",

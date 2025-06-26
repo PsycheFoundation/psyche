@@ -1,11 +1,11 @@
 use crate::{
-    AttentionImplementation, Communicator, CommunicatorId, ModelConfig, ModelLoadError,
-    PretrainedSource, RoPEConfig,
+    AllReduce, AttentionImplementation, Communicator, CommunicatorId, ModelConfig, ModelLoadError,
+    PretrainedSource, ReduceType, RoPEConfig, StableVarStoreIterator, StableVariableIterator,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
 use tch::{
-    nn::{self, Module, VarStore},
+    nn::{self, Module},
     Device, Kind, Tensor,
 };
 
@@ -29,11 +29,12 @@ pub trait CausalLM: Send {
         x: &Tensor,
         labels: Option<&Tensor>,
         num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>);
     fn bos_token_id(&self) -> Option<i64>;
     fn eos_token_ids(&self) -> Option<EosToks>;
     fn device(&self) -> Device;
-    fn variables(&self) -> &VarStore;
+    fn variables(&self) -> StableVariableIterator;
     fn communicator(&self) -> Option<Arc<Communicator>>;
     fn prepare_for_training(&mut self);
     fn clip_grad_norm(&mut self, max_grad_norm: f64);
@@ -61,7 +62,7 @@ pub trait LanguageModelConfig: ModelConfig + Send + Debug + serde::de::Deseriali
 pub struct CausalLanguageModel<M: LanguageModelForward, C: LanguageModelConfig> {
     pub model: M,
     pub config: C,
-    pub variables: VarStore,
+    pub variables: StableVarStoreIterator,
     pub device: Device,
     pub lm_head: nn::Linear,
     pub comm: Option<Arc<Communicator>>,
@@ -85,7 +86,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
         kind: Option<Kind>,
         attn_implementation: Option<AttentionImplementation>,
         device: Option<Device>,
-        tensor_parallelism_world: Option<(Arc<CommunicatorId>, usize, usize)>,
+        tensor_parallelism_world: Option<(CommunicatorId, usize, usize)>,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, ModelLoadError> {
         let mut config = source.get_config()?;
@@ -99,15 +100,21 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
         }
 
         let device = device.unwrap_or(Device::cuda_if_available());
+
         #[cfg(feature = "parallelism")]
         let comm = match tensor_parallelism_world {
-            // TODO: CNCCL is not Sync, though it is Send.
-            // since we can't safely use it on two threads at once,
-            // we should either wrap it in a Mutex, or just switch to Rc if we don't need mutability.
-            #[allow(clippy::arc_with_non_send_sync)]
             Some((id, rank, world_size)) => Some(Arc::new(
-                CNCCL::new(id, rank as i64, world_size as i64, device)
-                    .map_err(ModelLoadError::TensorParallelismFailedInit)?,
+                CNCCL::new(
+                    match id {
+                        CommunicatorId::NCCL(cstore) => cstore,
+                        _ => return Err(ModelLoadError::CommunicatorMismatch),
+                    },
+                    rank as i64,
+                    world_size as i64,
+                    device,
+                )
+                .map_err(ModelLoadError::TensorParallelismFailedInit)?
+                .into(),
             )),
             None => None,
         };
@@ -139,6 +146,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
 
             (model, lm_head)
         };
+        let variables = StableVarStoreIterator::new(&variables, comm.clone());
         Ok(Self {
             model,
             config,
@@ -157,6 +165,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
         x: &Tensor,
         labels: Option<&Tensor>,
         num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
         let (_, t) = x.size2().unwrap();
         let mut x = self.model.forward(x, 0, self.training);
@@ -174,13 +183,16 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
                 let shift_labels = labels.slice(1, 1, None, 1).contiguous();
                 let shift_logits = shift_logits.view([-1i64, self.config.vocab_size() as i64]);
                 let shift_targets = shift_labels.view(-1).to_kind(Kind::Int64);
-                let loss = shift_logits.cross_entropy_loss::<Tensor>(
+                let mut loss = shift_logits.cross_entropy_loss::<Tensor>(
                     &shift_targets,
                     None,
                     tch::Reduction::Mean,
                     -100,
                     0.0,
                 );
+                if let Some(loss_scale) = loss_scale {
+                    loss /= loss_scale;
+                }
                 Some(loss)
             }
             None => None,
@@ -200,8 +212,8 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
         self.device
     }
 
-    fn variables(&self) -> &VarStore {
-        &self.variables
+    fn variables(&self) -> StableVariableIterator {
+        Box::new(self.variables.clone())
     }
 
     fn communicator(&self) -> Option<Arc<Communicator>> {
@@ -230,45 +242,24 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
     /// total_norm = sqrt(all_reduce(||w_shared_local||^2) + ||w_replicated||^2)
     /// gives us the correct global L2 norm as if all parameters were on a single device.
     fn clip_grad_norm(&mut self, max_norm: f64) {
-        let vars = {
-            let variables = self.variables().variables_.lock().unwrap();
-            variables
-                .trainable_variables
-                .iter()
-                .map(|v| (v.0.tensor.shallow_clone(), v.1))
-                .collect::<Vec<_>>()
-        };
+        let mut sharded_norm_sq = Tensor::zeros([], (Kind::Float, self.device));
+        let mut replicated_norm_sq = Tensor::zeros([], (Kind::Float, self.device));
 
-        let device = if !vars.is_empty() {
-            vars[0].0.device()
-        } else {
-            return;
-        };
-
-        let mut sharded_norm_sq = Tensor::zeros([], (Kind::Float, device));
-        let mut replicated_norm_sq = Tensor::zeros([], (Kind::Float, device));
-
-        for (param, shard) in &vars {
-            let grad = param.grad();
+        for var in self.variables() {
+            let grad = var.logical_tensor().grad();
             if grad.defined() {
                 let local_norm = grad.norm();
                 let local_norm_sq = &local_norm * &local_norm;
 
-                match shard {
-                    Some(_) => sharded_norm_sq += local_norm_sq,
-                    None => replicated_norm_sq += local_norm_sq,
+                if var.is_sharded() {
+                    sharded_norm_sq += local_norm_sq
+                } else {
+                    replicated_norm_sq += local_norm_sq
                 }
             }
         }
-        #[cfg(feature = "parallelism")]
-        if let Some(comm) = &self.comm {
-            comm.all_reduce(&[&sharded_norm_sq], tch::ReduceOpType::Sum)
-                .unwrap();
-        }
-        #[cfg(not(feature = "parallelism"))]
-        if self.comm.is_some() {
-            panic!("communicator passed, but parallelism is not enabled.");
-        }
+
+        sharded_norm_sq.all_reduce(&self.comm, ReduceType::Sum);
 
         let total_norm: f64 = (sharded_norm_sq + replicated_norm_sq)
             .sqrt()
@@ -277,12 +268,21 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
 
         if total_norm > max_norm {
             let scale = max_norm / (total_norm + 1e-6);
-            for (param, _) in vars {
-                let mut grad = param.grad();
+            for var in self.variables() {
+                let mut grad = var.logical_tensor().grad();
                 if grad.defined() {
                     let _t = grad.g_mul_scalar_(scale);
                 }
             }
+        }
+    }
+}
+
+impl EosToks {
+    pub fn contains(&self, token: i64) -> bool {
+        match self {
+            EosToks::Single(x) => *x == token,
+            EosToks::Multiple(items) => items.contains(&token),
         }
     }
 }
