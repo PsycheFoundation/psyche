@@ -12,6 +12,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Set up Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+            substituters = https://cache.garnix.io https://cache.nixos.org/
+
+      - name: Download image from Garnix cache
+        run: |
+          nix build .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
+
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - run: scripts/push-client-image.sh
