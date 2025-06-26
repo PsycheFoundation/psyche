@@ -66,11 +66,23 @@ pub struct ClientMetrics {
 
 #[derive(Serialize, Debug, Clone, Default)]
 struct TcpMetrics {
+    timestamp: u64,
     peer_connections: u64,
     bandwidth: f64,
     round_step: u32,
     participating: u64,
-    timestamp: u64,
+    broadcasts_seen: u64,
+    apply_message_success: u64,
+    apply_message_failure: u64,
+    apply_message_ignored: u64,
+    witnesses_sent: u64,
+    gossip_neighbors: u64,
+    downloads_started: u64,
+    downloads_finished: u64,
+    downloads_retry: u64,
+    downloads_failed: u64,
+    downloads_perma_failed: u64,
+    downloads_bytes: u64,
 }
 
 impl Drop for ClientMetrics {
@@ -203,6 +215,7 @@ impl ClientMetrics {
 
     pub fn record_broadcast_seen(&self) {
         self.broadcasts_seen_counter.add(1, &[]);
+        self.tcp_metrics.lock().unwrap().broadcasts_seen += 1;
     }
 
     pub fn record_apply_message_success(&self, step: u32, from_peer: impl Display, kind: &str) {
@@ -214,6 +227,7 @@ impl ClientMetrics {
                 KeyValue::new("type", kind.to_string()),
             ],
         );
+        self.tcp_metrics.lock().unwrap().apply_message_success += 1;
     }
 
     pub fn record_apply_message_failure(&self, step: u32, from_peer: impl Display, kind: &str) {
@@ -224,7 +238,8 @@ impl ClientMetrics {
                 KeyValue::new("step", step as i64),
                 KeyValue::new("type", kind.to_string()),
             ],
-        )
+        );
+        self.tcp_metrics.lock().unwrap().apply_message_failure += 1;
     }
 
     pub fn record_apply_message_ignored(&self, step: u32, kind: impl Display) {
@@ -234,22 +249,26 @@ impl ClientMetrics {
                 KeyValue::new("step", step as i64),
                 KeyValue::new("type", kind.to_string()),
             ],
-        )
+        );
+        self.tcp_metrics.lock().unwrap().apply_message_ignored += 1;
     }
 
     pub fn record_witness_send(&self, kind: impl Display) {
         self.witnesses_sent
             .add(1, &[KeyValue::new("type", kind.to_string())]);
+        self.tcp_metrics.lock().unwrap().witnesses_sent += 1;
     }
 
     pub fn record_download_started(&self, hash: impl Display, kind: impl Display) {
         debug!(name: "download_started", hash = %hash);
         self.downloads_started_counter
             .add(1, &[KeyValue::new("type", kind.to_string())]);
+        self.tcp_metrics.lock().unwrap().downloads_started += 1;
     }
     pub fn record_download_retry(&self, hash: impl Display) {
         debug!(name: "download_retry", hash = %hash);
         self.downloads_retry_counter.add(1, &[]);
+        self.tcp_metrics.lock().unwrap().downloads_retry += 1;
     }
 
     pub fn update_download_progress(&self, hash: impl Display, newly_downloaded_bytes: u64) {
@@ -257,6 +276,7 @@ impl ClientMetrics {
             newly_downloaded_bytes,
             &[KeyValue::new("hash", hash.to_string())],
         );
+        self.tcp_metrics.lock().unwrap().downloads_bytes += newly_downloaded_bytes;
     }
 
     pub fn record_download_completed(&self, hash: impl Display, from_peer: impl Display) {
@@ -266,13 +286,16 @@ impl ClientMetrics {
             from_peer =%from_peer
         );
         self.downloads_finished_counter.add(1, &[]);
+        self.tcp_metrics.lock().unwrap().downloads_finished += 1;
     }
 
     pub fn record_download_failed(&self) {
         self.downloads_failed_counter.add(1, &[]);
+        self.tcp_metrics.lock().unwrap().downloads_failed += 1;
     }
     pub fn record_download_perma_failed(&self) {
         self.downloads_perma_failed_counter.add(1, &[]);
+        self.tcp_metrics.lock().unwrap().downloads_perma_failed += 1;
     }
 
     pub fn update_peer_connections(&self, connections: &[PeerConnection]) {
@@ -307,8 +330,9 @@ impl ClientMetrics {
     }
 
     pub fn update_p2p_gossip_neighbors(&self, neighbors: &[impl Display]) {
+        let num_neighbors = neighbors.len() as u64;
         self.gossip_neighbors.record(
-            neighbors.len() as u64,
+            num_neighbors,
             &[KeyValue::new(
                 "peers",
                 neighbors
@@ -318,6 +342,7 @@ impl ClientMetrics {
                     .join(","),
             )],
         );
+        self.tcp_metrics.lock().unwrap().gossip_neighbors = num_neighbors;
     }
 
     pub fn update_bandwidth(&self, bytes_per_second: f64) {
