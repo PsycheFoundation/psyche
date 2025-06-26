@@ -131,7 +131,7 @@ impl EvalRunner {
                 let mut model_tasks = eval_tasks
                     .into_iter()
                     .map(|task| {
-                        let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
+                        let prepared = task.prepare(&tokenizer, eval_task_max_docs);
                         tracing::info!("Loading evaluation task: {}", &prepared.name());
 
                         Arc::new(ModelTask::new_eval_task(EvalTask {

@@ -15,7 +15,7 @@ pub use state::{
 pub use testing::IntegrationTestLogMarker;
 pub use tui::{ClientTUI, ClientTUIState};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WandBInfo {
     pub project: String,
     pub run: String,
