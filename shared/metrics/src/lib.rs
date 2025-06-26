@@ -2,6 +2,7 @@ mod iroh;
 
 use std::{
     collections::HashMap,
+    env,
     fmt::Display,
     sync::{Arc, Mutex},
     time::Duration,
@@ -23,7 +24,7 @@ use tokio::{
 
 pub use iroh::{create_iroh_registry, IrohMetricsCollector};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 #[derive(Clone, Debug)]
 /// metrics collector for Psyche clients
@@ -57,7 +58,7 @@ pub struct ClientMetrics {
 
     // internal state tracking
     pub(crate) system_monitor: Arc<tokio::task::JoinHandle<()>>,
-    pub(crate) tcp_server: Arc<tokio::task::JoinHandle<()>>,
+    pub(crate) tcp_server: Option<Arc<tokio::task::JoinHandle<()>>>,
 
     // shared state for TCP server
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
@@ -75,7 +76,9 @@ struct TcpMetrics {
 impl Drop for ClientMetrics {
     fn drop(&mut self) {
         self.system_monitor.abort();
-        self.tcp_server.abort();
+        if let Some(server) = &self.tcp_server {
+            server.abort();
+        }
     }
 }
 
@@ -102,7 +105,16 @@ impl ClientMetrics {
         let meter = global::meter("psyche_client");
 
         let tcp_metrics = Arc::new(Mutex::new(TcpMetrics::default()));
-        let tcp_server = Self::start_tcp_server(tcp_metrics.clone());
+        let tcp_server = if let Ok(port_str) = std::env::var("METRICS_PORT") {
+            if let Ok(port) = port_str.parse::<u16>() {
+                Some(Self::start_tcp_server(port, tcp_metrics.clone()))
+            } else {
+                warn!("Invalid METRICS_PORT: {}", port_str);
+                None
+            }
+        } else {
+            None
+        };
 
         Self {
             // broadcasts state
@@ -411,15 +423,20 @@ impl ClientMetrics {
         }))
     }
 
-    fn start_tcp_server(tcp_metrics: Arc<Mutex<TcpMetrics>>) -> Arc<tokio::task::JoinHandle<()>> {
+    fn start_tcp_server(
+        port: u16,
+        tcp_metrics: Arc<Mutex<TcpMetrics>>,
+    ) -> Arc<tokio::task::JoinHandle<()>> {
         Arc::new(tokio::spawn(async move {
-            let listener = match TcpListener::bind("127.0.0.1:8888").await {
+            let addr = format!("127.0.0.1:{}", port);
+            let listener = match TcpListener::bind(&addr).await {
                 Ok(listener) => listener,
                 Err(e) => {
-                    eprintln!("Failed to bind TCP server: {}", e);
+                    eprintln!("Failed to bind TCP server on {}: {}", addr, e);
                     return;
                 }
             };
+            info!("Metrics TCP server listening on {}", addr);
 
             let mut interval = interval(Duration::from_secs(5));
             let mut clients: Vec<TcpStream> = Vec::new();
