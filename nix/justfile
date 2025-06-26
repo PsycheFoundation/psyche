@@ -26,7 +26,7 @@ build_docker_centralized_client:
 
 # Build the solana client Docker image
 build_docker_solana_client:
-    nom build .#docker-psyche-solana-client --out-link nix-results/docker-psyche-solana-client
+    nix build .#docker-psyche-solana-client --out-link nix-results/docker-psyche-solana-client
     nix-results/docker-psyche-solana-client | docker load
 
 # Build the image for the solana client used for testing

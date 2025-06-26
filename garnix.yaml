@@ -38,10 +38,3 @@ builds:
     include:
       - 'packages.x86_64-linux.*'
     branch: main
-
-  - exclude: []
-    include:
-      - 'packages.x86_64-linux.pushImage'
-    branch: ci-build-and-publish-image
-    env:
-      REGISTRY_URL: 'ignacioavecilla'

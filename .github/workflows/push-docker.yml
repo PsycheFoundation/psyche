@@ -1,0 +1,16 @@
+name: Push Client Image
+
+on:
+  check_suite:
+    types: [completed]
+
+jobs:
+  push-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: scripts/push-client-image.sh

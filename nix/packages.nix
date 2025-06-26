@@ -85,7 +85,7 @@
         // nixglhostRustPackages
         // rec {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-          docker-psyche-solana-client = pkgs.dockerTools.buildLayeredImage {
+          docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-solana-client";
             tag = "latest";
 
@@ -113,33 +113,6 @@
               Entrypoint = [ "/bin/train_entrypoint.sh" ];
             };
           };
-
-          pushImage =
-            pkgs.runCommand "push-image"
-              {
-                DOCKER_TOKEN = builtins.getEnv "DOCKER_TOKEN";
-                buildInputs = [
-                  pkgs.skopeo
-                  pkgs.coreutils
-                ];
-              }
-              ''
-                set -euo pipefail
-
-                # Create a temporary directory in the build sandbox
-                TEMP_DIR=$(mktemp -d)
-                echo "Using temporary directory: $TEMP_DIR"
-
-                echo "Loading Docker image..."
-                skopeo --insecure-policy \
-                  --tmpdir="$TEMP_DIR" \
-                  copy \
-                  --dest-creds="ignacioavecilla:$DOCKER_TOKEN" \
-                  "docker-archive:${docker-psyche-solana-client}" \
-                  "docker://ignacioavecilla/psyche-solana-client"
-
-                echo "Successfully pushed image" > $out
-              '';
 
           docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-test-client";
