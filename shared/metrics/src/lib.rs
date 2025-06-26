@@ -3,10 +3,7 @@ mod iroh;
 use std::{
     collections::HashMap,
     fmt::Display,
-    sync::{
-        atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -16,6 +13,7 @@ use opentelemetry::{
     metrics::{Counter, Gauge, Histogram, Meter},
     KeyValue,
 };
+use serde::Serialize;
 use sysinfo::System;
 use tokio::{
     io::AsyncWriteExt,
@@ -62,15 +60,16 @@ pub struct ClientMetrics {
     pub(crate) tcp_server: Arc<tokio::task::JoinHandle<()>>,
 
     // shared state for TCP server
-    pub(crate) shared_state: Arc<MetricsState>,
+    pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
 }
 
-#[derive(Debug)]
-struct MetricsState {
-    peer_connection_count: AtomicU64,
-    current_bandwidth: Arc<Mutex<f64>>,
-    current_round_step: AtomicU32,
-    participating: AtomicU64,
+#[derive(Serialize, Debug, Clone, Default)]
+struct TcpMetrics {
+    peer_connections: u64,
+    bandwidth: f64,
+    round_step: u32,
+    participating: u64,
+    timestamp: u64,
 }
 
 impl Drop for ClientMetrics {
@@ -102,14 +101,8 @@ impl ClientMetrics {
     pub fn new() -> Self {
         let meter = global::meter("psyche_client");
 
-        let shared_state = Arc::new(MetricsState {
-            peer_connection_count: AtomicU64::new(0),
-            current_bandwidth: Arc::new(Mutex::new(0.0)),
-            current_round_step: AtomicU32::new(0),
-            participating: AtomicU64::new(0),
-        });
-
-        let tcp_server = Self::start_tcp_server(shared_state.clone());
+        let tcp_metrics = Arc::new(Mutex::new(TcpMetrics::default()));
+        let tcp_server = Self::start_tcp_server(tcp_metrics.clone());
 
         Self {
             // broadcasts state
@@ -192,7 +185,7 @@ impl ClientMetrics {
 
             system_monitor: Self::start_system_monitoring(&meter),
             tcp_server,
-            shared_state,
+            tcp_metrics,
         }
     }
 
@@ -292,9 +285,7 @@ impl ClientMetrics {
         }
 
         // Update shared state
-        self.shared_state
-            .peer_connection_count
-            .store(connections.len() as u64, Ordering::Relaxed);
+        self.tcp_metrics.lock().unwrap().peer_connections = connections.len() as u64;
 
         // record connection counts by type
         for (conn_type, count) in connection_counts {
@@ -319,16 +310,19 @@ impl ClientMetrics {
 
     pub fn update_bandwidth(&self, bytes_per_second: f64) {
         self.bandwidth.record(bytes_per_second, &[]);
-        *self.shared_state.current_bandwidth.lock().unwrap() = bytes_per_second;
+        self.tcp_metrics.lock().unwrap().bandwidth = bytes_per_second;
     }
 
     pub fn update_round_state(&self, step: u32, role: ClientRoleInRound) {
         self.round_step_gauge.record(step as u64, &[]);
-        self.shared_state
-            .current_round_step
-            .store(step, Ordering::Relaxed);
 
         let participating = !matches!(role, ClientRoleInRound::NotInRound) as u64;
+        {
+            let mut metrics = self.tcp_metrics.lock().unwrap();
+            metrics.round_step = step;
+            metrics.participating = participating;
+        }
+
         self.participating_in_round.record(
             participating,
             &[KeyValue::new(
@@ -340,9 +334,6 @@ impl ClientMetrics {
                 },
             )],
         );
-        self.shared_state
-            .participating
-            .store(participating, Ordering::Relaxed);
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
@@ -398,17 +389,21 @@ impl ClientMetrics {
                     nvml,
                 }) = &gpu_meters
                 {
-                    for (i, gpu) in (0..nvml.device_count().unwrap())
-                        .map(|i| (i, nvml.device_by_index(i).unwrap()))
-                    {
-                        let device_info = [KeyValue::new("gpu", i as i64)];
-                        gpu_usage.record(gpu.utilization_rates().unwrap().gpu as f64, &device_info);
-                        let memory_info = gpu.memory_info().unwrap();
-                        gpu_memory.record(memory_info.used, &device_info);
-                        gpu_temp.record(
-                            gpu.temperature(TemperatureSensor::Gpu).unwrap() as u64,
-                            &device_info,
-                        );
+                    if let Ok(device_count) = nvml.device_count() {
+                        for i in 0..device_count {
+                            if let Ok(gpu) = nvml.device_by_index(i) {
+                                let device_info = [KeyValue::new("gpu", i as i64)];
+                                if let Ok(util) = gpu.utilization_rates() {
+                                    gpu_usage.record(util.gpu as f64, &device_info);
+                                }
+                                if let Ok(mem) = gpu.memory_info() {
+                                    gpu_memory.record(mem.used, &device_info);
+                                }
+                                if let Ok(temp) = gpu.temperature(TemperatureSensor::Gpu) {
+                                    gpu_temp.record(temp as u64, &device_info);
+                                }
+                            }
+                        }
                     }
                 }
                 interval.tick().await;
@@ -416,9 +411,9 @@ impl ClientMetrics {
         }))
     }
 
-    fn start_tcp_server(shared_state: Arc<MetricsState>) -> Arc<tokio::task::JoinHandle<()>> {
+    fn start_tcp_server(tcp_metrics: Arc<Mutex<TcpMetrics>>) -> Arc<tokio::task::JoinHandle<()>> {
         Arc::new(tokio::spawn(async move {
-            let listener = match TcpListener::bind("127.0.0.1:8889").await {
+            let listener = match TcpListener::bind("127.0.0.1:8888").await {
                 Ok(listener) => listener,
                 Err(e) => {
                     eprintln!("Failed to bind TCP server: {}", e);
@@ -438,23 +433,28 @@ impl ClientMetrics {
 
                     // Broadcast metrics every 5 seconds
                     _ = interval.tick() => {
-                        let bandwidth = *shared_state.current_bandwidth.lock().unwrap();
-                        let stats = format!(
-                            "{{\"timestamp\":{},\"peer_connections\":{},\"bandwidth\":{:.2},\"round_step\":{},\"participating\":{}}}\n",
-                            std::time::SystemTime::now()
+                        let stats_obj = {
+                            let mut metrics = tcp_metrics.lock().unwrap();
+                            metrics.timestamp = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                            shared_state.peer_connection_count.load(Ordering::Relaxed),
-                            bandwidth,
-                            shared_state.current_round_step.load(Ordering::Relaxed),
-                            shared_state.participating.load(Ordering::Relaxed)
-                        );
+                                .unwrap_or_default()
+                                .as_secs();
+                            metrics.clone()
+                        };
+
+                        let mut stats_json = match serde_json::to_string(&stats_obj) {
+                            Ok(json) => json,
+                            Err(e) => {
+                                eprintln!("Failed to serialize metrics: {}", e);
+                                continue;
+                            }
+                        };
+                        stats_json.push('\n');
 
                         // Send to all connected clients, remove disconnected ones
                         let mut i = 0;
                         while i < clients.len() {
-                            if clients[i].write_all(stats.as_bytes()).await.is_err() {
+                            if clients[i].write_all(stats_json.as_bytes()).await.is_err() {
                                 clients.remove(i);
                             } else {
                                 i += 1;
