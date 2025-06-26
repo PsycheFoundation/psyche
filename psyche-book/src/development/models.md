@@ -35,6 +35,8 @@ The `train` example currently asssumes your model is a Llama or Deepseek v2/v3 m
 
 We currently only support causal language models - to implement a new one, you can create a file similar to `llama_for_causal_lm` and implement your model, ensuring you provide a trait impl for `CausalLM`.
 
+There's alpha-level support for models written in Python. See the [Python](./python.md) docs for more information.
+
 You might also need to modify the data provider, if your data is structured in some way.
 Since you're implementing the forward pass yourself, you can serve and interpret data passed from the data provider however you need.
 The data provider currently only supports reading fixed-size batches from input files, so data batches with different sizes will require some additional work.

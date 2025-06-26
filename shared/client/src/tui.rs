@@ -26,7 +26,7 @@ fn convert_tokens_per_sec(tokens_per_sec: f32) -> String {
     if tokens_per_sec == 0. {
         String::new()
     } else if tokens_per_sec < KB {
-        format!("{} tok/s", tokens_per_sec)
+        format!("{tokens_per_sec} tok/s")
     } else if tokens_per_sec < MB {
         format!("{:.1}K tok/s", tokens_per_sec / KB)
     } else if tokens_per_sec < GB {
@@ -44,7 +44,7 @@ fn convert_tokens(tokens: u64) -> String {
     const TB: f32 = GB * 1000.0;
 
     if tokens < KB {
-        format!("{}", tokens)
+        format!("{tokens}")
     } else if tokens < MB {
         format!("{:.1}K", tokens / KB)
     } else if tokens < GB {

@@ -1,11 +1,11 @@
 use bytemuck::Zeroable;
 use psyche_centralized_server::app::App as ServerApp;
 use psyche_centralized_shared::ClientId;
-use psyche_coordinator::{
-    model::{Checkpoint, Model, LLM},
-    Coordinator, CoordinatorConfig, CoordinatorEpochState, RunState, SOLANA_MAX_NUM_CLIENTS,
-};
 use psyche_coordinator::{Client, Round};
+use psyche_coordinator::{
+    Coordinator, CoordinatorConfig, CoordinatorEpochState, RunState, SOLANA_MAX_NUM_CLIENTS,
+    model::{Checkpoint, LLM, Model},
+};
 use psyche_core::FixedVec;
 use std::{collections::HashSet, mem::Discriminant, ops::ControlFlow};
 use tokio::{
@@ -17,7 +17,7 @@ use tokio::{
 };
 use tracing::debug;
 
-use crate::{test_utils::sample_rand_run_id, COOLDOWN_TIME};
+use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
 use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 
 enum TestingQueryMsg {

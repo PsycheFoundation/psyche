@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use psyche_tui::{logging, start_render_loop, CustomWidget, TabbedWidget};
-use rand::{seq::SliceRandom, Rng};
+use psyche_tui::{CustomWidget, TabbedWidget, logging, start_render_loop};
+use rand::{Rng, seq::SliceRandom};
 use ratatui::widgets::{Paragraph, Widget};
 use tokio::{select, time::interval};
 use tracing::{error, info, warn};

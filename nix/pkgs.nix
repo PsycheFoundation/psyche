@@ -9,12 +9,17 @@
         system = final.system;
         pkgs = final;
       };
+      python312Packages = prev.python312Packages.override {
+        overrides = pyfinal: pyprev: rec {
+          torch = pyprev.torch-bin;
+        };
+      };
     })
   ];
 
   config = {
     allowUnfree = true;
     cudaSupport = true;
-    cudaVersion = "12.4";
+    cudaVersion = "12.8";
   };
 }

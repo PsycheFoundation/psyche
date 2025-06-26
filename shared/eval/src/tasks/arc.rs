@@ -1,4 +1,4 @@
-use crate::{load_dataset, traits::Document, traits::LogLikelihoodTask, TaskType};
+use crate::{TaskType, load_dataset, traits::Document, traits::LogLikelihoodTask};
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Field, Row, RowAccessor, Split};
 use std::fmt::Display;
@@ -54,7 +54,7 @@ impl Arc {
             .unwrap();
         let choices = choices_and_labels.get_list(0).unwrap();
         let labels = choices_and_labels.get_list(1).unwrap();
-        let text = format!("Question: {}\nAnswer:", text);
+        let text = format!("Question: {text}\nAnswer:");
         let answer = row
             .get_string(dataset.get_column_id("answerKey").unwrap())
             .unwrap();

@@ -1,7 +1,6 @@
 use crate::{
-    load_dataset,
+    ASCII_UPPERCASE, TaskType, load_dataset,
     traits::{Document, LogLikelihoodTask},
-    TaskType, ASCII_UPPERCASE,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};

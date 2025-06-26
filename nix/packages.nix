@@ -15,7 +15,7 @@
         craneLib
         buildSolanaIdl
         commonArgs
-        buildRustPackage
+        buildRustPackageWithPythonSidecar
         buildRustWasmTsPackage
         useHostGpuDrivers
         src
@@ -35,7 +35,7 @@
       rustPackages = builtins.listToAttrs (
         map (name: {
           inherit name;
-          value = buildRustPackage name;
+          value = buildRustPackageWithPythonSidecar name;
         }) rustPackageNames
       );
 
@@ -57,6 +57,7 @@
         rustPackages
         // nixglhostRustPackages
         // {
+          solana-coordinator-idl = pkgs.callPackage ../architectures/decentralized/solana-coordinator { };
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
         };
     };

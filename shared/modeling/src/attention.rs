@@ -1,6 +1,6 @@
 use crate::{ColumnParallelLinear, Communicator, RoPECache, RowParallelLinear};
 use std::sync::Arc;
-use tch::{nn::Module, Device, Tensor};
+use tch::{Device, Tensor, nn::Module};
 
 fn repeat_kv(hidden_states: &Tensor, n_rep: i64) -> Tensor {
     let (batch, num_key_value_heads, slen, head_dim) = hidden_states.size4().unwrap();

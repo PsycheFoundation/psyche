@@ -1,10 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
 use psyche_core::{Barrier, BatchId, CancellableBarrier, CosineLR, OptimizerDefinition, Shuffle};
-use psyche_data_provider::{download_model_repo_sync, LocalDataProvider};
+use psyche_data_provider::{LocalDataProvider, download_model_repo_sync};
 use psyche_modeling::{
-    auto_model_for_causal_lm_from_pretrained, Batch, BatchData, CausalLM, CommunicatorId,
-    DataParallel, LocalTrainer, ModelLoadError, ParallelModels, Trainer,
+    Batch, BatchData, CausalLM, CommunicatorId, DataParallel, LocalTrainer, ModelLoadError,
+    ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained,
 };
 use psyche_tui::logging;
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
@@ -436,7 +436,7 @@ fn main() -> Result<()> {
             .as_secs_f32();
 
         info!(
-            "step: {}, duration: {:.1}, loss: {:.4}",
+            "step: {}, duration: {:.2}, loss: {:.4}",
             step, duration, loss
         );
     }

@@ -7,17 +7,16 @@ use std::{
     time::Duration,
 };
 
-use nvml_wrapper::{enum_wrappers::device::TemperatureSensor, Nvml};
+use nvml_wrapper::{Nvml, enum_wrappers::device::TemperatureSensor};
 use opentelemetry::{
-    global,
+    KeyValue, global,
     metrics::{Counter, Gauge, Histogram, Meter},
-    KeyValue,
 };
 use serde::Serialize;
 use sysinfo::System;
 use tokio::{io::AsyncWriteExt, net::TcpListener, time::interval};
 
-pub use iroh::{create_iroh_registry, IrohMetricsCollector};
+pub use iroh::{IrohMetricsCollector, create_iroh_registry};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
 use tracing::{debug, info, warn};
 
@@ -440,11 +439,14 @@ impl ClientMetrics {
         tcp_metrics: Arc<Mutex<TcpMetrics>>,
     ) -> Arc<tokio::task::JoinHandle<()>> {
         Arc::new(tokio::spawn(async move {
-            let addr = format!("127.0.0.1:{}", port);
+            let addr = format!("127.0.0.1:{port}");
             let listener = match TcpListener::bind(&addr).await {
                 Ok(listener) => listener,
                 Err(e) => {
-                    warn!("[metrics tcp server] Failed to bind TCP server on {}: {} -- Continuing without it", addr, e);
+                    warn!(
+                        "[metrics tcp server] Failed to bind TCP server on {}: {} -- Continuing without it",
+                        addr, e
+                    );
                     return;
                 }
             };

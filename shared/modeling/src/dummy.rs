@@ -5,8 +5,8 @@ use std::{
     time::Duration,
 };
 use tch::{
-    nn::{VarStore, Variables},
     Device, Kind, Tensor,
+    nn::{VarStore, Variables},
 };
 
 #[derive(Debug)]

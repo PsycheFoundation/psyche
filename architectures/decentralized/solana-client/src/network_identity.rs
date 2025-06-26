@@ -1,5 +1,5 @@
 use anchor_client::solana_sdk::{
-    signature::{Keypair, Signature, SIGNATURE_BYTES},
+    signature::{Keypair, SIGNATURE_BYTES, Signature},
     signer::Signer,
 };
 use anyhow::Result;
@@ -174,8 +174,8 @@ mod tests {
         };
         let network_identity = NetworkIdentity(client_id);
 
-        let display_string = format!("{}", network_identity);
-        assert_eq!(display_string, format!("{}", client_id));
+        let display_string = format!("{network_identity}");
+        assert_eq!(display_string, format!("{client_id}"));
     }
 
     #[test]

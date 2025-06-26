@@ -5,8 +5,8 @@ use crate::{
 use std::fmt::Debug;
 use std::sync::Arc;
 use tch::{
-    nn::{self, Module},
     Device, Kind, Tensor,
+    nn::{self, Module},
 };
 
 #[cfg(feature = "parallelism")]
@@ -103,6 +103,8 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
 
         #[cfg(feature = "parallelism")]
         let comm = match tensor_parallelism_world {
+            #[allow(clippy::arc_with_non_send_sync)]
+            // TODO: analyze how we're using Arc here, is this right?
             Some((id, rank, world_size)) => Some(Arc::new(
                 CNCCL::new(
                     match id {

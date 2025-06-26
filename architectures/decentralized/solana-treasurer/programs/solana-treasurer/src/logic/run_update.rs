@@ -1,15 +1,15 @@
 use anchor_lang::prelude::*;
-use psyche_coordinator::model::Model;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::model::Model;
+use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::CoordinatorInstance;
+use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_coordinator::cpi::accounts::OwnerCoordinatorAccounts;
 use psyche_solana_coordinator::cpi::set_future_epoch_rates;
 use psyche_solana_coordinator::cpi::set_paused;
 use psyche_solana_coordinator::cpi::update;
 use psyche_solana_coordinator::program::PsycheSolanaCoordinator;
-use psyche_solana_coordinator::CoordinatorAccount;
-use psyche_solana_coordinator::CoordinatorInstance;
-use psyche_solana_coordinator::RunMetadata;
 
 use crate::state::Run;
 

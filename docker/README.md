@@ -87,7 +87,7 @@ the environment variables `RPC`, `WS_RPC` and `RUN_ID` accordingly:
 
 There is an example env file `config/client/.env.example` that you can use as a template.
 
-> \[!NOTE\]
+> [!NOTE]
 > If you want to run the network using a local Solana test validator, then you can just copy the `.env.example`
 > file as it is:
 

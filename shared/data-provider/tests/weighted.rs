@@ -78,7 +78,7 @@ async fn test_weighted_data_provider_equal_weights() -> Result<()> {
     let count1 = *provider_counts.get(&1).unwrap_or(&0);
     let count2 = *provider_counts.get(&2).unwrap_or(&0);
 
-    println!("Provider 1 count: {}, Provider 2 count: {}", count1, count2);
+    println!("Provider 1 count: {count1}, Provider 2 count: {count2}");
 
     assert!((40..=60).contains(&count1));
     assert!((40..=60).contains(&count2));
@@ -110,7 +110,7 @@ async fn test_weighted_data_provider_unequal_weights() -> Result<()> {
     let count1 = *provider_counts.get(&1).unwrap_or(&0);
     let count2 = *provider_counts.get(&2).unwrap_or(&0);
 
-    println!("Provider 1 count: {}, Provider 2 count: {}", count1, count2);
+    println!("Provider 1 count: {count1}, Provider 2 count: {count2}");
 
     assert!((65..=85).contains(&count1));
     assert!((15..=35).contains(&count2));
@@ -140,7 +140,7 @@ async fn test_weighted_data_provider_auto_weights() -> Result<()> {
     let count1 = *provider_counts.get(&1).unwrap_or(&0);
     let count2 = *provider_counts.get(&2).unwrap_or(&0);
 
-    println!("Provider 1 count: {}, Provider 2 count: {}", count1, count2);
+    println!("Provider 1 count: {count1}, Provider 2 count: {count2}");
 
     assert!((15..=35).contains(&count1)); // ~25%
     assert!((65..=85).contains(&count2)); // ~75%
@@ -314,7 +314,7 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
         match provider_id {
             1 => provider1_yielded_sample_ids.push(sample_id_within_provider),
             2 => provider2_yielded_sample_ids.push(sample_id_within_provider),
-            _ => panic!("Unexpected provider ID encountered: {}", provider_id),
+            _ => panic!("Unexpected provider ID encountered: {provider_id}"),
         }
     }
 
@@ -324,8 +324,7 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
 
     assert!(
         (12..=13).contains(&p1_total_count),
-        "Provider 1 count ({}) not in expected range [12, 13]",
-        p1_total_count
+        "Provider 1 count ({p1_total_count}) not in expected range [12, 13]"
     );
 
     assert_eq!(
@@ -336,15 +335,13 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
     for i in 0..5 {
         assert!(
             p1_unique_yielded_ids.contains(&i),
-            "Provider 1 unique IDs should contain {}",
-            i
+            "Provider 1 unique IDs should contain {i}"
         );
     }
 
     assert!(
         p1_total_count > 5,
-        "Provider 1 count ({}) must be > 5 to indicate repetition occurred",
-        p1_total_count
+        "Provider 1 count ({p1_total_count}) must be > 5 to indicate repetition occurred"
     );
 
     let mut first_5_p1_ids = std::collections::HashSet::new();
@@ -371,8 +368,7 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
 
     assert!(
         (12..=13).contains(&p2_total_count),
-        "Provider 2 count ({}) not in expected range [12, 13]",
-        p2_total_count
+        "Provider 2 count ({p2_total_count}) not in expected range [12, 13]"
     );
 
     assert_eq!(

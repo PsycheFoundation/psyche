@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
-use crate::state::Authorization;
 use crate::ProgramError;
+use crate::state::Authorization;
 
 #[derive(Accounts)]
 #[instruction(params: AuthorizationCloseParams)]

@@ -20,6 +20,7 @@ tokio-util.workspace = true
 psyche-core.workspace = true
 pyo3 = { workspace = true, optional = true }
 pyo3-tch = { workspace = true, optional = true }
+flume.workspace = true
 
 # for examples
 [dev-dependencies]

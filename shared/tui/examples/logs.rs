@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use minimal::MinimalWidget;
-use psyche_tui::{logging, logging::LoggerWidget, start_render_loop, CustomWidget};
+use psyche_tui::{CustomWidget, logging, logging::LoggerWidget, start_render_loop};
 use rand::RngCore;
 use ratatui::layout::{Constraint, Direction, Layout};
 use tokio::{select, time::interval};

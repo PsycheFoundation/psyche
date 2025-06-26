@@ -6,9 +6,9 @@ mod state;
 mod testing;
 mod tui;
 
-pub use cli::{prepare_environment, print_identity_keys, read_identity_secret_key, TrainArgs};
+pub use cli::{TrainArgs, prepare_environment, print_identity_keys, read_identity_secret_key};
 pub use client::Client;
-pub use protocol::{Broadcast, BroadcastType, Finished, TrainingResult, NC};
+pub use protocol::{Broadcast, BroadcastType, Finished, NC, TrainingResult};
 pub use state::{
     CheckpointConfig, HubUploadInfo, InitRunError, RoundState, RunInitConfig, RunInitConfigAndIO,
 };

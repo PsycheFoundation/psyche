@@ -14,7 +14,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 pub use app::App;
-pub use logging::{logging, LogOutput, ServiceInfo};
+pub use logging::{LogOutput, ServiceInfo, logging};
 pub use maybe::MaybeTui;
 pub use tabbed::TabbedWidget;
 pub use widget::CustomWidget;

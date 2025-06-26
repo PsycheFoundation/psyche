@@ -1,7 +1,8 @@
 use crate::{
-    trainer::DistroResults, ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator,
-    EosToks, LocalTrainer, ParallelModels, PythonDistributedCausalLM, StableVariableIterator,
+    ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator, EosToks, LocalTrainer,
+    ParallelModels, PythonDistributedCausalLM, StableVariableIterator,
     TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
+    trainer::DistroResults,
 };
 
 use psyche_core::{Barrier, CancelledBarrier, LearningRateSchedule, OptimizerDefinition};
@@ -36,7 +37,7 @@ pub enum PythonDistributedTrainerError {
 }
 
 #[derive(Debug)]
-pub struct NopBarrier {}
+pub struct NopBarrier;
 
 impl Barrier for NopBarrier {
     fn wait(&self) -> Result<(), CancelledBarrier> {
@@ -52,9 +53,9 @@ impl Barrier for NopBarrier {
     }
 }
 
-impl NopBarrier {
-    pub fn new() -> Self {
-        Self {}
+impl Default for NopBarrier {
+    fn default() -> Self {
+        Self
     }
 }
 
@@ -96,21 +97,18 @@ impl PythonDistributedTrainer {
         comm.set("hyperparameters", &hyperparameters.to_string())?;
 
         let device = model.device();
-        let local = Box::new(
-            LocalTrainer::new(
-                ParallelModels {
-                    models: vec![Box::new(model) as Box<dyn CausalLM>],
-                    barrier: Arc::new(NopBarrier::new()) as Arc<dyn Barrier>,
-                    data_parallel: None,
-                },
-                lr_scheduler,
-                optimizer,
-                micro_batch_size,
-                stats,
-                grad_accum_in_fp32,
-            )
-            .into(),
-        );
+        let local = Box::new(LocalTrainer::new(
+            ParallelModels {
+                models: vec![Box::new(model) as Box<dyn CausalLM>],
+                barrier: Arc::new(NopBarrier) as Arc<dyn Barrier>,
+                data_parallel: None,
+            },
+            lr_scheduler,
+            optimizer,
+            micro_batch_size,
+            stats,
+            grad_accum_in_fp32,
+        ));
 
         Ok(Self {
             local,
@@ -120,6 +118,7 @@ impl PythonDistributedTrainer {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn train(
         self,
         step: u32,
@@ -150,7 +149,7 @@ impl PythonDistributedTrainer {
             "warmup_lr_between": warmup_lr_between,
             "zero_optim": zero_optim,
             "results_len": results_len,
-            "results_metadata": prev_self_distro_results.as_ref().map(|x| Self::distro_results_metadata(x)),
+            "results_metadata": prev_self_distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
         trace!("Sending operation to Python clients: {:#}", operation);
@@ -161,7 +160,7 @@ impl PythonDistributedTrainer {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
 
-        self.comm.broadcast(&tensor)?;
+        self.comm.broadcast(tensor)?;
 
         self.local
             .train(
@@ -207,7 +206,7 @@ impl PythonDistributedTrainer {
             "step": step,
             "warmup_lr_between": warmup_lr_between,
             "results_len": results_len,
-            "results_metadata": distro_results.as_ref().map(|x| Self::distro_results_metadata(x)),
+            "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
         trace!("Sending operation to Python clients: {:#}", operation);
@@ -241,7 +240,7 @@ impl PythonDistributedTrainer {
         self.local.extract()
     }
 
-    fn broadcast_distro_results(&self, distro_results: &Vec<DistroResults>) -> PyResult<()> {
+    fn broadcast_distro_results(&self, distro_results: &[DistroResults]) -> PyResult<()> {
         let first = distro_results.first().unwrap();
         let params = first.len();
         for param_index in 0..params {
@@ -261,7 +260,7 @@ impl PythonDistributedTrainer {
         Ok(())
     }
 
-    fn distro_results_metadata(distro_results: &Vec<DistroResults>) -> serde_json::Value {
+    fn distro_results_metadata(distro_results: &[DistroResults]) -> serde_json::Value {
         serde_json::json!({
             "sparse_idx_size": distro_results.first().map(|y| y.iter().map(|z| z.sparse_idx.size()).collect::<Vec<_>>()),
             "sparse_idx_dtype": distro_results.first().map(|y| y.first().map(|z| z.sparse_idx.kind().c_int())),
