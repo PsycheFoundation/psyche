@@ -17,7 +17,6 @@ pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
-pub const WAITING_FOR_MEMBERS_EXTRA_SECONDS: u64 = 10;
 
 // bloom filter with 1024 bits (16 u64)
 pub type WitnessBloom = Bloom<16, 8>;
@@ -251,6 +250,7 @@ pub struct CoordinatorConfig {
     pub global_batch_size_end: u16,
 
     pub verification_percent: u8,
+    pub waiting_for_members_extra_time: u8,
 }
 
 #[derive(
@@ -889,7 +889,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         };
 
         if pending_clients.len() as u16 >= self.config.init_min_clients
-            && self.check_timeout(unix_timestamp, WAITING_FOR_MEMBERS_EXTRA_SECONDS)
+            && self.check_timeout(
+                unix_timestamp,
+                self.config.waiting_for_members_extra_time as u64,
+            )
         // This extra time allows for more clients to join even if the minimum number of clients is reached
         {
             // Make sure that all unhealthy clients are kicked at this point
@@ -1141,6 +1144,7 @@ impl CoordinatorConfig {
             && self.witness_nodes <= self.min_clients
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0
+            && self.waiting_for_members_extra_time > 0
     }
 
     pub fn get_batch_size(&self, total_tokens_processed: u64) -> u16 {

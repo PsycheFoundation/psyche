@@ -12,6 +12,7 @@ global_batch_size_start = 12288
 global_batch_size_end = 32768
 global_batch_size_warmup_tokens = 549755813888 # 540B tokens
 total_steps = 325000                           # ~22T tokens, 67M tokens/batch
+waiting_for_members_extra_time = 10
 
 [model.LLM]
 architecture = "HfDeepseek"

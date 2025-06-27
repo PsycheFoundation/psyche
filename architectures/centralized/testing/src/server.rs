@@ -81,6 +81,7 @@ impl CoordinatorServer {
             verification_percent: 0,
             witness_nodes,
             total_steps: 10,
+            waiting_for_members_extra_time: 2,
         };
 
         let epoch_state = CoordinatorEpochState {
