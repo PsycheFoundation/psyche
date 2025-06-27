@@ -438,7 +438,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         _ = retry_check_interval.tick() => {
                             let now = Instant::now();
-                            let mut retried_downloads = retried_downloads.clone();
                             let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.iter()
                                 .filter(|(_, info)| info.retry_time.map(|retry_time| now >= retry_time).unwrap_or(false) && info.retries <= MAX_DOWNLOAD_RETRIES)
                                 .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.r#type.clone()))
