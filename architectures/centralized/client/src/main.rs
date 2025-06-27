@@ -136,6 +136,7 @@ async fn async_main() -> Result<()> {
                 discovery_mode: DiscoveryMode::N0,
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 max_concurrent_downloads: args.max_concurrent_downloads,
+                metrics_local_port: args.oltp_local_port,
             })
             .build()
             .await
