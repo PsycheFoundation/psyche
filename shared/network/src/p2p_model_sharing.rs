@@ -1,16 +1,12 @@
 use anyhow::Result;
-use iroh::PublicKey;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
-use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
-use std::sync::Arc;
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
-use tokio::sync::Mutex;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{debug, trace};
@@ -148,13 +144,6 @@ pub struct SharableModel {
     config_and_tokenizer_ticket: Option<BlobTicket>,
     pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
-
-    /// List of peers that are sharing the model parameters and config.
-    /// We cycled through this list to request parameters from them.
-    pub peer_cycle: Arc<Mutex<VecDeque<PublicKey>>>,
-    /// A map of peers that have errored while sharing parameters.
-    /// If a peer has errored more than a certain threshold, it will be removed from the cycle.
-    pub errored_peers: Arc<std::sync::Mutex<HashMap<PublicKey, usize>>>,
 }
 
 // These impls are methods called by both the sharing model peers and the ones
@@ -170,8 +159,6 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
-            errored_peers: Arc::new(std::sync::Mutex::new(HashMap::new())),
-            peer_cycle: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }
