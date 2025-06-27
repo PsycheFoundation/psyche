@@ -806,7 +806,7 @@ async fn async_main() -> Result<()> {
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 max_concurrent_downloads: args.max_concurrent_downloads,
                 authorizer,
-                metrics_local_port: args.oltp_local_port,
+                metrics_local_port: args.metrics_local_port,
             })
             .build()
             .await
