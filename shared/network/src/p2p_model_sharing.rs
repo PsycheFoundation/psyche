@@ -163,10 +163,6 @@ async fn peer_manager_actor(
                         cancel_token.cancel();
                         true
                     } else {
-                        // Reset index if it's out of bounds
-                        if next_peer_index >= available_peers.len() {
-                            next_peer_index = 0;
-                        }
                         false
                     }
                 } else {

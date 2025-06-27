@@ -433,7 +433,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                         _ = retry_check_interval.tick() => {
                             let now = Instant::now();
-                            let mut retried_downloads = retried_downloads.clone();
                             let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.iter()
                                 .filter(|(_, info)| info.retry_time.map(|retry_time| now >= retry_time).unwrap_or(false) && info.retries <= MAX_DOWNLOAD_RETRIES)
                                 .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.r#type.clone()))
@@ -443,7 +442,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 if let Some(info) = retried_downloads.get_mut(&hash) {
                                     info.retry_time = None;
 
-                                    debug!("Retrying download for blob {} (attempt {})", hex::encode(hash), info.retries);
+                                    debug!("Retrying download for blob {} (attempt {})", hash, info.retries);
 
                                     metrics.record_download_retry(hash);
                                     p2p.start_download(ticket, tag, download_type);
@@ -769,22 +768,25 @@ async fn get_blob_ticket_to_download(
     peer_manager: Arc<PeerManager>,
 ) -> Result<BlobTicket, anyhow::Error> {
     let router = p2p.router();
-    let config_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
+    let blob_ticket = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
 
     param_request_task(
-        request_type,
+        request_type.clone(),
         router,
-        config_blob_tickets.clone(),
+        blob_ticket.clone(),
         peer_manager,
     )
     .await?;
 
-    let (config_blob_ticket, _) = {
-        let mut config_blob_tickets_lock = config_blob_tickets.lock().unwrap();
-        let mut a: Vec<(BlobTicket, ModelRequestType)> =
-            config_blob_tickets_lock.drain(..).collect();
-        a.pop().unwrap()
+    let ticket_result = {
+        let blob_ticket_lock = blob_ticket.lock().unwrap();
+        blob_ticket_lock
+            .first()
+            .map(|a| a.0.clone())
+            .ok_or(anyhow::anyhow!(
+                "No blob ticket found trying to download {request_type:?}"
+            ))?
     };
 
-    Ok(config_blob_ticket)
+    Ok(ticket_result)
 }
