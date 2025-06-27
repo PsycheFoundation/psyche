@@ -15,11 +15,7 @@ use opentelemetry::{
 };
 use serde::Serialize;
 use sysinfo::System;
-use tokio::{
-    io::AsyncWriteExt,
-    net::{TcpListener, TcpStream},
-    time::interval,
-};
+use tokio::{io::AsyncWriteExt, net::TcpListener, time::interval};
 
 pub use iroh::{create_iroh_registry, IrohMetricsCollector};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
@@ -65,17 +61,16 @@ pub struct ClientMetrics {
 
 #[derive(Serialize, Debug, Clone, Default)]
 struct TcpMetrics {
-    timestamp: u64,
-    peer_connections: u64,
+    connected_peers: Vec<PeerConnection>,
     bandwidth: f64,
     round_step: u32,
-    participating: u64,
+    role: ClientRoleInRound,
     broadcasts_seen: u64,
     apply_message_success: u64,
     apply_message_failure: u64,
     apply_message_ignored: u64,
     witnesses_sent: u64,
-    gossip_neighbors: u64,
+    gossip_neighbors: Vec<String>,
     downloads_started: u64,
     downloads_finished: u64,
     downloads_retry: u64,
@@ -93,22 +88,31 @@ impl Drop for ClientMetrics {
     }
 }
 
+#[derive(Debug, Serialize, Clone, Copy)]
 pub enum ConnectionType {
     Direct,
     Mixed,
     Relay,
 }
 
+#[derive(Debug, Serialize, Clone)]
 pub struct PeerConnection {
     pub node_id: String,
     pub connection_type: ConnectionType,
     pub latency: f32,
 }
 
+#[derive(Debug, Serialize, Clone, Copy)]
 pub enum ClientRoleInRound {
     NotInRound,
     Trainer,
     Witness,
+}
+
+impl Default for ClientRoleInRound {
+    fn default() -> Self {
+        Self::NotInRound
+    }
 }
 
 impl ClientMetrics {
@@ -310,7 +314,7 @@ impl ClientMetrics {
         }
 
         // Update shared state
-        self.tcp_metrics.lock().unwrap().peer_connections = connections.len() as u64;
+        self.tcp_metrics.lock().unwrap().connected_peers = connections.to_vec();
 
         // record connection counts by type
         for (conn_type, count) in connection_counts {
@@ -321,18 +325,12 @@ impl ClientMetrics {
 
     pub fn update_p2p_gossip_neighbors(&self, neighbors: &[impl Display]) {
         let num_neighbors = neighbors.len() as u64;
+        let neighbor_ids = neighbors.iter().map(|p| p.to_string()).collect::<Vec<_>>();
         self.gossip_neighbors.record(
             num_neighbors,
-            &[KeyValue::new(
-                "peers",
-                neighbors
-                    .iter()
-                    .map(|p| p.to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
-            )],
+            &[KeyValue::new("peers", neighbor_ids.join(","))],
         );
-        self.tcp_metrics.lock().unwrap().gossip_neighbors = num_neighbors;
+        self.tcp_metrics.lock().unwrap().gossip_neighbors = neighbor_ids;
     }
 
     pub fn update_bandwidth(&self, bytes_per_second: f64) {
@@ -344,10 +342,11 @@ impl ClientMetrics {
         self.round_step_gauge.record(step as u64, &[]);
 
         let participating = !matches!(role, ClientRoleInRound::NotInRound) as u64;
+
         {
             let mut metrics = self.tcp_metrics.lock().unwrap();
             metrics.round_step = step;
-            metrics.participating = participating;
+            metrics.role = role;
         }
 
         self.participating_in_round.record(
@@ -453,45 +452,25 @@ impl ClientMetrics {
             };
             info!("[metrics tcp server] listening on {}", addr);
 
-            let mut interval = interval(Duration::from_secs(5));
-            let mut clients: Vec<TcpStream> = Vec::new();
-
             loop {
                 tokio::select! {
-                    // Accept new connections
-                    Ok((stream, _)) = listener.accept() => {
-                        clients.push(stream);
-                    }
-
-                    // Broadcast metrics every 5 seconds
-                    _ = interval.tick() => {
-                        let stats_obj = {
-                            let mut metrics = tcp_metrics.lock().unwrap();
-                            metrics.timestamp = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs();
-                            metrics.clone()
-                        };
-
-                        let mut stats_json = match serde_json::to_string(&stats_obj) {
-                            Ok(json) => json,
-                            Err(e) => {
-                                warn!("[metrics tcp server] Failed to serialize metrics: {}", e);
-                                continue;
+                    // when someone connects to us
+                    Ok((mut stream, _)) = listener.accept() => {
+                        // grab all the metrics
+                        let stats_json = {
+                            match serde_json::to_string(&*tcp_metrics.lock().unwrap()) {
+                                Ok(json) => json,
+                                Err(e) => {
+                                    warn!("[metrics tcp server] Failed to serialize metrics: {}", e);
+                                    continue;
+                                }
                             }
                         };
-                        stats_json.push('\n');
 
-                        // Send to all connected clients, remove disconnected ones
-                        let mut i = 0;
-                        while i < clients.len() {
-                            if clients[i].write_all(stats_json.as_bytes()).await.is_err() {
-                                clients.remove(i);
-                            } else {
-                                i += 1;
-                            }
-                        }
+                        // send metrics - we don't care if it fails
+                        let _ = stream.write_all(stats_json.as_bytes()).await;
+                        // and close the connection
+                        let _ = stream.shutdown().await;
                     }
                 }
             }
