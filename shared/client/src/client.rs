@@ -228,7 +228,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 match message {
                                     NetworkEvent::MessageReceived((from, broadcast)) => {
                                         let _ = trace_span!("NetworkEvent::MessageReceived", from=%from).entered();
-                                        metrics.record_broadcast_seen(from);
+                                        metrics.record_broadcast_seen();
                                         let broadcast_step = broadcast.step;
                                         let broadcast_kind = broadcast.data.kind();
                                         if let Some(client) = watcher.get_client_for_p2p_public_key(from.as_bytes()) {
@@ -244,7 +244,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 let apply_result = run.apply_message(client.id, broadcast)?;
                                                 match apply_result {
                                                     ApplyMessageOutcome::Ignored => {
-                                                        metrics.record_apply_message_ignored(broadcast_step, from, broadcast_kind);
+                                                        metrics.record_apply_message_ignored(broadcast_step, broadcast_kind);
                                                     },
                                                     ApplyMessageOutcome::Applied => {
                                                         metrics.record_apply_message_success(broadcast_step, from, broadcast_kind);
@@ -272,7 +272,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         }
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
-                                                trace!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
+                                                info!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
                                                 run.apply_distro_result(hash, distro_result, None);
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {
@@ -295,11 +295,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         let retries = retried_downloads.lock().await.get(&hash).map(|i| i.retries).unwrap_or(0);
 
                                         if retries >= MAX_DOWNLOAD_RETRIES {
-                                            metrics.record_download_perma_failed(hash);
+                                            metrics.record_download_perma_failed();
                                             warn!("Download failed (not retrying): {}", dl.error);
                                             retried_downloads.lock().await.remove(&hash);
                                         } else {
-                                            metrics.record_download_failed(hash);
+                                            metrics.record_download_failed();
                                             let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
                                             let retry_time = Some(std::time::Instant::now() + backoff_duration);
 
