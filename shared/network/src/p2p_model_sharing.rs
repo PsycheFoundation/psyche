@@ -44,9 +44,8 @@ enum PeerCommand {
 }
 
 impl PeerManager {
-    pub fn new(max_errors_per_peer: usize) -> Self {
+    pub fn new(max_errors_per_peer: usize, cancel_token: CancellationToken) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
-        let cancel_token = CancellationToken::new();
 
         let cancel_clone = cancel_token.clone();
         tokio::spawn(peer_manager_actor(

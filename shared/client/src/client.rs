@@ -125,7 +125,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut retried_downloads: HashMap<psyche_network::Hash, DownloadRetryInfo> =
                     HashMap::new();
                 let mut sharable_model = SharableModel::empty();
-                let peer_manager = Arc::new(PeerManager::new(2));
+                let peer_manager =
+                    Arc::new(PeerManager::new(2, param_requests_cancel_token.clone()));
 
                 let mut broadcasts = vec![];
                 let mut broadcasts_rebroadcast_index = 0;
