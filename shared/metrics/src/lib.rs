@@ -2,7 +2,6 @@ mod iroh;
 
 use std::{
     collections::HashMap,
-    env,
     fmt::Display,
     sync::{Arc, Mutex},
     time::Duration,
@@ -113,20 +112,11 @@ pub enum ClientRoleInRound {
 }
 
 impl ClientMetrics {
-    pub fn new() -> Self {
+    pub fn new(metrics_port: Option<u16>) -> Self {
         let meter = global::meter("psyche_client");
 
         let tcp_metrics = Arc::new(Mutex::new(TcpMetrics::default()));
-        let tcp_server = if let Ok(port_str) = std::env::var("METRICS_PORT") {
-            if let Ok(port) = port_str.parse::<u16>() {
-                Some(Self::start_tcp_server(port, tcp_metrics.clone()))
-            } else {
-                warn!("Invalid METRICS_PORT: {}", port_str);
-                None
-            }
-        } else {
-            None
-        };
+        let tcp_server = metrics_port.map(|port| Self::start_tcp_server(port, tcp_metrics.clone()));
 
         Self {
             // broadcasts state
@@ -457,11 +447,11 @@ impl ClientMetrics {
             let listener = match TcpListener::bind(&addr).await {
                 Ok(listener) => listener,
                 Err(e) => {
-                    eprintln!("Failed to bind TCP server on {}: {}", addr, e);
+                    warn!("[metrics tcp server] Failed to bind TCP server on {}: {} -- Continuing without it", addr, e);
                     return;
                 }
             };
-            info!("Metrics TCP server listening on {}", addr);
+            info!("[metrics tcp server] listening on {}", addr);
 
             let mut interval = interval(Duration::from_secs(5));
             let mut clients: Vec<TcpStream> = Vec::new();
@@ -487,7 +477,7 @@ impl ClientMetrics {
                         let mut stats_json = match serde_json::to_string(&stats_obj) {
                             Ok(json) => json,
                             Err(e) => {
-                                eprintln!("Failed to serialize metrics: {}", e);
+                                warn!("[metrics tcp server] Failed to serialize metrics: {}", e);
                                 continue;
                             }
                         };
@@ -511,6 +501,6 @@ impl ClientMetrics {
 
 impl Default for ClientMetrics {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }

@@ -292,7 +292,7 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         4,
-        ClientMetrics::new(),
+        ClientMetrics::new(None),
     )
     .await?;
 
