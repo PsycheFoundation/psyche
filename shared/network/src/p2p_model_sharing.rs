@@ -127,7 +127,7 @@ async fn peer_manager_actor(
                 next_peer_index = 0;
 
                 debug!(
-                    "Updated peer list: {} peers available",
+                    "Updated peer list: {} peers available to ask for the model parameters",
                     available_peers.len()
                 );
             }
@@ -143,8 +143,8 @@ async fn peer_manager_actor(
             }
 
             PeerCommand::ReportSuccess { peer_id } => {
-                // Peer succeeded, no action needed (it stays in rotation)
-                debug!("Peer {peer_id} succeeded");
+                // No action needed (it stays in rotation)
+                debug!("Peer {peer_id} correctly provided the blob ticket");
             }
 
             PeerCommand::ReportError { peer_id, reply } => {
@@ -156,7 +156,7 @@ async fn peer_manager_actor(
                     available_peers.retain(|&p| p != peer_id);
                     warn!("Removing peer {peer_id} after {} errors", *error_count);
 
-                    // Check if we should cancel (no more peers)
+                    // Check if we should cancel
                     if available_peers.is_empty() {
                         warn!("No more peers available, cancelling operations");
                         cancel_token.cancel();
