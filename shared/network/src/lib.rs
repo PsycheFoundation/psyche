@@ -795,14 +795,10 @@ pub async fn param_request_task(
     model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
     peer_manager: Arc<PeerManager>,
 ) -> anyhow::Result<()> {
-    let max_attempts = 50;
-    let mut attempts = 0;
+    let max_attempts = 100u8;
+    let mut attempts = 0u8;
 
     while attempts < max_attempts {
-        if peer_manager.is_cancelled() {
-            bail!("Operation cancelled");
-        }
-
         let Some(peer_id) = peer_manager.get_next_peer().await else {
             // No peers available, wait a bit and check again
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -830,10 +826,7 @@ pub async fn param_request_task(
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                let should_cancel = peer_manager.report_error(peer_id).await;
-                if should_cancel {
-                    bail!("All peers exhausted");
-                }
+                peer_manager.report_error(peer_id).await;
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;

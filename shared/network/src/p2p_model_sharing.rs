@@ -3,6 +3,7 @@ use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
+use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
@@ -13,7 +14,6 @@ use tokio::sync::{
     oneshot,
 };
 use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
 use tracing::{debug, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
@@ -22,7 +22,6 @@ use crate::{NetworkConnection, Networkable, TransmittableDownload};
 /// Manager for the list of peers to ask for the model parameters and config
 pub struct PeerManager {
     peer_tx: mpsc::UnboundedSender<PeerCommand>,
-    cancel_token: CancellationToken,
 }
 
 #[derive(Debug)]
@@ -39,26 +38,16 @@ enum PeerCommand {
     },
     ReportError {
         peer_id: NodeId,
-        reply: oneshot::Sender<bool>, // true if should cancel
     },
 }
 
 impl PeerManager {
-    pub fn new(max_errors_per_peer: usize, cancel_token: CancellationToken) -> Self {
+    pub fn new(max_errors_per_peer: usize) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
-        let cancel_clone = cancel_token.clone();
-        tokio::spawn(peer_manager_actor(
-            peer_rx,
-            vec![],
-            max_errors_per_peer,
-            cancel_clone,
-        ));
+        tokio::spawn(peer_manager_actor(peer_rx, vec![], max_errors_per_peer));
 
-        Self {
-            peer_tx,
-            cancel_token,
-        }
+        Self { peer_tx }
     }
 
     pub fn set_peers(&self, peers: Vec<NodeId>) {
@@ -83,29 +72,14 @@ impl PeerManager {
         let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
     }
 
-    pub async fn report_error(&self, peer_id: NodeId) -> bool {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
+    pub async fn report_error(&self, peer_id: NodeId) {
         if self
             .peer_tx
-            .send(PeerCommand::ReportError {
-                peer_id,
-                reply: reply_tx,
-            })
+            .send(PeerCommand::ReportError { peer_id })
             .is_err()
         {
-            return true; // Manager is dead, should cancel
+            tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
         }
-
-        reply_rx.await.unwrap_or(true)
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.cancel_token.is_cancelled()
-    }
-
-    pub fn cancellation_token(&self) -> CancellationToken {
-        self.cancel_token.clone()
     }
 }
 
@@ -113,18 +87,17 @@ async fn peer_manager_actor(
     mut commands: mpsc::UnboundedReceiver<PeerCommand>,
     initial_peers: Vec<NodeId>,
     max_errors_per_peer: usize,
-    cancel_token: CancellationToken,
 ) {
-    let mut available_peers: Vec<NodeId> = initial_peers.clone();
+    let mut available_peers: VecDeque<NodeId> = VecDeque::from(initial_peers);
+    let mut busy_peers: Vec<NodeId> = Vec::new();
     let mut errored_peers: HashMap<NodeId, usize> = HashMap::new();
-    let mut next_peer_index = 0;
 
     while let Some(command) = commands.recv().await {
         match command {
             PeerCommand::SetPeers { peers } => {
-                available_peers = peers.clone();
+                available_peers = VecDeque::from(peers);
                 errored_peers.clear();
-                next_peer_index = 0;
+                busy_peers.clear();
 
                 debug!(
                     "Updated peer list: {} peers available to ask for the model parameters",
@@ -132,43 +105,41 @@ async fn peer_manager_actor(
                 );
             }
             PeerCommand::GetPeer { reply } => {
-                let peer = if available_peers.is_empty() {
-                    None
-                } else {
-                    let peer = available_peers[next_peer_index];
-                    next_peer_index = (next_peer_index + 1) % available_peers.len();
+                let peer = if let Some(peer) = available_peers.pop_front() {
+                    busy_peers.push(peer);
+                    debug!("Selected peer {peer} to ask for the model parameters");
                     Some(peer)
+                } else {
+                    debug!("No available peers to ask for the model parameters");
+                    None
                 };
                 let _ = reply.send(peer);
             }
 
             PeerCommand::ReportSuccess { peer_id } => {
-                // No action needed (it stays in rotation)
+                busy_peers.retain(|&p| p != peer_id);
+                available_peers.push_back(peer_id);
+                errored_peers.remove(&peer_id);
                 debug!("Peer {peer_id} correctly provided the blob ticket");
             }
 
-            PeerCommand::ReportError { peer_id, reply } => {
+            PeerCommand::ReportError { peer_id } => {
                 let error_count = errored_peers.entry(peer_id).or_insert(0);
                 *error_count += 1;
+                busy_peers.retain(|&p| p != peer_id);
 
-                let should_cancel = if *error_count > max_errors_per_peer {
-                    // Remove peer from available list
-                    available_peers.retain(|&p| p != peer_id);
+                if *error_count > max_errors_per_peer {
+                    // Don't need to actually remove it because we already swapped it to the busy_peers list, just don't add it back
                     warn!("Removing peer {peer_id} after {} errors", *error_count);
 
-                    // Check if we should cancel
+                    // Remove from errored to avoid keeping in there forever, we won't ask it again
+                    errored_peers.remove(&peer_id);
                     if available_peers.is_empty() {
-                        warn!("No more peers available, cancelling operations");
-                        cancel_token.cancel();
-                        true
-                    } else {
-                        false
+                        warn!("No more peers available, keep checking if they start freeing up");
                     }
                 } else {
-                    false
+                    available_peers.push_back(peer_id);
                 };
-
-                let _ = reply.send(should_cancel);
             }
         }
     }
