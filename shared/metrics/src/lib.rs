@@ -18,6 +18,7 @@ use tokio::time::interval;
 
 pub use iroh::{create_iroh_registry, IrohMetricsCollector};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
+use tracing::debug;
 
 #[derive(Clone, Debug)]
 /// metrics collector for Psyche clients
@@ -163,44 +164,37 @@ impl ClientMetrics {
         }
     }
 
-    pub fn record_broadcast_seen(&self, from_peer: impl Display) {
-        self.broadcasts_seen_counter
-            .add(1, &[KeyValue::new("from_peer", from_peer.to_string())]);
+    pub fn record_broadcast_seen(&self) {
+        self.broadcasts_seen_counter.add(1, &[]);
     }
 
     pub fn record_apply_message_success(&self, step: u32, from_peer: impl Display, kind: &str) {
+        debug!(name: "apply_message_success", step=%step, kind=%kind, from=%from_peer);
         self.apply_message_success_counter.add(
             1,
             &[
                 KeyValue::new("step", step as i64),
-                KeyValue::new("from_peer", from_peer.to_string()),
                 KeyValue::new("type", kind.to_string()),
             ],
         );
     }
 
     pub fn record_apply_message_failure(&self, step: u32, from_peer: impl Display, kind: &str) {
+        debug!(name: "apply_message_failure", step=%step, kind=%kind, from=%from_peer);
         self.apply_message_failure_counter.add(
             1,
             &[
                 KeyValue::new("step", step as i64),
-                KeyValue::new("from_peer", from_peer.to_string()),
                 KeyValue::new("type", kind.to_string()),
             ],
         )
     }
 
-    pub fn record_apply_message_ignored(
-        &self,
-        step: u32,
-        from_peer: impl Display,
-        kind: impl Display,
-    ) {
+    pub fn record_apply_message_ignored(&self, step: u32, kind: impl Display) {
         self.apply_message_ignored_counter.add(
             1,
             &[
                 KeyValue::new("step", step as i64),
-                KeyValue::new("from_peer", from_peer.to_string()),
                 KeyValue::new("type", kind.to_string()),
             ],
         )
@@ -212,17 +206,13 @@ impl ClientMetrics {
     }
 
     pub fn record_download_started(&self, hash: impl Display, kind: impl Display) {
-        self.downloads_started_counter.add(
-            1,
-            &[
-                KeyValue::new("hash", hash.to_string()),
-                KeyValue::new("type", kind.to_string()),
-            ],
-        );
+        debug!(name: "download_started", hash = %hash);
+        self.downloads_started_counter
+            .add(1, &[KeyValue::new("type", kind.to_string())]);
     }
     pub fn record_download_retry(&self, hash: impl Display) {
-        self.downloads_retry_counter
-            .add(1, &[KeyValue::new("hash", hash.to_string())]);
+        debug!(name: "download_retry", hash = %hash);
+        self.downloads_retry_counter.add(1, &[]);
     }
 
     pub fn update_download_progress(&self, hash: impl Display, newly_downloaded_bytes: u64) {
@@ -233,22 +223,19 @@ impl ClientMetrics {
     }
 
     pub fn record_download_completed(&self, hash: impl Display, from_peer: impl Display) {
-        self.downloads_finished_counter.add(
-            1,
-            &[
-                KeyValue::new("hash", hash.to_string()),
-                KeyValue::new("from_peer", from_peer.to_string()),
-            ],
+        debug!(
+            name:"download_complete",
+            hash =%hash,
+            from_peer =%from_peer
         );
+        self.downloads_finished_counter.add(1, &[]);
     }
 
-    pub fn record_download_failed(&self, hash: impl Display) {
-        self.downloads_failed_counter
-            .add(1, &[KeyValue::new("hash", hash.to_string())]);
+    pub fn record_download_failed(&self) {
+        self.downloads_failed_counter.add(1, &[]);
     }
-    pub fn record_download_perma_failed(&self, hash: impl Display) {
-        self.downloads_perma_failed_counter
-            .add(1, &[KeyValue::new("hash", hash.to_string())]);
+    pub fn record_download_perma_failed(&self) {
+        self.downloads_perma_failed_counter.add(1, &[]);
     }
 
     pub fn update_peer_connections(&self, connections: &[PeerConnection]) {
