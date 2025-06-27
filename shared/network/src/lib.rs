@@ -804,6 +804,7 @@ pub async fn param_request_task(
         let peer_id = match peer_cycle.lock().await.pop_front() {
             Some(peer) => peer,
             None => {
+                tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;
             }
         };
@@ -826,12 +827,12 @@ pub async fn param_request_task(
             }
             Err(e) => {
                 let mut peer_cycle_lock = peer_cycle.lock().await;
+                let mut errored_peers_lock = errored_peers.lock().unwrap();
                 warn!(
                     parameter = ?&model_request_type,
                     peer = %peer_id,
                     "Failed to get parameter: {e}"
                 );
-                let mut errored_peers_lock = errored_peers.lock().unwrap();
                 *errored_peers_lock.entry(peer_id).or_insert(0) += 1;
                 if *errored_peers_lock.get(&peer_id).unwrap_or(&0) <= max_errors_per_peer {
                     peer_cycle_lock.push_back(peer_id);
