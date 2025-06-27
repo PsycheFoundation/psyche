@@ -326,10 +326,8 @@ impl ClientMetrics {
     pub fn update_p2p_gossip_neighbors(&self, neighbors: &[impl Display]) {
         let num_neighbors = neighbors.len() as u64;
         let neighbor_ids = neighbors.iter().map(|p| p.to_string()).collect::<Vec<_>>();
-        self.gossip_neighbors.record(
-            num_neighbors,
-            &[KeyValue::new("peers", neighbor_ids.join(","))],
-        );
+        debug!(name: "gossip_neighbors", neighbors =  neighbor_ids.join(","));
+        self.gossip_neighbors.record(num_neighbors, &[]);
         self.tcp_metrics.lock().unwrap().gossip_neighbors = neighbor_ids;
     }
 
