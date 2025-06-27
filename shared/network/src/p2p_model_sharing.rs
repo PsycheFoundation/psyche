@@ -1,4 +1,5 @@
 use anyhow::Result;
+use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
@@ -7,11 +8,176 @@ use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
-use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    oneshot,
+};
 use tokio::task::JoinHandle;
-use tracing::{debug, trace};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
+
+#[derive(Debug)]
+/// Manager for the list of peers to ask for the model parameters and config
+pub struct PeerManager {
+    peer_tx: mpsc::UnboundedSender<PeerCommand>,
+    cancel_token: CancellationToken,
+}
+
+#[derive(Debug)]
+/// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
+enum PeerCommand {
+    SetPeers {
+        peers: Vec<NodeId>,
+    },
+    GetPeer {
+        reply: oneshot::Sender<Option<NodeId>>,
+    },
+    ReportSuccess {
+        peer_id: NodeId,
+    },
+    ReportError {
+        peer_id: NodeId,
+        reply: oneshot::Sender<bool>, // true if should cancel
+    },
+}
+
+impl PeerManager {
+    pub fn new(max_errors_per_peer: usize) -> Self {
+        let (peer_tx, peer_rx) = mpsc::unbounded_channel();
+        let cancel_token = CancellationToken::new();
+
+        let cancel_clone = cancel_token.clone();
+        tokio::spawn(peer_manager_actor(
+            peer_rx,
+            vec![],
+            max_errors_per_peer,
+            cancel_clone,
+        ));
+
+        Self {
+            peer_tx,
+            cancel_token,
+        }
+    }
+
+    pub fn set_peers(&self, peers: Vec<NodeId>) {
+        let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
+    }
+
+    pub async fn get_next_peer(&self) -> Option<NodeId> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        if self
+            .peer_tx
+            .send(PeerCommand::GetPeer { reply: reply_tx })
+            .is_err()
+        {
+            return None; // Manager actor is dead
+        }
+
+        reply_rx.await.unwrap_or(None)
+    }
+
+    pub async fn report_success(&self, peer_id: NodeId) {
+        let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
+    }
+
+    pub async fn report_error(&self, peer_id: NodeId) -> bool {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        if self
+            .peer_tx
+            .send(PeerCommand::ReportError {
+                peer_id,
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            return true; // Manager is dead, should cancel
+        }
+
+        reply_rx.await.unwrap_or(true)
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel_token.is_cancelled()
+    }
+
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
+    }
+}
+
+async fn peer_manager_actor(
+    mut commands: mpsc::UnboundedReceiver<PeerCommand>,
+    initial_peers: Vec<NodeId>,
+    max_errors_per_peer: usize,
+    cancel_token: CancellationToken,
+) {
+    let mut available_peers: Vec<NodeId> = initial_peers.clone();
+    let mut errored_peers: HashMap<NodeId, usize> = HashMap::new();
+    let mut next_peer_index = 0;
+
+    while let Some(command) = commands.recv().await {
+        match command {
+            PeerCommand::SetPeers { peers } => {
+                available_peers = peers.clone();
+                errored_peers.clear();
+                next_peer_index = 0;
+
+                debug!(
+                    "Updated peer list: {} peers available",
+                    available_peers.len()
+                );
+            }
+            PeerCommand::GetPeer { reply } => {
+                let peer = if available_peers.is_empty() {
+                    None
+                } else {
+                    let peer = available_peers[next_peer_index];
+                    next_peer_index = (next_peer_index + 1) % available_peers.len();
+                    Some(peer)
+                };
+                let _ = reply.send(peer);
+            }
+
+            PeerCommand::ReportSuccess { peer_id } => {
+                // Peer succeeded, no action needed (it stays in rotation)
+                debug!("Peer {peer_id} succeeded");
+            }
+
+            PeerCommand::ReportError { peer_id, reply } => {
+                let error_count = errored_peers.entry(peer_id).or_insert(0);
+                *error_count += 1;
+
+                let should_cancel = if *error_count > max_errors_per_peer {
+                    // Remove peer from available list
+                    available_peers.retain(|&p| p != peer_id);
+                    warn!("Removing peer {peer_id} after {} errors", *error_count);
+
+                    // Check if we should cancel (no more peers)
+                    if available_peers.is_empty() {
+                        warn!("No more peers available, cancelling operations");
+                        cancel_token.cancel();
+                        true
+                    } else {
+                        // Reset index if it's out of bounds
+                        if next_peer_index >= available_peers.len() {
+                            next_peer_index = 0;
+                        }
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                let _ = reply.send(should_cancel);
+            }
+        }
+    }
+}
 
 pub const ALPN: &[u8] = b"model-sharing/0";
 pub const MODEL_REQUEST_TIMEOUT_SECS: u64 = 10;
