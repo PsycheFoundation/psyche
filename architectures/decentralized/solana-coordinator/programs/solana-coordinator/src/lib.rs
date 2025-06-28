@@ -270,7 +270,7 @@ pub struct OwnerCoordinatorAccounts<'info> {
         bump = coordinator_instance.bump,
         constraint = coordinator_instance.main_authority == authority.key()
     )]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
+    pub coordinator_instance: Box<Account<'info, CoordinatorInstance>>,
 
     #[account(
         mut,
@@ -291,7 +291,7 @@ pub struct PermissionlessCoordinatorAccounts<'info> {
         ],
         bump = coordinator_instance.bump
     )]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
+    pub coordinator_instance: Box<Account<'info, CoordinatorInstance>>,
 
     #[account(
         mut,

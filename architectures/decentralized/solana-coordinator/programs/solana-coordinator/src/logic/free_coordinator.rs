@@ -25,7 +25,7 @@ pub struct FreeCoordinatorAccounts<'info> {
         constraint = coordinator_instance.main_authority == authority.key(),
         close = spill,
     )]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
+    pub coordinator_instance: Box<Account<'info, CoordinatorInstance>>,
 
     #[account(
         mut,

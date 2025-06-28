@@ -22,7 +22,7 @@ pub struct InitCoordinatorAccounts<'info> {
         ],
         bump
     )]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
+    pub coordinator_instance: Box<Account<'info, CoordinatorInstance>>,
 
     /// CHECK: TODO TODO UNSAFE UNSAFE
     #[account(
