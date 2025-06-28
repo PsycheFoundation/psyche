@@ -128,35 +128,41 @@ impl CoordinatorInstanceState {
             Ok(TickResult::EpochEnd(success)) => {
                 msg!("Epoch end, sucecsss: {}", success);
 
-                let mut i = 0;
-                let mut j = 0;
                 let finished_clients = &self.coordinator.epoch_state.clients;
                 let exited_clients =
                     &self.coordinator.epoch_state.exited_clients;
 
+                let mut finished_client_index = 0;
+                let mut exited_client_index = 0;
+
                 for client in self.clients_state.clients.iter_mut() {
-                    if i < finished_clients.len()
-                        && client.id == finished_clients[i].id
+                    if finished_client_index < finished_clients.len()
+                        && client.id.signer
+                            == finished_clients[finished_client_index].id.signer
                     {
-                        if finished_clients[i].state == ClientState::Healthy {
+                        if finished_clients[finished_client_index].state
+                            == ClientState::Healthy
+                        {
                             client.earned += self
                                 .clients_state
                                 .current_epoch_rates
                                 .earning_rate;
                         }
-                        i += 1;
+                        finished_client_index += 1;
                     }
-
-                    if j < exited_clients.len()
-                        && client.id == exited_clients[j].id
+                    if exited_client_index < exited_clients.len()
+                        && client.id.signer
+                            == exited_clients[exited_client_index].id.signer
                     {
-                        if exited_clients[j].state == ClientState::Ejected {
+                        if exited_clients[exited_client_index].state
+                            == ClientState::Ejected
+                        {
                             client.slashed += self
                                 .clients_state
                                 .current_epoch_rates
                                 .slashing_rate;
                         }
-                        j += 1;
+                        exited_client_index += 1;
                     }
                 }
             },
