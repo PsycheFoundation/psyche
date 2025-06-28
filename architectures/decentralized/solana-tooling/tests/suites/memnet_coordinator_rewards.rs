@@ -34,12 +34,12 @@ use solana_sdk::signer::Signer;
 
 #[tokio::test]
 pub async fn run() {
-    let mut endpoint = create_memnet_endpoint().await;
+    let mut endpoint = create_memnet_endpoint().await.unwrap();
 
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 5_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -47,7 +47,7 @@ pub async fn run() {
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
     let mut clients = vec![];
-    for _ in 0..40 {
+    for _ in 0..240 {
         clients.push(Keypair::new());
     }
     let ticker = Keypair::new();
@@ -152,38 +152,43 @@ pub async fn run() {
     .unwrap();
 
     // Add a few clients to the run
-    for client in &clients {
-        // Add clients to whitelist
-        let authorization = process_authorizer_authorization_create(
-            &mut endpoint,
-            &payer,
-            &join_authority,
-            &client.pubkey(),
-            JOIN_RUN_AUTHORIZATION_SCOPE,
-        )
-        .await
-        .unwrap();
-        process_authorizer_authorization_grantor_update(
-            &mut endpoint,
-            &payer,
-            &join_authority,
-            &authorization,
-            AuthorizationGrantorUpdateParams { active: true },
-        )
-        .await
-        .unwrap();
-        // Whitelisted, can join
-        process_coordinator_join_run(
-            &mut endpoint,
-            &payer,
-            &client,
-            &authorization,
-            &coordinator_instance,
-            &coordinator_account,
-            ClientId::new(client.pubkey(), Default::default()),
-        )
-        .await
-        .unwrap();
+    for client_chunk in clients.chunks(17) {
+        // Let clients join by chunk over multiple slots
+        endpoint.forward_clock_slot(1).await.unwrap();
+        // Authorize and join clients
+        for client in client_chunk {
+            // Add clients to whitelist
+            let authorization = process_authorizer_authorization_create(
+                &mut endpoint,
+                &payer,
+                &join_authority,
+                &client.pubkey(),
+                JOIN_RUN_AUTHORIZATION_SCOPE,
+            )
+            .await
+            .unwrap();
+            process_authorizer_authorization_grantor_update(
+                &mut endpoint,
+                &payer,
+                &join_authority,
+                &authorization,
+                AuthorizationGrantorUpdateParams { active: true },
+            )
+            .await
+            .unwrap();
+            // Whitelisted, can join
+            process_coordinator_join_run(
+                &mut endpoint,
+                &payer,
+                &client,
+                &authorization,
+                &coordinator_instance,
+                &coordinator_account,
+                ClientId::new(client.pubkey(), Default::default()),
+            )
+            .await
+            .unwrap();
+        }
     }
 
     // Tick to transition from waiting for members to warmup

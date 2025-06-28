@@ -13,12 +13,12 @@ use solana_sdk::signer::Signer;
 
 #[tokio::test]
 pub async fn run() {
-    let mut endpoint = create_memnet_endpoint().await;
+    let mut endpoint = create_memnet_endpoint().await.unwrap();
 
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -29,7 +29,7 @@ pub async fn run() {
 
     // Dummy delegates users
     let mut delegates = vec![];
-    for _ in 0..100 {
+    for _ in 0..66 {
         delegates.push(Pubkey::new_unique());
     }
 
@@ -69,12 +69,12 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[1],
         &scope
-    ),);
+    ));
 
     // The grantee can now set the delegates
     process_authorizer_authorization_grantee_update(
@@ -106,12 +106,12 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[1],
         &scope
-    ),);
+    ));
 
     // The grantee can increase the set the delegates
     process_authorizer_authorization_grantee_update(
@@ -121,7 +121,7 @@ pub async fn run() {
         &authorization,
         AuthorizationGranteeUpdateParams {
             delegates_clear: true,
-            delegates_added: delegates[10..40].to_vec(),
+            delegates_added: delegates[10..30].to_vec(),
         },
     )
     .await
@@ -133,7 +133,7 @@ pub async fn run() {
         &authorization,
         AuthorizationGranteeUpdateParams {
             delegates_clear: false,
-            delegates_added: delegates[40..90].to_vec(),
+            delegates_added: delegates[30..50].to_vec(),
         },
     )
     .await
@@ -148,14 +148,14 @@ pub async fn run() {
     assert_eq!(authorization_state.grantee, grantee.pubkey());
     assert_eq!(authorization_state.scope, scope);
     assert!(!authorization_state.active);
-    assert_eq!(authorization_state.delegates, delegates[10..90]);
+    assert_eq!(authorization_state.delegates, delegates[10..50]);
 
     // Check the function is_valid_for returns the expected values
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[80],
+        &delegates[40],
         &scope
-    ),);
+    ));
 
     // The grantor can enable the authorization at any time
     process_authorizer_authorization_grantor_update(
@@ -177,24 +177,24 @@ pub async fn run() {
     assert_eq!(authorization_state.grantee, grantee.pubkey());
     assert_eq!(authorization_state.scope, scope);
     assert!(authorization_state.active);
-    assert_eq!(authorization_state.delegates, delegates[10..90]);
+    assert_eq!(authorization_state.delegates, delegates[10..50]);
 
     // Check the function is_valid_for returns the expected values
     assert!(authorization_state.is_valid_for(
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[3],
         &scope
-    ),);
+    ));
     assert!(authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[75],
+        &delegates[45],
         &scope
-    ),);
+    ));
 
     // The grantee can decrease the set the delegates
     process_authorizer_authorization_grantee_update(
@@ -226,17 +226,17 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[3],
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[75],
+        &delegates[45],
         &scope
-    ),);
+    ));
 
     // The grantor can disable the authorization at any time
     process_authorizer_authorization_grantor_update(
@@ -265,17 +265,17 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[3],
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[75],
+        &delegates[45],
         &scope
-    ),);
+    ));
 
     // The grantor can only close the authorization once all the delegate has been cleared
     process_authorizer_authorization_close(

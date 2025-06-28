@@ -45,7 +45,7 @@ pub async fn run() {
 
     // Prepare the payer
     endpoint
-        .process_airdrop(&payer.pubkey(), payer_lamports)
+        .request_airdrop(&payer.pubkey(), payer_lamports)
         .await
         .unwrap();
 
@@ -352,19 +352,29 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Repay the remaining of the redeemable back into the pool
+    // Repay the remaining of the redeemable back into the pool in small bits
     endpoint
         .process_spl_token_transfer(
             &payer,
             &pool_authority,
             &pool_authority_redeemable,
             &pool_redeemable,
-            pool_authority_redeemable_amount / 2,
+            pool_authority_redeemable_amount / 3,
+        )
+        .await
+        .unwrap();
+    endpoint
+        .process_spl_token_transfer(
+            &payer,
+            &pool_authority,
+            &pool_authority_redeemable,
+            &pool_redeemable,
+            pool_authority_redeemable_amount / 6,
         )
         .await
         .unwrap();
 
-    // The users can now claim their remaining halves
+    // The users can now claim their remaining reward in any fraction
     process_lender_claim(
         &mut endpoint,
         &payer,
@@ -372,7 +382,30 @@ pub async fn run() {
         &user1_redeemable,
         pool_index,
         &redeemable_mint,
-        user1_redeemable_amount / 2,
+        user1_redeemable_amount / 3,
+    )
+    .await
+    .unwrap();
+    process_lender_claim(
+        &mut endpoint,
+        &payer,
+        &user1,
+        &user1_redeemable,
+        pool_index,
+        &redeemable_mint,
+        user1_redeemable_amount / 6,
+    )
+    .await
+    .unwrap();
+
+    process_lender_claim(
+        &mut endpoint,
+        &payer,
+        &user2,
+        &user2_redeemable,
+        pool_index,
+        &redeemable_mint,
+        user2_redeemable_amount / 3,
     )
     .await
     .unwrap();
@@ -383,7 +416,7 @@ pub async fn run() {
         &user2_redeemable,
         pool_index,
         &redeemable_mint,
-        user2_redeemable_amount / 2,
+        user2_redeemable_amount / 6,
     )
     .await
     .unwrap();

@@ -7516,6 +7516,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "anyhow",
  "bytemuck",
  "psyche-coordinator",
  "psyche-core",
@@ -11047,21 +11048,27 @@ dependencies = [
 
 [[package]]
 name = "solana_toolbox_endpoint"
-version = "0.1.38-solana-2.1.4"
+version = "0.4.2-solana-2.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "967eafa2981e3fc19a1da74e81c86d2d77eab6309a975068366af01441025e5b"
+checksum = "d1e26ff4cc00676acb28894bcea80831c964aaeaaa024718e8c173ea74daf96c"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "bincode",
  "borsh 1.5.7",
  "bytemuck",
  "serde",
+ "serde_json",
+ "solana-account-decoder",
  "solana-client",
  "solana-program-runtime",
  "solana-program-test",
  "solana-sdk",
+ "solana-transaction-status",
  "spl-associated-token-account 6.0.0",
  "spl-token 4.0.2",
+ "urlencoding",
 ]
 
 [[package]]

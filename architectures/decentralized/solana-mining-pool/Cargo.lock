@@ -339,9 +339,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.95"
+version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
+checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
 name = "aquamarine"
@@ -631,6 +631,12 @@ name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
+
+[[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "base64ct"
@@ -3100,6 +3106,7 @@ version = "0.1.1"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "anyhow",
  "solana-sdk",
  "solana_toolbox_anchor",
  "solana_toolbox_endpoint",
@@ -3648,9 +3655,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.134"
+version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d00f4175c42ee48b15416f6193a959ba3a0d67fc699a0db9ad12df9f83991c7d"
+checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
 dependencies = [
  "itoa",
  "memchr",
@@ -4974,32 +4981,39 @@ dependencies = [
 
 [[package]]
 name = "solana_toolbox_anchor"
-version = "0.1.38-solana-1.18.26-anchor-0.30.1"
+version = "0.4.2-solana-1.18.26-anchor-0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e2052cb2f54fcb3b8bc4e756392b1898e50acdc2686d8dc13e3cf742f1add95"
+checksum = "2f7062a36a6b3138c740ba3107b524515fbab714dc1863bbe28fd778b6bc8dc1"
 dependencies = [
  "anchor-lang",
+ "anyhow",
  "solana-sdk",
  "solana_toolbox_endpoint",
 ]
 
 [[package]]
 name = "solana_toolbox_endpoint"
-version = "0.1.38-solana-1.18.26"
+version = "0.4.2-solana-1.18.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d0fdc8ee7acbf91ee3c122f7413e138080d230b5e3988fc9b7b5594caa94cee"
+checksum = "ce3543d054bfca306593e5000abd6bf87cc38fe27243aa42e7cb6178e79a2d53"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "bincode",
  "borsh 1.5.3",
  "bytemuck",
  "serde",
+ "serde_json",
+ "solana-account-decoder",
  "solana-client",
  "solana-program-runtime",
  "solana-program-test",
  "solana-sdk",
+ "solana-transaction-status",
  "spl-associated-token-account 2.3.0",
  "spl-token",
+ "urlencoding",
 ]
 
 [[package]]
@@ -6127,6 +6141,12 @@ dependencies = [
  "idna",
  "percent-encoding",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf-8"
