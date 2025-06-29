@@ -21,7 +21,8 @@ anchor-lang = "=0.30.1"
 anchor-spl = "=0.30.1"
 
 [dev-dependencies]
+anyhow = "1.0.2"
 solana-sdk = "=1.18.26"
-solana_toolbox_endpoint = "=0.1.38-solana-1.18.26"
-solana_toolbox_anchor = "=0.1.38-solana-1.18.26-anchor-0.30.1"
+solana_toolbox_endpoint = "=0.4.2-solana-1.18.26"
+solana_toolbox_anchor = "=0.4.2-solana-1.18.26-anchor-0.30.1"
 tokio = "1.42.0"

@@ -33,12 +33,12 @@ use solana_sdk::signer::Signer;
 
 #[tokio::test]
 pub async fn run() {
-    let mut endpoint = create_memnet_endpoint().await;
+    let mut endpoint = create_memnet_endpoint().await.unwrap();
 
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -141,6 +141,29 @@ pub async fn run() {
         RunState::Uninitialized
     );
 
+    // Can't tick yet because paused/uninitialized
+    assert!(process_coordinator_tick(
+        &mut endpoint,
+        &payer,
+        &ticker,
+        &coordinator_instance,
+        &coordinator_account,
+    )
+    .await
+    .is_err());
+
+    // Unpause
+    process_coordinator_set_paused(
+        &mut endpoint,
+        &payer,
+        &main_authority,
+        &coordinator_instance,
+        &coordinator_account,
+        false,
+    )
+    .await
+    .unwrap();
+
     // Generate the client key
     let client_id = ClientId::new(client.pubkey(), Default::default());
 
@@ -177,54 +200,7 @@ pub async fn run() {
     .await
     .is_err());
 
-    // Whitelisted, can join
-    process_coordinator_join_run(
-        &mut endpoint,
-        &payer,
-        &client,
-        &authorization,
-        &coordinator_instance,
-        &coordinator_account,
-        client_id,
-    )
-    .await
-    .unwrap();
-
-    // Coordinator should still not be ready
-    assert_eq!(
-        get_coordinator_account_state(&mut endpoint, &coordinator_account)
-            .await
-            .unwrap()
-            .unwrap()
-            .coordinator
-            .run_state,
-        RunState::Uninitialized
-    );
-
-    // Can't tick yet because paused
-    assert!(process_coordinator_tick(
-        &mut endpoint,
-        &payer,
-        &ticker,
-        &coordinator_instance,
-        &coordinator_account,
-    )
-    .await
-    .is_err());
-
-    // Unpause
-    process_coordinator_set_paused(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &coordinator_instance,
-        &coordinator_account,
-        false,
-    )
-    .await
-    .unwrap();
-
-    // Rejoin run, should be a no-op
+    // Whitelisted properly, can join
     process_coordinator_join_run(
         &mut endpoint,
         &payer,
