@@ -213,56 +213,6 @@ pub async fn run() {
     .await
     .unwrap();
 
-<<<<<<< HEAD
-=======
-    // Coordinator should still not be ready
-    assert_eq!(
-        get_coordinator_account_state(&mut endpoint, &coordinator_account)
-            .await
-            .unwrap()
-            .unwrap()
-            .coordinator
-            .run_state,
-        RunState::Uninitialized
-    );
-
-    // Can't tick yet because paused
-    assert!(process_coordinator_tick(
-        &mut endpoint,
-        &payer,
-        &ticker,
-        &coordinator_instance,
-        &coordinator_account,
-    )
-    .await
-    .is_err());
-
-    // Unpause
-    process_coordinator_set_paused(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &coordinator_instance,
-        &coordinator_account,
-        false,
-    )
-    .await
-    .unwrap();
-
-    // Rejoin run, should be a no-op
-    process_coordinator_join_run(
-        &mut endpoint,
-        &payer,
-        &client,
-        &authorization,
-        &coordinator_instance,
-        &coordinator_account,
-        client_id,
-    )
-    .await
-    .unwrap();
-
->>>>>>> main
     // Tick to transition from waiting for members to warmup
     endpoint
         .forward_clock_unix_timestamp(WAITING_FOR_MEMBERS_EXTRA_SECONDS)

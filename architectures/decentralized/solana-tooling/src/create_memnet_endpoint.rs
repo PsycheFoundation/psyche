@@ -22,9 +22,9 @@ async fn anchor_build_folder(folder: &str) -> Result<()> {
 }
 
 pub async fn create_memnet_endpoint() -> Result<ToolboxEndpoint> {
-    anchor_build_folder("../solana-authorizer").await?;
-    anchor_build_folder("../solana-coordinator").await?;
-    anchor_build_folder("../solana-treasurer").await?;
+    //anchor_build_folder("../solana-authorizer").await?;
+    //anchor_build_folder("../solana-coordinator").await?;
+    //anchor_build_folder("../solana-treasurer").await?;
     let mut endpoint =
         ToolboxEndpoint::new_program_test_with_preloaded_programs(&[
             ToolboxEndpointProgramTestPreloadedProgram {
