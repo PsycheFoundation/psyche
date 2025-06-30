@@ -270,18 +270,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         }
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
-                                                info!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
+                                                debug!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
                                                 run.apply_distro_result(hash, distro_result, None);
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {
-                                                info!("Download complete: parameter {}", parameter.name()?);
+                                                debug!("Download complete: parameter {}", parameter.name()?);
                                                 sharable_model.add_parameter(parameter).await?;
                                                 if sharable_model.is_download_complete() {
                                                     sharable_model.send_init_parameters()?;
                                                 }
                                             },
                                             TransmittableDownload::ModelConfig(config) => {
-                                                info!("Download complete: model config");
+                                                debug!("Download complete: model config");
                                                 sharable_model.add_config(config)?;
                                                 sharable_model.send_config()?;
                                             },
