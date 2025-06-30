@@ -176,6 +176,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let model::Model::LLM(llm) = state.model;
 
         let data_future = async {
+            info!("LLM Config: {:?}", llm);
             debug!("Setting up data provider from {:?}", llm.data_location);
             let data_provider = match llm.data_location {
                 LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
@@ -220,6 +221,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             | model::LLMArchitecture::HfDeepseek
             | model::LLMArchitecture::HfAuto => match &llm.checkpoint {
                 model::Checkpoint::Dummy(_) => tokio::spawn(async move {
+                    info!("Checkpoint is Dummy, creating dummy model");
                     let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
                         WordLevel::builder().build().unwrap(),
                     )));
