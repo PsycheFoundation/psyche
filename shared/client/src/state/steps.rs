@@ -59,6 +59,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     sent_warmup_witness: bool,
 
     coordinator_state: Coordinator<T>,
+    is_dummy_model: bool,
 }
 
 #[derive(Error, Debug)]
@@ -131,6 +132,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         let mut previous_round = RoundState::default();
         let mut current_round = RoundState::default();
 
+        // Check if any trainer is using dummy models
+        let is_dummy_model = trainers
+            .iter()
+            .any(|trainer| trainer.causal_lm().is_dummy_model());
+
         let active_step =
             ActiveStep::Warmup(warmup.start(trainers, &mut previous_round, &mut current_round));
 
@@ -153,6 +159,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             tx_broadcast_finished,
 
             coordinator_state,
+            is_dummy_model,
 
             step_finish_time: None,
             sent_warmup_finished: false,
@@ -500,9 +507,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     pub fn apply_distro_result(
         &mut self,
         hash: Hash,
-        distro_result: TransmittableDistroResult,
+        mut distro_result: TransmittableDistroResult,
         self_result: Option<Vec<DistroResult>>,
     ) {
+        // Remove test padding for dummy models
+        if self.is_dummy_model {
+            distro_result = distro_result.without_test_padding();
+        }
         let round_state = if self.current_round.distro_result_blob_downloaded(&hash) {
             trace!(
                 "Got download {hash} for current round {}",
@@ -571,7 +582,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         tokio::spawn(async move {
             // verify that the result matches the commitment
             let (distro_hash, distro_result) =
-                tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
+                tokio::task::spawn_blocking(move || (distro_result.compute_hash(), distro_result))
                     .await
                     .unwrap();
 
