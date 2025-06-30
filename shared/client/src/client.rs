@@ -256,7 +256,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
                                             }
                                         } else {
-                                            warn!("Got broadcast from unknown client {}", from);
+                                            trace!("Got broadcast from unknown client {}", from);
                                             metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
                                         }
                                     }
