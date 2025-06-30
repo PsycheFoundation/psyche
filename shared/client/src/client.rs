@@ -256,7 +256,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
                                             }
                                         } else {
-                                            warn!("Got broadcast from unknown client {}", from);
+                                            // warn!("Got broadcast from unknown client {}", from);
                                             metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
                                         }
                                     }
@@ -270,7 +270,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         }
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
-                                                info!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
+                                                debug!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
                                                 run.apply_distro_result(hash, distro_result, None);
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {
