@@ -1,17 +1,144 @@
 use anyhow::Result;
+use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
+use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
-use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    oneshot,
+};
 use tokio::task::JoinHandle;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
+
+#[derive(Debug)]
+/// Manager for the list of peers to ask for the model parameters and config
+pub struct PeerManager {
+    peer_tx: mpsc::UnboundedSender<PeerCommand>,
+}
+
+#[derive(Debug)]
+/// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
+enum PeerCommand {
+    SetPeers {
+        peers: Vec<NodeId>,
+    },
+    GetPeer {
+        reply: oneshot::Sender<Option<NodeId>>,
+    },
+    ReportSuccess {
+        peer_id: NodeId,
+    },
+    ReportError {
+        peer_id: NodeId,
+    },
+}
+
+impl PeerManager {
+    pub fn new(max_errors_per_peer: usize) -> Self {
+        let (peer_tx, peer_rx) = mpsc::unbounded_channel();
+
+        tokio::spawn(peer_manager_actor(peer_rx, vec![], max_errors_per_peer));
+
+        Self { peer_tx }
+    }
+
+    pub fn set_peers(&self, peers: Vec<NodeId>) {
+        let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
+    }
+
+    pub async fn get_next_peer(&self) -> Option<NodeId> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        if self
+            .peer_tx
+            .send(PeerCommand::GetPeer { reply: reply_tx })
+            .is_err()
+        {
+            return None; // Manager actor is dead
+        }
+
+        reply_rx.await.unwrap_or(None)
+    }
+
+    pub async fn report_success(&self, peer_id: NodeId) {
+        let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
+    }
+
+    pub async fn report_error(&self, peer_id: NodeId) {
+        if self
+            .peer_tx
+            .send(PeerCommand::ReportError { peer_id })
+            .is_err()
+        {
+            tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
+        }
+    }
+}
+
+async fn peer_manager_actor(
+    mut commands: mpsc::UnboundedReceiver<PeerCommand>,
+    initial_peers: Vec<NodeId>,
+    max_errors_per_peer: usize,
+) {
+    let mut available_peers: VecDeque<NodeId> = VecDeque::from(initial_peers);
+    let mut errored_peers: HashMap<NodeId, usize> = HashMap::new();
+
+    while let Some(command) = commands.recv().await {
+        match command {
+            PeerCommand::SetPeers { peers } => {
+                available_peers = VecDeque::from(peers);
+                errored_peers.clear();
+
+                debug!(
+                    "Updated peer list: {} peers available to ask for the model parameters",
+                    available_peers.len()
+                );
+            }
+            PeerCommand::GetPeer { reply } => {
+                let peer = if let Some(peer) = available_peers.pop_front() {
+                    debug!("Selected peer {peer} to ask for the model parameters");
+                    Some(peer)
+                } else {
+                    debug!("No available peers to ask for the model parameters at the moment");
+                    None
+                };
+                let _ = reply.send(peer);
+            }
+
+            PeerCommand::ReportSuccess { peer_id } => {
+                available_peers.push_back(peer_id);
+                errored_peers.remove(&peer_id);
+                debug!("Peer {peer_id} correctly provided the blob ticket");
+            }
+
+            PeerCommand::ReportError { peer_id } => {
+                let error_count = errored_peers.entry(peer_id).or_insert(0);
+                *error_count += 1;
+
+                if *error_count > max_errors_per_peer {
+                    // Don't need to actually remove it because we already popped it, just don't add it back
+                    warn!("Removing peer {peer_id} after {} errors", *error_count);
+
+                    // Remove from errored to avoid keeping in there forever, we won't ask it again
+                    errored_peers.remove(&peer_id);
+                    if available_peers.is_empty() {
+                        warn!("No more peers available, keep checking if they start freeing up");
+                    }
+                } else {
+                    available_peers.push_back(peer_id);
+                };
+            }
+        }
+    }
+}
 
 pub const ALPN: &[u8] = b"model-sharing/0";
 pub const MODEL_REQUEST_TIMEOUT_SECS: u64 = 10;
