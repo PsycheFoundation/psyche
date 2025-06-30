@@ -16,7 +16,8 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    ModelConfigSharingMessage, ParameterSharingMessage, PeerManager, MODEL_REQUEST_TIMEOUT_SECS,
+    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
+    MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 use router::Router;
@@ -67,7 +68,10 @@ mod util;
 mod test;
 
 pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
-pub use download_manager::{DownloadComplete, DownloadFailed, DownloadType, TransmittableDownload};
+pub use download_manager::{
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
+    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+};
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
@@ -793,7 +797,7 @@ pub async fn param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
     model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
-    peer_manager: Arc<PeerManager>,
+    peer_manager: Arc<PeerManagerHandle>,
 ) -> anyhow::Result<()> {
     let max_attempts = 1000u16;
     let mut attempts = 0u16;
@@ -821,12 +825,12 @@ pub async fn param_request_task(
                     .unwrap()
                     .push((blob_ticket, model_request_type));
 
-                peer_manager.report_success(peer_id).await;
+                peer_manager.report_success(peer_id);
                 return Ok(());
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                peer_manager.report_error(peer_id).await;
+                peer_manager.report_error(peer_id);
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;

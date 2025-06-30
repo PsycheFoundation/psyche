@@ -20,7 +20,7 @@ use crate::{NetworkConnection, Networkable, TransmittableDownload};
 
 #[derive(Debug)]
 /// Manager for the list of peers to ask for the model parameters and config
-pub struct PeerManager {
+pub struct PeerManagerHandle {
     peer_tx: mpsc::UnboundedSender<PeerCommand>,
 }
 
@@ -41,7 +41,7 @@ enum PeerCommand {
     },
 }
 
-impl PeerManager {
+impl PeerManagerHandle {
     pub fn new(max_errors_per_peer: usize) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
@@ -68,11 +68,11 @@ impl PeerManager {
         reply_rx.await.unwrap_or(None)
     }
 
-    pub async fn report_success(&self, peer_id: NodeId) {
+    pub fn report_success(&self, peer_id: NodeId) {
         let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
     }
 
-    pub async fn report_error(&self, peer_id: NodeId) {
+    pub fn report_error(&self, peer_id: NodeId) {
         if self
             .peer_tx
             .send(PeerCommand::ReportError { peer_id })
