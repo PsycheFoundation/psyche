@@ -66,7 +66,31 @@ impl CausalLM for DummyModel {
         _num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (tch::Tensor, Option<tch::Tensor>) {
-        let result = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
+        let shapes = [
+            (
+                vec![500, 4, 16],
+                vec![500, 4, 8],
+                vec![500, 4, 64, 64],
+                4096,
+            ),
+            (vec![4, 8], vec![4, 8], vec![4, 64], 64),
+            (
+                vec![4, 4, 16],
+                vec![4, 4, 8],
+                vec![4, 4, 64, 64],
+                4096,
+            ),
+            (
+                vec![1, 4, 16],
+                vec![1, 4, 8],
+                vec![1, 4, 32, 64],
+                2048,
+            ),
+        ];
+
+        let (_, _, xshape, _) = &shapes[0];
+
+        let result = tch::Tensor::zeros(xshape, (Kind::BFloat16, x.device()));
         let loss = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = loss.set_requires_grad(true);
         let loss = loss.g_add_scalar(1.0);
