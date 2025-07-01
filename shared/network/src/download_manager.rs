@@ -54,6 +54,7 @@ pub enum RetriedDownloadsMessage {
     },
 }
 
+/// Handler to interact with the retried downloads actor
 #[derive(Clone)]
 pub struct RetriedDownloadsHandle {
     tx: mpsc::UnboundedSender<RetriedDownloadsMessage>,
@@ -75,10 +76,12 @@ impl RetriedDownloadsHandle {
         Self { tx }
     }
 
+    /// Insert a new download to retry
     pub fn insert(&self, info: DownloadRetryInfo) {
         let _ = self.tx.send(RetriedDownloadsMessage::Insert { info });
     }
 
+    /// Remove a download from the retry list
     pub async fn remove(&self, hash: Hash) -> Option<DownloadRetryInfo> {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -96,6 +99,7 @@ impl RetriedDownloadsHandle {
         response_rx.await.unwrap_or(None)
     }
 
+    /// Get a download from the retry list
     pub async fn get(&self, hash: Hash) -> Option<DownloadRetryInfo> {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -113,6 +117,7 @@ impl RetriedDownloadsHandle {
         response_rx.await.unwrap_or(None)
     }
 
+    /// Get the retries that are considered pending and have not been retried yet
     pub async fn pending_retries(&self) -> Vec<(Hash, BlobTicket, u32, DownloadType)> {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -129,6 +134,7 @@ impl RetriedDownloadsHandle {
         response_rx.await.unwrap_or_else(|_| Vec::new())
     }
 
+    /// Mark the retry as already being retried marking updating the retry time
     pub async fn update_time(&self, hash: Hash) -> usize {
         let (response_tx, response_rx) = oneshot::channel();
 

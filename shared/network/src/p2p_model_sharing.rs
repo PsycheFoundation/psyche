@@ -45,15 +45,19 @@ impl PeerManagerHandle {
     pub fn new(max_errors_per_peer: usize) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
+        // Spawn the peer manager actor
         tokio::spawn(peer_manager_actor(peer_rx, vec![], max_errors_per_peer));
 
         Self { peer_tx }
     }
 
+    /// Set the list of peers that the manager will use to download the model parameters
     pub fn set_peers(&self, peers: Vec<NodeId>) {
         let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
     }
 
+    /// Get the next peer to download the model parameters from
+    /// We'll get a None if no peers are available, a peer might be available later when it finishes sharing a parameter
     pub async fn get_next_peer(&self) -> Option<NodeId> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -68,10 +72,12 @@ impl PeerManagerHandle {
         reply_rx.await.unwrap_or(None)
     }
 
+    /// Report that a peer has successfully shared a parameter
     pub fn report_success(&self, peer_id: NodeId) {
         let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
     }
 
+    /// Report that a peer has failed to share a parameter
     pub fn report_error(&self, peer_id: NodeId) {
         if self
             .peer_tx
@@ -83,27 +89,36 @@ impl PeerManagerHandle {
     }
 }
 
-async fn peer_manager_actor(
-    mut commands: mpsc::UnboundedReceiver<PeerCommand>,
-    initial_peers: Vec<NodeId>,
+struct PeerManagerActor {
+    available_peers: VecDeque<NodeId>,
+    errored_peers: HashMap<NodeId, usize>,
     max_errors_per_peer: usize,
-) {
-    let mut available_peers: VecDeque<NodeId> = VecDeque::from(initial_peers);
-    let mut errored_peers: HashMap<NodeId, usize> = HashMap::new();
+}
 
-    while let Some(command) = commands.recv().await {
-        match command {
+impl PeerManagerActor {
+    pub fn new(initial_peers: Vec<NodeId>, max_errors_per_peer: usize) -> Self {
+        let available_peers = VecDeque::from(initial_peers);
+        let errored_peers = HashMap::new();
+        Self {
+            available_peers,
+            errored_peers,
+            max_errors_per_peer,
+        }
+    }
+
+    fn handle_message(&mut self, message: PeerCommand) {
+        match message {
             PeerCommand::SetPeers { peers } => {
-                available_peers = VecDeque::from(peers);
-                errored_peers.clear();
+                self.available_peers = VecDeque::from(peers);
+                self.errored_peers.clear();
 
                 debug!(
                     "Updated peer list: {} peers available to ask for the model parameters",
-                    available_peers.len()
+                    self.available_peers.len()
                 );
             }
             PeerCommand::GetPeer { reply } => {
-                let peer = if let Some(peer) = available_peers.pop_front() {
+                let peer = if let Some(peer) = self.available_peers.pop_front() {
                     debug!("Selected peer {peer} to ask for the model parameters");
                     Some(peer)
                 } else {
@@ -114,29 +129,41 @@ async fn peer_manager_actor(
             }
 
             PeerCommand::ReportSuccess { peer_id } => {
-                available_peers.push_back(peer_id);
-                errored_peers.remove(&peer_id);
+                self.available_peers.push_back(peer_id);
+                self.errored_peers.remove(&peer_id);
                 debug!("Peer {peer_id} correctly provided the blob ticket");
             }
 
             PeerCommand::ReportError { peer_id } => {
-                let error_count = errored_peers.entry(peer_id).or_insert(0);
+                let error_count = self.errored_peers.entry(peer_id).or_insert(0);
                 *error_count += 1;
 
-                if *error_count > max_errors_per_peer {
+                if *error_count > self.max_errors_per_peer {
                     // Don't need to actually remove it because we already popped it, just don't add it back
                     warn!("Removing peer {peer_id} after {} errors", *error_count);
 
                     // Remove from errored to avoid keeping in there forever, we won't ask it again
-                    errored_peers.remove(&peer_id);
-                    if available_peers.is_empty() {
+                    self.errored_peers.remove(&peer_id);
+                    if self.available_peers.is_empty() {
                         warn!("No more peers available, keep checking if they start freeing up");
                     }
                 } else {
-                    available_peers.push_back(peer_id);
+                    self.available_peers.push_back(peer_id);
                 };
             }
         }
+    }
+}
+
+async fn peer_manager_actor(
+    mut rx: mpsc::UnboundedReceiver<PeerCommand>,
+    initial_peers: Vec<NodeId>,
+    max_errors_per_peer: usize,
+) {
+    let mut actor = PeerManagerActor::new(initial_peers, max_errors_per_peer);
+
+    while let Some(message) = rx.recv().await {
+        actor.handle_message(message);
     }
 }
 
@@ -479,7 +506,10 @@ impl SharableModel {
             Entry::Occupied(mut param_entry) => {
                 let param = param_entry.get_mut();
                 if param.is_some() {
-                    return Err(SharableModelError::ParameterAlreadyAdded);
+                    warn!(
+                        "Parameter {} was already added to the model, ignoring it",
+                        param_name
+                    );
                 }
                 *param = Some(param_value);
                 Ok(())

@@ -444,6 +444,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     debug!("Retrying download for blob {} (attempt {})", hash, retries);
 
                                     metrics.record_download_retry(hash);
+                                    // We check the type of the failed download and send it to the appropriate channel to retry it
                                     match download_type {
                                         DownloadType::DistroResult(_) => {
                                             let _ = tx_request_download.send((ticket, tag));
