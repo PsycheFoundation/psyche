@@ -477,6 +477,7 @@ pub struct Distro {
     weight_decay: f64,
     state: Vec<State>,
     transform: TransformDCT,
+    is_dummy_mode: bool,
 }
 
 impl Distro {
@@ -503,6 +504,7 @@ impl Distro {
         sgd.zero_grad_with_set_to_none(false).unwrap();
 
         let transform = TransformDCT::new(vs.variables(), compression_chunk);
+        let is_dummy_mode = vs.is_dummy_model();
 
         Self {
             sgd,
@@ -511,6 +513,7 @@ impl Distro {
             weight_decay,
             state,
             transform,
+            is_dummy_mode,
         }
     }
 
@@ -647,7 +650,7 @@ impl Distro {
             return;
         }
 
-        for (index, mut var) in vars.variables().enumerate() {
+        for (index, var) in vars.variables().enumerate() {
             let variable = var.logical_tensor();
             let device = variable.device();
             let indicies = results
@@ -685,10 +688,15 @@ impl Distro {
                 decompressed.size(),
                 self.transform.b_dict
             );
-            var.set_grad(self.transform.decode(&decompressed));
+            if !self.is_dummy_mode {
+                var.set_grad(self.transform.decode(&decompressed));
+            }
 
-            // Sign-SGD
-            //let _t = variable.grad().sign_();
+            // Sign-SGD (skip in dummy mode since it breaks)
+            // TODO figure out if we can still run it in dummy mode
+            if !self.is_dummy_mode {
+                let _t = variable.grad().sign_();
+            }
         }
         // SGD step
         self.sgd.set_learning_rate(lr).unwrap();
