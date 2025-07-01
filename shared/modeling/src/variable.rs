@@ -125,7 +125,7 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
         Box::new((name, self.1.empty_like(), self.2, self.3.clone()))
     }
 
-    fn set_grad(&mut self, tensor: Tensor) {
+    fn set_grad(&self, tensor: Tensor) {
         return;
 
         self.1

@@ -16,22 +16,28 @@ pub struct DummyModel {
 }
 
 pub fn get_dummy_parameters() -> HashMap<String, Tensor> {
+    // These shapes match LlamaConfig::dummy() which has hidden_size=1, vocab_size=1, etc.
     [
-        "model.norm.weight",
-        "model.layers.0.mlp.up_proj.weight",
-        "model.layers.0.post_attention_layernorm.weight",
-        "model.layers.0.self_attn.q_proj.weight",
-        "model.embed_tokens.weight",
-        "model.layers.0.self_attn.o_proj.weight",
-        "model.layers.0.self_attn.v_proj.weight",
-        "model.layers.0.self_attn.k_proj.weight",
-        "model.layers.0.mlp.gate_proj.weight",
-        "model.layers.0.mlp.down_proj.weight",
-        "lm_head.weight",
-        "model.layers.0.input_layernorm.weight",
+        ("model.norm.weight", vec![1]), // [hidden_size] = [1]
+        ("model.layers.0.mlp.up_proj.weight", vec![1, 1]), // [intermediate_size, hidden_size] = [1, 1]
+        ("model.layers.0.post_attention_layernorm.weight", vec![1]), // [hidden_size] = [1]
+        ("model.layers.0.self_attn.q_proj.weight", vec![1, 1]), // [num_heads * head_dim, hidden_size] = [1, 1]
+        ("model.embed_tokens.weight", vec![1, 1]), // [vocab_size, hidden_size] = [1, 1]
+        ("model.layers.0.self_attn.o_proj.weight", vec![1, 1]), // [hidden_size, num_heads * head_dim] = [1, 1]
+        ("model.layers.0.self_attn.v_proj.weight", vec![1, 1]), // [num_kv_heads * head_dim, hidden_size] = [1, 1]
+        ("model.layers.0.self_attn.k_proj.weight", vec![1, 1]), // [num_kv_heads * head_dim, hidden_size] = [1, 1]
+        ("model.layers.0.mlp.gate_proj.weight", vec![1, 1]), // [intermediate_size, hidden_size] = [1, 1]
+        ("model.layers.0.mlp.down_proj.weight", vec![1, 1]), // [hidden_size, intermediate_size] = [1, 1]
+        ("lm_head.weight", vec![1, 1]),                      // [vocab_size, hidden_size] = [1, 1]
+        ("model.layers.0.input_layernorm.weight", vec![1]),  // [hidden_size] = [1]
     ]
     .into_iter()
-    .map(|p| (p.to_string(), Tensor::zeros([1], tch::kind::FLOAT_CPU)))
+    .map(|(name, shape)| {
+        (
+            name.to_string(),
+            Tensor::zeros(shape, (tch::Kind::Float, tch::Device::Cpu)),
+        )
+    })
     .collect()
 }
 
@@ -74,18 +80,8 @@ impl CausalLM for DummyModel {
                 4096,
             ),
             (vec![4, 8], vec![4, 8], vec![4, 64], 64),
-            (
-                vec![4, 4, 16],
-                vec![4, 4, 8],
-                vec![4, 4, 64, 64],
-                4096,
-            ),
-            (
-                vec![1, 4, 16],
-                vec![1, 4, 8],
-                vec![1, 4, 32, 64],
-                2048,
-            ),
+            (vec![4, 4, 16], vec![4, 4, 8], vec![4, 4, 64, 64], 4096),
+            (vec![1, 4, 16], vec![1, 4, 8], vec![1, 4, 32, 64], 2048),
         ];
 
         let (_, _, xshape, _) = &shapes[0];
