@@ -41,6 +41,48 @@ impl TransmittableDistroResult {
         }
         hasher.finalize().into()
     }
+
+    /// Add padding data for P2P testing purposes - creates larger blobs without affecting training
+    pub fn with_test_padding(mut self, target_size_mb: usize) -> Self {
+        // For some reason it ends up being double so run the algo on half the size
+        let target_size_mb = target_size_mb / 2;
+        let target_bytes = target_size_mb * 1024 * 1024;
+        let current_size = postcard::to_stdvec(&self).unwrap_or_default().len();
+
+        if current_size >= target_bytes {
+            return self; // Already large enough
+        }
+
+        let padding_needed = target_bytes - current_size;
+        // Create dummy SerializedDistroResult with large tensors for testing
+        let padding_elements = padding_needed / 4; // 4 bytes per f32
+
+        if padding_elements > 0 {
+            // Create dummy tensors using tch and convert to SerializableTensor
+            let dummy_tensor = tch::Tensor::zeros(
+                &[padding_elements as i64],
+                (tch::Kind::Float, tch::Device::Cpu),
+            );
+            let padding_result = SerializedDistroResult {
+                sparse_idx: (&dummy_tensor).try_into().unwrap_or_else(|_| {
+                    // Fallback: create minimal tensor if conversion fails
+                    let small_tensor =
+                        tch::Tensor::zeros(&[1], (tch::Kind::Float, tch::Device::Cpu));
+                    (&small_tensor).try_into().unwrap()
+                }),
+                sparse_val: (&dummy_tensor).try_into().unwrap_or_else(|_| {
+                    let small_tensor =
+                        tch::Tensor::zeros(&[1], (tch::Kind::Float, tch::Device::Cpu));
+                    (&small_tensor).try_into().unwrap()
+                }),
+                xshape: vec![padding_elements as u16],
+                totalk: padding_elements as u32,
+            };
+            self.distro_results.push(padding_result);
+        }
+
+        self
+    }
 }
 
 #[derive(Debug, Error)]

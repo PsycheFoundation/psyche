@@ -381,6 +381,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                             debug!(step=step, loss=loss, batch_id=%batch_id, "Got training output, DisTrO results generated");
 
+                            let is_dummy_model = trainer.causal_lm().is_dummy_model();
+                            info!("[train:start] is_dummy_model={is_dummy_model}");
                             available_trainers.push(trainer);
 
                             if !sent_results {
@@ -408,7 +410,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                                     let to_transmit = if quantize { Trainer::quantize_results(&distro_results) } else { distro_results.clone()};
 
-                                    let transmittable_distro_result = TransmittableDistroResult {
+                                    let mut transmittable_distro_result = TransmittableDistroResult {
                                         step,
                                         batch_id,
                                         distro_results: to_transmit
@@ -418,6 +420,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                                             .map_err(TrainError::SerializeDistroResult)?,
                                         trainer_nonce: nonce,
                                     };
+
+                                    // Add test padding for P2P testing when using dummy model
+                                    if is_dummy_model {
+                                        let target_dummy_size_mb = 100;
+                                        transmittable_distro_result = transmittable_distro_result.with_test_padding(target_dummy_size_mb);
+                                    }
 
                                     if let Some(dir) = write_gradients_dir {
                                         let transmittable_distro_result = transmittable_distro_result.clone();
