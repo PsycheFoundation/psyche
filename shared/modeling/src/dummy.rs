@@ -123,4 +123,8 @@ impl CausalLM for DummyModel {
     fn prepare_for_training(&mut self) {}
 
     fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+
+    fn is_dummy_model(&self) -> bool {
+        true
+    }
 }
