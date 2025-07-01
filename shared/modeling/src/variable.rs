@@ -126,8 +126,6 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
     }
 
     fn set_grad(&self, tensor: Tensor) {
-        return;
-
         self.1
             .grad()
             .copy_(&self.shard_other_tensor_like_me(tensor));
