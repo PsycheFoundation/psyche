@@ -67,10 +67,31 @@ struct TokenizedLLHDocument {
     choices: Vec<Vec<i64>>,
     choices_str: Vec<String>,
     answer: usize,
+    choices_token_len: Vec<usize>,
+    requests: Vec<Vec<i64>>,
 }
 
 impl TokenizedLLHDocument {
     pub fn from_document(doc: Document, tokenizer: &Tokenizer) -> Self {
+        let requests: Vec<Vec<i64>> = doc
+            .choices
+            .clone()
+            .into_iter()
+            .map(|choice| {
+                let request = tokenizer
+                    .encode(format!("{} {}", doc.text, choice), false)
+                    .unwrap()
+                    .get_ids()
+                    .iter()
+                    .map(|x| *x as i64)
+                    .collect::<Vec<_>>();
+
+                request
+            })
+            .collect();
+
+        let mut choices_token_len = Vec::new();
+
         let text = tokenizer
             .encode(doc.text, false)
             .unwrap()
@@ -91,15 +112,26 @@ impl TokenizedLLHDocument {
                     .iter()
                     .map(|x| *x as i64)
                     .collect::<Vec<_>>();
+
+                choices_token_len.push(choice.len());
                 choice
             })
             .collect();
+
+        for x in 0..requests.len() {
+            debug_assert_eq!(
+                requests[x][requests[x].len() - choices_token_len[x]..].len(),
+                choices[x].len()
+            )
+        }
 
         Self {
             text,
             choices,
             choices_str,
             answer: doc.answer,
+            requests,
+            choices_token_len,
         }
     }
 }
@@ -227,41 +259,48 @@ impl PreparedTask {
             context.extend_from_slice(&doc.text);
             let mut scores: Vec<(f32, bool)> = Vec::new();
 
-            for choice in &doc.choices {
+            for idx in 0..doc.requests.len() {
                 // e.g:
-                // ids = "A line graph is best used to "
-                let mut ids = context.clone();
+                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
+                let mut request = doc.requests[idx].clone();
 
-                // ids = "A line graph is best used to compare many variables"
-                ids.extend_from_slice(choice);
+                // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
+                // Note: If the tokenizer handles {space}Sun token we include it in the choice
+                let choice = &doc.requests[idx][request.len() - doc.choices_token_len[idx]..];
 
-                // remove the last id since we dont want to pass it to the model
-                // ids = "A line graph is best used to compare many "
-                ids.pop();
-                let input_lenght = ids.len();
+                // Remove the last token since we dont want to pass it to the model
+                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
+                request.pop();
+                let input_lenght = &request.len();
+                println!("request: {:?}", request);
 
-                let ids = Tensor::from_slice(&ids)
+                let request = Tensor::from_slice(&request)
                     .to(options.model.device())
                     .unsqueeze(0);
 
                 let (logits, _) = {
                     let _no_grad = tch::no_grad_guard();
-                    options.model.forward(&ids, None, None, None)
+                    options.model.forward(&request, None, None, None)
                 };
 
                 let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
+
+                println!("logits: {}", logits);
 
                 // Get tensor of shape `[choice.len(), vocab_size]` containing the
                 // model's logits for each token of the `choice` text.
                 let logits = logits.slice(
                     0,
-                    input_lenght as i64 - choice.len() as i64,
-                    input_lenght as i64,
+                    *input_lenght as i64 - choice.len() as i64,
+                    *input_lenght as i64,
                     1,
                 );
 
+                println!("answer logits shape: {:?}", logits);
+                println!("logits: {}", logits);
+
                 let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
-                let exact_match = greedy_tokens.eq(choice);
+                let exact_match = greedy_tokens.eq(&choice);
 
                 let choice_log_prob = logits.log_softmax(-1, None).gather(
                     -1,
