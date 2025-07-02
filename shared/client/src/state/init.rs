@@ -324,7 +324,35 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                                 let model_config = match llm.architecture {
                                     model::LLMArchitecture::HfLlama => {
-                                        AutoConfig::Llama(serde_json::from_str(&model_config)?)
+                                        let llama_config: psyche_modeling::LlamaConfig =
+                                            serde_json::from_str(&model_config)?;
+                                        // Check if this is actually a dummy model shared via P2P
+                                        if llama_config.is_dummy_config() {
+                                            info!("Detected dummy model config via P2P, will create DummyModel");
+                                            // Return early with dummy model creation
+                                            let tokenizer =
+                                                Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
+                                                    WordLevel::builder().build().unwrap(),
+                                                )));
+
+                                            return Ok(RawLoadedModel {
+                                                models: RawLoadedModelType::ParallelNativeModels(
+                                                    (0..(init_config.data_parallelism * init_config.tensor_parallelism))
+                                                        .map(|_| {
+                                                            if let Some(training_delay) = init_config.dummy_training_delay_secs {
+                                                                Box::new(psyche_modeling::DummyModel::new(training_delay)) as Box<dyn psyche_modeling::CausalLM>
+                                                            } else {
+                                                                Box::new(psyche_modeling::DummyModel::default()) as Box<dyn psyche_modeling::CausalLM>
+                                                            }
+                                                        })
+                                                        .collect(),
+                                                ),
+                                                tokenizer: tokenizer.clone(),
+                                                checkpoint_extra_files: vec![],
+                                                eval_runner: EvalRunner::new(vec![], tokenizer.clone(), None, 0),
+                                            });
+                                        }
+                                        AutoConfig::Llama(llama_config)
                                     }
                                     model::LLMArchitecture::HfDeepseek => {
                                         AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
