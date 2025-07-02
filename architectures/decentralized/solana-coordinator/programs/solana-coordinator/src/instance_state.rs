@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
@@ -134,6 +136,22 @@ impl CoordinatorInstanceState {
 
                 let mut finished_client_index = 0;
                 let mut exited_client_index = 0;
+
+                let mut finished_healthy_clients_signers = HashSet::new();
+                for finished_client in self.coordinator.epoch_state.clients {
+                    if finished_client.state == ClientState::Healthy {
+                        finished_healthy_clients_signers
+                            .insert(finished_client.id.signer);
+                    }
+                }
+                let mut exited_ejected_clients_signers = HashSet::new();
+                for exited_client in self.coordinator.epoch_state.exited_clients
+                {
+                    if exited_client.state == ClientState::Ejected {
+                        exited_ejected_clients_signers
+                            .insert(exited_client.id.signer);
+                    }
+                }
 
                 for client in self.clients_state.clients.iter_mut() {
                     if finished_client_index < finished_clients.len()

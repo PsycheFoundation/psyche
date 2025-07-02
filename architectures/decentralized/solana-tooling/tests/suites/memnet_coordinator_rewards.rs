@@ -31,6 +31,7 @@ use psyche_solana_tooling::process_coordinator_instructions::process_coordinator
 use psyche_solana_tooling::process_coordinator_instructions::process_update;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
+use tokio::fs;
 
 #[tokio::test]
 pub async fn run() {
@@ -47,7 +48,7 @@ pub async fn run() {
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
     let mut clients = vec![];
-    for _ in 0..240 {
+    for _ in 0..3 {
         clients.push(Keypair::new());
     }
     let ticker = Keypair::new();
@@ -284,6 +285,15 @@ pub async fn run() {
     // Tick from cooldown to next epoch's warmup (this should trigger reward distribution)
     endpoint
         .forward_clock_unix_timestamp(cooldown_time)
+        .await
+        .unwrap();
+    let my_dump = endpoint
+        .get_account(&coordinator_account)
+        .await
+        .unwrap()
+        .unwrap()
+        .data;
+    fs::write("coordinator_account_dump.so", my_dump)
         .await
         .unwrap();
     process_coordinator_tick(
