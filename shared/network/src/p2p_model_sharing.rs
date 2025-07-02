@@ -1,17 +1,171 @@
 use anyhow::Result;
+use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
+use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
-use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    oneshot,
+};
 use tokio::task::JoinHandle;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
+
+#[derive(Debug)]
+/// Manager for the list of peers to ask for the model parameters and config
+pub struct PeerManagerHandle {
+    peer_tx: mpsc::UnboundedSender<PeerCommand>,
+}
+
+#[derive(Debug)]
+/// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
+enum PeerCommand {
+    SetPeers {
+        peers: Vec<NodeId>,
+    },
+    GetPeer {
+        reply: oneshot::Sender<Option<NodeId>>,
+    },
+    ReportSuccess {
+        peer_id: NodeId,
+    },
+    ReportError {
+        peer_id: NodeId,
+    },
+}
+
+impl PeerManagerHandle {
+    pub fn new(max_errors_per_peer: usize) -> Self {
+        let (peer_tx, peer_rx) = mpsc::unbounded_channel();
+
+        // Spawn the peer manager actor
+        tokio::spawn(peer_manager_actor(peer_rx, vec![], max_errors_per_peer));
+
+        Self { peer_tx }
+    }
+
+    /// Set the list of peers that the manager will use to download the model parameters
+    pub fn set_peers(&self, peers: Vec<NodeId>) {
+        let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
+    }
+
+    /// Get the next peer to download the model parameters from
+    /// We'll get a None if no peers are available, a peer might be available later when it finishes sharing a parameter
+    pub async fn get_next_peer(&self) -> Option<NodeId> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        if self
+            .peer_tx
+            .send(PeerCommand::GetPeer { reply: reply_tx })
+            .is_err()
+        {
+            return None; // Manager actor is dead
+        }
+
+        reply_rx.await.unwrap_or(None)
+    }
+
+    /// Report that a peer has successfully shared a parameter
+    pub fn report_success(&self, peer_id: NodeId) {
+        let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
+    }
+
+    /// Report that a peer has failed to share a parameter
+    pub fn report_error(&self, peer_id: NodeId) {
+        if self
+            .peer_tx
+            .send(PeerCommand::ReportError { peer_id })
+            .is_err()
+        {
+            tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
+        }
+    }
+}
+
+struct PeerManagerActor {
+    available_peers: VecDeque<NodeId>,
+    errored_peers: HashMap<NodeId, usize>,
+    max_errors_per_peer: usize,
+}
+
+impl PeerManagerActor {
+    pub fn new(initial_peers: Vec<NodeId>, max_errors_per_peer: usize) -> Self {
+        let available_peers = VecDeque::from(initial_peers);
+        let errored_peers = HashMap::new();
+        Self {
+            available_peers,
+            errored_peers,
+            max_errors_per_peer,
+        }
+    }
+
+    fn handle_message(&mut self, message: PeerCommand) {
+        match message {
+            PeerCommand::SetPeers { peers } => {
+                self.available_peers = VecDeque::from(peers);
+                self.errored_peers.clear();
+
+                debug!(
+                    "Updated peer list: {} peers available to ask for the model parameters",
+                    self.available_peers.len()
+                );
+            }
+            PeerCommand::GetPeer { reply } => {
+                let peer = if let Some(peer) = self.available_peers.pop_front() {
+                    debug!("Selected peer {peer} to ask for the model parameters");
+                    Some(peer)
+                } else {
+                    debug!("No available peers to ask for the model parameters at the moment");
+                    None
+                };
+                let _ = reply.send(peer);
+            }
+
+            PeerCommand::ReportSuccess { peer_id } => {
+                self.available_peers.push_back(peer_id);
+                self.errored_peers.remove(&peer_id);
+                debug!("Peer {peer_id} correctly provided the blob ticket");
+            }
+
+            PeerCommand::ReportError { peer_id } => {
+                let error_count = self.errored_peers.entry(peer_id).or_insert(0);
+                *error_count += 1;
+
+                if *error_count > self.max_errors_per_peer {
+                    // Don't need to actually remove it because we already popped it, just don't add it back
+                    warn!("Removing peer {peer_id} after {} errors", *error_count);
+
+                    // Remove from errored to avoid keeping in there forever, we won't ask it again
+                    self.errored_peers.remove(&peer_id);
+                    if self.available_peers.is_empty() {
+                        warn!("No more peers available, keep checking if they start freeing up");
+                    }
+                } else {
+                    self.available_peers.push_back(peer_id);
+                };
+            }
+        }
+    }
+}
+
+async fn peer_manager_actor(
+    mut rx: mpsc::UnboundedReceiver<PeerCommand>,
+    initial_peers: Vec<NodeId>,
+    max_errors_per_peer: usize,
+) {
+    let mut actor = PeerManagerActor::new(initial_peers, max_errors_per_peer);
+
+    while let Some(message) = rx.recv().await {
+        actor.handle_message(message);
+    }
+}
 
 pub const ALPN: &[u8] = b"model-sharing/0";
 pub const MODEL_REQUEST_TIMEOUT_SECS: u64 = 10;
@@ -352,7 +506,10 @@ impl SharableModel {
             Entry::Occupied(mut param_entry) => {
                 let param = param_entry.get_mut();
                 if param.is_some() {
-                    return Err(SharableModelError::ParameterAlreadyAdded);
+                    warn!(
+                        "Parameter {} was already added to the model, ignoring it",
+                        param_name
+                    );
                 }
                 *param = Some(param_value);
                 Ok(())
