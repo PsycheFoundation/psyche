@@ -50,6 +50,17 @@ impl LlamaConfig {
             tie_word_embeddings: false,
         }
     }
+
+    /// Check if this config represents a dummy model (all sizes are 1)
+    // TODO later we could add an is_dummy field directly.
+    pub fn is_dummy_config(&self) -> bool {
+        self.hidden_size == 1
+            && self.intermediate_size == 1
+            && self.vocab_size == 1
+            && self.num_hidden_layers == 1
+            && self.num_attention_heads == 1
+            && self.num_key_value_heads == Some(1)
+    }
 }
 
 #[derive(Debug)]
