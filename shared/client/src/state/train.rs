@@ -421,9 +421,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                                         trainer_nonce: nonce,
                                     };
 
-                                    // Add test padding for P2P testing when using dummy model
+                                    // Compute commitment hash BEFORE adding padding to avoid hash mismatch
+                                    let commitment_data_hash = transmittable_distro_result.comptue_hash();
+
+                                    // Add test padding for P2P testing when using dummy model (after hash calculation)
                                     if is_dummy_model {
-                                        let target_dummy_size_mb = 100;
+                                        let target_dummy_size_mb = 256;
                                         transmittable_distro_result = transmittable_distro_result.with_test_padding(target_dummy_size_mb);
                                     }
 
@@ -438,8 +441,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                                             }
                                         });
                                     }
-
-                                    let commitment_data_hash = transmittable_distro_result.comptue_hash();
 
                                     trace!("trying to queue tx distro result...");
                                     tx_distro_result
