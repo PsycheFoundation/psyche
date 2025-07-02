@@ -55,7 +55,7 @@ impl DummyModel {
             shards: HashMap::new(),
             trainable_variables: Vec::new(),
         };
-        let mut var_store = VarStore::new(Device::cuda_if_available());
+        let mut var_store = VarStore::new(Device::Cpu);
         var_store.variables_ = Arc::new(Mutex::new(variables));
         Self {
             var_store,
@@ -72,22 +72,11 @@ impl CausalLM for DummyModel {
         _num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (tch::Tensor, Option<tch::Tensor>) {
-        let shapes = [
-            (
-                vec![500, 4, 16],
-                vec![500, 4, 8],
-                vec![500, 4, 64, 64],
-                4096,
-            ),
-            (vec![4, 8], vec![4, 8], vec![4, 64], 64),
-            (vec![4, 4, 16], vec![4, 4, 8], vec![4, 4, 64, 64], 4096),
-            (vec![1, 4, 16], vec![1, 4, 8], vec![1, 4, 32, 64], 2048),
-        ];
+        let shape = vec![1, 1, 1];
+        let cpu_device = tch::Device::Cpu;
 
-        let (_, _, xshape, _) = &shapes[0];
-
-        let result = tch::Tensor::zeros(xshape, (Kind::BFloat16, x.device()));
-        let loss = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
+        let result = tch::Tensor::zeros(&shape, (Kind::BFloat16, cpu_device));
+        let loss = tch::Tensor::zeros([1], (Kind::BFloat16, cpu_device));
         let loss = loss.set_requires_grad(true);
         let loss = loss.g_add_scalar(1.0);
         let loss = match loss_scale {
@@ -95,8 +84,7 @@ impl CausalLM for DummyModel {
             None => loss,
         };
 
-        // sleep some time just to simulate training
-        std::thread::sleep(self.training_delay_secs);
+        std::thread::sleep(std::time::Duration::from_millis(2000)); // Simulate 2s delay
         (result, Some(loss))
     }
 
@@ -109,7 +97,7 @@ impl CausalLM for DummyModel {
     }
 
     fn device(&self) -> tch::Device {
-        Device::cuda_if_available()
+        Device::Cpu
     }
 
     fn variables(&self) -> StableVariableIterator {

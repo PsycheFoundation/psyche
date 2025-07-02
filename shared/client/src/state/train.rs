@@ -426,7 +426,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                                     // Add test padding for P2P testing when using dummy model (after hash calculation)
                                     if is_dummy_model {
-                                        let target_dummy_size_mb = 256;
+                                        let target_dummy_size_mb = 1;
                                         transmittable_distro_result = transmittable_distro_result.with_test_padding(target_dummy_size_mb);
                                     }
 
