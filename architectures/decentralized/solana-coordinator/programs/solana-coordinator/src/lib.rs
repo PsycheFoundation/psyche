@@ -84,7 +84,8 @@ pub fn coordinator_account_from_bytes(
 
 pub fn coordinator_account_from_bytes_mut(
     bytes: &mut [u8],
-) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes> {
+) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes>
+{
     if bytes.len() != CoordinatorAccount::space_with_discriminator() {
         return Err(DeserializeCoordinatorFromBytes::IncorrectSize {
             expected: CoordinatorAccount::space_with_discriminator(),
