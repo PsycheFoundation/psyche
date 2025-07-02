@@ -82,6 +82,29 @@ pub fn coordinator_account_from_bytes(
     )?)
 }
 
+pub fn coordinator_account_from_bytes_mut(
+    bytes: &mut [u8],
+) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes> {
+    if bytes.len() != CoordinatorAccount::space_with_discriminator() {
+        return Err(DeserializeCoordinatorFromBytes::IncorrectSize {
+            expected: CoordinatorAccount::space_with_discriminator(),
+            actual: bytes.len(),
+        });
+    }
+    if &bytes[..CoordinatorAccount::DISCRIMINATOR.len()]
+        != CoordinatorAccount::DISCRIMINATOR
+    {
+        return Err(DeserializeCoordinatorFromBytes::InvalidDiscriminator {
+            expected: CoordinatorAccount::DISCRIMINATOR.to_vec(),
+            actual: bytes[..CoordinatorAccount::DISCRIMINATOR.len()].to_vec(),
+        });
+    }
+    Ok(bytemuck::try_from_bytes_mut(
+        &mut bytes[CoordinatorAccount::DISCRIMINATOR.len()
+            ..CoordinatorAccount::space_with_discriminator()],
+    )?)
+}
+
 #[account(zero_copy)]
 #[repr(C)]
 #[derive(Serialize, Deserialize, TS)]
