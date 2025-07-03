@@ -590,7 +590,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         tokio::spawn(async move {
             // verify that the result matches the commitment
             let (distro_hash, distro_result) =
-                tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
+                tokio::task::spawn_blocking(move || (distro_result.compute_hash(), distro_result))
                     .await
                     .unwrap();
 

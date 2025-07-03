@@ -327,7 +327,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                         let llama_config: psyche_modeling::LlamaConfig =
                                             serde_json::from_str(&model_config)?;
                                         // Check if this is actually a dummy model shared via P2P
-                                        if llama_config.is_dummy_config() {
+                                        if llama_config.is_dummy {
                                             info!("Detected dummy model config via P2P, will create DummyModel");
                                             // Return early with dummy model creation
                                             let tokenizer =

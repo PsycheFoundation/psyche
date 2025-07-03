@@ -303,8 +303,8 @@ impl TransformDCT {
 
             let n1w = self
                 .b_dict
-                .get(&n1)
-                .expect(&format!("b_dict no value for key {}", &n1))
+                .get(n1)
+                .unwrap_or_else(|| panic!("b_dict no value for key {}", n1))
                 .to_device(device);
             self.b_dict.insert(*n1, n1w.copy());
 
@@ -313,7 +313,7 @@ impl TransformDCT {
 
             // Equivalent to rearrange(x, "x w -> (x w)")
             let (x_, w) = (
-                x_shape.get(0).expect("x_shape no value for index 0"),
+                x_shape.first().expect("x_shape no value for index 0"),
                 x_shape[1],
             );
             x.reshape([x_ * w])
