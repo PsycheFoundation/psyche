@@ -422,7 +422,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                                     };
 
                                     // Compute commitment hash BEFORE adding padding to avoid hash mismatch
-                                    let commitment_data_hash = transmittable_distro_result.comptue_hash();
+                                    let commitment_data_hash = transmittable_distro_result.compute_hash();
 
                                     // Add test padding for P2P testing when using dummy model (after hash calculation)
                                     if is_dummy_model {

@@ -30,7 +30,7 @@ pub struct TransmittableDistroResult {
 }
 
 impl TransmittableDistroResult {
-    pub fn comptue_hash(&self) -> [u8; 32] {
+    pub fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(self.step.to_be_bytes());
         hasher.update(self.batch_id.0.start.to_be_bytes());
@@ -42,7 +42,8 @@ impl TransmittableDistroResult {
         hasher.finalize().into()
     }
 
-    /// Add fixed padding for P2P testing purposes - creates larger blobs without affecting training
+    /// Add fixed padding for P2P testing purposes
+    /// We use this to test P2P with more real blob sizes
     pub fn with_test_padding(mut self, target_size_mb: usize) -> Self {
         // Always add exactly 3 padding entries of roughly equal size to reach target
         const NUM_PADDING_ENTRIES: usize = 3;
@@ -61,19 +62,19 @@ impl TransmittableDistroResult {
             for _ in 0..NUM_PADDING_ENTRIES {
                 // Create dummy tensors using tch and convert to SerializableTensor
                 let dummy_tensor = tch::Tensor::zeros(
-                    &[padding_per_entry as i64],
+                    [padding_per_entry as i64],
                     (tch::Kind::Float, tch::Device::Cpu),
                 );
                 let padding_result = SerializedDistroResult {
                     sparse_idx: (&dummy_tensor).try_into().unwrap_or_else(|_| {
                         // Fallback: create minimal tensor if conversion fails
                         let small_tensor =
-                            tch::Tensor::zeros(&[1], (tch::Kind::Float, tch::Device::Cpu));
+                            tch::Tensor::zeros([1], (tch::Kind::Float, tch::Device::Cpu));
                         (&small_tensor).try_into().unwrap()
                     }),
                     sparse_val: (&dummy_tensor).try_into().unwrap_or_else(|_| {
                         let small_tensor =
-                            tch::Tensor::zeros(&[1], (tch::Kind::Float, tch::Device::Cpu));
+                            tch::Tensor::zeros([1], (tch::Kind::Float, tch::Device::Cpu));
                         (&small_tensor).try_into().unwrap()
                     }),
                     xshape: vec![padding_per_entry.min(65535) as u16], // Ensure it fits in u16
@@ -87,14 +88,13 @@ impl TransmittableDistroResult {
     }
 
     /// Remove the last N padding entries added by with_test_padding()
+    /// We need to do this on the receiving end to ensure we only process "real" training data and not test padding.
     pub fn without_test_padding(mut self) -> Self {
         const NUM_PADDING_ENTRIES: usize = 3;
-
         let original_len = self.distro_results.len();
 
-        // Only remove padding if we have more entries than expected from real training
+        // Remove the last N entries (these should be the padding)
         if original_len > NUM_PADDING_ENTRIES {
-            // Remove the last N entries (these should be the padding)
             self.distro_results
                 .truncate(original_len - NUM_PADDING_ENTRIES);
             tracing::info!(
