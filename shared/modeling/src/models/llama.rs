@@ -26,6 +26,8 @@ pub struct LlamaConfig {
     pub rope_scaling: Option<RoPEConfig>,
     pub max_position_embeddings: usize,
     pub tie_word_embeddings: bool,
+    #[serde(default)]
+    pub is_dummy: bool,
 }
 
 impl LlamaConfig {
@@ -48,18 +50,8 @@ impl LlamaConfig {
             rope_scaling: None,
             max_position_embeddings: 2048,
             tie_word_embeddings: false,
+            is_dummy: true,
         }
-    }
-
-    /// Check if this config represents a dummy model (all sizes are 1)
-    // TODO later we could add an is_dummy field directly.
-    pub fn is_dummy_config(&self) -> bool {
-        self.hidden_size == 1
-            && self.intermediate_size == 1
-            && self.vocab_size == 1
-            && self.num_hidden_layers == 1
-            && self.num_attention_heads == 1
-            && self.num_key_value_heads == Some(1)
     }
 }
 
