@@ -93,7 +93,7 @@ impl EvalRunner {
                 eval_tasks
                     .into_iter()
                     .map(|task| {
-                        let prepared = task.prepare(&tokenizer, eval_task_max_docs);
+                        let prepared = task.prepare(&tokenizer, None, eval_task_max_docs);
                         Arc::new(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),

@@ -2,3 +2,5 @@ packages:
   - 'shared'
   - 'frontend'
   - 'backend'
+
+packageImportMethod: hardlink

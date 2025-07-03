@@ -1,8 +1,8 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
-use futures_util::StreamExt;
+use futures_util::{StreamExt, TryFutureExt};
 use iroh::endpoint::{RemoteInfo, TransportConfig};
 use iroh_blobs::{
     downloader::{ConcurrencyLimits, RetryConfig},
@@ -15,31 +15,31 @@ use iroh_gossip::{
     net::{Gossip, GossipEvent, GossipReceiver, GossipSender},
     proto::{HyparviewConfig, PlumtreeConfig},
 };
-use p2p_model_sharing::{
-    ModelConfigSharingMessage, ParameterSharingMessage, MODEL_REQUEST_TIMEOUT_SECS,
+pub use p2p_model_sharing::{
+    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
+    MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 use router::Router;
 use state::State;
 use std::{
-    collections::{HashMap, VecDeque},
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
-    sync::{Arc, Mutex as StdMutex, RwLock},
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 use tokio::{
     select,
-    sync::{mpsc::UnboundedReceiver, oneshot, Mutex},
+    sync::{mpsc::UnboundedReceiver, oneshot},
+    time::timeout,
 };
 use tokio::{
     sync::mpsc,
     time::{interval, Interval},
 };
-use tokio_util::{sync::CancellationToken, time::FutureExt};
 use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use util::{fmt_relay_mode, gossip_topic};
 
@@ -68,7 +68,10 @@ mod util;
 mod test;
 
 pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
-pub use download_manager::{DownloadComplete, DownloadFailed, DownloadType, TransmittableDownload};
+pub use download_manager::{
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
+    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+};
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
@@ -789,67 +792,54 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
     hasher.finish()
 }
 
-#[allow(clippy::too_many_arguments)]
+// Simplified param_request_task
 pub async fn param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    model_blob_tickets: Arc<StdMutex<Vec<(BlobTicket, ModelRequestType)>>>,
-    peer_cycle: Arc<Mutex<VecDeque<PublicKey>>>,
-    errored_peers: Arc<StdMutex<HashMap<PublicKey, usize>>>,
-    num_peers: usize,
-    cancel_token: CancellationToken,
-) {
-    let max_errors_per_peer: usize = 2;
-    loop {
-        let peer_id = match peer_cycle.lock().await.pop_front() {
-            Some(peer) => peer,
-            None => {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                continue;
-            }
+    model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
+    peer_manager: Arc<PeerManagerHandle>,
+) -> anyhow::Result<()> {
+    let max_attempts = 1000u16;
+    let mut attempts = 0u16;
+
+    while attempts < max_attempts {
+        let Some(peer_id) = peer_manager.get_next_peer().await else {
+            // No peers available, wait a bit and check again
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            attempts += 1;
+            continue;
         };
 
         debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
-        let result = request_model(router.clone(), peer_id, &model_request_type)
-            .timeout(Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS))
-            .await
-            .map_err(|_| anyhow!("Didn't receive the model resource in time"))
-            .and_then(|inner| inner);
+        let result = timeout(
+            Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS),
+            request_model(router.clone(), peer_id, &model_request_type),
+        )
+        .map_err(|e| anyhow!("{e}"))
+        .await;
 
         match result {
-            Ok(parameter_blob_ticket) => {
+            Ok(Ok(blob_ticket)) => {
                 model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push((parameter_blob_ticket, model_request_type.clone()));
-                peer_cycle.lock().await.push_back(peer_id);
-                break;
+                    .push((blob_ticket, model_request_type));
+
+                peer_manager.report_success(peer_id);
+                return Ok(());
             }
-            Err(e) => {
-                let mut peer_cycle_lock = peer_cycle.lock().await;
-                let mut errored_peers_lock = errored_peers.lock().unwrap();
-                warn!(
-                    parameter = ?&model_request_type,
-                    peer = %peer_id,
-                    "Failed to get parameter: {e}"
-                );
-                *errored_peers_lock.entry(peer_id).or_insert(0) += 1;
-                if *errored_peers_lock.get(&peer_id).unwrap_or(&0) <= max_errors_per_peer {
-                    peer_cycle_lock.push_back(peer_id);
-                } else {
-                    warn!(
-                        "Not asking peer: {peer_id} because it's failing to retrieve us the model"
-                    );
-                }
-                let min_peers_error_count = *errored_peers_lock.values().min().unwrap_or(&1);
-                if errored_peers_lock.len() == num_peers
-                    && min_peers_error_count >= max_errors_per_peer
-                {
-                    cancel_token.cancel();
-                    break;
-                }
-                continue;
+            Ok(Err(e)) | Err(e) => {
+                // Failed - report error and potentially try next peer
+                peer_manager.report_error(peer_id);
+
+                warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
+                attempts += 1;
+
+                // Small delay before retry
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
     }
+
+    bail!("No peers available to give us a model parameter after {max_attempts} attempts")
 }
