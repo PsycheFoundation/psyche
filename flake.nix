@@ -70,24 +70,8 @@
         };
       };
 
-      perSystem =
-        { system, ... }:
-        {
-          _module.args.pkgs = (
-            import inputs.nixpkgs (
-              {
-                inherit system;
-              }
-              // (import ./nix/pkgs.nix {
-                inherit inputs;
-                gitcommit = self.rev or self.dirtyRev;
-              })
-            )
-          );
-        };
       imports = [
         inputs.agenix-shell.flakeModules.default
-        inputs.treefmt-nix.flakeModule
         inputs.git-hooks-nix.flakeModule
         ./nix/formatter.nix
         ./nix/packages.nix
