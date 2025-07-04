@@ -67,7 +67,7 @@ fast-math = "0.1"
 async-trait = "0.1.82"
 iroh = { version = "0.35.0", features = ["metrics"] }
 iroh-relay = { version = "0.35.0", features = ["metrics"] }
-iroh-blobs = { git = "https://github.com/IAvecilla/iroh-blobs", branch = "no-providers-test", features = [
+iroh-blobs = { git = "https://github.com/IAvecilla/iroh-blobs", rev = "f9bfb8f54c731340d08e00727534d7a45b5922ef", features = [
   "rpc",
   "downloader",
   "metrics",
