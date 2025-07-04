@@ -1,4 +1,5 @@
 {
+  lib,
   self,
   inputs,
   ...
@@ -8,69 +9,15 @@
     let
       keys = import ./keys.nix;
       backend-port = "3000";
-      base-system = [
-        inputs.garnix-lib.nixosModules.garnix
-        inputs.agenix.nixosModules.default
-
-        (
-          { ... }:
-          {
-            # required minimal setup for garnix
-            garnix.server.enable = true;
-
-            # allow decrypting secrets
-            age.identityPaths = [
-              "/var/garnix/keys/repo-key"
-            ];
-
-            # assume we're doing webserver work
-            networking.firewall.allowedTCPPorts = [
-              80
-              443
-            ];
-
-            # custom pkgs overlays
-            nixpkgs = import ./pkgs.nix {
-              inherit inputs;
-              gitcommit = self.rev or self.dirtyRev;
-            };
-
-            system.stateVersion = "25.05";
-          }
-        )
-      ];
-
-      # lets devs SSH into these boxes. probably don't enable in production for safety.
-      debug-ssh =
-        { ... }:
-        {
-          services.openssh = {
-            enable = true;
-            settings = {
-              PasswordAuthentication = false;
-              KbdInteractiveAuthentication = false;
-            };
-          };
-          users.users."nous" = {
-            isNormalUser = true;
-            home = "/home/nous";
-            description = "debug ssh user";
-            extraGroups = [ "wheel" ];
-            openssh.authorizedKeys.keys = keys.allKeys;
-          };
-          security.sudo.wheelNeedsPassword = false;
-        };
 
       psyche-website-backend =
         secret-file:
         {
           config,
           pkgs,
+          lib,
           ...
         }:
-        let
-          psyche-website-backend = pkgs.callPackage ../website/backend { };
-        in
         {
           age.secrets.backendRpc = {
             file = secret-file;
@@ -94,7 +41,7 @@
               EnvironmentFile = config.age.secrets.backendRpc.path;
               # don't start until we have DNS!
               ExecStartPre = "/bin/sh -c 'until ${pkgs.bind.host}/bin/host example.com; do sleep 1; done'";
-              ExecStart = pkgs.lib.getExe psyche-website-backend;
+              ExecStart = lib.getExe (pkgs.callPackage ../website/backend { });
 
               # restart if something breaks, e.g. OOM
               Restart = "on-failure";
@@ -112,13 +59,15 @@
           miningPoolCluster,
           hostnames ? [ ],
         }:
-        inputs.nixpkgs.lib.nixosSystem {
+        lib.nixosSystem {
           system = "x86_64-linux";
-          modules = base-system ++ [
-            debug-ssh
+          modules = [
+            self.nixosModules.base-system
+            self.nixosModules.debug-ssh
             (psyche-website-backend backendSecret)
             (
               {
+                lib,
                 pkgs,
                 ...
               }:
@@ -207,6 +156,55 @@
       '';
     in
     {
+      nixosModules = {
+        base-system = {
+          imports = [
+            inputs.garnix-lib.nixosModules.garnix
+            inputs.agenix.nixosModules.default
+          ];
+
+          config = {
+            # required minimal setup for garnix
+            garnix.server.enable = true;
+
+            # allow decrypting secrets
+            age.identityPaths = [
+              "/var/garnix/keys/repo-key"
+            ];
+
+            # assume we're doing webserver work
+            networking.firewall.allowedTCPPorts = [
+              80
+              443
+            ];
+
+            # custom pkgs overlays
+            nixpkgs = import ./nixpkgs.nix { inherit inputs; };
+
+            system.stateVersion = "25.05";
+          };
+        };
+
+        # lets devs SSH into these boxes. probably don't enable in production for safety.
+        debug-ssh = {
+          services.openssh = {
+            enable = true;
+            settings = {
+              PasswordAuthentication = false;
+              KbdInteractiveAuthentication = false;
+            };
+          };
+          users.users."nous" = {
+            isNormalUser = true;
+            home = "/home/nous";
+            description = "debug ssh user";
+            extraGroups = [ "wheel" ];
+            openssh.authorizedKeys.keys = keys.allKeys;
+          };
+          security.sudo.wheelNeedsPassword = false;
+        };
+      };
+
       # server for hosting the frontend/backend, for testing
       nixosConfigurations."psyche-http-devnet" = persistentPsycheWebsite {
         configName = "psyche-http-devnet";
@@ -226,10 +224,11 @@
       };
 
       # server for hosting the mainnet docs & frontend/backend.
-      nixosConfigurations."psyche-http" = inputs.nixpkgs.lib.nixosSystem {
+      nixosConfigurations."psyche-http" = lib.nixosSystem {
         system = "x86_64-linux";
-        modules = base-system ++ [
-          debug-ssh
+        modules = [
+          self.nixosModules.base-system
+          self.nixosModules.debug-ssh
           (psyche-website-backend ../secrets/mainnet/backend.age)
           (
             {
@@ -284,9 +283,10 @@
       };
 
       # server for hosting docs, for test deploys
-      nixosConfigurations."psyche-http-docs" = inputs.nixpkgs.lib.nixosSystem {
+      nixosConfigurations."psyche-http-docs" = lib.nixosSystem {
         system = "x86_64-linux";
-        modules = base-system ++ [
+        modules = [
+          self.nixosModules.base-system
           (
             { pkgs, ... }:
             {
