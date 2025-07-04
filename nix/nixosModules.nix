@@ -307,28 +307,24 @@
     };
 
   perSystem =
-    {
-      pkgs,
-      system,
-      ...
-    }:
+    { pkgs, ... }:
     {
       checks =
         let
-          nixosConfigurations = self.nixosConfigurations;
-          configNames = builtins.attrNames nixosConfigurations;
+          configsToCheck = lib.filterAttrs (
+            name: attrs: attrs.config.services.caddy.enable or false
+          ) self.nixosConfigurations;
 
           # Helper function to create a check for a specific configuration
           validateCaddyfile =
-            configName:
+            configName: attrs:
             let
-              config = nixosConfigurations.${configName};
-              caddyConfig = config.config.services.caddy.configFile;
+              caddyConfig = attrs.config.services.caddy.configFile;
             in
             {
               name = "validate-${configName}-caddyfile";
               value =
-                pkgs.runCommand "validate-${configName}-caddyfile"
+                pkgs.runCommandNoCC "validate-${configName}-caddyfile"
                   {
                     nativeBuildInputs = with pkgs; [
                       bubblewrap
@@ -353,12 +349,6 @@
             };
         in
         # check caddyfiles in each nixos configuration
-        builtins.listToAttrs (
-          builtins.map validateCaddyfile (
-            builtins.filter (
-              name: nixosConfigurations.${name}.config.services.caddy.enable or false
-            ) configNames
-          )
-        );
+        lib.mapAttrs' validateCaddyfile configsToCheck;
     };
 }
