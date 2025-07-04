@@ -1,11 +1,11 @@
 use bollard::{
+    Docker,
     container::{
         Config, CreateContainerOptions, KillContainerOptions, ListContainersOptions,
         RemoveContainerOptions,
     },
     models::DeviceRequest,
     secret::{ContainerSummary, HostConfig},
-    Docker,
 };
 use psyche_client::IntegrationTestLogMarker;
 use std::process::{Command, Stdio};
@@ -59,7 +59,7 @@ pub async fn e2e_testing_setup_subscription(
     let command = command
         .args([
             "setup_test_infra_with_proxies_validator",
-            &format!("{}", init_num_clients),
+            &format!("{init_num_clients}"),
         ])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
@@ -224,7 +224,7 @@ pub fn spawn_psyche_network(
 ) -> Result<(), DockerWatcherError> {
     let mut command = Command::new("just");
     let command = command
-        .args(["setup_test_infra", &format!("{}", init_num_clients)])
+        .args(["setup_test_infra", &format!("{init_num_clients}")])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
@@ -320,7 +320,7 @@ pub async fn kill_all_clients(docker: &Docker, signal: &str) {
     let (_, running_containers) = get_container_names(docker.clone().into()).await;
 
     for container in running_containers {
-        println!("Killing container {}", container);
+        println!("Killing container {container}");
         docker
             .kill_container(&container, options.clone())
             .await

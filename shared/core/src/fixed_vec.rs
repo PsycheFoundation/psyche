@@ -1,5 +1,5 @@
 use crate as psyche_core;
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize, prelude::borsh};
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut, Range, RangeFrom, RangeFull, RangeTo};

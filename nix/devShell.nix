@@ -17,7 +17,9 @@
     let
       inherit (pkgs.psycheLib)
         buildWholeWorkspace
+        craneLib
         env
+        pythonWithPsycheExtension
         ;
     in
     {
@@ -28,49 +30,71 @@
         settings.hooks.treefmt.enable = true;
       };
 
-      devShells.default = pkgs.mkShell {
-        inputsFrom = [
-          buildWholeWorkspace
-          self'.packages.psyche-book
-        ];
-        inherit env;
-        buildInputs = with pkgs; [
-          # for local-testnet
-          tmux
-          nvtopPackages.full
+      devShells =
+        let
+          defaultShell = {
+            inputsFrom = [
+              buildWholeWorkspace
+              self'.packages.psyche-book
+            ];
+            inherit env;
+            packages = with pkgs; [
+              # for local-testnet
+              tmux
+              nvtopPackages.full
 
-          # task runner
-          just
+              # task runner
+              just
 
-          # for some build scripts
-          jq
-          # it pretty :3
-          nix-output-monitor
+              # for some build scripts
+              jq
+              # it pretty :3
+              nix-output-monitor
 
-          # for running pkgs on non-nix
-          pkgs.nix-gl-host
+              # for running pkgs on non-nix
+              pkgs.nix-gl-host
 
-          # solana
-          inputs'.solana-pkgs.packages.default
+              # solana
+              inputs'.solana-pkgs.packages.default
 
-          # nixfmt
-          nixfmt-rfc-style
+              # nixfmt
+              nixfmt-rfc-style
 
-          # for pnpm stuff
-          nodejs
-          pnpm
-          wasm-pack
-        ];
+              # for pnpm stuff
+              nodejs
+              pnpm
+              wasm-pack
 
-        shellHook = ''
-          source ${lib.getExe config.agenix-shell.installationScript}
-          ${config.pre-commit.installationScript}
-          # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
-          # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
+              # cargo stuff
+              cargo-watch
+            ];
 
-          echo "Welcome to the Psyche development shell.";
-        '';
-      };
+            shellHook = ''
+              source ${lib.getExe config.agenix-shell.installationScript}
+              ${config.pre-commit.installationScript}
+              # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
+              # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
+              export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
+
+              echo "Welcome to the Psyche development shell.";
+            '';
+          };
+        in
+        {
+          default = craneLib.devShell defaultShell;
+          dev-python = craneLib.devShell (
+            defaultShell
+            // {
+              packages = defaultShell.packages ++ [
+                pythonWithPsycheExtension
+              ];
+              shellHook =
+                defaultShell.shellHook
+                + ''
+                  echo "This shell has the 'psyche' module available in its python interpreter.";
+                '';
+            }
+          );
+        };
     };
 }

@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::CLIENT_CONTAINER_PREFIX;
 use bollard::container::KillContainerOptions;
-use bollard::{container::LogsOptions, Docker};
+use bollard::{Docker, container::LogsOptions};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_core::BatchId;
@@ -238,7 +238,7 @@ impl DockerWatcher {
                         // extract batch Ids
                         let Some(message) = parsed_log.get("batch_id").and_then(|v| v.as_str())
                         else {
-                            println!("Invalid batch_id: {:?}", parsed_log);
+                            println!("Invalid batch_id: {parsed_log:?}");
                             let response = Response::UntrainedBatches(vec![0, 0]);
                             if log_sender.send(response).await.is_err() {
                                 println!("Probably the test ended so we drop the log sender");
@@ -246,7 +246,7 @@ impl DockerWatcher {
                             continue;
                         };
                         let Ok(batch_id_range) = BatchId::from_str(message) else {
-                            println!("Invalid batch_id range: {}", message);
+                            println!("Invalid batch_id range: {message}");
                             let response = Response::UntrainedBatches(vec![0, 0]);
                             if log_sender.send(response).await.is_err() {
                                 println!("Probably the test ended so we drop the log sender");
@@ -327,7 +327,7 @@ impl DockerWatcher {
 
     pub async fn monitor_clients_health(&self, num_clients: u8) -> Result<(), DockerWatcherError> {
         for i in 1..=num_clients {
-            let container_name = format!("{CLIENT_CONTAINER_PREFIX}-{}", i);
+            let container_name = format!("{CLIENT_CONTAINER_PREFIX}-{i}");
             self.monitor_client_health_by_id(container_name.as_str())
                 .await?;
         }

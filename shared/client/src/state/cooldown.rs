@@ -1,23 +1,23 @@
 use crate::HubUploadInfo;
 
 use psyche_coordinator::{
-    model::{self, HubRepo},
     Coordinator,
+    model::{self, HubRepo},
 };
 use psyche_core::{FixedString, NodeIdentity};
-use psyche_data_provider::{upload_model_repo_async, UploadModelError};
+use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
-    save_tensors_into_safetensors, SaveSafetensorsError, Trainer, TrainerThreadCommunicationError,
+    SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
 use std::{collections::HashMap, path::PathBuf};
 use tch::Tensor;
 use thiserror::Error;
 use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::{error, info, info_span, Instrument};
+use tracing::{Instrument, error, info, info_span};
 
 use super::{
-    evals::{EvalRunner, RunningEvals},
     CheckpointConfig,
+    evals::{EvalRunner, RunningEvals},
 };
 
 #[derive(Error, Debug)]

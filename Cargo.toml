@@ -72,15 +72,16 @@ iroh-blobs = { git = "https://github.com/NousResearch/iroh-blobs", rev = "2ebe36
   "downloader",
   "metrics",
 ] }
+flume = "0.11.1"
 iroh-gossip = { version = "0.35.0" }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5813b4d1789407924b450517639fcd0f7bf093e0" }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5813b4d1789407924b450517639fcd0f7bf093e0" }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5813b4d1789407924b450517639fcd0f7bf093e0" }
+tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
+torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
 # tch = { path = "../tch-rs" }
 # torch-sys = { path = "../tch-rs/torch-sys" }
 time = { version = "0.3.36", features = ["formatting", "macros"] }
@@ -89,7 +90,7 @@ bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 thiserror = "2.0.3"
 toml = "0.8.19"
 clap-markdown = "0.1.4"
-pyo3 = { version = "0.21" }
+pyo3 = { version = "0.24", features = ["py-clone"] }
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 anchor-client = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5", features = [
   "async",

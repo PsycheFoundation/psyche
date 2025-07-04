@@ -1,4 +1,4 @@
-use psyche_coordinator::{model, Coordinator, WitnessEvalResult, WitnessMetadata};
+use psyche_coordinator::{Coordinator, WitnessEvalResult, WitnessMetadata, model};
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -277,11 +277,7 @@ fn perplexity(loss: f32) -> f32 {
 }
 
 fn no_nan(val: f32, replacement: f32) -> f32 {
-    if val.is_nan() {
-        replacement
-    } else {
-        val
-    }
+    if val.is_nan() { replacement } else { val }
 }
 
 fn token_batch_size<T: NodeIdentity>(state: &Coordinator<T>) -> u32 {

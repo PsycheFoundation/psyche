@@ -7,9 +7,8 @@
     MMLU Pro: {"acc": 0.32646278, "acc_norm": 0.32646278}
 */
 use crate::{
-    load_dataset,
+    ASCII_UPPERCASE, TaskType, load_dataset,
     traits::{Document, LogLikelihoodTask},
-    TaskType, ASCII_UPPERCASE,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};

@@ -12,7 +12,12 @@
       ...
     }:
     let
-      inherit (pkgs.psycheLib) craneLib rustWorkspaceArgs cargoArtifacts;
+      inherit (pkgs.psycheLib)
+        craneLib
+        rustWorkspaceArgs
+        rustWorkspaceArgsWithPython
+        cargoArtifacts
+        ;
     in
     {
       checks = {
@@ -25,7 +30,7 @@
         );
 
         workspace-test = craneLib.cargoNextest (
-          rustWorkspaceArgs
+          rustWorkspaceArgsWithPython
           // {
             inherit cargoArtifacts;
             RUST_LOG = "info,psyche=trace";

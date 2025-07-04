@@ -1,13 +1,13 @@
 use std::{str::FromStr, time::Duration};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use futures::future::join_all;
 use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use psyche_coordinator::model::HttpTrainingDataLocation;
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use rand::seq::SliceRandom;
-use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use rand_chacha::rand_core::SeedableRng;
 use reqwest::IntoUrl;
 use tokio::task::JoinHandle;
 use tracing::{info, trace};
@@ -64,7 +64,9 @@ impl FileURLs {
             .filter(|&w| w == "{}".as_bytes())
             .count();
         if num_templates != 1 {
-            bail!("invalid url {url_template}. expected 1 set of {{}} for number substitution, got {num_templates}");
+            bail!(
+                "invalid url {url_template}. expected 1 set of {{}} for number substitution, got {num_templates}"
+            );
         }
 
         let urls: Result<Vec<reqwest::Url>, <reqwest::Url as FromStr>::Err> = (0..num_files)

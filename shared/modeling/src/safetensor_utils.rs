@@ -1,4 +1,4 @@
-use safetensors::{slice::TensorIndexer, SafeTensors};
+use safetensors::{SafeTensors, slice::TensorIndexer};
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
@@ -7,8 +7,8 @@ use std::{
     path::PathBuf,
 };
 use tch::{
-    nn::{Shard, VarStore},
     Device, Kind, Tensor,
+    nn::{Shard, VarStore},
 };
 use thiserror::Error;
 
@@ -25,7 +25,9 @@ pub enum LoadSafetensorsError {
     #[error("failed to perform tensor operation: {0}")]
     TchError(#[from] tch::TchError),
 
-    #[error("Cannot shard tensor {name} of shape {size:?} along dimension {dim} into {world_size} parts")]
+    #[error(
+        "Cannot shard tensor {name} of shape {size:?} along dimension {dim} into {world_size} parts"
+    )]
     CantShard {
         name: String,
         size: Vec<i64>,
@@ -130,7 +132,9 @@ pub enum SaveSafetensorsError {
     #[error("Failed to create directory {0}: {1}")]
     CreateDir(PathBuf, io::Error),
 
-    #[error("Tensor {name} too big to save to file -- it's {size} bytes while we have a max of {MAX_SAFETENSOR_PART_SIZE} bytes")]
+    #[error(
+        "Tensor {name} too big to save to file -- it's {size} bytes while we have a max of {MAX_SAFETENSOR_PART_SIZE} bytes"
+    )]
     TensorTooBig { name: String, size: usize },
 
     #[error("Torch error: {0}")]

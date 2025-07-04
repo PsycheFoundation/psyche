@@ -1,21 +1,21 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_coordinator::model::{
-    self, Checkpoint, LLMTrainingDataLocation, LLMTrainingDataType, Model, LLM,
+    self, Checkpoint, LLM, LLMTrainingDataLocation, LLMTrainingDataType, Model,
 };
 use psyche_coordinator::{
-    Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState, TickResult,
-    SOLANA_MAX_NUM_CLIENTS,
+    Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
+    SOLANA_MAX_NUM_CLIENTS, TickResult,
 };
 
 use psyche_core::{FixedVec, Shuffle, SizedIterator, TokenSize};
 use psyche_data_provider::{
-    download_model_repo_async, DataProviderTcpServer, DataServerTui, LocalDataProvider,
+    DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_repo_async,
 };
 use psyche_network::{ClientNotification, TcpServer};
 use psyche_tui::{
-    logging::LoggerWidget, maybe_start_render_loop, CustomWidget, MaybeTui, TabbedWidget,
+    CustomWidget, MaybeTui, TabbedWidget, logging::LoggerWidget, maybe_start_render_loop,
 };
 use psyche_watcher::{CoordinatorTui, OpportunisticData};
 use rand::RngCore;
@@ -26,12 +26,12 @@ use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::Notify;
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::time::{MissedTickBehavior, interval};
 use tokio::{select, time::Interval};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, info_span, warn, Instrument};
+use tracing::{Instrument, debug, info, info_span, warn};
 
 use crate::dashboard::{DashboardState, DashboardTui};
 
@@ -456,7 +456,7 @@ impl App {
                 if result {
                     if let Some(save_state_dir) = &self.save_state_dir {
                         let mut state = self.coordinator;
-                        print!("{:?}", state);
+                        print!("{state:?}");
                         Self::reset_ephemeral(&mut state);
                         match toml::to_string_pretty(&state) {
                             Ok(toml) => {

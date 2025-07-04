@@ -4,9 +4,9 @@ use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 
+use crate::ProgramError;
 use crate::state::Pool;
 use crate::state::PoolMetadata;
-use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: PoolCreateParams)]

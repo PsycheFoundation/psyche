@@ -1,5 +1,6 @@
 use crate::retry::RetryError;
 use anchor_client::{
+    Client, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
@@ -12,14 +13,13 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
         system_instruction,
     },
-    Client, Cluster, Program,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{
-    model::{HubRepo, Model},
     CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
+    model::{HubRepo, Model},
 };
 use psyche_solana_coordinator::RunMetadata;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
@@ -806,8 +806,7 @@ impl SolanaBackend {
             .account::<psyche_solana_coordinator::CoordinatorInstance>(*coordinator_instance)
             .await
             .context(format!(
-                "Unable to get the coordinator_instance: {:?}",
-                coordinator_instance
+                "Unable to get the coordinator_instance: {coordinator_instance:?}"
             ))?;
         Ok(coordinator_instance_state)
     }

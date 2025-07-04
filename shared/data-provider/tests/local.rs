@@ -36,7 +36,7 @@ async fn loads_dolma_subset() {
     let tokenizer = Tokenizer::from_file(test_path(&["resources", "llama2_tokenizer.json"]))
         .expect("tokenizer json exists");
     for (i, sample) in samples.into_iter().enumerate() {
-        let decoded_path = test_path(&["resources", "dolma", "decoded", &format!("{}.txt", i)]);
+        let decoded_path = test_path(&["resources", "dolma", "decoded", &format!("{i}.txt")]);
 
         let expected = read_to_string(&decoded_path)
             .await
@@ -74,7 +74,7 @@ async fn loads_fineweb_subset() {
     let tokenizer = Tokenizer::from_file(test_path(&["resources", "llama2_tokenizer.json"]))
         .expect("tokenizer json exists");
     for (i, sample) in samples.into_iter().enumerate() {
-        let decoded_path = test_path(&["resources", "fineweb", "decoded", &format!("{}.txt", i)]);
+        let decoded_path = test_path(&["resources", "fineweb", "decoded", &format!("{i}.txt")]);
 
         let expected = read_to_string(&decoded_path)
             .await

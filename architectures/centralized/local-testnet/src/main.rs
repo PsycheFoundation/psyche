@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{ArgAction, Parser};
 use rand::seq::SliceRandom;
 use serde::Deserialize;
@@ -7,8 +7,8 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
-use time::macros::format_description;
 use time::OffsetDateTime;
+use time::macros::format_description;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -121,7 +121,7 @@ fn validate_config_path(s: &str) -> Result<PathBuf, String> {
     if path.exists() {
         Ok(path)
     } else {
-        Err(format!("Config path {} does not exist", s))
+        Err(format!("Config path {s} does not exist"))
     }
 }
 
@@ -147,9 +147,9 @@ fn main() -> Result<()> {
             if let Some(n_kill) = start_args.random_kill_num {
                 if n_kill > start_args.num_clients {
                     bail!(
-                "You requested to kill {n_kill} clients randomly, but you only have {} clients.",
-                start_args.num_clients
-            );
+                        "You requested to kill {n_kill} clients randomly, but you only have {} clients.",
+                        start_args.num_clients
+                    );
                 }
             }
             let state_path = start_args.config_path.join("state.toml");

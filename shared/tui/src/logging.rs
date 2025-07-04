@@ -8,17 +8,17 @@ use logfire::{
     bridges::tracing::LogfireTracingPendingSpanNotSentLayer,
     config::{AdvancedOptions, MetricsOptions},
 };
-use opentelemetry::{trace::TracerProvider, KeyValue};
+use opentelemetry::{KeyValue, trace::TracerProvider};
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
+    Resource,
     error::OTelSdkResult,
     logs::{BatchConfigBuilder, BatchLogProcessor, SdkLoggerProvider},
     metrics::{
-        data::ResourceMetrics, exporter::PushMetricExporter, PeriodicReader, SdkMeterProvider,
-        Temporality,
+        PeriodicReader, SdkMeterProvider, Temporality, data::ResourceMetrics,
+        exporter::PushMetricExporter,
     },
     trace::{BatchSpanProcessor, SdkTracerProvider},
-    Resource,
 };
 use ratatui::{
     buffer::Buffer,
@@ -26,7 +26,7 @@ use ratatui::{
     widgets::{Block, Widget},
 };
 use tracing::Level;
-use tracing_subscriber::{filter::FromEnvError, fmt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, filter::FromEnvError, fmt};
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget, TuiWidgetEvent, TuiWidgetState};
 
 #[derive(Clone, Debug, Copy, ValueEnum, PartialEq)]

@@ -55,7 +55,7 @@ impl<const U: usize> AnchorDeserialize for BitArrayWrapper<U> {
 impl<const U: usize> IdlBuild for BitArrayWrapper<U> {
     fn create_type() -> Option<IdlTypeDef> {
         Some(IdlTypeDef {
-            name: format!("BitArrayWrapper{}", U).to_string(),
+            name: format!("BitArrayWrapper{U}").to_string(),
             docs: vec!["A wrapper around BitArray for serialization".to_string()],
             serialization: Default::default(),
             repr: Some(IdlRepr::Transparent),
@@ -163,7 +163,7 @@ impl<const U: usize, const K: usize> AnchorDeserialize for Bloom<U, K> {
 impl<const U: usize, const K: usize> IdlBuild for Bloom<U, K> {
     fn create_type() -> Option<IdlTypeDef> {
         Some(IdlTypeDef {
-            name: format!("Bloom{}_{}", U, K),
+            name: format!("Bloom{U}_{K}"),
             docs: vec![
                 "A Bloom filter implementation with configurable size and number of hash functions"
                     .to_string(),
@@ -185,7 +185,7 @@ impl<const U: usize, const K: usize> IdlBuild for Bloom<U, K> {
                         name: "bits".to_string(),
                         docs: vec!["Bit array for the Bloom filter".to_string()],
                         ty: IdlType::Defined {
-                            name: format!("BitArrayWrapper{}", U),
+                            name: format!("BitArrayWrapper{U}"),
                             generics: vec![],
                         },
                     },
@@ -222,7 +222,7 @@ impl<const U: usize, const K: usize> fmt::Debug for Bloom<U, K> {
             // Print byte array for larger filters
             let words = self.bits.0.as_raw_slice();
             for byte in words.iter() {
-                write!(f, "{:016x}", byte)?; // full u64 output
+                write!(f, "{byte:016x}")?; // full u64 output
             }
         }
 
@@ -256,7 +256,7 @@ impl<const U: usize, const K: usize> Bloom<U, K> {
         use rand::Rng;
         let m = Self::num_bits(num_items as f64, false_rate);
         let num_bits = std::cmp::max(1, std::cmp::min(m as usize, Self::max_bits()));
-        let keys: Vec<u64> = (0..K).map(|_| rand::thread_rng().gen()).collect();
+        let keys: Vec<u64> = (0..K).map(|_| rand::thread_rng().r#gen()).collect();
         Self::new(num_bits, &keys)
     }
 

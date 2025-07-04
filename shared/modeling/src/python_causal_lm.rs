@@ -8,7 +8,7 @@ use pyo3::{
     types::{IntoPyDict, PyDict, PyList, PyString, PyTuple},
 };
 use pyo3_tch::PyTensor;
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
 
@@ -91,7 +91,7 @@ impl PythonModelConfig {
                     Some(EosToks::Single(number.as_i64().unwrap()))
                 }
                 serde_json::Value::Array(values) => Some(EosToks::Multiple(
-                    values.into_iter().map(|x| x.as_i64().unwrap()).collect(),
+                    values.iter().map(|x| x.as_i64().unwrap()).collect(),
                 )),
                 _ => None,
             })
@@ -128,17 +128,17 @@ impl PythonCausalLM {
     ) -> Result<PythonCausalLM, PythonCausalLMError> {
         let config = source.get_config()?;
         let result: PyResult<PyObject> = Python::with_gil(|py| {
-            let psyche = Python::import_bound(py, "psyche")?;
+            let psyche = Python::import(py, "psyche")?;
             let make_causal_lm = psyche.getattr("make_causal_lm")?;
             let source: PyObject = match source {
                 PretrainedSource::RepoFiles(path_bufs) => {
-                    let files = PyList::new_bound(
+                    let files = PyList::new(
                         py,
-                        &path_bufs
+                        path_bufs
                             .iter()
-                            .map(|x| x.to_string_lossy().to_owned())
+                            .map(|x| x.to_string_lossy().into_owned())
                             .collect::<Vec<_>>(),
-                    );
+                    )?;
                     let class = psyche.getattr("PretrainedSourceRepoFiles")?;
                     let args = (files,);
                     class.call1(args)?.into()
@@ -147,9 +147,13 @@ impl PythonCausalLM {
                     let config_json = serde_json::to_string_pretty(&config).unwrap();
                     let state_dict = state_dict
                         .iter()
-                        .map(|(k, v)| (k.clone(), PyTensor(v.shallow_clone()).into_py(py)))
-                        .collect::<Vec<_>>()
-                        .into_py_dict_bound(py);
+                        .map(|(k, v)| {
+                            PyTensor(v.shallow_clone())
+                                .into_pyobject(py)
+                                .map(|pyobject| (k.clone(), pyobject))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
+                        .into_py_dict(py)?;
                     let class = psyche.getattr("PretrainedSourceStateDict")?;
                     let args = (config_json, state_dict);
                     class.call1(args)?.into()
@@ -221,7 +225,7 @@ impl CausalLM for PythonCausalLM {
         match result {
             Ok(result) => result,
             Err(err) => {
-                panic!("Error in python forward: {}", err);
+                panic!("Error in python forward: {err}");
             }
         }
     }
@@ -252,7 +256,7 @@ impl CausalLM for PythonCausalLM {
 
     fn clip_grad_norm(&mut self, max_grad_norm: f64) {
         let result: PyResult<()> = Python::with_gil(|py| {
-            let module = py.import_bound("torch.nn.utils")?;
+            let module = py.import("torch.nn.utils")?;
             let clip_grad_norm = module.getattr("clip_grad_norm_")?;
             let tensors: Result<Vec<_>, _> = self
                 .order
@@ -296,7 +300,7 @@ struct DTensorReferences {
 #[derive(Debug)]
 struct PythonCausalLMVariable {
     name: String,
-    python: PyObject,
+    python: Rc<PyObject>,
     tensor: Tensor,
     local_tensor: Tensor,
     sharded: bool,
@@ -326,7 +330,7 @@ pub struct StablePythonParametersIterator {
 impl StablePythonParametersIterator {
     pub fn new(causal_lm: &PyObject) -> Self {
         let entries: PyResult<Vec<PythonCausalLMVariable>> = Python::with_gil(|py| {
-            let psyche = py.import_bound("psyche.dtensor_helpers")?;
+            let psyche = py.import("psyche.dtensor_helpers")?;
             let full_tensor_shape = psyche.getattr("full_tensor_shape")?;
             let gather_full_tensor = psyche.getattr("gather_full_tensor")?.unbind();
             let calculate_local_tensor_from_full =
@@ -344,7 +348,7 @@ impl StablePythonParametersIterator {
             let causal_lm = causal_lm.bind(py);
             let named_parameters = causal_lm.getattr("named_parameters")?;
             let named_parameters = named_parameters.call0()?.downcast_into::<PyDict>()?;
-            let distributed_tensor = Python::import_bound(py, "torch.distributed.tensor")?;
+            let distributed_tensor = Python::import(py, "torch.distributed.tensor")?;
             let dtensor = distributed_tensor.getattr("DTensor")?;
             let result: Result<Vec<PythonCausalLMVariable>, PyErr> = named_parameters
                 .iter()
@@ -367,7 +371,7 @@ impl StablePythonParametersIterator {
                     //println!("pid={}, variable={}, is_dtensor={}", std::process::id(), name, is_dtensor);
                     Ok(PythonCausalLMVariable {
                         name,
-                        python: v.unbind(),
+                        python: v.unbind().into(),
                         tensor: tensor.0,
                         local_tensor,
                         sharded: is_dtensor,
@@ -464,7 +468,7 @@ impl Variable for PythonCausalLMVariable {
                         local_tensor.call1((python.clone(),))?.extract()?;
                     Ok(PythonCausalLMVariable {
                         name,
-                        python: python.unbind(),
+                        python: python.unbind().into(),
                         tensor: tensor.0,
                         local_tensor: local_tensor.0,
                         sharded: self.sharded,
@@ -478,15 +482,20 @@ impl Variable for PythonCausalLMVariable {
                 let tensor = self.tensor.zeros_like();
                 let local_tensor = tensor.shallow_clone();
                 let python = PyTensor(tensor.shallow_clone());
-                let python = Python::with_gil(|py| python.into_py(py));
-                Box::new(PythonCausalLMVariable {
-                    name,
-                    python,
-                    tensor,
-                    local_tensor,
-                    sharded: self.sharded,
-                    full_shape: self.full_shape.clone(),
-                    dtensor_references: self.dtensor_references.clone(),
+                Python::with_gil(|py| {
+                    Box::new(PythonCausalLMVariable {
+                        name,
+                        python: python
+                            .into_pyobject(py)
+                            .expect("tensor to pyobject should never fail")
+                            .unbind()
+                            .into(),
+                        tensor,
+                        local_tensor,
+                        sharded: self.sharded,
+                        full_shape: self.full_shape.clone(),
+                        dtensor_references: self.dtensor_references.clone(),
+                    })
                 })
             }
         }

@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use psyche_tui::{
-    logging::{
-        logging, MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination,
-    },
     LogOutput, ServiceInfo,
+    logging::{
+        MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination, logging,
+    },
 };
-use tracing::{info, span, Level};
+use tracing::{Level, info, span};
 
 #[tokio::main]
 async fn main() {

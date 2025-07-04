@@ -47,7 +47,7 @@ pub use serde_utils::{
 };
 pub use sha256::{sha256, sha256v};
 pub use similarity::{
-    hamming_distance, is_similar, jaccard_distance, manhattan_distance, DistanceThresholds,
+    DistanceThresholds, hamming_distance, is_similar, jaccard_distance, manhattan_distance,
 };
 pub use sized_iterator::SizedIterator;
 pub use small_boolean::SmallBoolean;

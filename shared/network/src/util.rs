@@ -33,7 +33,7 @@ pub fn fmt_bytes(bytes: f64) -> String {
     const PB: f64 = TB * 1024.0;
 
     if bytes < KB {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     } else if bytes < MB {
         format!("{:.2} KB", bytes / KB)
     } else if bytes < GB {

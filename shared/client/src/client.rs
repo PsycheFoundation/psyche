@@ -1,24 +1,23 @@
 use crate::{
+    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
+    RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
-    RunInitConfigAndIO, TrainingResult, NC,
 };
-use anyhow::{bail, Error, Result};
+use anyhow::{Error, Result, bail};
 use futures::future::join_all;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    allowlist, param_request_task, raw_p2p_verify, router::Router, AuthenticatableIdentity,
-    BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType, ModelRequestType,
-    NetworkConnection, NetworkEvent, NetworkTUIState, Networkable, NodeAddr, NodeId,
-    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload,
-    MAX_DOWNLOAD_RETRIES,
+    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
+    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
+    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
+    TransmittableDownload, allowlist, param_request_task, raw_p2p_verify, router::Router,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
-use rand::{seq::SliceRandom, thread_rng, RngCore};
+use rand::{RngCore, seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
@@ -27,7 +26,7 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{mpsc, watch, Notify},
+    sync::{Notify, mpsc, watch},
     task::JoinHandle,
     time::interval,
 };
@@ -77,7 +76,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
             async move {
                 #[cfg(not(feature = "parallelism"))]
                 if init_config.tensor_parallelism != 1 {
-                    anyhow::bail!("Tensor parallelism was set but this build does not support it (must be built with --features=parallelism)")
+                    anyhow::bail!(
+                        "Tensor parallelism was set but this build does not support it (must be built with --features=parallelism)"
+                    )
                 }
 
                 let mut watcher = BackendWatcher::new(backend);

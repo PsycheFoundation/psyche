@@ -1,20 +1,20 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use bollard::container::StartContainerOptions;
-use bollard::{container::KillContainerOptions, Docker};
+use bollard::{Docker, container::KillContainerOptions};
 use psyche_client::IntegrationTestLogMarker;
-use psyche_coordinator::{model::Checkpoint, RunState};
+use psyche_coordinator::{RunState, model::Checkpoint};
 use psyche_decentralized_testing::docker_setup::{
     e2e_testing_setup_subscription, e2e_testing_setup_three_clients,
 };
 use psyche_decentralized_testing::{
+    CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
         e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
-    CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
 };
 use rstest::*;
 use serial_test::serial;
@@ -85,14 +85,12 @@ async fn test_two_clients_three_epochs_run() {
                     Some(Response::StateChange(timestamp, _client_1, old_state, new_state, _ , _)) => {
                         let _coordinator_state = solana_client.get_run_state().await;
                         println!(
-                            "client: new_state: {}, old_state: {}, timestamp: {}",
-                            new_state, old_state, timestamp
+                            "client: new_state: {new_state}, old_state: {old_state}, timestamp: {timestamp}"
                         );
                     }
                     Some(Response::Loss(client, epoch, step, loss)) => {
                         println!(
-                            "client: {:?}, epoch: {}, step: {}, Loss: {:?}",
-                            client, epoch, step, loss
+                            "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
                         );
                         // assert that the loss decreases each epoch
                         if epoch as i64 > current_epoch {
@@ -316,10 +314,7 @@ async fn disconnect_client() {
     while let Some(response) = watcher.log_rx.recv().await {
         match response {
             Response::StateChange(_timestamp, client_id, old_state, new_state, epoch, step) => {
-                println!(
-                    "step: {} state change client {} - {}=>{}",
-                    step, client_id, old_state, new_state
-                );
+                println!("step: {step} state change client {client_id} - {old_state}=>{new_state}");
                 let epoch_clients = solana_client.get_current_epoch_clients().await;
 
                 if old_state == RunState::WaitingForMembers.to_string() {
@@ -363,7 +358,7 @@ async fn disconnect_client() {
 
             // track HealthChecks send
             Response::HealthCheck(unhealthy_client_id, _index, current_step) => {
-                println!("found unhealthy client: {:?}", unhealthy_client_id);
+                println!("found unhealthy client: {unhealthy_client_id:?}");
 
                 let clients_ids: Vec<String> = solana_client
                     .get_clients()
@@ -377,7 +372,7 @@ async fn disconnect_client() {
 
             // track untrained batches
             Response::UntrainedBatches(untrained_batch_ids) => {
-                println!("untrained_batch_ids: {:?}", untrained_batch_ids);
+                println!("untrained_batch_ids: {untrained_batch_ids:?}");
                 untrained_batches.push(untrained_batch_ids);
             }
 
@@ -440,7 +435,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     for i in 1..=n_clients {
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i),
+                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
                 vec![
                     IntegrationTestLogMarker::Loss,
                     IntegrationTestLogMarker::StateChange,
@@ -455,10 +450,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
         match response {
             Response::StateChange(_timestamp, client, old_state, new_state, _epoch, _step) => {
                 let coordinator_state = solana_client.get_run_state().await;
-                println!(
-                    "state change client {} - {}=>{}",
-                    client, old_state, new_state
-                );
+                println!("state change client {client} - {old_state}=>{new_state}");
 
                 // Once warmup starts, kill client 2's container
                 if new_state == RunState::RoundTrain.to_string() && !train_reached {
@@ -484,15 +476,12 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
                 }
             }
             Response::Loss(client, epoch, step, loss) => {
-                println!(
-                    "client: {:?}, epoch: {}, step: {}, Loss: {:?}",
-                    client, epoch, step, loss
-                );
+                println!("client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}");
 
                 if epoch as i64 > current_epoch {
                     current_epoch = epoch as i64;
                     if epoch == num_of_epochs_to_run {
-                        println!("Epoch {} reached. Stopping", epoch);
+                        println!("Epoch {epoch} reached. Stopping");
                         break;
                     }
                 }
@@ -578,10 +567,10 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                     tokio::time::sleep(Duration::from_secs(20)).await;
                     // Spawn a new client, that should get the model with Hub
                     let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
-                    println!("Spawned new client {} to test checkpoint change to Hub", joined_container_id);
+                    println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
                     // Spawn another because whe have min_clients=2
                     let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
-                    println!("Spawned new client {} to test checkpoint change to Hub", joined_container_id);
+                    println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
                     has_spawned_new_client_yet = true;
 
                     continue;
@@ -605,8 +594,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                     },
                     Some(Response::Loss(client, epoch, step, loss)) => {
                         println!(
-                            "client: {:?}, epoch: {}, step: {}, Loss: {:?}",
-                            client, epoch, step, loss
+                            "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
                         );
                         if epoch as i64 > current_epoch {
                             current_epoch = epoch as i64;
@@ -619,7 +607,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                             assert!(loss < last_epoch_loss);
                             last_epoch_loss = loss;
                             if epoch == num_of_epochs_to_run {
-                                println!("Epoch {} reached. Stopping", epoch);
+                                println!("Epoch {epoch} reached. Stopping");
                                 break;
                             }
                         }
@@ -800,19 +788,16 @@ async fn test_everybody_leaves_in_warmup() {
         .unwrap();
 
     while let Some(response) = watcher.log_rx.recv().await {
-        match response {
-            Response::StateChange(_timestamp, _client_id, old_state, new_state, ..) => {
-                println!("Changing from {old_state} to {new_state}");
+        if let Response::StateChange(_timestamp, _client_id, old_state, new_state, ..) = response {
+            println!("Changing from {old_state} to {new_state}");
 
-                if old_state == RunState::WaitingForMembers.to_string()
-                    && new_state == RunState::Warmup.to_string()
-                {
-                    println!("Warmup reached, killing container...");
-                    watcher.kill_container(&client_1_name).await.unwrap();
-                    break;
-                }
+            if old_state == RunState::WaitingForMembers.to_string()
+                && new_state == RunState::Warmup.to_string()
+            {
+                println!("Warmup reached, killing container...");
+                watcher.kill_container(&client_1_name).await.unwrap();
+                break;
             }
-            _ => (),
         }
     }
 
@@ -826,18 +811,15 @@ async fn test_everybody_leaves_in_warmup() {
         .unwrap();
 
     while let Some(response) = watcher.log_rx.recv().await {
-        match response {
-            Response::StateChange(_timestamp, _client_id, old_state, new_state, ..) => {
-                println!("Changing from {old_state} to {new_state}");
+        if let Response::StateChange(_timestamp, _client_id, old_state, new_state, ..) = response {
+            println!("Changing from {old_state} to {new_state}");
 
-                if old_state == RunState::RoundWitness.to_string()
-                    && new_state == RunState::Cooldown.to_string()
-                {
-                    println!("Epoch restarted correctly, finishing test");
-                    break;
-                }
+            if old_state == RunState::RoundWitness.to_string()
+                && new_state == RunState::Cooldown.to_string()
+            {
+                println!("Epoch restarted correctly, finishing test");
+                break;
             }
-            _ => (),
         }
     }
 }
@@ -873,7 +855,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     continue;
                 }
                 if let Err(e) = watcher.monitor_client_health_by_id(&second_client_id).await {
-                    panic!("Second client has crashed after first client was killed. Test Failed. {}", e);
+                    panic!("Second client has crashed after first client was killed. Test Failed. {e}");
                 }
             }
             response = watcher.log_rx.recv() => {
@@ -881,8 +863,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     Some(Response::StateChange(_timestamp, client_id, old_state, new_state, _epoch, step)) => {
                         if new_state != RunState::RoundTrain.to_string() && new_state != RunState::RoundWitness.to_string() {
                             println!(
-                                "step={} -- state change for client {}: {} => {}",
-                                step, client_id, old_state, new_state
+                                "step={step} -- state change for client {client_id}: {old_state} => {new_state}"
                             );
                         }
 

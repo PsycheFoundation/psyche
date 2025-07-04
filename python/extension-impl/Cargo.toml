@@ -13,6 +13,7 @@ tokio-util.workspace = true
 pyo3 = { workspace = true, optional = true }
 pyo3-tch = { workspace = true, optional = true }
 sysinfo = "0.30"
+take_mut = "0.2.2"
 
 [features]
 python = [

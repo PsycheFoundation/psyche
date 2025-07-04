@@ -1,5 +1,5 @@
 use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;

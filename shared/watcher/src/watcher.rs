@@ -2,7 +2,7 @@ use crate::traits::Backend;
 use anyhow::Result;
 use psyche_coordinator::{Client, Coordinator, RunState};
 use psyche_core::NodeIdentity;
-use std::{collections::HashMap, mem::replace};
+use std::collections::HashMap;
 
 pub struct BackendWatcher<T, B>
 where
@@ -43,7 +43,7 @@ where
                     .map(|client| (*client.id.get_p2p_public_key(), *client)),
             );
         }
-        let old_state = replace(&mut self.state, Some(new_state));
+        let old_state = self.state.replace(new_state);
         let new_state = self.state.as_ref().unwrap();
 
         Ok((old_state, new_state))

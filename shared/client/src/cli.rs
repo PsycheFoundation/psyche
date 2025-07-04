@@ -1,6 +1,6 @@
 use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
 use psyche_network::SecretKey;
@@ -267,7 +267,7 @@ pub fn prepare_environment() {
 
 fn parse_duration_from_seconds(s: &str) -> Result<Duration, String> {
     s.parse::<f64>()
-        .map_err(|e| format!("Invalid number: {}", e))
+        .map_err(|e| format!("Invalid number: {e}"))
         .and_then(|secs| {
             if secs < 0.0 {
                 Err("Duration cannot be negative".to_string())

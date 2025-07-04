@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 use anchor_lang::{
-    prelude::{borsh, thiserror},
     AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, thiserror},
 };
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
@@ -50,8 +50,7 @@ impl<const L: usize> std::fmt::Debug for FixedString<L> {
 
         write!(
             f,
-            "\"{}\" ({}/{} bytes, {} zeroes)",
-            string_content, used_bytes, L, zero_bytes
+            "\"{string_content}\" ({used_bytes}/{L} bytes, {zero_bytes} zeroes)"
         )
     }
 }
