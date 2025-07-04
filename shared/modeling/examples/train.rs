@@ -6,10 +6,9 @@ use psyche_modeling::{
     Batch, BatchData, CausalLM, CommunicatorId, DataParallel, LocalTrainer, ModelLoadError,
     ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained,
 };
-use psyche_tui::logging;
+use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
 use tch::{Device, Kind};
-use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 #[derive(Parser, Debug, Clone)]
@@ -91,9 +90,13 @@ struct Args {
     python: bool,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let logger = logging().init()?;
     psyche_modeling::set_suggested_env_vars();
+
+    // For ctrl-c handling
+    let cancel = setup_ctrl_c();
 
     let args = Args::parse();
     let repo_files = if std::fs::exists(args.model.clone()).is_ok_and(|x| x) {
@@ -351,7 +354,6 @@ fn main() -> Result<()> {
 
     info!("Done loading, starting training.");
 
-    let cancel = CancellationToken::new();
     let mut dataset = dataset.into_iter();
     let mut prev_distro_results = if args.distro { Some(vec![]) } else { None };
     for step in 1..=args.total_steps {
@@ -439,6 +441,9 @@ fn main() -> Result<()> {
             "step: {}, duration: {:.2}, loss: {:.4}",
             step, duration, loss
         );
+        if cancel.is_cancelled() {
+            break;
+        }
     }
     logger.shutdown()?;
     Ok(())

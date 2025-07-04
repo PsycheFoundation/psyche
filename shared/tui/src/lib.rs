@@ -44,21 +44,20 @@ pub fn maybe_start_render_loop<T: CustomWidget>(
             let (cancel, tx) = start_render_loop(widget)?;
             (cancel, Some(tx))
         }
-        None => (
-            {
-                let token = CancellationToken::new();
-                tokio::spawn({
-                    let token = token.clone();
-                    async move {
-                        signal::ctrl_c().await.unwrap();
-                        token.cancel();
-                    }
-                });
-                token
-            },
-            None,
-        ),
+        None => (setup_ctrl_c(), None),
     })
+}
+
+pub fn setup_ctrl_c() -> CancellationToken {
+    let token = CancellationToken::new();
+    tokio::spawn({
+        let token = token.clone();
+        async move {
+            signal::ctrl_c().await.unwrap();
+            token.cancel();
+        }
+    });
+    token
 }
 
 pub use crossterm;
