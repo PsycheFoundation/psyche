@@ -171,7 +171,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
                                 trace!("Updating p2p");
-                                let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
+                                let last_needed_step_blobs = new_state.progress.step.saturating_sub(15);
                                 p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
                                 let p2p_info = get_p2p_info(&p2p).await?;
                                 metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());

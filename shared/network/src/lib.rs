@@ -455,8 +455,10 @@ where
 
     // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
     pub fn remove_blobs_with_tag_less_than(&mut self, tag: u32) {
+        info!("remove_blobs_with_tag_less_than before: {:?}", &self.state.blob_tags);
         self.state.blob_tags.retain(|(t, _)| *t >= tag);
         self.cleanup_untagged_blogs();
+        info!("remove_blobs_with_tag_less_than after: {:?}", &self.state.blob_tags);
     }
     pub fn cleanup_untagged_blogs(&mut self) {
         let expired_blobs: Vec<_> = self
