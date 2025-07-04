@@ -4,7 +4,7 @@ use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{collections::HashMap, env, fmt::Display, fs::OpenOptions, path::Path, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -73,62 +73,73 @@ struct TokenizedLLHDocument {
 
 impl TokenizedLLHDocument {
     pub fn from_document(doc: Document, tokenizer: &Tokenizer) -> Self {
-        let requests: Vec<Vec<i64>> = doc
-            .choices
-            .clone()
-            .into_iter()
-            .map(|choice| {
-                let request = tokenizer
-                    .encode(format!("{} {}", doc.text, choice), false)
-                    .unwrap()
-                    .get_ids()
-                    .iter()
-                    .map(|x| *x as i64)
-                    .collect::<Vec<_>>();
-
-                request
-            })
-            .collect();
-
-        let mut choices_token_len = Vec::new();
-
         let text = tokenizer
-            .encode(doc.text, false)
+            .encode(doc.text.clone(), false)
             .unwrap()
             .get_ids()
             .iter()
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
+
+        let mut requests: Vec<Vec<i64>> = Vec::new();
+        let mut choices: Vec<Vec<i64>> = Vec::new();
         let mut choices_str = Vec::new();
+        let mut choices_token_len = Vec::new();
 
-        let space_token_id = tokenizer.encode(" ", false).unwrap().get_ids()[0] as i64;
-        let choices: Vec<Vec<i64>> = doc
-            .choices
-            .into_iter()
-            .map(|choice| {
-                choices_str.push(choice.clone());
-                let mut choice = tokenizer
-                    .encode(format!(" {}", choice), false)
-                    .unwrap()
-                    .get_ids()
-                    .iter()
-                    .map(|x| *x as i64)
-                    .collect::<Vec<_>>();
+        for choice in doc.choices.iter() {
+            // Tokenize the full request "text choice"
+            let x = format!("{} {}", doc.text.clone(), choice);
+            println!("Tokenized text choice: {:?}", x);
+            let request = tokenizer
+                .encode(format!("{} {}", doc.text, choice), false)
+                .unwrap()
+                .get_ids()
+                .iter()
+                .map(|x| *x as i64)
+                .collect::<Vec<_>>();
 
-                if choice[0] == space_token_id {
-                    choice.remove(0);
-                };
+            // Check if the space is merged with the first token of the choice
+            let choice_start_idx = {
+                // Get the token right after doc.text
 
-                choices_token_len.push(choice.len());
-                choice
-            })
-            .collect();
+                let token_after_text = request[text.len() - 1];
 
+                // Decode this single token to check its length
+                let decoded = tokenizer.decode(&[token_after_text as u32], false).unwrap();
+                println!("Decoded token -1 : {:?}", decoded);
+                let token_after_text = request[text.len()];
+                let decoded = tokenizer.decode(&[token_after_text as u32], false).unwrap();
+                println!("Decoded token: {:?}", decoded);
+
+                // If the decoded token has length > 1, it means the space was merged
+                // with the first character of the choice, so we include this token
+                if decoded.len() > 1 {
+                    text.len()
+                } else {
+                    // It's just a space token, skip it
+                    text.len() + 1
+                }
+            };
+
+            let choice_tokens = request[choice_start_idx..].to_vec();
+            let choice_len = choice_tokens.len();
+
+            requests.push(request);
+            choices.push(choice_tokens);
+            choices_str.push(choice.clone());
+            choices_token_len.push(choice_len);
+        }
+
+        // Verify correctness
         for x in 0..requests.len() {
             assert_eq!(
                 requests[x][requests[x].len() - choices_token_len[x]..],
-                choices[x]
-            )
+                choices[x],
+                "Mismatch for choice {}: {:?} vs {:?}",
+                x,
+                &requests[x][requests[x].len() - choices_token_len[x]..],
+                &choices[x]
+            );
         }
 
         Self {
@@ -269,7 +280,6 @@ impl PreparedTask {
                 // e.g:
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
                 let mut request = doc.requests[idx].clone();
-
                 // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
                 // Note: If the tokenizer handles {space}Sun token we include it in the choice
                 let choice = &doc.requests[idx][request.len() - doc.choices_token_len[idx]..];
@@ -278,7 +288,16 @@ impl PreparedTask {
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
                 request.pop();
                 let input_lenght = &request.len();
-                println!("request: {:?}", request);
+
+                use std::io::Write;
+                let output_dir = "/home/admin/repos/psyche/benchmarks_llama/cargo";
+                // let filename = env::var("EVAL_OUTPUT_FILE")
+                // .unwrap_or_else(|_| "default_results.txt".to_string());
+                let filename = "arc_easy_2.txt";
+                let full_path = Path::new(output_dir).join(&filename);
+                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(full_path) {
+                    writeln!(file, "{:?}", request).ok();
+                }
 
                 let request = Tensor::from_slice(&request)
                     .to(options.model.device())
@@ -291,8 +310,6 @@ impl PreparedTask {
 
                 let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
 
-                println!("logits: {}", logits);
-
                 // Get tensor of shape `[choice.len(), vocab_size]` containing the
                 // model's logits for each token of the `choice` text.
                 let logits = logits.slice(
@@ -301,9 +318,6 @@ impl PreparedTask {
                     *input_lenght as i64,
                     1,
                 );
-
-                println!("answer logits shape: {:?}", logits);
-                println!("logits: {}", logits);
 
                 let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
                 let exact_match = greedy_tokens.eq(&choice);
