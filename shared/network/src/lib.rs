@@ -807,7 +807,7 @@ pub async fn param_request_task(
     while attempts < max_attempts {
         let Some(peer_id) = peer_manager.get_next_peer().await else {
             // No peers available, wait a bit and check again
-            error!("PARAM_REQUEST: No peers available for request (attempt {}/{}), waiting 500ms...", attempts + 1, max_attempts);
+            error!("IROH DEBUG PARAM_REQUEST: No peers available for request (attempt {}/{}), waiting 500ms...", attempts + 1, max_attempts);
             tokio::time::sleep(Duration::from_millis(500)).await;
             attempts += 1;
             continue;
@@ -828,13 +828,13 @@ pub async fn param_request_task(
                     .unwrap()
                     .push((blob_ticket, model_request_type));
 
-                info!("PARAM_REQUEST: SUCCESS - peer {peer_id} provided blob ticket");
+                info!("IROH DEBUG PARAM_REQUEST: SUCCESS - peer {peer_id} provided blob ticket");
                 peer_manager.report_success(peer_id);
                 return Ok(());
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                error!("PARAM_REQUEST: FAILED - peer {peer_id} failed with error: {e} (attempt {}/{})", attempts + 1, max_attempts);
+                error!("IROH DEBUG PARAM_REQUEST: FAILED - peer {peer_id} failed with error: {e} (attempt {}/{})", attempts + 1, max_attempts);
                 peer_manager.report_error(peer_id);
 
                 attempts += 1;

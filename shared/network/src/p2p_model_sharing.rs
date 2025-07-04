@@ -114,15 +114,15 @@ impl PeerManagerActor {
                 self.errored_peers.clear();
 
                 info!(
-                    "PEER_MANAGER: Updated peer list"
+                    "IROH DEBUG PEER_MANAGER: Updated peer list"
                 );
             }
             PeerCommand::GetPeer { reply } => {
                 let peer = if let Some(peer) = self.available_peers.pop_front() {
-                    info!("PEER_MANAGER: Selected peer {peer} to ask for model parameters (remaining peers: {})", self.available_peers.len());
+                    info!("IROH DEBUG PEER_MANAGER: Selected peer {peer} to ask for model parameters (remaining peers: {})", self.available_peers.len());
                     Some(peer)
                 } else {
-                    error!("PEER_MANAGER: NO AVAILABLE PEERS to ask for model parameters! Total errored peers: {}, Available peers: {}",
+                    error!("IROH DEBUG PEER_MANAGER: NO AVAILABLE PEERS to ask for model parameters! Total errored peers: {}, Available peers: {}",
                            self.errored_peers.len(), self.available_peers.len());
                     None
                 };
@@ -132,31 +132,31 @@ impl PeerManagerActor {
             PeerCommand::ReportSuccess { peer_id } => {
                 self.available_peers.push_back(peer_id);
                 self.errored_peers.remove(&peer_id);
-                info!("PEER_MANAGER: Peer {peer_id} SUCCESS - correctly provided blob ticket (available peers: {})", self.available_peers.len());
+                info!("IROH DEBUG PEER_MANAGER: Peer {peer_id} SUCCESS - correctly provided blob ticket (available peers: {})", self.available_peers.len());
             }
 
             PeerCommand::ReportError { peer_id } => {
                 let error_count = self.errored_peers.entry(peer_id).or_insert(0);
                 *error_count += 1;
 
-                error!("PEER_MANAGER: Peer {peer_id} ERROR #{} (max allowed: {}) - peer failed to provide blob ticket",
+                error!("IROH DEBUG PEER_MANAGER: Peer {peer_id} ERROR #{} (max allowed: {}) - peer failed to provide blob ticket",
                        *error_count, self.max_errors_per_peer);
 
                 if *error_count > self.max_errors_per_peer {
                     // Don't need to actually remove it because we already popped it, just don't add it back
-                    error!("PEER_MANAGER: PERMANENTLY REMOVING peer {peer_id} after {} errors (exceeded max {})",
+                    error!("IROH DEBUG PEER_MANAGER: PERMANENTLY REMOVING peer {peer_id} after {} errors (exceeded max {})",
                            *error_count, self.max_errors_per_peer);
 
                     // Remove from errored to avoid keeping in there forever, we won't ask it again
                     self.errored_peers.remove(&peer_id);
                     if self.available_peers.is_empty() {
-                        error!("PEER_MANAGER: CRITICAL - No more peers available after removing {peer_id}! Available: {}, Errored: {}",
+                        error!("IROH DEBUG PEER_MANAGER: CRITICAL - No more peers available after removing {peer_id}! Available: {}, Errored: {}",
                                self.available_peers.len(), self.errored_peers.len());
                     } else {
-                        warn!("PEER_MANAGER: Removed peer {peer_id}, still have {} peers available", self.available_peers.len());
+                        warn!("IROH DEBUG PEER_MANAGER: Removed peer {peer_id}, still have {} peers available", self.available_peers.len());
                     }
                 } else {
-                    warn!("PEER_MANAGER: Peer {peer_id} got error #{}, adding back to queue (available peers: {})",
+                    warn!("IROH DEBUG PEER_MANAGER: Peer {peer_id} got error #{}, adding back to queue (available peers: {})",
                           *error_count, self.available_peers.len() + 1);
                     self.available_peers.push_back(peer_id);
                 };
@@ -474,16 +474,16 @@ impl SharableModel {
         };
 
         //loaded_parameters.remove(param_name);
-        //info!("get_transmittable_parameter: Cleared cached ticket for {param_name} to generate fresh blob");
+        //info!("IROH DEBUG get_transmittable_parameter: Cleared cached ticket for {param_name} to generate fresh blob");
 
         match loaded_parameters.get(param_name) {
             Some(blob_ticket) => {
                 // This should never happen now since we just removed it
-                info!("get_transmittable_parameter: Using cached downloadable for {param_name}");
+                info!("IROH DEBUG get_transmittable_parameter: Using cached downloadable for {param_name}");
                 Ok(blob_ticket.clone())
             }
             None => {
-                info!("get_transmittable_parameter: not cached value");
+                info!("IROH DEBUG get_transmittable_parameter: not cached value");
                 match loading_parameters.remove(param_name) {
                 Some(loading) => {
                     trace!("Waiting for {param_name} parameter to finish serializing");
