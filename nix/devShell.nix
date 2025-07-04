@@ -1,9 +1,4 @@
 {
-  self,
-  inputs,
-  ...
-}:
-{
   perSystem =
     {
       system,
@@ -15,13 +10,9 @@
       ...
     }:
     let
-      inherit (pkgs.psycheLib)
-        buildWholeWorkspace
-        env
-        ;
+      inherit (pkgs.psycheLib) buildWholeWorkspace env;
     in
     {
-
       # fmt as precommit hook
       pre-commit = {
         check.enable = false;
@@ -33,8 +24,10 @@
           buildWholeWorkspace
           self'.packages.psyche-book
         ];
+
         inherit env;
-        buildInputs = with pkgs; [
+
+        packages = with pkgs; [
           # for local-testnet
           tmux
           nvtopPackages.full
@@ -53,8 +46,8 @@
           # solana
           inputs'.solana-pkgs.packages.default
 
-          # nixfmt
-          nixfmt-rfc-style
+          # treefmt
+          self'.formatter
 
           # for pnpm stuff
           nodejs
