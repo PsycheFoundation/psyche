@@ -70,5 +70,7 @@ export interface MiningPoolDataStore extends ChainDataStore {
 	setUserAmount(address: string, amount: bigint): void
 	setCollateralInfo(mintAddress: string, decimals: number): void
 	hasCollateralInfo(): boolean
-	getContributionInfo(): Omit<ContributionInfo, 'miningPoolProgramId'>
+	getContributionInfo(
+		address?: string
+	): Omit<ContributionInfo, 'miningPoolProgramId'>
 }

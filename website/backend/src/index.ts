@@ -150,13 +150,17 @@ async function main() {
 
 	const initTime = Date.now()
 
-	fastify.get('/contributionInfo', (req, res) => {
+	function getContributionInfo(
+		req: FastifyRequest,
+		res: Fastify.FastifyReply,
+		address?: string
+	) {
 		const isStreamingRequest = req.headers.accept?.includes(
 			'application/x-ndjson'
 		)
 
 		const data: ApiGetContributionInfo = {
-			...miningPool.dataStore.getContributionInfo(),
+			...miningPool.dataStore.getContributionInfo(address),
 			miningPoolProgramId: process.env.MINING_POOL_PROGRAM_ID!,
 			error: miningPoolCrashed,
 		}
@@ -196,7 +200,16 @@ async function main() {
 			liveMiningPoolListeners.delete(sendContributionData)
 			stream.end()
 		})
+	}
+	fastify.get('/contributionInfo', (req: FastifyRequest, res) => {
+		getContributionInfo(req, res)
 	})
+	fastify.get(
+		'/contributionInfo/:address',
+		(req: FastifyRequest<{ Params: { address?: string } }>, res) => {
+			getContributionInfo(req, res, req.params.address)
+		}
+	)
 
 	fastify.get('/runs', (_req, res) => {
 		const runs: ApiGetRuns = {
