@@ -172,6 +172,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(15);
+                                sharable_model.clear_cache();
                                 p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
                                 let p2p_info = get_p2p_info(&p2p).await?;
                                 metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
@@ -179,7 +180,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     warn!("failed to set p2p info: {e}");
                                 }
                                 broadcasts.retain(|(_, step)| *step >= last_needed_step_blobs);
-                                sharable_model.clear_cache(); // IMPORTANT -- any cached blobs are now invalid
                             }
 
                             run.apply_state(*new_state).await?;
