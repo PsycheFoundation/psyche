@@ -414,7 +414,7 @@ impl SharableModel {
 
                     // Add test padding for P2P testing when using dummy model
                     if dummy_flag {
-                        let target_dummy_param_size_mb = 8;
+                        let target_dummy_param_size_mb = 100;
                         let before_size = postcard::to_stdvec(&transmittable_parameter)
                             .unwrap_or_default()
                             .len();

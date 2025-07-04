@@ -43,7 +43,7 @@ pub fn get_dummy_parameters() -> HashMap<String, Tensor> {
 
 impl Default for DummyModel {
     fn default() -> Self {
-        Self::new(2)
+        Self::new(500)
     }
 }
 
@@ -59,7 +59,7 @@ impl DummyModel {
         var_store.variables_ = Arc::new(Mutex::new(variables));
         Self {
             var_store,
-            training_delay_secs: Duration::from_secs(training_delay),
+            training_delay_secs: Duration::from_millis(training_delay),
         }
     }
 }
