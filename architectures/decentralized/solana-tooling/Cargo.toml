@@ -4,8 +4,10 @@ edition = "2021"
 version.workspace = true
 
 [dependencies]
+anyhow = "1.0.2"
+
 solana-sdk = "=2.1.4"
-solana_toolbox_endpoint = "=0.1.38-solana-2.1.4"
+solana_toolbox_endpoint = "=0.4.2-solana-2.1.4"
 
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 anchor-spl = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
