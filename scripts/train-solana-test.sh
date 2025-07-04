@@ -6,7 +6,8 @@ set -euo pipefail
 if [[ -z "${WALLET_FILE:-}" ]]; then
     echo "No wallet file specified, generating ephemeral keypair..."
     # Create a named pipe for the keypair data
-    WALLET_FILE=$(mktemp ~/solana-keys/solana-wallet-XXXXXXXXX.json)
+    mkdir -p ~/solana-keys
+    WALLET_FILE=$(mktemp ~/solana-keys/solana-wallet-XXXXXXXXX)
 
     # Generate keypair and write to the named pipe in the background
     solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
