@@ -1,69 +1,67 @@
+{ inputs, ... }:
 {
-  ...
-}:
-{
-  perSystem =
-    { ... }:
-    {
-      treefmt = {
-        projectRootFile = "./flake.nix";
-        programs = {
-          just.enable = true;
-          rustfmt.enable = true;
-          taplo.enable = true; # toml files
-          nixfmt.enable = true;
-          mdformat = {
-            enable = true;
-            settings.number = true;
-          };
+  imports = [ inputs.treefmt-nix.flakeModule ];
 
-          clang-format = {
-            enable = true;
-            includes = [ "*.glsl" ];
-          };
+  perSystem = _: {
+    treefmt = {
+      projectRootFile = "./flake.nix";
+      programs = {
+        just.enable = true;
+        rustfmt.enable = true;
+        taplo.enable = true; # toml files
+        nixfmt.enable = true;
+        mdformat = {
+          enable = true;
+          settings.number = true;
+        };
 
-          prettier = {
-            # js, ts, etc.
-            enable = true;
-            settings = {
-              trailingComma = "es5";
-              useTabs = true;
-              semi = false;
-              singleQuote = true;
-            };
-          };
+        clang-format = {
+          enable = true;
+          includes = [ "*.glsl" ];
+        };
 
-          # python stuff
-          black.enable = true;
-
-          beautysh = {
-            enable = true;
-            indent_size = 4;
+        prettier = {
+          # js, ts, etc.
+          enable = true;
+          settings = {
+            trailingComma = "es5";
+            useTabs = true;
+            semi = false;
+            singleQuote = true;
           };
         };
-        settings.global.excludes = [
-          "**/*.svg"
-          "**/*.gitignore"
-          "**/*.go"
-          "**/*.txt"
-          "**/*.age"
-          "**/.env*"
-          "**/*.Dockerfile"
-          "**/*.conf"
-          "**/*.png"
-          "**/*.jpg"
-          "**/*.woff2"
-          "**/*.pdf"
-          "**/*.ds"
-          "**/*.npy"
-          "**/*.xml"
-          "**/*.hbs"
-          "**/*.min.js"
-          ".envrc"
-          ".dockerignore"
-          ".gitattributes"
-          "**/pnpm-lock.yaml"
-        ];
+
+        # python stuff
+        black.enable = true;
+
+        beautysh = {
+          enable = true;
+          indent_size = 4;
+        };
       };
+      settings.global.excludes = [
+        "**/*.svg"
+        "**/*.gitignore"
+        "**/*.go"
+        "**/*.txt"
+        "**/*.age"
+        "**/.env*"
+        "**/*.Dockerfile"
+        "**/*.conf"
+        "**/*.png"
+        "**/*.jpg"
+        "**/*.woff2"
+        "**/*.pdf"
+        "**/*.ds"
+        "**/*.npy"
+        "**/*.xml"
+        "**/*.hbs"
+        "**/*.min.js"
+        ".envrc"
+        ".dockerignore"
+        ".gitattributes"
+        "**/pnpm-lock.yaml"
+      ];
     };
+  };
 }
