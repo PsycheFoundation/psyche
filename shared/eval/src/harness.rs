@@ -100,18 +100,24 @@ impl TokenizedLLHDocument {
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
         let mut choices_str = Vec::new();
+
+        let space_token_id = tokenizer.encode(" ", false).unwrap().get_ids()[0] as i64;
         let choices: Vec<Vec<i64>> = doc
             .choices
             .into_iter()
             .map(|choice| {
                 choices_str.push(choice.clone());
-                let choice = tokenizer
-                    .encode(choice, false)
+                let mut choice = tokenizer
+                    .encode(format!(" {}", choice), false)
                     .unwrap()
                     .get_ids()
                     .iter()
                     .map(|x| *x as i64)
                     .collect::<Vec<_>>();
+
+                if choice[0] == space_token_id {
+                    choice.remove(0);
+                };
 
                 choices_token_len.push(choice.len());
                 choice
@@ -119,9 +125,9 @@ impl TokenizedLLHDocument {
             .collect();
 
         for x in 0..requests.len() {
-            debug_assert_eq!(
-                requests[x][requests[x].len() - choices_token_len[x]..].len(),
-                choices[x].len()
+            assert_eq!(
+                requests[x][requests[x].len() - choices_token_len[x]..],
+                choices[x]
             )
         }
 
