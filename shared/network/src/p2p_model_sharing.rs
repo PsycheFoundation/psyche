@@ -3,6 +3,7 @@ use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
+use psyche_modeling::LlamaConfig;
 use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
@@ -14,7 +15,7 @@ use tokio::sync::{
     oneshot,
 };
 use tokio::task::JoinHandle;
-use tracing::{debug, trace, warn};
+use tracing::{debug, info, trace, warn, error};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
 
@@ -112,17 +113,17 @@ impl PeerManagerActor {
                 self.available_peers = VecDeque::from(peers);
                 self.errored_peers.clear();
 
-                debug!(
-                    "Updated peer list: {} peers available to ask for the model parameters",
-                    self.available_peers.len()
+                info!(
+                    "IROH DEBUG PEER_MANAGER: Updated peer list"
                 );
             }
             PeerCommand::GetPeer { reply } => {
                 let peer = if let Some(peer) = self.available_peers.pop_front() {
-                    debug!("Selected peer {peer} to ask for the model parameters");
+                    info!("IROH DEBUG PEER_MANAGER: Selected peer {peer} to ask for model parameters (remaining peers: {})", self.available_peers.len());
                     Some(peer)
                 } else {
-                    debug!("No available peers to ask for the model parameters at the moment");
+                    error!("IROH DEBUG PEER_MANAGER: NO AVAILABLE PEERS to ask for model parameters! Total errored peers: {}, Available peers: {}",
+                           self.errored_peers.len(), self.available_peers.len());
                     None
                 };
                 let _ = reply.send(peer);
@@ -131,23 +132,32 @@ impl PeerManagerActor {
             PeerCommand::ReportSuccess { peer_id } => {
                 self.available_peers.push_back(peer_id);
                 self.errored_peers.remove(&peer_id);
-                debug!("Peer {peer_id} correctly provided the blob ticket");
+                info!("IROH DEBUG PEER_MANAGER: Peer {peer_id} SUCCESS - correctly provided blob ticket (available peers: {})", self.available_peers.len());
             }
 
             PeerCommand::ReportError { peer_id } => {
                 let error_count = self.errored_peers.entry(peer_id).or_insert(0);
                 *error_count += 1;
 
+                error!("IROH DEBUG PEER_MANAGER: Peer {peer_id} ERROR #{} (max allowed: {}) - peer failed to provide blob ticket",
+                       *error_count, self.max_errors_per_peer);
+
                 if *error_count > self.max_errors_per_peer {
                     // Don't need to actually remove it because we already popped it, just don't add it back
-                    warn!("Removing peer {peer_id} after {} errors", *error_count);
+                    error!("IROH DEBUG PEER_MANAGER: PERMANENTLY REMOVING peer {peer_id} after {} errors (exceeded max {})",
+                           *error_count, self.max_errors_per_peer);
 
                     // Remove from errored to avoid keeping in there forever, we won't ask it again
                     self.errored_peers.remove(&peer_id);
                     if self.available_peers.is_empty() {
-                        warn!("No more peers available, keep checking if they start freeing up");
+                        error!("IROH DEBUG PEER_MANAGER: CRITICAL - No more peers available after removing {peer_id}! Available: {}, Errored: {}",
+                               self.available_peers.len(), self.errored_peers.len());
+                    } else {
+                        warn!("IROH DEBUG PEER_MANAGER: Removed peer {peer_id}, still have {} peers available", self.available_peers.len());
                     }
                 } else {
+                    warn!("IROH DEBUG PEER_MANAGER: Peer {peer_id} got error #{}, adding back to queue (available peers: {})",
+                          *error_count, self.available_peers.len() + 1);
                     self.available_peers.push_back(peer_id);
                 };
             }
@@ -256,6 +266,7 @@ pub enum ModelConfigSharingMessage {
 pub struct TransmittableModelParameter {
     param_name_bytes: Vec<u8>,
     param_value_bytes: Vec<u8>,
+    padding: Option<Vec<u8>>,
 }
 
 impl TransmittableModelParameter {
@@ -263,7 +274,41 @@ impl TransmittableModelParameter {
         Self {
             param_name_bytes,
             param_value_bytes,
+            padding: None,
         }
+    }
+
+    /// Add fixed padding for P2P testing purposes
+    /// We use this to test P2P with more real blob sizes
+    pub fn with_test_padding(mut self, target_size_mb: usize) -> Self {
+        let target_bytes = target_size_mb * 1024 * 1024;
+        let current_size = postcard::to_stdvec(&self).unwrap_or_default().len();
+
+        if current_size >= target_bytes {
+            return self; // Already large enough
+        }
+
+        let padding_needed = target_bytes - current_size;
+
+        if padding_needed > 0 {
+            let padding = vec![0u8; padding_needed];
+            self.padding = Some(padding);
+        }
+
+        self
+    }
+
+    /// Remove test padding if present
+    /// We need to do this on the receiving end to ensure we only process real parameter data
+    pub fn without_test_padding(mut self) -> Self {
+        if let Some(ref padding) = self.padding {
+            tracing::info!(
+                "Removed test padding from parameter: {} bytes",
+                padding.len()
+            );
+            self.padding = None;
+        }
+        self
     }
 
     pub fn name(&self) -> Result<String, SharableModelError> {
@@ -345,8 +390,26 @@ impl SharableModel {
         }
         self.parameters = Some(parameters);
 
+        // Check if this is a dummy model by examining the config
+        let is_dummy_model = if let Some(config) = &self.model_config {
+            if let Ok(llama_config) = serde_json::from_str::<LlamaConfig>(config) {
+                llama_config.is_dummy
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        debug!(
+            "Parameter sharing: is_dummy_model={}, param_count={}",
+            is_dummy_model,
+            new_parameters.len()
+        );
+
         let mut serialzing_parameters = HashMap::new();
         for (param_name, parameter) in new_parameters {
+            let dummy_flag = is_dummy_model; // Capture for the closure
             serialzing_parameters.insert(
                 param_name.clone(),
                 tokio::task::spawn_blocking(move || {
@@ -356,8 +419,25 @@ impl SharableModel {
                     param_name_buffer.write_all(param_name.as_bytes())?;
                     parameter.save_to_stream(&mut param_value_buffer)?;
 
-                    let transmittable_parameter =
+                    let mut transmittable_parameter =
                         TransmittableModelParameter::new(param_name_buffer, param_value_buffer);
+
+                    // Add test padding for P2P testing when using dummy model
+                    if dummy_flag {
+                        let target_dummy_param_size_mb = 100;
+                        let before_size = postcard::to_stdvec(&transmittable_parameter)
+                            .unwrap_or_default()
+                            .len();
+                        transmittable_parameter =
+                            transmittable_parameter.with_test_padding(target_dummy_param_size_mb);
+                        let after_size = postcard::to_stdvec(&transmittable_parameter)
+                            .unwrap_or_default()
+                            .len();
+                        debug!(
+                            "Added {} MB padding to parameter {}: {} bytes -> {} bytes",
+                            target_dummy_param_size_mb, param_name, before_size, after_size
+                        );
+                    }
 
                     trace!("Finished serializing parameter {param_name} for sharing");
                     Ok(transmittable_parameter)
@@ -393,12 +473,18 @@ impl SharableModel {
             return Err(SharableModelError::ParametersNotInitialized);
         };
 
+        //loaded_parameters.remove(param_name);
+        //info!("IROH DEBUG get_transmittable_parameter: Cleared cached ticket for {param_name} to generate fresh blob");
+
         match loaded_parameters.get(param_name) {
             Some(blob_ticket) => {
-                trace!("Using cached downloadable for {param_name}");
+                // This should never happen now since we just removed it
+                info!("IROH DEBUG get_transmittable_parameter: Using cached downloadable for {param_name}");
                 Ok(blob_ticket.clone())
             }
-            None => match loading_parameters.remove(param_name) {
+            None => {
+                info!("IROH DEBUG get_transmittable_parameter: not cached value");
+                match loading_parameters.remove(param_name) {
                 Some(loading) => {
                     trace!("Waiting for {param_name} parameter to finish serializing");
                     let transmittable_parameter = loading
@@ -416,7 +502,8 @@ impl SharableModel {
                     Ok(blob_ticket)
                 }
                 None => Err(SharableModelError::ParameterUnknown(param_name.to_string())),
-            },
+            }
+            }
         }
     }
 
@@ -444,6 +531,7 @@ impl SharableModel {
                     .map_err(|err| SharableModelError::ParseConfig(err.to_string()))?;
                 let transmittable_config: TransmittableModelConfig =
                     TransmittableModelConfig::new(config.clone(), raw_tokenizer);
+
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
                 let ticket = p2p
@@ -490,6 +578,9 @@ impl SharableModel {
         let Some(parameters) = self.parameters.as_mut() else {
             return Err(SharableModelError::ParametersNotInitialized);
         };
+
+        // Remove test padding if present
+        let parameter = parameter.without_test_padding();
 
         // Deserialize model parameter
         let param_name = parameter.name()?;

@@ -455,8 +455,10 @@ where
 
     // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
     pub fn remove_blobs_with_tag_less_than(&mut self, tag: u32) {
+        info!("remove_blobs_with_tag_less_than before: {:?}", &self.state.blob_tags);
         self.state.blob_tags.retain(|(t, _)| *t >= tag);
         self.cleanup_untagged_blogs();
+        info!("remove_blobs_with_tag_less_than after: {:?}", &self.state.blob_tags);
     }
     pub fn cleanup_untagged_blogs(&mut self) {
         let expired_blobs: Vec<_> = self
@@ -805,6 +807,7 @@ pub async fn param_request_task(
     while attempts < max_attempts {
         let Some(peer_id) = peer_manager.get_next_peer().await else {
             // No peers available, wait a bit and check again
+            error!("IROH DEBUG PARAM_REQUEST: No peers available for request (attempt {}/{}), waiting 500ms...", attempts + 1, max_attempts);
             tokio::time::sleep(Duration::from_millis(500)).await;
             attempts += 1;
             continue;
@@ -825,14 +828,15 @@ pub async fn param_request_task(
                     .unwrap()
                     .push((blob_ticket, model_request_type));
 
+                info!("IROH DEBUG PARAM_REQUEST: SUCCESS - peer {peer_id} provided blob ticket");
                 peer_manager.report_success(peer_id);
                 return Ok(());
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
+                error!("IROH DEBUG PARAM_REQUEST: FAILED - peer {peer_id} failed with error: {e} (attempt {}/{})", attempts + 1, max_attempts);
                 peer_manager.report_error(peer_id);
 
-                warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;
 
                 // Small delay before retry

@@ -176,6 +176,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let model::Model::LLM(llm) = state.model;
 
         let data_future = async {
+            info!("LLM Config: {:?}", llm);
             debug!("Setting up data provider from {:?}", llm.data_location);
             let data_provider = match llm.data_location {
                 LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
@@ -220,6 +221,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             | model::LLMArchitecture::HfDeepseek
             | model::LLMArchitecture::HfAuto => match &llm.checkpoint {
                 model::Checkpoint::Dummy(_) => tokio::spawn(async move {
+                    info!("Checkpoint is Dummy, creating dummy model");
                     let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
                         WordLevel::builder().build().unwrap(),
                     )));
@@ -257,6 +259,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => {
                     let checkpoint = llm.checkpoint;
                     tokio::spawn(async move {
+                        // Track if we detected a dummy model to initialize as DummyModel at the end
+                        let mut is_dummy_model = false;
+
                         let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
                             model::Checkpoint::Hub(hub_repo) => {
                                 let repo_id: String = (&hub_repo.repo_id).into();
@@ -322,7 +327,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                                 let model_config = match llm.architecture {
                                     model::LLMArchitecture::HfLlama => {
-                                        AutoConfig::Llama(serde_json::from_str(&model_config)?)
+                                        let llama_config: psyche_modeling::LlamaConfig =
+                                            serde_json::from_str(&model_config)?;
+                                        // Check if this is actually a dummy model shared via P2P
+                                        if llama_config.is_dummy {
+                                            info!("Detected dummy model config via P2P, will continue with P2P logic but create DummyModel at the end");
+                                            is_dummy_model = true;
+                                        }
+                                        AutoConfig::Llama(llama_config)
                                     }
                                     model::LLMArchitecture::HfDeepseek => {
                                         AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
@@ -451,7 +463,26 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             )
                                         });
                                     let source = source.clone();
+                                    let is_dummy_model = is_dummy_model;
                                     futures.push(tokio::task::spawn_blocking(move || {
+                                        if is_dummy_model {
+                                            if let Some(training_delay) =
+                                                init_config.dummy_training_delay_secs
+                                            {
+                                                return Ok(Box::new(
+                                                    psyche_modeling::DummyModel::new(
+                                                        training_delay,
+                                                    ),
+                                                )
+                                                    as Box<dyn psyche_modeling::CausalLM>);
+                                            } else {
+                                                return Ok(Box::new(
+                                                    psyche_modeling::DummyModel::default(),
+                                                )
+                                                    as Box<dyn psyche_modeling::CausalLM>);
+                                            }
+                                        }
+
                                         // let this run on CPU if tp is 1 and no cuda is available
                                         let device = if init_config.tensor_parallelism == 1 {
                                             if dp == 0 {
