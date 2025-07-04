@@ -1,11 +1,10 @@
-{ pkgs, ... }:
-let
-  solana-coordinator-idl = pkgs.callPackage ../../architectures/decentralized/solana-coordinator { };
-  solana-mining-pool-idl = pkgs.callPackage ../../architectures/decentralized/solana-mining-pool { };
-  psyche-website-wasm = pkgs.callPackage ../wasm { };
-  mkWebsitePackage = pkgs.callPackage ../common.nix { };
-in
-mkWebsitePackage {
+{
+  psyche-website-wasm,
+  psycheLib,
+  solana-coordinator-idl,
+  solana-mining-pool-idl,
+}:
+psycheLib.mkWebsitePackage {
   package = "shared";
 
   preBuild = ''
