@@ -15,7 +15,7 @@ use tokio::sync::{
     oneshot,
 };
 use tokio::task::JoinHandle;
-use tracing::{debug, trace, warn};
+use tracing::{debug, info, trace, warn, error};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
 
@@ -113,17 +113,17 @@ impl PeerManagerActor {
                 self.available_peers = VecDeque::from(peers);
                 self.errored_peers.clear();
 
-                debug!(
-                    "Updated peer list: {} peers available to ask for the model parameters",
-                    self.available_peers.len()
+                info!(
+                    "PEER_MANAGER: Updated peer list"
                 );
             }
             PeerCommand::GetPeer { reply } => {
                 let peer = if let Some(peer) = self.available_peers.pop_front() {
-                    debug!("Selected peer {peer} to ask for the model parameters");
+                    info!("PEER_MANAGER: Selected peer {peer} to ask for model parameters (remaining peers: {})", self.available_peers.len());
                     Some(peer)
                 } else {
-                    debug!("No available peers to ask for the model parameters at the moment");
+                    error!("PEER_MANAGER: NO AVAILABLE PEERS to ask for model parameters! Total errored peers: {}, Available peers: {}",
+                           self.errored_peers.len(), self.available_peers.len());
                     None
                 };
                 let _ = reply.send(peer);
@@ -132,23 +132,32 @@ impl PeerManagerActor {
             PeerCommand::ReportSuccess { peer_id } => {
                 self.available_peers.push_back(peer_id);
                 self.errored_peers.remove(&peer_id);
-                debug!("Peer {peer_id} correctly provided the blob ticket");
+                info!("PEER_MANAGER: Peer {peer_id} SUCCESS - correctly provided blob ticket (available peers: {})", self.available_peers.len());
             }
 
             PeerCommand::ReportError { peer_id } => {
                 let error_count = self.errored_peers.entry(peer_id).or_insert(0);
                 *error_count += 1;
 
+                error!("PEER_MANAGER: Peer {peer_id} ERROR #{} (max allowed: {}) - peer failed to provide blob ticket",
+                       *error_count, self.max_errors_per_peer);
+
                 if *error_count > self.max_errors_per_peer {
                     // Don't need to actually remove it because we already popped it, just don't add it back
-                    warn!("Removing peer {peer_id} after {} errors", *error_count);
+                    error!("PEER_MANAGER: PERMANENTLY REMOVING peer {peer_id} after {} errors (exceeded max {})",
+                           *error_count, self.max_errors_per_peer);
 
                     // Remove from errored to avoid keeping in there forever, we won't ask it again
                     self.errored_peers.remove(&peer_id);
                     if self.available_peers.is_empty() {
-                        warn!("No more peers available, keep checking if they start freeing up");
+                        error!("PEER_MANAGER: CRITICAL - No more peers available after removing {peer_id}! Available: {}, Errored: {}",
+                               self.available_peers.len(), self.errored_peers.len());
+                    } else {
+                        warn!("PEER_MANAGER: Removed peer {peer_id}, still have {} peers available", self.available_peers.len());
                     }
                 } else {
+                    warn!("PEER_MANAGER: Peer {peer_id} got error #{}, adding back to queue (available peers: {})",
+                          *error_count, self.available_peers.len() + 1);
                     self.available_peers.push_back(peer_id);
                 };
             }
@@ -464,12 +473,18 @@ impl SharableModel {
             return Err(SharableModelError::ParametersNotInitialized);
         };
 
+        //loaded_parameters.remove(param_name);
+        //info!("get_transmittable_parameter: Cleared cached ticket for {param_name} to generate fresh blob");
+
         match loaded_parameters.get(param_name) {
             Some(blob_ticket) => {
-                trace!("Using cached downloadable for {param_name}");
+                // This should never happen now since we just removed it
+                info!("get_transmittable_parameter: Using cached downloadable for {param_name}");
                 Ok(blob_ticket.clone())
             }
-            None => match loading_parameters.remove(param_name) {
+            None => {
+                info!("get_transmittable_parameter: not cached value");
+                match loading_parameters.remove(param_name) {
                 Some(loading) => {
                     trace!("Waiting for {param_name} parameter to finish serializing");
                     let transmittable_parameter = loading
@@ -487,7 +502,8 @@ impl SharableModel {
                     Ok(blob_ticket)
                 }
                 None => Err(SharableModelError::ParameterUnknown(param_name.to_string())),
-            },
+            }
+            }
         }
     }
 
