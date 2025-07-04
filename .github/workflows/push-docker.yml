@@ -18,10 +18,11 @@ jobs:
           extra_nix_config: |
             accept-flake-config = true
             substituters = https://cache.garnix.io https://cache.nixos.org/
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=
 
       - name: Download image from Garnix cache
         run: |
-          nix build .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
+          nix build .#docker-psyche-solana-test-client --no-link --print-out-paths > image-path.txt
 
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
