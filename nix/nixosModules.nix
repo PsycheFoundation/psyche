@@ -107,14 +107,9 @@
                         "http://${configName}.*.psyche.nousresearch.garnix.me".extraConfig = cfg;
                         "http://${configName}.*.psyche.psychefoundation.garnix.me".extraConfig = cfg;
                       }
-                      // (builtins.listToAttrs (
-                        map (hostname: {
-                          name = hostname;
-                          value = {
-                            extraConfig = cfg;
-                          };
-                        }) hostnames
-                      ));
+                      // (lib.genAttrs hostnames (_: {
+                        extraConfig = cfg;
+                      }));
                   };
               }
             )
