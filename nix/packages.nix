@@ -85,8 +85,8 @@
         // nixglhostRustPackages
         // rec {
           psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-          docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
-            name = "nousresearch/psyche-solana-client";
+          docker-psyche-solana-client = pkgs.dockerTools.buildLayeredImage {
+            name = "psyche-solana-client";
             tag = "latest";
 
             # Copy the binary and the entrypoint script into the image
@@ -114,7 +114,7 @@
             };
           };
 
-          docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {
+          docker-psyche-solana-test-client = pkgs.dockerTools.buildImage {
             name = "psyche-test-client";
             tag = "latest";
 
@@ -202,8 +202,6 @@
           docker-psyche-centralized-client = pkgs.dockerTools.streamLayeredImage {
             name = "psyche-centralized-client";
             tag = "latest";
-
-            # Copy the binary and the entrypoint script into the image
 
             contents = [
               pkgs.bashInteractive
