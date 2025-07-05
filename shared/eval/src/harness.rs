@@ -82,14 +82,13 @@ impl TokenizedLLHDocument {
             .collect::<Vec<_>>();
 
         let mut requests: Vec<Vec<i64>> = Vec::new();
-        let mut choices: Vec<Vec<i64>> = Vec::new();
         let mut choices_str = Vec::new();
         let mut choices_token_len = Vec::new();
+        let mut choices: Vec<Vec<i64>> = Vec::new();
 
         for choice in doc.choices.iter() {
-            // Tokenize the full request "text choice"
-            let x = format!("{} {}", doc.text.clone(), choice);
-            println!("Tokenized text choice: {:?}", x);
+            choices_str.push(choice.clone());
+
             let request = tokenizer
                 .encode(format!("{} {}", doc.text, choice), false)
                 .unwrap()
@@ -97,48 +96,32 @@ impl TokenizedLLHDocument {
                 .iter()
                 .map(|x| *x as i64)
                 .collect::<Vec<_>>();
+            requests.push(request.clone());
 
-            // Check if the space is merged with the first token of the choice
-            let choice_start_idx = {
-                // Get the token right after doc.text
+            // println!("choice:{:?}", choice);
+            for idx in 1..request.len() {
+                let choice_tokens = &request[request.len() - idx..]
+                    .iter()
+                    .map(|x| *x as u32)
+                    .collect::<Vec<_>>();
+                let choice_str = tokenizer.decode(choice_tokens, false).unwrap();
+                println!("Middle choice_str:{:?}", choice_str);
+                if choice_str.contains(choice) {
+                    let choice_tokens = choice_tokens.iter().map(|x| *x as i64).collect::<Vec<_>>();
+                    choices.push(choice_tokens.clone());
+                    choices_token_len.push(choice_tokens.len());
+                    // println!("Final: choice_str:{:?}", choice_str);
 
-                let token_after_text = request[text.len() - 1];
-
-                // Decode this single token to check its length
-                let decoded = tokenizer.decode(&[token_after_text as u32], false).unwrap();
-                println!("Decoded token -1 : {:?}", decoded);
-                let token_after_text = request[text.len()];
-                let decoded = tokenizer.decode(&[token_after_text as u32], false).unwrap();
-                println!("Decoded token: {:?}", decoded);
-
-                // If the decoded token has length > 1, it means the space was merged
-                // with the first character of the choice, so we include this token
-                if decoded.len() > 1 {
-                    text.len()
-                } else {
-                    // It's just a space token, skip it
-                    text.len() + 1
+                    break;
                 }
-            };
-
-            let choice_tokens = request[choice_start_idx..].to_vec();
-            let choice_len = choice_tokens.len();
-
-            requests.push(request);
-            choices.push(choice_tokens);
-            choices_str.push(choice.clone());
-            choices_token_len.push(choice_len);
+            }
         }
 
         // Verify correctness
         for x in 0..requests.len() {
             assert_eq!(
                 requests[x][requests[x].len() - choices_token_len[x]..],
-                choices[x],
-                "Mismatch for choice {}: {:?} vs {:?}",
-                x,
-                &requests[x][requests[x].len() - choices_token_len[x]..],
-                &choices[x]
+                choices[x]
             );
         }
 
@@ -288,16 +271,6 @@ impl PreparedTask {
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
                 request.pop();
                 let input_lenght = &request.len();
-
-                use std::io::Write;
-                let output_dir = "/home/admin/repos/psyche/benchmarks_llama/cargo";
-                // let filename = env::var("EVAL_OUTPUT_FILE")
-                // .unwrap_or_else(|_| "default_results.txt".to_string());
-                let filename = "arc_easy_2.txt";
-                let full_path = Path::new(output_dir).join(&filename);
-                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(full_path) {
-                    writeln!(file, "{:?}", request).ok();
-                }
 
                 let request = Tensor::from_slice(&request)
                     .to(options.model.device())
