@@ -10,9 +10,6 @@ use crate::state::Run;
 #[derive(Accounts)]
 #[instruction(params: RunTopUpParams)]
 pub struct RunTopUpAccounts<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
     #[account()]
     pub authority: Signer<'info>,
 
