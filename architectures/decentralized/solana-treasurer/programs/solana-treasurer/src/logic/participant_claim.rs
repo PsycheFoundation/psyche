@@ -83,7 +83,8 @@ pub fn participant_claim_processor(
     let run = &mut context.accounts.run;
 
     let participant_unclaimed_points = participant_earned_points
-        .saturating_sub(participant.claimed_earned_points);
+        .checked_sub(participant.claimed_earned_points)
+        .ok_or(error!(ProgramError::MathOverflow))?;
     if params.claim_earned_points > participant_unclaimed_points {
         return err!(ProgramError::InvalidParameter);
     }
@@ -91,11 +92,23 @@ pub fn participant_claim_processor(
     // We distribute 1 collateral per point and let the coordinator decide the point reward rate
     let claim_collateral_amount = params.claim_earned_points;
 
-    participant.claimed_collateral_amount += claim_collateral_amount;
-    participant.claimed_earned_points += params.claim_earned_points;
+    participant.claimed_collateral_amount = participant
+        .claimed_collateral_amount
+        .checked_add(claim_collateral_amount)
+        .ok_or(error!(ProgramError::MathOverflow))?;
+    participant.claimed_earned_points = participant
+        .claimed_earned_points
+        .checked_add(params.claim_earned_points)
+        .ok_or(error!(ProgramError::MathOverflow))?;
 
-    run.total_claimed_collateral_amount += claim_collateral_amount;
-    run.total_claimed_earned_points += params.claim_earned_points;
+    run.total_claimed_collateral_amount = run
+        .total_claimed_collateral_amount
+        .checked_add(claim_collateral_amount)
+        .ok_or(error!(ProgramError::MathOverflow))?;
+    run.total_claimed_earned_points = run
+        .total_claimed_earned_points
+        .checked_add(params.claim_earned_points)
+        .ok_or(error!(ProgramError::MathOverflow))?;
 
     let run_signer_seeds: &[&[&[u8]]] =
         &[&[Run::SEEDS_PREFIX, &run.index.to_le_bytes(), &[run.bump]]];
