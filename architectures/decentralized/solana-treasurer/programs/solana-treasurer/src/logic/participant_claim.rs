@@ -12,9 +12,6 @@ use crate::ProgramError;
 #[derive(Accounts)]
 #[instruction(params: ParticipantClaimParams)]
 pub struct ParticipantClaimAccounts<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
     #[account()]
     pub user: Signer<'info>,
 
@@ -78,15 +75,16 @@ pub fn participant_claim_processor(
     {
         if client.id.signer == context.accounts.user.key() {
             participant_earned_points = client.earned;
+            break;
         }
     }
 
     let participant = &mut context.accounts.participant;
     let run = &mut context.accounts.run;
 
-    if params.claim_earned_points
-        > participant_earned_points - participant.claimed_earned_points
-    {
+    let participant_unclaimed_points = participant_earned_points
+        .saturating_sub(participant.claimed_earned_points);
+    if params.claim_earned_points > participant_unclaimed_points {
         return err!(ProgramError::InvalidParameter);
     }
 
