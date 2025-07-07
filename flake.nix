@@ -3,9 +3,17 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
     agenix = {
       url = "github:ryantm/agenix";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        home-manager.follows = "";
+        darwin.follows = "";
+      };
     };
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -18,6 +26,7 @@
         nixpkgs.follows = "nixpkgs";
         crane.follows = "crane";
         rust-overlay.follows = "rust-overlay";
+        flake-parts.follows = "flake-parts";
       };
     };
     garnix-lib = {
@@ -25,24 +34,30 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     solana-pkgs.url = "github:arilotter/solana-flake";
-    agenix-shell.url = "github:aciceri/agenix-shell";
+    agenix-shell = {
+      url = "github:aciceri/agenix-shell";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-parts.follows = "flake-parts";
+        nix-github-actions.follows = "";
+      };
+    };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     git-hooks-nix = {
       url = "github:cachix/git-hooks.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-compat.follows = "";
+      };
     };
   };
 
   outputs =
-    inputs@{
-      self,
-      flake-parts,
-      ...
-    }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
+    inputs:
+    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
         "x86_64-linux"
       ];
@@ -55,24 +70,8 @@
         };
       };
 
-      perSystem =
-        { system, ... }:
-        {
-          _module.args.pkgs = (
-            import inputs.nixpkgs (
-              {
-                inherit system;
-              }
-              // (import ./nix/pkgs.nix {
-                inherit inputs;
-                gitcommit = self.rev or self.dirtyRev;
-              })
-            )
-          );
-        };
       imports = [
         inputs.agenix-shell.flakeModules.default
-        inputs.treefmt-nix.flakeModule
         inputs.git-hooks-nix.flakeModule
         ./nix/formatter.nix
         ./nix/packages.nix

@@ -1,37 +1,19 @@
-{ pkgs, system, ... }:
-let
-  wasm = pkgs.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
-in
-pkgs.stdenv.mkDerivation {
-  name = "psyche-website-wasm";
+{
+  psyche-deserialize-zerocopy-wasm,
+  runCommand,
+}:
+runCommand "psyche-website-wasm" { } ''
+  echo "copying pkg..."
+  cp -r ${psyche-deserialize-zerocopy-wasm}/pkg .
+  chmod 775 pkg -R
 
-  src = [
-    ./fixup.sh
-  ];
+  echo "copying bindings..."
+  cp -r ${psyche-deserialize-zerocopy-wasm}/bindings .
+  chmod 775 bindings -R 
 
-  unpackPhase = ''
-    for srcFile in $src; do
-      cp $srcFile $(stripHash $srcFile)
-    done
-  '';
+  echo "fixing up exports"
+  bash ${./fixup.sh}
 
-  buildPhase = ''
-    runHook preBuild
-
-    echo "copying pkg..."
-    cp -r ${wasm}/pkg .
-    chmod 775 pkg -R
-
-    echo "copying bindings..."
-    cp -r ${wasm}/bindings .
-    chmod 775 bindings -R 
-
-    echo "running fixup..."
-    ${pkgs.bash}/bin/bash ./fixup.sh
-
-    mkdir $out
-    cp -r pkg $out
-
-    runHook postBuild
-  '';
-}
+  mkdir $out
+  cp -r pkg $out
+''
