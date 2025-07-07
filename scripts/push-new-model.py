@@ -58,6 +58,50 @@ def initialize_llama_weights(model: LlamaForCausalLM, config: LlamaConfig):
         lm_std = 1 / math.sqrt(config.hidden_size)
         _init_normal(model.lm_head, std=lm_std)
 
+def initialize_deepseek_weights(model: DeepseekV3ForCausalLM, config: DeepseekV3Config):
+    """Initialize model weights using the "Mitchell" initialization scheme"""
+
+    wte_std = 1 / math.sqrt(config.hidden_size)
+    _init_normal(model.embed_tokens, std=wte_std)
+
+    for layer_id, layer in enumerate(model.layers.values()):
+
+        if config.q_lora_rank is None:
+            attn_std = 1 / math.sqrt(config.hidden_size)
+            _init_normal(layer.self_attn.q_proj, std=attn_std)
+        else:
+            attn_qa_lora_std = 1 / math.sqrt(config.hidden_size)
+            attn_qb_lora_std = 1 / math.sqrt(config.q_lora_rank)
+            nn.init.ones_(layer.self_attn.q_a_layernorm.weight)
+            _init_normal(layer.self_attn.q_a_proj, std=attn_qa_lora_std)
+            _init_normal(layer.self_attn.q_b_proj, std=attn_qb_lora_std)
+        
+        attn_kva_lora_std = 1 / math.sqrt(config.hidden_size)
+        attn_kvb_lora_std = 1 / math.sqrt(config.kv_lora_rank)
+        nn.init.ones_(layer.self_attn.kv_a_layernorm.weight)
+        _init_normal(layer.self_attn.kv_a_proj_with_mqa, std=attn_kva_lora_std)
+        _init_normal(layer.self_attn.kv_b_proj, std=attn_kvb_lora_std)
+
+        attn_out_std = 1 / (math.sqrt(2 * config.hidden_size * (layer_id + 1)))
+        _init_normal(layer.self_attn.o_proj, std=attn_out_std)
+
+        ff_std = 1 / math.sqrt(config.hidden_size)
+        _init_normal(layer.mlp.gate_proj, std=ff_std)
+        _init_normal(layer.mlp.up_proj, std=ff_std)
+
+        ff_out_std = 1 / (
+            math.sqrt(2 * layer.mlp.down_proj.in_features * (layer_id + 1))
+        )
+        _init_normal(layer.mlp.down_proj, std=ff_out_std)
+
+        nn.init.ones_(layer.input_layernorm.weight)
+        nn.init.ones_(layer.post_attention_layernorm.weight)
+
+    nn.init.ones_(model.norm.weight)
+
+    if model.lm_head is not None:
+        lm_std = 1 / math.sqrt(config.hidden_size)
+        _init_normal(model.lm_head, std=lm_std)
 
 def main(args):
     if not args.config:
@@ -86,9 +130,8 @@ def main(args):
         print("OLMo initialization...")
         initialize_llama_weights(model, config)
     elif model_type == "deepseek_v3":
-        # according to the dsv3 paper all learnable params were initialized with std dev 0.006
-        # so will just rely on initializer_range being right and init_weights() being called in
-        # the constructor. who am I to question the great whale?
+        print("Dense MLA Mitchell initialization...")
+        initialize_deepseek_weights(model, config)
         pass
 
     print(model)
