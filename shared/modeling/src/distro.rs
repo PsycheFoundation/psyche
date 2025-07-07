@@ -2,7 +2,7 @@ use crate::{CausalLM, StableVariableIterator, Variable};
 
 use std::{cmp::Ordering, collections::HashMap, f64::consts::PI};
 use tch::{COptimizer, Device, Kind, Tensor};
-use tracing::info;
+use tracing::{debug, info};
 
 pub struct TransformDCT {
     shape_dict: HashMap<i64, i64>,
@@ -477,7 +477,7 @@ pub struct Distro {
     weight_decay: f64,
     state: Vec<State>,
     transform: TransformDCT,
-    is_dummy_mode: bool,
+    is_dummy_model: bool,
 }
 
 impl Distro {
@@ -504,7 +504,6 @@ impl Distro {
         sgd.zero_grad_with_set_to_none(false).unwrap();
 
         let transform = TransformDCT::new(vs.variables(), compression_chunk);
-        let is_dummy_mode = vs.is_dummy_model();
 
         Self {
             sgd,
@@ -513,7 +512,7 @@ impl Distro {
             weight_decay,
             state,
             transform,
-            is_dummy_mode,
+            is_dummy_model: vs.is_dummy_model(),
         }
     }
 
@@ -545,8 +544,6 @@ impl Distro {
             let delta_var = &mut self.state.get_mut(index).unwrap().delta;
             let mut delta = delta_var.logical_tensor();
 
-            let delta_sign = delta.sign();
-            info!("distro: delta_sign: {:?}", delta_sign);
             let _t = variable.g_add_(&delta.sign().multiply_scalar(prev_lr));
 
             if !prev_self_results.is_empty() {
@@ -577,12 +574,6 @@ impl Distro {
                     prev_self_results[0][index].totalk,
                     val_kind,
                     device,
-                );
-                info!(
-                    "got the gradients, decompressed: {:?} , size = {:?}, b_dict: {:?}",
-                    decompressed,
-                    decompressed.size(),
-                    self.transform.b_dict
                 );
                 let transmit_grad = self.transform.decode(&decompressed);
 
@@ -682,20 +673,11 @@ impl Distro {
             );
 
             // Set the gradients!!!
-            info!(
-                "set the gradients, decompressed: {:?} , size = {:?}, b_dict: {:?}",
-                decompressed,
-                decompressed.size(),
-                self.transform.b_dict
-            );
-            if !self.is_dummy_mode {
+            debug!("utilizing gradients {:?}", decompressed);
+            // We need to skip these two if in dummy mode (not really training) since else it crashes
+            if !self.is_dummy_model {
                 var.set_grad(self.transform.decode(&decompressed));
-            }
-
-            // Sign-SGD (skip in dummy mode since it breaks)
-            // TODO figure out if we can still run it in dummy mode
-            if !self.is_dummy_mode {
-                let _t = variable.grad().sign_();
+                let _t = variable.grad().sign_(); // Sign-SGD
             }
         }
         // SGD step

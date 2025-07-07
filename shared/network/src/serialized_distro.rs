@@ -57,31 +57,26 @@ impl TransmittableDistroResult {
 
         let padding_needed = target_bytes - current_size;
         let padding_per_entry = padding_needed / (NUM_PADDING_ENTRIES * 8); // 8 bytes per entry (2 tensors * 4 bytes)
+        if padding_per_entry == 0 {
+            return self;
+        }
 
-        if padding_per_entry > 0 {
-            for _ in 0..NUM_PADDING_ENTRIES {
-                // Create dummy tensors using tch and convert to SerializableTensor
-                let dummy_tensor = tch::Tensor::zeros(
-                    [padding_per_entry as i64],
-                    (tch::Kind::Float, tch::Device::Cpu),
-                );
-                let padding_result = SerializedDistroResult {
-                    sparse_idx: (&dummy_tensor).try_into().unwrap_or_else(|_| {
-                        // Fallback: create minimal tensor if conversion fails
-                        let small_tensor =
-                            tch::Tensor::zeros([1], (tch::Kind::Float, tch::Device::Cpu));
-                        (&small_tensor).try_into().unwrap()
-                    }),
-                    sparse_val: (&dummy_tensor).try_into().unwrap_or_else(|_| {
-                        let small_tensor =
-                            tch::Tensor::zeros([1], (tch::Kind::Float, tch::Device::Cpu));
-                        (&small_tensor).try_into().unwrap()
-                    }),
-                    xshape: vec![padding_per_entry.min(65535) as u16], // Ensure it fits in u16
-                    totalk: padding_per_entry as u32,
-                };
-                self.distro_results.push(padding_result);
-            }
+        for _ in 0..NUM_PADDING_ENTRIES {
+            // Create dummy tensors using tch and convert to SerializableTensor
+            let dummy_tensor = tch::Tensor::zeros(
+                [padding_per_entry as i64],
+                (tch::Kind::Float, tch::Device::Cpu),
+            );
+            let dummy_tensor: SerializableTensor = (&dummy_tensor)
+                .try_into()
+                .expect("Failed to create dummy tensor");
+            let padding_result = SerializedDistroResult {
+                sparse_idx: dummy_tensor.clone(),
+                sparse_val: dummy_tensor,
+                xshape: vec![padding_per_entry.min(65535) as u16],
+                totalk: padding_per_entry as u32,
+            };
+            self.distro_results.push(padding_result);
         }
 
         self
@@ -97,12 +92,6 @@ impl TransmittableDistroResult {
         if original_len > NUM_PADDING_ENTRIES {
             self.distro_results
                 .truncate(original_len - NUM_PADDING_ENTRIES);
-            tracing::info!(
-                "Removed {} test padding entries ({} -> {})",
-                NUM_PADDING_ENTRIES,
-                original_len,
-                self.distro_results.len()
-            );
         }
 
         self

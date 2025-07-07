@@ -382,7 +382,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                             debug!(step=step, loss=loss, batch_id=%batch_id, "Got training output, DisTrO results generated");
 
                             let is_dummy_model = trainer.causal_lm().is_dummy_model();
-                            info!("[train:start] is_dummy_model={is_dummy_model}");
+                            if is_dummy_model {
+                                info!("[train:start] Training with Dummy Model");
+                            }
                             available_trainers.push(trainer);
 
                             if !sent_results {
@@ -420,8 +422,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                                             .map_err(TrainError::SerializeDistroResult)?,
                                         trainer_nonce: nonce,
                                     };
-
-                                    // Compute commitment hash BEFORE adding padding to avoid hash mismatch
                                     let commitment_data_hash = transmittable_distro_result.compute_hash();
 
                                     // Add test padding for P2P testing when using dummy model (after hash calculation)
