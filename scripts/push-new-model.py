@@ -132,7 +132,6 @@ def main(args):
     elif model_type == "deepseek_v3":
         print("Dense MLA Mitchell initialization...")
         initialize_deepseek_weights(model, config)
-        pass
 
     print(model)
     total_params = sum(p.numel() for p in model.parameters())
