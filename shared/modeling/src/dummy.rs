@@ -18,18 +18,18 @@ pub struct DummyModel {
 pub fn get_dummy_parameters() -> HashMap<String, Tensor> {
     // These shapes match LlamaConfig::dummy() which has hidden_size=1, vocab_size=1, etc.
     [
-        ("model.norm.weight", vec![1]),
-        ("model.layers.0.mlp.up_proj.weight", vec![1, 1]),
-        ("model.layers.0.post_attention_layernorm.weight", vec![1]),
-        ("model.layers.0.self_attn.q_proj.weight", vec![1, 1]),
-        ("model.embed_tokens.weight", vec![1, 1]),
-        ("model.layers.0.self_attn.o_proj.weight", vec![1, 1]),
-        ("model.layers.0.self_attn.v_proj.weight", vec![1, 1]),
-        ("model.layers.0.self_attn.k_proj.weight", vec![1, 1]),
-        ("model.layers.0.mlp.gate_proj.weight", vec![1, 1]),
-        ("model.layers.0.mlp.down_proj.weight", vec![1, 1]),
-        ("lm_head.weight", vec![1, 1]),
-        ("model.layers.0.input_layernorm.weight", vec![1]),
+        ("model.norm.weight", vec![512]),
+        ("model.layers.0.mlp.up_proj.weight", vec![512, 512]),
+        ("model.layers.0.post_attention_layernorm.weight", vec![512]),
+        ("model.layers.0.self_attn.q_proj.weight", vec![512, 512]),
+        ("model.embed_tokens.weight", vec![512, 512]),
+        ("model.layers.0.self_attn.o_proj.weight", vec![512, 512]),
+        ("model.layers.0.self_attn.v_proj.weight", vec![512, 512]),
+        ("model.layers.0.self_attn.k_proj.weight", vec![512, 512]),
+        ("model.layers.0.mlp.gate_proj.weight", vec![512, 512]),
+        ("model.layers.0.mlp.down_proj.weight", vec![512, 512]),
+        ("lm_head.weight", vec![512, 512]),
+        ("model.layers.0.input_layernorm.weight", vec![512]),
     ]
     .into_iter()
     .map(|(name, shape)| {
