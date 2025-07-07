@@ -16,7 +16,7 @@ pub struct DummyModel {
 }
 
 pub fn get_dummy_parameters() -> HashMap<String, Tensor> {
-    // These shapes match LlamaConfig::dummy() which has hidden_size=1, vocab_size=1, etc.
+    // You may tweak these numbers if you want less/more dummy training and p2p blob size
     [
         ("model.norm.weight", vec![512]),
         ("model.layers.0.mlp.up_proj.weight", vec![512, 512]),

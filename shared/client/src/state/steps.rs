@@ -511,16 +511,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         self_result: Option<Vec<DistroResult>>,
     ) {
         // Remove test padding for dummy models
-        if self.is_dummy_model() {
-            let original_len = distro_result.distro_results.len();
+        if self.is_dummy_model {
             distro_result = distro_result.without_test_padding();
-            if distro_result.distro_results.len() != original_len {
-                info!(
-                    "Filtered dummy model test padding: {} -> {} results",
-                    original_len,
-                    distro_result.distro_results.len()
-                );
-            }
         }
         let round_state = if self.current_round.distro_result_blob_downloaded(&hash) {
             trace!(
@@ -844,10 +836,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             .map_err(|_| anyhow::anyhow!("stats logger mutex poisoned"))?
             .node_info = node_info;
         Ok(())
-    }
-
-    pub fn is_dummy_model(&self) -> bool {
-        self.is_dummy_model
     }
 }
 
