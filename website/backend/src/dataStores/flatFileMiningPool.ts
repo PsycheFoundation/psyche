@@ -98,18 +98,23 @@ export class FlatFileMiningPoolDataStore implements MiningPoolDataStore {
 		this.eventEmitter.emit('update')
 	}
 
-	getContributionInfo(): Omit<ContributionInfo, 'miningPoolProgramId'> {
+	getContributionInfo(
+		filterAddress?: string
+	): Omit<ContributionInfo, 'miningPoolProgramId'> {
 		const usersSortedByAmount = [...this.#data.userDeposits.entries()].sort(
 			(a, b) => (a[1] > b[1] ? -1 : a[1] < b[1] ? 1 : 0)
 		)
+		const fa = filterAddress ? new PublicKey(filterAddress) : undefined
 		return {
 			totalDepositedCollateralAmount: this.#data.totalDepositedCollateralAmount,
 			maxDepositCollateralAmount: this.#data.maxDepositCollateralAmount,
-			users: usersSortedByAmount.map(([address, funding], i) => ({
-				address,
-				funding,
-				rank: i + 1,
-			})),
+			users: usersSortedByAmount
+				.map(([address, funding], i) => ({
+					address,
+					funding,
+					rank: i + 1,
+				}))
+				.filter(({ address }) => !fa || new PublicKey(address).equals(fa)),
 			collateralMintDecimals: this.#data.collateral?.decimals ?? 0,
 			collateralMintAddress: this.#data.collateral?.mintAddress ?? 'UNKNOWN',
 		}
