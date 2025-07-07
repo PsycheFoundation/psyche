@@ -615,7 +615,7 @@ where
     }
 }
 
-pub async fn request_model(
+pub async fn request_model_blob_ticket(
     router: Arc<Router>,
     node_addr: NodeId,
     request_type: &ModelRequestType,
@@ -793,7 +793,7 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 }
 
 // Simplified param_request_task
-pub async fn param_request_task(
+pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
     model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
@@ -813,7 +813,7 @@ pub async fn param_request_task(
         debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
         let result = timeout(
             Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS),
-            request_model(router.clone(), peer_id, &model_request_type),
+            request_model_blob_ticket(router.clone(), peer_id, &model_request_type),
         )
         .map_err(|e| anyhow!("{e}"))
         .await;
@@ -830,7 +830,11 @@ pub async fn param_request_task(
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                peer_manager.report_error(peer_id);
+                let should_terminate = peer_manager.report_blob_ticket_request_error(peer_id).await;
+
+                if should_terminate {
+                    bail!("There's no peers available to give us the blob tickets for the model parameters, try joining again");
+                }
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;

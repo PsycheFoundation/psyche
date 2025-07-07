@@ -9,10 +9,10 @@ use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    allowlist, param_request_task, raw_p2p_verify, router::Router, AuthenticatableIdentity,
-    BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType, ModelRequestType,
-    NetworkConnection, NetworkEvent, NetworkTUIState, Networkable, NodeAddr, NodeId,
-    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload,
+    allowlist, blob_ticket_param_request_task, raw_p2p_verify, router::Router,
+    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
+    ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState, Networkable, NodeAddr,
+    NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload,
     MAX_DOWNLOAD_RETRIES,
 };
 use psyche_watcher::{Backend, BackendWatcher};
@@ -49,8 +49,8 @@ const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
-const MAX_ERRORS_PER_PEER: usize = 2;
-const MAX_RETRIES_PER_PEER: usize = 5;
+const MAX_ERRORS_PER_PEER: u8 = 2;
+const MAX_RETRIES_PER_PEER: u8 = 5;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -293,13 +293,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         match dl.download_type {
                                             DownloadType::ModelSharing(request_type) => {
                                                 metrics.record_download_failed();
-                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32)).max(Duration::from_secs(16));
+                                                // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
+                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
-                                                peer_manager.report_retry_error(dl.blob_ticket.node_addr().node_id);
+                                                let should_terminate = peer_manager.report_blob_ticket_download_error(dl.blob_ticket.node_addr().node_id).await;
+
+                                                if should_terminate {
+                                                    bail!("There's no peers left to request the model, try joining again")
+                                                }
 
                                                 info!(
                                                     "Model Sharing download failed {} time/s (will retry in {:?}): {}",
-                                                    retries,
+                                                    retries + 1,
                                                     backoff_duration,
                                                     dl.error
                                                 );
@@ -534,7 +539,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     let router = router.clone();
 
                                     let request_handle = tokio::spawn(
-                                        param_request_task(
+                                        blob_ticket_param_request_task(
                                             ModelRequestType::Parameter(param_name),
                                             router,
                                             parameter_blob_tickets.clone(),
@@ -547,7 +552,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     if request_handles.len() == max_concurrent_parameter_requests - 1 {
                                         let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
                                         max_concurrent_request_futures.push(request_handle);
-                                        join_all(max_concurrent_request_futures).await;
+                                        let results = join_all(max_concurrent_request_futures).await;
+                                        // All errors inside the blob_ticket_param_request_task are fatal so we just terminate
+                                        if results.iter().any(|result| result.is_err()) {
+                                            bail!("Failed to get parameter blobs there's no peers available to download from")
+                                        }
                                         let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
                                             let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
                                             parameter_blob_tickets_lock.drain(..).collect()
@@ -812,7 +821,7 @@ async fn get_blob_ticket_to_download(
 ) -> Result<BlobTicket, anyhow::Error> {
     let blob_ticket = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
 
-    param_request_task(
+    blob_ticket_param_request_task(
         request_type.clone(),
         router,
         blob_ticket.clone(),
