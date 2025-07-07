@@ -1,9 +1,10 @@
 import {
-	psycheJsonReviver,
 	IndexerStatus,
 	ApiGetRuns,
 	ApiGetRun,
 	ApiGetContributionInfo,
+	formats,
+	CURRENT_VERSION,
 } from 'shared'
 import {
 	fakeContributionInfo,
@@ -34,7 +35,7 @@ function psycheJsonFetch(path: string) {
 			}
 			return text
 		})
-		.then((text) => JSON.parse(text, psycheJsonReviver))
+		.then((text) => JSON.parse(text, formats[CURRENT_VERSION].reviver))
 }
 
 export async function fetchStatus(): Promise<IndexerStatus> {
@@ -228,7 +229,10 @@ async function getOneJsonPayloadFromStream<T>(
 			// we have at least one complete line, so one full JSON object
 			const firstLine = lines[0].trim()
 			if (firstLine) {
-				parsedPayload = JSON.parse(firstLine, psycheJsonReviver) as T
+				parsedPayload = JSON.parse(
+					firstLine,
+					formats[CURRENT_VERSION].reviver
+				) as T
 				decodeState.buffer = lines.slice(1).join('\n')
 			} else {
 				decodeState.buffer = lines.slice(1).join('\n')

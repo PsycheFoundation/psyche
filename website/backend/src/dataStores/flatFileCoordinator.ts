@@ -1,4 +1,3 @@
-import { readFileSync } from 'fs'
 import path from 'path'
 import {
 	CoordinatorConfig,
@@ -8,8 +7,6 @@ import {
 	lr_at_step,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
-	psycheJsonReviver,
-	psycheJsonReplacer,
 	RunSummary,
 	RunData,
 	Metrics,
@@ -18,6 +15,7 @@ import {
 	getRunPDA,
 	RunRoundClient,
 	TxSummary,
+	Version,
 } from 'shared'
 import { CoordinatorDataStore, LastUpdateInfo } from '../dataStore.js'
 import { WitnessMetadata, WitnessEvalResult } from '../idlTypes.js'
@@ -25,16 +23,15 @@ import { PublicKey } from '@solana/web3.js'
 import { isClientWitness } from '../witness.js'
 import EventEmitter from 'events'
 import { UniqueRunKey, runKey } from '../coordinator.js'
-import { writeFileAtomic } from '../writeFileAtomic.js'
+import { readVersionedFile, writeVersionedFile } from './versioned.js'
+import { CURRENT_VERSION, CurrentVersion } from 'shared/formats/type.js'
+import { existsSync, renameSync } from 'fs'
 
 // any run ID outside this list will not be returned to the frontend in the summary list.
 const ALLOWLISTED_RUN_IDS = ['consilience-40b-1']
 
 type Witness = Omit<WitnessMetadata, 'evals'> & {
-	evals: Array<{
-		name: string
-		value: number
-	}>
+	evals: Array<[string, number]>
 }
 
 interface RunHistory {
@@ -87,10 +84,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		this.#programId = programId
 		console.log(`loading coordinator db from disk at path ${this.#db}...`)
 		try {
-			const { lastUpdateInfo, runs, programId } = JSON.parse(
-				readFileSync(this.#db, 'utf-8'),
-				psycheJsonReviver
-			)
+			const { version, data } = readVersionedFile(this.#db)
+			const { lastUpdateInfo, runs, programId } = tryMigrate(version, data)
 			if (this.#programId.equals(programId)) {
 				this.#lastUpdateInfo = lastUpdateInfo
 				this.#runs = runs
@@ -106,6 +101,12 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			}
 		} catch (err) {
 			console.warn('failed to load previous DB from disk: ', err)
+			if (existsSync(this.#db)) {
+				const randomSuffix = Math.random()
+				const badFilename = this.#db + `${randomSuffix}.bak`
+				console.warn(`moving existing bad DB file to ${badFilename}`)
+				renameSync(this.#db, badFilename)
+			}
 		}
 	}
 
@@ -143,17 +144,11 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 
 		this.#runsMutatedSinceLastSync.clear()
-		await writeFileAtomic(
-			this.#db,
-			JSON.stringify(
-				{
-					lastUpdateInfo: this.#lastUpdateInfo,
-					runs: this.#runs,
-					programId: this.#programId,
-				},
-				psycheJsonReplacer
-			)
-		)
+		await writeVersionedFile(this.#db, {
+			lastUpdateInfo: this.#lastUpdateInfo,
+			runs: this.#runs,
+			programId: this.#programId,
+		})
 	}
 
 	lastUpdate() {
@@ -261,17 +256,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			typeof evals.len === 'object' && evals.len && 'toNumber' in evals.len
 				? evals.len.toNumber()
 				: Number(evals.len)
-		const fixedEvals = []
+		const fixedEvals: Array<[string, number]> = []
 		for (const { name, value } of evals.data.slice(
 			0,
 			l
 		) as WitnessEvalResult[]) {
 			const firstZero = name[0].findIndex((v) => v === 0)
 			const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString('utf-8')
-			fixedEvals.push({
-				name: nameStr,
-				value,
-			})
+			fixedEvals.push([nameStr, value])
 		}
 		lastRun.witnessUpdates.push([
 			{ ...restWitness, evals: fixedEvals },
@@ -414,7 +406,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			Array<readonly [step: number, value: number]>
 		> = {}
 		for (const [step, r] of linearWitnessHistory) {
-			for (const { name, value } of r.evals) {
+			for (const [name, value] of r.evals) {
 				if (!(name in evals)) {
 					evals[name] = []
 				}
@@ -717,4 +709,62 @@ function chopOffDivergentHistory<T>(
 		maxX = step
 	}
 	return result
+}
+
+type ValueInMapRecord<MapRecord> =
+	MapRecord extends Map<any, infer I> ? I : never
+
+type CurrentFormat = V1
+
+const migrations: Record<
+	`${Exclude<Version, CurrentVersion>}`,
+	(data: any) => CurrentFormat
+> = {
+	unversioned: (data: V0) => {
+		for (const [_runId, run] of data.runs) {
+			for (const history of run) {
+				for (const witness of history.witnessUpdates) {
+					const evals = witness[0].evals
+					for (let i = 0; i < evals.length; i++) {
+						evals[i] = [
+							evals[i].name,
+							evals[i].value,
+						] satisfies ValueInMapRecord<
+							V1['runs']
+						>[number]['witnessUpdates'][number][0]['evals'][number] as any
+					}
+				}
+			}
+		}
+		return data as unknown as V1
+	},
+}
+
+interface WitnessV0 {
+	evals: Array<{
+		name: string
+		value: number
+	}>
+}
+
+interface RunHistoryV0 {
+	witnessUpdates: Array<[WitnessV0, any]>
+}
+
+interface V0 {
+	runs: Map<string, RunHistoryV0[]>
+}
+
+interface V1 {
+	lastUpdateInfo: LastUpdateInfo
+	runs: Map<string, RunHistory[]>
+	programId: PublicKey
+}
+
+function tryMigrate(version: Version, data: any): CurrentFormat {
+	if (version === CURRENT_VERSION) {
+		return data
+	}
+	console.log(`Migrating from ${version} to ${CURRENT_VERSION}!!`)
+	return migrations[version](data)
 }
