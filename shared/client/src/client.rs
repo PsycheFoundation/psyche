@@ -293,13 +293,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         match dl.download_type {
                                             DownloadType::ModelSharing(request_type) => {
                                                 metrics.record_download_failed();
-                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32)).max(Duration::from_secs(16));
+                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32)).min(Duration::from_secs(16));
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
                                                 peer_manager.report_retry_error(dl.blob_ticket.node_addr().node_id);
 
                                                 info!(
                                                     "Model Sharing download failed {} time/s (will retry in {:?}): {}",
-                                                    retries,
+                                                    retries + 1,
                                                     backoff_duration,
                                                     dl.error
                                                 );
