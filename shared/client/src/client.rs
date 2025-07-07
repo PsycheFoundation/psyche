@@ -50,6 +50,7 @@ const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_ERRORS_PER_PEER: usize = 2;
+const MAX_RETRIES_PER_PEER: usize = 5;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -117,7 +118,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                 let retried_downloads = RetriedDownloadsHandle::new();
                 let mut sharable_model = SharableModel::empty();
-                let peer_manager = Arc::new(PeerManagerHandle::new(MAX_ERRORS_PER_PEER));
+                let peer_manager = Arc::new(PeerManagerHandle::new(
+                    MAX_ERRORS_PER_PEER,
+                    MAX_RETRIES_PER_PEER,
+                ));
 
                 let mut broadcasts = vec![];
                 let mut broadcasts_rebroadcast_index = 0;
@@ -284,47 +288,67 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
                                         let hash = dl.blob_ticket.hash();
                                         let retries = retried_downloads.get(hash).await.map(|i| i.retries).unwrap_or(0);
+                                        let download_type_clone = dl.download_type.clone();
 
-                                        if retries >= MAX_DOWNLOAD_RETRIES {
-                                            metrics.record_download_perma_failed();
-                                            warn!("Download failed (not retrying): {}", dl.error);
-                                            retried_downloads.remove(hash).await;
-                                        } else {
-                                            metrics.record_download_failed();
-                                            let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
-                                            let retry_time = Some(std::time::Instant::now() + backoff_duration);
+                                        match dl.download_type {
+                                            DownloadType::ModelSharing(request_type) => {
+                                                metrics.record_download_failed();
+                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32)).max(Duration::from_secs(16));
+                                                let retry_time = Some(std::time::Instant::now() + backoff_duration);
+                                                peer_manager.report_retry_error(dl.blob_ticket.node_addr().node_id);
 
-                                            info!(
-                                                "Download failed (will retry in {:?}): {}",
-                                                backoff_duration,
-                                                dl.error
-                                            );
-                                            let router = p2p.router().clone();
-                                            let peer_manager = peer_manager.clone();
-                                            let retried_downloads = retried_downloads.clone();
-                                            tokio::spawn(async move {
-                                                let blob_ticket_to_retry = if let DownloadType::ModelSharing(request_type) = dl.download_type.clone() {
-                                                        if let Ok(new_blob_ticket) = get_blob_ticket_to_download(router.clone(), request_type.clone(), peer_manager.clone()).await {
-                                                            // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
-                                                            retried_downloads.remove(hash).await;
-                                                            new_blob_ticket
-                                                        } else {
-                                                            dl.blob_ticket
-                                                        }
+                                                info!(
+                                                    "Model Sharing download failed {} time/s (will retry in {:?}): {}",
+                                                    retries,
+                                                    backoff_duration,
+                                                    dl.error
+                                                );
+                                                let router = p2p.router().clone();
+                                                let peer_manager = peer_manager.clone();
+                                                let retried_downloads = retried_downloads.clone();
+                                                tokio::spawn(async move {
+                                                    let blob_ticket_to_retry = if let Ok(new_blob_ticket) = get_blob_ticket_to_download(router.clone(), request_type, peer_manager.clone()).await {
+                                                        // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
+                                                        retried_downloads.remove(hash).await;
+                                                        new_blob_ticket
+                                                    } else {
+                                                        dl.blob_ticket
+                                                    };
 
-                                                } else {
-                                                    dl.blob_ticket
-                                                };
-
-                                            retried_downloads.insert(DownloadRetryInfo {
-                                                retries: retries + 1,
-                                                retry_time,
-                                                ticket: blob_ticket_to_retry,
-                                                tag: dl.tag,
-                                                r#type: dl.download_type,
+                                                    retried_downloads.insert(DownloadRetryInfo {
+                                                        retries: retries + 1,
+                                                        retry_time,
+                                                        ticket: blob_ticket_to_retry,
+                                                        tag: dl.tag,
+                                                        r#type: download_type_clone,
+                                                    });
                                             });
-                                        });
-                                    }
+                                        }
+                                            DownloadType::DistroResult(_) => {
+                                                if retries >= MAX_DOWNLOAD_RETRIES {
+                                                    metrics.record_download_perma_failed();
+                                                    warn!("Distro result download failed (not retrying): {}", dl.error);
+                                                    retried_downloads.remove(hash).await;
+                                                } else {
+                                                    metrics.record_download_failed();
+                                                    let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
+                                                    let retry_time = Some(std::time::Instant::now() + backoff_duration);
+
+                                                    info!(
+                                                        "Distro result download failed (will retry in {:?}): {}",
+                                                        backoff_duration,
+                                                        dl.error
+                                                    );
+                                                    retried_downloads.insert(DownloadRetryInfo {
+                                                        retries: retries + 1,
+                                                        retry_time,
+                                                        ticket: dl.blob_ticket,
+                                                        tag: dl.tag,
+                                                        r#type: dl.download_type,
+                                                    });
+                                                }
+                                            }
+                                        }
                                     }
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
                                         // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.

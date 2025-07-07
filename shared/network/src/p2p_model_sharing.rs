@@ -39,14 +39,22 @@ enum PeerCommand {
     ReportError {
         peer_id: NodeId,
     },
+    ReportRetryError {
+        peer_id: NodeId,
+    },
 }
 
 impl PeerManagerHandle {
-    pub fn new(max_errors_per_peer: usize) -> Self {
+    pub fn new(max_errors_per_peer: usize, max_retries_per_peer: usize) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
         // Spawn the peer manager actor
-        tokio::spawn(peer_manager_actor(peer_rx, vec![], max_errors_per_peer));
+        tokio::spawn(peer_manager_actor(
+            peer_rx,
+            vec![],
+            max_errors_per_peer,
+            max_retries_per_peer,
+        ));
 
         Self { peer_tx }
     }
@@ -87,22 +95,41 @@ impl PeerManagerHandle {
             tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
         }
     }
+
+    /// Report that a peer has failed to share a parameter after retrying
+    pub fn report_retry_error(&self, peer_id: NodeId) {
+        if self
+            .peer_tx
+            .send(PeerCommand::ReportRetryError { peer_id })
+            .is_err()
+        {
+            tracing::error!(
+                "Failed to report retry error for peer {peer_id}, PeerManager actor is dead"
+            );
+        }
+    }
 }
 
 struct PeerManagerActor {
     available_peers: VecDeque<NodeId>,
-    errored_peers: HashMap<NodeId, usize>,
+    errored_peers: HashMap<NodeId, (usize, usize)>, // (error_count, retry_count)
     max_errors_per_peer: usize,
+    max_retries_per_peer: usize,
 }
 
 impl PeerManagerActor {
-    pub fn new(initial_peers: Vec<NodeId>, max_errors_per_peer: usize) -> Self {
+    pub fn new(
+        initial_peers: Vec<NodeId>,
+        max_errors_per_peer: usize,
+        max_retries_per_peer: usize,
+    ) -> Self {
         let available_peers = VecDeque::from(initial_peers);
-        let errored_peers = HashMap::new();
+        let errored_peers: HashMap<NodeId, (usize, usize)> = HashMap::new();
         Self {
             available_peers,
             errored_peers,
             max_errors_per_peer,
+            max_retries_per_peer,
         }
     }
 
@@ -135,12 +162,12 @@ impl PeerManagerActor {
             }
 
             PeerCommand::ReportError { peer_id } => {
-                let error_count = self.errored_peers.entry(peer_id).or_insert(0);
-                *error_count += 1;
+                let error_count = self.errored_peers.entry(peer_id).or_insert((0, 0));
+                error_count.0 += 1;
 
-                if *error_count > self.max_errors_per_peer {
+                if error_count.0 > self.max_errors_per_peer {
                     // Don't need to actually remove it because we already popped it, just don't add it back
-                    warn!("Removing peer {peer_id} after {} errors", *error_count);
+                    warn!("Removing peer {peer_id} after {} errors", error_count.0);
 
                     // Remove from errored to avoid keeping in there forever, we won't ask it again
                     self.errored_peers.remove(&peer_id);
@@ -151,6 +178,16 @@ impl PeerManagerActor {
                     self.available_peers.push_back(peer_id);
                 };
             }
+            PeerCommand::ReportRetryError { peer_id } => {
+                let error_count = self.errored_peers.entry(peer_id).or_insert((0, 0));
+                error_count.1 += 1;
+
+                if error_count.1 > self.max_retries_per_peer {
+                    warn!("Removing peer {peer_id} after {} retries", error_count.1);
+                    self.errored_peers.remove(&peer_id);
+                    self.available_peers.retain(|p| *p != peer_id);
+                }
+            }
         }
     }
 }
@@ -159,8 +196,9 @@ async fn peer_manager_actor(
     mut rx: mpsc::UnboundedReceiver<PeerCommand>,
     initial_peers: Vec<NodeId>,
     max_errors_per_peer: usize,
+    max_retries_per_peer: usize,
 ) {
-    let mut actor = PeerManagerActor::new(initial_peers, max_errors_per_peer);
+    let mut actor = PeerManagerActor::new(initial_peers, max_errors_per_peer, max_retries_per_peer);
 
     while let Some(message) = rx.recv().await {
         actor.handle_message(message);
