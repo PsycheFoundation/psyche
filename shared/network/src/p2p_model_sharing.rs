@@ -3,8 +3,8 @@ use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
-use psyche_modeling::LlamaConfig;
-use std::collections::{hash_map::Entry, HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
@@ -256,7 +256,6 @@ pub enum ModelConfigSharingMessage {
 pub struct TransmittableModelParameter {
     param_name_bytes: Vec<u8>,
     param_value_bytes: Vec<u8>,
-    padding: Option<Vec<u8>>,
 }
 
 impl TransmittableModelParameter {
@@ -264,41 +263,7 @@ impl TransmittableModelParameter {
         Self {
             param_name_bytes,
             param_value_bytes,
-            padding: None,
         }
-    }
-
-    /// Add fixed padding for P2P testing purposes
-    /// We use this to test P2P with more real blob sizes
-    pub fn with_test_padding(mut self, target_size_mb: usize) -> Self {
-        let target_bytes = target_size_mb * 1024 * 1024;
-        let current_size = postcard::to_stdvec(&self).unwrap_or_default().len();
-
-        if current_size >= target_bytes {
-            return self; // Already large enough
-        }
-
-        let padding_needed = target_bytes - current_size;
-
-        if padding_needed > 0 {
-            let padding = vec![0u8; padding_needed];
-            self.padding = Some(padding);
-        }
-
-        self
-    }
-
-    /// Remove test padding if present
-    /// We need to do this on the receiving end to ensure we only process real parameter data
-    pub fn without_test_padding(mut self) -> Self {
-        if let Some(ref padding) = self.padding {
-            tracing::info!(
-                "Removed test padding from parameter: {} bytes",
-                padding.len()
-            );
-            self.padding = None;
-        }
-        self
     }
 
     pub fn name(&self) -> Result<String, SharableModelError> {
@@ -380,26 +345,8 @@ impl SharableModel {
         }
         self.parameters = Some(parameters);
 
-        // Check if this is a dummy model by examining the config
-        let is_dummy_model = if let Some(config) = &self.model_config {
-            if let Ok(llama_config) = serde_json::from_str::<LlamaConfig>(config) {
-                llama_config.is_dummy
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        debug!(
-            "Parameter sharing: is_dummy_model={}, param_count={}",
-            is_dummy_model,
-            new_parameters.len()
-        );
-
         let mut serialzing_parameters = HashMap::new();
         for (param_name, parameter) in new_parameters {
-            let dummy_flag = is_dummy_model; // Capture for the closure
             serialzing_parameters.insert(
                 param_name.clone(),
                 tokio::task::spawn_blocking(move || {
@@ -409,25 +356,8 @@ impl SharableModel {
                     param_name_buffer.write_all(param_name.as_bytes())?;
                     parameter.save_to_stream(&mut param_value_buffer)?;
 
-                    let mut transmittable_parameter =
+                    let transmittable_parameter =
                         TransmittableModelParameter::new(param_name_buffer, param_value_buffer);
-
-                    // Add test padding for P2P testing when using dummy model
-                    if dummy_flag {
-                        let target_dummy_param_size_mb = 100;
-                        let before_size = postcard::to_stdvec(&transmittable_parameter)
-                            .unwrap_or_default()
-                            .len();
-                        transmittable_parameter =
-                            transmittable_parameter.with_test_padding(target_dummy_param_size_mb);
-                        let after_size = postcard::to_stdvec(&transmittable_parameter)
-                            .unwrap_or_default()
-                            .len();
-                        debug!(
-                            "Added {} MB padding to parameter {}: {} bytes -> {} bytes",
-                            target_dummy_param_size_mb, param_name, before_size, after_size
-                        );
-                    }
 
                     trace!("Finished serializing parameter {param_name} for sharing");
                     Ok(transmittable_parameter)
@@ -514,7 +444,6 @@ impl SharableModel {
                     .map_err(|err| SharableModelError::ParseConfig(err.to_string()))?;
                 let transmittable_config: TransmittableModelConfig =
                     TransmittableModelConfig::new(config.clone(), raw_tokenizer);
-
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
                 let ticket = p2p
@@ -561,9 +490,6 @@ impl SharableModel {
         let Some(parameters) = self.parameters.as_mut() else {
             return Err(SharableModelError::ParametersNotInitialized);
         };
-
-        // Remove test padding if present
-        let parameter = parameter.without_test_padding();
 
         // Deserialize model parameter
         let param_name = parameter.name()?;
