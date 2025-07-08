@@ -49,7 +49,7 @@ const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
-const MAX_ERRORS_PER_PEER: u8 = 2;
+const MAX_ERRORS_PER_PEER: u8 = 3;
 const MAX_RETRIES_PER_PEER: u8 = 5;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
@@ -484,7 +484,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     let _ = tx_params_download.send(vec![(ticket, ModelRequestType::Parameter(parameter.clone()))]);
                                                 },
                                                 ModelRequestType::Config => {
-                                                    let _ = tx_config_download.send(ticket);
+                                                    let _ = tx_config_download.send(Ok(ticket));
                                                 }
                                             }
                                         }
@@ -597,7 +597,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let router = p2p.router().clone();
                             let tx_config_download = tx_config_download.clone();
                             tokio::spawn(async move {
-                                let config_blob_ticket = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager).await.expect("Failed to get config blob ticket");
+                                let config_blob_ticket = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager).await;
                                 tx_config_download.send(config_blob_ticket).expect("Failed to send config blob ticket");
                             });
                         }
@@ -610,10 +610,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             }
                         }
                         Some(config_blob_ticket) = rx_config_download.recv() => {
-                            let kind = DownloadType::ModelSharing(ModelRequestType::Config);
-                            metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
-                            // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket, 0, kind);
+                            match config_blob_ticket {
+                                Ok(config_blob) => {
+                                    let kind = DownloadType::ModelSharing(ModelRequestType::Config);
+                                    metrics.record_download_started(config_blob.hash(), kind.kind());
+                                    // tag 0 means when we enter a train step, it'll get wiped.
+                                    p2p.start_download(config_blob, 0, kind);
+                                }
+                                Err(err) => {
+                                    bail!("Failed to download config blob: {}", err);
+                                }
+                            }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
                         _ = check_connection_interval.tick() => {
