@@ -830,11 +830,15 @@ pub async fn blob_ticket_param_request_task(
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                let should_terminate = peer_manager.report_blob_ticket_request_error(peer_id).await;
+                // let should_terminate = peer_manager.report_blob_ticket_request_error(peer_id).await;
+                peer_manager.report_blob_ticket_request_error(peer_id).await;
 
-                if should_terminate {
-                    bail!("There's no peers available to give us the blob tickets for the model parameters, try joining again");
-                }
+                // if should_terminate {
+                //     error!(
+                //         "Failed to get parameter blobs there's no peers available to download from"
+                //     );
+                //     bail!("There's no peers available to give us the blob tickets for the model parameters, try joining again");
+                // }
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;
