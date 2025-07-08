@@ -14,6 +14,7 @@ use tokio::sync::{
     oneshot,
 };
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
@@ -47,7 +48,11 @@ enum PeerCommand {
 }
 
 impl PeerManagerHandle {
-    pub fn new(max_errors_per_peer: u8, max_retries_per_peer: u8) -> Self {
+    pub fn new(
+        max_errors_per_peer: u8,
+        max_retries_per_peer: u8,
+        cancellation_token: CancellationToken,
+    ) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
         // Spawn the peer manager actor
@@ -55,6 +60,7 @@ impl PeerManagerHandle {
             peer_rx,
             max_errors_per_peer,
             max_retries_per_peer,
+            cancellation_token,
         ));
 
         Self { peer_tx }
@@ -146,7 +152,7 @@ impl PeerManagerActor {
         }
     }
 
-    fn handle_message(&mut self, message: PeerCommand) {
+    fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
         match message {
             PeerCommand::SetPeers { peers } => {
                 self.available_peers = VecDeque::from(peers);
@@ -193,10 +199,9 @@ impl PeerManagerActor {
                         error!(
                             "No more peers available to ask for model blob tickets, terminate process"
                         );
-                        let _ = should_terminate.send(true);
+                        cancellation_token.cancel();
                     }
                 } else {
-                    let _ = should_terminate.send(false);
                     self.available_peers.push_back(peer_id);
                 };
             }
@@ -217,10 +222,10 @@ impl PeerManagerActor {
                             .iter()
                             .all(|(_, (e, _))| *e == self.max_retries_per_peer)
                     {
-                        let _ = should_terminate.send(true);
                         error!(
                             "No more peers available to ask to download blob tickets, terminate process"
                         );
+                        cancellation_token.cancel();
                     }
                 }
             }
@@ -232,11 +237,12 @@ async fn peer_manager_actor(
     mut rx: mpsc::UnboundedReceiver<PeerCommand>,
     max_errors_per_peer: u8,
     max_retries_per_peer: u8,
+    cancellation_token: CancellationToken,
 ) {
     let mut actor = PeerManagerActor::new(max_errors_per_peer, max_retries_per_peer);
 
     while let Some(message) = rx.recv().await {
-        actor.handle_message(message);
+        actor.handle_message(message, cancellation_token.clone());
     }
 }
 
