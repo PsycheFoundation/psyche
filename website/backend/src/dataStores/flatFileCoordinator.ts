@@ -49,6 +49,12 @@ interface RunHistory {
 		metadata: RunMetadata
 	}>
 
+	trainingStep?: {
+		startedAt: ChainTimestamp
+		endedAt?: ChainTimestamp
+		tokensCompletedAtStartOfStep: bigint
+	}
+
 	pauseTimestamps: Array<['paused' | 'unpaused', ChainTimestamp]>
 	witnessUpdates: Array<[Witness, ChainTimestamp]>
 	observedLrByStep: Array<[number, number]>
@@ -197,6 +203,48 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		configChanged: boolean
 	) {
 		const [lastRun, index] = this.#getActiveRun(pubkey)
+
+		// we're entering a training step
+		if (
+			newState.coordinator.run_state === 'RoundTrain' &&
+			(!lastRun.lastState ||
+				lastRun.lastState.coordinator.run_state !== 'RoundTrain')
+		) {
+			const lastState = lastRun.lastState
+			const tokensCompletedAtStartOfStep = lastState
+				? (() => {
+						const c = lastState.coordinator
+						const tokensPerSequence = BigInt(c.model.LLM.max_seq_len)
+						const batchSizeStart = BigInt(c.config.global_batch_size_start)
+						const batchSizeEnd = BigInt(c.config.global_batch_size_end)
+						const warmupTokens = c.config.global_batch_size_warmup_tokens
+						const currentStep = BigInt(c.progress.step - 1)
+
+						return calculateTokens(
+							currentStep,
+							tokensPerSequence,
+							batchSizeStart,
+							batchSizeEnd,
+							warmupTokens
+						)
+					})()
+				: 0n
+
+			lastRun.trainingStep = {
+				startedAt: eventTime,
+				tokensCompletedAtStartOfStep,
+			}
+		}
+
+		// we're leaving a training step
+		if (
+			newState.coordinator.run_state !== 'RoundTrain' &&
+			lastRun.trainingStep &&
+			!lastRun.trainingStep.endedAt
+		) {
+			lastRun.trainingStep.endedAt = eventTime
+		}
+
 		lastRun.lastUpdated = eventTime
 		lastRun.lastState = newState
 
@@ -340,23 +388,26 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		)
 		const runs = rawRuns
 			.map((r) => r[0])
-			.filter((r): r is RunSummary => !!r && ALLOWLISTED_RUN_IDS.includes(r.id))
+			.filter(
+				(r): r is RunSummary =>
+					!!r && (!ALLOWLISTED_RUN_IDS || ALLOWLISTED_RUN_IDS.includes(r.id))
+			)
 		const summaries = {
 			runs,
-			totalTokens: runs.reduce((sum, run) => sum + run.completedTokens, 0n),
-			totalTokensPerSecondActive: rawRuns.reduce((sum, [summary, run]) => {
+			totalTokens: runs.reduce(
+				(sum, run) =>
+					sum + (run.trainingStep?.tokensCompletedAtStartOfStep ?? 0n),
+				0n
+			),
+			totalTokensPerSecondActive: runs.reduce((sum, summary) => {
 				const ACTIVE_TIMEOUT_MS = 10 * 60 * 1000
 				if (
 					summary?.status.type !== 'active' ||
-					Date.now() - run.lastUpdated.time.getTime() > ACTIVE_TIMEOUT_MS
+					Date.now() - summary.lastUpdate.time.getTime() > ACTIVE_TIMEOUT_MS
 				) {
 					return sum
 				}
-				const lastWitness = run.witnessUpdates.at(-1)
-				if (!lastWitness) {
-					return sum
-				}
-				return sum + BigInt(Math.round(lastWitness[0].tokens_per_sec))
+				return sum + (summary.trainingStep?.tokensCompletedAtStartOfStep ?? 0n)
 			}, 0n),
 		}
 		this.#summaryCache = summaries
@@ -367,8 +418,11 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		return [...this.#runs.values()].reduce(
 			(sum, runs) =>
 				sum +
-				runs.filter((r) => r.lastState && ALLOWLISTED_RUN_IDS.includes(r.runId))
-					.length,
+				runs.filter(
+					(r) =>
+						r.lastState &&
+						(!ALLOWLISTED_RUN_IDS || ALLOWLISTED_RUN_IDS.includes(r.runId))
+				).length,
 			0
 		)
 	}
@@ -552,16 +606,7 @@ function makeRunSummary(
 	const batchSizeStart = BigInt(c.config.global_batch_size_start)
 	const batchSizeEnd = BigInt(c.config.global_batch_size_end)
 	const warmupTokens = c.config.global_batch_size_warmup_tokens
-	const currentStep = BigInt(c.progress.step)
 	const totalSteps = BigInt(c.config.total_steps)
-
-	const completedTokens = calculateTokens(
-		currentStep,
-		tokensPerSequence,
-		batchSizeStart,
-		batchSizeEnd,
-		warmupTokens
-	)
 
 	const totalTokens = calculateTokens(
 		totalSteps,
@@ -570,6 +615,25 @@ function makeRunSummary(
 		batchSizeEnd,
 		warmupTokens
 	)
+
+	const lastFewWitnesses = run.witnessUpdates.slice(-50)
+	const lastStep = lastFewWitnesses.at(-1)?.[0].step ?? -1
+	const witnessesForLastStep = lastFewWitnesses.filter(
+		(w) => w[0].step === lastStep
+	)
+	const averageTPS = averageSameStepValues(
+		witnessesForLastStep.map((w) => [w[0].step, w[0].tokens_per_sec])
+	)
+	const lastTokensPerSecond = BigInt(Math.floor(averageTPS[0]?.[1] ?? 0))
+	const trainingStep: RunSummary['trainingStep'] = run.trainingStep
+		? {
+				lastTokensPerSecond,
+				startedAt: run.trainingStep.startedAt,
+				endedAt: run.trainingStep.endedAt,
+				tokensCompletedAtStartOfStep:
+					run.trainingStep.tokensCompletedAtStartOfStep,
+			}
+		: undefined
 
 	const summary: RunSummary = {
 		arch: c.model.LLM.architecture,
@@ -597,11 +661,11 @@ function makeRunSummary(
 						: {
 								type: 'active',
 							},
-		startTime: run.createdAt,
 		pauseHistory: run.pauseTimestamps,
 		totalTokens,
-		completedTokens,
+		lastUpdate: run.lastUpdated,
 		size: run.lastState.metadata.num_parameters,
+		trainingStep,
 		type: 'text', // TODO add type / tags? :)
 	}
 	return summary
@@ -643,8 +707,8 @@ function calculateTokens(
 }
 
 function averageSameStepValues(
-	values: Array<readonly [number, number]>
-): Array<readonly [number, number]> {
+	values: Array<readonly [step: number, value: number]>
+): Array<readonly [step: number, value: number]> {
 	const groupedByStep = values.reduce<Record<number, number[]>>(
 		(acc, [step, value]) => {
 			if (!acc[step]) {

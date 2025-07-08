@@ -60,12 +60,16 @@ export interface RunSummary {
 	name: string
 	description: string
 	status: RunStatus
-
-	startTime: ChainTimestamp
 	pauseHistory: Array<['paused' | 'unpaused', ChainTimestamp]>
 
 	totalTokens: bigint
-	completedTokens: bigint
+	lastUpdate: ChainTimestamp
+	trainingStep?: {
+		lastTokensPerSecond: bigint
+		startedAt: ChainTimestamp
+		endedAt?: ChainTimestamp
+		tokensCompletedAtStartOfStep: bigint
+	}
 
 	size: bigint
 	arch: LLMArchitecture
@@ -107,7 +111,7 @@ export interface RunData {
 	info: RunSummary
 	state?: {
 		phase: RunState
-		phaseStartTime?: Date
+		phaseStartTime: Date
 		clients: Array<RunRoundClient>
 
 		checkpoint: HubRepo | null
