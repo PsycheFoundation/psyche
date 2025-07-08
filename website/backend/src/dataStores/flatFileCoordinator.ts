@@ -607,37 +607,39 @@ function makeRunSummary(
 	return summary
 }
 
-// linear warmup then constant at the warmup-end value is just a piecewise of area of trapezoid and area of rectangle!
+/**
+ * The warmup function is actually exponential,
+ * since it's based on its own output from the previous step,
+ * and transitions to linear after a specific tokens threshold.
+ * This is annoying to model, so we just do the recursive calc.
+ * */
 function calculateTokens(
 	step: bigint,
 	tokensPerSequence: bigint,
 	batchSizeStart: bigint,
 	batchSizeEnd: bigint,
 	warmupTokens: bigint
-) {
-	const avgBatchSizeDuringWarmup = (batchSizeStart + batchSizeEnd) / 2n
+): bigint {
+	let currentDataIndex = 0n
 
-	// avoid div by 0
-	if (tokensPerSequence === 0n || avgBatchSizeDuringWarmup === 0n) {
-		return 0n
+	for (let i = 0n; i < step; i++) {
+		const tokensProcessedBeforeStep = currentDataIndex * tokensPerSequence
+
+		let batchSizeForStep: bigint
+		if (tokensProcessedBeforeStep >= warmupTokens) {
+			batchSizeForStep = batchSizeEnd
+		} else {
+			const progress = Number(tokensProcessedBeforeStep) / Number(warmupTokens)
+			const batchSize =
+				Number(batchSizeStart) +
+				(Number(batchSizeEnd) - Number(batchSizeStart)) * progress
+			batchSizeForStep = BigInt(Math.round(batchSize))
+		}
+
+		currentDataIndex += batchSizeForStep
 	}
-	const stepsForWarmup =
-		warmupTokens / (tokensPerSequence * avgBatchSizeDuringWarmup)
 
-	// trapezoid area (warmup phase)
-	const trapezoidTokens =
-		((step < stepsForWarmup ? step : stepsForWarmup) *
-			tokensPerSequence *
-			(batchSizeStart + batchSizeEnd)) /
-		2n
-
-	// rectangle area (post-warmup phase)
-	const desiredPostWarmupSteps = step - stepsForWarmup
-	const postWarmupSteps =
-		desiredPostWarmupSteps > 0 ? desiredPostWarmupSteps : 0n
-	const rectangleTokens = postWarmupSteps * tokensPerSequence * batchSizeEnd
-
-	return trapezoidTokens + rectangleTokens
+	return currentDataIndex * tokensPerSequence
 }
 
 function averageSameStepValues(
