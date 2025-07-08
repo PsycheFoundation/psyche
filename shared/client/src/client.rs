@@ -569,7 +569,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                 // All parameters have been requested, wait all the remaining request futures to complete
                                 // and download the blobs
-                                join_all(request_handles).await;
+                                let results = join_all(request_handles).await;
+                                // All errors inside the blob_ticket_param_request_task are fatal so we just terminate
+                                if results.iter().any(|result| result.is_err()) {
+                                    bail!("Failed to get parameter blobs there's no peers available to download from")
+                                }
                                 let parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
                                     let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
                                     parameter_blob_tickets_lock.drain(..).collect()
