@@ -58,6 +58,7 @@ def initialize_llama_weights(model: LlamaForCausalLM, config: LlamaConfig):
         lm_std = 1 / math.sqrt(config.hidden_size)
         _init_normal(model.lm_head, std=lm_std)
 
+
 def initialize_deepseek_weights(model: DeepseekV3ForCausalLM, config: DeepseekV3Config):
     """Initialize model weights using the "Mitchell" initialization scheme"""
 
@@ -102,6 +103,7 @@ def initialize_deepseek_weights(model: DeepseekV3ForCausalLM, config: DeepseekV3
     if model.lm_head is not None:
         lm_std = 1 / math.sqrt(config.hidden_size)
         _init_normal(model.lm_head, std=lm_std)
+
 
 def main(args):
     if not args.config:
