@@ -180,7 +180,7 @@ impl PeerManagerActor {
                 let error_count = self.errors_per_peers.entry(peer_id).or_insert((0, 0));
                 error_count.0 += 1;
 
-                if error_count.0 > self.max_errors_per_peer {
+                if error_count.0 >= self.max_errors_per_peer {
                     // Don't need to actually remove it because we already popped it, just don't add it back
                     warn!("Removing peer {peer_id} after {} errors", error_count.0);
 
@@ -193,9 +193,10 @@ impl PeerManagerActor {
                         error!(
                             "No more peers available to ask for model blob tickets, terminate process"
                         );
+                        let _ = should_terminate.send(true);
                     }
                 } else {
-                    let _ = should_terminate.send(true);
+                    let _ = should_terminate.send(false);
                     self.available_peers.push_back(peer_id);
                 };
             }
