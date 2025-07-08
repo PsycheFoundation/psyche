@@ -6,19 +6,16 @@ use psyche_solana_coordinator::find_coordinator_instance;
 use psyche_solana_treasurer::accounts::ParticipantClaimAccounts;
 use psyche_solana_treasurer::accounts::ParticipantCreateAccounts;
 use psyche_solana_treasurer::accounts::RunCreateAccounts;
-use psyche_solana_treasurer::accounts::RunTopUpAccounts;
 use psyche_solana_treasurer::accounts::RunUpdateAccounts;
 use psyche_solana_treasurer::find_participant;
 use psyche_solana_treasurer::find_run;
 use psyche_solana_treasurer::instruction::ParticipantClaim;
 use psyche_solana_treasurer::instruction::ParticipantCreate;
 use psyche_solana_treasurer::instruction::RunCreate;
-use psyche_solana_treasurer::instruction::RunTopUp;
 use psyche_solana_treasurer::instruction::RunUpdate;
 use psyche_solana_treasurer::logic::ParticipantClaimParams;
 use psyche_solana_treasurer::logic::ParticipantCreateParams;
 use psyche_solana_treasurer::logic::RunCreateParams;
-use psyche_solana_treasurer::logic::RunTopUpParams;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
@@ -61,41 +58,6 @@ pub async fn process_treasurer_run_create(
     };
     endpoint.process_instruction(instruction, payer).await?;
     Ok((run, coordinator_instance))
-}
-
-pub async fn process_treasurer_run_top_up(
-    endpoint: &mut ToolboxEndpoint,
-    payer: &Keypair,
-    authority: &Keypair,
-    authority_collateral: &Pubkey,
-    collateral_mint: &Pubkey,
-    run: &Pubkey,
-    collateral_amount: u64,
-) -> Result<Signature, ToolboxEndpointError> {
-    let run_collateral = ToolboxEndpoint::find_spl_associated_token_account(
-        run,
-        collateral_mint,
-    );
-    let accounts = RunTopUpAccounts {
-        payer: payer.pubkey(),
-        authority: authority.pubkey(),
-        authority_collateral: *authority_collateral,
-        collateral_mint: *collateral_mint,
-        run: *run,
-        run_collateral,
-        token_program: token::ID,
-    };
-    let instruction = Instruction {
-        accounts: accounts.to_account_metas(None),
-        data: RunTopUp {
-            params: RunTopUpParams { collateral_amount },
-        }
-        .data(),
-        program_id: psyche_solana_treasurer::ID,
-    };
-    endpoint
-        .process_instruction_with_signers(instruction, payer, &[authority])
-        .await
 }
 
 pub async fn process_treasurer_run_update(
