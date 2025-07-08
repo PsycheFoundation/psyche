@@ -70,6 +70,4 @@ pub mod psyche_solana_treasurer {
 pub enum ProgramError {
     #[msg("Invalid parameter")]
     InvalidParameter,
-    #[msg("Math Overflow")]
-    MathOverflow,
 }
