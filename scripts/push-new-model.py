@@ -62,9 +62,9 @@ def initialize_deepseek_weights(model: DeepseekV3ForCausalLM, config: DeepseekV3
     """Initialize model weights using the "Mitchell" initialization scheme"""
 
     wte_std = 1 / math.sqrt(config.hidden_size)
-    _init_normal(model.embed_tokens, std=wte_std)
+    _init_normal(model.model.embed_tokens, std=wte_std)
 
-    for layer_id, layer in enumerate(model.layers.values()):
+    for layer_id, layer in enumerate(model.model.layers):
 
         if config.q_lora_rank is None:
             attn_std = 1 / math.sqrt(config.hidden_size)
@@ -75,7 +75,7 @@ def initialize_deepseek_weights(model: DeepseekV3ForCausalLM, config: DeepseekV3
             nn.init.ones_(layer.self_attn.q_a_layernorm.weight)
             _init_normal(layer.self_attn.q_a_proj, std=attn_qa_lora_std)
             _init_normal(layer.self_attn.q_b_proj, std=attn_qb_lora_std)
-        
+
         attn_kva_lora_std = 1 / math.sqrt(config.hidden_size)
         attn_kvb_lora_std = 1 / math.sqrt(config.kv_lora_rank)
         nn.init.ones_(layer.self_attn.kv_a_layernorm.weight)
@@ -97,7 +97,7 @@ def initialize_deepseek_weights(model: DeepseekV3ForCausalLM, config: DeepseekV3
         nn.init.ones_(layer.input_layernorm.weight)
         nn.init.ones_(layer.post_attention_layernorm.weight)
 
-    nn.init.ones_(model.norm.weight)
+    nn.init.ones_(model.model.norm.weight)
 
     if model.lm_head is not None:
         lm_std = 1 / math.sqrt(config.hidden_size)
