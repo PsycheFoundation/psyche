@@ -27,9 +27,9 @@ import { readVersionedFile, writeVersionedFile } from './versioned.js'
 import { CURRENT_VERSION, CurrentVersion } from 'shared/formats/type.js'
 import { existsSync, renameSync } from 'fs'
 
-// any run ID outside this list will not be returned to the frontend in the summary list.
-const ALLOWLISTED_RUN_IDS = ['consilience-40b-1']
-
+// any run ID outside this list will not be returned to the frontend in the summary list,
+const ALLOWLISTED_RUN_IDS =
+	process.env.NODE_ENV === 'development' ? null : ['consilience-40b-1']
 type Witness = Omit<WitnessMetadata, 'evals'> & {
 	evals: Array<[string, number]>
 }
