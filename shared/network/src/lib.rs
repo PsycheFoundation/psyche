@@ -1,5 +1,5 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
@@ -40,6 +40,7 @@ use tokio::{
     sync::mpsc,
     time::{interval, Interval},
 };
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use util::{fmt_relay_mode, gossip_topic};
 
@@ -615,7 +616,7 @@ where
     }
 }
 
-pub async fn request_model(
+pub async fn request_model_blob_ticket(
     router: Arc<Router>,
     node_addr: NodeId,
     request_type: &ModelRequestType,
@@ -793,12 +794,13 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 }
 
 // Simplified param_request_task
-pub async fn param_request_task(
+pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
     model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
     peer_manager: Arc<PeerManagerHandle>,
-) -> anyhow::Result<()> {
+    cancellation_token: CancellationToken,
+) {
     let max_attempts = 1000u16;
     let mut attempts = 0u16;
 
@@ -813,7 +815,7 @@ pub async fn param_request_task(
         debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
         let result = timeout(
             Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS),
-            request_model(router.clone(), peer_id, &model_request_type),
+            request_model_blob_ticket(router.clone(), peer_id, &model_request_type),
         )
         .map_err(|e| anyhow!("{e}"))
         .await;
@@ -826,11 +828,11 @@ pub async fn param_request_task(
                     .push((blob_ticket, model_request_type));
 
                 peer_manager.report_success(peer_id);
-                return Ok(());
+                return;
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                peer_manager.report_error(peer_id);
+                peer_manager.report_blob_ticket_request_error(peer_id);
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;
@@ -841,5 +843,6 @@ pub async fn param_request_task(
         }
     }
 
-    bail!("No peers available to give us a model parameter after {max_attempts} attempts")
+    error!("No peers available to give us a model parameter after {max_attempts} attempts");
+    cancellation_token.cancel();
 }
