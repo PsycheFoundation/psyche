@@ -46,6 +46,9 @@ const MainContents = styled.div`
 	@container (width < 400px) {
 		padding: 4px;
 	}
+	@container (width < 350px) {
+		padding: 0;
+	}
 	& > * {
 		background: var(--color-bg);
 	}
