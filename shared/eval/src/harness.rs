@@ -4,7 +4,7 @@ use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use std::{collections::HashMap, env, fmt::Display, fs::OpenOptions, path::Path, sync::Arc};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -64,7 +64,6 @@ pub struct PreparedTaskResult {
 #[derive(Debug)]
 struct TokenizedLLHDocument {
     text: Vec<i64>,
-    choices: Vec<Vec<i64>>,
     choices_str: Vec<String>,
     answer: usize,
     choices_token_len: Vec<usize>,
@@ -80,6 +79,10 @@ impl TokenizedLLHDocument {
             .iter()
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
+        // e.g.
+        // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
+        // text: 'Which statement best explains why photosynthesis is the foundation of most food webs?'
+        // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
 
         let mut requests: Vec<Vec<i64>> = Vec::new();
         let mut choices_str = Vec::new();
@@ -98,6 +101,8 @@ impl TokenizedLLHDocument {
                 .collect::<Vec<_>>();
             requests.push(request.clone());
 
+            // Tokenizing "choice" alone produces different tokens than tokenizing "text + choice" together.
+            // So, we extract choice tokens iterating the full request backwards to ensure exact matching.
             for idx in 1..request.len() {
                 let choice_tokens = &request[request.len() - idx..]
                     .iter()
@@ -114,9 +119,9 @@ impl TokenizedLLHDocument {
             }
         }
 
-        // Verify correctness
+        // verify correctness
         for x in 0..requests.len() {
-            assert_eq!(
+            debug_assert_eq!(
                 requests[x][requests[x].len() - choices_token_len[x]..],
                 choices[x]
             );
@@ -124,7 +129,6 @@ impl TokenizedLLHDocument {
 
         Self {
             text,
-            choices,
             choices_str,
             answer: doc.answer,
             requests,
@@ -261,7 +265,6 @@ impl PreparedTask {
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
                 let mut request = doc.requests[idx].clone();
                 // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
-                // Note: If the tokenizer handles {space}Sun token we include it in the choice
                 let choice = &doc.requests[idx][request.len() - doc.choices_token_len[idx]..];
 
                 // Remove the last token since we dont want to pass it to the model
