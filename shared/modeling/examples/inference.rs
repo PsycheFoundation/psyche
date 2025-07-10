@@ -125,9 +125,23 @@ fn inference(
 
             psyche_python_extension_impl::init_embedded_python();
 
-            let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
+            let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files.clone());
+            let architecture = if repo_files
+                .iter()
+                .find(|x| x.extension().unwrap_or_default() == "distcp")
+                .is_some()
+            {
+                "torchtitan"
+            } else {
+                "hf-auto"
+            };
+            println!("architecture: {architecture}");
             Box::new(psyche_modeling::PythonCausalLM::new(
-                "hf-auto", &source, device, None, None,
+                architecture,
+                &source,
+                device,
+                None,
+                None,
             )?) as Box<dyn CausalLM>
         }
         #[cfg(not(feature = "python"))]
