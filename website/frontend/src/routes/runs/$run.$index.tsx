@@ -365,7 +365,7 @@ const StatBoxes = styled.div`
 const RadialContainer = styled.div`
 	aspect-ratio: 1 / 1;
 	max-height: 384px;
-	height: 100cqh;
+	width: 100%;
 	max-width: calc(100cqw - 64px);
 `
 
@@ -428,7 +428,6 @@ const StatsContainer = styled.div`
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 24px;
 
 	@container (min-width: 900px) {
 		flex-direction: row;

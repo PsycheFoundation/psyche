@@ -52,7 +52,7 @@ function RadialGraphInner({
 
 	const minDimension = Math.min(width, height)
 	const outerRadius = minDimension / 2 - graphPadding
-	const innerRadius = Math.max(32, outerRadius * 0.3)
+	const innerRadius = Math.max(16, outerRadius * 0.3)
 
 	const valueScale = scaleLinear<number>({
 		domain: [0, 1],
