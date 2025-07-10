@@ -173,6 +173,17 @@
               443
             ];
 
+            # some swap for good luck
+            swapDevices = [
+              {
+                device = "/var/lib/swapfile";
+                size = 8 * 1024;
+              }
+            ];
+
+            # lil more ram pls!
+            environment.variables.NODE_OPTIONS = "--max-old-space-size=3000";
+
             # custom pkgs overlays
             nixpkgs = import ./nixpkgs.nix { inherit inputs; };
 
