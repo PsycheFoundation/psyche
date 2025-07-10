@@ -27,33 +27,36 @@
 
         inherit env;
 
-        packages = with pkgs; [
-          # for local-testnet
-          tmux
-          nvtopPackages.full
+        packages =
+          with pkgs;
+          [
+            # for local-testnet
+            tmux
+            nvtopPackages.full
 
-          # task runner
-          just
+            # task runner
+            just
 
-          # for some build scripts
-          jq
-          # it pretty :3
-          nix-output-monitor
+            # for some build scripts
+            jq
+            # it pretty :3
+            nix-output-monitor
 
-          # for running pkgs on non-nix
-          pkgs.nix-gl-host
+            # for running pkgs on non-nix
+            pkgs.nix-gl-host
 
-          # solana
-          inputs'.solana-pkgs.packages.default
+            # treefmt
+            self'.formatter
 
-          # treefmt
-          self'.formatter
-
-          # for pnpm stuff
-          nodejs
-          pnpm
-          wasm-pack
-        ];
+            # for pnpm stuff
+            nodejs
+            pnpm
+            wasm-pack
+          ]
+          ++ (with inputs'.solana-pkgs.packages; [
+            solana
+            anchor
+          ]);
 
         shellHook = ''
           source ${lib.getExe config.agenix-shell.installationScript}

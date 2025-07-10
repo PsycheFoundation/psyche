@@ -150,7 +150,7 @@ export function runHasState(run: RunData): run is RunWithState {
 }
 
 export function RunStateIndicator({
-	state: { state, info },
+	state: { state },
 	recentTxs,
 	disconnected,
 	paused,
@@ -173,12 +173,10 @@ export function RunStateIndicator({
 		<OuterContainer>
 			<Title className="toEdge">
 				<span className={text['aux/xl/medium']} title="the number of tokens">
-					training progress{' '}
-					{(
-						(Number(info.completedTokens) / Number(info.totalTokens)) *
-						100
-					).toFixed(2)}
-					%
+					training status
+					{clients
+						? `: ${clients.length} node${clients.length === 1 ? '' : 's'} connected`
+						: ''}
 				</span>
 				{!paused && (
 					<span>

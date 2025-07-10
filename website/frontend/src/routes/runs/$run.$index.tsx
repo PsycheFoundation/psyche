@@ -4,10 +4,8 @@ import ArrowLeft from '../../assets/icons/arrow-left.svg?react'
 import Fullscreen from '../../assets/icons/fullscreen.svg?react'
 import HuggingfaceIcon from '../../assets/icons/huggingface.svg?react'
 import { styled } from '@linaria/react'
-import { forest } from '../../colors.js'
 import { text } from '../../fonts.js'
 import { StatusChip } from '../../components/StatusChip.js'
-import { Runtime } from '../../components/Runtime.js'
 import { MiniCard } from '../../components/MiniCard.js'
 import { RadialGraph } from '../../components/RadialGraph.js'
 import { c, formatBytes, formatNumber, metricToGraph } from '../../utils.js'
@@ -22,9 +20,9 @@ import {
 import { fetchRunStreaming } from '../../fetchRuns.js'
 import { useStreamingLoaderData } from '../../useStreamingData.js'
 import { RunBox } from '../../components/RunBox.js'
-import { Progress } from '../../components/ProgressWrapper.js'
 import { FullPagePortal } from '../../components/FullPagePortal.js'
 import { ApiGetRun } from 'shared'
+import AnimatedTokensCounter from '../../components/AnimatedTokensCounter.js'
 export const Route = createFileRoute('/runs/$run/$index')({
 	loader: async ({ params }) => fetchRunStreaming(params.run, params.index),
 	component: RouteComponent,
@@ -62,11 +60,6 @@ function RouteComponent() {
 	}, [run])
 
 	const info = run?.info
-
-	const pauses = useMemo(
-		() => info?.pauseHistory.map((p) => [p[0], p[1].time] as const),
-		[info?.pauseHistory]
-	)
 
 	const goodEvals = useMemo(() => {
 		if (!run) {
@@ -167,105 +160,110 @@ function RouteComponent() {
 					}
 				>
 					<RunContents className={text['body/base/medium']}>
-						<RunDescription>{info.description}</RunDescription>
-						<InfoChits>
-							<InfoChit label="params">
-								{formatNumber(Number(info.size), 2)}
-							</InfoChit>
-							<InfoChit label="arch">{info.arch}</InfoChit>
-							<InfoChit label="type">{info.type}</InfoChit>
-						</InfoChits>
-						<RuntimeLabel>
-							runtime
-							<Runtime
-								start={info.startTime.time}
-								pauses={pauses}
-								end={
-									info.status.type === 'completed'
-										? info.status.at.time
-										: undefined
-								}
-							/>
-						</RuntimeLabel>
-						<Progress
-							size="big"
-							current={Number(info.completedTokens)}
-							total={Number(info.totalTokens)}
-							chunkHeight={24}
-							chunkWidth={21}
-							label="tokens"
-						/>
-						{run.state?.checkpoint && (
-							<Button
-								style="secondary"
-								center
-								icon={{
-									side: 'left',
-									svg: HuggingfaceIcon,
-									autoColor: false,
-								}}
-								href={`https://huggingface.co/${run.state.checkpoint.repo_id}/${run.state.checkpoint.revision ? `tree/${run.state.checkpoint.revision}` : ''}`}
-								target="_blank"
-							>
-								View latest checkpoint: {run.state.checkpoint.repo_id}
-							</Button>
-						)}
-						<StatsAndLiveRunContainer>
-							{runHasState(run) && run.info.status.type !== 'completed' && (
-								<RunStateActiveContainer
-									className="liveContainer"
-									active={
-										run.info.status.type === 'active' ||
-										run.info.status.type === 'waitingForMembers'
-									}
-								>
-									<RunStateIndicator
-										paused={run.info.status.type === 'paused'}
-										state={run}
-										recentTxs={run.recentTxs}
-										disconnected={!!runData?.disconnected}
-									/>
-								</RunStateActiveContainer>
-							)}
+						<MainContentContainer>
+							<ContentColumn>
+								<RunDescription>{info.description}</RunDescription>
+								<InfoChits>
+									<InfoChit label="params">
+										{formatNumber(Number(info.size), 2)}
+									</InfoChit>
+									<InfoChit label="arch">{info.arch}</InfoChit>
+									<InfoChit label="type">{info.type}</InfoChit>
+								</InfoChits>
 
-							{Object.entries(goodEvals).length >= 3 && (
-								<RadialContainer>
-									<RadialGraph
-										data={goodEvals}
-										formatValue={(v) => `${+(v * 100).toFixed(2)}%`}
-									/>
-								</RadialContainer>
-							)}
-							<StatBoxes>
-								{/* // TODO: calculate confidence and perplexity */}
-								{run.metrics.summary.loss !== null && (
-									<MiniCard
-										text="loss"
-										value={`${run.metrics.summary.loss.toFixed(2)}`}
-									/>
+								{info.trainingStep && (
+									<div
+										className={c(
+											css`
+												text-align: center;
+											`,
+											text['display/3xl']
+										)}
+									>
+										<AnimatedTokensCounter
+											lastValue={info.trainingStep.tokensCompletedAtStartOfStep}
+											lastTimestamp={info.trainingStep.startedAt.time}
+											perSecondRate={info.trainingStep.lastTokensPerSecond}
+											pausedAt={info.trainingStep.endedAt?.time}
+										/>
+										<div>tokens trained</div>
+									</div>
 								)}
-								{run.metrics.summary.bandwidth !== null && (
-									<MiniCard
-										text="bandwidth"
-										value={`${formatBytes(
-											run.metrics.summary.bandwidth,
-											2,
-											'bits'
-										)}ps`}
-									/>
+								{run.state?.checkpoint && (
+									<Button
+										style="secondary"
+										center
+										icon={{
+											side: 'left',
+											svg: HuggingfaceIcon,
+											autoColor: false,
+										}}
+										href={`https://huggingface.co/${run.state.checkpoint.repo_id}/${run.state.checkpoint.revision ? `tree/${run.state.checkpoint.revision}` : ''}`}
+										target="_blank"
+									>
+										latest checkpoint:{' '}
+										{run.state.checkpoint.repo_id.split('/')[1]}
+									</Button>
 								)}
-								{run.metrics.summary.tokensPerSecond !== null && (
-									<MiniCard
-										text="training rate"
-										value={`${formatNumber(
-											run.metrics.summary.tokensPerSecond,
-											1,
-											true
-										)}tok/s`}
-									/>
+
+								<StatsContainer>
+									{Object.entries(goodEvals).length >= 3 && (
+										<RadialContainer>
+											<RadialGraph
+												data={goodEvals}
+												formatValue={(v) => `${+(v * 100).toFixed(2)}%`}
+											/>
+										</RadialContainer>
+									)}
+									<StatBoxes>
+										{run.metrics.summary.loss !== null && (
+											<MiniCard
+												text="loss"
+												value={`${run.metrics.summary.loss.toFixed(2)}`}
+											/>
+										)}
+										{run.metrics.summary.bandwidth !== null && (
+											<MiniCard
+												text="bandwidth"
+												value={`${formatBytes(
+													run.metrics.summary.bandwidth,
+													2,
+													'bits'
+												)}ps`}
+											/>
+										)}
+										{run.metrics.summary.tokensPerSecond !== null && (
+											<MiniCard
+												text="training rate"
+												value={`${formatNumber(
+													run.metrics.summary.tokensPerSecond,
+													1,
+													true
+												)}tok/s`}
+											/>
+										)}
+									</StatBoxes>
+								</StatsContainer>
+							</ContentColumn>
+							<LiveRunContainer>
+								{runHasState(run) && run.info.status.type !== 'completed' && (
+									<RunStateActiveContainer
+										className="liveContainer"
+										active={
+											run.info.status.type === 'active' ||
+											run.info.status.type === 'waitingForMembers'
+										}
+									>
+										<RunStateIndicator
+											paused={run.info.status.type === 'paused'}
+											state={run}
+											recentTxs={run.recentTxs}
+											disconnected={!!runData?.disconnected}
+										/>
+									</RunStateActiveContainer>
 								)}
-							</StatBoxes>
-						</StatsAndLiveRunContainer>
+							</LiveRunContainer>
+						</MainContentContainer>
 						<HistoryContainer>
 							{graphData && (
 								<>
@@ -342,12 +340,6 @@ const RunContainer = styled.div`
 	}
 `
 
-const RuntimeLabel = styled.span`
-	.theme-dark & {
-		color: ${forest[300]};
-	}
-`
-
 const TitleRightInfo = styled.div`
 	display: flex;
 	gap: 24px;
@@ -373,11 +365,41 @@ const StatBoxes = styled.div`
 const RadialContainer = styled.div`
 	aspect-ratio: 1 / 1;
 	max-height: 384px;
-	height: 100cqh;
+	width: 100%;
 	max-width: calc(100cqw - 64px);
 `
 
-const StatsAndLiveRunContainer = styled.div`
+const MainContentContainer = styled.div`
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	width: 100%;
+
+	@container (min-width: 1400px) {
+		flex-direction: row;
+		gap: 48px;
+		align-items: flex-start;
+	}
+`
+
+const ContentColumn = styled.div`
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	flex: 1;
+	min-width: 0;
+	align-items: center;
+	& > * {
+		margin: 0 24px;
+	}
+
+	@container (min-width: 1800px) {
+		flex: 0 0 calc(50% - 24px);
+		max-width: calc(50% - 24px);
+	}
+`
+
+const LiveRunContainer = styled.div`
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	.liveContainer {
@@ -386,19 +408,31 @@ const StatsAndLiveRunContainer = styled.div`
 		min-width: 0;
 	}
 	gap: 0 48px;
+	width: 100%;
 
 	place-items: center;
 	@container (min-width: 1280px) {
-		.liveContainer {
-			grid-column: 1;
-		}
 		grid-template-columns: minmax(auto, 900px) 1fr 1fr;
 	}
 	@container (max-width: 900px) {
-		.liveContainer {
-			grid-column: 1;
-		}
 		grid-template-columns: 1fr;
+	}
+	@container (min-width: 1400px) {
+		min-width: 400px;
+		flex-shrink: 0;
+	}
+`
+
+const StatsContainer = styled.div`
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+
+	@container (min-width: 900px) {
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
 	}
 `
 
@@ -412,7 +446,8 @@ const RunContents = styled.div`
 	gap: 24px;
 	padding: 24px 0;
 	overflow: hidden;
-	& > *:not(${StatsAndLiveRunContainer}) {
+	align-items: center;
+	& > *:not(${MainContentContainer}) {
 		margin: 0 24px;
 	}
 

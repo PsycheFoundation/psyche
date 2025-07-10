@@ -58,16 +58,15 @@ export const fakeRunSummaries: RunSummary[] = [
 		name: 'Vision Model Alpha',
 		description: 'Training a vision model to recognize everyday objects',
 		status: { type: 'paused' },
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
-		}, // 2 weeks ago
 		totalTokens: 100000n,
-		completedTokens: 65000n,
-		size: BigInt('1000000000'),
+		size: 1000000000n,
 		arch: 'HfLlama',
 		type: 'vision',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 	{
 		id: 'run-002',
@@ -76,16 +75,15 @@ export const fakeRunSummaries: RunSummary[] = [
 		name: 'Text Assistant Beta',
 		description: 'Assistant-like model with reasoning capabilities',
 		status: { type: 'active' },
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-		}, // 3 days ago
 		totalTokens: 200000n,
-		completedTokens: 0n,
-		size: BigInt('2000000000'),
+		size: 2000000000n,
 		arch: 'HfLlama',
 		type: 'text',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 	{
 		id: 'run-003',
@@ -100,16 +98,15 @@ export const fakeRunSummaries: RunSummary[] = [
 				time: new Date(Date.now() - 1000 * 60 * 60 * 24),
 			},
 		}, // 1 day ago
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10),
-		}, // 10 days ago
 		totalTokens: 50000n,
-		completedTokens: 50000n,
-		size: BigInt('500000000'),
+		size: 500000000n,
 		arch: 'HfLlama',
 		type: 'text',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 	{
 		id: 'run-001',
@@ -118,16 +115,15 @@ export const fakeRunSummaries: RunSummary[] = [
 		name: 'Vision Model Alpha',
 		description: 'Training a vision model to recognize everyday objects',
 		status: { type: 'active' },
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
-		}, // 2 weeks ago
 		totalTokens: 100000n,
-		completedTokens: 65000n,
-		size: BigInt('1000000000'),
+		size: 1000000000n,
 		arch: 'HfLlama',
 		type: 'vision',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 ]
 
