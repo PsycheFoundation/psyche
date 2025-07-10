@@ -39,6 +39,7 @@
               StateDirectory = "backend";
               DynamicUser = true;
               EnvironmentFile = config.age.secrets.backendRpc.path;
+              Environment = "NODE_OPTIONS=--max-old-space-size=3000";
               # don't start until we have DNS!
               ExecStartPre = "/bin/sh -c 'until ${pkgs.bind.host}/bin/host example.com; do sleep 1; done'";
               ExecStart = lib.getExe (pkgs.callPackage ../website/backend { });
@@ -180,9 +181,6 @@
                 size = 8 * 1024;
               }
             ];
-
-            # lil more ram pls!
-            environment.variables.NODE_OPTIONS = "--max-old-space-size=3000";
 
             # custom pkgs overlays
             nixpkgs = import ./nixpkgs.nix { inherit inputs; };
