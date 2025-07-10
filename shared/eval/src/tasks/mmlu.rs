@@ -15,17 +15,12 @@ pub struct MMLU {
 impl MMLU {
     pub fn load() -> Result<TaskType> {
         let ret = Self {
-            test_dataset: load_dataset(
-                "hails/mmlu_no_train",
-                Some("main".to_owned()),
-                Split::Test,
-                None,
-            )?,
+            test_dataset: load_dataset("cais/mmlu", None, Split::Test, Some("all".to_owned()))?,
             validation_dataset: load_dataset(
-                "hails/mmlu_no_train",
-                Some("main".to_owned()),
-                Split::Validation,
+                "cais/mmlu",
                 None,
+                Split::Validation,
+                Some("all".to_owned()),
             )?,
         };
         Ok(TaskType::LogLikelihood(Box::new(ret)))
@@ -43,7 +38,10 @@ impl MMLU {
         let question = row
             .get_string(dataset.get_column_id("question").unwrap())
             .unwrap()
+            .trim_start()
+            .trim_end()
             .to_owned();
+
         let options = row
             .get_list(dataset.get_column_id("choices").unwrap())
             .unwrap();
