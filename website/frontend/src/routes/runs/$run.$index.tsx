@@ -245,24 +245,22 @@ function RouteComponent() {
 									</StatBoxes>
 								</StatsContainer>
 							</ContentColumn>
-							<LiveRunContainer>
-								{runHasState(run) && run.info.status.type !== 'completed' && (
-									<RunStateActiveContainer
-										className="liveContainer"
-										active={
-											run.info.status.type === 'active' ||
-											run.info.status.type === 'waitingForMembers'
-										}
-									>
-										<RunStateIndicator
-											paused={run.info.status.type === 'paused'}
-											state={run}
-											recentTxs={run.recentTxs}
-											disconnected={!!runData?.disconnected}
-										/>
-									</RunStateActiveContainer>
-								)}
-							</LiveRunContainer>
+							{runHasState(run) && run.info.status.type !== 'completed' && (
+								<RunStateActiveContainer
+									className="liveContainer"
+									active={
+										run.info.status.type === 'active' ||
+										run.info.status.type === 'waitingForMembers'
+									}
+								>
+									<RunStateIndicator
+										paused={run.info.status.type === 'paused'}
+										state={run}
+										recentTxs={run.recentTxs}
+										disconnected={!!runData?.disconnected}
+									/>
+								</RunStateActiveContainer>
+							)}
 						</MainContentContainer>
 						<HistoryContainer>
 							{graphData && (
@@ -338,6 +336,9 @@ const RunContainer = styled.div`
 	@container (width < 400px) {
 		padding: 0 8px;
 	}
+	@container (width < 350px) {
+		padding: 0 2px;
+	}
 `
 
 const TitleRightInfo = styled.div`
@@ -365,6 +366,7 @@ const StatBoxes = styled.div`
 const RadialContainer = styled.div`
 	aspect-ratio: 1 / 1;
 	max-height: 384px;
+	height: 100%;
 	width: 100%;
 	max-width: calc(100cqw - 64px);
 `
@@ -399,30 +401,6 @@ const ContentColumn = styled.div`
 	}
 `
 
-const LiveRunContainer = styled.div`
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	.liveContainer {
-		grid-column: 1/3;
-		place-self: center stretch;
-		min-width: 0;
-	}
-	gap: 0 48px;
-	width: 100%;
-
-	place-items: center;
-	@container (min-width: 1280px) {
-		grid-template-columns: minmax(auto, 900px) 1fr 1fr;
-	}
-	@container (max-width: 900px) {
-		grid-template-columns: 1fr;
-	}
-	@container (min-width: 1400px) {
-		min-width: 400px;
-		flex-shrink: 0;
-	}
-`
-
 const StatsContainer = styled.div`
 	display: flex;
 	flex-direction: column;
@@ -440,7 +418,6 @@ const RunContents = styled.div`
 	flex-basis: 100%;
 	flex-shrink: 0;
 	flex-grow: 1;
-	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
 	gap: 24px;
@@ -481,4 +458,11 @@ const InfoChits = styled.div`
 
 const RunStateActiveContainer = styled.div`
 	opacity: ${(props) => (props.active ? 1 : 0.5)};
+	flex: 1;
+	min-width: 0;
+
+	@container (min-width: 1800px) {
+		flex: 0 0 calc(50% - 24px);
+		max-width: calc(50% - 24px);
+	}
 `

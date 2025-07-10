@@ -537,4 +537,38 @@ const ClientsBox = styled.div`
 	width: 100%;
 	gap: 1em;
 	min-height: 82px;
+	max-height: 50vh;
+	overflow-y: scroll;
+	padding: 0 8px;
+	overflow-x: hidden;
+
+	--bgRGB: 73, 89, 99;
+	--bg: var(--color-bg);
+	--bgTrans: rgb(from var(--color-bg) r g b / 0%);
+
+	--shadow: rgba(41, 50, 56, 0.5);
+
+	background:
+    /* Shadow Cover TOP */
+		linear-gradient(var(--bg) 30%, var(--bgTrans)) center top,
+		/* Shadow Cover BOTTOM */ linear-gradient(var(--bgTrans), var(--bg) 70%)
+			center bottom,
+		/* Shadow TOP */
+			radial-gradient(farthest-side at 50% 0, var(--shadow), rgba(0, 0, 0, 0))
+			center top,
+		/* Shadow BOTTOM */
+			radial-gradient(
+				farthest-side at 50% 100%,
+				var(--shadow),
+				rgba(0, 0, 0, 0)
+			)
+			center bottom;
+
+	background-repeat: no-repeat;
+	background-size:
+		100% 40px,
+		100% 40px,
+		100% 14px,
+		100% 14px;
+	background-attachment: local, local, scroll, scroll;
 `
