@@ -27,7 +27,7 @@ pub async fn run() {
 
     // Prepare the payer
     endpoint
-        .process_airdrop(&payer.pubkey(), payer_lamports)
+        .request_airdrop(&payer.pubkey(), payer_lamports)
         .await
         .unwrap();
 

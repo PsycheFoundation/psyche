@@ -36,12 +36,12 @@ use solana_sdk::signer::Signer;
 
 #[tokio::test]
 pub async fn run() {
-    let mut endpoint = create_memnet_endpoint().await;
+    let mut endpoint = create_memnet_endpoint().await.unwrap();
 
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -51,6 +51,7 @@ pub async fn run() {
     let participant = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
+    let distributed_collateral_amount = 10_000_000;
     let warmup_time = 77;
     let round_witness_time = 33;
     let cooldown_time = 42;
@@ -110,7 +111,7 @@ pub async fn run() {
             &collateral_mint,
             &collateral_mint_authority,
             &main_authority_collateral,
-            10_000_000,
+            distributed_collateral_amount,
         )
         .await
         .unwrap();
@@ -123,7 +124,7 @@ pub async fn run() {
         &main_authority_collateral,
         &collateral_mint,
         &run,
-        5_000_000,
+        distributed_collateral_amount / 2,
     )
     .await
     .unwrap();
@@ -171,7 +172,7 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // We should be able to top-up run treasury at any time
+    // We should be able to top-up run treasury at any time with any amount
     process_treasurer_run_top_up(
         &mut endpoint,
         &payer,
@@ -179,7 +180,18 @@ pub async fn run() {
         &main_authority_collateral,
         &collateral_mint,
         &run,
-        5_000_000,
+        distributed_collateral_amount / 6,
+    )
+    .await
+    .unwrap();
+    process_treasurer_run_top_up(
+        &mut endpoint,
+        &payer,
+        &main_authority,
+        &main_authority_collateral,
+        &collateral_mint,
+        &run,
+        distributed_collateral_amount / 3,
     )
     .await
     .unwrap();
