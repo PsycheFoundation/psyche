@@ -422,13 +422,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                                             .map_err(TrainError::SerializeDistroResult)?,
                                         trainer_nonce: nonce,
                                     };
-                                    let commitment_data_hash = transmittable_distro_result.compute_hash();
 
-                                    // Add test padding for P2P testing when using dummy model (after hash calculation)
+                                    // Add test padding for P2P testing when using dummy model
                                     if is_dummy_model {
+                                        trace!("is_dummy_model: adding test padding");
                                         let target_dummy_size_mb = 1;
                                         transmittable_distro_result = transmittable_distro_result.with_test_padding(target_dummy_size_mb);
                                     }
+
+                                    // Calculate commitment hash on the data that will be transmitted (including padding)
+                                    let commitment_data_hash = transmittable_distro_result.compute_hash();
 
                                     if let Some(dir) = write_gradients_dir {
                                         let transmittable_distro_result = transmittable_distro_result.clone();
