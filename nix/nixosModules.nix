@@ -39,6 +39,7 @@
               StateDirectory = "backend";
               DynamicUser = true;
               EnvironmentFile = config.age.secrets.backendRpc.path;
+              Environment = "NODE_OPTIONS=--max-old-space-size=3000";
               # don't start until we have DNS!
               ExecStartPre = "/bin/sh -c 'until ${pkgs.bind.host}/bin/host example.com; do sleep 1; done'";
               ExecStart = lib.getExe (pkgs.callPackage ../website/backend { });
@@ -171,6 +172,14 @@
             networking.firewall.allowedTCPPorts = [
               80
               443
+            ];
+
+            # some swap for good luck
+            swapDevices = [
+              {
+                device = "/var/lib/swapfile";
+                size = 8 * 1024;
+              }
             ];
 
             # custom pkgs overlays
