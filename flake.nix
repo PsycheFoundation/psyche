@@ -2,7 +2,7 @@
   description = "Nous Psyche";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/release-25.05";
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
@@ -33,7 +33,10 @@
       url = "github:garnix-io/garnix-lib";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    solana-pkgs.url = "github:arilotter/solana-flake";
+    solana-pkgs = {
+      url = "github:arilotter/solana-flake/hmm";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     agenix-shell = {
       url = "github:aciceri/agenix-shell";
       inputs = {
