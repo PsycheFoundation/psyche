@@ -510,13 +510,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     pub fn apply_distro_result(
         &mut self,
         hash: Hash,
-        mut distro_result: TransmittableDistroResult,
+        distro_result: TransmittableDistroResult,
         self_result: Option<Vec<DistroResult>>,
     ) {
-        // Remove test padding for dummy models
-        if self.is_dummy_model {
-            distro_result = distro_result.without_test_padding();
-        }
+        // Test padding was already removed during hash verification in apply_distro_result_private_broadcast
         let round_state = if self.current_round.distro_result_blob_downloaded(&hash) {
             trace!(
                 "Got download {hash} for current round {}",
@@ -580,12 +577,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         let batch_ids_not_yet_trained_on = round_state.batch_ids_not_yet_trained_on.clone();
         let blooms = round_state.blooms.clone();
         let downloads = round_state.downloads.clone();
+        let is_dummy_model = self.is_dummy_model;
         tokio::spawn(async move {
             // verify that the result matches the commitment
-            let (distro_hash, distro_result) =
-                tokio::task::spawn_blocking(move || (distro_result.compute_hash(), distro_result))
-                    .await
-                    .unwrap();
+            let (distro_hash, distro_result) = tokio::task::spawn_blocking(move || {
+                // Calculate hash on padded data to match commitment hash
+                let hash = distro_result.compute_hash();
+                // Remove test padding for processing but keep original hash
+                let distro_result = if is_dummy_model {
+                    trace!("is_dummy_model: removing test padding");
+                    distro_result.without_test_padding()
+                } else {
+                    distro_result
+                };
+                (hash, distro_result)
+            })
+            .await
+            .unwrap();
 
             if distro_hash != commitment.data_hash {
                 debug!(
