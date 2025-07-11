@@ -27,7 +27,6 @@ use psyche_solana_tooling::process_coordinator_instructions::process_coordinator
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_participant_claim;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_participant_create;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_create;
-use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_top_up;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_update;
 use psyche_solana_treasurer::logic::RunCreateParams;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -95,6 +94,16 @@ pub async fn run() {
     .await
     .unwrap();
 
+    // Get the run's collateral vault
+    let run_collateral = endpoint
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &run,
+            &collateral_mint,
+        )
+        .await
+        .unwrap();
+
     // Give the authority some collateral
     let main_authority_collateral = endpoint
         .process_spl_associated_token_account_get_or_init(
@@ -116,17 +125,16 @@ pub async fn run() {
         .unwrap();
 
     // Fund the run with some newly minted collateral
-    process_treasurer_run_top_up(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &main_authority_collateral,
-        &collateral_mint,
-        &run,
-        5_000_000,
-    )
-    .await
-    .unwrap();
+    endpoint
+        .process_spl_token_transfer(
+            &payer,
+            &main_authority,
+            &main_authority_collateral,
+            &run_collateral,
+            5_000_000,
+        )
+        .await
+        .unwrap();
 
     // Create the client ATA
     let client_collateral = endpoint
@@ -172,17 +180,16 @@ pub async fn run() {
     .unwrap_err();
 
     // We should be able to top-up run treasury at any time
-    process_treasurer_run_top_up(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &main_authority_collateral,
-        &collateral_mint,
-        &run,
-        5_000_000,
-    )
-    .await
-    .unwrap();
+    endpoint
+        .process_spl_token_transfer(
+            &payer,
+            &main_authority,
+            &main_authority_collateral,
+            &run_collateral,
+            5_000_000,
+        )
+        .await
+        .unwrap();
 
     // Prepare the coordinator's config
     process_treasurer_run_update(

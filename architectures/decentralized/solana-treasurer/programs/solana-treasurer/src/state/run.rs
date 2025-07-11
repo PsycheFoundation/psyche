@@ -14,7 +14,6 @@ pub struct Run {
 
     pub collateral_mint: Pubkey,
 
-    pub total_funded_collateral_amount: u64,
     pub total_claimed_collateral_amount: u64,
     pub total_claimed_earned_points: u64,
 }
