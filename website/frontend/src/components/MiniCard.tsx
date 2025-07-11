@@ -27,11 +27,9 @@ const Shadow = styled.div`
 const ShadowContainer = styled.a`
 	flex-grow: 1;
 
-	border: 1px solid var(--color-fg);
-	outline: 1px solid var(--color-fg);
+	border: 2px solid var(--color-fg);
 
 	.theme-dark & {
-		outline-color: ${forest[400]};
 		border-color: ${forest[400]};
 	}
 	max-width: 216px;
