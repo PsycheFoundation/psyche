@@ -77,7 +77,6 @@ pub async fn process_treasurer_run_top_up(
         collateral_mint,
     );
     let accounts = RunTopUpAccounts {
-        payer: payer.pubkey(),
         authority: authority.pubkey(),
         authority_collateral: *authority_collateral,
         collateral_mint: *collateral_mint,
@@ -168,7 +167,6 @@ pub async fn process_treasurer_participant_claim(
     );
     let participant = find_participant(run, &user.pubkey());
     let accounts = ParticipantClaimAccounts {
-        payer: payer.pubkey(),
         user: user.pubkey(),
         user_collateral: *user_collateral,
         run: *run,
