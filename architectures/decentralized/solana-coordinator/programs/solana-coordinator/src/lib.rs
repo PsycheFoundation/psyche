@@ -61,9 +61,9 @@ pub enum DeserializeCoordinatorFromBytes {
     CastError(#[from] bytemuck::PodCastError),
 }
 
-pub fn coordinator_account_from_bytes(
+fn validate_coordinator_account_bytes(
     bytes: &[u8],
-) -> std::result::Result<&CoordinatorAccount, DeserializeCoordinatorFromBytes> {
+) -> std::result::Result<(), DeserializeCoordinatorFromBytes> {
     if bytes.len() != CoordinatorAccount::space_with_discriminator() {
         return Err(DeserializeCoordinatorFromBytes::IncorrectSize {
             expected: CoordinatorAccount::space_with_discriminator(),
@@ -78,8 +78,28 @@ pub fn coordinator_account_from_bytes(
             actual: bytes[..CoordinatorAccount::DISCRIMINATOR.len()].to_vec(),
         });
     }
+    Ok(())
+}
+
+pub fn coordinator_account_from_bytes(
+    bytes: &[u8],
+) -> std::result::Result<&CoordinatorAccount, DeserializeCoordinatorFromBytes> {
+    validate_coordinator_account_bytes(bytes)?;
+
     Ok(bytemuck::try_from_bytes(
         &bytes[CoordinatorAccount::DISCRIMINATOR.len()
+            ..CoordinatorAccount::space_with_discriminator()],
+    )?)
+}
+
+pub fn coordinator_account_from_bytes_mut(
+    bytes: &mut [u8],
+) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes>
+{
+    validate_coordinator_account_bytes(bytes)?;
+
+    Ok(bytemuck::try_from_bytes_mut(
+        &mut bytes[CoordinatorAccount::DISCRIMINATOR.len()
             ..CoordinatorAccount::space_with_discriminator()],
     )?)
 }
