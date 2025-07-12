@@ -1,29 +1,29 @@
 use crate::{
     backend::SolanaBackend,
     network_identity::NetworkIdentity,
-    retry::{RetryError, retry_function},
+    retry::{retry_function, RetryError},
 };
 
 use anchor_client::{
-    Cluster,
     solana_sdk::{
         commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{Keypair, Signer},
     },
+    Cluster,
 };
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey, allowlist, psyche_relay_map,
+    allowlist, psyche_relay_map, DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey,
 };
-use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
+use psyche_tui::{logging::LoggerWidget, CustomWidget, TabbedWidget};
 use psyche_watcher::CoordinatorTui;
-use rand::{Rng, RngCore, thread_rng};
+use rand::{thread_rng, Rng, RngCore};
 use std::{path::PathBuf, time::Duration};
 use std::{
     sync::Arc,
@@ -32,7 +32,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{Interval, MissedTickBehavior, interval},
+    time::{interval, Interval, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
