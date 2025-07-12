@@ -281,7 +281,7 @@ impl SolanaBackend {
         let coordinator_account_signer = Keypair::new();
         let coordinator_account = coordinator_account_signer.pubkey();
 
-        let create_coordinator_builder = self.program_coordinators[0]
+        let create_coordinator_signature = self.program_coordinators[0]
             .request()
             .instruction(system_instruction::create_account(
                 &self.program_coordinators[0].payer(),
@@ -290,29 +290,29 @@ impl SolanaBackend {
                 space as u64,
                 &self.program_coordinators[0].id(),
             ))
-            .signer(coordinator_account_signer);
-
-        let create_coordinator_builder =
-            if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
-                create_coordinator_builder.instruction(instruction_treasurer_run_create(
-                    &payer,
-                    &run_id,
-                    &treasurer_collateral_mint,
-                    &coordinator_account,
-                    &main_authority,
-                    &join_authority,
-                ))
-            } else {
-                create_coordinator_builder.instruction(instruction_coordinator_init(
-                    &payer,
-                    &run_id,
-                    &coordinator_account,
-                    &main_authority,
-                    &join_authority,
-                ))
-            };
-
-        let create_coordinator_signature = create_coordinator_builder.send().await?;
+            .instruction(
+                if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
+                    instruction_treasurer_run_create(
+                        &payer,
+                        &run_id,
+                        &treasurer_collateral_mint,
+                        &coordinator_account,
+                        &main_authority,
+                        &join_authority,
+                    )
+                } else {
+                    instruction_coordinator_init(
+                        &payer,
+                        &run_id,
+                        &coordinator_account,
+                        &main_authority,
+                        &join_authority,
+                    )
+                },
+            )
+            .signer(coordinator_account_signer)
+            .send()
+            .await?;
 
         let mut create_signatures = vec![create_coordinator_signature];
 
