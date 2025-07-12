@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 
-use crate::CoordinatorAccount;
-use crate::CoordinatorInstance;
 use crate::bytes_from_string;
 use crate::program_error::ProgramError;
+use crate::CoordinatorAccount;
+use crate::CoordinatorInstance;
 
 #[derive(Accounts)]
 #[instruction(params: FreeCoordinatorParams)]

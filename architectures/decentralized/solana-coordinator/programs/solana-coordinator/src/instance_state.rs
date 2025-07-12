@@ -1,28 +1,28 @@
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::Model;
 use psyche_coordinator::ClientState;
 use psyche_coordinator::Coordinator;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::HealthChecks;
 use psyche_coordinator::RunState;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
-use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::Model;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
+use psyche_core::sha256v;
 use psyche_core::FixedString;
 use psyche_core::SmallBoolean;
-use psyche_core::sha256v;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::ClientId;
-use crate::ProgramError;
 use crate::client::Client;
 use crate::clients_state::ClientsState;
+use crate::ClientId;
+use crate::ProgramError;
 
 #[derive(
     Debug,

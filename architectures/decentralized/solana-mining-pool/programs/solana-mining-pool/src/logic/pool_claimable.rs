@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::Mint;
 
-use crate::ProgramError;
 use crate::state::Pool;
+use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: PoolClaimableParams)]

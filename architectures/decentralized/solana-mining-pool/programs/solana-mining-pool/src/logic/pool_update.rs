@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::ProgramError;
 use crate::state::Pool;
 use crate::state::PoolMetadata;
+use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: PoolUpdateParams)]

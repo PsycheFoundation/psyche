@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
 use psyche_solana_authorizer::state::Authorization;
 
+use crate::bytes_from_string;
+use crate::program_error::ProgramError;
 use crate::ClientId;
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
-use crate::bytes_from_string;
-use crate::program_error::ProgramError;
 
 pub const JOIN_RUN_AUTHORIZATION_SCOPE: &[u8] = b"CoordinatorJoinRun";
 

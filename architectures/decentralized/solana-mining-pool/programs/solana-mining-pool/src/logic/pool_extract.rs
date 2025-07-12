@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::transfer;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
-use anchor_spl::token::transfer;
 
-use crate::ProgramError;
 use crate::state::Pool;
+use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: PoolExtractParams)]

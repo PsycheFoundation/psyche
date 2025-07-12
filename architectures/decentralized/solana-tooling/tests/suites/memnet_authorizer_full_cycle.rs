@@ -34,15 +34,13 @@ pub async fn run() {
     }
 
     // Authorization PDA doesnt exist at the start
-    assert!(
-        get_authorization(
-            &mut endpoint,
-            &find_authorization(&grantor.pubkey(), &grantee.pubkey(), &scope)
-        )
-        .await
-        .unwrap()
-        .is_none()
-    );
+    assert!(get_authorization(
+        &mut endpoint,
+        &find_authorization(&grantor.pubkey(), &grantee.pubkey(), &scope)
+    )
+    .await
+    .unwrap()
+    .is_none());
 
     // Create the authorization
     let authorization = process_authorizer_authorization_create(
@@ -316,10 +314,8 @@ pub async fn run() {
     .unwrap();
 
     // Authorization PDA must not exist anymore
-    assert!(
-        get_authorization(&mut endpoint, &authorization)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(get_authorization(&mut endpoint, &authorization)
+        .await
+        .unwrap()
+        .is_none());
 }

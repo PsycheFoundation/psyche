@@ -1,5 +1,5 @@
-use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
+use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_free;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_init;
@@ -75,20 +75,16 @@ pub async fn run() {
     assert_eq!(main_authority_balance_after, main_authority_balance_start);
 
     // Check that the coordinator instance and account do actually exists now
-    assert!(
-        endpoint
-            .get_account(&coordinator_instance)
-            .await
-            .unwrap()
-            .is_some()
-    );
-    assert!(
-        endpoint
-            .get_account(&coordinator_account)
-            .await
-            .unwrap()
-            .is_some()
-    );
+    assert!(endpoint
+        .get_account(&coordinator_instance)
+        .await
+        .unwrap()
+        .is_some());
+    assert!(endpoint
+        .get_account(&coordinator_account)
+        .await
+        .unwrap()
+        .is_some());
 
     // This spill account will be reimbursed for the costs of the rent
     let spill = Pubkey::new_unique();
@@ -133,18 +129,14 @@ pub async fn run() {
     assert!(spill_balance_before < spill_balance_final);
 
     // Check that the coordinator account and instances were actually closed
-    assert!(
-        endpoint
-            .get_account(&coordinator_instance)
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        endpoint
-            .get_account(&coordinator_account)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(endpoint
+        .get_account(&coordinator_instance)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(endpoint
+        .get_account(&coordinator_account)
+        .await
+        .unwrap()
+        .is_none());
 }
