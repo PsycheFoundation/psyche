@@ -7464,6 +7464,7 @@ name = "psyche-solana-client"
 version = "0.1.0"
 dependencies = [
  "anchor-client",
+ "anchor-spl",
  "anyhow",
  "async-trait",
  "backon",
@@ -7482,6 +7483,7 @@ dependencies = [
  "psyche-python-extension-impl",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
+ "psyche-solana-treasurer",
  "psyche-tui",
  "psyche-watcher",
  "rand 0.8.5",
