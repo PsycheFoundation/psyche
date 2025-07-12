@@ -1,49 +1,41 @@
 # Docker Psyche
 
-This folder contains all the docker related files and scripts.
+This folder contains some of the docker related files and scripts, mostly entrypoint scripts for the docker containers.
+All the used docker images are created via nix docker-tools and can be found in the `packages.nix` file inside the `nix` directory.
+
 The purpose of using docker is two-fold:
 
 - compartmentalize psyche client to be deployed and used in testing and production environments easily.
 - implementing end-to-end tests that are as close as possible to a production environment.
 
-There are three concrete use-cases for the docker containers that are generated with these Dockerfiles:
+There are three concrete use-cases for the docker containers:
 
 - spawning a whole dockerized network with all the components: Solana validator and various clients. These should
-  be done via `docker compose`.
+  be done via `nix build ...` and `docker compose`.
 - booting a testing client in a Solana localnet: basically to join and train in a run with some local or remote
   `solana-test-validator`. In short, it solves some Solana chores such as generating a key pair and adding funds to it.
 - booting a production client: these can be used either on the Solana devnet or mainnet. There is no automatic
   management of Solana keys or funds. This should be set manually by the user.
 
-## Dockerfiles
-
-### Psyche base dockerfile
-
-The `psyche_base.Dockerfile` is used for building the base image which will be used by almost all
-the other docker images.
-This image collects all Linux and Rust dependencies needed to build the `psyche-solana-client` binary.
-It uses [cargo-chef](https://github.com/LukeMathWalker/cargo-chef), an
-utility for caching Rust dependencies for Docker builds.
+## Docker images
 
 ## Psyche Solana client
 
-The `psyche_client.Dockerfile` is the dockerfile used to build the image for the client that would be used by
-end users, in a production-like environment.
-In essence, the image is built installing some basic OS dependencies and then copying the client binary from
-the `psyche-base` image.
+The `docker-psyche-solana-client` package works as the dockerfile used to build the image for the client that would be used by
+end users, in a production-like environment `psyche-solana-cient binary` already built with nix.
 The `train_entrypoint.sh` script runs as the default entrypoint for the container, which is no more than a
 call to the `psyche-solana-client` binary to start training, and some logic for restart the client in case it crashes.
 
 ## Psyche Solana test client
 
-The `psyche_test_client.Dockerfile` is essentially the same as the `psyche_client.Dockerfile`, but adds a thin
+The `docker-psyche-solana-test-client` package is essentially the same as the `docker-psyche-solana-client`, but adds a thin
 layer of Solana dev tools like the Solana CLI to make things a little easier in testing scenarios.
 The `client_test_entrypoint.sh` script runs as the default entrypoint, which basically generates a Solana key pair,
-deposits some funds in it and then starts training. This is done only for convenience in testin scenarios.
+deposits some funds in it and then starts training. This is done only for convenience in testing scenarios.
 
 ## Psyche Solana test validator
 
-The `psyche_solana_validator.Dockerfile` is meant to build a Solana validator image which will be only used for testing
+The `docker-psyche-solana-test-validator` is meant to build a Solana validator image which will be only used for testing
 when spawning a whole network using `docker compose`.
 Its main task is to spawn the `solana-test-validator` and deploy the coordinator Solana program.
 
@@ -101,7 +93,7 @@ For a computer with N GPUs, you can spawn up to N clients and each one will use 
 This can be done using:
 
 ```bash
-just setup_clients <num_clients>
+just setup_gpu_clients <num_clients>
 ```
 
 where `<num_clients>` should be replaced with the number of clients you want spawn.
@@ -126,7 +118,8 @@ Once you accept, the docker images will start building and then containers will 
 To spawn a whole network with all the services included, you can run
 
 ```bash
-just setup_test_infra <num_clients>
+just setup_test_infra
+just run_test_infra <num_clients>
 ```
 
 where `<num_clients>` is the number of clients you want in the run.
@@ -149,7 +142,7 @@ It will be useful to know that things are going correctly.
 Start building the dockerized psyche client with
 
 ```bash
-just build_docker_psyche_client
+just nix build-docker-solana-client
 ```
 
 You will be prompted with the Coordinator and Authorizer addresses that will be used to build the client binary. Make sure they
@@ -193,12 +186,11 @@ The environment variables that should be set are
 - `WALLET_FILE`: The path to your Solana keypair, used to pay for all transactions in the training process.
 - `RUN_ID`: A string representing the ID of the run to join
 - `RAW_WALLET_PRIVATE_KEY`: A string representing the Solana private key in base58 format that will be used to sign transactions in the Psyche client.
-- `NVIDIA_DRIVER_CAPABILITIES`: a variable that controls which driver libraries will be mounted in the container. Usually should be set to "all". Refer to https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/docker-specialized.html#driver-capabilities for more details.
 
 Once everything is set, you can join the run and start training with
 
 ```bash
-docker run --rm -it --name psyche-client --env-file ./config/client/.env --gpus all --network "host" psyche-client
+just run_docker_client --rm -it --name psyche-client --env-file ./config/client/.env
 ```
 
 ### Starting N dockerized clients with one GPU each

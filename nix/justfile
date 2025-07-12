@@ -1,0 +1,40 @@
+default:
+    just --list
+
+# Build & test & check format - what runs in CI
+check: build-all-flake-outputs
+    # run checks
+    PSYCHE_HOME=$(realpath ..) nix flake check --impure |& nom
+
+# Build all flake outputs in one command (no checks)
+build-all-flake-outputs:
+    nix flake show --json | jq -r '\
+        (.packages."x86_64-linux" | to_entries | map(select(.key != "docker-psyche-solana-test-validator")) | .[].key | ".#" + .),\
+    	(.devShells."x86_64-linux" | keys[] | ".#devShells.\"x86_64-linux\"." + .),\
+    	(.nixosConfigurations | keys[] | ".#nixosConfigurations." + . + ".config.system.build.toplevel")\
+    ' | xargs nom build
+
+    # This validator is used only for tests, and it currently needs to be built using the impure flag.
+    # We exclude it from the general checks and build it separately with the impure flag
+    # This ensure that everything else works as expected without it.
+    PSYCHE_HOME=$(realpath ..) nom build --impure .#docker-psyche-solana-test-validator
+
+# Build the centralized client Docker image
+build_docker_centralized_client:
+    nom build .#docker-psyche-centralized-client --out-link nix-results/docker-psyche-centralized-client
+    nix-results/docker-psyche-centralized-client | docker load
+
+# Build the solana client Docker image
+build_docker_solana_client:
+    nom build .#docker-psyche-solana-client --out-link nix-results/docker-psyche-solana-client
+    nix-results/docker-psyche-solana-client | docker load
+
+# Build the image for the solana client used for testing
+build_docker_solana_test_client:
+    nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
+    nix-results/docker-psyche-solana-test-client | docker load
+
+# Build the image for the solana vaidator used for testing
+build_docker_solana_test_validator:
+    PSYCHE_HOME=$(realpath ..) nix build .#docker-psyche-solana-test-validator --out-link nix-results/docker-psyche-solana-test-validator --impure
+    nix-results/docker-psyche-solana-test-validator | docker load
