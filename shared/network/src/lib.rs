@@ -1,5 +1,5 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
@@ -16,8 +16,8 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
-    MODEL_REQUEST_TIMEOUT_SECS,
+    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
+    PeerManagerHandle,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 use router::Router;
@@ -38,14 +38,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{interval, Interval},
+    time::{Interval, interval},
 };
-use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
+use tokio_util::sync::CancellationToken;
+use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
-pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
+pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
+pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -67,23 +68,23 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
+pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
 pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
-    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
+    RetriedDownloadsHandle, TransmittableDownload,
 };
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
 pub use p2p_model_sharing::{
-    ModelRequestType, ModelSharing, SharableModel, SharableModelError, TransmittableModelConfig,
-    ALPN,
+    ALPN, ModelRequestType, ModelSharing, SharableModel, SharableModelError,
+    TransmittableModelConfig,
 };
 pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
-    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
-    SerializedDistroResult, TransmittableDistroResult,
+    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_from_reader, distro_results_to_bytes,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -615,7 +616,7 @@ where
     }
 }
 
-pub async fn request_model(
+pub async fn request_model_blob_ticket(
     router: Arc<Router>,
     node_addr: NodeId,
     request_type: &ModelRequestType,
@@ -660,7 +661,10 @@ fn parse_gossip_event<BroadcastMessage: Networkable>(
                     return Some(result);
                 }
                 Err(err) => {
-                    warn!("Got a gossip message delivered from {}, but could not verify / decode it! {err}", msg.delivered_from);
+                    warn!(
+                        "Got a gossip message delivered from {}, but could not verify / decode it! {err}",
+                        msg.delivered_from
+                    );
                 }
             }
         }
@@ -793,12 +797,13 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 }
 
 // Simplified param_request_task
-pub async fn param_request_task(
+pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
     model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
     peer_manager: Arc<PeerManagerHandle>,
-) -> anyhow::Result<()> {
+    cancellation_token: CancellationToken,
+) {
     let max_attempts = 1000u16;
     let mut attempts = 0u16;
 
@@ -813,7 +818,7 @@ pub async fn param_request_task(
         debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
         let result = timeout(
             Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS),
-            request_model(router.clone(), peer_id, &model_request_type),
+            request_model_blob_ticket(router.clone(), peer_id, &model_request_type),
         )
         .map_err(|e| anyhow!("{e}"))
         .await;
@@ -826,11 +831,11 @@ pub async fn param_request_task(
                     .push((blob_ticket, model_request_type));
 
                 peer_manager.report_success(peer_id);
-                return Ok(());
+                return;
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                peer_manager.report_error(peer_id);
+                peer_manager.report_blob_ticket_request_error(peer_id);
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;
@@ -841,5 +846,6 @@ pub async fn param_request_task(
         }
     }
 
-    bail!("No peers available to give us a model parameter after {max_attempts} attempts")
+    error!("No peers available to give us a model parameter after {max_attempts} attempts");
+    cancellation_token.cancel();
 }

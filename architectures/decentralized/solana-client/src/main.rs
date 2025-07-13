@@ -1,9 +1,10 @@
 use crate::{
-    app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
+    app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
 };
 
 use anchor_client::{
+    Client, Cluster,
     anchor_lang::system_program,
     solana_sdk::{
         commitment_config::{CommitmentConfig, CommitmentLevel},
@@ -12,24 +13,23 @@ use anchor_client::{
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
-    Client, Cluster,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use bytemuck::Zeroable;
 use clap::{Args, Parser, Subcommand};
-use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
+use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
 use psyche_coordinator::{
-    get_data_index_for_step,
+    CoordinatorConfig, CoordinatorProgress, RunState, get_data_index_for_step,
     model::{Checkpoint, HubRepo, Model},
-    CoordinatorConfig, CoordinatorProgress, RunState,
 };
-use psyche_core::{sha256, FixedString};
+use psyche_core::{FixedString, sha256};
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
 use psyche_tui::{
+    LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop, LogOutput, ServiceInfo,
+    maybe_start_render_loop,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -40,7 +40,7 @@ use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::{
     runtime::Builder,
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
 use tracing::info;
 
@@ -294,14 +294,18 @@ impl TryInto<Keypair> for WalletArgs {
                 } else {
                     Keypair::from_base58_string(&raw_wallet_private_key)
                 }
-            },
-            None => match self.wallet_private_key_path {
-                Some(wallet_private_key_path) => match Keypair::read_from_file(wallet_private_key_path) {
-                    Ok(wallet_keypair) => wallet_keypair,
-                    Err(err) => bail!("{}", err),
-                },
-                None => bail!("No wallet private key! Must pass --wallet-private-key-path or set RAW_WALLET_PRIVATE_KEY")
             }
+            None => match self.wallet_private_key_path {
+                Some(wallet_private_key_path) => {
+                    match Keypair::read_from_file(wallet_private_key_path) {
+                        Ok(wallet_keypair) => wallet_keypair,
+                        Err(err) => bail!("{}", err),
+                    }
+                }
+                None => bail!(
+                    "No wallet private key! Must pass --wallet-private-key-path or set RAW_WALLET_PRIVATE_KEY"
+                ),
+            },
         };
 
         Ok(wallet_keypair)
@@ -376,7 +380,7 @@ async fn async_main() -> Result<()> {
             let closed = backend
                 .close_run(coordinator_instance, coordinator_account)
                 .await?;
-            println!("Closed run {} with transaction {}", run_id, closed);
+            println!("Closed run {run_id} with transaction {closed}");
             let recovered = backend.get_balance(&key_pair.pubkey()).await? - balance;
             println!("Recovered {:.9} SOL", lamports_to_sol(recovered));
             println!("\n===== Logs =====");
@@ -486,7 +490,7 @@ async fn async_main() -> Result<()> {
                     progress,
                 )
                 .await?;
-            println!("Updated config of {} with transaction {}", run_id, set);
+            println!("Updated config of {run_id} with transaction {set}");
             println!("\n===== Logs =====");
             for log in backend.get_logs(&set).await? {
                 println!("{log}");
@@ -517,10 +521,7 @@ async fn async_main() -> Result<()> {
             let set = backend
                 .set_paused(coordinator_instance, coordinator_account, paused)
                 .await?;
-            println!(
-                "Set pause state to {} on run {} with transaction {}",
-                paused, run_id, set
-            );
+            println!("Set pause state to {paused} on run {run_id} with transaction {set}");
             println!("\n===== Logs =====");
             for log in backend.get_logs(&set).await? {
                 println!("{log}");
@@ -554,7 +555,7 @@ async fn async_main() -> Result<()> {
                 let ticked = backend
                     .tick(coordinator_instance, coordinator_account)
                     .await?;
-                println!("Ticked run {} with transaction {}", run_id, ticked);
+                println!("Ticked run {run_id} with transaction {ticked}");
                 println!("\n===== Logs =====");
                 for log in backend.get_logs(&ticked).await? {
                     println!("{log}");
@@ -595,8 +596,7 @@ async fn async_main() -> Result<()> {
                 )
                 .await?;
             println!(
-                "Set earning rate to {:?} and slashing rate to {:?} on run {} with transaction {}",
-                earning_rate, slashing_rate, run_id, set
+                "Set earning rate to {earning_rate:?} and slashing rate to {slashing_rate:?} on run {run_id} with transaction {set}"
             );
             println!("\n===== Logs =====");
             for log in backend.get_logs(&set).await? {
@@ -717,7 +717,7 @@ async fn async_main() -> Result<()> {
             let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
 
             let solana_pubkey = wallet_keypair.pubkey();
-            let wandb_info = args.wandb_info(format!("{}-{}", run_id, solana_pubkey))?;
+            let wandb_info = args.wandb_info(format!("{run_id}-{solana_pubkey}"))?;
 
             let identity_secret_key: SecretKey =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
@@ -905,7 +905,9 @@ async fn async_main() -> Result<()> {
                     .iter()
                     .find(|c| c.id.signer == solana_pubkey);
                 if client_with_our_key.is_some() {
-                    bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+                    bail!(
+                        "A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!"
+                    );
                 }
             }
             if predownload_model {
@@ -917,8 +919,7 @@ async fn async_main() -> Result<()> {
                 }
 
                 #[allow(irrefutable_let_patterns)]
-                let Model::LLM(model) = coordinator_account_state.model
-                else {
+                let Model::LLM(model) = coordinator_account_state.model else {
                     bail!("model is not an LLM, unsure how to predownload.");
                 };
 
@@ -933,8 +934,7 @@ async fn async_main() -> Result<()> {
                 let repo_id = checkpoint.repo_id.to_string();
                 let revision = checkpoint.revision.map(|s| s.to_string());
                 println!(
-                    "Predownloading model {} revision {}",
-                    repo_id,
+                    "Predownloading model {repo_id} revision {}",
                     revision.as_ref().unwrap_or(&"main".to_string())
                 );
                 let hub_read_token = std::env::var("HF_TOKEN").ok();

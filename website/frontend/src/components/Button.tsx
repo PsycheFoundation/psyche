@@ -27,7 +27,6 @@ const buttonStyle = css`
 	}
 	& .contents {
 		overflow: hidden;
-		white-space: nowrap;
 		text-overflow: ellipsis;
 	}
 	&:not(:has(.contents)) {

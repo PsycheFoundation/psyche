@@ -1,4 +1,3 @@
-import { readFileSync } from 'fs'
 import path from 'path'
 import {
 	CoordinatorConfig,
@@ -8,8 +7,6 @@ import {
 	lr_at_step,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
-	psycheJsonReviver,
-	psycheJsonReplacer,
 	RunSummary,
 	RunData,
 	Metrics,
@@ -18,6 +15,7 @@ import {
 	getRunPDA,
 	RunRoundClient,
 	TxSummary,
+	Version,
 } from 'shared'
 import { CoordinatorDataStore, LastUpdateInfo } from '../dataStore.js'
 import { WitnessMetadata, WitnessEvalResult } from '../idlTypes.js'
@@ -25,16 +23,15 @@ import { PublicKey } from '@solana/web3.js'
 import { isClientWitness } from '../witness.js'
 import EventEmitter from 'events'
 import { UniqueRunKey, runKey } from '../coordinator.js'
-import { writeFileAtomic } from '../writeFileAtomic.js'
+import { readVersionedFile, writeVersionedFile } from './versioned.js'
+import { CURRENT_VERSION, CurrentVersion } from 'shared/formats/type.js'
+import { existsSync, renameSync } from 'fs'
 
-// any run ID outside this list will not be returned to the frontend in the summary list.
-const ALLOWLISTED_RUN_IDS = ['consilience-40b-1']
-
+// any run ID outside this list will not be returned to the frontend in the summary list,
+const ALLOWLISTED_RUN_IDS =
+	process.env.NODE_ENV === 'development' ? null : ['consilience-40b-1']
 type Witness = Omit<WitnessMetadata, 'evals'> & {
-	evals: Array<{
-		name: string
-		value: number
-	}>
+	evals: Array<[string, number]>
 }
 
 interface RunHistory {
@@ -51,6 +48,12 @@ interface RunHistory {
 		config: CoordinatorConfig
 		metadata: RunMetadata
 	}>
+
+	trainingStep?: {
+		startedAt: ChainTimestamp
+		endedAt?: ChainTimestamp
+		tokensCompletedAtStartOfStep: bigint
+	}
 
 	pauseTimestamps: Array<['paused' | 'unpaused', ChainTimestamp]>
 	witnessUpdates: Array<[Witness, ChainTimestamp]>
@@ -87,10 +90,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		this.#programId = programId
 		console.log(`loading coordinator db from disk at path ${this.#db}...`)
 		try {
-			const { lastUpdateInfo, runs, programId } = JSON.parse(
-				readFileSync(this.#db, 'utf-8'),
-				psycheJsonReviver
-			)
+			const { version, data } = readVersionedFile(this.#db)
+			const { lastUpdateInfo, runs, programId } = tryMigrate(version, data)
 			if (this.#programId.equals(programId)) {
 				this.#lastUpdateInfo = lastUpdateInfo
 				this.#runs = runs
@@ -106,6 +107,12 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			}
 		} catch (err) {
 			console.warn('failed to load previous DB from disk: ', err)
+			if (existsSync(this.#db)) {
+				const randomSuffix = Math.random()
+				const badFilename = this.#db + `${randomSuffix}.bak`
+				console.warn(`moving existing bad DB file to ${badFilename}`)
+				renameSync(this.#db, badFilename)
+			}
 		}
 	}
 
@@ -143,17 +150,11 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 
 		this.#runsMutatedSinceLastSync.clear()
-		await writeFileAtomic(
-			this.#db,
-			JSON.stringify(
-				{
-					lastUpdateInfo: this.#lastUpdateInfo,
-					runs: this.#runs,
-					programId: this.#programId,
-				},
-				psycheJsonReplacer
-			)
-		)
+		await writeVersionedFile(this.#db, {
+			lastUpdateInfo: this.#lastUpdateInfo,
+			runs: this.#runs,
+			programId: this.#programId,
+		})
 	}
 
 	lastUpdate() {
@@ -202,6 +203,48 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		configChanged: boolean
 	) {
 		const [lastRun, index] = this.#getActiveRun(pubkey)
+
+		// we're entering a training step
+		if (
+			newState.coordinator.run_state === 'RoundTrain' &&
+			(!lastRun.lastState ||
+				lastRun.lastState.coordinator.run_state !== 'RoundTrain')
+		) {
+			const lastState = lastRun.lastState
+			const tokensCompletedAtStartOfStep = lastState
+				? (() => {
+						const c = lastState.coordinator
+						const tokensPerSequence = BigInt(c.model.LLM.max_seq_len)
+						const batchSizeStart = BigInt(c.config.global_batch_size_start)
+						const batchSizeEnd = BigInt(c.config.global_batch_size_end)
+						const warmupTokens = c.config.global_batch_size_warmup_tokens
+						const currentStep = BigInt(c.progress.step - 1)
+
+						return calculateTokens(
+							currentStep,
+							tokensPerSequence,
+							batchSizeStart,
+							batchSizeEnd,
+							warmupTokens
+						)
+					})()
+				: 0n
+
+			lastRun.trainingStep = {
+				startedAt: eventTime,
+				tokensCompletedAtStartOfStep,
+			}
+		}
+
+		// we're leaving a training step
+		if (
+			newState.coordinator.run_state !== 'RoundTrain' &&
+			lastRun.trainingStep &&
+			!lastRun.trainingStep.endedAt
+		) {
+			lastRun.trainingStep.endedAt = eventTime
+		}
+
 		lastRun.lastUpdated = eventTime
 		lastRun.lastState = newState
 
@@ -261,17 +304,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			typeof evals.len === 'object' && evals.len && 'toNumber' in evals.len
 				? evals.len.toNumber()
 				: Number(evals.len)
-		const fixedEvals = []
+		const fixedEvals: Array<[string, number]> = []
 		for (const { name, value } of evals.data.slice(
 			0,
 			l
 		) as WitnessEvalResult[]) {
 			const firstZero = name[0].findIndex((v) => v === 0)
 			const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString('utf-8')
-			fixedEvals.push({
-				name: nameStr,
-				value,
-			})
+			fixedEvals.push([nameStr, value])
 		}
 		lastRun.witnessUpdates.push([
 			{ ...restWitness, evals: fixedEvals },
@@ -348,23 +388,26 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		)
 		const runs = rawRuns
 			.map((r) => r[0])
-			.filter((r): r is RunSummary => !!r && ALLOWLISTED_RUN_IDS.includes(r.id))
+			.filter(
+				(r): r is RunSummary =>
+					!!r && (!ALLOWLISTED_RUN_IDS || ALLOWLISTED_RUN_IDS.includes(r.id))
+			)
 		const summaries = {
 			runs,
-			totalTokens: runs.reduce((sum, run) => sum + run.completedTokens, 0n),
-			totalTokensPerSecondActive: rawRuns.reduce((sum, [summary, run]) => {
+			totalTokens: runs.reduce(
+				(sum, run) =>
+					sum + (run.trainingStep?.tokensCompletedAtStartOfStep ?? 0n),
+				0n
+			),
+			totalTokensPerSecondActive: runs.reduce((sum, summary) => {
 				const ACTIVE_TIMEOUT_MS = 10 * 60 * 1000
 				if (
 					summary?.status.type !== 'active' ||
-					Date.now() - run.lastUpdated.time.getTime() > ACTIVE_TIMEOUT_MS
+					Date.now() - summary.lastUpdate.time.getTime() > ACTIVE_TIMEOUT_MS
 				) {
 					return sum
 				}
-				const lastWitness = run.witnessUpdates.at(-1)
-				if (!lastWitness) {
-					return sum
-				}
-				return sum + BigInt(Math.round(lastWitness[0].tokens_per_sec))
+				return sum + (summary.trainingStep?.tokensCompletedAtStartOfStep ?? 0n)
 			}, 0n),
 		}
 		this.#summaryCache = summaries
@@ -375,8 +418,11 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		return [...this.#runs.values()].reduce(
 			(sum, runs) =>
 				sum +
-				runs.filter((r) => r.lastState && ALLOWLISTED_RUN_IDS.includes(r.runId))
-					.length,
+				runs.filter(
+					(r) =>
+						r.lastState &&
+						(!ALLOWLISTED_RUN_IDS || ALLOWLISTED_RUN_IDS.includes(r.runId))
+				).length,
 			0
 		)
 	}
@@ -414,7 +460,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			Array<readonly [step: number, value: number]>
 		> = {}
 		for (const [step, r] of linearWitnessHistory) {
-			for (const { name, value } of r.evals) {
+			for (const [name, value] of r.evals) {
 				if (!(name in evals)) {
 					evals[name] = []
 				}
@@ -560,16 +606,7 @@ function makeRunSummary(
 	const batchSizeStart = BigInt(c.config.global_batch_size_start)
 	const batchSizeEnd = BigInt(c.config.global_batch_size_end)
 	const warmupTokens = c.config.global_batch_size_warmup_tokens
-	const currentStep = BigInt(c.progress.step)
 	const totalSteps = BigInt(c.config.total_steps)
-
-	const completedTokens = calculateTokens(
-		currentStep,
-		tokensPerSequence,
-		batchSizeStart,
-		batchSizeEnd,
-		warmupTokens
-	)
 
 	const totalTokens = calculateTokens(
 		totalSteps,
@@ -578,6 +615,25 @@ function makeRunSummary(
 		batchSizeEnd,
 		warmupTokens
 	)
+
+	const lastFewWitnesses = run.witnessUpdates.slice(-50)
+	const lastStep = lastFewWitnesses.at(-1)?.[0].step ?? -1
+	const witnessesForLastStep = lastFewWitnesses.filter(
+		(w) => w[0].step === lastStep
+	)
+	const averageTPS = averageSameStepValues(
+		witnessesForLastStep.map((w) => [w[0].step, w[0].tokens_per_sec])
+	)
+	const lastTokensPerSecond = BigInt(Math.floor(averageTPS[0]?.[1] ?? 0))
+	const trainingStep: RunSummary['trainingStep'] = run.trainingStep
+		? {
+				lastTokensPerSecond,
+				startedAt: run.trainingStep.startedAt,
+				endedAt: run.trainingStep.endedAt,
+				tokensCompletedAtStartOfStep:
+					run.trainingStep.tokensCompletedAtStartOfStep,
+			}
+		: undefined
 
 	const summary: RunSummary = {
 		arch: c.model.LLM.architecture,
@@ -605,52 +661,54 @@ function makeRunSummary(
 						: {
 								type: 'active',
 							},
-		startTime: run.createdAt,
 		pauseHistory: run.pauseTimestamps,
 		totalTokens,
-		completedTokens,
+		lastUpdate: run.lastUpdated,
 		size: run.lastState.metadata.num_parameters,
+		trainingStep,
 		type: 'text', // TODO add type / tags? :)
 	}
 	return summary
 }
 
-// linear warmup then constant at the warmup-end value is just a piecewise of area of trapezoid and area of rectangle!
+/**
+ * The warmup function is actually exponential,
+ * since it's based on its own output from the previous step,
+ * and transitions to linear after a specific tokens threshold.
+ * This is annoying to model, so we just do the recursive calc.
+ * */
 function calculateTokens(
 	step: bigint,
 	tokensPerSequence: bigint,
 	batchSizeStart: bigint,
 	batchSizeEnd: bigint,
 	warmupTokens: bigint
-) {
-	const avgBatchSizeDuringWarmup = (batchSizeStart + batchSizeEnd) / 2n
+): bigint {
+	let currentDataIndex = 0n
 
-	// avoid div by 0
-	if (tokensPerSequence === 0n || avgBatchSizeDuringWarmup === 0n) {
-		return 0n
+	for (let i = 0n; i < step; i++) {
+		const tokensProcessedBeforeStep = currentDataIndex * tokensPerSequence
+
+		let batchSizeForStep: bigint
+		if (tokensProcessedBeforeStep >= warmupTokens) {
+			batchSizeForStep = batchSizeEnd
+		} else {
+			const progress = Number(tokensProcessedBeforeStep) / Number(warmupTokens)
+			const batchSize =
+				Number(batchSizeStart) +
+				(Number(batchSizeEnd) - Number(batchSizeStart)) * progress
+			batchSizeForStep = BigInt(Math.round(batchSize))
+		}
+
+		currentDataIndex += batchSizeForStep
 	}
-	const stepsForWarmup =
-		warmupTokens / (tokensPerSequence * avgBatchSizeDuringWarmup)
 
-	// trapezoid area (warmup phase)
-	const trapezoidTokens =
-		((step < stepsForWarmup ? step : stepsForWarmup) *
-			tokensPerSequence *
-			(batchSizeStart + batchSizeEnd)) /
-		2n
-
-	// rectangle area (post-warmup phase)
-	const desiredPostWarmupSteps = step - stepsForWarmup
-	const postWarmupSteps =
-		desiredPostWarmupSteps > 0 ? desiredPostWarmupSteps : 0n
-	const rectangleTokens = postWarmupSteps * tokensPerSequence * batchSizeEnd
-
-	return trapezoidTokens + rectangleTokens
+	return currentDataIndex * tokensPerSequence
 }
 
 function averageSameStepValues(
-	values: Array<readonly [number, number]>
-): Array<readonly [number, number]> {
+	values: Array<readonly [step: number, value: number]>
+): Array<readonly [step: number, value: number]> {
 	const groupedByStep = values.reduce<Record<number, number[]>>(
 		(acc, [step, value]) => {
 			if (!acc[step]) {
@@ -717,4 +775,62 @@ function chopOffDivergentHistory<T>(
 		maxX = step
 	}
 	return result
+}
+
+type ValueInMapRecord<MapRecord> =
+	MapRecord extends Map<any, infer I> ? I : never
+
+type CurrentFormat = V1
+
+const migrations: Record<
+	`${Exclude<Version, CurrentVersion>}`,
+	(data: any) => CurrentFormat
+> = {
+	unversioned: (data: V0) => {
+		for (const [_runId, run] of data.runs) {
+			for (const history of run) {
+				for (const witness of history.witnessUpdates) {
+					const evals = witness[0].evals
+					for (let i = 0; i < evals.length; i++) {
+						evals[i] = [
+							evals[i].name,
+							evals[i].value,
+						] satisfies ValueInMapRecord<
+							V1['runs']
+						>[number]['witnessUpdates'][number][0]['evals'][number] as any
+					}
+				}
+			}
+		}
+		return data as unknown as V1
+	},
+}
+
+interface WitnessV0 {
+	evals: Array<{
+		name: string
+		value: number
+	}>
+}
+
+interface RunHistoryV0 {
+	witnessUpdates: Array<[WitnessV0, any]>
+}
+
+interface V0 {
+	runs: Map<string, RunHistoryV0[]>
+}
+
+interface V1 {
+	lastUpdateInfo: LastUpdateInfo
+	runs: Map<string, RunHistory[]>
+	programId: PublicKey
+}
+
+function tryMigrate(version: Version, data: any): CurrentFormat {
+	if (version === CURRENT_VERSION) {
+		return data
+	}
+	console.log(`Migrating from ${version} to ${CURRENT_VERSION}!!`)
+	return migrations[version](data)
 }

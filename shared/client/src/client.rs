@@ -1,24 +1,24 @@
 use crate::{
+    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
+    RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
-    RunInitConfigAndIO, TrainingResult, NC,
 };
-use anyhow::{bail, Error, Result};
+use anyhow::{Error, Result, bail};
 use futures::future::join_all;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    allowlist, param_request_task, raw_p2p_verify, router::Router, AuthenticatableIdentity,
-    BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType, ModelRequestType,
-    NetworkConnection, NetworkEvent, NetworkTUIState, Networkable, NodeAddr, NodeId,
-    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload,
-    MAX_DOWNLOAD_RETRIES,
+    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
+    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
+    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
+    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
+    router::Router,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
-use rand::{seq::SliceRandom, thread_rng, RngCore};
+use rand::{RngCore, seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
@@ -27,12 +27,12 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{mpsc, watch, Notify},
+    sync::{Notify, mpsc, watch},
     task::JoinHandle,
     time::interval,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, trace, trace_span, warn};
+use tracing::{debug, error, info, trace, trace_span, warn};
 
 pub type TUIStates = (ClientTUIState, NetworkTUIState);
 
@@ -49,7 +49,8 @@ const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
-const MAX_ERRORS_PER_PEER: usize = 2;
+const MAX_ERRORS_PER_PEER: u8 = 3;
+const MAX_RETRIES_PER_PEER: u8 = 5;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -77,7 +78,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
             async move {
                 #[cfg(not(feature = "parallelism"))]
                 if init_config.tensor_parallelism != 1 {
-                    anyhow::bail!("Tensor parallelism was set but this build does not support it (must be built with --features=parallelism)")
+                    anyhow::bail!(
+                        "Tensor parallelism was set but this build does not support it (must be built with --features=parallelism)"
+                    )
                 }
 
                 let mut watcher = BackendWatcher::new(backend);
@@ -117,7 +120,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                 let retried_downloads = RetriedDownloadsHandle::new();
                 let mut sharable_model = SharableModel::empty();
-                let peer_manager = Arc::new(PeerManagerHandle::new(MAX_ERRORS_PER_PEER));
+                let peer_manager = Arc::new(PeerManagerHandle::new(
+                    MAX_ERRORS_PER_PEER,
+                    MAX_RETRIES_PER_PEER,
+                    param_requests_cancel_token.clone(),
+                ));
 
                 let mut broadcasts = vec![];
                 let mut broadcasts_rebroadcast_index = 0;
@@ -284,47 +291,69 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
                                         let hash = dl.blob_ticket.hash();
                                         let retries = retried_downloads.get(hash).await.map(|i| i.retries).unwrap_or(0);
+                                        let download_type_clone = dl.download_type.clone();
 
-                                        if retries >= MAX_DOWNLOAD_RETRIES {
-                                            metrics.record_download_perma_failed();
-                                            warn!("Download failed (not retrying): {}", dl.error);
-                                            retried_downloads.remove(hash).await;
-                                        } else {
-                                            metrics.record_download_failed();
-                                            let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
-                                            let retry_time = Some(std::time::Instant::now() + backoff_duration);
+                                        match dl.download_type {
+                                            DownloadType::ModelSharing(request_type) => {
+                                                metrics.record_download_failed();
+                                                // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
+                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
+                                                let retry_time = Some(std::time::Instant::now() + backoff_duration);
+                                                peer_manager.report_blob_ticket_download_error(dl.blob_ticket.node_addr().node_id);
 
-                                            info!(
-                                                "Download failed (will retry in {:?}): {}",
-                                                backoff_duration,
-                                                dl.error
-                                            );
-                                            let router = p2p.router().clone();
-                                            let peer_manager = peer_manager.clone();
-                                            let retried_downloads = retried_downloads.clone();
-                                            tokio::spawn(async move {
-                                                let blob_ticket_to_retry = if let DownloadType::ModelSharing(request_type) = dl.download_type.clone() {
-                                                        if let Ok(new_blob_ticket) = get_blob_ticket_to_download(router.clone(), request_type.clone(), peer_manager.clone()).await {
-                                                            // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
-                                                            retried_downloads.remove(hash).await;
-                                                            new_blob_ticket
-                                                        } else {
-                                                            dl.blob_ticket
-                                                        }
+                                                info!(
+                                                    "Model Sharing download failed {} time/s (will retry in {:?}): {}",
+                                                    retries + 1,
+                                                    backoff_duration,
+                                                    dl.error
+                                                );
+                                                let router = p2p.router().clone();
+                                                let peer_manager = peer_manager.clone();
+                                                let retried_downloads = retried_downloads.clone();
+                                                let param_requests_cancel_token = param_requests_cancel_token.clone();
+                                                tokio::spawn(async move {
+                                                    let blob_ticket_to_retry = if let Ok(new_blob_ticket) = get_blob_ticket_to_download(router.clone(), request_type, peer_manager.clone(), param_requests_cancel_token).await {
+                                                        // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
+                                                        retried_downloads.remove(hash).await;
+                                                        new_blob_ticket
+                                                    } else {
+                                                        dl.blob_ticket
+                                                    };
 
-                                                } else {
-                                                    dl.blob_ticket
-                                                };
-
-                                            retried_downloads.insert(DownloadRetryInfo {
-                                                retries: retries + 1,
-                                                retry_time,
-                                                ticket: blob_ticket_to_retry,
-                                                tag: dl.tag,
-                                                r#type: dl.download_type,
+                                                    retried_downloads.insert(DownloadRetryInfo {
+                                                        retries: retries + 1,
+                                                        retry_time,
+                                                        ticket: blob_ticket_to_retry,
+                                                        tag: dl.tag,
+                                                        r#type: download_type_clone,
+                                                    });
                                             });
-                                        });
-                                    }
+                                        }
+                                            DownloadType::DistroResult(_) => {
+                                                if retries >= MAX_DOWNLOAD_RETRIES {
+                                                    metrics.record_download_perma_failed();
+                                                    warn!("Distro result download failed (not retrying): {}", dl.error);
+                                                    retried_downloads.remove(hash).await;
+                                                } else {
+                                                    metrics.record_download_failed();
+                                                    let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
+                                                    let retry_time = Some(std::time::Instant::now() + backoff_duration);
+
+                                                    info!(
+                                                        "Distro result download failed (will retry in {:?}): {}",
+                                                        backoff_duration,
+                                                        dl.error
+                                                    );
+                                                    retried_downloads.insert(DownloadRetryInfo {
+                                                        retries: retries + 1,
+                                                        retry_time,
+                                                        ticket: dl.blob_ticket,
+                                                        tag: dl.tag,
+                                                        r#type: dl.download_type,
+                                                    });
+                                                }
+                                            }
+                                        }
                                     }
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
                                         // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
@@ -498,6 +527,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let router = p2p.router();
 
                             let peer_manager = peer_manager.clone();
+                            let param_requests_cancel_token = param_requests_cancel_token.clone();
                             let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
                                 // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
                                 // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
@@ -510,11 +540,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     let router = router.clone();
 
                                     let request_handle = tokio::spawn(
-                                        param_request_task(
+                                        blob_ticket_param_request_task(
                                             ModelRequestType::Parameter(param_name),
                                             router,
                                             parameter_blob_tickets.clone(),
                                             peer_manager.clone(),
+                                            param_requests_cancel_token.clone()
                                         )
                                     );
 
@@ -523,6 +554,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     if request_handles.len() == max_concurrent_parameter_requests - 1 {
                                         let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
                                         max_concurrent_request_futures.push(request_handle);
+                                        // We don't care about the errors because we are already handling them inside the task
                                         join_all(max_concurrent_request_futures).await;
                                         let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
                                             let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
@@ -563,9 +595,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             peer_manager.set_peers(peer_ids);
                             let router = p2p.router().clone();
                             let tx_config_download = tx_config_download.clone();
+                            let param_requests_cancel_token = param_requests_cancel_token.clone();
                             tokio::spawn(async move {
-                                let config_blob_ticket = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager).await.expect("Failed to get config blob ticket");
-                                tx_config_download.send(config_blob_ticket).expect("Failed to send config blob ticket");
+                                if let Ok(config_blob_ticket) = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager, param_requests_cancel_token).await {
+                                    tx_config_download.send(config_blob_ticket).expect("Failed to send config blob ticket");
+                                } else {
+                                    error!("Error getting the config blob ticket, we'll not proceed with the download");
+                                }
                             });
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
@@ -785,16 +821,18 @@ async fn get_blob_ticket_to_download(
     router: Arc<Router>,
     request_type: ModelRequestType,
     peer_manager: Arc<PeerManagerHandle>,
+    cancellation_token: CancellationToken,
 ) -> Result<BlobTicket, anyhow::Error> {
     let blob_ticket = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
 
-    param_request_task(
+    blob_ticket_param_request_task(
         request_type.clone(),
         router,
         blob_ticket.clone(),
         peer_manager,
+        cancellation_token.clone(),
     )
-    .await?;
+    .await;
 
     let ticket_result = {
         let blob_ticket_lock = blob_ticket.lock().unwrap();

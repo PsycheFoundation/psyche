@@ -1,6 +1,6 @@
-use futures_util::{stream, Stream};
-use iroh::node_info::{NodeData, NodeInfo};
+use futures_util::{Stream, stream};
 use iroh::NodeId;
+use iroh::node_info::{NodeData, NodeInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;

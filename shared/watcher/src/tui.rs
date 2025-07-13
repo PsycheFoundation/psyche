@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use psyche_coordinator::{model::Model, Coordinator, RunState};
+use psyche_coordinator::{Coordinator, RunState, model::Model};
 use psyche_core::NodeIdentity;
 use psyche_tui::ratatui::{
     buffer::Buffer,
@@ -95,7 +95,7 @@ impl Display for TuiRunState {
         match self {
             TuiRunState::Uninitialized => write!(f, "Uninitialized"),
             TuiRunState::Paused => write!(f, "Paused"),
-            TuiRunState::WaitingForMembers { need } => write!(f, "Waiting for {} members", need),
+            TuiRunState::WaitingForMembers { need } => write!(f, "Waiting for {need} members"),
             TuiRunState::Warmup { end_time } => {
                 let remaining = end_time.duration_since(Instant::now());
                 write!(f, "Warmup ({}s remaining)", remaining.as_secs())
