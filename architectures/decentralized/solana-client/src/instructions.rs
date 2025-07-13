@@ -13,11 +13,7 @@ fn authorizer_authorization_create(
     grantee: &Pubkey,
     scope: &[u8],
 ) -> Instruction {
-    let authorization = psyche_solana_authorizer::find_authorization(
-        grantor,
-        grantee,
-        psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-    );
+    let authorization = psyche_solana_authorizer::find_authorization(grantor, grantee, scope);
     Instruction {
         program_id: psyche_solana_authorizer::ID,
         accounts: psyche_solana_authorizer::accounts::AuthorizationCreateAccounts {
@@ -43,11 +39,7 @@ fn authorizer_authorization_grantor_update(
     scope: &[u8],
     active: bool,
 ) -> Instruction {
-    let authorization = psyche_solana_authorizer::find_authorization(
-        grantor,
-        grantee,
-        psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-    );
+    let authorization = psyche_solana_authorizer::find_authorization(grantor, grantee, scope);
     Instruction {
         program_id: psyche_solana_authorizer::ID,
         accounts: psyche_solana_authorizer::accounts::AuthorizationGrantorUpdateAccounts {
@@ -103,7 +95,7 @@ fn coordinator_update(
     Instruction {
         program_id: psyche_solana_coordinator::ID,
         accounts: psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
-            authority: main_authority,
+            authority: *main_authority,
             coordinator_instance,
             coordinator_account: *coordinator_account,
         }
@@ -128,7 +120,7 @@ fn coordinator_set_paused(
     Instruction {
         program_id: psyche_solana_coordinator::ID,
         accounts: psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
-            authority: main_authority,
+            authority: *main_authority,
             coordinator_instance,
             coordinator_account: *coordinator_account,
         }
@@ -148,7 +140,7 @@ fn coordinator_set_future_epoch_rates(
     Instruction {
         program_id: psyche_solana_coordinator::ID,
         accounts: psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
-            authority: main_authority,
+            authority: *main_authority,
             coordinator_instance,
             coordinator_account: *coordinator_account,
         }
@@ -172,6 +164,7 @@ fn treasurer_run_create(
     let treasurer_index = treasurer_index_deterministic_pick(run_id);
     let run = psyche_solana_treasurer::find_run(treasurer_index);
     let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
+    let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     Instruction {
         program_id: psyche_solana_treasurer::ID,
         accounts: psyche_solana_treasurer::accounts::RunCreateAccounts {
@@ -212,7 +205,7 @@ fn treasurer_run_update(
     Instruction {
         program_id: psyche_solana_treasurer::ID,
         accounts: psyche_solana_treasurer::accounts::RunUpdateAccounts {
-            authority: main_authority,
+            authority: *main_authority,
             run,
             coordinator_instance,
             coordinator_account: *coordinator_account,
