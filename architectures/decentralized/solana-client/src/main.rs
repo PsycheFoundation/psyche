@@ -104,10 +104,10 @@ enum Commands {
         #[clap(short, long, env)]
         run_id: String,
 
-        #[clap(short, long, env)]
+        #[clap(long, env)]
         treasurer_index: Option<u64>,
 
-        #[clap(short, long, env)]
+        #[clap(long, env)]
         treasurer_collateral_mint: Option<String>,
 
         #[clap(long)]
@@ -133,7 +133,7 @@ enum Commands {
         #[clap(long, env)]
         run_id: String,
 
-        #[clap(short, long, env)]
+        #[clap(long, env)]
         treasurer_index: Option<u64>,
 
         #[clap(short, long, env)]
@@ -149,7 +149,7 @@ enum Commands {
         #[clap(short, long, env)]
         run_id: String,
 
-        #[clap(short, long, env)]
+        #[clap(long, env)]
         treasurer_index: Option<u64>,
 
         #[clap(long, env)]
@@ -201,7 +201,7 @@ enum Commands {
         #[clap(short, long, env)]
         run_id: String,
 
-        #[clap(short, long, env)]
+        #[clap(long, env)]
         treasurer_index: Option<u64>,
 
         #[clap(long, env)]

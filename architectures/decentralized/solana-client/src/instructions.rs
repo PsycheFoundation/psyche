@@ -10,53 +10,6 @@ use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_solana_coordinator::RunMetadata;
 
-pub fn authorizer_authorization_create(
-    payer: &Pubkey,
-    grantor: &Pubkey,
-    grantee: &Pubkey,
-    scope: &[u8],
-) -> Instruction {
-    let authorization = psyche_solana_authorizer::find_authorization(grantor, grantee, scope);
-    Instruction {
-        program_id: psyche_solana_authorizer::ID,
-        accounts: psyche_solana_authorizer::accounts::AuthorizationCreateAccounts {
-            payer: *payer,
-            grantor: *grantor,
-            authorization,
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
-        data: psyche_solana_authorizer::instruction::AuthorizationCreate {
-            params: psyche_solana_authorizer::logic::AuthorizationCreateParams {
-                grantee: *grantee,
-                scope: scope.to_vec(),
-            },
-        }
-        .data(),
-    }
-}
-
-pub fn authorizer_authorization_grantor_update(
-    grantor: &Pubkey,
-    grantee: &Pubkey,
-    scope: &[u8],
-    active: bool,
-) -> Instruction {
-    let authorization = psyche_solana_authorizer::find_authorization(grantor, grantee, scope);
-    Instruction {
-        program_id: psyche_solana_authorizer::ID,
-        accounts: psyche_solana_authorizer::accounts::AuthorizationGrantorUpdateAccounts {
-            grantor: *grantor,
-            authorization,
-        }
-        .to_account_metas(None),
-        data: psyche_solana_authorizer::instruction::AuthorizationGrantorUpdate {
-            params: psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams { active },
-        }
-        .data(),
-    }
-}
-
 pub fn coordinator_init_coordinator(
     payer: &Pubkey,
     run_id: &str,

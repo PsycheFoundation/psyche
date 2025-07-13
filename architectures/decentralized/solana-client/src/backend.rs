@@ -5,7 +5,7 @@ use anchor_client::{
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
-        rpc_config::{RpcAccountInfoConfig, RpcSendTransactionConfig, RpcTransactionConfig},
+        rpc_config::{RpcAccountInfoConfig, RpcTransactionConfig},
         rpc_response::Response as RpcResponse,
     },
     solana_sdk::{
@@ -38,7 +38,6 @@ use tracing::{debug, error, info, trace, warn};
 const SEND_RETRIES: usize = 3;
 
 pub struct SolanaBackend {
-    program_authorizer: Program<Arc<Keypair>>,
     program_coordinators: Vec<Arc<Program<Arc<Keypair>>>>,
     cluster: Cluster,
     backup_clusters: Vec<Cluster>,
@@ -147,7 +146,6 @@ impl SolanaBackend {
         committment: CommitmentConfig,
     ) -> Result<Self> {
         let client = Client::new_with_options(cluster.clone(), payer.clone(), committment);
-        let program_authorizer = client.program(psyche_solana_authorizer::ID)?;
 
         let mut program_coordinators = vec![];
         program_coordinators.push(Arc::new(client.program(psyche_solana_coordinator::ID)?));
@@ -162,7 +160,6 @@ impl SolanaBackend {
         program_coordinators.extend(backup_program_coordinators?.into_iter().map(Arc::new));
 
         Ok(Self {
-            program_authorizer,
             program_coordinators,
             cluster,
             backup_clusters,
@@ -319,59 +316,11 @@ impl SolanaBackend {
             .send()
             .await?;
 
-        let mut create_signatures = vec![create_coordinator_signature];
-
-        if join_authority == payer {
-            let (authorization_create, authorization_activate) =
-                self.create_run_ensure_permissionless().await?;
-            create_signatures.push(authorization_create);
-            create_signatures.push(authorization_activate);
-        }
-
         Ok(CreatedRun {
             instance: coordinator_instance,
             account: coordinator_account,
-            create_signatures,
+            create_signatures: vec![create_coordinator_signature],
         })
-    }
-
-    async fn create_run_ensure_permissionless(&self) -> Result<(Signature, Signature)> {
-        let payer = self.program_coordinators[0].payer();
-        let authorization_create = self
-            .program_authorizer
-            .request()
-            .instruction(instructions::authorizer_authorization_create(
-                &payer,
-                &payer,
-                &system_program::ID,
-                psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-            ))
-            .send_with_spinner_and_config(RpcSendTransactionConfig {
-                skip_preflight: true,
-                preflight_commitment: None,
-                encoding: None,
-                max_retries: None,
-                min_context_slot: None,
-            })
-            .await?;
-        let authorization_activate = self
-            .program_authorizer
-            .request()
-            .instruction(instructions::authorizer_authorization_grantor_update(
-                &payer,
-                &system_program::ID,
-                psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-                true,
-            ))
-            .send_with_spinner_and_config(RpcSendTransactionConfig {
-                skip_preflight: true,
-                preflight_commitment: None,
-                encoding: None,
-                max_retries: None,
-                min_context_slot: None,
-            })
-            .await?;
-        Ok((authorization_create, authorization_activate))
     }
 
     pub async fn close_run(
@@ -490,8 +439,9 @@ impl SolanaBackend {
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
-                if let Some(treasurer_index) =
-                    self.resolve_treasurer_index(run_id, treasurer_index).await
+                if let Some(treasurer_index) = self
+                    .resolve_treasurer_index(run_id, treasurer_index)
+                    .await?
                 {
                     instructions::treasurer_run_update(
                         run_id,
@@ -536,8 +486,9 @@ impl SolanaBackend {
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
-                if let Some(treasurer_index) =
-                    self.resolve_treasurer_index(run_id, treasurer_index).await
+                if let Some(treasurer_index) = self
+                    .resolve_treasurer_index(run_id, treasurer_index)
+                    .await?
                 {
                     instructions::treasurer_run_update(
                         run_id,
@@ -580,8 +531,9 @@ impl SolanaBackend {
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
-                if let Some(treasurer_index) =
-                    self.resolve_treasurer_index(run_id, treasurer_index).await
+                if let Some(treasurer_index) = self
+                    .resolve_treasurer_index(run_id, treasurer_index)
+                    .await?
                 {
                     instructions::treasurer_run_update(
                         run_id,
@@ -892,21 +844,15 @@ impl SolanaBackend {
         &self,
         run_id: &str,
         treasurer_index: Option<u64>,
-    ) -> Option<u64> {
+    ) -> Result<Option<u64>> {
         let treasurer_index = Self::compute_deterministic_treasurer_index(run_id, treasurer_index);
-        if self.program_coordinators[0]
-            .rpc()
-            .get_account_with_commitment(
-                &psyche_solana_treasurer::find_run(treasurer_index),
-                CommitmentConfig::confirmed(),
-            )
-            .await
-            .is_ok()
-        {
+        let run = psyche_solana_treasurer::find_run(treasurer_index);
+        let run_balance = self.get_balance(&run).await?;
+        Ok(if run_balance > 0 {
             Some(treasurer_index)
         } else {
             None
-        }
+        })
     }
 }
 
