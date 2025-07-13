@@ -1,6 +1,7 @@
 use anchor_client::anchor_lang::system_program;
 use anchor_client::anchor_lang::InstructionData;
 use anchor_client::anchor_lang::ToAccountMetas;
+use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
@@ -20,8 +21,8 @@ fn instruction_authorizer_authorization_create(
     Instruction {
         program_id: psyche_solana_authorizer::ID,
         accounts: psyche_solana_authorizer::accounts::AuthorizationCreateAccounts {
-            payer,
-            grantor,
+            payer: *payer,
+            grantor: *grantor,
             authorization,
             system_program: system_program::ID,
         }
@@ -50,7 +51,7 @@ fn instruction_authorizer_authorization_grantor_update(
     Instruction {
         program_id: psyche_solana_authorizer::ID,
         accounts: psyche_solana_authorizer::accounts::AuthorizationGrantorUpdateAccounts {
-            grantor,
+            grantor: *grantor,
             authorization,
         }
         .to_account_metas(None),
@@ -72,16 +73,16 @@ fn instruction_coordinator_init_coordinator(
     Instruction {
         program_id: psyche_solana_coordinator::ID,
         accounts: psyche_solana_coordinator::accounts::InitCoordinatorAccounts {
-            payer,
+            payer: *payer,
             coordinator_instance,
-            coordinator_account,
+            coordinator_account: *coordinator_account,
             system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: psyche_solana_coordinator::instruction::InitCoordinator {
             params: psyche_solana_coordinator::logic::InitCoordinatorParams {
-                main_authority,
-                join_authority,
+                main_authority: *main_authority,
+                join_authority: *join_authority,
                 run_id: run_id.to_string(),
             },
         }
@@ -104,7 +105,7 @@ fn instruction_coordinator_update(
         accounts: psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
             authority: main_authority,
             coordinator_instance,
-            coordinator_account,
+            coordinator_account: *coordinator_account,
         }
         .to_account_metas(None),
         data: psyche_solana_coordinator::instruction::CoordinatorUpdate {
@@ -129,7 +130,7 @@ fn instruction_coordinator_set_paused(
         accounts: psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
             authority: main_authority,
             coordinator_instance,
-            coordinator_account,
+            coordinator_account: *coordinator_account,
         }
         .to_account_metas(None),
         data: psyche_solana_coordinator::instruction::CoordinatorSetPaused { paused }.data(),
@@ -149,7 +150,7 @@ fn instruction_coordinator_set_future_epoch_rates(
         accounts: psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
             authority: main_authority,
             coordinator_instance,
-            coordinator_account,
+            coordinator_account: *coordinator_account,
         }
         .to_account_metas(None),
         data: psyche_solana_coordinator::instruction::SetFutureEpochRates {
@@ -174,12 +175,12 @@ fn instruction_treasurer_run_create(
     Instruction {
         program_id: psyche_solana_treasurer::ID,
         accounts: psyche_solana_treasurer::accounts::RunCreateAccounts {
-            payer,
+            payer: *payer,
             run,
             run_collateral,
-            collateral_mint,
+            collateral_mint: *collateral_mint,
             coordinator_instance,
-            coordinator_account,
+            coordinator_account: *coordinator_account,
             coordinator_program: psyche_solana_coordinator::ID,
             associated_token_program: associated_token::ID,
             token_program: token::ID,
@@ -189,8 +190,8 @@ fn instruction_treasurer_run_create(
         data: psyche_solana_treasurer::instruction::RunCreate {
             params: psyche_solana_treasurer::logic::RunCreateParams {
                 index: treasurer_index,
-                main_authority,
-                join_authority,
+                main_authority: *main_authority,
+                join_authority: *join_authority,
                 run_id: run_id.to_string(),
             },
         }
@@ -214,7 +215,7 @@ fn instruction_treasurer_run_update(
             authority: main_authority,
             run,
             coordinator_instance,
-            coordinator_account,
+            coordinator_account: *coordinator_account,
             coordinator_program: psyche_solana_coordinator::ID,
         }
         .to_account_metas(None),
