@@ -1,13 +1,16 @@
 use anchor_client::anchor_lang::system_program;
 use anchor_client::anchor_lang::InstructionData;
 use anchor_client::anchor_lang::ToAccountMetas;
-use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anchor_spl::token;
+use psyche_coordinator::model::Model;
+use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::CoordinatorProgress;
+use psyche_solana_coordinator::RunMetadata;
 
-fn authorizer_authorization_create(
+pub fn authorizer_authorization_create(
     payer: &Pubkey,
     grantor: &Pubkey,
     grantee: &Pubkey,
@@ -33,7 +36,7 @@ fn authorizer_authorization_create(
     }
 }
 
-fn authorizer_authorization_grantor_update(
+pub fn authorizer_authorization_grantor_update(
     grantor: &Pubkey,
     grantee: &Pubkey,
     scope: &[u8],
@@ -54,7 +57,7 @@ fn authorizer_authorization_grantor_update(
     }
 }
 
-fn coordinator_init_coordinator(
+pub fn coordinator_init_coordinator(
     payer: &Pubkey,
     run_id: &str,
     coordinator_account: &Pubkey,
@@ -82,7 +85,7 @@ fn coordinator_init_coordinator(
     }
 }
 
-fn coordinator_update(
+pub fn coordinator_update(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
@@ -100,7 +103,7 @@ fn coordinator_update(
             coordinator_account: *coordinator_account,
         }
         .to_account_metas(None),
-        data: psyche_solana_coordinator::instruction::CoordinatorUpdate {
+        data: psyche_solana_coordinator::instruction::Update {
             metadata,
             config,
             model,
@@ -110,7 +113,7 @@ fn coordinator_update(
     }
 }
 
-fn coordinator_set_paused(
+pub fn coordinator_set_paused(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
@@ -125,11 +128,11 @@ fn coordinator_set_paused(
             coordinator_account: *coordinator_account,
         }
         .to_account_metas(None),
-        data: psyche_solana_coordinator::instruction::CoordinatorSetPaused { paused }.data(),
+        data: psyche_solana_coordinator::instruction::SetPaused { paused }.data(),
     }
 }
 
-fn coordinator_set_future_epoch_rates(
+pub fn coordinator_set_future_epoch_rates(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
@@ -153,15 +156,15 @@ fn coordinator_set_future_epoch_rates(
     }
 }
 
-fn treasurer_run_create(
+pub fn treasurer_run_create(
     payer: &Pubkey,
     run_id: &str,
+    treasurer_index: u64,
     collateral_mint: &Pubkey,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
     join_authority: &Pubkey,
 ) -> Instruction {
-    let treasurer_index = treasurer_index_deterministic_pick(run_id);
     let run = psyche_solana_treasurer::find_run(treasurer_index);
     let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
@@ -192,14 +195,13 @@ fn treasurer_run_create(
     }
 }
 
-fn treasurer_run_update(
+pub fn treasurer_run_update(
     run_id: &str,
-    collateral_mint: &Pubkey,
+    treasurer_index: u64,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
     params: psyche_solana_treasurer::logic::RunUpdateParams,
 ) -> Instruction {
-    let treasurer_index = treasurer_index_deterministic_pick(run_id);
     let run = psyche_solana_treasurer::find_run(treasurer_index);
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     Instruction {
@@ -214,9 +216,4 @@ fn treasurer_run_update(
         .to_account_metas(None),
         data: psyche_solana_treasurer::instruction::RunUpdate { params }.data(),
     }
-}
-
-fn treasurer_index_deterministic_pick(run_id: &str) -> u64 {
-    let hashed = hash(run_id.as_bytes()).to_bytes();
-    u64::from_le_bytes(hashed[0..8].try_into().unwrap())
 }

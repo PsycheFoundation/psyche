@@ -105,6 +105,9 @@ enum Commands {
         run_id: String,
 
         #[clap(short, long, env)]
+        treasurer_index: Option<u64>,
+
+        #[clap(short, long, env)]
         treasurer_collateral_mint: Option<String>,
 
         #[clap(long)]
@@ -131,7 +134,7 @@ enum Commands {
         run_id: String,
 
         #[clap(short, long, env)]
-        treasurer_collateral_mint: Option<String>,
+        treasurer_index: Option<u64>,
 
         #[clap(short, long, env)]
         resume: bool,
@@ -147,7 +150,7 @@ enum Commands {
         run_id: String,
 
         #[clap(short, long, env)]
-        treasurer_collateral_mint: Option<String>,
+        treasurer_index: Option<u64>,
 
         #[clap(long, env)]
         config_path: Option<PathBuf>,
@@ -199,7 +202,7 @@ enum Commands {
         run_id: String,
 
         #[clap(short, long, env)]
-        treasurer_collateral_mint: Option<String>,
+        treasurer_index: Option<u64>,
 
         #[clap(long, env)]
         earning_rate: Option<u64>,
@@ -343,6 +346,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             treasurer_collateral_mint,
             join_authority,
         } => {
@@ -355,10 +359,25 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
+
+            if treasurer_index.is_some() && treasurer_collateral_mint.is_none() {
+                bail!("treasurer_index is set, but treasurer_collateral_mint is not. Please provide a collateral mint address.");
+            }
+            let treasurer_index_and_collateral_mint =
+                treasurer_collateral_mint.map(|treasurer_collateral_mint| {
+                    (
+                        SolanaBackend::compute_deterministic_treasurer_index(
+                            &run_id,
+                            treasurer_index,
+                        ),
+                        Pubkey::from_str(&treasurer_collateral_mint).unwrap(),
+                    )
+                });
+
             let created = backend
                 .create_run(
-                    run_id.clone(),
-                    treasurer_collateral_mint.map(|address| Pubkey::from_str(&address).unwrap()),
+                    &run_id,
+                    treasurer_index_and_collateral_mint,
                     join_authority.map(|address| Pubkey::from_str(&address).unwrap()),
                 )
                 .await?;
@@ -408,7 +427,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
-            treasurer_collateral_mint,
+            treasurer_index,
             config_path,
             restart_from_step,
             switch_to_hub,
@@ -499,7 +518,7 @@ async fn async_main() -> Result<()> {
             let set: anchor_client::solana_sdk::signature::Signature = backend
                 .update(
                     &run_id,
-                    treasurer_collateral_mint.map(|address| Pubkey::from_str(&address).unwrap()),
+                    treasurer_index,
                     &coordinator_account,
                     metadata,
                     config,
@@ -518,7 +537,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
-            treasurer_collateral_mint,
+            treasurer_index,
             resume,
         } => {
             let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
@@ -537,12 +556,7 @@ async fn async_main() -> Result<()> {
                 .await?;
             let coordinator_account = coordinator_instance_state.coordinator_account;
             let set = backend
-                .set_paused(
-                    &run_id,
-                    treasurer_collateral_mint.map(|address| Pubkey::from_str(&address).unwrap()),
-                    &coordinator_account,
-                    paused,
-                )
+                .set_paused(&run_id, treasurer_index, &coordinator_account, paused)
                 .await?;
             println!("Set pause state to {paused} on run {run_id} with transaction {set}");
             println!("\n===== Logs =====");
@@ -593,7 +607,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
-            treasurer_collateral_mint,
+            treasurer_index,
             earning_rate,
             slashing_rate,
         } => {
@@ -614,7 +628,7 @@ async fn async_main() -> Result<()> {
             let set = backend
                 .set_future_epoch_rates(
                     &run_id,
-                    treasurer_collateral_mint.map(|address| Pubkey::from_str(&address).unwrap()),
+                    treasurer_index,
                     &coordinator_account,
                     earning_rate,
                     slashing_rate,

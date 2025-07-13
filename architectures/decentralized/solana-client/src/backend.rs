@@ -1,5 +1,6 @@
 use crate::instructions;
 use crate::retry::RetryError;
+use anchor_client::solana_sdk::hash::hash;
 use anchor_client::{
     anchor_lang::system_program,
     solana_client::{
@@ -23,6 +24,7 @@ use psyche_coordinator::{
     CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
 };
 use psyche_solana_coordinator::RunMetadata;
+use psyche_solana_treasurer::logic::RunUpdateParams;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
@@ -263,9 +265,9 @@ impl SolanaBackend {
 
     pub async fn create_run(
         &self,
-        run_id: String,
+        run_id: &str,
+        treasurer_index_and_collateral_mint: Option<(u64, Pubkey)>,
         join_authority: Option<Pubkey>,
-        treasurer_collateral_mint: Option<Pubkey>,
     ) -> Result<CreatedRun> {
         let space = psyche_solana_coordinator::CoordinatorAccount::space_with_discriminator();
         let rent = self.program_coordinators[0]
@@ -277,6 +279,7 @@ impl SolanaBackend {
         let main_authority = payer;
         let join_authority = join_authority.unwrap_or(payer);
 
+        let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
         let coordinator_account_signer = Keypair::new();
         let coordinator_account = coordinator_account_signer.pubkey();
 
@@ -290,19 +293,22 @@ impl SolanaBackend {
                 &self.program_coordinators[0].id(),
             ))
             .instruction(
-                if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
+                if let Some(treasurer_index_and_collateral_mint) =
+                    treasurer_index_and_collateral_mint
+                {
                     instructions::treasurer_run_create(
                         &payer,
-                        &run_id,
-                        &treasurer_collateral_mint,
+                        run_id,
+                        treasurer_index_and_collateral_mint.0,
+                        &treasurer_index_and_collateral_mint.1,
                         &coordinator_account,
                         &main_authority,
                         &join_authority,
                     )
                 } else {
-                    instructions::coordinator_init(
+                    instructions::coordinator_init_coordinator(
                         &payer,
-                        &run_id,
+                        run_id,
                         &coordinator_account,
                         &main_authority,
                         &join_authority,
@@ -472,7 +478,7 @@ impl SolanaBackend {
     pub async fn update(
         &self,
         run_id: &str,
-        treasurer_collateral_mint: Option<Pubkey>,
+        treasurer_index: Option<u64>,
         coordinator_account: &Pubkey,
         metadata: Option<RunMetadata>,
         config: Option<CoordinatorConfig>,
@@ -483,12 +489,14 @@ impl SolanaBackend {
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
-                if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
+                if let Some(treasurer_index) =
+                    self.resolve_treasurer_index(run_id, treasurer_index).await
+                {
                     instructions::treasurer_run_update(
                         run_id,
-                        treasurer_collateral_mint,
+                        treasurer_index,
                         coordinator_account,
-                        main_authority,
+                        &main_authority,
                         RunUpdateParams {
                             metadata,
                             config,
@@ -503,7 +511,7 @@ impl SolanaBackend {
                     instructions::coordinator_update(
                         run_id,
                         coordinator_account,
-                        main_authority,
+                        &main_authority,
                         metadata,
                         config,
                         model,
@@ -519,7 +527,7 @@ impl SolanaBackend {
     pub async fn set_paused(
         &self,
         run_id: &str,
-        treasurer_collateral_mint: Option<Pubkey>,
+        treasurer_index: Option<u64>,
         coordinator_account: &Pubkey,
         paused: bool,
     ) -> Result<Signature> {
@@ -527,12 +535,14 @@ impl SolanaBackend {
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
-                if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
+                if let Some(treasurer_index) =
+                    self.resolve_treasurer_index(run_id, treasurer_index).await
+                {
                     instructions::treasurer_run_update(
                         run_id,
-                        treasurer_collateral_mint,
+                        treasurer_index,
                         coordinator_account,
-                        main_authority,
+                        &main_authority,
                         RunUpdateParams {
                             metadata: None,
                             config: None,
@@ -540,14 +550,14 @@ impl SolanaBackend {
                             progress: None,
                             epoch_earning_rate: None,
                             epoch_slashing_rate: None,
-                            paused,
+                            paused: Some(paused),
                         },
                     )
                 } else {
                     instructions::coordinator_set_paused(
                         run_id,
                         coordinator_account,
-                        main_authority,
+                        &main_authority,
                         paused,
                     )
                 },
@@ -560,7 +570,7 @@ impl SolanaBackend {
     pub async fn set_future_epoch_rates(
         &self,
         run_id: &str,
-        treasurer_collateral_mint: Option<Pubkey>,
+        treasurer_index: Option<u64>,
         coordinator_account: &Pubkey,
         epoch_earning_rate: Option<u64>,
         epoch_slashing_rate: Option<u64>,
@@ -569,12 +579,14 @@ impl SolanaBackend {
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
-                if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
+                if let Some(treasurer_index) =
+                    self.resolve_treasurer_index(run_id, treasurer_index).await
+                {
                     instructions::treasurer_run_update(
                         run_id,
-                        treasurer_collateral_mint,
+                        treasurer_index,
                         coordinator_account,
-                        main_authority,
+                        &main_authority,
                         RunUpdateParams {
                             metadata: None,
                             config: None,
@@ -589,7 +601,7 @@ impl SolanaBackend {
                     instructions::coordinator_set_future_epoch_rates(
                         run_id,
                         coordinator_account,
-                        main_authority,
+                        &main_authority,
                         epoch_earning_rate,
                         epoch_slashing_rate,
                     )
@@ -863,6 +875,37 @@ impl SolanaBackend {
             .ok_or(anyhow!("Transaction has no meta information"))?
             .log_messages
             .unwrap_or(Vec::new()))
+    }
+
+    pub fn compute_deterministic_treasurer_index(
+        run_id: &str,
+        treasurer_index: Option<u64>,
+    ) -> u64 {
+        treasurer_index.unwrap_or_else(|| {
+            let hashed = hash(run_id.as_bytes()).to_bytes();
+            u64::from_le_bytes(hashed[0..8].try_into().unwrap())
+        })
+    }
+
+    pub async fn resolve_treasurer_index(
+        &self,
+        run_id: &str,
+        treasurer_index: Option<u64>,
+    ) -> Option<u64> {
+        let treasurer_index = Self::compute_deterministic_treasurer_index(run_id, treasurer_index);
+        if self.program_coordinators[0]
+            .rpc()
+            .get_account_with_commitment(
+                &psyche_solana_treasurer::find_run(treasurer_index),
+                CommitmentConfig::confirmed(),
+            )
+            .await
+            .is_ok()
+        {
+            Some(treasurer_index)
+        } else {
+            None
+        }
     }
 }
 
