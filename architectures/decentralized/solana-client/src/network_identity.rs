@@ -1,5 +1,5 @@
 use anchor_client::solana_sdk::{
-    signature::{Keypair, Signature, SIGNATURE_BYTES},
+    signature::{Keypair, SIGNATURE_BYTES, Signature},
     signer::Signer,
 };
 use anyhow::Result;
