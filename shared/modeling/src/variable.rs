@@ -1,12 +1,12 @@
 use crate::{
-    parallelism::{tensor_shard, unsharded_tensor_size},
     Communicator,
+    parallelism::{tensor_shard, unsharded_tensor_size},
 };
 
 use std::{iter::Iterator, sync::Arc};
 use tch::{
-    nn::{Shard, VarStore},
     Tensor,
+    nn::{Shard, VarStore},
 };
 
 #[cfg(feature = "parallelism")]
@@ -94,8 +94,8 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
                     .map(|_| self.1.empty_like())
                     .collect::<Vec<_>>();
                 self.1.all_gather(&shards, &self.3);
-                let gathered = crate::parallelism::unshard_tensor(shards, shard);
-                gathered
+
+                crate::parallelism::unshard_tensor(shards, shard)
             }
             #[cfg(not(feature = "parallelism"))]
             Some(_) => panic!("Sharded tensor without parallelism feature?"),

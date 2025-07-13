@@ -15,7 +15,7 @@ lib.makeScope pkgs.newScope (
       "preview-lr"
     ];
 
-    rustPackages = lib.genAttrs rustPackageNames self.psycheLib.buildRustPackage;
+    rustPackages = lib.genAttrs rustPackageNames self.psycheLib.buildRustPackageWithPythonSidecar;
 
     nixglhostRustPackages = lib.listToAttrs (
       map (

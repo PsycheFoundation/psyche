@@ -6,11 +6,11 @@ use std::{
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
-    prelude::{Backend, CrosstermBackend},
     Terminal,
+    prelude::{Backend, CrosstermBackend},
 };
 use tracing::{error, trace};
 

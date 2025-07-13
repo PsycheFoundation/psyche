@@ -1,5 +1,5 @@
 use anyhow::Result;
-use psyche_coordinator::{model, Coordinator, HealthChecks, Witness, WitnessMetadata};
+use psyche_coordinator::{Coordinator, HealthChecks, Witness, WitnessMetadata, model};
 use psyche_core::NodeIdentity;
 use serde::{Deserialize, Serialize};
 

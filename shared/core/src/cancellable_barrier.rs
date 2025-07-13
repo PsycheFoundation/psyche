@@ -4,7 +4,7 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct CancelledBarrier {}
+pub struct CancelledBarrier;
 
 pub trait Barrier: Send + Sync + Debug {
     fn wait(&self) -> Result<(), CancelledBarrier>;

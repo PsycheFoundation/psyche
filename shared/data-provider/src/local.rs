@@ -1,8 +1,8 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use psyche_core::{BatchId, ClosedInterval, Shuffle, TokenSize};
 use rand::seq::SliceRandom;
-use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use rand_chacha::rand_core::SeedableRng;
 use std::fs;
 use tracing::info;
 

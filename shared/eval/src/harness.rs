@@ -2,7 +2,7 @@ use crate::traits::{Document, LogLikelihoodTask};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
-use rand::{seq::SliceRandom, SeedableRng};
+use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
@@ -81,7 +81,7 @@ impl TokenizedLLHDocument {
             .choices
             .into_iter()
             .map(|x| {
-                let choice_with_space = format!(" {}", x);
+                let choice_with_space = format!(" {x}");
                 let choice = tokenizer
                     .encode(choice_with_space, false)
                     .unwrap()

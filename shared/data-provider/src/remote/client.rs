@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use psyche_core::BatchId;
 use psyche_network::{AuthenticatableIdentity, TcpClient};
 use tracing::trace;
