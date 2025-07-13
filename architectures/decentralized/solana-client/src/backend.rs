@@ -475,6 +475,7 @@ impl SolanaBackend {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
         run_id: &str,
