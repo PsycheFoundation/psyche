@@ -1,3 +1,4 @@
+use crate::instructions;
 use crate::retry::RetryError;
 use anchor_client::{
     anchor_lang::system_program,
@@ -290,7 +291,7 @@ impl SolanaBackend {
             ))
             .instruction(
                 if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
-                    instruction_treasurer_run_create(
+                    instructions::treasurer_run_create(
                         &payer,
                         &run_id,
                         &treasurer_collateral_mint,
@@ -299,7 +300,7 @@ impl SolanaBackend {
                         &join_authority,
                     )
                 } else {
-                    instruction_coordinator_init(
+                    instructions::coordinator_init(
                         &payer,
                         &run_id,
                         &coordinator_account,
@@ -333,7 +334,7 @@ impl SolanaBackend {
         let authorization_create = self
             .program_authorizer
             .request()
-            .instruction(instruction_authorizer_authorization_create(
+            .instruction(instructions::authorizer_authorization_create(
                 &payer,
                 &payer,
                 &system_program::ID,
@@ -350,7 +351,7 @@ impl SolanaBackend {
         let authorization_activate = self
             .program_authorizer
             .request()
-            .instruction(instruction_authorizer_authorization_grantor_update(
+            .instruction(instructions::authorizer_authorization_grantor_update(
                 &payer,
                 &system_program::ID,
                 psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
@@ -483,7 +484,7 @@ impl SolanaBackend {
             .request()
             .instruction(
                 if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
-                    instruction_treasurer_run_update(
+                    instructions::treasurer_run_update(
                         run_id,
                         treasurer_collateral_mint,
                         coordinator_account,
@@ -499,7 +500,7 @@ impl SolanaBackend {
                         },
                     )
                 } else {
-                    instruction_coordinator_update(
+                    instructions::coordinator_update(
                         run_id,
                         coordinator_account,
                         main_authority,
@@ -527,7 +528,7 @@ impl SolanaBackend {
             .request()
             .instruction(
                 if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
-                    instruction_treasurer_run_update(
+                    instructions::treasurer_run_update(
                         run_id,
                         treasurer_collateral_mint,
                         coordinator_account,
@@ -543,7 +544,7 @@ impl SolanaBackend {
                         },
                     )
                 } else {
-                    instruction_coordinator_set_paused(
+                    instructions::coordinator_set_paused(
                         run_id,
                         coordinator_account,
                         main_authority,
@@ -569,7 +570,7 @@ impl SolanaBackend {
             .request()
             .instruction(
                 if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
-                    instruction_treasurer_run_update(
+                    instructions::treasurer_run_update(
                         run_id,
                         treasurer_collateral_mint,
                         coordinator_account,
@@ -585,7 +586,7 @@ impl SolanaBackend {
                         },
                     )
                 } else {
-                    instruction_coordinator_set_future_epoch_rates(
+                    instructions::coordinator_set_future_epoch_rates(
                         run_id,
                         coordinator_account,
                         main_authority,

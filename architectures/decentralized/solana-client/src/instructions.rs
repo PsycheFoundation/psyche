@@ -7,7 +7,7 @@ use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anchor_spl::token;
 
-fn instruction_authorizer_authorization_create(
+fn authorizer_authorization_create(
     payer: &Pubkey,
     grantor: &Pubkey,
     grantee: &Pubkey,
@@ -37,7 +37,7 @@ fn instruction_authorizer_authorization_create(
     }
 }
 
-fn instruction_authorizer_authorization_grantor_update(
+fn authorizer_authorization_grantor_update(
     grantor: &Pubkey,
     grantee: &Pubkey,
     scope: &[u8],
@@ -62,7 +62,7 @@ fn instruction_authorizer_authorization_grantor_update(
     }
 }
 
-fn instruction_coordinator_init_coordinator(
+fn coordinator_init_coordinator(
     payer: &Pubkey,
     run_id: &str,
     coordinator_account: &Pubkey,
@@ -90,7 +90,7 @@ fn instruction_coordinator_init_coordinator(
     }
 }
 
-fn instruction_coordinator_update(
+fn coordinator_update(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
@@ -118,7 +118,7 @@ fn instruction_coordinator_update(
     }
 }
 
-fn instruction_coordinator_set_paused(
+fn coordinator_set_paused(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
@@ -137,7 +137,7 @@ fn instruction_coordinator_set_paused(
     }
 }
 
-fn instruction_coordinator_set_future_epoch_rates(
+fn coordinator_set_future_epoch_rates(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
@@ -161,7 +161,7 @@ fn instruction_coordinator_set_future_epoch_rates(
     }
 }
 
-fn instruction_treasurer_run_create(
+fn treasurer_run_create(
     payer: &Pubkey,
     run_id: &str,
     collateral_mint: &Pubkey,
@@ -199,7 +199,7 @@ fn instruction_treasurer_run_create(
     }
 }
 
-fn instruction_treasurer_run_update(
+fn treasurer_run_update(
     run_id: &str,
     collateral_mint: &Pubkey,
     coordinator_account: &Pubkey,
