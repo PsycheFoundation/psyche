@@ -1,6 +1,10 @@
+use anchor_client::anchor_lang::system_program;
 use anchor_client::anchor_lang::InstructionData;
 use anchor_client::anchor_lang::ToAccountMetas;
 use anchor_client::solana_sdk::instruction::Instruction;
+use anchor_client::solana_sdk::pubkey::Pubkey;
+use anchor_spl::associated_token;
+use anchor_spl::token;
 
 fn instruction_authorizer_authorization_create(
     payer: &Pubkey,
@@ -19,7 +23,7 @@ fn instruction_authorizer_authorization_create(
             payer,
             grantor,
             authorization,
-            system_program: anchor_lang::system_program::ID,
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: psyche_solana_authorizer::instruction::AuthorizationCreate {
@@ -71,7 +75,7 @@ fn instruction_coordinator_init_coordinator(
             payer,
             coordinator_instance,
             coordinator_account,
-            system_program: anchor_lang::system_program::ID,
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: psyche_solana_coordinator::instruction::InitCoordinator {
@@ -166,8 +170,7 @@ fn instruction_treasurer_run_create(
 ) -> Instruction {
     let treasurer_index = treasurer_index_deterministic_pick(run_id);
     let run = psyche_solana_treasurer::find_run(treasurer_index);
-    let run_collateral =
-        anchor_spl::associated_token::get_associated_token_address(&run, collateral_mint);
+    let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
     Instruction {
         program_id: psyche_solana_treasurer::ID,
         accounts: psyche_solana_treasurer::accounts::RunCreateAccounts {
@@ -178,9 +181,9 @@ fn instruction_treasurer_run_create(
             coordinator_instance,
             coordinator_account,
             coordinator_program: psyche_solana_coordinator::ID,
-            associated_token_program: anchor_spl::associated_token::ID,
-            token_program: anchor_spl::token::ID,
-            system_program: anchor_lang::system_program::ID,
+            associated_token_program: associated_token::ID,
+            token_program: token::ID,
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: psyche_solana_treasurer::instruction::RunCreate {
