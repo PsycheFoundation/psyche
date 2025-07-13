@@ -28,7 +28,8 @@ fn instruction_authorizer_authorization_create(
                 grantee: *grantee,
                 scope: scope.to_vec(),
             },
-        },
+        }
+        .data(),
     }
 }
 
@@ -52,7 +53,8 @@ fn instruction_authorizer_authorization_grantor_update(
         .to_account_metas(None),
         data: psyche_solana_authorizer::instruction::AuthorizationGrantorUpdate {
             params: psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams { active },
-        },
+        }
+        .data(),
     }
 }
 

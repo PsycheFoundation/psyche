@@ -7,9 +7,7 @@ use anchor_client::{
         rpc_response::Response as RpcResponse,
     },
     solana_sdk::{
-        address_lookup_table::instruction,
         commitment_config::CommitmentConfig,
-        instruction::Instruction,
         pubkey::Pubkey,
         signature::{Keypair, Signature, Signer},
         system_instruction,
