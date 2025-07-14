@@ -1,12 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
 use anchor_client::{
-    solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair},
     Cluster, Program,
+    solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair},
 };
 use psyche_coordinator::{
+    NUM_STORED_ROUNDS, Round, RunState,
     model::{Checkpoint, Model},
-    Round, RunState, NUM_STORED_ROUNDS,
 };
 use psyche_core::FixedVec;
 use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
@@ -108,7 +108,7 @@ impl SolanaTestClient {
 
         while attempts < max_attempts {
             let coordinator_state = self.get_run_state().await;
-            println!("Current state is {}", coordinator_state);
+            println!("Current state is {coordinator_state}");
 
             if coordinator_state == target_state {
                 return true;
@@ -118,7 +118,7 @@ impl SolanaTestClient {
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
 
-        println!("Timeout waiting for state: {:?}", target_state);
+        println!("Timeout waiting for state: {target_state:?}");
         false
     }
 }

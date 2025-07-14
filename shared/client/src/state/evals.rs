@@ -4,8 +4,8 @@ use psyche_eval::{EvalTaskOptions, Task};
 use psyche_modeling::Trainer;
 use rand::{seq::SliceRandom, thread_rng};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use thiserror::Error;
 use tokenizers::Tokenizer;
@@ -14,7 +14,7 @@ use tokio::{
     task::{JoinError, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, span, trace, Level};
+use tracing::{Level, error, info, span, trace};
 
 #[derive(Debug)]
 pub struct EvalTask {

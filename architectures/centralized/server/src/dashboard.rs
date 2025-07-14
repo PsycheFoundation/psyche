@@ -1,11 +1,11 @@
 use psyche_tui::{
+    CustomWidget,
     crossterm::event::{Event, KeyCode, KeyModifiers},
     ratatui::{
         layout::{Constraint, Direction, Layout},
         text::Line,
         widgets::{Block, Paragraph, Widget},
     },
-    CustomWidget,
 };
 use psyche_watcher::{CoordinatorTuiState, TuiRunState};
 use std::sync::Arc;
