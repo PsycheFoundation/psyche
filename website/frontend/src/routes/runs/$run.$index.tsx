@@ -406,6 +406,7 @@ const StatsContainer = styled.div`
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
+	width: 100%;
 
 	@container (min-width: 900px) {
 		flex-direction: row;

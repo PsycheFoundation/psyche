@@ -1,6 +1,6 @@
-use crate::{peer_list::PeerList, util::fmt_bytes, NetworkConnection, Networkable};
+use crate::{NetworkConnection, Networkable, peer_list::PeerList, util::fmt_bytes};
 
-use iroh::{endpoint::ConnectionType, PublicKey};
+use iroh::{PublicKey, endpoint::ConnectionType};
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -124,10 +124,12 @@ impl psyche_tui::CustomWidget for NetworkTui {
                         .unwrap_or(0.0)
                         .max(1024.0);
 
-                    Chart::new(vec![Dataset::default()
-                        .marker(symbols::Marker::Braille)
-                        .graph_type(GraphType::Line)
-                        .data(&bw_history)])
+                    Chart::new(vec![
+                        Dataset::default()
+                            .marker(symbols::Marker::Braille)
+                            .graph_type(GraphType::Line)
+                            .data(&bw_history),
+                    ])
                     .block(
                         Block::default()
                             .title(format!(
