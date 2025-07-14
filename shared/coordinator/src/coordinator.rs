@@ -1,13 +1,14 @@
 use crate::{
-    Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
     model::{Checkpoint, HubRepo, Model},
+    Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
 };
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace,
-                  prelude::{borsh, msg}
+use anchor_lang::{
+    prelude::{borsh, msg},
+    AnchorDeserialize, AnchorSerialize, InitSpace,
 };
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
+use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, f32, hash::Hash};
 use ts_rs::TS;
@@ -1075,7 +1076,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                 let client = self.epoch_state.clients.get_mut(i);
                 let Some(client) = client else {
                     // Should never be None but just in case
-                    msg!("[tick_round_witness] WARN No client found at index {}, skipping batch assignment.", i);
+                    msg!(
+                        "[tick_round_witness] WARN No client found at index {}, skipping batch assignment.",
+                        i
+                    );
                     continue;
                 };
 
