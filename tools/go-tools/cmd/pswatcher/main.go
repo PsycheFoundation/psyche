@@ -616,6 +616,51 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func killLocalProcess(name string, cmd *exec.Cmd) {
+	fmt.Printf("Killing local process group for: %s (PID: %d)\n", name, cmd.Process.Pid)
+
+	// Kill the entire process group
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err != nil {
+		fmt.Printf("Error getting process group ID for %s: %v\n", name, err)
+		// Fallback to killing just the parent process
+		if err := cmd.Process.Kill(); err != nil {
+			fmt.Printf("Error killing process %s: %v\n", name, err)
+		}
+	} else {
+		fmt.Printf("Process group ID for %s: %d\n", name, pgid)
+		// Kill the entire process group
+		if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
+			fmt.Printf("Error killing process group %d: %v\n", pgid, err)
+			// Fallback to SIGKILL if SIGTERM fails
+			if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil {
+				fmt.Printf("Error force killing process group %d: %v\n", pgid, err)
+			}
+		} else {
+			fmt.Printf("Successfully sent SIGTERM to process group %d\n", pgid)
+		}
+	}
+
+	updateProcessState(name, "status", "finalized", nil)
+	broadcast(fmt.Sprintf(`{"type":"status","name":"%s","status":"finalized"}`, name))
+}
+
+func killSSHSession(name string, session *ssh.Session) {
+	fmt.Printf("Killing SSH session for: %s\n", name)
+
+	// Send interrupt signal to the remote process
+	if err := session.Signal(ssh.SIGTERM); err != nil {
+		fmt.Printf("Error sending SIGTERM to SSH session %s: %v\n", name, err)
+		// Fallback to closing the session
+		session.Close()
+	} else {
+		fmt.Printf("Successfully sent SIGTERM to SSH session %s\n", name)
+	}
+
+	updateProcessState(name, "status", "finalized", nil)
+	broadcast(fmt.Sprintf(`{"type":"status","name":"%s","status":"finalized"}`, name))
+}
+
 func killProcess(name string) {
 	// First update status to "killing"
 	updateProcessState(name, "status", "killing", nil)
@@ -626,55 +671,16 @@ func killProcess(name string) {
 
 	// Check if it's a local process
 	if cmd, exists := runningProcesses[name]; exists {
-		fmt.Printf("Killing local process group for: %s (PID: %d)\n", name, cmd.Process.Pid)
-
-		// Kill the entire process group
-		pgid, err := syscall.Getpgid(cmd.Process.Pid)
-		if err != nil {
-			fmt.Printf("Error getting process group ID for %s: %v\n", name, err)
-			// Fallback to killing just the parent process
-			if err := cmd.Process.Kill(); err != nil {
-				fmt.Printf("Error killing process %s: %v\n", name, err)
-			}
-		} else {
-			fmt.Printf("Process group ID for %s: %d\n", name, pgid)
-			// Kill the entire process group
-			if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
-				fmt.Printf("Error killing process group %d: %v\n", pgid, err)
-				// Fallback to SIGKILL if SIGTERM fails
-				if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil {
-					fmt.Printf("Error force killing process group %d: %v\n", pgid, err)
-				}
-			} else {
-				fmt.Printf("Successfully sent SIGTERM to process group %d\n", pgid)
-			}
-		}
-
-		updateProcessState(name, "status", "finalized", nil)
-		broadcast(fmt.Sprintf(`{"type":"status","name":"%s","status":"finalized"}`, name))
+		killLocalProcess(name, cmd)
 		delete(runningProcesses, name)
-
 		stopMetricsChecker(name)
 		return
 	}
 
 	// Check if it's an SSH session
 	if session, exists := runningSessions[name]; exists {
-		fmt.Printf("Killing SSH session for: %s\n", name)
-
-		// Send interrupt signal to the remote process
-		if err := session.Signal(ssh.SIGTERM); err != nil {
-			fmt.Printf("Error sending SIGTERM to SSH session %s: %v\n", name, err)
-			// Fallback to closing the session
-			session.Close()
-		} else {
-			fmt.Printf("Successfully sent SIGTERM to SSH session %s\n", name)
-		}
-
-		updateProcessState(name, "status", "finalized", nil)
-		broadcast(fmt.Sprintf(`{"type":"status","name":"%s","status":"finalized"}`, name))
+		killSSHSession(name, session)
 		delete(runningSessions, name)
-
 		stopMetricsChecker(name)
 		return
 	}
@@ -690,46 +696,12 @@ func killAllProcesses() {
 
 	// Kill local processes
 	for name, cmd := range runningProcesses {
-		fmt.Printf("Killing local process group for: %s (PID: %d)\n", name, cmd.Process.Pid)
-
-		// Kill the entire process group
-		pgid, err := syscall.Getpgid(cmd.Process.Pid)
-		if err != nil {
-			fmt.Printf("Error getting process group ID for %s: %v\n", name, err)
-			// Fallback to killing just the parent process
-			if err := cmd.Process.Kill(); err != nil {
-				fmt.Printf("Error killing process %s: %v\n", name, err)
-			}
-		} else {
-			// Kill the entire process group
-			if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
-				fmt.Printf("Error killing process group %d: %v\n", pgid, err)
-				// Fallback to SIGKILL if SIGTERM fails
-				if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil {
-					fmt.Printf("Error force killing process group %d: %v\n", pgid, err)
-				}
-			}
-		}
-
-		updateProcessState(name, "status", "finalized", nil)
-		broadcast(fmt.Sprintf(`{"type":"status","name":"%s","status":"finalized"}`, name))
+		killLocalProcess(name, cmd)
 	}
 
 	// Kill SSH sessions
 	for name, session := range runningSessions {
-		fmt.Printf("Killing SSH session for: %s\n", name)
-
-		// Send interrupt signal to the remote process
-		if err := session.Signal(ssh.SIGTERM); err != nil {
-			fmt.Printf("Error sending SIGTERM to SSH session %s: %v\n", name, err)
-			// Fallback to closing the session
-			session.Close()
-		} else {
-			fmt.Printf("Successfully sent SIGTERM to SSH session %s\n", name)
-		}
-
-		updateProcessState(name, "status", "finalized", nil)
-		broadcast(fmt.Sprintf(`{"type":"status","name":"%s","status":"finalized"}`, name))
+		killSSHSession(name, session)
 	}
 
 	// Stop all metrics checkers
