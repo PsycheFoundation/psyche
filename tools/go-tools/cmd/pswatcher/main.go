@@ -901,7 +901,7 @@ func main() {
 				clientName := fmt.Sprintf("%s-client%d", getServerName(server.Host), clientIndex)
 
 				// Set up environment variables
-				env := []string{fmt.Sprintf("METRICS_LOCAL_PORT=%d", port)}
+				env := []string{fmt.Sprintf("METRICS_LOCAL_BIND=0.0.0.0:%d", port)}
 
 				// If this client is on a different server than the coordinator, set RPC endpoints
 				if server.Host != coordServer.Host {

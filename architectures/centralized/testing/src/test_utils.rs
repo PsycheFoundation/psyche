@@ -139,7 +139,7 @@ pub fn dummy_client_app_params_with_training_delay(
         discovery_mode: DiscoveryMode::Local,
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
-        metrics_local_port: None,
+        metrics_local_bind: None,
     }
 }
 
@@ -168,6 +168,6 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         discovery_mode: DiscoveryMode::Local,
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
-        metrics_local_port: None,
+        metrics_local_bind: None,
     }
 }

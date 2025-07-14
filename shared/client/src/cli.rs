@@ -91,9 +91,10 @@ pub struct TrainArgs {
     value_parser = parse_duration_from_seconds)]
     pub oltp_report_interval: Duration,
 
-    /// If present, output some metrics & stats via this TCP port in JSON format. Useful for debugging or local integration.
+    /// If present, output some metrics via this TCP bind address in JSON format. Useful for debugging or local integration.
+    /// Example: METRICS_LOCAL_BIND=127.0.0.1:8080
     #[clap(long, env)]
-    pub metrics_local_port: Option<u16>,
+    pub metrics_local_bind: Option<String>,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
     #[clap(long, env)]

@@ -84,7 +84,7 @@ pub struct AppParams {
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,
-    pub metrics_local_port: Option<u16>,
+    pub metrics_local_bind: Option<String>,
 }
 
 impl AppBuilder {
@@ -99,7 +99,7 @@ impl AppBuilder {
             *p.identity_secret_key.public().as_bytes(),
         );
 
-        let metrics = ClientMetrics::new(p.metrics_local_port);
+        let metrics = ClientMetrics::new(p.metrics_local_bind);
 
         let allowlist = allowlist::AllowDynamic::new();
 

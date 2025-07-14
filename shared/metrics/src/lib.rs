@@ -53,7 +53,6 @@ pub struct ClientMetrics {
 
     // internal state tracking
     pub(crate) system_monitor: Arc<tokio::task::JoinHandle<()>>,
-    pub(crate) tcp_server: Option<Arc<tokio::task::JoinHandle<()>>>,
 
     // shared state for TCP server
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
@@ -82,9 +81,6 @@ struct TcpMetrics {
 impl Drop for ClientMetrics {
     fn drop(&mut self) {
         self.system_monitor.abort();
-        if let Some(server) = &self.tcp_server {
-            server.abort();
-        }
     }
 }
 
@@ -116,11 +112,12 @@ impl Default for ClientRoleInRound {
 }
 
 impl ClientMetrics {
-    pub fn new(metrics_port: Option<u16>) -> Self {
+    pub fn new(metrics_bind: Option<String>) -> Self {
         let meter = global::meter("psyche_client");
 
         let tcp_metrics = Arc::new(Mutex::new(TcpMetrics::default()));
-        let tcp_server = metrics_port.map(|port| Self::start_tcp_server(port, tcp_metrics.clone()));
+        // Start the local metrics TCP server if METRICS_LOCAL_BIND was set
+        metrics_bind.map(|bind_addr| Self::start_tcp_server(bind_addr, tcp_metrics.clone()));
 
         Self {
             // broadcasts state
@@ -202,7 +199,6 @@ impl ClientMetrics {
                 .build(),
 
             system_monitor: Self::start_system_monitoring(&meter),
-            tcp_server,
             tcp_metrics,
         }
     }
@@ -436,11 +432,10 @@ impl ClientMetrics {
     }
 
     fn start_tcp_server(
-        port: u16,
+        addr: String,
         tcp_metrics: Arc<Mutex<TcpMetrics>>,
     ) -> Arc<tokio::task::JoinHandle<()>> {
         Arc::new(tokio::spawn(async move {
-            let addr = format!("127.0.0.1:{}", port);
             let listener = match TcpListener::bind(&addr).await {
                 Ok(listener) => listener,
                 Err(e) => {
