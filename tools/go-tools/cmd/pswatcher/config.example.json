@@ -1,0 +1,34 @@
+{
+  "port": 8888,
+  "verbose": false,
+  "coordinatorHost": "admin@remote-server.com",
+  "checkInterval": "5s",
+  "servers": [
+    {
+      "host": "localhost",
+      "clientCount": 1,
+      "workingDirectory": "~/src/psyche",
+      "metricsStartPort": 9001
+    },
+    {
+      "host": "admin@remote-server.com",
+      "clientCount": 2,
+      "workingDirectory": "~/other_dir/psyche",
+      "metricsStartPort": 9001
+    }
+  ],
+  "commands": {
+    "coordinator": {
+      "command": "just",
+      "args": ["setup-solana-localnet-dummy-test-run"]
+    },
+    "client": {
+      "command": "just",
+      "args": ["start-training-localnet-light-client"]
+    },
+    "cleanup": {
+      "command": "bash",
+      "args": ["-c", "sudo killall solana-test-validator; sudo killall psyche-solana-client"]
+    }
+  }
+}

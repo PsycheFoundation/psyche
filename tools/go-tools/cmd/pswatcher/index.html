@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Process Watcher</title>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #1a1a1a; color: #fff; }
+        .process { border: 1px solid #333; margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .server-group { border: 2px solid #555; margin: 15px 0; padding: 15px; border-radius: 8px; background: #222; }
+        .server-title { color: #4CAF50; font-size: 18px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #555; padding-bottom: 5px; }
+        .status { padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: bold; }
+        .starting { background: #ffa500; color: #000; }
+        .running { background: #00ff00; color: #000; }
+        .ready { background: #00ff00; color: #000; }
+        .finished { background: #808080; color: #000; }
+        .killing { background: #ff6600; color: #fff; }
+        .finalized { background: #666666; color: #fff; }
+        .state { background: #0066cc; color: #fff; margin-left: 10px; }
+        .output { background: #000; padding: 10px; margin: 5px 0; border-radius: 3px; max-height: 300px; overflow-y: auto; scroll-behavior: smooth; white-space: pre-wrap; word-wrap: break-word; }
+        .output div { margin: 2px 0; }
+        .metrics { background: #002211; padding: 10px; margin: 5px 0; border-radius: 3px; border: 1px solid #006622; }
+        .metrics.metrics-disabled { background: #1a1a1a; border-color: #444; }
+        .metrics h4 { margin-top: 0; color: #00ff88; }
+        .metrics.metrics-disabled h4 { color: #666; }
+        .metrics table { width: 100%; border-collapse: collapse; margin: 5px 0; }
+        .metrics th, .metrics td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #004433; }
+        .metrics.metrics-disabled th, .metrics.metrics-disabled td { border-bottom-color: #333; }
+        .metrics th { background: #003322; color: #00ff88; font-weight: bold; }
+        .metrics.metrics-disabled th { background: #2a2a2a; color: #666; }
+        .metrics td { color: #ccffcc; font-size: 12px; }
+        .metrics.metrics-disabled td { color: #777; }
+        .metrics tr:nth-child(even) { background: #001a11; }
+        .metrics.metrics-disabled tr:nth-child(even) { background: #222; }
+        .kill-btn { background: #cc0000; color: #fff; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 12px; margin-left: 10px; }
+        .kill-btn:hover { background: #ff0000; }
+        .kill-btn:disabled { background: #666; cursor: not-allowed; }
+        .kill-all-btn { background: #990000; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 14px; margin-bottom: 10px; }
+        .kill-all-btn:hover { background: #cc0000; }
+        .search-input { background: #333; color: #fff; border: 1px solid #555; padding: 6px 10px; border-radius: 3px; font-family: monospace; font-size: 12px; width: 300px; margin-bottom: 8px; }
+        .search-input:focus { outline: none; border-color: #00ff88; background: #444; }
+        .search-input::placeholder { color: #999; }
+        h1 { color: #fff; }
+    </style>
+</head>
+<body>
+    <div x-data="processWatcher()">
+        <h1>Psyche Watcher</h1>
+
+        <button class="kill-all-btn" @click="killAll()">Kill All Processes</button>
+
+        <!-- Coordinator Process (always first) -->
+        <div class="server-group">
+            <div class="server-title">Coordinator (First Server)</div>
+            <div class="process">
+                <h3>
+                    <span x-text="processes.coordinator ? processes.coordinator.name : 'coordinator'"></span>
+                    <span class="status" :class="processes.coordinator ? processes.coordinator.status : 'starting'"
+                          x-text="processes.coordinator ? processes.coordinator.status : 'starting'"></span>
+                    <span x-show="processes.coordinator && processes.coordinator.state" class="state"
+                          x-text="'State: ' + (processes.coordinator ? processes.coordinator.state : '')"></span>
+                    <button class="kill-btn" @click="killProcess('coordinator')"
+                            :disabled="processes.coordinator && (processes.coordinator.status === 'finished' || processes.coordinator.status === 'killing' || processes.coordinator.status === 'finalized')">
+                        Kill
+                    </button>
+                </h3>
+                <div x-show="processes.coordinator && processes.coordinator.metrics" class="metrics" :class="{'metrics-disabled': processes.coordinator && (processes.coordinator.status === 'killing' || processes.coordinator.status === 'finalized')}">
+                    <h4>Metrics</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="[key, value] in Object.entries(processes.coordinator && processes.coordinator.metrics || {})" :key="key">
+                                <tr>
+                                    <td x-text="key"></td>
+                                    <td x-text="Array.isArray(value) ? value.length + ' items' : value"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                <input type="text" class="search-input" x-model="searchQueries.coordinator" 
+                       placeholder='Search logs (e.g. "broadcast OR event OR gossip")' />
+                <div class="output">
+                    <div x-show="!processes.coordinator || !processes.coordinator.output || processes.coordinator.output.length === 0" style="color: #666; font-style: italic;">
+                        Waiting for output...
+                    </div>
+                    <template x-for="(line, index) in filterLogs('coordinator')" :key="'coord-' + index">
+                        <div x-text="line"></div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Client Processes grouped by server -->
+        <template x-for="server in servers" :key="server.host || 'local'">
+            <div class="server-group">
+                <div class="server-title" x-text="(server.host === '' ? 'Local Server' : server.host) + ' (' + server.clientCount + ' clients)'"></div>
+                <template x-for="clientName in getClientNamesForServer(server)" :key="clientName">
+                    <div class="process">
+                        <h3>
+                            <span x-text="processes[clientName] ? processes[clientName].name : clientName"></span>
+                            <span class="status" :class="processes[clientName] ? processes[clientName].status : 'starting'"
+                                  x-text="processes[clientName] ? processes[clientName].status : 'starting'"></span>
+                            <span x-show="processes[clientName] && processes[clientName].state" class="state"
+                                  x-text="'State: ' + (processes[clientName] ? processes[clientName].state : '')"></span>
+                            <button class="kill-btn" @click="killProcess(clientName)"
+                                    :disabled="processes[clientName] && (processes[clientName].status === 'finished' || processes[clientName].status === 'killing' || processes[clientName].status === 'finalized')">
+                                Kill
+                            </button>
+                        </h3>
+                        <div x-show="processes[clientName] && processes[clientName].metrics" class="metrics" :class="{'metrics-disabled': processes[clientName] && (processes[clientName].status === 'killing' || processes[clientName].status === 'finalized')}">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Metric</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="[key, value] in Object.entries(processes[clientName] && processes[clientName].metrics || {})" :key="key">
+                                        <tr>
+                                            <td x-text="key"></td>
+                                            <td x-text="Array.isArray(value) ? value.length + ' items' : value"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <input type="text" class="search-input" :value="searchQueries[clientName] || ''" 
+                               @input="searchQueries[clientName] = $event.target.value" 
+                               placeholder='Search logs (e.g. "broadcast OR event OR gossip")' />
+                        <div class="output">
+                            <div x-show="!processes[clientName] || !processes[clientName].output || processes[clientName].output.length === 0" style="color: #666; font-style: italic;">
+                                Waiting for output...
+                            </div>
+                            <template x-for="(line, index) in filterLogs(clientName)" :key="clientName + '-' + index">
+                                <div x-text="line"></div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+
+    <script>
+        function processWatcher() {
+            return {
+                processes: {},
+                ws: null,
+                clientCount: 1,
+                servers: [],
+                searchQueries: {},
+
+                init() {
+                    this.ws = new WebSocket('ws://localhost:8888/ws');
+
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+
+
+                        if (data.type === 'config') {
+                            this.clientCount = data.clientCount;
+                            this.servers = data.servers || [];
+                            return;
+                        }
+
+                        if (!this.processes[data.name]) {
+                            this.processes[data.name] = {
+                                name: data.name,
+                                status: 'starting',
+                                output: [],
+                                state: '',
+                                metrics: null
+                            };
+                        }
+
+                        if (data.type === 'status') {
+                            this.processes[data.name].status = data.status;
+                            if (data.output) {
+                                this.processes[data.name].output = data.output;
+                            }
+                            if (data.state) {
+                                this.processes[data.name].state = data.state;
+                            }
+                            if (data.metrics) {
+                                this.processes[data.name].metrics = data.metrics;
+                            }
+                        } else if (data.type === 'output') {
+                            this.processes[data.name].output.push(data.output);
+                            if (this.processes[data.name].output.length > 500) {
+                                this.processes[data.name].output.shift();
+                            }
+                            // Auto-scroll to bottom after a short delay to ensure DOM is updated
+                            this.$nextTick(() => {
+                                this.scrollToBottom(data.name);
+                            });
+                        } else if (data.type === 'state') {
+                            this.processes[data.name].state = data.state;
+                        } else if (data.type === 'metrics') {
+                            this.processes[data.name].metrics = data.metrics;
+                        }
+                    };
+                },
+
+                killProcess(name) {
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'kill',
+                            name: name
+                        }));
+                    }
+                },
+
+                killAll() {
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'kill_all'
+                        }));
+                    }
+                },
+
+                getClientNamesForServer(server) {
+                    const serverName = server.host === '' ? 'local' : (server.host.includes('@') ? server.host.split('@')[1] : server.host);
+                    return Object.keys(this.processes).filter(name =>
+                        name.startsWith(serverName + '-client') ||
+                        (server.host === '' && name.startsWith('local-client'))
+                    );
+                },
+
+                scrollToBottom(processName) {
+                    // Find the output div for this process and scroll to bottom
+                    const outputDivs = document.querySelectorAll('.output');
+                    outputDivs.forEach(div => {
+                        // Check if this output div belongs to the current process
+                        const processDiv = div.closest('.process');
+                        if (processDiv) {
+                            const nameSpan = processDiv.querySelector('h3 span');
+                            if (nameSpan && (nameSpan.textContent === processName || nameSpan.textContent === this.processes[processName]?.name)) {
+                                div.scrollTop = div.scrollHeight;
+                            }
+                        }
+                    });
+                },
+
+                filterLogs(processName) {
+                    const query = this.searchQueries[processName];
+                    if (!query || !this.processes[processName] || !this.processes[processName].output) {
+                        return this.processes[processName] ? this.processes[processName].output : [];
+                    }
+                    
+                    return this.processes[processName].output.filter(line => 
+                        this.matchesSearchQuery(line.toLowerCase(), query.toLowerCase())
+                    );
+                },
+
+                matchesSearchQuery(line, query) {
+                    if (!query.trim()) return true;
+                    
+                    // Handle OR operator
+                    if (query.includes(' or ')) {
+                        return query.split(' or ').some(term => 
+                            this.matchesAndQuery(line, term.trim())
+                        );
+                    }
+                    
+                    return this.matchesAndQuery(line, query);
+                },
+
+                matchesAndQuery(line, query) {
+                    // Handle AND operator (default behavior for space-separated terms)
+                    const terms = query.split(' and ').flatMap(term => term.split(' ')).filter(t => t.trim());
+                    return terms.every(term => line.includes(term.trim()));
+                }
+            }
+        }
+    </script>
+</body>
+</html>
