@@ -1,22 +1,22 @@
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
-use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
+use psyche_coordinator::model::LLM;
+use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::WitnessProof;
+use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
-use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
+use psyche_solana_coordinator::ClientId;
+use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantee_update;
@@ -30,6 +30,7 @@ use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_update;
 use psyche_solana_treasurer::logic::RunCreateParams;
 use psyche_solana_treasurer::logic::RunUpdateParams;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
@@ -48,7 +49,8 @@ pub async fn run() {
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
     let participant = Keypair::new();
-    let client = Keypair::new();
+    let client1 = Keypair::new();
+    let client2 = Keypair::new();
     let ticker = Keypair::new();
     let warmup_time = 77;
     let round_witness_time = 33;
@@ -68,7 +70,7 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // create the empty pre-allocated coordinator_account
+    // Create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
         .process_system_new_exempt(
             &payer,
@@ -136,18 +138,29 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Create the client ATA
-    let client_collateral = endpoint
+    // Create the clients ATA
+    let client1_collateral = endpoint
         .process_spl_associated_token_account_get_or_init(
             &payer,
-            &client.pubkey(),
+            &client1.pubkey(),
+            &collateral_mint,
+        )
+        .await
+        .unwrap();
+    let client2_collateral = endpoint
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &client2.pubkey(),
             &collateral_mint,
         )
         .await
         .unwrap();
 
-    // Create the participation account
-    process_treasurer_participant_create(&mut endpoint, &payer, &client, &run)
+    // Create the participation accounts
+    process_treasurer_participant_create(&mut endpoint, &payer, &client1, &run)
+        .await
+        .unwrap();
+    process_treasurer_participant_create(&mut endpoint, &payer, &client2, &run)
         .await
         .unwrap();
 
@@ -155,8 +168,8 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &client1,
+        &client1_collateral,
         &collateral_mint,
         &run,
         &coordinator_account,
@@ -169,8 +182,8 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &client1,
+        &client1_collateral,
         &collateral_mint,
         &run,
         &coordinator_account,
@@ -244,15 +257,16 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Generate the client key
-    let client_id = ClientId::new(client.pubkey(), Default::default());
+    // Generate the clients keys
+    let client1_id = ClientId::new(client1.pubkey(), Default::default());
+    let client2_id = ClientId::new(client2.pubkey(), Default::default());
 
-    // Add a participant key to whitelist
+    // Authorize any client to join the run
     let authorization = process_authorizer_authorization_create(
         &mut endpoint,
         &payer,
         &join_authority,
-        &participant.pubkey(),
+        &Pubkey::default(),
         JOIN_RUN_AUTHORIZATION_SCOPE,
     )
     .await
@@ -267,29 +281,26 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Make the client a delegate of the participant key
-    process_authorizer_authorization_grantee_update(
-        &mut endpoint,
-        &payer,
-        &participant,
-        &authorization,
-        AuthorizationGranteeUpdateParams {
-            delegates_clear: false,
-            delegates_added: vec![client.pubkey()],
-        },
-    )
-    .await
-    .unwrap();
-
-    // The client can now join the run
+    // The clients can now join the run
     process_coordinator_join_run(
         &mut endpoint,
         &payer,
-        &client,
+        &client1,
         &authorization,
         &coordinator_instance,
         &coordinator_account,
-        client_id,
+        client1_id,
+    )
+    .await
+    .unwrap();
+    process_coordinator_join_run(
+        &mut endpoint,
+        &payer,
+        &client2,
+        &authorization,
+        &coordinator_instance,
+        &coordinator_account,
+        client2_id,
     )
     .await
     .unwrap();
@@ -330,7 +341,7 @@ pub async fn run() {
         process_coordinator_witness(
             &mut endpoint,
             &payer,
-            &client,
+            &client1,
             &coordinator_instance,
             &coordinator_account,
             &Witness {
@@ -397,8 +408,8 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &client1,
+        &client1_collateral,
         &collateral_mint,
         &run,
         &coordinator_account,
@@ -411,8 +422,8 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &client1,
+        &client1_collateral,
         &collateral_mint,
         &run,
         &coordinator_account,
