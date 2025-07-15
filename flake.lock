@@ -311,16 +311,15 @@
         ]
       },
       "locked": {
-        "lastModified": 1751482466,
-        "narHash": "sha256-JzaMLB8a8VMORkGuZUI6p6j0dn+eNVEMVN1DRdmK/QU=",
+        "lastModified": 1752526742,
+        "narHash": "sha256-pIP89B3MVJOparR4SrWZKDC7yyC4zi9DvBG88W3m7GE=",
         "owner": "arilotter",
         "repo": "solana-flake",
-        "rev": "9cec522a6ebb4fdef10ab9693b7fe5498bd63608",
+        "rev": "ac4d5e2a90f9bd4c91f3cc65b0a46859dbd499df",
         "type": "github"
       },
       "original": {
         "owner": "arilotter",
-        "ref": "hmm",
         "repo": "solana-flake",
         "type": "github"
       }
