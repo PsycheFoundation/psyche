@@ -665,6 +665,7 @@ impl SolanaBackend {
                                 broadcast_bloom: witness.broadcast_bloom,
                                 broadcast_merkle: witness.broadcast_merkle,
                                 metadata,
+                                training_times: witness.training_times,
                             }),
                         OpportunisticData::WarmupStep(witness) => program_coordinator
                             .request()
