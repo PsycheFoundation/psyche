@@ -3,5 +3,6 @@ mod memnet_coordinator_data_layout;
 mod memnet_coordinator_full_round;
 mod memnet_coordinator_init_free;
 mod memnet_coordinator_rewards;
+mod memnet_treasurer_create_claim;
 mod memnet_treasurer_create_update;
 mod memnet_treasurer_full_epoch;

@@ -74,21 +74,11 @@ pub async fn run() {
         paused: Some(false),
     };
 
-    // Create a run should fail without a proper coordinator account
-    process_treasurer_run_create(
-        &mut endpoint,
-        &payer,
-        &Pubkey::new_unique(),
-        &Pubkey::new_unique(),
-        RunCreateParams {
-            index,
-            run_id: run_id.clone(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-        },
-    )
-    .await
-    .unwrap_err();
+    // Prepare the collateral mint
+    let collateral_mint = endpoint
+        .process_spl_token_mint_new(&payer, &Pubkey::new_unique(), None, 6)
+        .await
+        .unwrap();
 
     // Create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
@@ -99,6 +89,22 @@ pub async fn run() {
         )
         .await
         .unwrap();
+
+    // Create a run should fail without a proper coordinator account
+    process_treasurer_run_create(
+        &mut endpoint,
+        &payer,
+        &collateral_mint,
+        &Pubkey::new_unique(),
+        RunCreateParams {
+            index,
+            run_id: run_id.clone(),
+            main_authority: main_authority.pubkey(),
+            join_authority: Pubkey::new_unique(),
+        },
+    )
+    .await
+    .unwrap_err();
 
     // Create a run should fail without a proper collateral mint
     process_treasurer_run_create(
@@ -116,13 +122,7 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Prepare the collateral mint
-    let collateral_mint = endpoint
-        .process_spl_token_mint_new(&payer, &Pubkey::new_unique(), None, 6)
-        .await
-        .unwrap();
-
-    // Create a run, should succeed now
+    // Create a run with correct inputs, should succeed now
     let (run, coordinator_instance) = process_treasurer_run_create(
         &mut endpoint,
         &payer,
@@ -164,7 +164,7 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Create a run with the same coordinator account should fail
+    // Create another run with the same coordinator account should fail
     process_treasurer_run_create(
         &mut endpoint,
         &payer,
@@ -221,4 +221,20 @@ pub async fn run() {
     )
     .await
     .unwrap_err();
+
+    // Creating a completely separate run should succeed
+    process_treasurer_run_create(
+        &mut endpoint,
+        &payer,
+        &collateral_mint,
+        &coordinator_account2,
+        RunCreateParams {
+            index: index + 1,
+            run_id: "another run id".to_string(),
+            main_authority: main_authority.pubkey(),
+            join_authority: Pubkey::new_unique(),
+        },
+    )
+    .await
+    .unwrap();
 }
