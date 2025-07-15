@@ -1,25 +1,25 @@
-use crate::{fetch_data::DataFetcher, IntegrationTestLogMarker, WandBInfo};
+use crate::{IntegrationTestLogMarker, WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
-    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
     Coordinator, HealthChecks,
+    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
 use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, TokenSize};
 use psyche_data_provider::{
+    DataProvider, DataProviderTcpClient, DummyDataProvider, WeightedDataProvider,
     download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
-    DataProvider, DataProviderTcpClient, DummyDataProvider, WeightedDataProvider,
 };
 use psyche_modeling::{
-    auto_tokenizer, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel,
-    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig,
-    ModelLoadError, ParallelModels, PretrainedSource, Trainer,
+    AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel, DeepseekForCausalLM,
+    DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig, ModelLoadError,
+    ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tokenizers::{models::wordlevel::WordLevel, ModelWrapper, Tokenizer};
+use tokenizers::{ModelWrapper, Tokenizer, models::wordlevel::WordLevel};
 use tokio::{
     io,
     sync::{mpsc::UnboundedSender, oneshot},
@@ -28,9 +28,9 @@ use tokio::{
 use tracing::{debug, error, info};
 
 use super::{
-    cooldown::CooldownStepMetadata, evals::EvalRunner, stats::StatsLogger, steps::StepStateMachine,
-    train::TrainingStepMetadata, types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata,
-    witness::WitnessStepMetadata, CheckpointConfig, FinishedBroadcast,
+    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::EvalRunner,
+    stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
+    types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
 
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
@@ -342,14 +342,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     model::LLMArchitecture::HfAuto => {
                                         #[cfg(feature = "python")]
                                         {
-                                            AutoConfig::Auto(
-                                                serde_json::from_str::<
-                                                    psyche_modeling::PythonModelConfig,
-                                                >(
-                                                    &model_config
-                                                )?
-                                                .into(),
-                                            )
+                                            AutoConfig::Auto(serde_json::from_str::<
+                                                psyche_modeling::PythonModelConfig,
+                                            >(
+                                                &model_config
+                                            )?)
                                         }
 
                                         #[cfg(not(feature = "python"))]
@@ -413,8 +410,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             psyche_modeling::ParallelismConfig { dp, tp },
                                             Some(llm.max_seq_len as usize),
                                         )
-                                        .map(|x| RawLoadedModelType::PythonDistributed(x))
-                                        .map_err(|x| InitRunError::PythonDistributedError(x))
+                                        .map(RawLoadedModelType::PythonDistributed)
+                                        .map_err(InitRunError::PythonDistributedError)
                                     } else {
                                         psyche_modeling::PythonCausalLM::new(
                                             "hf-auto",
@@ -423,8 +420,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             None,
                                             Some(llm.max_seq_len as usize),
                                         )
-                                        .map(|x| RawLoadedModelType::Python(x))
-                                        .map_err(|x| InitRunError::PythonModelError(x))
+                                        .map(RawLoadedModelType::Python)
+                                        .map_err(InitRunError::PythonModelError)
                                     }
                                 })
                                 .await
@@ -592,7 +589,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         match wandb.new_run(run_info.build()?).await {
                             Ok(run) => Ok(Some(run)),
                             Err(e) => {
-                                error!("[init_run] Could not connect to wandb. Will continue training without it.");
+                                error!(
+                                    "[init_run] Could not connect to wandb. Will continue training without it."
+                                );
                                 debug!("[init_run] wandb error: {:?}", e);
                                 Ok(None)
                             }
@@ -698,31 +697,35 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             }
             #[cfg(feature = "python")]
             RawLoadedModelType::Python(model) => {
-                vec![psyche_modeling::LocalTrainer::new(
-                    ParallelModels {
-                        models: vec![Box::new(model) as Box<dyn CausalLM>],
-                        barrier: Arc::new(psyche_modeling::NopBarrier::new()) as Arc<dyn Barrier>,
-                        data_parallel: None,
-                    },
-                    llm.lr_schedule,
-                    llm.optimizer,
-                    init_config.micro_batch_size,
-                    init_config.optim_stats_every_n_steps,
-                    init_config.grad_accum_in_fp32,
-                )
-                .into()]
+                vec![
+                    psyche_modeling::LocalTrainer::new(
+                        ParallelModels {
+                            models: vec![Box::new(model) as Box<dyn CausalLM>],
+                            barrier: Arc::new(psyche_modeling::NopBarrier) as Arc<dyn Barrier>,
+                            data_parallel: None,
+                        },
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )
+                    .into(),
+                ]
             }
             #[cfg(feature = "python")]
             RawLoadedModelType::PythonDistributed(model) => {
-                vec![psyche_modeling::PythonDistributedTrainer::new(
-                    model,
-                    llm.lr_schedule,
-                    llm.optimizer,
-                    init_config.micro_batch_size,
-                    init_config.optim_stats_every_n_steps,
-                    init_config.grad_accum_in_fp32,
-                )?
-                .into()]
+                vec![
+                    psyche_modeling::PythonDistributedTrainer::new(
+                        model,
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )?
+                    .into(),
+                ]
             }
         };
 

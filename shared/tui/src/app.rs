@@ -1,7 +1,7 @@
 use crate::{terminal::TerminalWrapper, widget::CustomWidget};
 use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
 use futures::StreamExt;
-use ratatui::{backend::Backend, Terminal};
+use ratatui::{Terminal, backend::Backend};
 use std::time::Duration;
 use tokio::{
     select,

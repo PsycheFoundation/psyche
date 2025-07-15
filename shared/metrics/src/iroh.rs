@@ -29,13 +29,12 @@ use std::{
 };
 
 use opentelemetry::{
-    global,
+    KeyValue, global,
     metrics::{Counter, Gauge, Meter},
-    KeyValue,
 };
 use tokio::time::interval;
 
-use iroh_metrics::{parse_prometheus_metrics, MetricsSource, Registry};
+use iroh_metrics::{MetricsSource, Registry, parse_prometheus_metrics};
 
 #[derive(Clone, Debug)]
 /// Iroh metrics collector that pulls metrics from an iroh-metrics Registry into OpenTelemetry
@@ -122,7 +121,7 @@ impl IrohMetricsCollector {
                         // It's a counter
                         let otel_name = base_name.trim_end_matches("_total");
                         let counter = counters.entry(otel_name.to_string()).or_insert_with(|| {
-                            meter.u64_counter(format!("iroh_{}", otel_name)).build()
+                            meter.u64_counter(format!("iroh_{otel_name}")).build()
                         });
 
                         // calculate delta for counter
@@ -141,7 +140,7 @@ impl IrohMetricsCollector {
                     } else {
                         // it's a gauge
                         let gauge = gauges.entry(base_name.clone()).or_insert_with(|| {
-                            meter.f64_gauge(format!("iroh_{}", base_name)).build()
+                            meter.f64_gauge(format!("iroh_{base_name}")).build()
                         });
 
                         gauge.record(value, &otel_labels);
@@ -160,7 +159,7 @@ impl IrohMetricsCollector {
     pub fn register_group(&self, group: Arc<dyn iroh_metrics::MetricsGroup>) -> Result<(), String> {
         self.iroh_registry
             .write()
-            .map_err(|e| format!("Failed to acquire write lock: {}", e))?
+            .map_err(|e| format!("Failed to acquire write lock: {e}"))?
             .register(group);
         Ok(())
     }
@@ -172,7 +171,7 @@ impl IrohMetricsCollector {
     ) -> Result<(), String> {
         self.iroh_registry
             .write()
-            .map_err(|e| format!("Failed to acquire write lock: {}", e))?
+            .map_err(|e| format!("Failed to acquire write lock: {e}"))?
             .register_all(group_set);
         Ok(())
     }
@@ -213,7 +212,7 @@ mod tests {
     use super::*;
     use iroh_metrics::{Counter, Gauge};
     use std::sync::Arc;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     #[derive(Debug, Default, iroh_metrics::MetricsGroup)]
     #[metrics(name = "test")]

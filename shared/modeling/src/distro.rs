@@ -726,7 +726,7 @@ unsafe impl Send for Distro {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{set_torch_rng_seed, Variable};
+    use crate::{Variable, set_torch_rng_seed};
     use itertools::iproduct;
 
     impl Variable for Tensor {

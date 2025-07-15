@@ -11,9 +11,8 @@
 
 */
 use crate::{
-    load_dataset,
+    TaskType, load_dataset,
     traits::{Document, LogLikelihoodTask},
-    TaskType,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};

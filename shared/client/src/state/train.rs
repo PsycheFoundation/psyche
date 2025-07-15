@@ -1,13 +1,13 @@
 use crate::{
+    IntegrationTestLogMarker,
     fetch_data::{BatchIdSet, DataFetcher, TrainingDataForStep},
     state::types::{DeserializeError, PayloadState},
-    IntegrationTestLogMarker,
 };
 
-use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, future::try_join_all, stream::FuturesUnordered};
 use psyche_coordinator::{
-    assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model, Commitment,
-    CommitteeSelection, Coordinator, CoordinatorError, HealthChecks, BLOOM_FALSE_RATE,
+    BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
+    assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
 use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
@@ -15,22 +15,22 @@ use psyche_modeling::{
     TrainerThreadCommunicationError,
 };
 use psyche_network::{
-    distro_results_to_bytes, AuthenticatableIdentity, Hash, SerializeDistroResultError,
-    SerializedDistroResult, TransmittableDistroResult,
+    AuthenticatableIdentity, Hash, SerializeDistroResultError, SerializedDistroResult,
+    TransmittableDistroResult, distro_results_to_bytes,
 };
 use std::{
     collections::{BTreeMap, HashMap},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
 use thiserror::Error;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, trace, trace_span, warn, Instrument};
+use tracing::{Instrument, debug, error, info, trace, trace_span, warn};
 
 use super::{
     evals::{EvalRunner, MaybeRunningEvals},

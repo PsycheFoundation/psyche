@@ -1,8 +1,8 @@
 use anyhow::Result;
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use psyche_data_provider::{
-    http::{FileURLs, HttpDataProvider},
     TokenizedDataProvider,
+    http::{FileURLs, HttpDataProvider},
 };
 use std::io::Write;
 use std::net::SocketAddr;
@@ -27,7 +27,7 @@ impl TestServer {
         let temp_dir = tempfile::tempdir()?;
 
         for (idx, data) in files.iter().enumerate() {
-            let file_path = temp_dir.path().join(format!("{:0>3}.ds", idx));
+            let file_path = temp_dir.path().join(format!("{idx:0>3}.ds"));
             let mut file = File::create(&file_path)?;
             file.write_all(data)?;
             debug!("created temp test file {file_path:?}");

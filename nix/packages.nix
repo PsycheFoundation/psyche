@@ -8,7 +8,7 @@
       ...
     }:
     let
-      inherit (pkgs.psycheLib) buildRustPackage useHostGpuDrivers;
+      inherit (pkgs.psycheLib) buildRustPackageWithPythonSidecar useHostGpuDrivers;
 
     in
     {

@@ -70,7 +70,7 @@ where
         if result == y {
             return true;
         } else if attempt == retry_attempts {
-            eprintln!("assertion failed, got: {:?} but expected: {:?}", result, y);
+            eprintln!("assertion failed, got: {result:?} but expected: {y:?}");
             return false;
         } else {
             tokio::time::sleep(Duration::from_millis(10 * attempt)).await;
@@ -105,8 +105,7 @@ pub async fn assert_witnesses_healthy_score(
 
     assert_eq!(
         score, expected_score,
-        "Score {} != expected score {}",
-        score, expected_score
+        "Score {score} != expected score {expected_score}"
     );
 }
 
@@ -118,7 +117,7 @@ pub fn dummy_client_app_params_with_training_delay(
     AppParams {
         cancel: CancellationToken::default(),
         identity_secret_key: SecretKey::generate(&mut rand::rngs::OsRng),
-        server_addr: format!("localhost:{}", server_port).to_string(),
+        server_addr: format!("localhost:{server_port}").to_string(),
         tx_tui_state: None,
         run_id: run_id.to_string(),
         data_parallelism: 1,
@@ -147,7 +146,7 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
     AppParams {
         cancel: CancellationToken::default(),
         identity_secret_key: SecretKey::generate(&mut rand::rngs::OsRng),
-        server_addr: format!("localhost:{}", server_port).to_string(),
+        server_addr: format!("localhost:{server_port}").to_string(),
         tx_tui_state: None,
         run_id: run_id.to_string(),
         data_parallelism: 1,

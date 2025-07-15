@@ -174,8 +174,8 @@ impl Error for DistroResultsReaderError {
 impl fmt::Display for DistroResultsReaderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard error: {}", err),
-            DistroResultsReaderError::Io(err) => write!(f, "I/O error: {}", err),
+            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard error: {err}"),
+            DistroResultsReaderError::Io(err) => write!(f, "I/O error: {err}"),
         }
     }
 }
@@ -183,8 +183,8 @@ impl fmt::Display for DistroResultsReaderError {
 impl fmt::Debug for DistroResultsReaderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard({:?})", err),
-            DistroResultsReaderError::Io(err) => write!(f, "Io({:?})", err),
+            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard({err:?})"),
+            DistroResultsReaderError::Io(err) => write!(f, "Io({err:?})"),
         }
     }
 }
@@ -221,7 +221,7 @@ impl<R: Read> Iterator for DistroResultIterator<R> {
                         Ok(0) => {
                             return Some(Err(DistroResultsReaderError::Postcard(
                                 postcard::Error::DeserializeUnexpectedEnd,
-                            )))
+                            )));
                         }
                         Ok(n) => self.buffer.extend_from_slice(&chunk[..n]),
                         Err(e) => return Some(Err(DistroResultsReaderError::Io(e))),

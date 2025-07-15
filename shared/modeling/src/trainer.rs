@@ -1,16 +1,11 @@
 use crate::{
-    unsharded_cpu_variables, AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize,
-    Distro, DistroResult, EosToks, Fp32GradientAccumulator, Optimizer, ReduceType,
-    StableVariableIterator,
+    AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize, Distro, DistroResult,
+    EosToks, Fp32GradientAccumulator, Optimizer, ReduceType, StableVariableIterator,
+    unsharded_cpu_variables,
 };
 use anyhow::{Error, Result};
 use psyche_core::{Barrier, BatchId, LearningRateSchedule, OptimizerDefinition};
-use std::{
-    collections::HashMap,
-    ops::ControlFlow,
-    sync::{mpsc, Arc},
-    time::Instant,
-};
+use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Instant};
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -249,8 +244,8 @@ impl From<LocalTrainer> for Trainer {
 #[derive(Debug)]
 pub struct LocalTrainer {
     models: Vec<(
-        mpsc::Sender<ParallelAssignment>,
-        mpsc::Receiver<ParallelResult>,
+        flume::Sender<ParallelAssignment>,
+        flume::Receiver<ParallelResult>,
     )>,
     first_model_device: Device,
     barrier: Arc<dyn Barrier>,
@@ -308,8 +303,8 @@ impl LocalTrainer {
         };
 
         for (index, (model, data_parallel)) in models.into_iter().zip(data_parallels).enumerate() {
-            let (assignment_tx, assignment_rx) = mpsc::channel();
-            let (result_tx, result_rx) = mpsc::channel();
+            let (assignment_tx, assignment_rx) = flume::unbounded();
+            let (result_tx, result_rx) = flume::unbounded();
             ret.push((assignment_tx, result_rx));
 
             let optimizer = Optimizer::new(optimizer, model.as_ref());
@@ -401,7 +396,8 @@ impl LocalTrainer {
         if !rollback.is_empty() {
             error!(
                 "we have not implemented getting data from previous rounds. this should be impossible to hit.. this step is {step}, rollback passed is {:?}",
-                rollback.iter().map(|(step, _)| step).collect::<Vec<_>>());
+                rollback.iter().map(|(step, _)| step).collect::<Vec<_>>()
+            );
         }
         self.barrier.reset();
         for (tx, _) in &self.models {
@@ -441,9 +437,8 @@ impl LocalTrainer {
                 }
                 weird => {
                     return Err(TrainerThreadCommunicationError::UnexpectedResult(format!(
-                        "{:?}",
-                        weird
-                    )))
+                        "{weird:?}"
+                    )));
                 }
             }
         }
@@ -486,7 +481,7 @@ impl LocalTrainer {
                 o => {
                     return Err(ApplyDistroResultError::RecievedWrongResultType(format!(
                         "{o:?}"
-                    )))
+                    )));
                 }
             }
         }
@@ -512,9 +507,8 @@ impl LocalTrainer {
                 }
                 result => {
                     return Err(TrainerThreadCommunicationError::UnexpectedResult(format!(
-                        "{:?}",
-                        result
-                    )))
+                        "{result:?}"
+                    )));
                 }
             }
         }
@@ -525,8 +519,8 @@ impl LocalTrainer {
     #[allow(clippy::too_many_arguments)]
     fn model_thread(
         mut model: Box<dyn CausalLM>,
-        assignment: mpsc::Receiver<ParallelAssignment>,
-        submission: mpsc::Sender<ParallelResult>,
+        assignment: flume::Receiver<ParallelAssignment>,
+        submission: flume::Sender<ParallelResult>,
         mut optimizer: Optimizer,
         index: usize,
         micro_batch_size: usize,
@@ -558,6 +552,8 @@ impl LocalTrainer {
                 }
             };
             data_parallel = Some((
+                #[allow(clippy::arc_with_non_send_sync)]
+                // TODO: analyze how we're using Arc here, is this right?
                 Arc::new(Communicator::NCCL(comm)),
                 data_parallel_def.barrier,
             ))
@@ -901,7 +897,7 @@ pub enum ApplyDistroResultError {
     SendOptimize,
 
     #[error("failed to recv optimization result from trainer thread: {0}")]
-    ReceiveResult(#[from] std::sync::mpsc::RecvError),
+    ReceiveResult(#[from] flume::RecvError),
 
     #[error("recieved wrong result type from trainer thread. expected Optimize, got {0:?}")]
     RecievedWrongResultType(String),
