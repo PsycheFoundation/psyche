@@ -49,8 +49,7 @@ const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
-const MAX_ERRORS_PER_PEER: u8 = 3;
-const MAX_RETRIES_PER_PEER: u8 = 2;
+const MAX_ERRORS_PER_PEER: u8 = 2;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -122,7 +121,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut sharable_model = SharableModel::empty();
                 let peer_manager = Arc::new(PeerManagerHandle::new(
                     MAX_ERRORS_PER_PEER,
-                    MAX_RETRIES_PER_PEER,
                     param_requests_cancel_token.clone(),
                 ));
 
@@ -299,7 +297,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
                                                 let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
-                                                peer_manager.report_blob_ticket_download_error(dl.blob_ticket.node_addr().node_id);
+                                                peer_manager.report_blob_ticket_request_error(dl.blob_ticket.node_addr().node_id);
 
                                                 info!(
                                                     "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
