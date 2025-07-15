@@ -34,7 +34,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     solana-pkgs = {
-      url = "github:arilotter/solana-flake/hmm";
+      url = "github:arilotter/solana-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     agenix-shell = {
@@ -63,6 +63,7 @@
     inputs.flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
         "x86_64-linux"
+        "aarch64-darwin"
       ];
 
       agenix-shell = {
