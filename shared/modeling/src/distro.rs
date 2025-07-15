@@ -304,7 +304,7 @@ impl TransformDCT {
             let n1w = self
                 .b_dict
                 .get(n1)
-                .unwrap_or_else(|| panic!("b_dict no value for key {}", n1))
+                .unwrap_or_else(|| panic!("b_dict no value for key {n1}"))
                 .to_device(device);
             self.b_dict.insert(*n1, n1w.copy());
 
@@ -726,7 +726,7 @@ unsafe impl Send for Distro {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Variable, set_torch_rng_seed};
+    use crate::{set_torch_rng_seed, Variable};
     use itertools::iproduct;
 
     impl Variable for Tensor {

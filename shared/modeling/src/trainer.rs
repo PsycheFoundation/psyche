@@ -1,7 +1,7 @@
 use crate::{
-    AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize, Distro, DistroResult,
-    EosToks, Fp32GradientAccumulator, Optimizer, ReduceType, StableVariableIterator,
-    unsharded_cpu_variables,
+    unsharded_cpu_variables, AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize,
+    Distro, DistroResult, EosToks, Fp32GradientAccumulator, Optimizer, ReduceType,
+    StableVariableIterator,
 };
 use anyhow::{Error, Result};
 use psyche_core::{Barrier, BatchId, LearningRateSchedule, OptimizerDefinition};
@@ -1114,7 +1114,7 @@ impl CausalLM for Trainer {
         match self {
             Trainer::Local(local_trainer) => local_trainer.is_dummy_model(),
             #[cfg(feature = "python")]
-            Trainer::PythonDistributed(python_distributed_trainer) => false,
+            Trainer::PythonDistributed(_) => false,
         }
     }
 }
