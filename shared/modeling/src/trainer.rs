@@ -1114,7 +1114,7 @@ impl CausalLM for Trainer {
         match self {
             Trainer::Local(local_trainer) => local_trainer.is_dummy_model(),
             #[cfg(feature = "python")]
-            Trainer::PythonDistributed(python_distributed_trainer) => false,
+            Trainer::PythonDistributed(_) => false,
         }
     }
 }

@@ -304,7 +304,7 @@ impl TransformDCT {
             let n1w = self
                 .b_dict
                 .get(n1)
-                .unwrap_or_else(|| panic!("b_dict no value for key {}", n1))
+                .unwrap_or_else(|| panic!("b_dict no value for key {n1}"))
                 .to_device(device);
             self.b_dict.insert(*n1, n1w.copy());
 

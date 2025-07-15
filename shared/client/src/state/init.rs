@@ -331,7 +331,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             serde_json::from_str(&model_config)?;
                                         // Check if this is actually a dummy model shared via P2P
                                         if llama_config.is_dummy {
-                                            info!("Detected dummy model config via P2P, will continue with P2P logic but create DummyModel at the end");
+                                            info!(
+                                                "Detected dummy model config via P2P, will continue with P2P logic but create DummyModel at the end"
+                                            );
                                             is_dummy_model = true;
                                         }
                                         AutoConfig::Llama(llama_config)
