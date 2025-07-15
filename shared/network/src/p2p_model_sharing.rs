@@ -44,18 +44,13 @@ enum PeerCommand {
 }
 
 impl PeerManagerHandle {
-    pub fn new(
-        max_errors_per_peer: u8,
-        max_retries_per_peer: u8,
-        cancellation_token: CancellationToken,
-    ) -> Self {
+    pub fn new(max_errors_per_peer: u8, cancellation_token: CancellationToken) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
         // Spawn the peer manager actor
         tokio::spawn(peer_manager_actor(
             peer_rx,
             max_errors_per_peer,
-            max_retries_per_peer,
             cancellation_token,
         ));
 
@@ -105,41 +100,23 @@ impl PeerManagerHandle {
             tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
         }
     }
-
-    /// Report that a peer has failed to in the middle of the download process of a blob ticket
-    pub fn report_blob_ticket_download_error(&self, peer_id: NodeId) {
-        if self
-            .peer_tx
-            .send(PeerCommand::ReportBlobTicketDownloadError { peer_id })
-            .is_err()
-        {
-            tracing::error!(
-                "Failed to report retry error for peer {peer_id}, PeerManager actor is dead"
-            );
-        }
-    }
 }
 
 struct PeerManagerActor {
     /// Peers that are available to request the model to
     available_peers: VecDeque<NodeId>,
     /// A map for the peer's blob ticket to their errors
-    /// A node could success sending the blob ticket but fail in the middle of the download so we differentiate between the two
-    /// Node -> (blob_ticket_request_errors, blob_ticket_downloads_errors)
-    errors_per_peers: HashMap<NodeId, (u8, u8)>,
+    errors_per_peers: HashMap<NodeId, u8>,
     /// Max errors we tolerate for a peer to share a parameter blob ticket
     max_errors_per_peer: u8,
-    /// Max errors we tolerate for a peer to fail in the middle of the download of a parameter blob ticket
-    max_retries_per_peer: u8,
 }
 
 impl PeerManagerActor {
-    pub fn new(max_errors_per_peer: u8, max_retries_per_peer: u8) -> Self {
+    pub fn new(max_errors_per_peer: u8) -> Self {
         Self {
             available_peers: VecDeque::new(),
             errors_per_peers: HashMap::new(),
             max_errors_per_peer,
-            max_retries_per_peer,
         }
     }
 
@@ -147,8 +124,7 @@ impl PeerManagerActor {
         match message {
             PeerCommand::SetPeers { peers } => {
                 self.available_peers = VecDeque::from(peers);
-                let errors_per_peers_vec =
-                    self.available_peers.iter().map(|peer| (*peer, (0u8, 0u8)));
+                let errors_per_peers_vec = self.available_peers.iter().map(|peer| (*peer, 0_u8));
                 self.errors_per_peers = HashMap::from_iter(errors_per_peers_vec);
 
                 info!(
@@ -186,15 +162,15 @@ impl PeerManagerActor {
                     blob_ticket.map(|bl| bl.hash()),
                     error_count
                 );
-                if error_count.0 >= self.max_errors_per_peer {
-                    // Don't need to actually remove it because we already popped it, just don't add it back
-                    warn!("Removing peer {peer_id} after {} errors", error_count.0);
+                if *error_count >= self.max_errors_per_peer {
+                    self.available_peers.retain(|id| *id != peer_id);
+                    warn!("Removing peer {peer_id} after {} errors", error_count);
 
                     if self.available_peers.is_empty()
                         && self
                             .errors_per_peers
                             .iter()
-                            .all(|(_, (e, _))| *e == self.max_errors_per_peer)
+                            .all(|(_, e)| *e >= self.max_errors_per_peer)
                     {
                         error!(
                             "No more peers available to ask for model blob tickets, terminate process"
@@ -207,35 +183,6 @@ impl PeerManagerActor {
                     }
                 };
             }
-            PeerCommand::ReportBlobTicketDownloadError { peer_id } => {
-                let error_count = self.errors_per_peers.entry(peer_id).or_insert((0, 0));
-                error_count.1 += 1;
-
-                error!(
-                    "Error downloading blob ticket from peer: {peer_id}, it already failed {}",
-                    error_count.1
-                );
-                if error_count.1 >= self.max_retries_per_peer {
-                    warn!("Removing peer {peer_id} after {} retries", error_count.1);
-                    self.available_peers.retain(|p| *p != peer_id);
-                    info!(
-                        "AVAILABLE PEERS: {:?}, AFTER REMOVING: {:?}",
-                        self.available_peers, peer_id,
-                    );
-
-                    if self.available_peers.is_empty()
-                        && self
-                            .errors_per_peers
-                            .iter()
-                            .all(|(_, (_, e))| *e == self.max_retries_per_peer)
-                    {
-                        error!(
-                            "No more peers available to download blob tickets, terminate process"
-                        );
-                        cancellation_token.cancel();
-                    }
-                }
-            }
         }
     }
 }
@@ -243,10 +190,9 @@ impl PeerManagerActor {
 async fn peer_manager_actor(
     mut rx: mpsc::UnboundedReceiver<PeerCommand>,
     max_errors_per_peer: u8,
-    max_retries_per_peer: u8,
     cancellation_token: CancellationToken,
 ) {
-    let mut actor = PeerManagerActor::new(max_errors_per_peer, max_retries_per_peer);
+    let mut actor = PeerManagerActor::new(max_errors_per_peer);
 
     while let Some(message) = rx.recv().await {
         actor.handle_message(message, cancellation_token.clone());

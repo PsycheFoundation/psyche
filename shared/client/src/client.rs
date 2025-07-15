@@ -124,7 +124,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut sharable_model = SharableModel::empty();
                 let peer_manager = Arc::new(PeerManagerHandle::new(
                     MAX_ERRORS_PER_PEER,
-                    MAX_RETRIES_PER_PEER,
                     param_requests_cancel_token.clone(),
                 ));
 
