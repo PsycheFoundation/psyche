@@ -64,49 +64,81 @@ pub struct PreparedTaskResult {
 #[derive(Debug)]
 struct TokenizedLLHDocument {
     text: Vec<i64>,
-    choices: Vec<Vec<i64>>,
+    choices_str: Vec<String>,
     answer: usize,
+    choices_token_len: Vec<usize>,
+    requests: Vec<Vec<i64>>,
 }
 
 impl TokenizedLLHDocument {
     pub fn from_document(doc: Document, tokenizer: &Tokenizer) -> Self {
         let text = tokenizer
-            .encode(doc.text, false)
+            .encode(doc.text.clone(), false)
             .unwrap()
             .get_ids()
             .iter()
             .map(|x| *x as i64)
             .collect::<Vec<_>>();
-        let choices = doc
-            .choices
-            .into_iter()
-            .map(|x| {
-                let choice_with_space = format!(" {x}");
-                let choice = tokenizer
-                    .encode(choice_with_space, false)
-                    .unwrap()
-                    .get_ids()
+        // e.g.
+        // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
+        // text: 'Which statement best explains why photosynthesis is the foundation of most food webs?'
+        // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
+
+        let mut requests: Vec<Vec<i64>> = Vec::new();
+        let mut choices_str = Vec::new();
+        let mut choices_token_len = Vec::new();
+        let mut choices: Vec<Vec<i64>> = Vec::new();
+
+        for choice in doc.choices.iter() {
+            choices_str.push(choice.clone());
+
+            let request = tokenizer
+                .encode(format!("{} {}", doc.text, choice), false)
+                .unwrap()
+                .get_ids()
+                .iter()
+                .map(|x| *x as i64)
+                .collect::<Vec<_>>();
+            requests.push(request.clone());
+
+            // Tokenizing "choice" alone produces different tokens than tokenizing "text + choice" together.
+            // So, we extract choice tokens iterating the full request backwards to ensure exact matching.
+            for idx in 1..request.len() {
+                let choice_tokens = &request[request.len() - idx..]
                     .iter()
-                    .map(|x| *x as i64)
+                    .map(|x| *x as u32)
                     .collect::<Vec<_>>();
-                choice
-            })
-            .collect();
+                let choice_str = tokenizer.decode(choice_tokens, false).unwrap();
+                if choice_str.contains(choice) {
+                    let choice_tokens = choice_tokens.iter().map(|x| *x as i64).collect::<Vec<_>>();
+                    choices.push(choice_tokens.clone());
+                    choices_token_len.push(choice_tokens.len());
+
+                    break;
+                }
+            }
+        }
+
+        // verify correctness
+        for x in 0..requests.len() {
+            debug_assert_eq!(
+                requests[x][requests[x].len() - choices_token_len[x]..],
+                choices[x]
+            );
+        }
+
         Self {
             text,
-            choices,
+            choices_str,
             answer: doc.answer,
+            requests,
+            choices_token_len,
         }
     }
 }
 
 impl Task {
-    pub fn prepare(
-        mut self,
-        tokenizer: &Tokenizer,
-        bos_token_id: Option<i64>,
-        limit: Option<usize>,
-    ) -> PreparedTask {
+    pub fn prepare(mut self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
         let name = format!("{}", &self);
         info!("Preparing {name}");
         match self.task_type {
@@ -129,19 +161,14 @@ impl Task {
                 } else {
                     String::new()
                 };
-                let mut tokenized_fewshot = match bos_token_id {
-                    Some(bos_token_id) => vec![bos_token_id],
-                    None => Vec::new(),
-                };
-                tokenized_fewshot.append(
-                    &mut tokenizer
-                        .encode(fewshot, false)
-                        .unwrap()
-                        .get_ids()
-                        .iter()
-                        .map(|x| *x as i64)
-                        .collect::<Vec<_>>(),
-                );
+
+                let tokenized_fewshot = tokenizer
+                    .encode(fewshot, false)
+                    .unwrap()
+                    .get_ids()
+                    .iter()
+                    .map(|x| *x as i64)
+                    .collect::<Vec<_>>();
                 let docs = docs
                     .into_iter()
                     .map(|x| TokenizedLLHDocument::from_document(x, tokenizer))
@@ -232,52 +259,52 @@ impl PreparedTask {
             let mut context = tokenized_fewshot.to_vec();
             context.extend_from_slice(&doc.text);
             let mut scores: Vec<(f32, bool)> = Vec::new();
-            if doc.choices.iter().all(|x| x.len() == 1) {
-                let ids = Tensor::from_slice(&context)
+
+            for idx in 0..doc.requests.len() {
+                // e.g:
+                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
+                let mut request = doc.requests[idx].clone();
+                // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
+                let choice = &doc.requests[idx][request.len() - doc.choices_token_len[idx]..];
+
+                // Remove the last token since we dont want to pass it to the model
+                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
+                request.pop();
+                let input_lenght = &request.len();
+
+                let request = Tensor::from_slice(&request)
                     .to(options.model.device())
                     .unsqueeze(0);
-                let (logits, _) = options.model.forward(&ids, None, Some(1), None);
-                let logits = logits.squeeze().log_softmax(-1, None);
-                let greedy: i64 = logits.argmax(-1, false).try_into().unwrap();
-                let index =
-                    Tensor::from_slice(&doc.choices.iter().map(|x| x[0]).collect::<Vec<_>>())
-                        .to(logits.device());
-                let logits = logits.gather(-1, &index, false);
-                let logits: Vec<f32> = logits.try_into().unwrap();
-                scores.extend(
-                    logits
-                        .into_iter()
-                        .zip(doc.choices.iter())
-                        .map(|(score, choice)| (score, choice[0] == greedy)),
+
+                let (logits, _) = {
+                    let _no_grad = tch::no_grad_guard();
+                    options.model.forward(&request, None, None, None)
+                };
+
+                let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
+
+                // Get tensor of shape `[choice.len(), vocab_size]` containing the
+                // model's logits for each token of the `choice` text.
+                let logits = logits.slice(
+                    0,
+                    *input_lenght as i64 - choice.len() as i64,
+                    *input_lenght as i64,
+                    1,
                 );
-            } else {
-                for choice in &doc.choices {
-                    let mut ids = context.clone();
-                    ids.extend_from_slice(choice);
-                    let ids = Tensor::from_slice(&ids)
-                        .to(options.model.device())
-                        .unsqueeze(0);
-                    // if the continuation is N tokens, we need the the last N + 1 logits, since we are getting the
-                    // probs at the last token of the prompt (so prediction of the first continuation)
-                    let (logits, _) =
-                        options
-                            .model
-                            .forward(&ids, None, Some((choice.len() + 1) as i64), None);
-                    // drop the last logit, since we don't want to score what comes after the continuation
-                    let logits = logits.log_softmax(-1, None).squeeze_dim(0).slice(
-                        0,
-                        0,
-                        choice.len() as i64,
-                        1,
-                    );
-                    let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
-                    let exact_match = greedy_tokens.eq(choice);
-                    let index = Tensor::from_slice(choice).to(logits.device()).unsqueeze(-1);
-                    let logits = logits.gather(-1, &index, false);
-                    let loglikelihood: f32 = logits.sum(Kind::Float).try_into().unwrap();
-                    scores.push((loglikelihood, exact_match));
-                }
+
+                let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
+                let exact_match = greedy_tokens.eq(&choice);
+
+                let choice_log_prob = logits.log_softmax(-1, None).gather(
+                    -1,
+                    &Tensor::from_slice(choice).to(logits.device()).unsqueeze(-1),
+                    false,
+                );
+
+                let loglikelihood: f32 = choice_log_prob.sum(Kind::Float).try_into().unwrap();
+                scores.push((loglikelihood, exact_match));
             }
+
             let selected: i64 = Tensor::from_slice(&scores.iter().map(|x| x.0).collect::<Vec<_>>())
                 .argmax(-1, false)
                 .try_into()
@@ -286,7 +313,7 @@ impl PreparedTask {
                 &scores
                     .iter()
                     .enumerate()
-                    .map(|(idx, x)| x.0 / doc.choices[idx].len() as f32)
+                    .map(|(idx, score)| score.0 / (doc.choices_str[idx].len() as f32))
                     .collect::<Vec<_>>(),
             )
             .argmax(-1, false)
