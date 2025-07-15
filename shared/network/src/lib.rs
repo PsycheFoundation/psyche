@@ -1,5 +1,5 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
@@ -16,8 +16,8 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
-    MODEL_REQUEST_TIMEOUT_SECS,
+    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
+    PeerManagerHandle,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 use router::Router;
@@ -38,15 +38,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{interval, Interval},
+    time::{Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
+use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
-pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
+pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
+pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -68,23 +68,23 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
+pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
 pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
-    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
+    RetriedDownloadsHandle, TransmittableDownload,
 };
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
 pub use p2p_model_sharing::{
-    ModelRequestType, ModelSharing, SharableModel, SharableModelError, TransmittableModelConfig,
-    ALPN,
+    ALPN, ModelRequestType, ModelSharing, SharableModel, SharableModelError,
+    TransmittableModelConfig,
 };
 pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
-    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
-    SerializedDistroResult, TransmittableDistroResult,
+    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_from_reader, distro_results_to_bytes,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -399,7 +399,7 @@ where
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
 
-        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        info!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let blobs_client = self.blobs.client().clone();
         tokio::spawn(async move {
@@ -835,7 +835,7 @@ pub async fn blob_ticket_param_request_task(
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                peer_manager.report_blob_ticket_request_error(peer_id);
+                peer_manager.report_blob_ticket_request_error(peer_id, None);
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;

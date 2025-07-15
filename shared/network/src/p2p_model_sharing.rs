@@ -4,7 +4,7 @@ use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
 use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
@@ -38,6 +38,7 @@ enum PeerCommand {
         peer_id: NodeId,
     },
     ReportModelDownloadError {
+        blob_ticket: Option<BlobTicket>,
         peer_id: NodeId,
     },
 }
@@ -83,10 +84,17 @@ impl PeerManagerHandle {
     }
 
     /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
-    pub fn report_blob_ticket_request_error(&self, peer_id: NodeId) {
+    pub fn report_blob_ticket_request_error(
+        &self,
+        peer_id: NodeId,
+        blob_ticket: Option<BlobTicket>,
+    ) {
         if self
             .peer_tx
-            .send(PeerCommand::ReportModelDownloadError { peer_id })
+            .send(PeerCommand::ReportModelDownloadError {
+                peer_id,
+                blob_ticket,
+            })
             .is_err()
         {
             tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
@@ -136,19 +144,23 @@ impl PeerManagerActor {
                 let _ = reply.send(peer);
             }
             PeerCommand::ReportSuccess { peer_id } => {
-                if (self.available_peers.contains(&peer_id)) {
-                    error!("PEER IS ALREADY AVAILABLE, DUPLICATION");
-                } else {
+                if !self.available_peers.contains(&peer_id) {
                     self.available_peers.push_back(peer_id);
+                } else {
+                    error!("Peer was already available but we tried to add it again");
                 }
                 info!("Peer {peer_id} correctly provided the blob ticket");
             }
-            PeerCommand::ReportModelDownloadError { peer_id } => {
+            PeerCommand::ReportModelDownloadError {
+                peer_id,
+                blob_ticket,
+            } => {
                 let error_count = self.errors_per_peers.entry(peer_id).or_insert(0);
                 *error_count += 1;
 
-                error!(
-                    "Error requestiong a blob ticket from peer: {peer_id}, it already failed {}",
+                warn!(
+                    "Error requesting a blob ticket {:?} from peer {peer_id}, it already failed {} time(s)",
+                    blob_ticket.map(|bl| bl.hash()),
                     error_count
                 );
                 if *error_count >= self.max_errors_per_peer {
@@ -167,10 +179,10 @@ impl PeerManagerActor {
                         cancellation_token.cancel();
                     }
                 } else {
-                    if (self.available_peers.contains(&peer_id)) {
-                        error!("PEER IS ALREADY AVAILABLE, DUPLICATION");
-                    } else {
+                    if !self.available_peers.contains(&peer_id) {
                         self.available_peers.push_back(peer_id);
+                    } else {
+                        error!("Peer was already available but we tried to add it again");
                     }
                 };
             }
@@ -423,19 +435,19 @@ impl SharableModel {
             }
             None => match loading_parameters.remove(param_name) {
                 Some(loading) => {
-                    trace!("Waiting for {param_name} parameter to finish serializing");
+                    info!("Waiting for {param_name} parameter to finish serializing");
                     let transmittable_parameter = loading
                         .await
                         .map_err(|_| SharableModelError::LoadThreadCrashed)??;
                     let transmittable_download =
                         TransmittableDownload::ModelParameter(transmittable_parameter);
-                    trace!("Adding paramerter downloadable {param_name}");
+                    info!("Adding parameter downloadable {param_name}");
                     let blob_ticket = p2p
                         .add_downloadable(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                     loaded_parameters.insert(param_name.to_string(), blob_ticket.clone());
-                    trace!("Finished adding paramerter downloadable {param_name}");
+                    info!("Finished adding parameter downloadable {param_name}");
                     Ok(blob_ticket)
                 }
                 None => Err(SharableModelError::ParameterUnknown(param_name.to_string())),
@@ -655,6 +667,7 @@ impl ModelSharing {
                     rx_req.await?
                 }
             };
+
             let data = postcard::to_stdvec(&blob_ticket)?;
             send.write_all(&data).await?;
             send.finish()?;

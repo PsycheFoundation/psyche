@@ -1,7 +1,7 @@
 use crate::{
-    unsharded_cpu_variables, AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize,
-    Distro, DistroResult, EosToks, Fp32GradientAccumulator, Optimizer, ReduceType,
-    StableVariableIterator,
+    AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize, Distro, DistroResult,
+    EosToks, Fp32GradientAccumulator, Optimizer, ReduceType, StableVariableIterator,
+    unsharded_cpu_variables,
 };
 use anyhow::{Error, Result};
 use psyche_core::{Barrier, BatchId, LearningRateSchedule, OptimizerDefinition};
