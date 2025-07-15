@@ -33,7 +33,7 @@ builds:
       - devShells.x86_64-linux.default
       - devShells.aarch64-darwin.default
       - nixosConfigurations.*
-      - 'checks.x86_64.*'
+      - 'checks.x86_64-linux.*'
 
   # on main, might as well build everything, though
   - exclude:
