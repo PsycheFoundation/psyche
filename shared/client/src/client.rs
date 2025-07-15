@@ -1,24 +1,24 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
-    RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
+    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
+    RunInitConfigAndIO, TrainingResult, NC,
 };
-use anyhow::{Error, Result, bail};
+use anyhow::{bail, Error, Result};
 use futures::future::join_all;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
+    allowlist, blob_ticket_param_request_task, raw_p2p_verify, router::Router,
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
-    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
-    router::Router,
+    ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState, Networkable, NodeAddr,
+    NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload,
+    MAX_DOWNLOAD_RETRIES,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
-use rand::{RngCore, seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, RngCore};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
@@ -27,7 +27,7 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{Notify, mpsc, watch},
+    sync::{mpsc, watch, Notify},
     task::JoinHandle,
     time::interval,
 };
@@ -50,7 +50,7 @@ const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_ERRORS_PER_PEER: u8 = 3;
-const MAX_RETRIES_PER_PEER: u8 = 5;
+const MAX_RETRIES_PER_PEER: u8 = 2;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -302,8 +302,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 peer_manager.report_blob_ticket_download_error(dl.blob_ticket.node_addr().node_id);
 
                                                 info!(
-                                                    "Model Sharing download failed {} time/s (will retry in {:?}): {}",
+                                                    "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
                                                     retries + 1,
+                                                    dl.blob_ticket.node_addr().node_id,
                                                     backoff_duration,
                                                     dl.error
                                                 );
@@ -470,20 +471,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             for (hash, ticket, tag, download_type) in pending_retries {
                                     let retries = retried_downloads.update_time(hash).await;
 
-                                    debug!("Retrying download for blob {} (attempt {})", hash, retries);
-
                                     metrics.record_download_retry(hash);
                                     // We check the type of the failed download and send it to the appropriate channel to retry it
                                     match download_type {
                                         DownloadType::DistroResult(_) => {
+                                            info!("Retrying download for distro result, (attempt {})", retries);
                                             let _ = tx_request_download.send((ticket, tag));
                                         },
                                         DownloadType::ModelSharing(inner) => {
                                             match inner {
                                                 ModelRequestType::Parameter(parameter) => {
+                                                    info!("Retrying download for model parameter: {parameter}, (attempt {})", retries);
                                                     let _ = tx_params_download.send(vec![(ticket, ModelRequestType::Parameter(parameter.clone()))]);
                                                 },
                                                 ModelRequestType::Config => {
+                                                    info!("Retrying download for model config, (attempt {})", retries);
                                                     let _ = tx_config_download.send(ticket);
                                                 }
                                             }
