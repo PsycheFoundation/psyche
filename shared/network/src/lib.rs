@@ -804,7 +804,7 @@ pub async fn blob_ticket_param_request_task(
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
 ) {
-    let max_attempts = 1000u16;
+    let max_attempts = 500u16;
     let mut attempts = 0u16;
 
     while attempts < max_attempts {

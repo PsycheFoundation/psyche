@@ -177,10 +177,8 @@ impl PeerManagerActor {
                         );
                         cancellation_token.cancel();
                     }
-                } else {
-                    if !self.available_peers.contains(&peer_id) {
-                        self.available_peers.push_back(peer_id);
-                    }
+                } else if !self.available_peers.contains(&peer_id) {
+                    self.available_peers.push_back(peer_id);
                 };
             }
         }
