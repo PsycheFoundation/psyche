@@ -66,7 +66,7 @@ while true; do
 
     start_time=$SECONDS  # Record start time
 
-    /usr/local/bin/psyche-solana-client train \
+    /bin/psyche-solana-client train \
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
