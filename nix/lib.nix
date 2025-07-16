@@ -44,11 +44,14 @@ let
         openssl
         fontconfig # for lr plot
       ])
-      ++ (with pkgs.cudaPackages; [
-        cudatoolkit
-        cuda_cudart
-        nccl
-      ]);
+      ++ lib.optionals pkgs.config.cudaSupport (
+        with pkgs.cudaPackages;
+        [
+          cudatoolkit
+          cuda_cudart
+          nccl
+        ]
+      );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
@@ -73,13 +76,18 @@ let
   );
 
   buildRustPackageWithPythonSidecar =
-    name:
+    {
+      name,
+      isExample ? false,
+    }:
     craneLib.buildPackage (
       rustWorkspaceArgsWithPython
       // {
         inherit cargoArtifacts;
         pname = name;
-        cargoExtraArgs = rustWorkspaceArgsWithPython.cargoExtraArgs + " --bin ${name}";
+        cargoExtraArgs =
+          rustWorkspaceArgsWithPython.cargoExtraArgs
+          + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
       }
     );
@@ -135,28 +143,26 @@ let
       }
     );
 
-  buildWholeWorkspace = craneLib.buildPackage (
-    rustWorkspaceArgsWithPython
-    // {
-      inherit cargoArtifacts;
-    }
-  );
-
   useHostGpuDrivers =
-    package:
-    pkgs.runCommandNoCC "${package.name}-nixgl-wrapped"
-      {
-        nativeBuildInputs = [ pkgs.makeWrapper ];
-      }
-      ''
-        mkdir -p $out/bin
-        for bin in ${package}/bin/*; do
-          if [ -f "$bin" ] && [ -x "$bin" ]; then
-            makeWrapper "$bin" "$out/bin/$(basename $bin)" \
-              --run 'exec ${pkgs.nix-gl-host}/bin/nixglhost "'"$bin"'" -- "$@"'
-          fi
-        done
-      '';
+    if pkgs.config.cudaSupport then
+      (package: package)
+    else
+      (
+        package:
+        pkgs.runCommandNoCC "${package.name}-nixgl-wrapped"
+          {
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+          }
+          ''
+            mkdir -p $out/bin
+            for bin in ${package}/bin/*; do
+              if [ -f "$bin" ] && [ -x "$bin" ]; then
+                makeWrapper "$bin" "$out/bin/$(basename $bin)" \
+                  --run 'exec ${pkgs.nix-gl-host}/bin/nixglhost "'"$bin"'" -- "$@"'
+              fi
+            done
+          ''
+      );
 
   solanaCraneLib =
     (inputs.crane.mkLib pkgs).overrideToolchain
@@ -237,7 +243,6 @@ in
     cargoArtifacts
     buildRustPackageWithPythonSidecar
     buildRustWasmTsPackage
-    buildWholeWorkspace
     useHostGpuDrivers
     env
     src

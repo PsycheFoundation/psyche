@@ -27,14 +27,18 @@ builds:
       - 'packages.x86_64-linux.psyche-solana-client'
       - 'packages.x86_64-linux.psyche-centralized-client'
       - 'packages.x86_64-linux.psyche-centralized-server'
+      - 'packages.x86_64-linux.docker-psyche-solana-client'
       - 'packages.x86_64-linux.psyche-centralized-local-testnet'
       - 'packages.x86_64-linux.expand-distro'
-      - devShell.x86_64-linux
+      - devShells.x86_64-linux.default
+      - devShells.aarch64-darwin.default
       - nixosConfigurations.*
-      - 'checks.*.*'
+      - 'checks.x86_64-linux.*'
 
   # on main, might as well build everything, though
-  - exclude: []
+  - exclude:
+      - '*.aarch64-darwin.*'
     include:
       - 'packages.x86_64-linux.*'
+      - devShells.aarch64-darwin.default
     branch: main

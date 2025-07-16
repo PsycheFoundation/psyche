@@ -4,7 +4,7 @@ use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
 use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
@@ -147,7 +147,7 @@ impl PeerManagerActor {
                 if !self.available_peers.contains(&peer_id) {
                     self.available_peers.push_back(peer_id);
                 } else {
-                    error!("Peer was already available but we tried to add it again");
+                    warn!("Peer was already available but we tried to add it again");
                 }
                 info!("Peer {peer_id} correctly provided the blob ticket");
             }
@@ -178,12 +178,8 @@ impl PeerManagerActor {
                         );
                         cancellation_token.cancel();
                     }
-                } else {
-                    if !self.available_peers.contains(&peer_id) {
-                        self.available_peers.push_back(peer_id);
-                    } else {
-                        error!("Peer was already available but we tried to add it again");
-                    }
+                } else if !self.available_peers.contains(&peer_id) {
+                    self.available_peers.push_back(peer_id);
                 };
             }
         }
@@ -430,7 +426,7 @@ impl SharableModel {
 
         match loaded_parameters.get(param_name) {
             Some(blob_ticket) => {
-                trace!("Using cached downloadable for {param_name}");
+                info!("Using cached downloadable for {param_name}");
                 Ok(blob_ticket.clone())
             }
             None => match loading_parameters.remove(param_name) {
