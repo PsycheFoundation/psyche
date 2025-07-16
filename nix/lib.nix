@@ -76,13 +76,18 @@ let
   );
 
   buildRustPackageWithPythonSidecar =
-    name:
+    {
+      name,
+      isExample ? false,
+    }:
     craneLib.buildPackage (
       rustWorkspaceArgsWithPython
       // {
         inherit cargoArtifacts;
         pname = name;
-        cargoExtraArgs = rustWorkspaceArgsWithPython.cargoExtraArgs + " --bin ${name}";
+        cargoExtraArgs =
+          rustWorkspaceArgsWithPython.cargoExtraArgs
+          + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
       }
     );

@@ -135,6 +135,8 @@ PRs welcome!
 
 ### Docker
 
+> requires Nix!
+
 Create a Docker image with the necessary dependencies to run a Psyche client:
 
 1. Install the necessary NVIDIA and CUDA drivers as explained in the previous sections.
@@ -146,7 +148,7 @@ sudo apt-get install -y nvidia-container-toolkit
 ```
 
 3. Create an `.env` file following the `.env.example` in `psyche/config/client` and update the necessary environment variables.
-4. Run `docker compose build`.
+4. Run `just nix build_docker_solana_client`.
 
 ## Useful commands
 
