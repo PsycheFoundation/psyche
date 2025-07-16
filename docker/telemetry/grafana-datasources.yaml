@@ -1,0 +1,16 @@
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100 # Connects to the Loki service defined in docker-compose.yml
+    isDefault: true
+    version: 1
+    editable: true
+    # Optional: Configure derived fields for trace/span linking in Grafana
+    # jsonData:
+    #   derivedFields:
+    #     - datasourceUid: tempo # Replace 'tempo' with your Tempo data source UID if you have one
+    #       matcherRegex: "trace_id=(\\w+)"
+    #       name: TraceID
+    #       url: "$${__value.raw}"

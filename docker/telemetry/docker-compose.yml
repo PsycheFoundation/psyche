@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.128.0 # Use contrib for Loki exporter
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "55679:55679"
+    depends_on:
+      - loki
+
+  # Grafana Loki
+  loki:
+    image: grafana/loki:latest
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki-local-config.yaml:/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100" # Loki HTTP API
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_AUTH_ANONYMOUS_ENABLED: "true" # For quick testing, disable in production
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin # For quick testing
+    volumes:
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    ports:
+      - "3000:3000" # Grafana UI
+    depends_on:
+      - loki

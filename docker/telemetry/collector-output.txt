@@ -1,0 +1,557 @@
+2025-07-16T19:24:13.354Z	info	service@v0.128.0/service.go:199	Setting up own telemetry...	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}}
+2025-07-16T19:24:13.354Z	info	builders/builders.go:26	Development component. May change in the future.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "logs"}
+2025-07-16T19:24:13.354Z	info	builders/builders.go:26	Development component. May change in the future.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "metrics"}
+2025-07-16T19:24:13.354Z	info	builders/builders.go:26	Deprecated component. Will be removed in future releases.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "opencensus", "otelcol.component.kind": "receiver", "otelcol.signal": "metrics"}
+2025-07-16T19:24:13.355Z	info	builders/builders.go:26	Development component. May change in the future.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "traces"}
+2025-07-16T19:24:13.355Z	info	builders/builders.go:26	Deprecated component. Will be removed in future releases.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "opencensus", "otelcol.component.kind": "receiver", "otelcol.signal": "traces"}
+2025-07-16T19:24:13.355Z	info	service@v0.128.0/service.go:259	Starting otelcol-contrib...	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "Version": "0.128.0", "NumCPU": 11}
+2025-07-16T19:24:13.355Z	info	extensions/extensions.go:41	Starting extensions...	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}}
+2025-07-16T19:24:13.355Z	info	extensions/extensions.go:45	Extension is starting...	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "zpages", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.356Z	info	zpagesextension@v0.128.0/zpagesextension.go:56	Registered zPages span processor on tracer provider	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "zpages", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.356Z	info	zpagesextension@v0.128.0/zpagesextension.go:71	Registered Host's zPages	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "zpages", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.356Z	info	zpagesextension@v0.128.0/zpagesextension.go:83	Starting zPages extension	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "zpages", "otelcol.component.kind": "extension", "config": {"Endpoint":"0.0.0.0:55679","TLS":null,"CORS":null,"Auth":null,"MaxRequestBodySize":0,"IncludeMetadata":false,"ResponseHeaders":null,"CompressionAlgorithms":null,"ReadTimeout":0,"ReadHeaderTimeout":0,"WriteTimeout":0,"IdleTimeout":0,"Middlewares":null,"Expvar":{"Enabled":false}}}
+2025-07-16T19:24:13.356Z	info	extensions/extensions.go:62	Extension started.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "zpages", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.356Z	info	extensions/extensions.go:45	Extension is starting...	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "pprof", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.356Z	info	pprofextension@v0.128.0/pprofextension.go:61	Starting net/http/pprof server	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "pprof", "otelcol.component.kind": "extension", "config": {"TCPAddr":{"Endpoint":"0.0.0.0:1777","DialerConfig":{"Timeout":0}},"BlockProfileFraction":0,"MutexProfileFraction":0,"SaveToFile":""}}
+2025-07-16T19:24:13.357Z	info	extensions/extensions.go:62	Extension started.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "pprof", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.357Z	info	extensions/extensions.go:45	Extension is starting...	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "health_check", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.357Z	info	healthcheckextension@v0.128.0/healthcheckextension.go:32	Starting health_check extension	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "health_check", "otelcol.component.kind": "extension", "config": {"Endpoint":"localhost:13133","TLS":null,"CORS":null,"Auth":null,"MaxRequestBodySize":0,"IncludeMetadata":false,"ResponseHeaders":null,"CompressionAlgorithms":null,"ReadTimeout":0,"ReadHeaderTimeout":0,"WriteTimeout":0,"IdleTimeout":0,"Middlewares":null,"Path":"/","ResponseBody":null,"CheckCollectorPipeline":{"Enabled":false,"Interval":"5m","ExporterFailureThreshold":5}}}
+2025-07-16T19:24:13.357Z	info	extensions/extensions.go:62	Extension started.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "health_check", "otelcol.component.kind": "extension"}
+2025-07-16T19:24:13.362Z	info	prometheusreceiver@v0.128.0/metrics_receiver.go:157	Starting discovery manager	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "prometheus", "otelcol.component.kind": "receiver", "otelcol.signal": "metrics"}
+2025-07-16T19:24:13.363Z	info	targetallocator/manager.go:188	Scrape job added	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "prometheus", "otelcol.component.kind": "receiver", "otelcol.signal": "metrics", "jobName": "otel-collector"}
+2025-07-16T19:24:13.363Z	info	otlpreceiver@v0.128.0/otlp.go:117	Starting GRPC server	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "otlp", "otelcol.component.kind": "receiver", "endpoint": "0.0.0.0:4317"}
+2025-07-16T19:24:13.363Z	info	otlpreceiver@v0.128.0/otlp.go:175	Starting HTTP server	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "otlp", "otelcol.component.kind": "receiver", "endpoint": "0.0.0.0:4318"}
+2025-07-16T19:24:13.363Z	info	prometheusreceiver@v0.128.0/metrics_receiver.go:216	Starting scrape manager	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "prometheus", "otelcol.component.kind": "receiver", "otelcol.signal": "metrics"}
+2025-07-16T19:24:13.364Z	info	jaegerreceiver@v0.128.0/trace_receiver.go:211	Starting UDP server for Binary Thrift	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "jaeger", "otelcol.component.kind": "receiver", "otelcol.signal": "traces", "endpoint": "0.0.0.0:6832"}
+2025-07-16T19:24:13.365Z	info	jaegerreceiver@v0.128.0/trace_receiver.go:233	Starting UDP server for Compact Thrift	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "jaeger", "otelcol.component.kind": "receiver", "otelcol.signal": "traces", "endpoint": "0.0.0.0:6831"}
+2025-07-16T19:24:13.365Z	info	jaegerreceiver@v0.128.0/trace_receiver.go:336	Starting HTTP server for Jaeger Thrift	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "jaeger", "otelcol.component.kind": "receiver", "otelcol.signal": "traces", "endpoint": "0.0.0.0:14268"}
+2025-07-16T19:24:13.365Z	info	jaegerreceiver@v0.128.0/trace_receiver.go:361	Starting gRPC server for Jaeger Protobuf	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "jaeger", "otelcol.component.kind": "receiver", "otelcol.signal": "traces", "endpoint": "0.0.0.0:14250"}
+2025-07-16T19:24:13.366Z	info	healthcheck/handler.go:132	Health Check state change	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "health_check", "otelcol.component.kind": "extension", "status": "ready"}
+2025-07-16T19:24:13.366Z	info	service@v0.128.0/service.go:282	Everything is ready. Begin running and processing data.	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}}
+2025-07-16T19:24:19.063Z	info	Logs	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "logs", "resource logs": 1, "log records": 1}
+2025-07-16T19:24:19.063Z	info	ResourceLog #0
+Resource SchemaURL: 
+Resource attributes:
+     -> service.name: Str(metrics-example)
+     -> service.instance.id: Str(local)
+     -> service.namespace: Str(psyche)
+     -> deployment.environment.name: Str(development)
+ScopeLogs #0
+ScopeLogs SchemaURL: 
+InstrumentationScope metrics 
+LogRecord #0
+ObservedTimestamp: 2025-07-16 19:24:18.087967 +0000 UTC
+Timestamp: 1970-01-01 00:00:00 +0000 UTC
+SeverityText: INFO
+SeverityNumber: Info(9)
+EventName: event shared/tui/examples/metrics.rs:67
+Body: Str(Sample log output!)
+Attributes:
+     -> bananas: Str(yummy)
+Trace ID: 
+Span ID: 
+Flags: 0
+	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "logs"}
+2025-07-16T19:24:19.264Z	info	Metrics	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "metrics", "resource metrics": 1, "metrics": 2, "data points": 2}
+2025-07-16T19:24:19.265Z	info	ResourceMetrics #0
+Resource SchemaURL: 
+Resource attributes:
+     -> service.namespace: Str(psyche)
+     -> service.name: Str(metrics-example)
+     -> service.instance.id: Str(local)
+     -> deployment.environment.name: Str(development)
+ScopeMetrics #0
+ScopeMetrics SchemaURL: 
+InstrumentationScope test-app 
+Metric #0
+Descriptor:
+     -> Name: startup_counter
+     -> Description: 
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+StartTimestamp: 2025-07-16 19:24:18.086437 +0000 UTC
+Timestamp: 2025-07-16 19:24:19.090112 +0000 UTC
+Value: 1
+Metric #1
+Descriptor:
+     -> Name: test_metrics
+     -> Description: 
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+StartTimestamp: 2025-07-16 19:24:18.086525 +0000 UTC
+Timestamp: 2025-07-16 19:24:19.090159 +0000 UTC
+Value: 2
+	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "metrics"}
+2025-07-16T19:24:20.083Z	info	Metrics	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "metrics", "resource metrics": 1, "metrics": 23, "data points": 24}
+2025-07-16T19:24:20.084Z	info	Logs	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "logs", "resource logs": 1, "log records": 1}
+2025-07-16T19:24:20.084Z	info	ResourceLog #0
+Resource SchemaURL: 
+Resource attributes:
+     -> service.name: Str(metrics-example)
+     -> service.instance.id: Str(local)
+     -> service.namespace: Str(psyche)
+     -> deployment.environment.name: Str(development)
+ScopeLogs #0
+ScopeLogs SchemaURL: 
+InstrumentationScope metrics 
+LogRecord #0
+ObservedTimestamp: 2025-07-16 19:24:19.088281 +0000 UTC
+Timestamp: 1970-01-01 00:00:00 +0000 UTC
+SeverityText: INFO
+SeverityNumber: Info(9)
+EventName: event shared/tui/examples/metrics.rs:67
+Body: Str(Sample log output!)
+Attributes:
+     -> bananas: Str(yummy)
+Trace ID: 
+Span ID: 
+Flags: 0
+	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "logs"}
+2025-07-16T19:24:20.085Z	info	ResourceMetrics #0
+Resource SchemaURL: 
+Resource attributes:
+     -> service.name: Str(otelcol-contrib)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> server.port: Str(8888)
+     -> url.scheme: Str(http)
+     -> service.version: Str(0.128.0)
+ScopeMetrics #0
+ScopeMetrics SchemaURL: 
+InstrumentationScope github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver 0.128.0
+Metric #0
+Descriptor:
+     -> Name: otelcol_process_memory_rss
+     -> Description: Total physical memory (resident set size) [alpha]
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+Data point attributes:
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 172257280.000000
+Metric #1
+Descriptor:
+     -> Name: otelcol_process_runtime_heap_alloc_bytes
+     -> Description: Bytes of allocated heap objects (see 'go doc runtime.MemStats.HeapAlloc') [alpha]
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+Data point attributes:
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 22772880.000000
+Metric #2
+Descriptor:
+     -> Name: otelcol_process_runtime_total_sys_memory_bytes
+     -> Description: Total bytes of memory obtained from the OS (see 'go doc runtime.MemStats.Sys') [alpha]
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+Data point attributes:
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 37049608.000000
+Metric #3
+Descriptor:
+     -> Name: otelcol_process_uptime
+     -> Description: Uptime of the process [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 6.654815
+Metric #4
+Descriptor:
+     -> Name: otelcol_processor_batch_metadata_cardinality
+     -> Description: Number of distinct metadata value combinations being processed
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+Data point attributes:
+     -> processor: Str(batch)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 3.000000
+Metric #5
+Descriptor:
+     -> Name: otelcol_receiver_refused_log_records
+     -> Description: Number of log records that could not be pushed into the pipeline. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> receiver: Str(otlp)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+     -> transport: Str(http)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.000000
+Metric #6
+Descriptor:
+     -> Name: otelcol_processor_batch_batch_send_size
+     -> Description: Number of units in the batch
+     -> Unit: 
+     -> DataType: Histogram
+     -> AggregationTemporality: Cumulative
+HistogramDataPoints #0
+Data point attributes:
+     -> processor: Str(batch)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Count: 2
+Sum: 3.000000
+ExplicitBounds #0: 10.000000
+ExplicitBounds #1: 25.000000
+ExplicitBounds #2: 50.000000
+ExplicitBounds #3: 75.000000
+ExplicitBounds #4: 100.000000
+ExplicitBounds #5: 250.000000
+ExplicitBounds #6: 500.000000
+ExplicitBounds #7: 750.000000
+ExplicitBounds #8: 1000.000000
+ExplicitBounds #9: 2000.000000
+ExplicitBounds #10: 3000.000000
+ExplicitBounds #11: 4000.000000
+ExplicitBounds #12: 5000.000000
+ExplicitBounds #13: 6000.000000
+ExplicitBounds #14: 7000.000000
+ExplicitBounds #15: 8000.000000
+ExplicitBounds #16: 9000.000000
+ExplicitBounds #17: 10000.000000
+ExplicitBounds #18: 20000.000000
+ExplicitBounds #19: 30000.000000
+ExplicitBounds #20: 50000.000000
+ExplicitBounds #21: 100000.000000
+Buckets #0, Count: 2
+Buckets #1, Count: 0
+Buckets #2, Count: 0
+Buckets #3, Count: 0
+Buckets #4, Count: 0
+Buckets #5, Count: 0
+Buckets #6, Count: 0
+Buckets #7, Count: 0
+Buckets #8, Count: 0
+Buckets #9, Count: 0
+Buckets #10, Count: 0
+Buckets #11, Count: 0
+Buckets #12, Count: 0
+Buckets #13, Count: 0
+Buckets #14, Count: 0
+Buckets #15, Count: 0
+Buckets #16, Count: 0
+Buckets #17, Count: 0
+Buckets #18, Count: 0
+Buckets #19, Count: 0
+Buckets #20, Count: 0
+Buckets #21, Count: 0
+Buckets #22, Count: 0
+Metric #7
+Descriptor:
+     -> Name: otelcol_processor_batch_timeout_trigger_send
+     -> Description: Number of times the batch was sent due to a timeout trigger
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> processor: Str(batch)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 2.000000
+Metric #8
+Descriptor:
+     -> Name: otelcol_receiver_accepted_log_records
+     -> Description: Number of log records successfully pushed into the pipeline. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> receiver: Str(otlp)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+     -> transport: Str(http)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 2.000000
+Metric #9
+Descriptor:
+     -> Name: promhttp_metric_handler_errors_total
+     -> Description: Total number of internal errors encountered by the promhttp metric handler.
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> cause: Str(encoding)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.000000
+NumberDataPoints #1
+Data point attributes:
+     -> cause: Str(gathering)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.000000
+Metric #10
+Descriptor:
+     -> Name: scrape_duration_seconds
+     -> Description: Duration of the scrape
+     -> Unit: s
+     -> DataType: Gauge
+NumberDataPoints #0
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.008758
+Metric #11
+Descriptor:
+     -> Name: scrape_samples_scraped
+     -> Description: The number of samples the target exposed
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 44.000000
+Metric #12
+Descriptor:
+     -> Name: otelcol_exporter_send_failed_log_records
+     -> Description: Number of log records in failed attempts to send to destination. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> exporter: Str(debug)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.000000
+Metric #13
+Descriptor:
+     -> Name: otelcol_exporter_sent_metric_points
+     -> Description: Number of metric points successfully sent to destination. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> exporter: Str(debug)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 2.000000
+Metric #14
+Descriptor:
+     -> Name: otelcol_process_cpu_seconds
+     -> Description: Total CPU user and system time in seconds [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.070000
+Metric #15
+Descriptor:
+     -> Name: otelcol_process_runtime_total_alloc_bytes
+     -> Description: Cumulative bytes allocated for heap objects (see 'go doc runtime.MemStats.TotalAlloc') [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 34976632.000000
+Metric #16
+Descriptor:
+     -> Name: otelcol_receiver_accepted_metric_points
+     -> Description: Number of metric points successfully pushed into the pipeline. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> receiver: Str(otlp)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+     -> transport: Str(http)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 2.000000
+Metric #17
+Descriptor:
+     -> Name: otelcol_receiver_refused_metric_points
+     -> Description: Number of metric points that could not be pushed into the pipeline. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> receiver: Str(otlp)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+     -> transport: Str(http)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.000000
+Metric #18
+Descriptor:
+     -> Name: otelcol_exporter_sent_log_records
+     -> Description: Number of log record successfully sent to destination. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> exporter: Str(debug)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 1.000000
+Metric #19
+Descriptor:
+     -> Name: up
+     -> Description: The scraping was successful
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 1.000000
+Metric #20
+Descriptor:
+     -> Name: scrape_samples_post_metric_relabeling
+     -> Description: The number of samples remaining after metric relabeling was applied
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 44.000000
+Metric #21
+Descriptor:
+     -> Name: scrape_series_added
+     -> Description: The approximate number of new series in this scrape
+     -> Unit: 
+     -> DataType: Gauge
+NumberDataPoints #0
+StartTimestamp: 1970-01-01 00:00:00 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 44.000000
+Metric #22
+Descriptor:
+     -> Name: otelcol_exporter_send_failed_metric_points
+     -> Description: Number of metric points in failed attempts to send to destination. [alpha]
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+Data point attributes:
+     -> exporter: Str(debug)
+     -> service.instance.id: Str(b091cd62-fefc-4e2c-9d34-8feafdf39e57)
+     -> service.name: Str(otelcol-contrib)
+     -> service.version: Str(0.128.0)
+StartTimestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.003 +0000 UTC
+Value: 0.000000
+	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "metrics"}
+2025-07-16T19:24:20.287Z	info	Metrics	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "metrics", "resource metrics": 1, "metrics": 2, "data points": 2}
+2025-07-16T19:24:20.287Z	info	ResourceMetrics #0
+Resource SchemaURL: 
+Resource attributes:
+     -> service.namespace: Str(psyche)
+     -> service.name: Str(metrics-example)
+     -> service.instance.id: Str(local)
+     -> deployment.environment.name: Str(development)
+ScopeMetrics #0
+ScopeMetrics SchemaURL: 
+InstrumentationScope test-app 
+Metric #0
+Descriptor:
+     -> Name: startup_counter
+     -> Description: 
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+StartTimestamp: 2025-07-16 19:24:18.086437 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.095127 +0000 UTC
+Value: 1
+Metric #1
+Descriptor:
+     -> Name: test_metrics
+     -> Description: 
+     -> Unit: 
+     -> DataType: Sum
+     -> IsMonotonic: true
+     -> AggregationTemporality: Cumulative
+NumberDataPoints #0
+StartTimestamp: 2025-07-16 19:24:18.086525 +0000 UTC
+Timestamp: 2025-07-16 19:24:20.095132 +0000 UTC
+Value: 3
+	{"resource": {"service.instance.id": "b091cd62-fefc-4e2c-9d34-8feafdf39e57", "service.name": "otelcol-contrib", "service.version": "0.128.0"}, "otelcol.component.id": "debug", "otelcol.component.kind": "exporter", "otelcol.signal": "metrics"}
