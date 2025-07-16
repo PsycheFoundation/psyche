@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::sha256::sha256v;
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -164,11 +164,7 @@ impl OwnedProof {
             let rsib = pe.left_sibling.unwrap_or(candidate);
             let hash = HashWrapper::new(hash_intermediate!(lsib, rsib));
 
-            if hash == pe.target {
-                Some(hash)
-            } else {
-                None
-            }
+            if hash == pe.target { Some(hash) } else { None }
         });
         result.is_some()
     }
@@ -194,11 +190,7 @@ impl<'a> Proof<'a> {
             let rsib = pe.2.unwrap_or(&candidate);
             let hash = HashWrapper::new(hash_intermediate!(lsib, rsib));
 
-            if hash == *pe.0 {
-                Some(hash)
-            } else {
-                None
-            }
+            if hash == *pe.0 { Some(hash) } else { None }
         });
         result.is_some()
     }

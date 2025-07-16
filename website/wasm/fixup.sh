@@ -21,4 +21,3 @@ done
 
 # move bindings into pkg
 mv bindings/*.ts ./pkg
-

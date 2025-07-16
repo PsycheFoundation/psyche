@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use rand::{distributions::Distribution, SeedableRng};
+use rand::{SeedableRng, distributions::Distribution};
 use tch::{Kind, Tensor};
 
 // from https://github.com/huggingface/candle/blob/afb6575835599938248c027f50a8100c289a1a96/candle-transformers/src/generation/mod.rs

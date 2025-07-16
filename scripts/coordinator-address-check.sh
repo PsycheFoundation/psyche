@@ -3,7 +3,7 @@
 set -o errexit
 set -o pipefail
 
-cd architectures/decentralized/solana-coordinator
+cd ../architectures/decentralized/solana-coordinator
 coordinator_address=$(grep -r --include='*.rs' 'declare_id!(' . | sed -n 's/.*declare_id!(\([^)]*\)).*/\1/p')
 cd ../solana-authorizer
 authorizer_address=$(grep -r --include='*.rs' 'declare_id!(' . | sed -n 's/.*declare_id!(\([^)]*\)).*/\1/p')

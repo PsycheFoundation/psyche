@@ -1,18 +1,15 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::transfer;
 use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
+use anchor_spl::token::transfer;
 
 use crate::state::Run;
 
 #[derive(Accounts)]
 #[instruction(params: RunTopUpParams)]
 pub struct RunTopUpAccounts<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
     #[account()]
     pub authority: Signer<'info>,
 

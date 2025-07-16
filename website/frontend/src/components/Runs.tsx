@@ -1,10 +1,11 @@
 import { styled } from '@linaria/react'
-import { useState } from 'react'
+import { PropsWithChildren, useState } from 'react'
 import { RadioSelectBar } from './RadioSelectBar.js'
 import { RunSummaryCard } from './RunSummary.js'
 import { ApiGetRuns } from 'shared'
 import { Sort } from './Sort.js'
 import { text } from '../fonts.js'
+import AnimatedTokensCounter from './AnimatedTokensCounter.js'
 
 const RunsContainer = styled.div`
 	height: 100%;
@@ -72,14 +73,24 @@ export function Runs({
 	return (
 		<RunsContainer>
 			<GlobalStats>
-				<GlobalStat
-					label="tokens/sec"
-					value={totalTokensPerSecondActive.toLocaleString()}
-				/>
-				<GlobalStat
-					label="tokens trained"
-					value={totalTokens.toLocaleString()}
-				/>
+				<GlobalStat label="tokens/sec">
+					{totalTokensPerSecondActive.toLocaleString()}
+				</GlobalStat>
+				<GlobalStat label="tokens trained">
+					<AnimatedTokensCounter
+						lastValue={totalTokens}
+						lastTimestamp={runs.reduce((d, r) => {
+							if (r.lastUpdate.time > d) {
+								return r.lastUpdate.time
+							}
+							return d
+						}, new Date(0))}
+						perSecondRate={totalTokensPerSecondActive}
+						pausedAt={
+							totalTokensPerSecondActive === 0n ? new Date(0) : undefined
+						}
+					/>
+				</GlobalStat>
 			</GlobalStats>
 			<RunsHeader>
 				<RadioSelectBar
@@ -111,10 +122,10 @@ const StatBox = styled.span`
 	padding: 0.5em;
 `
 
-function GlobalStat({ label, value }: { value: string; label: string }) {
+function GlobalStat({ label, children }: PropsWithChildren<{ label: string }>) {
 	return (
 		<StatBox>
-			<span className={text['display/2xl']}>{value}</span>
+			<span className={text['display/2xl']}>{children}</span>
 			<span className={text['body/sm/regular']}>{label}</span>
 		</StatBox>
 	)

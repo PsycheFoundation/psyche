@@ -2,9 +2,9 @@ use psyche_coordinator::MAX_TOKENS_TO_SEND;
 use psyche_core::FixedVec;
 use psyche_modeling::{CausalLM, EosToks};
 use psyche_modeling::{LogitsProcessor, Sampling, Trainer};
-use std::sync::atomic::Ordering;
 use std::sync::RwLock;
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::AtomicUsize};
 use tch::Tensor;
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -63,12 +63,12 @@ impl PromptTask {
         let input = {
             let tokens = self.tokens.read().unwrap();
             Tensor::from_slice(&tokens)
-                .to(*trainer.device())
+                .to(trainer.device())
                 .unsqueeze(0)
         };
 
         // Run forward pass
-        let (logits, _) = trainer.forward(&input, None, Some(1));
+        let (logits, _) = trainer.forward(&input, None, Some(1), None);
 
         let logits = logits.squeeze();
 

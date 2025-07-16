@@ -1,6 +1,6 @@
 use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
 use psyche_network::SecretKey;
@@ -90,6 +90,10 @@ pub struct TrainArgs {
     default_value = "10.0",
     value_parser = parse_duration_from_seconds)]
     pub oltp_report_interval: Duration,
+
+    /// If present, output some metrics & stats via this TCP port in JSON format. Useful for debugging or local integration.
+    #[clap(long, env)]
+    pub metrics_local_port: Option<u16>,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
     #[clap(long, env)]
@@ -267,7 +271,7 @@ pub fn prepare_environment() {
 
 fn parse_duration_from_seconds(s: &str) -> Result<Duration, String> {
     s.parse::<f64>()
-        .map_err(|e| format!("Invalid number: {}", e))
+        .map_err(|e| format!("Invalid number: {e}"))
         .and_then(|secs| {
             if secs < 0.0 {
                 Err("Duration cannot be negative".to_string())

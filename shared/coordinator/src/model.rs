@@ -1,8 +1,8 @@
-use crate::{coordinator::SOLANA_MAX_URL_STRING_LEN, SOLANA_MAX_STRING_LEN};
+use crate::{SOLANA_MAX_STRING_LEN, coordinator::SOLANA_MAX_URL_STRING_LEN};
 
 use anchor_lang::{
-    prelude::{borsh, msg},
     AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, msg},
 };
 use bytemuck::{Zeroable, ZeroableInOption};
 use psyche_core::{
@@ -33,11 +33,13 @@ unsafe impl ZeroableInOption for Model {}
     Deserialize,
     InitSpace,
     TS,
+    PartialEq,
 )]
 #[repr(C)]
 pub enum LLMArchitecture {
     HfLlama,
     HfDeepseek,
+    HfAuto,
 }
 
 #[derive(

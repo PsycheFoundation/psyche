@@ -1,11 +1,11 @@
 use crate::{
-    model::{Checkpoint, HubRepo, Model},
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
+    model::{Checkpoint, HubRepo, Model},
 };
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
+use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
@@ -442,28 +442,18 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        let ret = match self.run_state {
+        match self.run_state {
             RunState::Uninitialized | RunState::Finished | RunState::Paused => {
                 Err(CoordinatorError::Halted)
             }
-            run_state => {
-                if run_state == RunState::WaitingForMembers {
-                    self.tick_waiting_for_members(new_clients, unix_timestamp)
-                } else if run_state == RunState::Cooldown {
-                    self.tick_cooldown(unix_timestamp)
-                } else {
-                    match run_state {
-                        RunState::Warmup => self.tick_warmup(unix_timestamp, random_seed),
-                        RunState::RoundTrain => self.tick_round_train(unix_timestamp),
-                        RunState::RoundWitness => {
-                            self.tick_round_witness(unix_timestamp, random_seed)
-                        }
-                        _ => unreachable!(),
-                    }
-                }
+            RunState::WaitingForMembers => {
+                self.tick_waiting_for_members(new_clients, unix_timestamp)
             }
-        }?;
-        Ok(ret)
+            RunState::Warmup => self.tick_warmup(unix_timestamp, random_seed),
+            RunState::RoundTrain => self.tick_round_train(unix_timestamp),
+            RunState::RoundWitness => self.tick_round_witness(unix_timestamp, random_seed),
+            RunState::Cooldown => self.tick_cooldown(unix_timestamp),
+        }
     }
 
     pub fn warmup_witness(
@@ -899,16 +889,22 @@ impl<T: NodeIdentity> Coordinator<T> {
             let height = self.current_round_unchecked().height;
             self.move_clients_to_exited(height);
 
+            // Read the pending clients
+            let mut pending_clients_ordered = Vec::with_capacity(pending_clients.len());
+            let mut pending_clients_unordered = HashSet::with_capacity(pending_clients.len());
+            for pending_client in pending_clients {
+                pending_clients_ordered.push(pending_client);
+                pending_clients_unordered.insert(pending_client);
+            }
+
             // Ensure at least one client in the previous epoch is present in pending_clients for the new epoch.
             // If all clients are no longer present we need to use a Hub checkpoint since there
             // will be no peers for P2P sharing.
-            let pending_clients: HashSet<_> = pending_clients.collect();
             let all_prev_clients_disconnected = !self
                 .epoch_state
                 .clients
                 .iter()
-                .any(|client| pending_clients.contains(&client.id));
-
+                .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
                 if let Checkpoint::P2P(hub_repo) = llm.checkpoint {
@@ -924,7 +920,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.epoch_state
                 .clients
                 .extend(
-                    pending_clients
+                    pending_clients_ordered
                         .into_iter()
                         .take(SOLANA_MAX_NUM_CLIENTS)
                         .map(|x| Client::new(*x)),

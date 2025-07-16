@@ -1,18 +1,17 @@
 use crate::{
-    auto_config::UseSDPA, rotate_half, yarn_get_mscale, AttentionImplementation, AutoConfig,
-    CausalLanguageModel, ColumnParallelLinear, Communicator, CommunicatorId, EosToks,
-    LanguageModelConfig, LanguageModelForward, ModelConfig, ModelLoadError, ParallelExpandHeads,
-    PretrainedSource, RMSNorm, RoPECache, RoPEConfig, RoPEType, RowParallelLinear,
+    AttentionImplementation, AutoConfig, CausalLanguageModel, ColumnParallelLinear, Communicator,
+    CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig,
+    ModelLoadError, ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
+    RoPEType, RowParallelLinear, auto_config::UseSDPA, rotate_half, yarn_get_mscale,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
 use tch::{
-    nn::{
-        self,
-        init::{FanInOut, NonLinearity, NormalOrUniform},
-        Init, Module,
-    },
     Device, Kind, Tensor,
+    nn::{
+        self, Init, Module,
+        init::{FanInOut, NonLinearity, NormalOrUniform},
+    },
 };
 use torch_sys::IntList;
 
@@ -861,7 +860,7 @@ impl DeepseekForCausalLM {
         kind: Option<Kind>,
         attn_implementation: Option<AttentionImplementation>,
         device: Option<Device>,
-        tensor_parallelism_world: Option<(Arc<CommunicatorId>, usize, usize)>,
+        tensor_parallelism_world: Option<(CommunicatorId, usize, usize)>,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, ModelLoadError> {
         Self::from_builder(

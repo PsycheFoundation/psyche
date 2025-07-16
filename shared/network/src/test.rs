@@ -7,8 +7,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::{join, select, time::timeout};
 use tokio::{
     sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
         Mutex,
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
     },
     task::JoinHandle,
 };
@@ -16,8 +16,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 use crate::{
-    allowlist, psyche_relay_map, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
-    PeerList,
+    DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, PeerList, allowlist,
+    psyche_relay_map,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -145,7 +145,7 @@ impl App {
                 bt
             }
             Err(e) => {
-                println!("Couldn't add downloadable for step {step}. {}", e);
+                println!("Couldn't add downloadable for step {step}. {e}");
                 return;
             }
         };
@@ -156,9 +156,9 @@ impl App {
         };
 
         if let Err(e) = self.network.broadcast(&message) {
-            println!("Error sending message: {}", e);
+            println!("Error sending message: {e}");
         } else {
-            println!("broadcasted message for step {step}: {}", blob_ticket);
+            println!("broadcasted message for step {step}: {blob_ticket}");
         }
     }
 }
@@ -202,7 +202,7 @@ async fn spawn_new_node(
         None,
         allowlist::AllowAll,
         20,
-        ClientMetrics::new(),
+        ClientMetrics::new(None),
     )
     .await?;
 
@@ -212,7 +212,7 @@ async fn spawn_new_node(
     let our_id = network
         .get_all_peers()
         .await
-        .get(0)
+        .first()
         .map(|(addr, _)| addr.clone())
         .ok_or_else(|| anyhow::anyhow!("No peers found"))?;
 
@@ -274,7 +274,7 @@ async fn test_retry_connection() -> Result<()> {
     if let Some(mut rx) = rx_waiting {
         let sender_cancel_clone = sender_cancel.clone();
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("ABORTING SENDER NODE");
                 sender_cancel_clone.cancel();
             }
@@ -284,7 +284,7 @@ async fn test_retry_connection() -> Result<()> {
     // Handle retry signal (test completion)
     if let Some(mut rx) = rx_retrying {
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("TEST PASSED - Retry detected");
                 let mut completed = test_completed_clone.lock().await;
                 *completed = true;
@@ -358,7 +358,7 @@ async fn test_retry_connection_mid_download() -> Result<()> {
     if let Some(mut rx) = rx_waiting {
         let sender_cancel_clone = sender_cancel.clone();
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("ABORTING SENDER NODE");
                 sender_cancel_clone.cancel();
             }
@@ -368,7 +368,7 @@ async fn test_retry_connection_mid_download() -> Result<()> {
     // Handle retry signal (test completion)
     if let Some(mut rx) = rx_retrying {
         tokio::spawn(async move {
-            if let Some(_) = rx.recv().await {
+            if rx.recv().await.is_some() {
                 println!("TEST PASSED - Retry detected");
                 let mut completed = test_completed_clone.lock().await;
                 *completed = true;

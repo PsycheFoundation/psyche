@@ -1,22 +1,23 @@
+use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::RunState;
+use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
+use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
-use psyche_coordinator::model::LLM;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::RunState;
-use psyche_coordinator::WitnessProof;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
+use psyche_solana_coordinator::ClientId;
+use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
-use psyche_solana_coordinator::ClientId;
-use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
@@ -46,6 +47,8 @@ pub async fn run() {
     let join_authority = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
+    let warmup_time = 77;
+    let round_witness_time = 88;
 
     // create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
@@ -91,10 +94,10 @@ pub async fn run() {
         &coordinator_account,
         None,
         Some(CoordinatorConfig {
-            warmup_time: 1,
-            cooldown_time: 1,
-            max_round_train_time: 3,
-            round_witness_time: 1,
+            warmup_time,
+            cooldown_time: 999,
+            max_round_train_time: 888,
+            round_witness_time,
             min_clients: 1,
             init_min_clients: 1,
             global_batch_size_start: 1,
@@ -162,17 +165,19 @@ pub async fn run() {
     .unwrap();
 
     // Whitelisted with the wrong account, can't join
-    assert!(process_coordinator_join_run(
-        &mut endpoint,
-        &payer,
-        &payer,
-        &authorization,
-        &coordinator_instance,
-        &coordinator_account,
-        client_id
-    )
-    .await
-    .is_err());
+    assert!(
+        process_coordinator_join_run(
+            &mut endpoint,
+            &payer,
+            &payer,
+            &authorization,
+            &coordinator_instance,
+            &coordinator_account,
+            client_id
+        )
+        .await
+        .is_err()
+    );
 
     // Whitelisted, can join
     process_coordinator_join_run(
@@ -199,15 +204,17 @@ pub async fn run() {
     );
 
     // Can't tick yet because paused
-    assert!(process_coordinator_tick(
-        &mut endpoint,
-        &payer,
-        &ticker,
-        &coordinator_instance,
-        &coordinator_account,
-    )
-    .await
-    .is_err());
+    assert!(
+        process_coordinator_tick(
+            &mut endpoint,
+            &payer,
+            &ticker,
+            &coordinator_instance,
+            &coordinator_account,
+        )
+        .await
+        .is_err()
+    );
 
     // Unpause
     process_coordinator_set_paused(
@@ -221,7 +228,7 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // rejoin run
+    // Rejoin run, should be a no-op
     process_coordinator_join_run(
         &mut endpoint,
         &payer,
@@ -234,10 +241,11 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Pretend 10 second passed
-    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
-
     // Tick to transition from waiting for members to warmup
+    endpoint
+        .forward_clock_unix_timestamp(WAITING_FOR_MEMBERS_EXTRA_SECONDS)
+        .await
+        .unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -259,10 +267,11 @@ pub async fn run() {
         RunState::Warmup
     );
 
-    // Pretend 1 second passed
-    endpoint.forward_clock_unix_timestamp(1).await.unwrap();
-
-    // tick should now succeed
+    // Tick from warmup to round train
+    endpoint
+        .forward_clock_unix_timestamp(warmup_time)
+        .await
+        .unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -296,16 +305,18 @@ pub async fn run() {
         broadcast_merkle: Default::default(),
         metadata: Default::default(),
     };
-    assert!(process_coordinator_witness(
-        &mut endpoint,
-        &payer,
-        &ticker,
-        &coordinator_instance,
-        &coordinator_account,
-        &witness,
-    )
-    .await
-    .is_err());
+    assert!(
+        process_coordinator_witness(
+            &mut endpoint,
+            &payer,
+            &ticker,
+            &coordinator_instance,
+            &coordinator_account,
+            &witness,
+        )
+        .await
+        .is_err()
+    );
     process_coordinator_witness(
         &mut endpoint,
         &payer,
@@ -326,5 +337,31 @@ pub async fn run() {
             .coordinator
             .run_state,
         RunState::RoundWitness
+    );
+
+    // Tick from round witness back to round train should work
+    endpoint
+        .forward_clock_unix_timestamp(round_witness_time)
+        .await
+        .unwrap();
+    process_coordinator_tick(
+        &mut endpoint,
+        &payer,
+        &ticker,
+        &coordinator_instance,
+        &coordinator_account,
+    )
+    .await
+    .unwrap();
+
+    // Coordinator state after witness should change
+    assert_eq!(
+        get_coordinator_account_state(&mut endpoint, &coordinator_account)
+            .await
+            .unwrap()
+            .unwrap()
+            .coordinator
+            .run_state,
+        RunState::RoundTrain
     );
 }

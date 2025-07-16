@@ -1,29 +1,29 @@
 use crate::{
     backend::SolanaBackend,
     network_identity::NetworkIdentity,
-    retry::{retry_function, RetryError},
+    retry::{RetryError, retry_function},
 };
 
 use anchor_client::{
+    Cluster,
     solana_sdk::{
         commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{Keypair, Signer},
     },
-    Cluster,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    allowlist, psyche_relay_map, DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey,
+    DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey, allowlist, psyche_relay_map,
 };
-use psyche_tui::{logging::LoggerWidget, CustomWidget, TabbedWidget};
+use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
-use rand::{thread_rng, Rng, RngCore};
+use rand::{Rng, RngCore, thread_rng};
 use std::{path::PathBuf, time::Duration};
 use std::{
     sync::Arc,
@@ -32,7 +32,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{interval, Interval, MissedTickBehavior},
+    time::{Interval, MissedTickBehavior, interval},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
@@ -85,6 +85,7 @@ pub struct AppParams {
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,
+    pub metrics_local_port: Option<u16>,
 }
 
 impl AppBuilder {
@@ -99,7 +100,7 @@ impl AppBuilder {
             *p.identity_secret_key.public().as_bytes(),
         );
 
-        let metrics = ClientMetrics::new();
+        let metrics = ClientMetrics::new(p.metrics_local_port);
 
         let allowlist = allowlist::AllowDynamic::new();
 
@@ -284,7 +285,7 @@ impl App {
                                 // targeting having two clients send it per interval
                                 let send_tick = match ticked.epoch_state.clients.len() {
                                     0..=2 => true,
-                                    len => { let rand: f32 = thread_rng().gen();
+                                    len => { let rand: f32 = thread_rng().r#gen();
                                         rand <= 2.0 / len as f32
                                     }
                                 };

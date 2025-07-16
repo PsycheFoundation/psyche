@@ -3,13 +3,13 @@ use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
-use psyche_coordinator::{model, Coordinator, HealthChecks};
+use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    allowlist, psyche_relay_map, AuthenticatableIdentity, DiscoveryMode, NetworkTUIState,
-    NetworkTui, NodeId, RelayMode, SecretKey, TcpClient,
+    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
+    SecretKey, TcpClient, allowlist, psyche_relay_map,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
@@ -110,6 +110,7 @@ pub struct AppParams {
     pub discovery_mode: DiscoveryMode,
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
+    pub metrics_local_port: Option<u16>,
 }
 
 impl AppBuilder {
@@ -127,7 +128,7 @@ impl AppBuilder {
     )> {
         let p = self.0;
 
-        let metrics = ClientMetrics::new();
+        let metrics = ClientMetrics::new(p.metrics_local_port);
         let server_conn =
             TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
                 &p.server_addr,

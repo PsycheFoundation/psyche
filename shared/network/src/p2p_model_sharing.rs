@@ -1,21 +1,230 @@
 use anyhow::Result;
-use iroh::PublicKey;
+use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
 use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::io::{Cursor, Write};
-use std::sync::Arc;
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
-use tokio::sync::Mutex;
-use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    oneshot,
+};
 use tokio::task::JoinHandle;
-use tracing::{debug, trace};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
+
+#[derive(Debug)]
+/// Manager for the list of peers to ask for the model parameters and config
+pub struct PeerManagerHandle {
+    peer_tx: mpsc::UnboundedSender<PeerCommand>,
+}
+
+#[derive(Debug)]
+/// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
+enum PeerCommand {
+    SetPeers {
+        peers: Vec<NodeId>,
+    },
+    GetPeer {
+        reply: oneshot::Sender<Option<NodeId>>,
+    },
+    ReportSuccess {
+        peer_id: NodeId,
+    },
+    ReportBlobTicketRequestError {
+        peer_id: NodeId,
+    },
+    ReportBlobTicketDownloadError {
+        peer_id: NodeId,
+    },
+}
+
+impl PeerManagerHandle {
+    pub fn new(
+        max_errors_per_peer: u8,
+        max_retries_per_peer: u8,
+        cancellation_token: CancellationToken,
+    ) -> Self {
+        let (peer_tx, peer_rx) = mpsc::unbounded_channel();
+
+        // Spawn the peer manager actor
+        tokio::spawn(peer_manager_actor(
+            peer_rx,
+            max_errors_per_peer,
+            max_retries_per_peer,
+            cancellation_token,
+        ));
+
+        Self { peer_tx }
+    }
+
+    /// Set the list of peers that the manager will use to download the model parameters
+    pub fn set_peers(&self, peers: Vec<NodeId>) {
+        let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
+    }
+
+    /// Get the next peer to download the model parameters from
+    /// We'll get a None if no peers are available, a peer might be available later when it finishes sharing a parameter
+    pub async fn get_next_peer(&self) -> Option<NodeId> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        if self
+            .peer_tx
+            .send(PeerCommand::GetPeer { reply: reply_tx })
+            .is_err()
+        {
+            return None; // Manager actor is dead
+        }
+
+        reply_rx.await.unwrap_or(None)
+    }
+
+    /// Report that a peer has successfully shared the hash of a blob ticket for a parameter
+    pub fn report_success(&self, peer_id: NodeId) {
+        let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
+    }
+
+    /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
+    pub fn report_blob_ticket_request_error(&self, peer_id: NodeId) {
+        if self
+            .peer_tx
+            .send(PeerCommand::ReportBlobTicketRequestError { peer_id })
+            .is_err()
+        {
+            tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
+        }
+    }
+
+    /// Report that a peer has failed to in the middle of the download process of a blob ticket
+    pub fn report_blob_ticket_download_error(&self, peer_id: NodeId) {
+        if self
+            .peer_tx
+            .send(PeerCommand::ReportBlobTicketDownloadError { peer_id })
+            .is_err()
+        {
+            tracing::error!(
+                "Failed to report retry error for peer {peer_id}, PeerManager actor is dead"
+            );
+        }
+    }
+}
+
+struct PeerManagerActor {
+    /// Peers that are available to request the model to
+    available_peers: VecDeque<NodeId>,
+    /// A map for the peer's blob ticket to their errors
+    /// A node could success sending the blob ticket but fail in the middle of the download so we differentiate between the two
+    /// Node -> (blob_ticket_request_errors, blob_ticket_downloads_errors)
+    errors_per_peers: HashMap<NodeId, (u8, u8)>,
+    /// Max errors we tolerate for a peer to share a parameter blob ticket
+    max_errors_per_peer: u8,
+    /// Max errors we tolerate for a peer to fail in the middle of the download of a parameter blob ticket
+    max_retries_per_peer: u8,
+}
+
+impl PeerManagerActor {
+    pub fn new(max_errors_per_peer: u8, max_retries_per_peer: u8) -> Self {
+        Self {
+            available_peers: VecDeque::new(),
+            errors_per_peers: HashMap::new(),
+            max_errors_per_peer,
+            max_retries_per_peer,
+        }
+    }
+
+    fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
+        match message {
+            PeerCommand::SetPeers { peers } => {
+                self.available_peers = VecDeque::from(peers);
+                let errors_per_peers_vec =
+                    self.available_peers.iter().map(|peer| (*peer, (0u8, 0u8)));
+                self.errors_per_peers = HashMap::from_iter(errors_per_peers_vec);
+
+                debug!(
+                    "Updated peer list: {} peers available to ask for the model parameters",
+                    self.available_peers.len()
+                );
+            }
+            PeerCommand::GetPeer { reply } => {
+                let peer = if let Some(peer) = self.available_peers.pop_front() {
+                    debug!("Selected peer {peer} to ask for the model parameters");
+                    Some(peer)
+                } else {
+                    debug!("No available peers to ask for the model parameters at the moment");
+                    None
+                };
+                let _ = reply.send(peer);
+            }
+            PeerCommand::ReportSuccess { peer_id } => {
+                self.available_peers.push_back(peer_id);
+                debug!("Peer {peer_id} correctly provided the blob ticket");
+            }
+            PeerCommand::ReportBlobTicketRequestError { peer_id } => {
+                let error_count = self.errors_per_peers.entry(peer_id).or_insert((0, 0));
+                error_count.0 += 1;
+
+                if error_count.0 >= self.max_errors_per_peer {
+                    // Don't need to actually remove it because we already popped it, just don't add it back
+                    warn!("Removing peer {peer_id} after {} errors", error_count.0);
+
+                    if self.available_peers.is_empty()
+                        && self
+                            .errors_per_peers
+                            .iter()
+                            .all(|(_, (e, _))| *e == self.max_errors_per_peer)
+                    {
+                        error!(
+                            "No more peers available to ask for model blob tickets, terminate process"
+                        );
+                        cancellation_token.cancel();
+                    }
+                } else {
+                    self.available_peers.push_back(peer_id);
+                };
+            }
+            PeerCommand::ReportBlobTicketDownloadError { peer_id } => {
+                let error_count = self.errors_per_peers.entry(peer_id).or_insert((0, 0));
+                error_count.1 += 1;
+
+                if error_count.1 >= self.max_retries_per_peer {
+                    warn!("Removing peer {peer_id} after {} retries", error_count.1);
+                    self.available_peers.retain(|p| *p != peer_id);
+
+                    if self.available_peers.is_empty()
+                        && self
+                            .errors_per_peers
+                            .iter()
+                            .all(|(_, (e, _))| *e == self.max_retries_per_peer)
+                    {
+                        error!(
+                            "No more peers available to download blob tickets, terminate process"
+                        );
+                        cancellation_token.cancel();
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn peer_manager_actor(
+    mut rx: mpsc::UnboundedReceiver<PeerCommand>,
+    max_errors_per_peer: u8,
+    max_retries_per_peer: u8,
+    cancellation_token: CancellationToken,
+) {
+    let mut actor = PeerManagerActor::new(max_errors_per_peer, max_retries_per_peer);
+
+    while let Some(message) = rx.recv().await {
+        actor.handle_message(message, cancellation_token.clone());
+    }
+}
 
 pub const ALPN: &[u8] = b"model-sharing/0";
 pub const MODEL_REQUEST_TIMEOUT_SECS: u64 = 10;
@@ -148,13 +357,6 @@ pub struct SharableModel {
     config_and_tokenizer_ticket: Option<BlobTicket>,
     pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
-
-    /// List of peers that are sharing the model parameters and config.
-    /// We cycled through this list to request parameters from them.
-    pub peer_cycle: Arc<Mutex<VecDeque<PublicKey>>>,
-    /// A map of peers that have errored while sharing parameters.
-    /// If a peer has errored more than a certain threshold, it will be removed from the cycle.
-    pub errored_peers: Arc<std::sync::Mutex<HashMap<PublicKey, usize>>>,
 }
 
 // These impls are methods called by both the sharing model peers and the ones
@@ -170,8 +372,6 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
-            errored_peers: Arc::new(std::sync::Mutex::new(HashMap::new())),
-            peer_cycle: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }
@@ -365,7 +565,10 @@ impl SharableModel {
             Entry::Occupied(mut param_entry) => {
                 let param = param_entry.get_mut();
                 if param.is_some() {
-                    return Err(SharableModelError::ParameterAlreadyAdded);
+                    warn!(
+                        "Parameter {} was already added to the model, ignoring it",
+                        param_name
+                    );
                 }
                 *param = Some(param_value);
                 Ok(())

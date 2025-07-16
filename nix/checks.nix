@@ -1,8 +1,4 @@
-{
-  self,
-  inputs,
-  ...
-}:
+{ lib, ... }:
 {
   perSystem =
     {
@@ -12,7 +8,12 @@
       ...
     }:
     let
-      inherit (pkgs.psycheLib) craneLib rustWorkspaceArgs cargoArtifacts;
+      inherit (pkgs.psycheLib)
+        craneLib
+        rustWorkspaceArgs
+        rustWorkspaceArgsWithPython
+        cargoArtifacts
+        ;
     in
     {
       checks = {
@@ -25,7 +26,7 @@
         );
 
         workspace-test = craneLib.cargoNextest (
-          rustWorkspaceArgs
+          rustWorkspaceArgsWithPython
           // {
             inherit cargoArtifacts;
             RUST_LOG = "info,psyche=trace";
@@ -35,27 +36,30 @@
           }
         );
 
-        validate-all-configs = pkgs.runCommand "validate-configs" { } ''
-          dir="${../config}"
-          if [ ! -d "$dir" ]; then
-            echo "config dir $dir does not exist."
-            exit 1
-          fi
-
-          for f in $dir/*; do
-              if [ -f $f/data.toml ]; then
-                ${self'.packages.psyche-centralized-server}/bin/psyche-centralized-server validate-config --state $f/state.toml --data-config $f/data.toml || exit 1
-                echo "config $f/data.toml and $f/state.toml ok!"
-              else
-                ${self'.packages.psyche-centralized-server}/bin/psyche-centralized-server validate-config --state $f/state.toml|| exit 1
-                echo "config $f/state.toml ok!"
+        validate-all-configs =
+          pkgs.runCommandNoCC "validate-configs"
+            { nativeBuildInputs = [ self'.packages.psyche-centralized-server ]; }
+            ''
+              dir="${../config}"
+              if [ ! -d "$dir" ]; then
+                echo "config dir $dir does not exist."
+                exit 1
               fi
-          done;
 
-          echo "all configs ok!"
+              for f in $dir/*; do
+                if [ -f $f/data.toml ]; then
+                  psyche-centralized-server validate-config --state $f/state.toml --data-config $f/data.toml || exit 1
+                  echo "config $f/data.toml and $f/state.toml ok!"
+                else
+                  psyche-centralized-server validate-config --state $f/state.toml|| exit 1
+                  echo "config $f/state.toml ok!"
+                fi
+              done;
 
-          touch $out
-        '';
+              echo "all configs ok!"
+
+              touch $out
+            '';
       };
     };
 }

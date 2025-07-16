@@ -1,8 +1,9 @@
 {
-  gitcommit,
-  inputs,
-  system,
   pkgs,
+  inputs,
+  lib ? pkgs.lib,
+  gitcommit ? inputs.self.rev or inputs.self.dirtyRev or "unknown",
+  system ? pkgs.stdenv.hostPlatform.system,
 }:
 let
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
@@ -20,68 +21,74 @@ let
     || (builtins.match ".*local-dev-keypair.json$" path != null)
     || (builtins.match ".*shared/client/src/state/prompt_texts/.*\\.txt$" path != null);
 
-  src = pkgs.lib.cleanSourceWith {
+  src = lib.cleanSourceWith {
     src = ../.;
     filter = path: type: (testResourcesFilter path type) || (craneLib.filterCargoSources path type);
   };
 
-  torch = pkgs.libtorch-bin.dev.overrideAttrs (
-    old:
-    let
-      version = "2.6.0";
-      cuda = "124";
-    in
-    {
-      version = version;
-      src = pkgs.fetchzip {
-        name = "libtorch-cxx11-abi-shared-with-deps-${version}-cu${cuda}.zip";
-        url = "https://download.pytorch.org/libtorch/cu${cuda}/libtorch-cxx11-abi-shared-with-deps-${version}%2Bcu${cuda}.zip";
-        hash = "sha256-rJIvNGcR/xFfkr/O2a32CmO5/5Fv24Y7+efOtYgGO6A=";
-      };
-    }
-  );
-
   env = {
-    CUDA_ROOT = pkgs.cudaPackages.cudatoolkit.out;
-    LIBTORCH = torch.out;
-    LIBTORCH_INCLUDE = torch.dev;
-    LIBTORCH_LIB = torch.out;
+    LIBTORCH_USE_PYTORCH = 1;
   };
 
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
       pkg-config
       perl
+      python312
     ];
 
     buildInputs =
-      [ torch ]
+      [
+        pkgs.python312Packages.torch-bin
+      ]
       ++ (with pkgs; [
         openssl
         fontconfig # for lr plot
       ])
-      ++ (with pkgs.cudaPackages; [
-        cudatoolkit
-        cuda_cudart
-        nccl
-      ]);
+      ++ lib.optionals pkgs.config.cudaSupport (
+        with pkgs.cudaPackages;
+        [
+          cudatoolkit
+          cuda_cudart
+          nccl
+        ]
+      );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
+    cargoExtraArgs = "--features python-extension";
+  };
+
+  rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
+    buildInputs = rustWorkspaceArgs.buildInputs ++ [
+      pythonWithPsycheExtension
+    ];
+    NIX_LDFLAGS = "-L${pkgs.python312}/lib -lpython3.12";
   };
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
 
-  buildRustPackage =
-    name:
+  pythonWithPsycheExtension = (
+    pkgs.python312.withPackages (ps: [
+      (pkgs.callPackage ../python { })
+    ])
+  );
+
+  buildRustPackageWithPythonSidecar =
+    {
+      name,
+      isExample ? false,
+    }:
     craneLib.buildPackage (
-      rustWorkspaceArgs
+      rustWorkspaceArgsWithPython
       // {
         inherit cargoArtifacts;
         pname = name;
-        cargoExtraArgs = "--bin ${name}";
+        cargoExtraArgs =
+          rustWorkspaceArgsWithPython.cargoExtraArgs
+          + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
       }
     );
@@ -137,28 +144,26 @@ let
       }
     );
 
-  buildWholeWorkspace = craneLib.buildPackage (
-    rustWorkspaceArgs
-    // {
-      inherit cargoArtifacts;
-    }
-  );
-
   useHostGpuDrivers =
-    package:
-    pkgs.runCommand "${package.name}-nixgl-wrapped"
-      {
-        nativeBuildInputs = [ pkgs.makeWrapper ];
-      }
-      ''
-        mkdir -p $out/bin
-        for bin in ${package}/bin/*; do
-          if [ -f "$bin" ] && [ -x "$bin" ]; then
-            makeWrapper "$bin" "$out/bin/$(basename $bin)" \
-              --run 'exec ${pkgs.nix-gl-host}/bin/nixglhost "'"$bin"'" -- "$@"'
-          fi
-        done
-      '';
+    if pkgs.config.cudaSupport then
+      (package: package)
+    else
+      (
+        package:
+        pkgs.runCommandNoCC "${package.name}-nixgl-wrapped"
+          {
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+          }
+          ''
+            mkdir -p $out/bin
+            for bin in ${package}/bin/*; do
+              if [ -f "$bin" ] && [ -x "$bin" ]; then
+                makeWrapper "$bin" "$out/bin/$(basename $bin)" \
+                  --run 'exec ${pkgs.nix-gl-host}/bin/nixglhost "'"$bin"'" -- "$@"'
+              fi
+            done
+          ''
+      );
 
   solanaCraneLib =
     (inputs.crane.mkLib pkgs).overrideToolchain
@@ -172,14 +177,9 @@ let
       workspaceDir,
       sourceRoot,
       keypair ? "",
-    }@origArgs:
+    }:
     let
-      args = builtins.removeAttrs origArgs [
-        "keypair"
-        "programName"
-      ];
       cargoLock = workspaceDir + "/Cargo.lock";
-      cargoToml = workspaceDir + "/Cargo.toml";
 
       env = {
         RUSTFLAGS = "--cfg procmacro2_semver_exempt -A warnings";
@@ -196,7 +196,7 @@ let
         solanaWorkspaceArgs
         // {
           pname = "solana-idl-${programName}";
-          buildPhaseCargoCommand = "cargo test --no-run";
+          buildPhaseCargoCommand = "cargo test --no-run --features idl-build";
         }
       );
     in
@@ -212,9 +212,7 @@ let
 
         postPatch =
           let
-            cargoTomlContents = builtins.fromTOML (
-              builtins.readFile (workspaceDir + "/programs" + "/${programName}" + "/Cargo.toml")
-            );
+            cargoTomlContents = lib.importTOML (workspaceDir + "/programs/${programName}/Cargo.toml");
           in
           ''
             if [ -n "${keypair}" ]; then
@@ -227,7 +225,6 @@ let
           inputs.solana-pkgs.packages.${system}.anchor
         ] ++ rustWorkspaceDeps.nativeBuildInputs;
 
-        # TODO this doesn't reuse the build artifacts from the deps build, why not?
         buildPhaseCargoCommand = ''
           mkdir $out
           anchor idl build --out $out/idl.json --out-ts $out/idlType.ts
@@ -243,13 +240,16 @@ in
     craneLib
     buildSolanaIdl
     rustWorkspaceArgs
+    rustWorkspaceArgsWithPython
     cargoArtifacts
-    buildRustPackage
+    buildRustPackageWithPythonSidecar
     buildRustWasmTsPackage
-    buildWholeWorkspace
     useHostGpuDrivers
     env
     src
     gitcommit
+    pythonWithPsycheExtension
     ;
+
+  mkWebsitePackage = pkgs.callPackage ../website/common.nix { };
 }

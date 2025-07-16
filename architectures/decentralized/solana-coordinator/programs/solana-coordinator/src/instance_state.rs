@@ -1,28 +1,28 @@
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
-use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::Model;
 use psyche_coordinator::ClientState;
 use psyche_coordinator::Coordinator;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::HealthChecks;
 use psyche_coordinator::RunState;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
-use psyche_core::sha256v;
+use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::Model;
 use psyche_core::FixedString;
 use psyche_core::SmallBoolean;
+use psyche_core::sha256v;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::client::Client;
-use crate::clients_state::ClientsState;
 use crate::ClientId;
 use crate::ProgramError;
+use crate::client::Client;
+use crate::clients_state::ClientsState;
 
 #[derive(
     Debug,
@@ -128,35 +128,41 @@ impl CoordinatorInstanceState {
             Ok(TickResult::EpochEnd(success)) => {
                 msg!("Epoch end, sucecsss: {}", success);
 
-                let mut i = 0;
-                let mut j = 0;
                 let finished_clients = &self.coordinator.epoch_state.clients;
                 let exited_clients =
                     &self.coordinator.epoch_state.exited_clients;
 
+                let mut finished_client_index = 0;
+                let mut exited_client_index = 0;
+
                 for client in self.clients_state.clients.iter_mut() {
-                    if i < finished_clients.len()
-                        && client.id == finished_clients[i].id
+                    if finished_client_index < finished_clients.len()
+                        && client.id.signer
+                            == finished_clients[finished_client_index].id.signer
                     {
-                        if finished_clients[i].state == ClientState::Healthy {
+                        if finished_clients[finished_client_index].state
+                            == ClientState::Healthy
+                        {
                             client.earned += self
                                 .clients_state
                                 .current_epoch_rates
                                 .earning_rate;
                         }
-                        i += 1;
+                        finished_client_index += 1;
                     }
-
-                    if j < exited_clients.len()
-                        && client.id == exited_clients[j].id
+                    if exited_client_index < exited_clients.len()
+                        && client.id.signer
+                            == exited_clients[exited_client_index].id.signer
                     {
-                        if exited_clients[j].state == ClientState::Ejected {
+                        if exited_clients[exited_client_index].state
+                            == ClientState::Ejected
+                        {
                             client.slashed += self
                                 .clients_state
                                 .current_epoch_rates
                                 .slashing_rate;
                         }
-                        j += 1;
+                        exited_client_index += 1;
                     }
                 }
             },

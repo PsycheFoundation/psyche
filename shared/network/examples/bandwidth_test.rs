@@ -1,21 +1,21 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMode, RelayUrl};
 use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
-    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
-    NetworkTUIState, NetworkTui, PeerList,
+    BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, NetworkTUIState,
+    NetworkTui, PeerList, allowlist, fmt_bytes,
 };
 use psyche_tui::{
+    CustomWidget, LogOutput,
     logging::LoggerWidget,
     maybe_start_render_loop,
     ratatui::{
         layout::{Constraint, Direction, Layout},
         widgets::{Block, Borders, Paragraph, Widget},
     },
-    CustomWidget, LogOutput,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{interval, interval_at, Interval},
+    time::{Interval, interval, interval_at},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -292,7 +292,7 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         4,
-        ClientMetrics::new(),
+        ClientMetrics::new(None),
     )
     .await?;
 

@@ -27,7 +27,7 @@ pub use batch_id::BatchId;
 pub use bloom::Bloom;
 pub use bounded_queue::BoundedQueue;
 pub use boxed_future::BoxedFuture;
-pub use cancellable_barrier::{CancellableBarrier, CancelledBarrier};
+pub use cancellable_barrier::{Barrier, CancellableBarrier, CancelledBarrier};
 pub use data_shuffle::Shuffle;
 pub use definitions::{
     ConstantLR, CosineLR, LearningRateSchedule, LearningRateScheduler, LinearLR,
@@ -47,7 +47,7 @@ pub use serde_utils::{
 };
 pub use sha256::{sha256, sha256v};
 pub use similarity::{
-    hamming_distance, is_similar, jaccard_distance, manhattan_distance, DistanceThresholds,
+    DistanceThresholds, hamming_distance, is_similar, jaccard_distance, manhattan_distance,
 };
 pub use sized_iterator::SizedIterator;
 pub use small_boolean::SmallBoolean;

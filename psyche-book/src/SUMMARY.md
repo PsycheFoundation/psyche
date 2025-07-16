@@ -24,6 +24,7 @@
   - [Running on-chain](./development/running-onchain.md)
   - [Running off-chain](./development/running-offchain.md)
   - [Implementing Models](./development/models.md)
+  - [Python](./development/python.md)
   - [Secrets](./development/agenix.md)
   - [Building these docs](./development/book.md)
   - [CI](./development/ci.md)

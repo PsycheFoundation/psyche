@@ -12,3 +12,7 @@ postcard.workspace = true
 tch.workspace = true
 clap.workspace = true
 clap-markdown.workspace = true
+psyche-python-extension-impl = { workspace = true, optional = true }
+
+[features]
+python = ["psyche-python-extension-impl/python"]
