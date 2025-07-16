@@ -130,7 +130,6 @@ pub async fn process_treasurer_participant_claim(
     );
     let participant = find_participant(run, &user.pubkey());
     let accounts = ParticipantClaimAccounts {
-        payer: payer.pubkey(),
         user: user.pubkey(),
         user_collateral: *user_collateral,
         run: *run,
