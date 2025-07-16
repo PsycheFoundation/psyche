@@ -15,13 +15,35 @@ lib.makeScope pkgs.newScope (
       "preview-lr"
     ];
 
-    rustPackages = lib.genAttrs rustPackageNames self.psycheLib.buildRustPackageWithPythonSidecar;
+    rustExampleNames = [
+      "bandwidth_test"
+      "inference"
+      "train"
+    ];
+
+    rustPackages = lib.mapAttrs (_: lib.id) (
+      lib.genAttrs (rustPackageNames ++ rustExampleNames) (
+        name:
+        self.psycheLib.buildRustPackageWithPythonSidecar {
+          inherit name;
+          isExample = lib.elem name rustExampleNames;
+        }
+      )
+    );
 
     nixglhostRustPackages = lib.listToAttrs (
-      map (
+      (map (
         name: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers rustPackages.${name})
-      ) rustPackageNames
+      ) rustPackageNames)
+      ++ (map (
+        name: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers rustPackages.${name})
+      ) rustExampleNames)
     );
+
+    # Import Docker configurations
+    dockerPackages = import ./docker.nix {
+      inherit pkgs nixglhostRustPackages inputs;
+    };
 
     psychePackages =
       {
@@ -33,10 +55,12 @@ lib.makeScope pkgs.newScope (
         solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
         solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
-        psyche-book = pkgs.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+        psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+
       }
       // rustPackages
-      // nixglhostRustPackages;
+      // nixglhostRustPackages
+      // dockerPackages;
   in
   {
     psycheLib = import ./lib.nix {
