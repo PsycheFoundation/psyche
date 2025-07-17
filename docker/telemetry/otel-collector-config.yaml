@@ -13,7 +13,14 @@ processors:
 
 exporters:
   loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+    endpoint:
+      http://loki:3100/loki/api/v1/push
+
+      # Exportador de Prometheus para métricas
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      service: "otel-collector"
 
   # Useful for debugging to see logs in the collector's stdout
   debug:
@@ -30,3 +37,9 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug] # Send traces to Jaeger and debug output
+
+      # Pipeline para métricas
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus, debug]

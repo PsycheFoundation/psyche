@@ -7,6 +7,15 @@ datasources:
     isDefault: true
     version: 1
     editable: true
+
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090 # Connects to the Prometheus service defined in docker-compose.yml
+    isDefault: false
+    version: 1
+    editable: true
+
     # Optional: Configure derived fields for trace/span linking in Grafana
     # jsonData:
     #   derivedFields:
