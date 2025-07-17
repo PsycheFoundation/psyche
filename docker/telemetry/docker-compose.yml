@@ -45,7 +45,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true" # For quick testing, disable in production
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin # For quick testing
     volumes:
-      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./grafana/provisioning:/etc/grafana/provisioning/
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     ports:
       - "3000:3000" # Grafana UI
     depends_on:

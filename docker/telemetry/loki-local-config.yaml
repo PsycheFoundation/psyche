@@ -14,12 +14,12 @@ common:
 schema_config:
   configs:
     - from: 2020-10-27
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 limits_config:
-  allow_structured_metadata: false # Important for OTLP logs with structured attributes
+  allow_structured_metadata: true

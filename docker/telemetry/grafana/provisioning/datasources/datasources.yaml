@@ -15,11 +15,3 @@ datasources:
     isDefault: false
     version: 1
     editable: true
-
-    # Optional: Configure derived fields for trace/span linking in Grafana
-    # jsonData:
-    #   derivedFields:
-    #     - datasourceUid: tempo # Replace 'tempo' with your Tempo data source UID if you have one
-    #       matcherRegex: "trace_id=(\\w+)"
-    #       name: TraceID
-    #       url: "$${__value.raw}"
