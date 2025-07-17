@@ -1,12 +1,11 @@
 use std::time::Duration;
 
 use psyche_centralized_testing::{
-    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
+    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, assert_eq_with_retries,
     client::ClientHandle,
     server::CoordinatorServerHandle,
     test_utils::{
-        assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
-        spawn_clients_with_training_delay,
+        assert_witnesses_healthy_score, spawn_clients, spawn_clients_with_training_delay,
     },
 };
 use psyche_coordinator::{
@@ -28,7 +27,7 @@ async fn connect_single_node() {
     let _client_handle = ClientHandle::default(server_port, run_id).await;
     let connected_clients = || server_handle.get_pending_clients_len();
 
-    assert_with_retries(connected_clients, 1).await;
+    assert_eq_with_retries!(connected_clients, 1).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -47,8 +46,8 @@ async fn connect_multiple_nodes() {
     let connected_clients = || server_handle.get_pending_clients_len();
     let run_state = || server_handle.get_run_state();
 
-    assert_with_retries(connected_clients, number_of_nodes).await;
-    assert_with_retries(run_state, RunState::WaitingForMembers).await;
+    assert_eq_with_retries!(connected_clients, number_of_nodes).await;
+    assert_eq_with_retries!(run_state, RunState::WaitingForMembers).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -65,8 +64,8 @@ async fn state_change_waiting_for_members_to_warmup() {
 
     // No clients are connected yet, so run state should be `WaitingForMembers`
 
-    assert_with_retries(connected_clients, 0).await;
-    assert_with_retries(run_state, RunState::WaitingForMembers).await;
+    assert_eq_with_retries!(connected_clients, 0).await;
+    assert_eq_with_retries!(run_state, RunState::WaitingForMembers).await;
 
     // Clients are spawned
 
@@ -77,8 +76,8 @@ async fn state_change_waiting_for_members_to_warmup() {
     // Clients have connected and now that the initial min clients has been reached, run state
     // changes to `Warmup`
 
-    assert_with_retries(connected_clients, 2).await;
-    assert_with_retries(run_state, RunState::Warmup).await;
+    assert_eq_with_retries!(connected_clients, 2).await;
+    assert_eq_with_retries!(run_state, RunState::Warmup).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -92,8 +91,8 @@ async fn state_change_shutdown_node_in_warmup() {
 
     // No clients are connected yet, so run state should be `WaitingForMembers`
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -108,19 +107,19 @@ async fn state_change_shutdown_node_in_warmup() {
         .try_into()
         .unwrap();
 
-    assert_with_retries(|| server_handle.get_clients_len(), 2).await;
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // One client is killed, and now state returns to `WaitingForMembers` since the
     // minimum for starting the round is not reached
     client_2_task.client_handle.abort();
-    assert_with_retries(
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
     .await;
-    assert_with_retries(|| server_handle.get_clients_len(), 1).await;
-    assert_with_retries(|| server_handle.get_pending_clients_len(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_pending_clients_len(), 1).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -132,8 +131,8 @@ async fn state_change_waiting_for_members_to_round_train() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -143,11 +142,11 @@ async fn state_change_waiting_for_members_to_round_train() {
     let run_id = &server_handle.run_id;
     let _client_handles = spawn_clients(2, server_port, run_id).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 2).await;
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 2).await;
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -158,8 +157,8 @@ async fn state_change_waiting_for_members_to_round_witness() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -169,18 +168,18 @@ async fn state_change_waiting_for_members_to_round_witness() {
     let run_id = &server_handle.run_id;
     let _client_handles = spawn_clients(2, server_port, run_id).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 2).await;
 
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 2).await;
 
     // train time
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
     tokio::time::sleep(Duration::from_secs(MAX_ROUND_TRAIN_TIME)).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 2).await;
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
 }
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -195,8 +194,8 @@ async fn validate_all_clients_participate_in_witness_bloom() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -207,26 +206,26 @@ async fn validate_all_clients_participate_in_witness_bloom() {
     let _client_handles = spawn_clients(init_min_clients as usize, server_port, run_id).await;
 
     // assert that we start in the round 0
-    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 0).await;
     // witnesses should be empty
     assert!(server_handle.get_rounds().await[0].witnesses.is_empty());
 
     // Start round 0
 
     // warmup
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // train
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
     tokio::time::sleep(Duration::from_secs(MAX_ROUND_TRAIN_TIME)).await;
 
     // witness
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
 
     // get to round 2 (where we have witnesses)
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 2).await;
 
     // Assert that the witness healthy score of the previous round
     // 1 witness, 5 clients and each one trained 1 round, expected_score = 5
@@ -242,8 +241,8 @@ async fn replace_node_and_complete_round() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -264,14 +263,14 @@ async fn replace_node_and_complete_round() {
     .unwrap();
 
     // assert that we start in the round 0
-    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 0).await;
     // witnesses should be empty
     assert!(server_handle.get_rounds().await[0].witnesses.is_empty());
 
     info!("waiting for warmup...");
 
     // warmup
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // A new client is spawned, but since we are in `Warmup` state, it should wait for `WaitingForMembers`
     // to join the run
@@ -284,16 +283,16 @@ async fn replace_node_and_complete_round() {
     // was pending, the state immediately changes to `Warmup` again
     client_1_task.client_handle.abort();
 
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // The network advances normally
 
     // train
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
     tokio::time::sleep(Duration::from_secs(training_delay)).await;
 
     // witness
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
 }
 
@@ -307,8 +306,8 @@ async fn finish_epoch() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -326,31 +325,31 @@ async fn finish_epoch() {
     .await;
 
     // assert that we start in the round 0
-    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 0).await;
 
     // Witnesses should be empty, since round just started and we haven't trained yet
     assert!(server_handle.get_rounds().await[0].witnesses.is_empty());
 
     // execute round 0
     // warmup
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // train
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
     tokio::time::sleep(Duration::from_secs(training_delay)).await;
 
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
 
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 3).await;
 
     // Cooldown
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Cooldown).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Cooldown).await;
     tokio::time::sleep(Duration::from_secs(COOLDOWN_TIME)).await;
 
-    assert_with_retries(|| server_handle.get_current_epoch(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_current_epoch(), 1).await;
 }
 
 /// A new client attempts to join the network during the RoundTrain phase.
@@ -366,8 +365,8 @@ async fn client_join_in_training() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -386,7 +385,7 @@ async fn client_join_in_training() {
     .await;
 
     info!("waiting for init min clients...");
-    assert_with_retries(
+    assert_eq_with_retries!(
         || server_handle.get_clients_len(),
         init_min_clients as usize,
     )
@@ -394,15 +393,15 @@ async fn client_join_in_training() {
 
     // execute round 0
     info!("waiting for round 0...");
-    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 0).await;
 
     // warmup
     info!("waiting for warmup...");
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // train
     info!("waiting for start of train...");
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
 
     // spawn new client
     let [_new_client_handle] =
@@ -413,31 +412,31 @@ async fn client_join_in_training() {
 
     // assert new client didnt join the round but is ready in pending clients
     info!("waiting for pending clients to contain new client");
-    assert_with_retries(|| server_handle.get_pending_clients_len(), 3).await;
-    assert_with_retries(|| server_handle.get_clients_len(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_pending_clients_len(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 2).await;
 
     // train
     info!("waiting for witness state...");
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
 
     info!("waiting for next round!");
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
 
     // run through the rest of the epoch
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 3).await;
 
     // Assert that the witness healthy score of the previous round
     // 1 witness, 2 clients and each one trained 1 batch, expected_score = 2
     assert_witnesses_healthy_score(&server_handle, 1, 2).await;
 
     // check that the run state evolves naturally to Warmup
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // check that the clients length shows the new joined client
-    assert_with_retries(|| server_handle.get_clients_len(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 3).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -449,8 +448,8 @@ async fn shutdown_node_in_training_and_complete_round() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -469,10 +468,10 @@ async fn shutdown_node_in_training_and_complete_round() {
     .unwrap();
 
     // warmup
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // train
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
     let clients = server_handle.get_clients().await;
     assert_eq!(clients.len(), 3);
 
@@ -481,14 +480,14 @@ async fn shutdown_node_in_training_and_complete_round() {
     client_1_task.client_handle.abort();
 
     // witness
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
 
     // since up nodes < init_min_clients
     // the network should return to Cooldown and the WaitingForMembers
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Cooldown).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Cooldown).await;
 
-    assert_with_retries(
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -502,10 +501,10 @@ async fn shutdown_node_in_training_and_complete_round() {
             .unwrap();
 
     // Now that the new client joined, we assert that the run state evolved to Warmup
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // The new clients length now includes the joined client
-    assert_with_retries(|| server_handle.get_clients_len(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 3).await;
 }
 
 // TODO: fix this up for overlapped, something weird with it at step 2
@@ -580,8 +579,8 @@ async fn client_join_in_training_and_get_model_using_p2p() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -600,7 +599,7 @@ async fn client_join_in_training_and_get_model_using_p2p() {
     .await;
 
     info!("waiting for init min clients...");
-    assert_with_retries(
+    assert_eq_with_retries!(
         || server_handle.get_clients_len(),
         init_min_clients as usize,
     )
@@ -608,15 +607,15 @@ async fn client_join_in_training_and_get_model_using_p2p() {
 
     // execute round 0
     info!("waiting for round 0...");
-    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 0).await;
 
     // warmup
     info!("waiting for warmup...");
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // train
     info!("waiting for start of train...");
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
 
     // spawn new client
     let [_new_client_handle] =
@@ -626,36 +625,36 @@ async fn client_join_in_training_and_get_model_using_p2p() {
             .unwrap();
 
     info!("waiting for round 1...");
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
 
     info!("waiting for round 2...");
-    assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 2).await;
 
     info!("waiting for round 3...");
-    assert_with_retries(|| server_handle.get_rounds_head(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 3).await;
 
     info!("waiting for next epoch!");
-    assert_with_retries(|| server_handle.get_current_epoch(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_current_epoch(), 1).await;
 
-    assert_with_retries(
+    assert_eq_with_retries!(
         || server_handle.get_checkpoint(),
         std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
     )
     .await;
 
     // check that the run state evolves naturally to Warmup where the model gets shared
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     info!("waiting for end of round!");
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 3).await;
 
     info!("waiting for next epoch!");
-    assert_with_retries(|| server_handle.get_current_epoch(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_current_epoch(), 2).await;
 
     // check that the clients length shows the new joined client trained with new p2p shared model
-    assert_with_retries(|| server_handle.get_clients_len(), 3).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 3).await;
 }
 
 /// Two new clients attempt to join the network in the middle of a run.
@@ -672,8 +671,8 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 0).await;
+    assert_eq_with_retries!(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
     )
@@ -692,7 +691,7 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
     .await;
 
     info!("waiting for init min clients...");
-    assert_with_retries(
+    assert_eq_with_retries!(
         || server_handle.get_clients_len(),
         init_min_clients as usize,
     )
@@ -700,41 +699,41 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
 
     // execute round 0
     info!("waiting for round 0...");
-    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 0).await;
 
     // warmup
     info!("waiting for warmup...");
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // train
     info!("waiting for start of train...");
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
 
     info!("waiting for round 1...");
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
 
     // spawn new client
     let _clients_handle =
         spawn_clients_with_training_delay(2, server_port, run_id, training_delay).await;
 
     info!("waiting for next epoch!");
-    assert_with_retries(|| server_handle.get_current_epoch(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_current_epoch(), 1).await;
 
-    assert_with_retries(
+    assert_eq_with_retries!(
         || server_handle.get_checkpoint(),
         std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
     )
     .await;
 
     // check that the run state evolves naturally to Warmup where the model gets shared
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     info!("waiting for end of round!");
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
+    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
 
     info!("waiting for next epoch!");
-    assert_with_retries(|| server_handle.get_current_epoch(), 2).await;
+    assert_eq_with_retries!(|| server_handle.get_current_epoch(), 2).await;
 
     // check that the clients length shows the new joined client trained with new p2p shared model
-    assert_with_retries(|| server_handle.get_clients_len(), 4).await;
+    assert_eq_with_retries!(|| server_handle.get_clients_len(), 4).await;
 }

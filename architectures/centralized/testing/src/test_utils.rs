@@ -47,36 +47,50 @@ pub async fn spawn_clients_with_training_delay(
     client_handles
 }
 
-pub async fn assert_with_retries<T, F, Fut>(function: F, y: T)
-where
-    T: PartialEq + std::fmt::Debug,
-    Fut: Future<Output = T>,
-    F: FnMut() -> Fut,
-{
-    let res = with_retries(function, y).await;
-    assert!(res);
+#[macro_export]
+macro_rules! assert_eq_with_retries {
+    ($left:expr, $right:expr $(,)?) => {
+        async {
+            let mut left_fn = $left;
+            let right_val = $right;
+
+            let output = $crate::test_utils::retry_until_output_eq_or_giveup(left_fn, right_val).await;
+            assert_eq!(output, right_val);
+        }
+    };
+    ($left:expr, $right:expr, $($arg:tt)+) => {
+        async {
+            let mut left_fn = $left;
+            let right_val = $right;
+
+            let output = $crate::test_utils::retry_until_output_eq_or_giveup(left_fn, right_val).await;
+            assert_eq!(output, right_val, $($arg)+);
+        }
+    };
 }
 
-pub async fn with_retries<T, F, Fut>(mut function: F, y: T) -> bool
+pub async fn retry_until_output_eq_or_giveup<T, F, Fut>(mut function: F, expected_output: T) -> T
 where
     T: PartialEq + std::fmt::Debug,
     Fut: Future<Output = T>,
     F: FnMut() -> Fut,
 {
     let retry_attempts: u64 = 100;
-    let mut result;
-    for attempt in 1..=retry_attempts {
-        result = function().await;
-        if result == y {
-            return true;
-        } else if attempt == retry_attempts {
-            eprintln!("assertion failed, got: {result:?} but expected: {y:?}");
-            return false;
-        } else {
+    let mut attempt = 0;
+
+    loop {
+        attempt += 1;
+        let result = function().await;
+        if result == expected_output {
+            return result; // Success
+        }
+
+        if attempt < retry_attempts {
             tokio::time::sleep(Duration::from_millis(10 * attempt)).await;
+        } else {
+            return result;
         }
     }
-    false
 }
 
 pub fn sample_rand_run_id() -> String {
