@@ -1,7 +1,8 @@
 name: Push Client Image
 on:
-  check_suite:
-    types: [completed]
+  push:
+    branches:
+      - main
 
 jobs:
   push-docker-image:
