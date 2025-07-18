@@ -145,8 +145,6 @@ let
 
   useHostGpuDrivers =
     if pkgs.config.cudaSupport then
-      (package: package)
-    else
       (
         package:
         pkgs.runCommandNoCC "${package.name}-nixgl-wrapped"
@@ -162,7 +160,9 @@ let
               fi
             done
           ''
-      );
+      )
+    else
+      (package: package);
 
   solanaCraneLib =
     (inputs.crane.mkLib pkgs).overrideToolchain
