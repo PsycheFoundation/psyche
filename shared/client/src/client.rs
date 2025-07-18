@@ -49,8 +49,7 @@ const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
-const MAX_ERRORS_PER_PEER: u8 = 3;
-const MAX_RETRIES_PER_PEER: u8 = 5;
+const MAX_ERRORS_PER_PEER: u8 = 5;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -103,6 +102,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let max_concurrent_parameter_requests =
                     init_config.max_concurrent_parameter_requests;
 
+                let mut current_downloaded_parameters = 0_u16;
+                let mut total_parameters = None;
+
                 let mut run = RunManager::<T, A>::new(RunInitConfigAndIO {
                     init_config,
 
@@ -122,7 +124,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut sharable_model = SharableModel::empty();
                 let peer_manager = Arc::new(PeerManagerHandle::new(
                     MAX_ERRORS_PER_PEER,
-                    MAX_RETRIES_PER_PEER,
                     param_requests_cancel_token.clone(),
                 ));
 
@@ -266,7 +267,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
                                         metrics.record_download_completed(hash, from);
                                         if retried_downloads.remove(hash).await.is_some() {
-                                            debug!("Successfully downloaded previously failed blob {}", hex::encode(hash));
+                                            info!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
@@ -274,14 +275,20 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 run.apply_distro_result(hash, distro_result, None);
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {
-                                                debug!("Download complete: parameter {}", parameter.name()?);
+                                                current_downloaded_parameters += 1;
+                                                info!("Download complete: parameter {}", parameter.name()?);
+                                                if let Some(total_parameters) = total_parameters {
+                                                    info!("Downloaded parameters total: {}/{}", current_downloaded_parameters, total_parameters);
+                                                } else {
+                                                    error!("Total parameters not set");
+                                                }
                                                 sharable_model.add_parameter(parameter).await?;
                                                 if sharable_model.is_download_complete() {
                                                     sharable_model.send_init_parameters()?;
                                                 }
                                             },
                                             TransmittableDownload::ModelConfig(config) => {
-                                                debug!("Download complete: model config");
+                                                info!("Download complete: model config");
                                                 sharable_model.add_config(config)?;
                                                 sharable_model.send_config()?;
                                             },
@@ -299,11 +306,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
                                                 let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
-                                                peer_manager.report_blob_ticket_download_error(dl.blob_ticket.node_addr().node_id);
+                                                peer_manager.report_blob_ticket_request_error(dl.blob_ticket.node_addr().node_id, Some(dl.blob_ticket.clone()));
 
                                                 info!(
-                                                    "Model Sharing download failed {} time/s (will retry in {:?}): {}",
+                                                    "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
                                                     retries + 1,
+                                                    dl.blob_ticket.node_addr().node_id,
                                                     backoff_duration,
                                                     dl.error
                                                 );
@@ -365,7 +373,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 }
                                             },
                                             Ok(ticket) => {
-                                                info!(parameter = parameter_name, "Sending requested model parameter blob ticket");
+                                                info!(parameter = parameter_name, hash = %ticket.hash(), "Sending requested model parameter blob ticket");
                                                 if let Err(e) = protocol_req_tx.send(Ok(ticket)) {
                                                     warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
                                                 };
@@ -381,7 +389,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 }
                                             },
                                             Ok(config_ticket) => {
-                                                info!("Sending requested model config blob ticket");
+                                                info!(hash = %config_ticket.hash(), "Sending requested model config blob ticket");
                                                 if let Err(e) = protocol_req_tx.send(Ok(config_ticket)) {
                                                     warn!("Could not send model config blob ticket. Error: {e:?}");
                                                 }
@@ -470,20 +478,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             for (hash, ticket, tag, download_type) in pending_retries {
                                     let retries = retried_downloads.update_time(hash).await;
 
-                                    debug!("Retrying download for blob {} (attempt {})", hash, retries);
-
                                     metrics.record_download_retry(hash);
                                     // We check the type of the failed download and send it to the appropriate channel to retry it
                                     match download_type {
                                         DownloadType::DistroResult(_) => {
+                                            info!("Retrying download for distro result, (attempt {})", retries);
                                             let _ = tx_request_download.send((ticket, tag));
                                         },
                                         DownloadType::ModelSharing(inner) => {
                                             match inner {
                                                 ModelRequestType::Parameter(parameter) => {
+                                                    info!("Retrying download for model parameter: {parameter}, (attempt {})", retries);
                                                     let _ = tx_params_download.send(vec![(ticket, ModelRequestType::Parameter(parameter.clone()))]);
                                                 },
                                                 ModelRequestType::Config => {
+                                                    info!("Retrying download for model config, (attempt {})", retries);
                                                     let _ = tx_config_download.send(ticket);
                                                 }
                                             }
@@ -521,6 +530,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             sharable_model.update_config(config_string, tokenizer)?;
                         }
                         Some((param_names, tx_params_response)) = rx_parameters_req.recv() => {
+                            total_parameters = Some(param_names.len());
                             sharable_model.initialize_parameters(&param_names, tx_params_response);
 
                             let tx_params_download = tx_params_download.clone();
