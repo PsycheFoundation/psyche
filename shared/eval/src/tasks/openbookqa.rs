@@ -79,6 +79,7 @@ impl OpenbookQA {
             choices,
             answer,
             category: None,
+            cot_content: None,
         }
     }
 }

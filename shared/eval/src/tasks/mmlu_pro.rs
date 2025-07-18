@@ -55,11 +55,16 @@ impl MMLUPro {
             .get_string(dataset.get_column_id("category").unwrap())
             .unwrap()
             .to_owned();
+        let cot_content = row
+            .get_string(dataset.get_column_id("cot_content").unwrap())
+            .unwrap()
+            .to_owned();
         Document {
             text,
             choices,
             answer,
             category: Some(category),
+            cot_content: Some(cot_content),
         }
     }
 }

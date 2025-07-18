@@ -65,6 +65,7 @@ impl MMLU {
             choices,
             answer,
             category: None,
+            cot_content: None,
         }
     }
 }

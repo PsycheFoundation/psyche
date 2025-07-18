@@ -10,6 +10,65 @@ use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
+// Not needed
+// fn format_mmlu_pro_prompt(
+//     fewshot_docs: &[Document],
+//     test_doc: &Document,
+//     category: &str,
+// ) -> String {
+//     let category_clean = category.replace('_', " ");
+//     let mut prompt = format!(
+//         "The following are multiple choice questions (with answers) about {}. Think step by step and then finish your answer with \"the answer is (X)\" where X is the correct letter choice.\n",
+//         category_clean
+//     );
+
+//     // Add few-shot examples with answers
+//     for doc in fewshot_docs {
+//         // Extract the question text without "Answer: " suffix
+//         let question = doc.text.trim_end_matches("Answer: ");
+//         prompt.push_str("Question:\n");
+
+//         // Split the question to separate question text from options
+//         let parts: Vec<&str> = question.split('\n').collect();
+//         if !parts.is_empty() {
+//             prompt.push_str(&format!("{}\n", parts[0]));
+//             prompt.push_str("Options:\n");
+//             for part in &parts[1..] {
+//                 if !part.is_empty() {
+//                     prompt.push_str(&format!("{}\n", part));
+//                 }
+//             }
+//         }
+
+//         let answer_letter = &doc.choices[doc.answer];
+//         // For few-shot examples, we need to include full reasoning
+//         // This is a placeholder - in real implementation, you'd have actual reasoning
+//         prompt.push_str(&format!(
+//             "Answer: Let's think step by step. The answer is ({}).\n\n",
+//             answer_letter
+//         ));
+//     }
+
+//     // Add the test question without answer
+//     let question = test_doc.text.trim_end_matches("Answer: ");
+//     prompt.push_str("Question:\n");
+
+//     let parts: Vec<&str> = question.split('\n').collect();
+//     if !parts.is_empty() {
+//         prompt.push_str(&format!("{}\n", parts[0]));
+//         prompt.push_str("Options:\n");
+//         for part in &parts[1..] {
+//             if !part.is_empty() {
+//                 prompt.push_str(&format!("{}\n", part));
+//             }
+//         }
+//     }
+
+//     prompt.push_str("Answer: Let's think step by step.");
+
+//     prompt
+// }
+
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
     GenerateUntil(Box<dyn GenerateUntilTask>),
@@ -48,7 +107,9 @@ enum PreparedTaskType {
         docs: Vec<TokenizedLLHDocument>,
         tokenized_fewshot: Vec<i64>,
     },
-    GenerateUntil(),
+    GenerateUntil {
+        requests: Vec<TokenizedGenerateUntilDocument>,
+    },
 }
 
 #[derive(Debug)]
@@ -71,6 +132,13 @@ struct TokenizedLLHDocument {
     answer: usize,
     choices_token_len: Vec<usize>,
     requests: Vec<Vec<i64>>,
+}
+
+#[derive(Debug)]
+pub struct TokenizedGenerateUntilDocument {
+    request_str: String,
+    request: Vec<i64>,
+    answer: usize,
 }
 
 impl TokenizedLLHDocument {
@@ -185,7 +253,68 @@ impl Task {
                     },
                 }
             }
-            TaskType::GenerateUntil(x) => todo!(),
+            TaskType::GenerateUntil(gu_docs) => {
+                let mut docs = gu_docs.get_documents();
+                docs.shuffle(&mut self.rand);
+                if let Some(limit) = limit {
+                    docs.truncate(limit);
+                }
+
+                let fewshot = gu_docs.get_fewshot_documents();
+
+                let mut requests = Vec::new();
+
+                // Prepare prompts for each document
+                for doc in &docs {
+                    // Get the category for this document
+                    let category = doc
+                        .category
+                        .as_ref()
+                        .map(|s| s.as_str())
+                        .unwrap_or("general");
+
+                    // Get fewshot examples for this category
+                    let fewshot_examples =
+                        fewshot.get(category).map(|v| v.as_slice()).unwrap_or(&[]);
+
+                    // Build the prompt string
+                    let mut prompt = String::new();
+
+                    // Add fewshot examples with their answers
+                    for example in fewshot_examples.iter().take(self.num_fewshot) {
+                        prompt.push_str(&example.text);
+                        prompt.push_str(&example.choices[example.answer]);
+                        prompt.push_str("\n\n");
+                    }
+
+                    // Add the current question without answer
+                    prompt.push_str(&doc.text);
+
+                    // Tokenize the request
+                    let request = tokenizer
+                        .encode(prompt.clone(), false)
+                        .unwrap()
+                        .get_ids()
+                        .iter()
+                        .map(|x| *x as i64)
+                        .collect::<Vec<_>>();
+
+                    // Create the tokenized document
+                    let tokenized_doc = TokenizedGenerateUntilDocument {
+                        request_str: prompt,
+                        request,
+                        answer: doc.answer,
+                    };
+
+                    requests.push(tokenized_doc);
+                }
+
+                PreparedTask {
+                    name,
+                    num: docs.len(),
+                    prepared_task_type: PreparedTaskType::GenerateUntil { requests },
+                }
+            }
         }
     }
 }
@@ -219,7 +348,10 @@ impl PreparedTask {
                 docs,
                 tokenized_fewshot,
             } => Self::run_log_likelihood(options, docs, tokenized_fewshot, pbar),
-            PreparedTaskType::GenerateUntil() => todo!(),
+            PreparedTaskType::GenerateUntil { requests } => {
+                todo!()
+                // Self::run_generate_until(options, prompts, pbar)
+            }
         }
     }
 
@@ -359,6 +491,15 @@ impl PreparedTask {
         }
     }
 
+    fn run_generate_until(
+        _options: EvalTaskOptions,
+        _prompts: &[(String, usize)],
+        _pbar: Option<ProgressBar>,
+    ) -> PreparedTaskResult {
+        // TODO: Implement generate until evaluation
+        todo!("run_generate_until implementation")
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -369,7 +510,7 @@ impl PreparedTask {
                 docs: _,
                 tokenized_fewshot: _,
             } => "acc_norm",
-            PreparedTaskType::GenerateUntil() => todo!(),
+            PreparedTaskType::GenerateUntil { .. } => "acc",
         }
     }
 }

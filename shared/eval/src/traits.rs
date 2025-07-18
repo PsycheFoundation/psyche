@@ -5,6 +5,7 @@ pub struct Document {
     pub choices: Vec<String>,
     pub answer: usize,
     pub category: Option<String>,
+    pub cot_content: Option<String>,
 }
 
 pub trait LogLikelihoodTask: Send + Display {

@@ -66,6 +66,7 @@ impl BoolQ {
             choices,
             answer,
             category: None,
+            cot_content: None,
         }
     }
 }
