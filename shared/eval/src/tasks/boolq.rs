@@ -7,9 +7,8 @@
        boolq: {"acc_norm": 0.7842367667338496, "acc": 0.7842367667338496}
 */
 use crate::{
-    load_dataset,
+    TaskType, load_dataset,
     traits::{Document, LogLikelihoodTask},
-    TaskType,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Row, RowAccessor, Split};

@@ -1,4 +1,4 @@
-use crate::{load_dataset, traits::Document, traits::LogLikelihoodTask, TaskType};
+use crate::{TaskType, load_dataset, traits::Document, traits::LogLikelihoodTask};
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Field, Row, RowAccessor, Split};
 use std::fmt::Display;

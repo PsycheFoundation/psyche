@@ -2,7 +2,7 @@ use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
-use rand::{seq::SliceRandom, SeedableRng};
+use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
@@ -48,6 +48,7 @@ enum PreparedTaskType {
         docs: Vec<TokenizedLLHDocument>,
         tokenized_fewshot: Vec<i64>,
     },
+    GenerateUntil(),
 }
 
 #[derive(Debug)]
@@ -218,6 +219,7 @@ impl PreparedTask {
                 docs,
                 tokenized_fewshot,
             } => Self::run_log_likelihood(options, docs, tokenized_fewshot, pbar),
+            PreparedTaskType::GenerateUntil() => todo!(),
         }
     }
 
@@ -367,6 +369,7 @@ impl PreparedTask {
                 docs: _,
                 tokenized_fewshot: _,
             } => "acc_norm",
+            PreparedTaskType::GenerateUntil() => todo!(),
         }
     }
 }
