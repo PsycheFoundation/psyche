@@ -18,16 +18,26 @@ let
   };
 
   solana = inputs.solana-pkgs.packages.${pkgs.system}.default;
+
+  cudaBaseImage = pkgs.dockerTools.pullImage {
+    imageName = "nvidia/cuda";
+    imageDigest = "sha256:848b313f7e844dfab9854eeee4cbbd8d5561ba9eafddccd1fbc67aa0ccaf6608";
+    sha256 = "sha256-PFs+UM+9tINU4GsNe2TXZfoa0+OzuedcgMiaY586Pl0=";
+    finalImageName = "nvidia/cuda";
+    finalImageTag = "12.8.1-base-ubuntu20.04";
+  };
 in
 {
   docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
     name = "psyche-solana-client";
     tag = "latest";
+    fromImage = cudaBaseImage;
 
     contents = with pkgs; [
       bashInteractive
       cacert
       coreutils
+      nvtopPackages.full
       nixglhostRustPackages."psyche-solana-client-nixglhost"
       nixglhostRustPackages."psyche-centralized-client-nixglhost"
       nixglhostRustPackages."inference-nixglhost"
