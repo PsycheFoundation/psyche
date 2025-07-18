@@ -1,9 +1,9 @@
 use hf_hub::{
-    Cache, Repo, RepoType,
     api::{
-        Siblings,
         tokio::{ApiError, CommitError, UploadSource},
+        Siblings,
     },
+    Cache, Repo, RepoType,
 };
 use std::{path::PathBuf, time::Instant};
 use thiserror::Error;
@@ -37,7 +37,7 @@ async fn download_repo_async(
     let builder = hf_hub::api::tokio::ApiBuilder::new();
     let cache = match cache {
         Some(cache) => Cache::new(cache),
-        None => Cache::default(),
+        None => Cache::default(), // Default is ~/.cache/huggingface/hub
     };
     let api = builder
         .with_cache_dir(cache.path().clone())

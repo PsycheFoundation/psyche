@@ -1,14 +1,14 @@
 [workspace]
 members = [
-  "architectures/centralized/*",
-  "architectures/decentralized/solana-client",
-  "architectures/decentralized/testing",
-  "architectures/decentralized/solana-tooling",
-  "python/",
-  "python/extension-impl/",
-  "shared/*",
-  "tools/rust-tools/*",
-  "website/wasm",
+    "architectures/centralized/*",
+    "architectures/decentralized/solana-client",
+    "architectures/decentralized/testing",
+    "architectures/decentralized/solana-tooling",
+    "python/",
+    "python/extension-impl/",
+    "shared/*",
+    "tools/rust-tools/*",
+    "website/wasm",
 ]
 resolver = "2"
 
@@ -38,15 +38,15 @@ psyche-solana-coordinator = { path = "./architectures/decentralized/solana-coord
 psyche-solana-treasurer = { path = "./architectures/decentralized/solana-treasurer/programs/solana-treasurer" }
 psyche-solana-tooling = { path = "./architectures/decentralized/solana-tooling" }
 
-hf-hub = { git = "https://github.com/NousResearch/hf-hub.git", rev = "269dc3df4e194f9071ddbdbd25ed90d4990f9262" }
+hf-hub = { git = "https://github.com/IAvecilla/hf-hub.git", rev = "d10abc83f3c161671474e65c501667fc4585762d" }
 tokio = { version = "1", features = [
-  "io-util",
-  "rt",
-  "rt-multi-thread",
-  "net",
-  "macros",
-  "time",
-  "signal",
+    "io-util",
+    "rt",
+    "rt-multi-thread",
+    "net",
+    "macros",
+    "time",
+    "signal",
 ] }
 tokio-stream = "0.1"
 tokio-util = "0.7.12"
@@ -68,16 +68,16 @@ async-trait = "0.1.82"
 iroh = { version = "0.35.0", features = ["metrics"] }
 iroh-relay = { version = "0.35.0", features = ["metrics"] }
 iroh-blobs = { git = "https://github.com/NousResearch/iroh-blobs", rev = "2ebe362e90fa53f346ad466f1c9ef33ed2108524", features = [
-  "rpc",
-  "downloader",
-  "metrics",
+    "rpc",
+    "downloader",
+    "metrics",
 ] }
 flume = "0.11.1"
 iroh-gossip = { version = "0.35.0" }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
-  "onig",
+    "onig",
 ] }
 tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
 torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
@@ -93,14 +93,14 @@ clap-markdown = "0.1.4"
 pyo3 = { version = "0.24", features = ["py-clone"] }
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 anchor-client = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5", features = [
-  "async",
+    "async",
 ] }
 anchor-lang-idl = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5", features = [
-  "build",
+    "build",
 ] }
 
 ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9bb868ad8f25b26f110a795099", features = [
-  "psyche-impl",
+    "psyche-impl",
 ] }
 
 # dev only
