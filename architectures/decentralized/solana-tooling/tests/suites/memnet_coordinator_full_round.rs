@@ -10,6 +10,7 @@ use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
+use psyche_core::FixedString;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
@@ -31,6 +32,7 @@ use psyche_solana_tooling::process_coordinator_instructions::process_update;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
+const DUMMY_MODEL_SIZE: i64 = 512;
 #[tokio::test]
 pub async fn run() {
     let mut endpoint = create_memnet_endpoint().await;
@@ -109,8 +111,13 @@ pub async fn run() {
             total_steps: 100,
         }),
         Some(Model::LLM(LLM {
-            architecture: LLMArchitecture::HfLlama,
-            checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
+            architecture: LLMArchitecture::Dummy,
+            checkpoint: Checkpoint::Dummy(HubRepo {
+                repo_id: FixedString::from_str_truncated(&format!(
+                    "{DUMMY_MODEL_SIZE}"
+                )),
+                revision: None,
+            }),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
             data_location: LLMTrainingDataLocation::default(),

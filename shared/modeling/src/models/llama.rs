@@ -34,25 +34,6 @@ impl LlamaConfig {
     pub fn num_key_value_heads(&self) -> usize {
         self.num_key_value_heads.unwrap_or(self.num_attention_heads)
     }
-
-    pub fn dummy() -> Self {
-        Self {
-            hidden_size: 1,
-            intermediate_size: 1,
-            vocab_size: 1,
-            num_hidden_layers: 1,
-            num_attention_heads: 1,
-            num_key_value_heads: Some(1),
-            rms_norm_eps: 0.00001,
-            rope_theta: 10000.0,
-            bos_token_id: Some(1),
-            eos_token_id: Some(EosToks::Single(1)),
-            rope_scaling: None,
-            max_position_embeddings: 2048,
-            tie_word_embeddings: false,
-            is_dummy: true,
-        }
-    }
 }
 
 #[derive(Debug)]

@@ -12,6 +12,7 @@ use psyche_coordinator::{
     RunState,
     model::{Checkpoint, HubRepo},
 };
+use psyche_core::FixedString;
 use tracing::info;
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -638,23 +639,56 @@ async fn client_join_in_training_and_get_model_using_p2p() {
 
     assert_eq_with_retries!(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
+        std::mem::discriminant(&Checkpoint::P2P(HubRepo {
+            repo_id: FixedString::new(),
+            revision: None,
+        })),
     )
     .await;
 
     // check that the run state evolves naturally to Warmup where the model gets shared
-    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(
+        || server_handle.get_run_state(),
+        RunState::Warmup,
+        "run state did not move to Warmup"
+    )
+    .await;
 
     info!("waiting for end of round!");
-    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
-    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 2).await;
-    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 3).await;
+    assert_eq_with_retries!(
+        || server_handle.get_rounds_head(),
+        1,
+        "run did not progress to round 1"
+    )
+    .await;
+    assert_eq_with_retries!(
+        || server_handle.get_rounds_head(),
+        2,
+        "run did not progress to round 2"
+    )
+    .await;
+    assert_eq_with_retries!(
+        || server_handle.get_rounds_head(),
+        3,
+        "run did not progress to round 3"
+    )
+    .await;
 
     info!("waiting for next epoch!");
-    assert_eq_with_retries!(|| server_handle.get_current_epoch(), 2).await;
+    assert_eq_with_retries!(
+        || server_handle.get_current_epoch(),
+        2,
+        "run did not progress to epoch 2"
+    )
+    .await;
 
     // check that the clients length shows the new joined client trained with new p2p shared model
-    assert_eq_with_retries!(|| server_handle.get_clients_len(), 3).await;
+    assert_eq_with_retries!(
+        || server_handle.get_clients_len(),
+        3,
+        "new client did not join!"
+    )
+    .await;
 }
 
 /// Two new clients attempt to join the network in the middle of a run.
@@ -721,7 +755,10 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
 
     assert_eq_with_retries!(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
+        std::mem::discriminant(&Checkpoint::P2P(HubRepo {
+            repo_id: FixedString::new(),
+            revision: None,
+        })),
     )
     .await;
 

@@ -7,3 +7,4 @@ pub const WARMUP_TIME: u64 = 60;
 pub const MAX_ROUND_TRAIN_TIME: u64 = 5;
 pub const ROUND_WITNESS_TIME: u64 = 2;
 pub const COOLDOWN_TIME: u64 = 3;
+pub const DUMMY_MODEL_SIZE: i64 = 512;

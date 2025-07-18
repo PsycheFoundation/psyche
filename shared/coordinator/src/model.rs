@@ -40,6 +40,7 @@ pub enum LLMArchitecture {
     HfLlama,
     HfDeepseek,
     HfAuto,
+    Dummy,
 }
 
 #[derive(
@@ -189,10 +190,13 @@ pub struct LLM {
 }
 
 impl LLM {
-    pub fn dummy() -> Self {
+    pub fn dummy(size: i64) -> Self {
         Self {
-            architecture: LLMArchitecture::HfLlama,
-            checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
+            architecture: LLMArchitecture::Dummy,
+            checkpoint: Checkpoint::Dummy(HubRepo {
+                repo_id: FixedString::from_str_truncated(&format!("{size}")),
+                revision: None,
+            }),
             data_location: LLMTrainingDataLocation::default(),
             data_type: LLMTrainingDataType::Pretraining,
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
@@ -218,15 +222,6 @@ impl LLM {
 pub struct HubRepo {
     pub repo_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
     pub revision: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
-}
-
-impl HubRepo {
-    pub fn dummy() -> Self {
-        Self {
-            repo_id: FixedString::new(),
-            revision: None,
-        }
-    }
 }
 
 #[derive(

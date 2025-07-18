@@ -17,7 +17,7 @@ use tokio::{
 };
 use tracing::debug;
 
-use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
+use crate::{COOLDOWN_TIME, DUMMY_MODEL_SIZE, test_utils::sample_rand_run_id};
 use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 
 enum TestingQueryMsg {
@@ -91,7 +91,7 @@ impl CoordinatorServer {
         let run_id = sample_rand_run_id();
         let coordinator: Coordinator<ClientId> = Coordinator {
             run_id: run_id.as_str().try_into().unwrap(),
-            model: Model::LLM(LLM::dummy()),
+            model: Model::LLM(LLM::dummy(DUMMY_MODEL_SIZE)),
             config: coordinator_config,
             epoch_state,
             ..Coordinator::<ClientId>::zeroed()
