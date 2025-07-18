@@ -7,16 +7,17 @@ use std::{
     time::Duration,
 };
 
-use nvml_wrapper::{Nvml, enum_wrappers::device::TemperatureSensor};
+use nvml_wrapper::{enum_wrappers::device::TemperatureSensor, Nvml};
 use opentelemetry::{
-    KeyValue, global,
+    global,
     metrics::{Counter, Gauge, Histogram, Meter},
+    KeyValue,
 };
 use serde::Serialize;
 use sysinfo::System;
 use tokio::{io::AsyncWriteExt, net::TcpListener, time::interval};
 
-pub use iroh::{IrohMetricsCollector, create_iroh_registry};
+pub use iroh::{create_iroh_registry, IrohMetricsCollector};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
 use tracing::{debug, info, warn};
 
@@ -56,6 +57,13 @@ pub struct ClientMetrics {
 
     // shared state for TCP server
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
+
+    pub(crate) num_params: Option<u64>,
+
+    pub(crate) downloaded_params_total: u64,
+
+    // p2p model sharing
+    pub(crate) downloaded_params_percent: Option<Gauge<f64>>,
 }
 
 #[derive(Serialize, Debug, Clone, Default)]
@@ -160,7 +168,7 @@ impl ClientMetrics {
                 .with_description("Total number of download attempts that failed")
                 .build(),
             downloads_perma_failed_counter: meter
-                .u64_counter("psyche_downloads_failed_total")
+                .u64_counter("psyche_downloads_perma_failed_total")
                 .with_description("Total number of downloads that permantently failed")
                 .build(),
             downloads_bytes_counter: meter
@@ -203,6 +211,12 @@ impl ClientMetrics {
             system_monitor: Self::start_system_monitoring(&meter),
             tcp_server,
             tcp_metrics,
+
+            num_params: None,
+
+            downloaded_params_total: 0,
+
+            downloaded_params_percent: None,
         }
     }
 
@@ -357,6 +371,27 @@ impl ClientMetrics {
                 },
             )],
         );
+    }
+
+    pub fn initialize_model_parameters_gauge(&mut self, num_params: u64) {
+        let meter = global::meter("psyche_client");
+        self.num_params = Some(num_params);
+        self.downloaded_params_percent = Some(meter
+            .f64_gauge("psyche_p2p_model_params_downloaded")
+            .with_description("Percentaje of the total model parameters that have been downloaded from other peers")
+            .build());
+    }
+
+    pub fn update_model_sharing_total_params_downloaded(&mut self) {
+        self.downloaded_params_total += 1;
+        // TODO(marian): This should be changed and made more correct
+        let total_params = self.num_params.unwrap();
+        self.downloaded_params_percent.as_ref().map(|gauge| {
+            gauge.record(
+                self.downloaded_params_total as f64 / total_params as f64,
+                &[],
+            )
+        });
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
