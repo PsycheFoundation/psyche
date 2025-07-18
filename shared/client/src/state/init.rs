@@ -260,34 +260,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
                             model::Checkpoint::Hub(hub_repo) => {
                                 let repo_id: String = (&hub_repo.repo_id).into();
-                                let potential_local_path = PathBuf::from(repo_id.clone());
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
+                                info!("REVISION IS: {:?}", revision);
 
-                                let model_is_local = if revision.is_none()
-                                    && tokio::fs::try_exists(potential_local_path.clone())
-                                        .await
-                                        .unwrap_or_default()
-                                {
-                                    let mut ret = Vec::new();
-                                    let mut read_dir =
-                                        tokio::fs::read_dir(potential_local_path).await?;
-                                    while let Some(dir_entry) = read_dir.next_entry().await? {
-                                        ret.push(dir_entry.path())
-                                    }
-                                    ret
-                                } else {
-                                    info!("Downloading {} (if needed)", hub_repo.repo_id);
-                                    download_model_repo_async(
-                                        &repo_id,
-                                        revision,
-                                        None,
-                                        init_config.hub_read_token,
-                                        Some(init_config.hub_max_concurrent_downloads),
-                                        false,
-                                    )
-                                    .await?
-                                };
-                                let repo_files = model_is_local;
+                                let repo_files = download_model_repo_async(
+                                    &repo_id,
+                                    revision,
+                                    None,
+                                    init_config.hub_read_token,
+                                    Some(init_config.hub_max_concurrent_downloads),
+                                    false,
+                                )
+                                .await?;
                                 let checkpoint_extra_files = repo_files
                                     .iter()
                                     .filter(|file| {
