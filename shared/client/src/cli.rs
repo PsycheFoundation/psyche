@@ -157,7 +157,7 @@ pub struct TrainArgs {
     pub grad_accum_in_fp32: bool,
 
     #[clap(long, env)]
-    pub dummy_training_delay_secs: Option<u64>,
+    pub dummy_training_delay_secs: Option<f64>,
 
     #[clap(long, default_value_t = 4, env)]
     pub max_concurrent_parameter_requests: usize,

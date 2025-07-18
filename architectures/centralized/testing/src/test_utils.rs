@@ -36,7 +36,7 @@ pub async fn spawn_clients_with_training_delay(
     num_clients: usize,
     server_port: u16,
     run_id: &str,
-    training_delay_secs: u64,
+    training_delay_secs: f64,
 ) -> Vec<ClientHandle> {
     let mut client_handles = Vec::new();
     for _ in 0..num_clients {
@@ -126,7 +126,7 @@ pub async fn assert_witnesses_healthy_score(
 pub fn dummy_client_app_params_with_training_delay(
     server_port: u16,
     run_id: &str,
-    training_delay_secs: u64,
+    training_delay_secs: f64,
 ) -> AppParams {
     AppParams {
         cancel: CancellationToken::default(),

@@ -1,4 +1,5 @@
-use crate::{CausalLM, EosToks, StableVarStoreIterator, StableVariableIterator};
+use crate::{CausalLM, EosToks, ModelConfig, StableVarStoreIterator, StableVariableIterator};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -15,41 +16,56 @@ pub struct DummyModel {
     training_delay_secs: Duration,
 }
 
-pub fn get_dummy_parameters() -> HashMap<String, Tensor> {
-    // You may tweak these numbers if you want less/more dummy training and p2p blob size
-    [
-        ("model.norm.weight", vec![512]),
-        ("model.layers.0.mlp.up_proj.weight", vec![512, 512]),
-        ("model.layers.0.post_attention_layernorm.weight", vec![512]),
-        ("model.layers.0.self_attn.q_proj.weight", vec![512, 512]),
-        ("model.embed_tokens.weight", vec![512, 512]),
-        ("model.layers.0.self_attn.o_proj.weight", vec![512, 512]),
-        ("model.layers.0.self_attn.v_proj.weight", vec![512, 512]),
-        ("model.layers.0.self_attn.k_proj.weight", vec![512, 512]),
-        ("model.layers.0.mlp.gate_proj.weight", vec![512, 512]),
-        ("model.layers.0.mlp.down_proj.weight", vec![512, 512]),
-        ("lm_head.weight", vec![512, 512]),
-        ("model.layers.0.input_layernorm.weight", vec![512]),
-    ]
-    .into_iter()
-    .map(|(name, shape)| {
-        (
-            name.to_string(),
-            Tensor::zeros(shape, (tch::Kind::Float, tch::Device::Cpu)),
-        )
-    })
-    .collect()
+const DUMMY_PARAMS: &[(&str, usize)] = &[
+    ("model.norm.weight", 1),
+    ("model.layers.0.mlp.up_proj.weight", 2),
+    ("model.layers.0.post_attention_layernorm.weight", 1),
+    ("model.layers.0.self_attn.q_proj.weight", 2),
+    ("model.embed_tokens.weight", 2),
+    ("model.layers.0.self_attn.o_proj.weight", 2),
+    ("model.layers.0.self_attn.v_proj.weight", 2),
+    ("model.layers.0.self_attn.k_proj.weight", 2),
+    ("model.layers.0.mlp.gate_proj.weight", 2),
+    ("model.layers.0.mlp.down_proj.weight", 2),
+    ("lm_head.weight", 2),
+    ("model.layers.0.input_layernorm.weight", 1),
+];
+
+/// The dummy size is (9*x^2 + 3x) * f32 size bytes - so a size of `50` is ~90kb, a size of `512` is ~9mb, a size of `4096` is ~600 mb, etc.
+/// You may tweak these numbers if you want less/more dummy training and p2p blob size
+pub fn get_dummy_parameters(size: i64) -> HashMap<String, Tensor> {
+    DUMMY_PARAMS
+        .iter()
+        .map(|(name, dims)| {
+            let shape: Vec<i64> = vec![size; *dims];
+            (
+                name.to_string(),
+                Tensor::zeros(shape, (tch::Kind::Float, tch::Device::Cpu)),
+            )
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct DummyConfig {
+    pub size: i64,
 }
 
 impl Default for DummyModel {
     fn default() -> Self {
-        Self::new(500)
+        Self::new(512, None)
+    }
+}
+
+impl ModelConfig for DummyConfig {
+    fn get_parameter_names(&self) -> Vec<String> {
+        DUMMY_PARAMS.iter().map(|p| p.0.to_string()).collect()
     }
 }
 
 impl DummyModel {
-    pub fn new(training_delay: u64) -> Self {
-        let parameters = get_dummy_parameters();
+    pub fn new(size: i64, training_time_secs: Option<f64>) -> Self {
+        let parameters = get_dummy_parameters(size);
         let variables = Variables {
             named_variables: parameters,
             shards: HashMap::new(),
@@ -59,7 +75,7 @@ impl DummyModel {
         var_store.variables_ = Arc::new(Mutex::new(variables));
         Self {
             var_store,
-            training_delay_secs: Duration::from_millis(training_delay),
+            training_delay_secs: Duration::from_secs_f64(training_time_secs.unwrap_or(5.0)),
         }
     }
 }

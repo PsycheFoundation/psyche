@@ -40,7 +40,7 @@ impl Client {
     pub async fn new_with_training_delay(
         server_port: u16,
         run_id: &str,
-        training_delay_secs: u64,
+        training_delay_secs: f64,
     ) -> (
         Self,
         allowlist::AllowDynamic,
@@ -96,7 +96,7 @@ impl ClientHandle {
     pub async fn new_with_training_delay(
         server_port: u16,
         run_id: &str,
-        training_delay_secs: u64,
+        training_delay_secs: f64,
     ) -> Self {
         debug!("spawning new client...");
         let (mut client, allowlist, p2p, state_options) =

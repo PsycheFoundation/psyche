@@ -80,7 +80,7 @@ pub struct AppParams {
     pub wandb_info: Option<WandBInfo>,
     pub optim_stats: Option<u32>,
     pub grad_accum_in_fp32: bool,
-    pub dummy_training_delay_secs: Option<u64>,
+    pub dummy_training_delay_secs: Option<f64>,
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,

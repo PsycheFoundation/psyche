@@ -9,6 +9,7 @@ use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
+use psyche_core::FixedString;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
@@ -56,6 +57,8 @@ pub async fn run() {
     let cooldown_time = 42;
     let rounds_per_epoch = 4;
     let earned_point_per_epoch = 33;
+
+    const DUMMY_MODEL_SIZE: i64 = 512;
 
     // Prepare the collateral mint
     let collateral_mint_authority = Keypair::new();
@@ -210,8 +213,13 @@ pub async fn run() {
                 total_steps: 100,
             }),
             model: Some(Model::LLM(LLM {
-                architecture: LLMArchitecture::HfLlama,
-                checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
+                architecture: LLMArchitecture::Dummy,
+                checkpoint: Checkpoint::Dummy(HubRepo {
+                    repo_id: FixedString::from_str_truncated(&format!(
+                        "{DUMMY_MODEL_SIZE}"
+                    )),
+                    revision: None,
+                }),
                 max_seq_len: 4096,
                 data_type: LLMTrainingDataType::Pretraining,
                 data_location: LLMTrainingDataLocation::default(),

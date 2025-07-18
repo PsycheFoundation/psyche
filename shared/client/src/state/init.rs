@@ -1,25 +1,27 @@
-use crate::{fetch_data::DataFetcher, IntegrationTestLogMarker, WandBInfo};
+use crate::{IntegrationTestLogMarker, WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
-    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
     Coordinator, HealthChecks,
+    model::{
+        self, Checkpoint, HttpLLMTrainingDataLocation, LLMArchitecture, LLMTrainingDataLocation,
+    },
 };
 use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, TokenSize};
 use psyche_data_provider::{
+    DataProvider, DataProviderTcpClient, DummyDataProvider, WeightedDataProvider,
     download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
-    DataProvider, DataProviderTcpClient, DummyDataProvider, WeightedDataProvider,
 };
 use psyche_modeling::{
-    auto_tokenizer, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel,
-    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig,
-    ModelLoadError, ParallelModels, PretrainedSource, Trainer,
+    AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel, DeepseekForCausalLM,
+    DummyConfig, DummyModel, LlamaForCausalLM, LocalTrainer, ModelConfig, ModelLoadError,
+    ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tokenizers::{models::wordlevel::WordLevel, ModelWrapper, Tokenizer};
+use tokenizers::{Tokenizer, models::wordlevel::WordLevel};
 use tokio::{
     io,
     sync::{mpsc::UnboundedSender, oneshot},
@@ -28,9 +30,9 @@ use tokio::{
 use tracing::{debug, error, info};
 
 use super::{
-    cooldown::CooldownStepMetadata, evals::EvalRunner, stats::StatsLogger, steps::StepStateMachine,
-    train::TrainingStepMetadata, types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata,
-    witness::WitnessStepMetadata, CheckpointConfig, FinishedBroadcast,
+    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::EvalRunner,
+    stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
+    types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
 
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
@@ -65,7 +67,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub checkpoint_config: Option<CheckpointConfig>,
 
     // configurable dummy training time (in seconds) for this client - relevant just for testing
-    pub dummy_training_delay_secs: Option<u64>,
+    pub dummy_training_delay_secs: Option<f64>,
 }
 
 #[derive(Debug, Error)]
@@ -73,8 +75,10 @@ pub enum InitRunError {
     #[error("No model provided in Coordinator state, nothing to do.")]
     NoModel,
 
-    #[error("Model is Ephemeral, it's impossible to join this run.")]
-    ModelIsEphemeral,
+    #[error(
+        "Model is {1} but checkpoint is {0}, it's impossible to construct model from the checkpoint."
+    )]
+    IncompatibleCheckpointForModel(String, String),
 
     #[error("failed to read local model info: {0}")]
     LocalModelLoad(#[from] io::Error),
@@ -102,7 +106,7 @@ pub enum InitRunError {
     WandbLoad(#[from] wandb::ApiError),
 
     #[error("could not parse config: {0}")]
-    FailedToParseConfig(#[from] serde_json::Error),
+    FailedToParseConfig(anyhow::Error),
 
     #[error("Unsupported architeture: {0}")]
     UnsupportedArchitecture(String),
@@ -215,54 +219,59 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             Ok(data_provider)
         };
 
-        let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &llm.architecture
-        {
-            model::LLMArchitecture::HfLlama
-            | model::LLMArchitecture::HfDeepseek
-            | model::LLMArchitecture::HfAuto => match &llm.checkpoint {
-                model::Checkpoint::Dummy(_) => tokio::spawn(async move {
+        let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> =
+            match (llm.architecture, &llm.checkpoint) {
+                (LLMArchitecture::Dummy, Checkpoint::Dummy(hub_repo)) => {
                     info!("Checkpoint is Dummy, creating dummy model");
-                    let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
-                        WordLevel::builder().build().unwrap(),
-                    )));
+                    // so we do a silly little trick to encode the size of the model into the hub_repo :D
+                    let size: i64 = hub_repo.repo_id.to_string().parse().map_err(|_| {
+                        InitRunError::FailedToParseConfig(anyhow::anyhow!(
+                            "Invalid Dummy model size encoded into hub_repo. Expected u64, got {}",
+                            hub_repo.repo_id
+                        ))
+                    })?;
+                    tokio::task::spawn_blocking(move || {
+                        let tokenizer =
+                            Arc::new(Tokenizer::new(WordLevel::builder().build().unwrap()));
 
-                    let model = RawLoadedModel {
-                        models: RawLoadedModelType::ParallelNativeModels(
-                            (0..(init_config.data_parallelism * init_config.tensor_parallelism))
-                                .map(|_| {
-                                    if let Some(training_delay) =
-                                        init_config.dummy_training_delay_secs
-                                    {
-                                        Box::new(DummyModel::new(training_delay))
+                        let model = RawLoadedModel {
+                            models: RawLoadedModelType::ParallelNativeModels(
+                                (0..(init_config.data_parallelism
+                                    * init_config.tensor_parallelism))
+                                    .map(|_| {
+                                        Box::new(DummyModel::new(
+                                            size,
+                                            init_config.dummy_training_delay_secs,
+                                        ))
                                             as Box<dyn CausalLM>
-                                    } else {
-                                        Box::new(DummyModel::default()) as Box<dyn CausalLM>
-                                    }
-                                })
-                                .collect(),
-                        ),
-                        tokenizer: tokenizer.clone(),
-                        checkpoint_extra_files: vec![],
-                        eval_runner: EvalRunner::new(vec![], tokenizer.clone(), None, 0),
-                    };
-                    #[allow(clippy::arc_with_non_send_sync)]
-                    let config = &PretrainedSource::ConfigAndTensors(
-                        AutoConfig::Llama(LlamaConfig::dummy()),
-                        Arc::new(psyche_modeling::get_dummy_parameters()),
-                    )
-                    .serialize_config()?;
-                    let tokenizer = tokenizer.to_string(false).unwrap();
-                    info!("Config Uploaded: {}", config);
-                    tx_config.send((config.to_string(), tokenizer)).unwrap();
-                    Ok(model)
-                }),
-                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => {
-                    let checkpoint = llm.checkpoint;
+                                    })
+                                    .collect(),
+                            ),
+                            tokenizer: tokenizer.clone(),
+                            checkpoint_extra_files: vec![],
+                            eval_runner: EvalRunner::new(vec![], tokenizer.clone(), None, 0),
+                        };
+                        #[allow(clippy::arc_with_non_send_sync)]
+                        let config = &PretrainedSource::ConfigAndTensors(
+                            DummyConfig { size },
+                            Arc::new(psyche_modeling::get_dummy_parameters(size)),
+                        )
+                        .serialize_config()?;
+                        let tokenizer = tokenizer.to_string(false).unwrap();
+                        info!("Config Uploaded: {}", config);
+                        tx_config.send((config.to_string(), tokenizer)).unwrap();
+                        Ok(model)
+                    })
+                }
+                (arch, checkpoint @ (Checkpoint::Dummy(..) | Checkpoint::Ephemeral)) => {
+                    return Err(InitRunError::IncompatibleCheckpointForModel(
+                        format!("{checkpoint:?}"),
+                        format!("{arch:?}"),
+                    ));
+                }
+                (arch, Checkpoint::Hub(..) | Checkpoint::P2P(..)) => {
                     tokio::spawn(async move {
-                        // Track if we detected a dummy model to initialize as DummyModel at the end
-                        let mut is_dummy_model = false;
-
-                        let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
+                        let (source, tokenizer, checkpoint_extra_files) = match &llm.checkpoint {
                             model::Checkpoint::Hub(hub_repo) => {
                                 let repo_id: String = (&hub_repo.repo_id).into();
                                 let potential_local_path = PathBuf::from(repo_id.clone());
@@ -325,22 +334,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     rx_model_config_response.await.unwrap();
                                 debug!("Got p2p info, model_config: {}", model_config);
 
-                                let model_config = match llm.architecture {
+                                let model_config: AutoConfig = match arch {
+                                    LLMArchitecture::Dummy => AutoConfig::Dummy(
+                                        serde_json::from_str(&model_config).map_err(|err| {
+                                            InitRunError::FailedToParseConfig(err.into())
+                                        })?,
+                                    ),
                                     model::LLMArchitecture::HfLlama => {
                                         let llama_config: psyche_modeling::LlamaConfig =
-                                            serde_json::from_str(&model_config)?;
-                                        // Check if this is actually a dummy model shared via P2P
-                                        if llama_config.is_dummy {
-                                            info!(
-                                                "Detected dummy model config via P2P, will continue with P2P logic but create DummyModel at the end"
-                                            );
-                                            is_dummy_model = true;
-                                        }
+                                            serde_json::from_str(&model_config).map_err(|err| {
+                                                InitRunError::FailedToParseConfig(err.into())
+                                            })?;
                                         AutoConfig::Llama(llama_config)
                                     }
-                                    model::LLMArchitecture::HfDeepseek => {
-                                        AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
-                                    }
+                                    model::LLMArchitecture::HfDeepseek => AutoConfig::Deepseek(
+                                        serde_json::from_str(&model_config).map_err(|err| {
+                                            InitRunError::FailedToParseConfig(err.into())
+                                        })?,
+                                    ),
                                     model::LLMArchitecture::HfAuto => {
                                         #[cfg(feature = "python")]
                                         {
@@ -462,26 +473,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             )
                                         });
                                     let source = source.clone();
-                                    let is_dummy_model = is_dummy_model;
                                     futures.push(tokio::task::spawn_blocking(move || {
-                                        if is_dummy_model {
-                                            if let Some(training_delay) =
-                                                init_config.dummy_training_delay_secs
-                                            {
-                                                return Ok(Box::new(
-                                                    psyche_modeling::DummyModel::new(
-                                                        training_delay,
-                                                    ),
-                                                )
-                                                    as Box<dyn psyche_modeling::CausalLM>);
-                                            } else {
-                                                return Ok(Box::new(
-                                                    psyche_modeling::DummyModel::default(),
-                                                )
-                                                    as Box<dyn psyche_modeling::CausalLM>);
-                                            }
-                                        }
-
                                         // let this run on CPU if tp is 1 and no cuda is available
                                         let device = if init_config.tensor_parallelism == 1 {
                                             if dp == 0 {
@@ -493,7 +485,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             Device::Cuda(dp * init_config.tensor_parallelism + tp)
                                         };
                                         match llm.architecture {
-                                            model::LLMArchitecture::HfLlama => {
+                                            LLMArchitecture::Dummy => match source {
+                                                PretrainedSource::RepoFiles(_) => {
+                                                    Err(ModelLoadError::MissingConfigJSON)
+                                                }
+                                                PretrainedSource::ConfigAndTensors(
+                                                    AutoConfig::Dummy(DummyConfig { size }),
+                                                    _,
+                                                ) => Ok(Box::new(DummyModel::new(
+                                                    size,
+                                                    init_config.dummy_training_delay_secs,
+                                                ))
+                                                    as Box<dyn CausalLM>),
+                                                PretrainedSource::ConfigAndTensors(_, _) => {
+                                                    Err(ModelLoadError::WrongConfigType)
+                                                }
+                                            },
+                                            LLMArchitecture::HfLlama => {
                                                 LlamaForCausalLM::from_pretrained(
                                                     &source.try_into()?,
                                                     Some(Kind::BFloat16),
@@ -504,7 +512,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 )
                                                 .map(|x| Box::new(x) as Box<dyn CausalLM>)
                                             }
-                                            model::LLMArchitecture::HfDeepseek => {
+                                            LLMArchitecture::HfDeepseek => {
                                                 DeepseekForCausalLM::from_pretrained(
                                                     &source.try_into()?,
                                                     Some(Kind::BFloat16),
@@ -515,7 +523,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 )
                                                 .map(|x| Box::new(x) as Box<dyn CausalLM>)
                                             }
-                                            model::LLMArchitecture::HfAuto => unreachable!(),
+                                            LLMArchitecture::HfAuto => unreachable!(),
                                         }
                                     }));
                                 }
@@ -555,9 +563,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         })
                     })
                 }
-                model::Checkpoint::Ephemeral => return Err(InitRunError::ModelIsEphemeral),
-            },
-        };
+            };
 
         let wandb_future: JoinHandle<Result<Option<wandb::Run>, wandb::ApiError>> = tokio::spawn({
             let run_id = String::from(&state.run_id);
@@ -699,31 +705,35 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             }
             #[cfg(feature = "python")]
             RawLoadedModelType::Python(model) => {
-                vec![psyche_modeling::LocalTrainer::new(
-                    ParallelModels {
-                        models: vec![Box::new(model) as Box<dyn CausalLM>],
-                        barrier: Arc::new(psyche_modeling::NopBarrier) as Arc<dyn Barrier>,
-                        data_parallel: None,
-                    },
-                    llm.lr_schedule,
-                    llm.optimizer,
-                    init_config.micro_batch_size,
-                    init_config.optim_stats_every_n_steps,
-                    init_config.grad_accum_in_fp32,
-                )
-                .into()]
+                vec![
+                    psyche_modeling::LocalTrainer::new(
+                        ParallelModels {
+                            models: vec![Box::new(model) as Box<dyn CausalLM>],
+                            barrier: Arc::new(psyche_modeling::NopBarrier) as Arc<dyn Barrier>,
+                            data_parallel: None,
+                        },
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )
+                    .into(),
+                ]
             }
             #[cfg(feature = "python")]
             RawLoadedModelType::PythonDistributed(model) => {
-                vec![psyche_modeling::PythonDistributedTrainer::new(
-                    model,
-                    llm.lr_schedule,
-                    llm.optimizer,
-                    init_config.micro_batch_size,
-                    init_config.optim_stats_every_n_steps,
-                    init_config.grad_accum_in_fp32,
-                )?
-                .into()]
+                vec![
+                    psyche_modeling::PythonDistributedTrainer::new(
+                        model,
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )?
+                    .into(),
+                ]
             }
         };
 

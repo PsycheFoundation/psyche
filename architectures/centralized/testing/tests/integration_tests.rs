@@ -12,6 +12,7 @@ use psyche_coordinator::{
     RunState,
     model::{Checkpoint, HubRepo},
 };
+use psyche_core::FixedString;
 use tracing::info;
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -237,7 +238,7 @@ async fn replace_node_and_complete_round() {
     let init_min_clients = 2;
     let global_batch_size = 2;
     let witness_nodes = 1;
-    let training_delay = 2;
+    let training_delay = 2.0;
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
@@ -289,7 +290,7 @@ async fn replace_node_and_complete_round() {
 
     // train
     assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
-    tokio::time::sleep(Duration::from_secs(training_delay)).await;
+    tokio::time::sleep(Duration::from_secs_f64(training_delay)).await;
 
     // witness
     assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
@@ -313,7 +314,7 @@ async fn finish_epoch() {
     )
     .await;
 
-    let training_delay = 2;
+    let training_delay = 2.0;
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
     let _client_handles = spawn_clients_with_training_delay(
@@ -336,7 +337,7 @@ async fn finish_epoch() {
 
     // train
     assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundTrain).await;
-    tokio::time::sleep(Duration::from_secs(training_delay)).await;
+    tokio::time::sleep(Duration::from_secs_f64(training_delay)).await;
 
     assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::RoundWitness).await;
     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
@@ -372,7 +373,7 @@ async fn client_join_in_training() {
     )
     .await;
 
-    let training_delay = 2;
+    let training_delay = 2.0;
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
 
@@ -444,7 +445,7 @@ async fn shutdown_node_in_training_and_complete_round() {
     let init_min_clients = 3;
     let global_batch_size = 3;
     let witness_nodes = 2;
-    let training_delay = 2;
+    let training_delay = 2.0;
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
@@ -586,7 +587,7 @@ async fn client_join_in_training_and_get_model_using_p2p() {
     )
     .await;
 
-    let training_delay = 1;
+    let training_delay = 1.0;
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
 
@@ -638,23 +639,56 @@ async fn client_join_in_training_and_get_model_using_p2p() {
 
     assert_eq_with_retries!(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
+        std::mem::discriminant(&Checkpoint::P2P(HubRepo {
+            repo_id: FixedString::new(),
+            revision: None,
+        })),
     )
     .await;
 
     // check that the run state evolves naturally to Warmup where the model gets shared
-    assert_eq_with_retries!(|| server_handle.get_run_state(), RunState::Warmup).await;
+    assert_eq_with_retries!(
+        || server_handle.get_run_state(),
+        RunState::Warmup,
+        "run state did not move to Warmup"
+    )
+    .await;
 
     info!("waiting for end of round!");
-    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 1).await;
-    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 2).await;
-    assert_eq_with_retries!(|| server_handle.get_rounds_head(), 3).await;
+    assert_eq_with_retries!(
+        || server_handle.get_rounds_head(),
+        1,
+        "run did not progress to round 1"
+    )
+    .await;
+    assert_eq_with_retries!(
+        || server_handle.get_rounds_head(),
+        2,
+        "run did not progress to round 2"
+    )
+    .await;
+    assert_eq_with_retries!(
+        || server_handle.get_rounds_head(),
+        3,
+        "run did not progress to round 3"
+    )
+    .await;
 
     info!("waiting for next epoch!");
-    assert_eq_with_retries!(|| server_handle.get_current_epoch(), 2).await;
+    assert_eq_with_retries!(
+        || server_handle.get_current_epoch(),
+        2,
+        "run did not progress to epoch 2"
+    )
+    .await;
 
     // check that the clients length shows the new joined client trained with new p2p shared model
-    assert_eq_with_retries!(|| server_handle.get_clients_len(), 3).await;
+    assert_eq_with_retries!(
+        || server_handle.get_clients_len(),
+        3,
+        "new client did not join!"
+    )
+    .await;
 }
 
 /// Two new clients attempt to join the network in the middle of a run.
@@ -678,7 +712,7 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
     )
     .await;
 
-    let training_delay = 2;
+    let training_delay = 2.0;
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
 
@@ -721,7 +755,10 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
 
     assert_eq_with_retries!(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
+        std::mem::discriminant(&Checkpoint::P2P(HubRepo {
+            repo_id: FixedString::new(),
+            revision: None,
+        })),
     )
     .await;
 

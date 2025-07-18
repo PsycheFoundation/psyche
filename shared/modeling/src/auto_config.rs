@@ -1,5 +1,5 @@
 use crate::{
-    DeepseekConfig, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
+    DeepseekConfig, DummyConfig, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
     safetensor_utils::load_safetensors_into_variables,
 };
 use std::{
@@ -175,6 +175,7 @@ impl UseSDPA for Option<AttentionImplementation> {
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum AutoConfig {
+    Dummy(DummyConfig),
     Llama(LlamaConfig),
     Deepseek(DeepseekConfig),
     #[cfg(feature = "python")]
@@ -187,6 +188,7 @@ impl serde::Serialize for AutoConfig {
         S: serde::Serializer,
     {
         match self {
+            AutoConfig::Dummy(config) => config.serialize(serializer),
             AutoConfig::Llama(config) => config.serialize(serializer),
             AutoConfig::Deepseek(config) => config.serialize(serializer),
             #[cfg(feature = "python")]
@@ -198,6 +200,7 @@ impl serde::Serialize for AutoConfig {
 impl ModelConfig for AutoConfig {
     fn get_parameter_names(&self) -> Vec<String> {
         match self {
+            AutoConfig::Dummy(config) => config.get_parameter_names(),
             AutoConfig::Llama(config) => config.get_parameter_names(),
             AutoConfig::Deepseek(config) => config.get_parameter_names(),
             #[cfg(feature = "python")]
