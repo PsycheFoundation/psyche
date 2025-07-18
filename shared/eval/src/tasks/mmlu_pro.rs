@@ -7,12 +7,13 @@
     MMLU Pro: {"acc": 0.32646278, "acc_norm": 0.32646278}
 */
 use crate::{
-    ASCII_UPPERCASE, TaskType, load_dataset,
-    traits::{Document, LogLikelihoodTask},
+    load_dataset,
+    traits::{Document, GenerateUntilTask},
+    TaskType, ASCII_UPPERCASE,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 pub struct MMLUPro {
     test_dataset: Dataset,
@@ -25,7 +26,7 @@ impl MMLUPro {
             test_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Test, None)?,
             validation_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Validation, None)?,
         };
-        Ok(TaskType::LogLikelihood(Box::new(ret)))
+        Ok(TaskType::GenerateUntil(Box::new(ret)))
     }
 
     pub const fn name() -> &'static str {
@@ -51,15 +52,20 @@ impl MMLUPro {
             .get_string(dataset.get_column_id("answer").unwrap())
             .unwrap();
         let answer = ASCII_UPPERCASE.iter().position(|x| x == answer).unwrap();
+        let category = row
+            .get_string(dataset.get_column_id("category").unwrap())
+            .unwrap()
+            .to_owned();
         Document {
             text,
             choices,
             answer,
+            category: Some(category),
         }
     }
 }
 
-impl LogLikelihoodTask for MMLUPro {
+impl GenerateUntilTask for MMLUPro {
     fn get_documents(&self) -> Vec<Document> {
         self.test_dataset
             .iter()
@@ -67,11 +73,17 @@ impl LogLikelihoodTask for MMLUPro {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.validation_dataset
-            .iter()
-            .map(|row| MMLUPro::row_to_document(&self.validation_dataset, row))
-            .collect()
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        self.validation_dataset.iter().for_each(|row| {
+            let doc = MMLUPro::row_to_document(&self.validation_dataset, row);
+            let category = doc.category.as_ref().unwrap().clone();
+            fewshot_documents
+                .entry(category)
+                .or_insert_with(Vec::new)
+                .push(doc);
+        });
+        fewshot_documents
     }
 }
 

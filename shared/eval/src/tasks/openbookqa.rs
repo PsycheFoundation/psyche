@@ -11,8 +11,9 @@
 
 */
 use crate::{
-    TaskType, load_dataset,
+    load_dataset,
     traits::{Document, LogLikelihoodTask},
+    TaskType,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
@@ -78,6 +79,7 @@ impl OpenbookQA {
             text,
             choices,
             answer,
+            category: None,
         }
     }
 }

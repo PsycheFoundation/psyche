@@ -8,8 +8,9 @@
    Hellaswag: {"acc": 0.59151566, "acc_norm": 0.76508665}
 */
 use crate::{
-    TaskType, load_dataset,
+    load_dataset,
     traits::{Document, LogLikelihoodTask},
+    TaskType,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
@@ -80,6 +81,7 @@ impl Hellaswag {
             text,
             choices,
             answer,
+            category: None,
         }
     }
 }

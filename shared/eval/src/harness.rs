@@ -1,8 +1,8 @@
-use crate::traits::{Document, LogLikelihoodTask};
+use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
-use rand::{SeedableRng, seq::SliceRandom};
+use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
@@ -12,6 +12,7 @@ use tracing::info;
 
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
+    GenerateUntil(Box<dyn GenerateUntilTask>),
 }
 
 pub struct Task {
@@ -36,6 +37,7 @@ impl Display for Task {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.task_type {
             TaskType::LogLikelihood(x) => write!(f, "{x}"),
+            TaskType::GenerateUntil(x) => write!(f, "{x}"),
         }
     }
 }
@@ -182,6 +184,7 @@ impl Task {
                     },
                 }
             }
+            TaskType::GenerateUntil(x) => todo!(),
         }
     }
 }

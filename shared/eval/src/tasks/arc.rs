@@ -1,4 +1,4 @@
-use crate::{TaskType, load_dataset, traits::Document, traits::LogLikelihoodTask};
+use crate::{load_dataset, traits::Document, traits::LogLikelihoodTask, TaskType};
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Field, Row, RowAccessor, Split};
 use std::fmt::Display;
@@ -72,6 +72,7 @@ impl Arc {
             text,
             choices,
             answer,
+            category: None,
         }
     }
 }
