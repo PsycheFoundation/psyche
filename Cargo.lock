@@ -7390,6 +7390,7 @@ dependencies = [
  "memmap2 0.9.5",
  "psyche-core",
  "psyche-data-provider",
+ "psyche-eval",
  "psyche-python-extension-impl",
  "psyche-tui",
  "pyo3",

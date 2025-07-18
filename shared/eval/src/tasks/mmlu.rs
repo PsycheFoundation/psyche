@@ -1,6 +1,7 @@
 use crate::{
-    ASCII_UPPERCASE, TaskType, load_dataset,
+    load_dataset,
     traits::{Document, LogLikelihoodTask},
+    TaskType, ASCII_UPPERCASE,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
@@ -29,7 +30,7 @@ impl MMLU {
         "MMLU"
     }
 
-    fn row_to_document(dataset: &Dataset, row: Row) -> Document {
+    pub fn row_to_document(dataset: &Dataset, row: Row) -> Document {
         let subject = row
             .get_string(dataset.get_column_id("subject").unwrap())
             .unwrap()

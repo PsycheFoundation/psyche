@@ -1,4 +1,4 @@
-mod arc;
+pub mod arc;
 mod boolq;
 mod hellaswag;
 mod mmlu;

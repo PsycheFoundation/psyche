@@ -7,8 +7,9 @@
     MMLU Pro: {"acc": 0.32646278, "acc_norm": 0.32646278}
 */
 use crate::{
-    ASCII_UPPERCASE, TaskType, load_dataset,
+    load_dataset,
     traits::{Document, LogLikelihoodTask},
+    TaskType, ASCII_UPPERCASE,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
@@ -32,7 +33,7 @@ impl MMLUPro {
         "MMLU Pro"
     }
 
-    fn row_to_document(dataset: &Dataset, row: Row) -> Document {
+    pub fn row_to_document(dataset: &Dataset, row: Row) -> Document {
         let text = row
             .get_string(dataset.get_column_id("question").unwrap())
             .unwrap()
