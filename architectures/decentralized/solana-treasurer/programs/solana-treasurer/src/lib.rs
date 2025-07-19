@@ -37,13 +37,6 @@ pub mod psyche_solana_treasurer {
         run_create_processor(context, params)
     }
 
-    pub fn run_top_up(
-        context: Context<RunTopUpAccounts>,
-        params: RunTopUpParams,
-    ) -> Result<()> {
-        run_top_up_processor(context, params)
-    }
-
     pub fn run_update(
         context: Context<RunUpdateAccounts>,
         params: RunUpdateParams,
