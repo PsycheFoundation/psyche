@@ -112,3 +112,6 @@ rstest = "0.25.0"
 
 [profile.dev]
 opt-level = 1
+
+[profile.test]
+opt-level = 1
