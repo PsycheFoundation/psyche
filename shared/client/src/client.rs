@@ -263,7 +263,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         }
                                     }
                                     NetworkEvent::DownloadComplete(DownloadComplete {
-                                        data: download_data, hash, from
+                                        data: download_data, hash, from, size_bytes
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
                                         metrics.record_download_completed(hash, from);
@@ -273,6 +273,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
                                                 debug!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
+                                                metrics.record_distro_result_downloaded(size_bytes);
                                                 run.apply_distro_result(hash, distro_result, None);
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {

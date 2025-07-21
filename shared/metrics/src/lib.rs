@@ -49,6 +49,7 @@ pub struct ClientMetrics {
 
     pub(crate) available_peers_count: Gauge<u64>,
     pub(crate) distro_results_sent_total: Counter<u64>,
+    pub(crate) distro_results_downloaded_mb: Counter<f64>,
     pub(crate) blob_size_transmitted_mb: Histogram<f64>,
 
     /// Just a boolean
@@ -217,6 +218,10 @@ impl ClientMetrics {
             distro_results_sent_total: meter
                 .u64_counter("psyche_distro_results_sent_total")
                 .with_description("Total number of distribution results sent to other peers")
+                .build(),
+            distro_results_downloaded_mb: meter
+                .f64_counter("psyche_distro_results_downloaded_mb")
+                .with_description("Total size in Mb of distribution results downloaded from other peers")
                 .build(),
             blob_size_transmitted_mb: meter
                 .f64_histogram("psyche_blob_size_transmitted_mb")
@@ -420,6 +425,11 @@ impl ClientMetrics {
     pub fn record_blob_size_transmitted(&self, size_bytes: u64) {
         let size_mib = size_bytes as f64 / (1024.0 * 1024.0);
         self.blob_size_transmitted_mb.record(size_mib, &[]);
+    }
+
+    pub fn record_distro_result_downloaded(&self, size_bytes: usize) {
+        let size_mib = size_bytes as f64 / (1024.0 * 1024.0);
+        self.distro_results_downloaded_mb.add(size_mib, &[]);
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
