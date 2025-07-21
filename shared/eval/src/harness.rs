@@ -12,65 +12,6 @@ use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-// Not needed
-// fn format_mmlu_pro_prompt(
-//     fewshot_docs: &[Document],
-//     test_doc: &Document,
-//     category: &str,
-// ) -> String {
-//     let category_clean = category.replace('_', " ");
-//     let mut prompt = format!(
-//         "The following are multiple choice questions (with answers) about {}. Think step by step and then finish your answer with \"the answer is (X)\" where X is the correct letter choice.\n",
-//         category_clean
-//     );
-
-//     // Add few-shot examples with answers
-//     for doc in fewshot_docs {
-//         // Extract the question text without "Answer: " suffix
-//         let question = doc.text.trim_end_matches("Answer: ");
-//         prompt.push_str("Question:\n");
-
-//         // Split the question to separate question text from options
-//         let parts: Vec<&str> = question.split('\n').collect();
-//         if !parts.is_empty() {
-//             prompt.push_str(&format!("{}\n", parts[0]));
-//             prompt.push_str("Options:\n");
-//             for part in &parts[1..] {
-//                 if !part.is_empty() {
-//                     prompt.push_str(&format!("{}\n", part));
-//                 }
-//             }
-//         }
-
-//         let answer_letter = &doc.choices[doc.answer];
-//         // For few-shot examples, we need to include full reasoning
-//         // This is a placeholder - in real implementation, you'd have actual reasoning
-//         prompt.push_str(&format!(
-//             "Answer: Let's think step by step. The answer is ({}).\n\n",
-//             answer_letter
-//         ));
-//     }
-
-//     // Add the test question without answer
-//     let question = test_doc.text.trim_end_matches("Answer: ");
-//     prompt.push_str("Question:\n");
-
-//     let parts: Vec<&str> = question.split('\n').collect();
-//     if !parts.is_empty() {
-//         prompt.push_str(&format!("{}\n", parts[0]));
-//         prompt.push_str("Options:\n");
-//         for part in &parts[1..] {
-//             if !part.is_empty() {
-//                 prompt.push_str(&format!("{}\n", part));
-//             }
-//         }
-//     }
-
-//     prompt.push_str("Answer: Let's think step by step.");
-
-//     prompt
-// }
-
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
     GenerateUntil(Box<dyn GenerateUntilTask>),
