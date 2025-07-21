@@ -42,6 +42,7 @@ slurm*
 node_modules/
 bindings
 .pre-commit-config.yaml
+**/CLAUDE.md
 
 ### Data folders ###
 /data

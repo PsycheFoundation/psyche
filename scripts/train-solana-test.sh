@@ -42,4 +42,7 @@ cargo run --release --bin psyche-solana-client -- \
     --tensor-parallelism ${TP} \
     --micro-batch-size ${BATCH_SIZE} \
     --logs "console" \
+    --oltp-metrics-url "http://localhost:4318/v1/metrics" \
+    --oltp-tracing-url "http://localhost:4318/v1/traces" \
+    --oltp-logs-url "http://localhost:4318/v1/logs" \
     "$@"
