@@ -376,8 +376,7 @@ impl PreparedTask {
                 tokenized_fewshot,
             } => Self::run_log_likelihood(options, docs, tokenized_fewshot, pbar),
             PreparedTaskType::GenerateUntil { requests } => {
-                todo!()
-                // Self::run_generate_until(options, prompts, pbar)
+                Self::run_generate_until(options, requests, pbar)
             }
         }
     }
@@ -519,12 +518,51 @@ impl PreparedTask {
     }
 
     fn run_generate_until(
-        _options: EvalTaskOptions,
-        _prompts: &[(String, usize)],
-        _pbar: Option<ProgressBar>,
+        options: EvalTaskOptions,
+        requests: &Vec<TokenizedGenerateUntilDocument>,
+        pbar: Option<ProgressBar>,
     ) -> PreparedTaskResult {
         // TODO: Implement generate until evaluation
-        todo!("run_generate_until implementation")
+        let results = options.live_results.unwrap_or_default();
+        let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
+        results.add_entry_if_needed("acc", requests.len());
+        let mut next_index = skip;
+        let fast_forward = (skip / requests.len()) * requests.len();
+        skip -= fast_forward;
+        let mut cancelled = false;
+
+        for (
+            num_iterations,
+            &TokenizedGenerateUntilDocument {
+                ref request_str,
+                ref request,
+                answer,
+            },
+        ) in requests
+            .iter()
+            .cycle()
+            .skip(skip)
+            .step_by(step_by)
+            .enumerate()
+        {
+            next_index = num_iterations;
+            if let Some(cancel) = options.cancel.as_ref() {
+                if cancel.is_cancelled() {
+                    cancelled = true;
+                    break;
+                }
+            }
+            if !options.loop_if_empty && next_index >= requests.len() {
+                break;
+            }
+            if let Some(limit) = options.limit {
+                if num_iterations >= limit {
+                    break;
+                }
+            }
+            let mut scores: Vec<(f32, bool)> = Vec::new();
+        }
+        todo!()
     }
 
     pub fn name(&self) -> &str {
