@@ -7,17 +7,16 @@ use std::{
     time::Duration,
 };
 
-use nvml_wrapper::{enum_wrappers::device::TemperatureSensor, Nvml};
+use nvml_wrapper::{Nvml, enum_wrappers::device::TemperatureSensor};
 use opentelemetry::{
-    global,
+    KeyValue, global,
     metrics::{Counter, Gauge, Histogram, Meter},
-    KeyValue,
 };
 use serde::Serialize;
 use sysinfo::System;
 use tokio::{io::AsyncWriteExt, net::TcpListener, time::interval};
 
-pub use iroh::{create_iroh_registry, IrohMetricsCollector};
+pub use iroh::{IrohMetricsCollector, create_iroh_registry};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
 use tracing::{debug, info, warn};
 
@@ -49,6 +48,8 @@ pub struct ClientMetrics {
     pub(crate) bandwidth: Gauge<f64>,
 
     pub(crate) available_peers_count: Gauge<u64>,
+    pub(crate) distro_results_sent_total: Counter<u64>,
+    pub(crate) blob_size_transmitted_mb: Histogram<f64>,
 
     /// Just a boolean
     pub(crate) participating_in_round: Gauge<u64>,
@@ -212,6 +213,14 @@ impl ClientMetrics {
             available_peers_count: meter
                 .u64_gauge("psyche_available_peers_count")
                 .with_description("Number of peers currently available for model sharing")
+                .build(),
+            distro_results_sent_total: meter
+                .u64_counter("psyche_distro_results_sent_total")
+                .with_description("Total number of distribution results sent to other peers")
+                .build(),
+            blob_size_transmitted_mb: meter
+                .f64_histogram("psyche_blob_size_transmitted_mb")
+                .with_description("Size of blobs transmitted in megabytes")
                 .build(),
 
             system_monitor: Self::start_system_monitoring(&meter),
@@ -404,6 +413,14 @@ impl ClientMetrics {
         self.available_peers_count.record(available_count, &[]);
     }
 
+    pub fn record_distro_result_sent(&self) {
+        self.distro_results_sent_total.add(1, &[]);
+    }
+
+    pub fn record_blob_size_transmitted(&self, size_bytes: u64) {
+        let size_mib = size_bytes as f64 / (1024.0 * 1024.0);
+        self.blob_size_transmitted_mb.record(size_mib, &[]);
+    }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
         let mut interval = interval(Duration::from_secs(5));

@@ -1,24 +1,24 @@
 use crate::{
+    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
+    RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
-    RunInitConfigAndIO, TrainingResult, NC,
 };
-use anyhow::{bail, Error, Result};
+use anyhow::{Error, Result, bail};
 use futures::future::join_all;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    allowlist, blob_ticket_param_request_task, raw_p2p_verify, router::Router,
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState, Networkable, NodeAddr,
-    NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload,
-    MAX_DOWNLOAD_RETRIES,
+    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
+    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
+    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
+    router::Router,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
-use rand::{seq::SliceRandom, thread_rng, RngCore};
+use rand::{RngCore, seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
@@ -27,7 +27,7 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{mpsc, watch, Notify},
+    sync::{Notify, mpsc, watch},
     task::JoinHandle,
     time::interval,
 };
@@ -439,6 +439,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
+                            metrics.record_distro_result_sent();
 
                             // simulate us recving it & apply like anyone else's
                             run.apply_message(identity, training_result)?;

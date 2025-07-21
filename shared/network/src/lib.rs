@@ -446,6 +446,8 @@ where
             blob_res.hash.fmt_short(),
             blob_res.size
         );
+        // TODO Ideally we would log this just after sending, but here we can access the size.
+        self.metrics.record_blob_size_transmitted(blob_res.size);
 
         let hash = blob_ticket.hash();
         self.state.currently_sharing_blobs.insert(hash);
