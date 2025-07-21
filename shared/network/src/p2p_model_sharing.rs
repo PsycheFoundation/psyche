@@ -6,6 +6,7 @@ use psyche_core::BoxedFuture;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::io::{Cursor, Write};
+use std::time::Instant;
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
@@ -18,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
+use psyche_metrics::ClientMetrics;
 
 #[derive(Debug)]
 /// Manager for the list of peers to ask for the model parameters and config
@@ -44,7 +46,11 @@ enum PeerCommand {
 }
 
 impl PeerManagerHandle {
-    pub fn new(max_errors_per_peer: u8, cancellation_token: CancellationToken) -> Self {
+    pub fn new(
+        max_errors_per_peer: u8, 
+        cancellation_token: CancellationToken,
+        metrics: std::sync::Arc<ClientMetrics>
+    ) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
         // Spawn the peer manager actor
@@ -52,6 +58,7 @@ impl PeerManagerHandle {
             peer_rx,
             max_errors_per_peer,
             cancellation_token,
+            metrics,
         ));
 
         Self { peer_tx }
@@ -120,12 +127,14 @@ impl PeerManagerActor {
         }
     }
 
-    fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
+    fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken, metrics: &ClientMetrics) {
         match message {
             PeerCommand::SetPeers { peers } => {
                 self.available_peers = VecDeque::from(peers);
                 let errors_per_peers_vec = self.available_peers.iter().map(|peer| (*peer, 0_u8));
                 self.errors_per_peers = HashMap::from_iter(errors_per_peers_vec);
+
+                metrics.update_available_peers_count(self.available_peers.len() as u64);
 
                 info!(
                     "Updated peer list: {} peers available to ask for the model parameters",
@@ -165,6 +174,7 @@ impl PeerManagerActor {
                 if *error_count >= self.max_errors_per_peer {
                     self.available_peers.retain(|id| *id != peer_id);
                     warn!("Removing peer {peer_id} after {} errors", error_count);
+                    metrics.update_available_peers_count(self.available_peers.len() as u64);
 
                     if self.available_peers.is_empty()
                         && self
@@ -179,6 +189,7 @@ impl PeerManagerActor {
                     }
                 } else if !self.available_peers.contains(&peer_id) {
                     self.available_peers.push_back(peer_id);
+                    metrics.update_available_peers_count(self.available_peers.len() as u64);
                 };
             }
         }
@@ -189,11 +200,12 @@ async fn peer_manager_actor(
     mut rx: mpsc::UnboundedReceiver<PeerCommand>,
     max_errors_per_peer: u8,
     cancellation_token: CancellationToken,
+    metrics: std::sync::Arc<ClientMetrics>,
 ) {
     let mut actor = PeerManagerActor::new(max_errors_per_peer);
 
     while let Some(message) = rx.recv().await {
-        actor.handle_message(message, cancellation_token.clone());
+        actor.handle_message(message, cancellation_token.clone(), metrics.as_ref());
     }
 }
 

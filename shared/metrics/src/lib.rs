@@ -48,6 +48,8 @@ pub struct ClientMetrics {
     pub(crate) connection_latency: Histogram<f64>,
     pub(crate) bandwidth: Gauge<f64>,
 
+    pub(crate) available_peers_count: Gauge<u64>,
+
     /// Just a boolean
     pub(crate) participating_in_round: Gauge<u64>,
 
@@ -206,6 +208,10 @@ impl ClientMetrics {
             connection_latency: meter
                 .f64_histogram("psyche_connection_latency_seconds")
                 .with_description("Connection latency to peers")
+                .build(),
+            available_peers_count: meter
+                .u64_gauge("psyche_available_peers_count")
+                .with_description("Number of peers currently available for model sharing")
                 .build(),
 
             system_monitor: Self::start_system_monitoring(&meter),
@@ -393,6 +399,11 @@ impl ClientMetrics {
             )
         });
     }
+
+    pub fn update_available_peers_count(&self, available_count: u64) {
+        self.available_peers_count.record(available_count, &[]);
+    }
+
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
         let mut interval = interval(Duration::from_secs(5));
