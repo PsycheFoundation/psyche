@@ -6,6 +6,7 @@ use psyche_core::BoxedFuture;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::io::{Cursor, Write};
+use std::time::Instant;
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
@@ -15,9 +16,10 @@ use tokio::sync::{
 };
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
+use psyche_metrics::ClientMetrics;
 
 #[derive(Debug)]
 /// Manager for the list of peers to ask for the model parameters and config
@@ -37,19 +39,17 @@ enum PeerCommand {
     ReportSuccess {
         peer_id: NodeId,
     },
-    ReportBlobTicketRequestError {
-        peer_id: NodeId,
-    },
-    ReportBlobTicketDownloadError {
+    ReportModelDownloadError {
+        blob_ticket: Option<BlobTicket>,
         peer_id: NodeId,
     },
 }
 
 impl PeerManagerHandle {
     pub fn new(
-        max_errors_per_peer: u8,
-        max_retries_per_peer: u8,
+        max_errors_per_peer: u8, 
         cancellation_token: CancellationToken,
+        metrics: std::sync::Arc<ClientMetrics>
     ) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
@@ -57,8 +57,8 @@ impl PeerManagerHandle {
         tokio::spawn(peer_manager_actor(
             peer_rx,
             max_errors_per_peer,
-            max_retries_per_peer,
             cancellation_token,
+            metrics,
         ));
 
         Self { peer_tx }
@@ -91,26 +91,20 @@ impl PeerManagerHandle {
     }
 
     /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
-    pub fn report_blob_ticket_request_error(&self, peer_id: NodeId) {
+    pub fn report_blob_ticket_request_error(
+        &self,
+        peer_id: NodeId,
+        blob_ticket: Option<BlobTicket>,
+    ) {
         if self
             .peer_tx
-            .send(PeerCommand::ReportBlobTicketRequestError { peer_id })
+            .send(PeerCommand::ReportModelDownloadError {
+                peer_id,
+                blob_ticket,
+            })
             .is_err()
         {
             tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
-        }
-    }
-
-    /// Report that a peer has failed to in the middle of the download process of a blob ticket
-    pub fn report_blob_ticket_download_error(&self, peer_id: NodeId) {
-        if self
-            .peer_tx
-            .send(PeerCommand::ReportBlobTicketDownloadError { peer_id })
-            .is_err()
-        {
-            tracing::error!(
-                "Failed to report retry error for peer {peer_id}, PeerManager actor is dead"
-            );
         }
     }
 }
@@ -119,95 +113,84 @@ struct PeerManagerActor {
     /// Peers that are available to request the model to
     available_peers: VecDeque<NodeId>,
     /// A map for the peer's blob ticket to their errors
-    /// A node could success sending the blob ticket but fail in the middle of the download so we differentiate between the two
-    /// Node -> (blob_ticket_request_errors, blob_ticket_downloads_errors)
-    errors_per_peers: HashMap<NodeId, (u8, u8)>,
+    errors_per_peers: HashMap<NodeId, u8>,
     /// Max errors we tolerate for a peer to share a parameter blob ticket
     max_errors_per_peer: u8,
-    /// Max errors we tolerate for a peer to fail in the middle of the download of a parameter blob ticket
-    max_retries_per_peer: u8,
 }
 
 impl PeerManagerActor {
-    pub fn new(max_errors_per_peer: u8, max_retries_per_peer: u8) -> Self {
+    pub fn new(max_errors_per_peer: u8) -> Self {
         Self {
             available_peers: VecDeque::new(),
             errors_per_peers: HashMap::new(),
             max_errors_per_peer,
-            max_retries_per_peer,
         }
     }
 
-    fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
+    fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken, metrics: &ClientMetrics) {
         match message {
             PeerCommand::SetPeers { peers } => {
                 self.available_peers = VecDeque::from(peers);
-                let errors_per_peers_vec =
-                    self.available_peers.iter().map(|peer| (*peer, (0u8, 0u8)));
+                let errors_per_peers_vec = self.available_peers.iter().map(|peer| (*peer, 0_u8));
                 self.errors_per_peers = HashMap::from_iter(errors_per_peers_vec);
 
-                debug!(
+                metrics.update_available_peers_count(self.available_peers.len() as u64);
+
+                info!(
                     "Updated peer list: {} peers available to ask for the model parameters",
                     self.available_peers.len()
                 );
             }
             PeerCommand::GetPeer { reply } => {
                 let peer = if let Some(peer) = self.available_peers.pop_front() {
-                    debug!("Selected peer {peer} to ask for the model parameters");
+                    info!("Selected peer {peer} to ask for the model parameters");
                     Some(peer)
                 } else {
-                    debug!("No available peers to ask for the model parameters at the moment");
+                    info!("No available peers to ask for the model parameters at the moment");
                     None
                 };
                 let _ = reply.send(peer);
             }
             PeerCommand::ReportSuccess { peer_id } => {
-                self.available_peers.push_back(peer_id);
-                debug!("Peer {peer_id} correctly provided the blob ticket");
+                if !self.available_peers.contains(&peer_id) {
+                    self.available_peers.push_back(peer_id);
+                } else {
+                    warn!("Peer was already available but we tried to add it again");
+                }
+                info!("Peer {peer_id} correctly provided the blob ticket");
             }
-            PeerCommand::ReportBlobTicketRequestError { peer_id } => {
-                let error_count = self.errors_per_peers.entry(peer_id).or_insert((0, 0));
-                error_count.0 += 1;
+            PeerCommand::ReportModelDownloadError {
+                peer_id,
+                blob_ticket,
+            } => {
+                let error_count = self.errors_per_peers.entry(peer_id).or_insert(0);
+                *error_count += 1;
 
-                if error_count.0 >= self.max_errors_per_peer {
-                    // Don't need to actually remove it because we already popped it, just don't add it back
-                    warn!("Removing peer {peer_id} after {} errors", error_count.0);
+                warn!(
+                    "Error requesting a blob ticket {:?} from peer {peer_id}, it already failed {} time(s)",
+                    blob_ticket.map(|bl| bl.hash()),
+                    error_count
+                );
+                if *error_count >= self.max_errors_per_peer {
+                    self.available_peers.retain(|id| *id != peer_id);
+                    warn!("Removing peer {peer_id} after {} errors", error_count);
+                    metrics.update_available_peers_count(self.available_peers.len() as u64);
 
                     if self.available_peers.is_empty()
                         && self
                             .errors_per_peers
                             .iter()
-                            .all(|(_, (e, _))| *e == self.max_errors_per_peer)
+                            .all(|(_, e)| *e >= self.max_errors_per_peer)
                     {
                         error!(
                             "No more peers available to ask for model blob tickets, terminate process"
                         );
                         cancellation_token.cancel();
                     }
-                } else {
+                } else if !self.available_peers.contains(&peer_id) {
                     self.available_peers.push_back(peer_id);
+                    metrics.update_available_peers_count(self.available_peers.len() as u64);
                 };
-            }
-            PeerCommand::ReportBlobTicketDownloadError { peer_id } => {
-                let error_count = self.errors_per_peers.entry(peer_id).or_insert((0, 0));
-                error_count.1 += 1;
-
-                if error_count.1 >= self.max_retries_per_peer {
-                    warn!("Removing peer {peer_id} after {} retries", error_count.1);
-                    self.available_peers.retain(|p| *p != peer_id);
-
-                    if self.available_peers.is_empty()
-                        && self
-                            .errors_per_peers
-                            .iter()
-                            .all(|(_, (e, _))| *e == self.max_retries_per_peer)
-                    {
-                        error!(
-                            "No more peers available to download blob tickets, terminate process"
-                        );
-                        cancellation_token.cancel();
-                    }
-                }
             }
         }
     }
@@ -216,13 +199,13 @@ impl PeerManagerActor {
 async fn peer_manager_actor(
     mut rx: mpsc::UnboundedReceiver<PeerCommand>,
     max_errors_per_peer: u8,
-    max_retries_per_peer: u8,
     cancellation_token: CancellationToken,
+    metrics: std::sync::Arc<ClientMetrics>,
 ) {
-    let mut actor = PeerManagerActor::new(max_errors_per_peer, max_retries_per_peer);
+    let mut actor = PeerManagerActor::new(max_errors_per_peer);
 
     while let Some(message) = rx.recv().await {
-        actor.handle_message(message, cancellation_token.clone());
+        actor.handle_message(message, cancellation_token.clone(), metrics.as_ref());
     }
 }
 
@@ -454,7 +437,7 @@ impl SharableModel {
 
         match loaded_parameters.get(param_name) {
             Some(blob_ticket) => {
-                trace!("Using cached downloadable for {param_name}");
+                info!("Using cached downloadable for {param_name}");
                 Ok(blob_ticket.clone())
             }
             None => match loading_parameters.remove(param_name) {
@@ -465,13 +448,13 @@ impl SharableModel {
                         .map_err(|_| SharableModelError::LoadThreadCrashed)??;
                     let transmittable_download =
                         TransmittableDownload::ModelParameter(transmittable_parameter);
-                    trace!("Adding paramerter downloadable {param_name}");
+                    trace!("Adding parameter downloadable {param_name}");
                     let blob_ticket = p2p
                         .add_downloadable(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                     loaded_parameters.insert(param_name.to_string(), blob_ticket.clone());
-                    trace!("Finished adding paramerter downloadable {param_name}");
+                    info!("Finished adding parameter downloadable {param_name}");
                     Ok(blob_ticket)
                 }
                 None => Err(SharableModelError::ParameterUnknown(param_name.to_string())),
@@ -691,6 +674,7 @@ impl ModelSharing {
                     rx_req.await?
                 }
             };
+
             let data = postcard::to_stdvec(&blob_ticket)?;
             send.write_all(&data).await?;
             send.finish()?;

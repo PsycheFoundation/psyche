@@ -365,10 +365,9 @@ const StatBoxes = styled.div`
 
 const RadialContainer = styled.div`
 	aspect-ratio: 1 / 1;
-	max-height: 384px;
 	height: 100%;
 	width: 100%;
-	max-width: calc(100cqw - 64px);
+	max-width: min(384px, calc(100cqw - 64px));
 `
 
 const MainContentContainer = styled.div`

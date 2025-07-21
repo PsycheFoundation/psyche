@@ -47,6 +47,10 @@ pub struct ClientMetrics {
     pub(crate) connection_latency: Histogram<f64>,
     pub(crate) bandwidth: Gauge<f64>,
 
+    pub(crate) available_peers_count: Gauge<u64>,
+    pub(crate) distro_results_sent_total: Counter<u64>,
+    pub(crate) blob_size_transmitted_mb: Histogram<f64>,
+
     /// Just a boolean
     pub(crate) participating_in_round: Gauge<u64>,
 
@@ -56,6 +60,13 @@ pub struct ClientMetrics {
 
     // shared state for TCP server
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
+
+    pub(crate) num_params: Option<u64>,
+
+    pub(crate) downloaded_params_total: u64,
+
+    // p2p model sharing
+    pub(crate) downloaded_params_percent: Option<Gauge<f64>>,
 }
 
 #[derive(Serialize, Debug, Clone, Default)]
@@ -160,7 +171,7 @@ impl ClientMetrics {
                 .with_description("Total number of download attempts that failed")
                 .build(),
             downloads_perma_failed_counter: meter
-                .u64_counter("psyche_downloads_failed_total")
+                .u64_counter("psyche_downloads_perma_failed_total")
                 .with_description("Total number of downloads that permantently failed")
                 .build(),
             downloads_bytes_counter: meter
@@ -199,10 +210,28 @@ impl ClientMetrics {
                 .f64_histogram("psyche_connection_latency_seconds")
                 .with_description("Connection latency to peers")
                 .build(),
+            available_peers_count: meter
+                .u64_gauge("psyche_available_peers_count")
+                .with_description("Number of peers currently available for model sharing")
+                .build(),
+            distro_results_sent_total: meter
+                .u64_counter("psyche_distro_results_sent_total")
+                .with_description("Total number of distribution results sent to other peers")
+                .build(),
+            blob_size_transmitted_mb: meter
+                .f64_histogram("psyche_blob_size_transmitted_mb")
+                .with_description("Size of blobs transmitted in megabytes")
+                .build(),
 
             system_monitor: Self::start_system_monitoring(&meter),
             tcp_server,
             tcp_metrics,
+
+            num_params: None,
+
+            downloaded_params_total: 0,
+
+            downloaded_params_percent: None,
         }
     }
 
@@ -357,6 +386,40 @@ impl ClientMetrics {
                 },
             )],
         );
+    }
+
+    pub fn initialize_model_parameters_gauge(&mut self, num_params: u64) {
+        let meter = global::meter("psyche_client");
+        self.num_params = Some(num_params);
+        self.downloaded_params_percent = Some(meter
+            .f64_gauge("psyche_p2p_model_params_downloaded")
+            .with_description("Percentaje of the total model parameters that have been downloaded from other peers")
+            .build());
+    }
+
+    pub fn update_model_sharing_total_params_downloaded(&mut self) {
+        self.downloaded_params_total += 1;
+        // TODO(marian): This should be changed and made more correct
+        let total_params = self.num_params.unwrap();
+        self.downloaded_params_percent.as_ref().map(|gauge| {
+            gauge.record(
+                self.downloaded_params_total as f64 / total_params as f64,
+                &[],
+            )
+        });
+    }
+
+    pub fn update_available_peers_count(&self, available_count: u64) {
+        self.available_peers_count.record(available_count, &[]);
+    }
+
+    pub fn record_distro_result_sent(&self) {
+        self.distro_results_sent_total.add(1, &[]);
+    }
+
+    pub fn record_blob_size_transmitted(&self, size_bytes: u64) {
+        let size_mib = size_bytes as f64 / (1024.0 * 1024.0);
+        self.blob_size_transmitted_mb.record(size_mib, &[]);
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
