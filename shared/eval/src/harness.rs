@@ -2,9 +2,10 @@ use crate::ASCII_UPPERCASE;
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
-use psyche_modeling::CausalLM;
+use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
 use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
+use regex::Regex;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
@@ -110,6 +111,7 @@ enum PreparedTaskType {
     },
     GenerateUntil {
         requests: Vec<TokenizedGenerateUntilDocument>,
+        tokenizer: Tokenizer,
     },
 }
 
@@ -339,7 +341,10 @@ impl Task {
                 PreparedTask {
                     name,
                     num: docs.len(),
-                    prepared_task_type: PreparedTaskType::GenerateUntil { requests },
+                    prepared_task_type: PreparedTaskType::GenerateUntil {
+                        requests,
+                        tokenizer: tokenizer.clone(),
+                    },
                 }
             }
         }
@@ -375,9 +380,10 @@ impl PreparedTask {
                 docs,
                 tokenized_fewshot,
             } => Self::run_log_likelihood(options, docs, tokenized_fewshot, pbar),
-            PreparedTaskType::GenerateUntil { requests } => {
-                Self::run_generate_until(options, requests, pbar)
-            }
+            PreparedTaskType::GenerateUntil {
+                requests,
+                tokenizer,
+            } => Self::run_generate_until(options, requests, tokenizer, pbar),
         }
     }
 
@@ -520,9 +526,9 @@ impl PreparedTask {
     fn run_generate_until(
         options: EvalTaskOptions,
         requests: &Vec<TokenizedGenerateUntilDocument>,
+        tokenizer: &Tokenizer,
         pbar: Option<ProgressBar>,
     ) -> PreparedTaskResult {
-        // TODO: Implement generate until evaluation
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
         results.add_entry_if_needed("acc", requests.len());
@@ -530,6 +536,20 @@ impl PreparedTask {
         let fast_forward = (skip / requests.len()) * requests.len();
         skip -= fast_forward;
         let mut cancelled = false;
+        let mut scores: Vec<(f32, bool)> = Vec::new();
+
+        // Simple sampling setup
+        let mut logits_processor = LogitsProcessor::from_sampling(
+            //todo check this rand
+            rand::random(),
+            Sampling::ArgMax, // Greedy decoding for deterministic results
+        );
+
+        // Get EOS token IDs from model
+        let eos_token_ids = options.model.eos_token_ids();
+
+        // Regex to match "The answer is (X)." where X is a single uppercase letter
+        let answer_regex = Regex::new(r"The answer is \(([A-Z])\)\.").unwrap();
 
         for (
             num_iterations,
@@ -545,6 +565,7 @@ impl PreparedTask {
             .step_by(step_by)
             .enumerate()
         {
+            let mut is_correct = false;
             next_index = num_iterations;
             if let Some(cancel) = options.cancel.as_ref() {
                 if cancel.is_cancelled() {
@@ -560,9 +581,81 @@ impl PreparedTask {
                     break;
                 }
             }
-            let mut scores: Vec<(f32, bool)> = Vec::new();
+
+            // Start with the tokenized prompt
+            let mut tokens = request.clone();
+            let prompt_len = tokens.len();
+            let mut generated_tokens: Vec<u32> = Vec::new();
+            let max_generation_tokens = 1000; // Maximum tokens to generate
+            let max_context_size = 2047;
+            let mut found_answer = false;
+
+            // Generate tokens until we find "The answer is" pattern or reach limit
+            for _ in 0..max_generation_tokens {
+                if tokens.len() > max_context_size {
+                    tokens.drain(0..(tokens.len() - max_context_size));
+                }
+                let input = Tensor::from_slice(&tokens)
+                    .to(options.model.device())
+                    .unsqueeze(0);
+
+                let (logits, _) = options.model.forward(&input, None, Some(1), None);
+                let logits = logits.squeeze();
+
+                let next_token = logits_processor.sample(&logits).unwrap();
+                tokens.push(next_token as i64);
+                generated_tokens.push(next_token as u32);
+
+                // Check if we hit an EOS token
+                if let Some(eos_ids) = &eos_token_ids {
+                    if eos_ids.contains(next_token as i64) {
+                        found_answer = true; // Mark as found but will score 0 if no answer pattern
+                        break;
+                    }
+                }
+
+                // Decode all generated tokens together
+                if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
+                    // Check if we've generated "The answer is (X)" pattern using regex
+                    if let Some(captures) = answer_regex.captures(&generated_text) {
+                        if let Some(answer_char) = captures.get(1) {
+                            // Found an answer, check if it matches
+                            let generated_answer = crate::ASCII_UPPERCASE
+                                .iter()
+                                .position(|&c| c == answer_char.as_str())
+                                .unwrap_or(usize::MAX);
+
+                            is_correct = generated_answer == answer;
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+            results.push(
+                "acc",
+                match is_correct {
+                    true => 1.,
+                    false => 0.,
+                },
+            );
+            found_answer = true;
+
+            if let Some(pbar) = &pbar {
+                pbar.inc(1);
+            }
         }
-        todo!()
+
+        PreparedTaskResult {
+            scores: results
+                .get_all_averages()
+                .into_iter()
+                .map(|(key, value)| (key, value.unwrap_or_default()))
+                .collect(),
+            next_index: fast_forward + next_index,
+            cancelled,
+        }
     }
 
     pub fn name(&self) -> &str {
