@@ -1,3 +1,4 @@
+use crate::ASCII_UPPERCASE;
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
@@ -267,32 +268,58 @@ impl Task {
                 // Prepare prompts for each document
                 for doc in &docs {
                     // Get the category for this document
-                    let category = doc
-                        .category
-                        .as_ref()
-                        .map(|s| s.as_str())
-                        .unwrap_or("general");
+                    let category = doc.category.as_ref().map(|s| s.as_str()).unwrap();
 
                     // Get fewshot examples for this category
-                    let fewshot_examples =
-                        fewshot.get(category).map(|v| v.as_slice()).unwrap_or(&[]);
+                    let fewshot_examples = fewshot.get(category).map(|v| v.as_slice()).unwrap();
 
                     // Build the prompt string
-                    let mut prompt = String::new();
+
+                    let mut request_str = format!(
+                        "The following are multiple choice questions (with answers) about {}. Think step by step and then finish your answer with \"the answer is (X)\" where X is the correct letter choice.\n",
+                        category
+                    );
 
                     // Add fewshot examples with their answers
                     for example in fewshot_examples.iter().take(self.num_fewshot) {
-                        prompt.push_str(&example.text);
-                        prompt.push_str(&example.choices[example.answer]);
-                        prompt.push_str("\n\n");
+                        request_str.push_str("Question:\n");
+
+                        request_str.push_str(&example.text);
+                        request_str.push_str("\nOptions:\n");
+
+                        // Format choices with letter labels
+                        for (i, choice) in example.choices.iter().enumerate() {
+                            let letter = ASCII_UPPERCASE[i];
+                            request_str.push_str(&format!("{}. {}\n", letter, choice));
+                        }
+
+                        request_str.push_str("\n");
+
+                        // Replace "A:" with "Answer:" in cot_content
+                        let mut cot_content = example.cot_content.as_ref().unwrap().clone();
+                        if cot_content.starts_with("A:") {
+                            cot_content = format!("Answer:{}", &cot_content[2..]);
+                        }
+                        request_str.push_str(&cot_content);
+                        request_str.push_str("\n");
                     }
 
                     // Add the current question without answer
-                    prompt.push_str(&doc.text);
+                    request_str.push_str("Question:\n");
+                    request_str.push_str(&doc.text);
+                    request_str.push_str("\nOptions:\n");
+
+                    // Format choices with letter labels
+                    for (i, choice) in doc.choices.iter().enumerate() {
+                        let letter = ASCII_UPPERCASE[i];
+                        request_str.push_str(&format!("{}. {}\n", letter, choice));
+                    }
+
+                    request_str.push_str("\nAnswer: Let's think step by step.");
 
                     // Tokenize the request
                     let request = tokenizer
-                        .encode(prompt.clone(), false)
+                        .encode(request_str.clone(), false)
                         .unwrap()
                         .get_ids()
                         .iter()
@@ -301,7 +328,7 @@ impl Task {
 
                     // Create the tokenized document
                     let tokenized_doc = TokenizedGenerateUntilDocument {
-                        request_str: prompt,
+                        request_str: request_str,
                         request,
                         answer: doc.answer,
                     };
