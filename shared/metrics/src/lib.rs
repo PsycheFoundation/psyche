@@ -60,10 +60,10 @@ pub struct ClientMetrics {
 
     pub(crate) num_params: Option<u64>,
 
-    pub(crate) downloaded_params_total: u64,
-
     // p2p model sharing
-    pub(crate) downloaded_params_percent: Option<Gauge<f64>>,
+    pub(crate) p2p_downloaded_params_total: u64,
+    pub(crate) p2p_downloaded_params_percent: Option<Gauge<f64>>,
+    pub(crate) p2p_params_download_failed_counter: Counter<u64>,
 }
 
 #[derive(Serialize, Debug, Clone, Default)]
@@ -214,9 +214,14 @@ impl ClientMetrics {
 
             num_params: None,
 
-            downloaded_params_total: 0,
+            p2p_downloaded_params_total: 0,
 
-            downloaded_params_percent: None,
+            p2p_downloaded_params_percent: None,
+
+            p2p_params_download_failed_counter: meter
+                .u64_counter("psyche_p2p_params_download_failed_counter")
+                .with_description("The total amount of p2p parameter sharing downloads that failed")
+                .build(),
         }
     }
 
@@ -305,6 +310,11 @@ impl ClientMetrics {
         self.tcp_metrics.lock().unwrap().downloads_perma_failed += 1;
     }
 
+    pub fn record_p2p_model_parameter_download_failed(&self) {
+        self.record_download_perma_failed();
+        self.p2p_params_download_failed_counter.add(1, &[]);
+    }
+
     pub fn update_peer_connections(&self, connections: &[PeerConnection]) {
         let mut connection_counts = HashMap::new();
 
@@ -376,19 +386,19 @@ impl ClientMetrics {
     pub fn initialize_model_parameters_gauge(&mut self, num_params: u64) {
         let meter = global::meter("psyche_client");
         self.num_params = Some(num_params);
-        self.downloaded_params_percent = Some(meter
+        self.p2p_downloaded_params_percent = Some(meter
             .f64_gauge("psyche_p2p_model_params_downloaded")
             .with_description("Percentaje of the total model parameters that have been downloaded from other peers")
             .build());
     }
 
     pub fn update_model_sharing_total_params_downloaded(&mut self) {
-        self.downloaded_params_total += 1;
+        self.p2p_downloaded_params_total += 1;
         // TODO(marian): This should be changed and made more correct
         let total_params = self.num_params.unwrap();
-        self.downloaded_params_percent.as_ref().map(|gauge| {
+        self.p2p_downloaded_params_percent.as_ref().map(|gauge| {
             gauge.record(
-                self.downloaded_params_total as f64 / total_params as f64,
+                self.p2p_downloaded_params_total as f64 / total_params as f64,
                 &[],
             )
         });

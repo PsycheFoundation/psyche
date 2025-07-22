@@ -304,7 +304,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                         match dl.download_type {
                                             DownloadType::ModelSharing(request_type) => {
-                                                metrics.record_download_failed();
+                                                metrics.record_p2p_model_parameter_download_failed();
                                                 // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
                                                 let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
@@ -423,8 +423,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
-
-                            metrics.set_training_finished();
 
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
                             let ticket = p2p.add_downloadable(transmittable_distro_result, step).await?;
