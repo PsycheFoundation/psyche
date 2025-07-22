@@ -236,15 +236,13 @@ impl Task {
                             request_str.push_str(&format!("{}. {}\n", letter, choice));
                         }
 
-                        request_str.push_str("\n");
-
                         // Replace "A:" with "Answer:" in cot_content
                         let mut cot_content = example.cot_content.as_ref().unwrap().clone();
                         if cot_content.starts_with("A:") {
                             cot_content = format!("Answer:{}", &cot_content[2..]);
                         }
                         request_str.push_str(&cot_content);
-                        request_str.push_str("\n");
+                        request_str.push_str("\n\n");
                     }
 
                     // Add the current question without answer
@@ -258,7 +256,7 @@ impl Task {
                         request_str.push_str(&format!("{}. {}\n", letter, choice));
                     }
 
-                    request_str.push_str("\nAnswer: Let's think step by step.");
+                    request_str.push_str("Answer: Let's think step by step.");
 
                     // Tokenize the request
                     let request = tokenizer

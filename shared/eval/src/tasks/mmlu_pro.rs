@@ -37,16 +37,19 @@ impl MMLUPro {
             .get_string(dataset.get_column_id("question").unwrap())
             .unwrap()
             .to_owned();
-        let options = row
+        let choices: Vec<String> = row
             .get_list(dataset.get_column_id("options").unwrap())
-            .unwrap();
-        let options = (0..options.len())
-            .map(|i| format!("{}. {}", ASCII_UPPERCASE[i], options.get_string(i).unwrap()))
-            .collect::<Vec<_>>();
-        let choices = (0..options.len())
-            .map(|i| ASCII_UPPERCASE[i].to_owned())
-            .collect::<Vec<_>>();
-        let text = format!("{}\n{}\nAnswer: ", text, options.join("\n"));
+            .unwrap()
+            .elements()
+            .iter()
+            .map(|field| {
+                let mut s = field.to_string();
+                // Remove \" at the start and end of the String
+                s.remove(0);
+                s.pop();
+                s
+            })
+            .collect();
         let answer = row
             .get_string(dataset.get_column_id("answer").unwrap())
             .unwrap();
@@ -59,6 +62,7 @@ impl MMLUPro {
             .get_string(dataset.get_column_id("cot_content").unwrap())
             .unwrap()
             .to_owned();
+
         Document {
             text,
             choices,
