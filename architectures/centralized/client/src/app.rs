@@ -14,6 +14,7 @@ use psyche_network::{
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
 use psyche_watcher::{Backend as WatcherBackend, CoordinatorTui, OpportunisticData};
+use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
@@ -80,7 +81,7 @@ pub struct App {
     coordinator_state: Coordinator<ClientId>,
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
 
-    metrics: ClientMetrics,
+    metrics: Arc<ClientMetrics>,
 }
 
 pub struct AppBuilder(AppParams);
@@ -127,7 +128,7 @@ impl AppBuilder {
     )> {
         let p = self.0;
 
-        let metrics = ClientMetrics::new(p.metrics_local_port);
+        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
         let server_conn =
             TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
                 &p.server_addr,
