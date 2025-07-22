@@ -261,8 +261,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             model::Checkpoint::Hub(hub_repo) => {
                                 let repo_id: String = (&hub_repo.repo_id).into();
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
-                                info!("REVISION IS: {:?}", revision);
 
+                                info!("Downloading {} (if needed)", hub_repo.repo_id);
                                 let repo_files = download_model_repo_async(
                                     &repo_id,
                                     revision,
@@ -272,6 +272,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     false,
                                 )
                                 .await?;
+
                                 let checkpoint_extra_files = repo_files
                                     .iter()
                                     .filter(|file| {

@@ -1,13 +1,14 @@
+use futures::future::join_all;
 use hf_hub::{
-    api::{
-        tokio::{ApiError, CommitError, UploadSource},
-        Siblings,
-    },
     Cache, Repo, RepoType,
+    api::{
+        Siblings,
+        tokio::{ApiError, CommitError, UploadSource},
+    },
 };
 use std::{path::PathBuf, time::Instant};
 use thiserror::Error;
-use tracing::debug;
+use tracing::{debug, warn};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 const DATASET_EXTENSIONS: [&str; 1] = [".parquet"];
@@ -44,14 +45,16 @@ async fn download_repo_async(
         .with_token(token.or(cache.token()))
         .with_progress(progress_bar)
         .build()?
-        .repo(repo);
-    let siblings = api
-        .info()
-        .await?
+        .repo(repo.clone());
+
+    let repo_info = api.info().await?;
+
+    let siblings = repo_info
         .siblings
         .into_iter()
         .filter(|x| check_extensions(x, extensions))
         .collect::<Vec<_>>();
+
     let mut ret: Vec<PathBuf> = Vec::new();
     for chunk in siblings.chunks(max_concurrent_downloads.unwrap_or(siblings.len())) {
         let futures = chunk
@@ -71,9 +74,17 @@ async fn download_repo_async(
                 res
             })
             .collect::<Vec<_>>();
-        for future in futures {
-            ret.push(future.await?);
+        let results = join_all(futures).await;
+        for result in results {
+            ret.push(result?);
         }
+    }
+
+    if let Err(e) = api.mark_download_as_complete() {
+        warn!(
+            "Failed to mark model download as complete in the cache: {}, it will be re-downloaded again next time",
+            e
+        );
     }
     Ok(ret)
 }
