@@ -427,7 +427,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
                             let ticket = p2p.add_downloadable(transmittable_distro_result, step).await?;
                             let hash = ticket.hash();
-                            trace!(
+                            info!(
                                 client_id = %identity, step = step,
                                 "Broadcasting payload batch id {batch_id} hash 0x{}",
                                 hex::encode(hash),

@@ -1,4 +1,4 @@
-{
+ {
   "annotations": {
     "list": [
       {
@@ -76,7 +76,7 @@
               "values": false
             },
             "showThresholdLabels": false,
-            "showThresholdMarkers": true,
+            "showThresholdMarkers": false,
             "sizing": "auto"
           },
           "pluginVersion": "12.0.2",
@@ -199,6 +199,146 @@
           ],
           "title": "Gossip neighbors",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.1,
+                "drawStyle": "bars",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 6,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          },
+          "id": 9,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.0.2",
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "P8E80F9AEF21F6940"
+              },
+              "direction": "backward",
+              "editorMode": "builder",
+              "expr": "{instance=\"$clients\"} |= `Got training output, DisTrO results generated`",
+              "hide": false,
+              "queryType": "range",
+              "refId": "A"
+            }
+          ],
+          "title": "Training completed in step",
+          "transformations": [
+            {
+              "id": "calculateField",
+              "options": {
+                "binary": {
+                  "left": {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Line"
+                    }
+                  },
+                  "right": {
+                    "fixed": "1"
+                  }
+                },
+                "mode": "reduceRow",
+                "reduce": {
+                  "reducer": "sum"
+                }
+              }
+            },
+            {
+              "id": "calculateField",
+              "options": {
+                "binary": {
+                  "left": {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Total"
+                    }
+                  },
+                  "right": {
+                    "fixed": "1"
+                  }
+                },
+                "mode": "binary",
+                "reduce": {
+                  "reducer": "sum"
+                },
+                "replaceFields": true
+              }
+            }
+          ],
+          "type": "timeseries"
         }
       ],
       "title": "State",
@@ -258,6 +398,8 @@
                 }
               },
               "mappings": [],
+              "max": 120,
+              "min": 0,
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
@@ -277,15 +419,17 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 2
+            "y": 26
           },
           "id": 2,
           "options": {
             "legend": {
-              "calcs": [],
+              "calcs": [
+                "max"
+              ],
               "displayMode": "list",
               "placement": "bottom",
-              "showLegend": true
+              "showLegend": false
             },
             "tooltip": {
               "hideZeros": false,
@@ -305,7 +449,7 @@
               "expr": "psyche_p2p_model_params_downloaded{exported_instance=\"$clients\"}",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
-              "legendFormat": "__auto",
+              "legendFormat": "{{label_name}}",
               "range": true,
               "refId": "A",
               "useBackend": false
@@ -377,7 +521,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 2
+            "y": 26
           },
           "id": 3,
           "options": {
@@ -441,7 +585,7 @@
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 51
+            "y": 123
           },
           "id": 1,
           "options": {
@@ -451,7 +595,7 @@
             "prettifyLogMessage": false,
             "showCommonLabels": false,
             "showLabels": false,
-            "showTime": false,
+            "showTime": true,
             "sortOrder": "Descending",
             "wrapLogMessage": false
           },
@@ -487,8 +631,8 @@
     "list": [
       {
         "current": {
-          "text": "dd69b8c8755d8e900991b724cbd334d95665e2455cb3f9d3ba29fe6e1f59f00f",
-          "value": "dd69b8c8755d8e900991b724cbd334d95665e2455cb3f9d3ba29fe6e1f59f00f"
+          "text": "",
+          "value": ""
         },
         "definition": "",
         "name": "clients",
@@ -506,12 +650,12 @@
     ]
   },
   "time": {
-    "from": "now-5m",
-    "to": "now"
+    "from": "2025-07-22T20:20:50.068Z",
+    "to": "2025-07-22T20:21:32.925Z"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Clients",
   "uid": "516c64b6-0d50-4a36-a3fe-c562a5a91771",
   "version": 3
-}
+} 

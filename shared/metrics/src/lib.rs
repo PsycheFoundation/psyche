@@ -58,9 +58,8 @@ pub struct ClientMetrics {
     // shared state for TCP server
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
 
-    pub(crate) num_params: Option<u64>,
-
     // p2p model sharing
+    pub(crate) num_params: Option<u64>,
     pub(crate) p2p_downloaded_params_total: u64,
     pub(crate) p2p_downloaded_params_percent: Option<Gauge<f64>>,
     pub(crate) p2p_params_download_failed_counter: Counter<u64>,
@@ -213,11 +212,8 @@ impl ClientMetrics {
             tcp_metrics,
 
             num_params: None,
-
             p2p_downloaded_params_total: 0,
-
             p2p_downloaded_params_percent: None,
-
             p2p_params_download_failed_counter: meter
                 .u64_counter("psyche_p2p_params_download_failed_counter")
                 .with_description("The total amount of p2p parameter sharing downloads that failed")
@@ -394,14 +390,14 @@ impl ClientMetrics {
 
     pub fn update_model_sharing_total_params_downloaded(&mut self) {
         self.p2p_downloaded_params_total += 1;
-        // TODO(marian): This should be changed and made more correct
-        let total_params = self.num_params.unwrap();
-        self.p2p_downloaded_params_percent.as_ref().map(|gauge| {
-            gauge.record(
-                self.p2p_downloaded_params_total as f64 / total_params as f64,
-                &[],
-            )
-        });
+        if let Some(total_params) = self.num_params {
+            self.p2p_downloaded_params_percent.as_ref().map(|gauge| {
+                gauge.record(
+                    (self.p2p_downloaded_params_total as f64 / total_params as f64) * 100.0,
+                    &[],
+                )
+            });
+        }
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
