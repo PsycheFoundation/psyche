@@ -37,6 +37,9 @@ pkgs.python312Packages.buildPythonPackage rec {
   propagatedBuildInputs = with pkgs.python312Packages; [
     torch-bin
     transformers
+    (pkgs.python312Packages.callPackage ./torchtitan.nix {
+      torchdata = (pkgs.python312Packages.callPackage ./torchdata.nix { });
+    })
   ];
 
   installPhase = ''

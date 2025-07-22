@@ -79,10 +79,10 @@ indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-# tch = { path = "../tch-rs" }
+tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "9b53dbf8439fdfe70b29bacca8bfc02acda3b2ba" }
+torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "9b53dbf8439fdfe70b29bacca8bfc02acda3b2ba" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "9b53dbf8439fdfe70b29bacca8bfc02acda3b2ba" }
+# tch = { path = "../tch-rs" }h
 # torch-sys = { path = "../tch-rs/torch-sys" }
 time = { version = "0.3.36", features = ["formatting", "macros"] }
 serde_with = { version = "3.11.0", features = ["macros"] }
