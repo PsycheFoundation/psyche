@@ -6,6 +6,7 @@ use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
 use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
 use regex::Regex;
+use std::sync::RwLock;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
@@ -53,6 +54,7 @@ enum PreparedTaskType {
     GenerateUntil {
         requests: Vec<TokenizedGenerateUntilDocument>,
         tokenizer: Tokenizer,
+        generated_tokens: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
     },
 }
 
@@ -283,6 +285,7 @@ impl Task {
                     prepared_task_type: PreparedTaskType::GenerateUntil {
                         requests,
                         tokenizer: tokenizer.clone(),
+                        generated_tokens: Arc::new(RwLock::new(HashMap::new())),
                     },
                 }
             }
@@ -322,7 +325,14 @@ impl PreparedTask {
             PreparedTaskType::GenerateUntil {
                 requests,
                 tokenizer,
-            } => Self::run_generate_until(options, requests, tokenizer, pbar),
+                generated_tokens,
+            } => Self::run_generate_until(
+                options,
+                generated_tokens.clone(),
+                requests,
+                tokenizer,
+                pbar,
+            ),
         }
     }
 
@@ -464,6 +474,7 @@ impl PreparedTask {
 
     fn run_generate_until(
         options: EvalTaskOptions,
+        generated_tokens: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
         requests: &Vec<TokenizedGenerateUntilDocument>,
         tokenizer: &Tokenizer,
         pbar: Option<ProgressBar>,
@@ -523,14 +534,18 @@ impl PreparedTask {
 
             // Start with the tokenized prompt
             let mut tokens = request.clone();
-            let prompt_len = tokens.len();
             let mut generated_tokens: Vec<u32> = Vec::new();
-            let max_generation_tokens = 1000; // Maximum tokens to generate
+            let max_generation_tokens = 600; // Maximum tokens to generate
             let max_context_size = 2047;
-            let mut found_answer = false;
 
             // Generate tokens until we find "The answer is" pattern or reach limit
             for _ in 0..max_generation_tokens {
+                if let Some(cancel) = options.cancel.as_ref() {
+                    if cancel.is_cancelled() {
+                        cancelled = true;
+                        break;
+                    }
+                }
                 if tokens.len() > max_context_size {
                     tokens.drain(0..(tokens.len() - max_context_size));
                 }
@@ -548,7 +563,6 @@ impl PreparedTask {
                 // Check if we hit an EOS token
                 if let Some(eos_ids) = &eos_token_ids {
                     if eos_ids.contains(next_token as i64) {
-                        found_answer = true; // Mark as found but will score 0 if no answer pattern
                         break;
                     }
                 }
@@ -579,7 +593,7 @@ impl PreparedTask {
                     false => 0.,
                 },
             );
-            found_answer = true;
+            tracing::info!("is_correct: {}", is_correct);
 
             if let Some(pbar) = &pbar {
                 pbar.inc(1);
