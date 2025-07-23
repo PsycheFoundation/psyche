@@ -19,6 +19,7 @@ use psyche_tui::{
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     str::FromStr,
@@ -292,7 +293,7 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         4,
-        ClientMetrics::new(None),
+        Arc::new(ClientMetrics::new(None)),
     )
     .await?;
 

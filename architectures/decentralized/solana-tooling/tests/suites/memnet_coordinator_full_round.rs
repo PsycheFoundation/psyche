@@ -165,19 +165,17 @@ pub async fn run() {
     .unwrap();
 
     // Whitelisted with the wrong account, can't join
-    assert!(
-        process_coordinator_join_run(
-            &mut endpoint,
-            &payer,
-            &payer,
-            &authorization,
-            &coordinator_instance,
-            &coordinator_account,
-            client_id
-        )
-        .await
-        .is_err()
-    );
+    process_coordinator_join_run(
+        &mut endpoint,
+        &payer,
+        &payer,
+        &authorization,
+        &coordinator_instance,
+        &coordinator_account,
+        client_id,
+    )
+    .await
+    .unwrap_err();
 
     // Whitelisted, can join
     process_coordinator_join_run(
@@ -204,17 +202,15 @@ pub async fn run() {
     );
 
     // Can't tick yet because paused
-    assert!(
-        process_coordinator_tick(
-            &mut endpoint,
-            &payer,
-            &ticker,
-            &coordinator_instance,
-            &coordinator_account,
-        )
-        .await
-        .is_err()
-    );
+    process_coordinator_tick(
+        &mut endpoint,
+        &payer,
+        &ticker,
+        &coordinator_instance,
+        &coordinator_account,
+    )
+    .await
+    .unwrap_err();
 
     // Unpause
     process_coordinator_set_paused(
@@ -305,18 +301,16 @@ pub async fn run() {
         broadcast_merkle: Default::default(),
         metadata: Default::default(),
     };
-    assert!(
-        process_coordinator_witness(
-            &mut endpoint,
-            &payer,
-            &ticker,
-            &coordinator_instance,
-            &coordinator_account,
-            &witness,
-        )
-        .await
-        .is_err()
-    );
+    process_coordinator_witness(
+        &mut endpoint,
+        &payer,
+        &ticker,
+        &coordinator_instance,
+        &coordinator_account,
+        &witness,
+    )
+    .await
+    .unwrap_err();
     process_coordinator_witness(
         &mut endpoint,
         &payer,
