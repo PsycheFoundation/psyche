@@ -3,8 +3,8 @@ use clap::Parser;
 use psyche_core::{Barrier, BatchId, CancellableBarrier, CosineLR, OptimizerDefinition, Shuffle};
 use psyche_data_provider::{LocalDataProvider, download_model_repo_sync};
 use psyche_modeling::{
-    Batch, BatchData, CausalLM, CommunicatorId, DataParallel, LocalTrainer, ModelLoadError,
-    ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained,
+    Batch, BatchData, BatchDataCPU, CausalLM, CommunicatorId, DataParallel, LocalTrainer,
+    ModelLoadError, ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained,
 };
 use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
@@ -358,8 +358,16 @@ async fn main() -> Result<()> {
     let mut prev_distro_results = if args.distro { Some(vec![]) } else { None };
     for step in 1..=args.total_steps {
         let start_time = SystemTime::now();
-        let data: Vec<Vec<i32>> = (0..args.total_batch)
-            .map(|_| dataset.next().unwrap())
+        let data: Vec<_> = (0..args.total_batch)
+            .map(|_| {
+                let data = dataset.next().unwrap();
+                BatchDataCPU {
+                    input_ids: data.input_ids,
+                    labels: data.labels,
+                    position_ids: data.position_ids,
+                    sequence_lengths: data.sequence_lengths,
+                }
+            })
             .collect();
 
         let trainings = data

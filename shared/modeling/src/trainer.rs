@@ -399,15 +399,16 @@ impl LocalTrainer {
     fn forward_backward(
         model: &mut dyn CausalLM,
         inputs: Tensor,
+        labels: Option<Tensor>,
         barrier: &Arc<dyn Barrier>,
         loss_scale: Option<f64>,
     ) -> Result<Option<Tensor>> {
-        let targets = inputs.copy();
+        let labels = labels.unwrap_or_else(|| inputs.copy());
         if barrier.wait().is_err() {
             return Ok(None);
         }
         let device = inputs.device();
-        let (_, loss) = model.forward(&inputs, Some(&targets), None, loss_scale);
+        let (_, loss) = model.forward(&inputs, Some(&labels), None, loss_scale);
         let loss = loss.ok_or(Error::msg("No loss"))?;
         loss.backward();
         if device.is_cuda() {
@@ -668,28 +669,54 @@ impl LocalTrainer {
                     }
                     let grad_accum_divisor = grad_accum_steps as f64;
 
-                    // TODO: properly batch and pass everything
+                    // collate data for batch
                     let BatchDataGPU {
                         input_ids,
-                        labels: _labels,
-                        position_ids: _position_ids,
-                        sequence_lengths: _sequence_lengths,
+                        labels,
+                        position_ids,
+                        sequence_lengths,
                     } = batch.data.gpu(model.device());
-                    let micro_batches = input_ids.chunk(grad_accum_steps as i64, 0);
-                    // let micro_batches = match batch.data {
-                    //     BatchData::CPU(data) => data
-                    //         .chunks(micro_batch_size)
-                    //         .map(|chunk| {
-                    //             Tensor::from_slice2(chunk)
-                    //                 .to(model.device())
-                    //                 .to_kind(Kind::Int64)
-                    //         })
-                    //         .collect::<Vec<_>>(),
-                    //     BatchData::GPU(tensor) => tensor
-                    //         .to_kind(Kind::Int64)
-                    //         .chunk(grad_accum_steps as i64, 0),
-                    // };
-                    assert_eq!(micro_batches.len(), grad_accum_steps);
+                    // note: torch chunk argument is total number of chunks,
+                    // rust iter chunk is number of elements per chunk
+                    let input_ids = input_ids.chunk(grad_accum_steps as i64, 0);
+                    let labels = labels
+                        .map(|x| {
+                            x.chunk(grad_accum_steps as i64, 0)
+                                .into_iter()
+                                .map(|y| Some(y))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_else(|| {
+                            std::iter::from_fn(|| Some(None))
+                                .take(grad_accum_steps)
+                                .collect()
+                        });
+                    let position_ids = position_ids
+                        .map(|x| {
+                            x.chunk(grad_accum_steps as i64, 0)
+                                .into_iter()
+                                .map(|y| Some(y))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_else(|| {
+                            std::iter::from_fn(|| Some(None))
+                                .take(grad_accum_steps)
+                                .collect()
+                        });
+                    let sequence_lengths = sequence_lengths
+                        .map(|x| {
+                            x.chunks(micro_batch_size)
+                                .into_iter()
+                                .map(|y| Some(y.to_vec()))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_else(|| vec![None; grad_accum_steps]);
+                    assert_eq!(input_ids.len(), grad_accum_steps);
+                    assert_eq!(labels.len(), grad_accum_steps);
+                    assert_eq!(position_ids.len(), grad_accum_steps);
+                    assert_eq!(sequence_lengths.len(), grad_accum_steps);
+                    let micro_batches =
+                        itertools::izip!(input_ids, labels, position_ids, sequence_lengths);
 
                     if let Some(grad_accum) = &mut grad_accum {
                         grad_accum.zero_grad();
@@ -737,7 +764,9 @@ impl LocalTrainer {
 
                     let mut loss = None;
                     let mut cancelled = false;
-                    for (index, micro_batch) in micro_batches.into_iter().enumerate() {
+                    for (index, (input_ids, labels, _position_ids, _sequence_lengths)) in
+                        micro_batches.into_iter().enumerate()
+                    {
                         if cancel_training.is_cancelled() {
                             cancelled = true;
                             barrier.cancel();
@@ -746,7 +775,8 @@ impl LocalTrainer {
                         }
                         match Self::forward_backward(
                             &mut *model,
-                            micro_batch,
+                            input_ids,
+                            labels,
                             &barrier,
                             Some(grad_accum_divisor),
                         ) {
