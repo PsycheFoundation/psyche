@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::transfer;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
-use anchor_spl::token::transfer;
 use psyche_solana_coordinator::CoordinatorAccount;
 
-use crate::ProgramError;
 use crate::state::Participant;
 use crate::state::Run;
+use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: ParticipantClaimParams)]
@@ -36,7 +36,9 @@ pub struct ParticipantClaimAccounts<'info> {
     )]
     pub run_collateral: Box<Account<'info, TokenAccount>>,
 
-    #[account()]
+    #[account(
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
+    )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 
     #[account(

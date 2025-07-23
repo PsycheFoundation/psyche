@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
 use psyche_core::FixedString;
 
+use crate::bytes_from_string;
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
 use crate::ProgramError;
-use crate::bytes_from_string;
 
 #[derive(Accounts)]
 #[instruction(params: InitCoordinatorParams)]
@@ -71,6 +71,7 @@ pub fn init_coordinator_processor(
     let account = bytemuck::from_bytes_mut::<CoordinatorAccount>(
         &mut data[disc.len()..CoordinatorAccount::space_with_discriminator()],
     );
+    account.version = CoordinatorAccount::VERSION;
     account.nonce = 0;
     // Setup the run_id const
     account.state.coordinator.run_id =

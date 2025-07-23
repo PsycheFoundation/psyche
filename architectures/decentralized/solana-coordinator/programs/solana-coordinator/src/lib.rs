@@ -11,17 +11,17 @@ pub use client::ClientId;
 pub use instance_state::CoordinatorInstanceState;
 use logic::*;
 pub use program_error::ProgramError;
+use psyche_coordinator::model::{HubRepo, Model};
 use psyche_coordinator::Committee;
 use psyche_coordinator::CommitteeProof;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::model::{HubRepo, Model};
+use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
@@ -108,11 +108,14 @@ pub fn coordinator_account_from_bytes_mut(
 #[repr(C)]
 #[derive(Serialize, Deserialize, TS)]
 pub struct CoordinatorAccount {
+    pub version: u64,
     pub state: CoordinatorInstanceState,
     pub nonce: u64,
 }
 
 impl CoordinatorAccount {
+    pub const VERSION: u64 = 1;
+
     pub fn space_with_discriminator() -> usize {
         CoordinatorAccount::DISCRIMINATOR.len()
             + std::mem::size_of::<CoordinatorAccount>()
@@ -296,7 +299,8 @@ pub struct OwnerCoordinatorAccounts<'info> {
 
     #[account(
         mut,
-        constraint = coordinator_instance.coordinator_account == coordinator_account.key()
+        constraint = coordinator_instance.coordinator_account == coordinator_account.key(),
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
     )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 }
@@ -317,7 +321,8 @@ pub struct PermissionlessCoordinatorAccounts<'info> {
 
     #[account(
         mut,
-        constraint = coordinator_instance.coordinator_account == coordinator_account.key()
+        constraint = coordinator_instance.coordinator_account == coordinator_account.key(),
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
     )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 }
