@@ -22,28 +22,84 @@ pub struct ParallelModels {
 
 pub type DistroResults = Vec<DistroResult>;
 
+#[derive(Debug, Clone)]
+pub struct BatchDataCPU {
+    pub input_ids: Vec<i32>,
+    pub labels: Option<Vec<i32>>,
+    pub position_ids: Option<Vec<i32>>,
+    pub sequence_lengths: Option<Vec<i32>>,
+}
+
+#[derive(Debug)]
+pub struct BatchDataGPU {
+    pub input_ids: Tensor,
+    pub labels: Option<Tensor>,
+    pub position_ids: Option<Tensor>,
+    pub sequence_lengths: Option<Vec<Vec<i32>>>,
+}
+
 #[derive(Debug)]
 pub enum BatchData {
-    CPU(Vec<Vec<i32>>),
-    GPU(Tensor),
+    CPU(Vec<BatchDataCPU>),
+    GPU(BatchDataGPU),
 }
 
 impl BatchData {
     pub fn size(&self) -> usize {
         match self {
-            BatchData::CPU(items) => items.len(),
-            BatchData::GPU(tensor) => tensor.size()[0] as usize,
+            BatchData::CPU(cpu) => cpu.len(),
+            BatchData::GPU(gpu) => gpu.input_ids.size()[0] as usize,
         }
     }
 
-    pub fn gpu(self, device: Device) -> Self {
-        Self::GPU(
-            match self {
-                BatchData::CPU(cpu) => Tensor::from_slice2(&cpu).to_kind(Kind::Int64),
-                BatchData::GPU(tensor) => tensor,
+    pub fn gpu(self, device: Device) -> BatchDataGPU {
+        let gpu = match self {
+            BatchData::CPU(cpu) => {
+                let mut all_input_ids = Vec::with_capacity(cpu.len());
+                let mut all_labels = Vec::with_capacity(cpu.len());
+                let mut all_position_ids = Vec::with_capacity(cpu.len());
+                let mut all_sequence_lengths = Vec::with_capacity(cpu.len());
+
+                for data in cpu.into_iter() {
+                    all_input_ids.push(data.input_ids);
+                    all_labels.push(data.labels);
+                    all_position_ids.push(data.position_ids);
+                    all_sequence_lengths.push(data.sequence_lengths);
+                }
+
+                let input_ids = Tensor::from_slice2(&all_input_ids)
+                    .to_kind(Kind::Int64)
+                    .to(device);
+
+                let labels = all_labels
+                    .into_iter()
+                    .collect::<Option<Vec<Vec<i32>>>>()
+                    .map(|v| Tensor::from_slice2(&v).to_kind(Kind::Int64).to(device));
+
+                let position_ids = all_position_ids
+                    .into_iter()
+                    .collect::<Option<Vec<Vec<i32>>>>()
+                    .map(|v| Tensor::from_slice2(&v).to_kind(Kind::Int64).to(device));
+
+                let sequence_lengths = all_sequence_lengths
+                    .into_iter()
+                    .collect::<Option<Vec<Vec<i32>>>>();
+
+                BatchDataGPU {
+                    input_ids,
+                    labels,
+                    position_ids,
+                    sequence_lengths,
+                }
             }
-            .to(device),
-        )
+            BatchData::GPU(gpu) => gpu,
+        };
+        BatchDataGPU {
+            input_ids: gpu.input_ids.to(device),
+            labels: gpu.labels.map(|x| x.to(device)),
+            position_ids: gpu.position_ids.map(|x| x.to(device)),
+            sequence_lengths: gpu.sequence_lengths,
+        }
     }
 }
 
@@ -51,7 +107,12 @@ impl Clone for BatchData {
     fn clone(&self) -> Self {
         match self {
             Self::CPU(cpu) => Self::CPU(cpu.clone()),
-            Self::GPU(gpu) => Self::GPU(gpu.shallow_clone()),
+            Self::GPU(gpu) => Self::GPU(BatchDataGPU {
+                input_ids: gpu.input_ids.shallow_clone(),
+                labels: gpu.labels.as_ref().map(|x| x.shallow_clone()),
+                position_ids: gpu.position_ids.as_ref().map(|x| x.shallow_clone()),
+                sequence_lengths: gpu.sequence_lengths.clone(),
+            }),
         }
     }
 }
@@ -66,7 +127,7 @@ impl Batch {
     pub fn gpu(self, device: Device) -> Self {
         Self {
             id: self.id,
-            data: self.data.gpu(device),
+            data: BatchData::GPU(self.data.gpu(device)),
         }
     }
 }
@@ -607,19 +668,27 @@ impl LocalTrainer {
                     }
                     let grad_accum_divisor = grad_accum_steps as f64;
 
-                    let micro_batches = match batch.data {
-                        BatchData::CPU(data) => data
-                            .chunks(micro_batch_size)
-                            .map(|chunk| {
-                                Tensor::from_slice2(chunk)
-                                    .to(model.device())
-                                    .to_kind(Kind::Int64)
-                            })
-                            .collect::<Vec<_>>(),
-                        BatchData::GPU(tensor) => tensor
-                            .to_kind(Kind::Int64)
-                            .chunk(grad_accum_steps as i64, 0),
-                    };
+                    // TODO: properly batch and pass everything
+                    let BatchDataGPU {
+                        input_ids,
+                        labels: _labels,
+                        position_ids: _position_ids,
+                        sequence_lengths: _sequence_lengths,
+                    } = batch.data.gpu(model.device());
+                    let micro_batches = input_ids.chunk(grad_accum_steps as i64, 0);
+                    // let micro_batches = match batch.data {
+                    //     BatchData::CPU(data) => data
+                    //         .chunks(micro_batch_size)
+                    //         .map(|chunk| {
+                    //             Tensor::from_slice2(chunk)
+                    //                 .to(model.device())
+                    //                 .to_kind(Kind::Int64)
+                    //         })
+                    //         .collect::<Vec<_>>(),
+                    //     BatchData::GPU(tensor) => tensor
+                    //         .to_kind(Kind::Int64)
+                    //         .chunk(grad_accum_steps as i64, 0),
+                    // };
                     assert_eq!(micro_batches.len(), grad_accum_steps);
 
                     if let Some(grad_accum) = &mut grad_accum {

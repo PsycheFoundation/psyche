@@ -19,5 +19,5 @@ pub use hub::{
 pub use local::LocalDataProvider;
 pub use parquet::record::{ListAccessor, MapAccessor, RowAccessor};
 pub use remote::{DataProviderTcpClient, DataProviderTcpServer, DataServerTui};
-pub use traits::{LengthKnownDataProvider, TokenizedDataProvider};
+pub use traits::{LengthKnownDataProvider, TokenizedData, TokenizedDataProvider};
 pub use weighted::{WeightedDataProvider, http::WeightedHttpProvidersConfig};
