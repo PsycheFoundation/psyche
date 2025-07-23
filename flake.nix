@@ -34,7 +34,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     solana-pkgs = {
-      url = "github:arilotter/solana-flake";
+      url = "github:arilotter/solana-flake/anchor-weirdness";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     agenix-shell = {
