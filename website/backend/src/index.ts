@@ -333,6 +333,6 @@ async function main() {
 			.send(JSON.stringify(data, replacer))
 	})
 
-	await fastify.listen({ port: 3000 })
+	await fastify.listen({ host: '0.0.0.0', port: 3000 })
 }
 main()
