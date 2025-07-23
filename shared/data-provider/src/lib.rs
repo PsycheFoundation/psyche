@@ -5,6 +5,7 @@ mod file_extensions;
 pub mod http;
 mod hub;
 mod local;
+mod preprocessed;
 mod remote;
 mod traits;
 mod weighted;
@@ -18,6 +19,7 @@ pub use hub::{
 };
 pub use local::LocalDataProvider;
 pub use parquet::record::{ListAccessor, MapAccessor, RowAccessor};
+pub use preprocessed::PreprocessedDataProvider;
 pub use remote::{DataProviderTcpClient, DataProviderTcpServer, DataServerTui};
 pub use traits::{LengthKnownDataProvider, TokenizedData, TokenizedDataProvider};
 pub use weighted::{WeightedDataProvider, http::WeightedHttpProvidersConfig};

@@ -33,6 +33,15 @@ impl TokenizedData {
             sequence_lengths,
         }
     }
+
+    pub fn empty() -> Self {
+        Self {
+            input_ids: vec![],
+            labels: None,
+            position_ids: None,
+            sequence_lengths: None,
+        }
+    }
 }
 
 pub trait TokenizedDataProvider {

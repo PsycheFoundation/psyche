@@ -132,7 +132,7 @@ impl<T: TokenizedDataProvider + LengthKnownDataProvider + Send> TokenizedDataPro
         }
 
         // all results in their original order
-        let mut results: Vec<TokenizedData> = Vec::with_capacity(data_ids.len());
+        let mut results = vec![TokenizedData::empty(); data_ids.len()];
 
         for (provider_idx, requests) in provider_requests.iter().enumerate() {
             if !requests.is_empty() {
