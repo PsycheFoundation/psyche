@@ -192,7 +192,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		})
 
 		this.#runsMutatedSinceLastSync.add(
-			runKey(runId, runsAtThisAddress.length - 1)
+			runKey(this.#programId.toString(), runId, runsAtThisAddress.length - 1)
 		)
 	}
 
@@ -263,7 +263,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			})
 		}
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, index))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programId.toString(), lastRun.runId, index)
+		)
 	}
 
 	setRunPaused(pubkey: string, paused: boolean, timestamp: ChainTimestamp) {
@@ -278,7 +280,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = timestamp
 		lastRun.pauseTimestamps.push([newPauseState, timestamp])
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, index))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programId.toString(), lastRun.runId, index)
+		)
 	}
 
 	witnessRun(
@@ -318,7 +322,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			timestamp,
 		])
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programId.toString(), lastRun.runId, runs.length - 1)
+		)
 	}
 
 	destroyRun(pubkey: string, timestamp: ChainTimestamp) {
@@ -337,7 +343,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = timestamp
 		lastRun.destroyedAt = timestamp
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programId.toString(), lastRun.runId, runs.length - 1)
+		)
 	}
 
 	trackTx(
@@ -366,7 +374,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		if (lastRun.recentTxs.length > MAX_RECENT_TXS) {
 			lastRun.recentTxs = lastRun.recentTxs.slice(-MAX_RECENT_TXS)
 		}
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programId.toString(), lastRun.runId, runs.length - 1)
+		)
 	}
 
 	getRunSummaries(): RunSummaries {
@@ -380,7 +390,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 						makeRunSummary(
 							r,
 							i,
-							runs.filter((r) => !!r.lastState).length === 1
+							runs.filter((r) => !!r.lastState).length === 1,
+							this.#programId.toString()
 						),
 						r,
 					] as const
@@ -427,8 +438,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		)
 	}
 
+	get programId(): PublicKey {
+		return this.#programId
+	}
+
 	getRunDataById(runId: string, index: number): RunData | null {
-		const cachedRun = this.#runCache.get(runKey(runId, index))
+		const cachedRun = this.#runCache.get(
+			runKey(this.#programId.toString(), runId, index)
+		)
 		if (cachedRun) {
 			return cachedRun
 		}
@@ -443,7 +460,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		const info = makeRunSummary(
 			run,
 			realIndex,
-			runsAtThisAddress!.filter((r) => !!r.lastState).length === 1
+			runsAtThisAddress!.filter((r) => !!r.lastState).length === 1,
+			this.#programId.toString()
 		)
 		if (!info) {
 			return null
@@ -573,6 +591,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 		const runData = {
 			info,
+			programId: this.#programId.toString(),
 			state,
 			recentTxs: run.recentTxs,
 			metrics: {
@@ -580,7 +599,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				history,
 			},
 		}
-		this.#runCache.set(runKey(runId, index), runData)
+		this.#runCache.set(
+			runKey(this.#programId.toString(), runId, index),
+			runData
+		)
 		return runData
 	}
 }
@@ -595,7 +617,8 @@ function goodNumber([_, value]: readonly [
 function makeRunSummary(
 	run: RunHistory,
 	index: number,
-	isOnlyRunAtThisIndex: boolean
+	isOnlyRunAtThisIndex: boolean,
+	programId: string
 ): RunSummary | null {
 	if (!run.lastState) {
 		return null
@@ -667,6 +690,7 @@ function makeRunSummary(
 		size: run.lastState.metadata.num_parameters,
 		trainingStep,
 		type: 'text', // TODO add type / tags? :)
+		programId: programId,
 	}
 	return summary
 }

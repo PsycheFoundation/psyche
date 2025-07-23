@@ -74,6 +74,7 @@ export interface RunSummary {
 	size: bigint
 	arch: LLMArchitecture
 	type: ModelType
+	programId: string
 }
 
 export type Metrics = {
@@ -109,6 +110,7 @@ export interface TxSummary {
 
 export interface RunData {
 	info: RunSummary
+	programId: string
 	state?: {
 		phase: RunState
 		phaseStartTime: Date
