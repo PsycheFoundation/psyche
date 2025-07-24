@@ -69,11 +69,9 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
 
-  pythonWithPsycheExtension = (
-    pkgs.python312.withPackages (ps: [
-      (pkgs.callPackage ../python { })
-    ])
-  );
+  pythonWithPsycheExtension = pkgs.python312.withPackages (ps: [
+    (pkgs.callPackage ../python { })
+  ]);
 
   buildRustPackageWithPythonSidecar =
     {
