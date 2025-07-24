@@ -61,7 +61,7 @@ OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
 
 # Start client for training on localnet without data parallelism features and using light model.
 start-training-localnet-light-client-telemetry run_id="test" *args='':
-    OTLP_METRICS_URL={{OTLP_METRICS_URL}} OTLP_LOGS_URL={{OTLP_LOGS_URL}} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+    OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
 DEVNET_RPC := "https://api.devnet.solana.com"
 DEVNET_WS_RPC := "wss://api.devnet.solana.com"

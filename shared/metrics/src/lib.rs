@@ -7,17 +7,16 @@ use std::{
     time::Duration,
 };
 
-use nvml_wrapper::{enum_wrappers::device::TemperatureSensor, Nvml};
+use nvml_wrapper::{Nvml, enum_wrappers::device::TemperatureSensor};
 use opentelemetry::{
-    global,
+    KeyValue, global,
     metrics::{Counter, Gauge, Histogram, Meter},
-    KeyValue,
 };
 use serde::Serialize;
 use sysinfo::System;
 use tokio::{io::AsyncWriteExt, net::TcpListener, time::interval};
 
-pub use iroh::{create_iroh_registry, IrohMetricsCollector};
+pub use iroh::{IrohMetricsCollector, create_iroh_registry};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
 use tracing::{debug, info, warn};
 
