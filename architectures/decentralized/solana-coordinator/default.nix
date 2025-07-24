@@ -1,5 +1,5 @@
 { psycheLib }:
-psycheLib.buildSolanaIdl {
+psycheLib.buildSolana {
   src = psycheLib.src;
   workspaceDir = ./.;
   sourceRoot = "source/architectures/decentralized/solana-coordinator";

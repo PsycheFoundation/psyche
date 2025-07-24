@@ -164,80 +164,112 @@ let
     else
       (package: package);
 
-  solanaCraneLib =
-    (inputs.crane.mkLib pkgs).overrideToolchain
-      inputs.solana-pkgs.packages.${system}.solana-rust;
+  solanaPkgs = inputs.solana-pkgs.packages.${system};
 
-  # output the package's idl.json
-  buildSolanaIdl =
-    {
-      src,
-      programName,
-      workspaceDir,
-      sourceRoot,
-      keypair ? "",
-    }:
+  buildSolana =
     let
-      cargoLock = workspaceDir + "/Cargo.lock";
+      solanaCraneLib = (inputs.crane.mkLib pkgs).overrideToolchain solanaPkgs.solana-rust;
 
-      env = {
-        RUSTFLAGS = "--cfg procmacro2_semver_exempt -A warnings";
-      };
-      solanaWorkspaceArgs = rustWorkspaceDeps // {
-        inherit
-          env
-          src
-          sourceRoot
-          cargoLock
-          ;
-      };
-      solanaCargoArtifacts = solanaCraneLib.buildDepsOnly (
-        solanaWorkspaceArgs
-        // {
-          pname = "solana-idl-${programName}";
-          buildPhaseCargoCommand = "cargo test --no-run --features idl-build";
-        }
-      );
+      # output the package's idl.json
+      buildSolana =
+        {
+          src,
+          programName,
+          workspaceDir,
+          sourceRoot,
+          keypair ? "",
+          pnameSuffix ? "",
+          buildPhaseCargoCommand,
+          doInstallCargoArtifacts,
+        }:
+        let
+          cargoLock = workspaceDir + "/Cargo.lock";
+
+          env = {
+            RUSTFLAGS = "--cfg procmacro2_semver_exempt -A warnings";
+          };
+          solanaWorkspaceArgs = rustWorkspaceDeps // {
+            inherit
+              env
+              src
+              sourceRoot
+              cargoLock
+              ;
+            buildInputs = [
+              solanaPkgs.solana
+              pkgs.openssl
+            ];
+          };
+          solanaCargoArtifacts = solanaCraneLib.buildDepsOnly (
+            solanaWorkspaceArgs
+            // {
+              pname = "solana-idl-${programName}";
+              buildPhaseCargoCommand = "cargo test --no-run --features idl-build";
+            }
+          );
+        in
+        solanaCraneLib.mkCargoDerivation (
+          solanaWorkspaceArgs
+          // {
+            cargoArtifacts = solanaCargoArtifacts;
+            pname = programName;
+            version = "0";
+            pnameSuffix = "-idl";
+
+            ANCHOR_IDL_BUILD_PROGRAM_PATH = "./programs/${programName}";
+
+            postPatch =
+              let
+                cargoTomlContents = lib.importTOML (workspaceDir + "/programs/${programName}/Cargo.toml");
+              in
+              ''
+                if [ -n "${keypair}" ]; then
+                  mkdir -p ./target/deploy
+                  cp ${keypair} ./target/deploy/${cargoTomlContents.package.name}-keypair.json
+                fi
+              '';
+
+            nativeBuildInputs = [
+              solanaPkgs.anchor
+            ] ++ rustWorkspaceDeps.nativeBuildInputs;
+
+            inherit doInstallCargoArtifacts buildPhaseCargoCommand;
+          }
+        );
+      buildSolanaIdl =
+        args:
+        buildSolana (
+          args
+          // {
+            pnameSuffix = "idl";
+            buildPhaseCargoCommand = ''
+              mkdir $out
+              anchor idl build --out $out/idl.json --out-ts $out/idlType.ts
+            '';
+            doInstallCargoArtifacts = false;
+          }
+        );
+      buildSolanaSo =
+        args:
+        buildSolana (
+          args
+          // {
+            pnameSuffix = "-so";
+            buildPhaseCargoCommand = "cargo build-sbf";
+            doInstallCargoArtifacts = true;
+          }
+        );
     in
-    solanaCraneLib.mkCargoDerivation (
-      solanaWorkspaceArgs
-      // {
-        cargoArtifacts = solanaCargoArtifacts;
-        pname = programName;
-        version = "0";
-        pnameSuffix = "-idl";
-
-        ANCHOR_IDL_BUILD_PROGRAM_PATH = "./programs/${programName}";
-
-        postPatch =
-          let
-            cargoTomlContents = lib.importTOML (workspaceDir + "/programs/${programName}/Cargo.toml");
-          in
-          ''
-            if [ -n "${keypair}" ]; then
-              mkdir -p ./target/deploy
-              cp ${keypair} ./target/deploy/${cargoTomlContents.package.name}-keypair.json
-            fi
-          '';
-
-        nativeBuildInputs = [
-          inputs.solana-pkgs.packages.${system}.anchor
-        ] ++ rustWorkspaceDeps.nativeBuildInputs;
-
-        buildPhaseCargoCommand = ''
-          mkdir $out
-          anchor idl build --out $out/idl.json --out-ts $out/idlType.ts
-        '';
-
-        doInstallCargoArtifacts = false;
-      }
-    );
+    args: {
+      so = buildSolanaSo args;
+      idl = buildSolanaIdl args;
+    };
 in
 {
   inherit
     rustToolchain
     craneLib
-    buildSolanaIdl
+    buildSolana
     rustWorkspaceArgs
     rustWorkspaceArgsWithPython
     cargoArtifacts
@@ -248,6 +280,7 @@ in
     src
     gitcommit
     pythonWithPsycheExtension
+    solanaPkgs
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

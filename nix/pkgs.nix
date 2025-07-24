@@ -41,8 +41,11 @@ lib.makeScope pkgs.newScope (
     );
 
     # Import Docker configurations
-    dockerPackages = import ./docker.nix {
-      inherit pkgs nixglhostRustPackages inputs;
+    dockerPackages = {
+      docker-psyche-solana-client = self.callPackage ../docker/solana-client.nix { };
+      docker-psyche-centralized-client = self.callPackage ../docker/centralized-client.nix { };
+      docker-psyche-solana-test-client = self.callPackage ../docker/solana-test-client.nix { };
+      docker-psyche-solana-test-validator = self.callPackage ../docker/solana-test-validator.nix { };
     };
 
     psychePackages =
@@ -52,12 +55,13 @@ lib.makeScope pkgs.newScope (
 
         psyche-deserialize-zerocopy-wasm = self.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
 
-        solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
-        solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
+        solana-authorizer = self.callPackage ../architectures/decentralized/solana-authorizer { };
+        solana-coordinator = self.callPackage ../architectures/decentralized/solana-coordinator { };
+        solana-mining-pool = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
         psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-
       }
+      // dockerPackages
       // rustPackages
       // nixglhostRustPackages
       // dockerPackages;

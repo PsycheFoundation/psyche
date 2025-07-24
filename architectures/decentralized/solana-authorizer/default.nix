@@ -2,7 +2,7 @@
 psycheLib.buildSolana {
   src = psycheLib.src;
   workspaceDir = ./.;
-  sourceRoot = "source/architectures/decentralized/solana-mining-pool";
-  programName = "solana-mining-pool";
+  sourceRoot = "source/architectures/decentralized/solana-authorizer";
+  programName = "solana-authorizer";
   keypair = ../local-dev-keypair.json;
 }
