@@ -390,12 +390,12 @@ impl ClientMetrics {
     pub fn update_model_sharing_total_params_downloaded(&mut self) {
         self.p2p_downloaded_params_total += 1;
         if let Some(total_params) = self.num_params {
-            self.p2p_downloaded_params_percent.as_ref().map(|gauge| {
+            if let Some(gauge) = self.p2p_downloaded_params_percent.as_ref() {
                 gauge.record(
                     (self.p2p_downloaded_params_total as f64 / total_params as f64) * 100.0,
                     &[],
                 )
-            });
+            }
         }
     }
 
