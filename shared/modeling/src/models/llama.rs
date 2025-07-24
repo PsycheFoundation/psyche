@@ -151,8 +151,11 @@ impl Block {
         }
     }
 
-    fn forward(&self, x: &Tensor, index_pos: i64, cache: &RoPECache) -> Tensor {
-        let x = self.attn.forward(&self.rms_1.forward(x), index_pos, cache) + x;
+    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
+        let x = self
+            .attn
+            .forward(&self.rms_1.forward(x), position_ids, cache)
+            + x;
         self.mlp.forward(&self.rms_2.forward(&x)) + x
     }
 }
@@ -187,11 +190,9 @@ impl Llama {
             .map(|i| Block::new(&vs / "model" / "layers" / i, config, use_sdpa, comm.clone()))
             .collect::<Vec<_>>();
         let rope_cache = RoPECache::new(
-            vs.kind(),
             &config.rope_config(),
             config.hidden_size() / config.num_attention_heads(),
             config.rope_theta(),
-            config.max_position_embeddings(),
             &vs.device(),
         );
         Self {
@@ -204,10 +205,10 @@ impl Llama {
 }
 
 impl LanguageModelForward for Llama {
-    fn forward(&self, x: &Tensor, index_pos: i64, _training: bool) -> Tensor {
+    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, _training: bool) -> Tensor {
         let mut x = self.wte.forward(x);
         for block in &self.blocks {
-            x = block.forward(&x, index_pos, &self.rope_cache);
+            x = block.forward(&x, position_ids, &self.rope_cache);
         }
         self.ln_f.forward(&x)
     }

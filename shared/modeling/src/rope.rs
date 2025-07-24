@@ -80,17 +80,15 @@ pub fn yarn_get_mscale(scale: f32, mscale: f32) -> f32 {
 
 #[derive(Debug)]
 pub struct RoPECache {
-    pub cos: Tensor,
-    pub sin: Tensor,
+    pub inv_freq: Tensor,
+    pub mscale: f64,
 }
 
 impl RoPECache {
     pub fn new(
-        kind: Kind,
         rope_config: &Option<RoPEConfig>,
         head_dim: usize,
         rope_theta: f32,
-        max_position_embeddings: usize,
         device: &Device,
     ) -> Self {
         let inv_freq = calculate_default_inv_freq(head_dim, rope_theta);
@@ -173,23 +171,9 @@ impl RoPECache {
             }
         };
 
-        let idx_theta =
-            Tensor::arange((max_position_embeddings + 1) as i64, (Kind::Float, *device))
-                .reshape([(max_position_embeddings + 1) as i64, 1])
-                .matmul(&inv_freq.reshape([1i64, inv_freq.numel() as i64]));
-        // This is different from the paper, see:
-        // https://github.com/huggingface/transformers/blob/6112b1c6442aaf7affd2b0676a1cd4eee30c45cf/src/transformers/models/llama/modeling_llama.py#L112
-        let mut cos = idx_theta.cos();
-        if let Some(mscale) = mscale {
-            let _ = cos.g_mul_scalar_(mscale);
-        };
-        let mut sin = idx_theta.sin();
-        if let Some(mscale) = mscale {
-            let _ = sin.g_mul_scalar_(mscale);
-        }
         Self {
-            cos: cos.to_kind(kind),
-            sin: sin.to_kind(kind),
+            inv_freq,
+            mscale: mscale.unwrap_or(1.0),
         }
     }
 }
@@ -202,14 +186,64 @@ pub fn rotate_half(xs: &Tensor) -> Tensor {
 }
 
 impl RoPECache {
-    pub fn apply_rotary_emb(&self, x: &Tensor, index_pos: i64) -> Tensor {
-        let (_b_sz, _, seq_len, _hidden_size) = x.size4().unwrap();
-        let cos = self.cos.narrow(0, index_pos, seq_len);
-        let sin = self.sin.narrow(0, index_pos, seq_len);
-        let cos = Tensor::cat(&[&cos, &cos], -1);
-        let sin = Tensor::cat(&[&sin, &sin], -1);
-        let cos = cos.unsqueeze(0).unsqueeze(0);
-        let sin = sin.unsqueeze(0).unsqueeze(0);
-        (x * cos) + (rotate_half(x) * sin)
+    pub fn apply_rotary_emb(&self, x: &Tensor, position_ids: Option<&Tensor>) -> Tensor {
+        let (b_sz, _, seq_len, _) = x.size4().unwrap();
+        let position_ids = match position_ids {
+            Some(ids) => ids,
+            None => {
+                // Create default sequential position_ids starting from 0
+                &Tensor::arange(seq_len as i64, (Kind::Int64, x.device()))
+                    .unsqueeze(0)
+                    .expand([b_sz as i64, seq_len as i64], false)
+            }
+        };
+        let pos_shape = position_ids.size();
+        assert_eq!(
+            pos_shape.len(),
+            2,
+            "position_ids must be 2D [batch, seq_len]"
+        );
+        let pos_b = pos_shape[0] as i64;
+        let pos_seq = pos_shape[1] as i64;
+        assert_eq!(
+            pos_seq, seq_len,
+            "sequence length mismatch between x and position_ids"
+        );
+        // If position_ids batch is 1, it will broadcast; otherwise, must match b_sz
+        assert!(
+            pos_b == 1 || pos_b == b_sz as i64,
+            "batch size mismatch between position_ids and x"
+        );
+
+        let head_dim_2 = self.inv_freq.size()[0];
+        let inv_freq_expanded = self
+            .inv_freq
+            .to_kind(Kind::Float)
+            .unsqueeze(0)
+            .unsqueeze(-1)
+            .expand([pos_b as i64, head_dim_2, 1], true);
+        let position_ids_expanded = position_ids.to_kind(Kind::Float).unsqueeze(1); // [pos_b, 1, seq_len]
+
+        let freqs = inv_freq_expanded.matmul(&position_ids_expanded); // [pos_b, head_dim_2, seq_len]
+        let freqs = freqs.transpose(1, 2); // [pos_b, seq_len, head_dim_2]
+
+        let emb = Tensor::cat(&[&freqs, &freqs], -1); // [pos_b, seq_len, head_dim]
+
+        let mut cos = emb.cos();
+        let mut sin = emb.sin();
+
+        if self.mscale != 1.0 {
+            let _ = cos.g_mul_scalar_(self.mscale);
+            let _ = sin.g_mul_scalar_(self.mscale);
+        }
+
+        let cos = cos.unsqueeze(1); // [pos_b, 1, seq_len, head_dim]
+        let sin = sin.unsqueeze(1); // [pos_b, 1, seq_len, head_dim]
+
+        let x_kind = x.kind();
+        let cos = cos.to_kind(x_kind);
+        let sin = sin.to_kind(x_kind);
+
+        (x * &cos) + (rotate_half(x) * &sin)
     }
 }

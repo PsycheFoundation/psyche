@@ -79,7 +79,7 @@ impl CausalSelfAttention {
         }
     }
 
-    pub fn forward(&self, x: &Tensor, index_pos: i64, cache: &RoPECache) -> Tensor {
+    pub fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
         let (b, t, c) = x.size3().unwrap();
         assert_eq!(c, self.n_embd, "Input hidden size mismatch");
         let kind = x.kind();
@@ -104,8 +104,8 @@ impl CausalSelfAttention {
             .reshape([b, t, local_n_kvhead, self.head_dim])
             .transpose(1, 2);
 
-        let q = cache.apply_rotary_emb(&q, index_pos).to_kind(kind);
-        let k = cache.apply_rotary_emb(&k, index_pos).to_kind(kind);
+        let q = cache.apply_rotary_emb(&q, position_ids).to_kind(kind);
+        let k = cache.apply_rotary_emb(&k, position_ids).to_kind(kind);
 
         let k = repeat_kv(&k, local_n_head / local_n_kvhead);
         let v = repeat_kv(&v, local_n_head / local_n_kvhead);

@@ -173,7 +173,7 @@ fn inference(
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
-        let (logits, _) = model.forward(&input, None, Some(1), None);
+        let (logits, _) = model.forward(&input, None, None, Some(1), None);
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }

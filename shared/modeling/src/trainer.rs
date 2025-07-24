@@ -169,6 +169,7 @@ enum ParallelAssignment {
     Forward {
         data: Tensor,
         labels: Option<Tensor>,
+        position_ids: Option<Tensor>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     },
@@ -400,6 +401,7 @@ impl LocalTrainer {
         model: &mut dyn CausalLM,
         inputs: Tensor,
         labels: Option<Tensor>,
+        position_ids: Option<Tensor>,
         barrier: &Arc<dyn Barrier>,
         loss_scale: Option<f64>,
     ) -> Result<Option<Tensor>> {
@@ -408,7 +410,13 @@ impl LocalTrainer {
             return Ok(None);
         }
         let device = inputs.device();
-        let (_, loss) = model.forward(&inputs, Some(&labels), None, loss_scale);
+        let (_, loss) = model.forward(
+            &inputs,
+            Some(&labels),
+            position_ids.as_ref(),
+            None,
+            loss_scale,
+        );
         let loss = loss.ok_or(Error::msg("No loss"))?;
         loss.backward();
         if device.is_cuda() {
@@ -421,6 +429,7 @@ impl LocalTrainer {
         model: &mut dyn CausalLM,
         data: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
         barrier: &Arc<dyn Barrier>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
@@ -433,8 +442,13 @@ impl LocalTrainer {
         let inputs = data.to(device);
         let labels = labels.map(|x| x.to(device));
         let device = inputs.device();
-        let (logits, loss) =
-            model.forward(&inputs, labels.as_ref(), num_logits_to_keep, loss_scale);
+        let (logits, loss) = model.forward(
+            &inputs,
+            labels.as_ref(),
+            position_ids,
+            num_logits_to_keep,
+            loss_scale,
+        );
         if device.is_cuda() {
             device.cuda_synchronize();
         }
@@ -764,7 +778,7 @@ impl LocalTrainer {
 
                     let mut loss = None;
                     let mut cancelled = false;
-                    for (index, (input_ids, labels, _position_ids, _sequence_lengths)) in
+                    for (index, (input_ids, labels, position_ids, _sequence_lengths)) in
                         micro_batches.into_iter().enumerate()
                     {
                         if cancel_training.is_cancelled() {
@@ -777,6 +791,7 @@ impl LocalTrainer {
                             &mut *model,
                             input_ids,
                             labels,
+                            position_ids,
                             &barrier,
                             Some(grad_accum_divisor),
                         ) {
@@ -926,6 +941,7 @@ impl LocalTrainer {
                 Ok(ParallelAssignment::Forward {
                     data,
                     labels,
+                    position_ids,
                     num_logits_to_keep,
                     loss_scale,
                 }) => {
@@ -933,6 +949,7 @@ impl LocalTrainer {
                         &mut *model,
                         &data,
                         labels.as_ref(),
+                        position_ids.as_ref(),
                         &barrier,
                         num_logits_to_keep,
                         loss_scale,
@@ -1011,6 +1028,7 @@ impl CausalLM for LocalTrainer {
         &mut self,
         x: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
@@ -1019,6 +1037,7 @@ impl CausalLM for LocalTrainer {
             tx.send(ParallelAssignment::Forward {
                 data: x.shallow_clone(),
                 labels: labels.map(|y| y.shallow_clone()),
+                position_ids: position_ids.map(|y| y.shallow_clone()),
                 num_logits_to_keep,
                 loss_scale,
             })
@@ -1118,17 +1137,17 @@ impl CausalLM for Trainer {
         &mut self,
         x: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
         match self {
             Trainer::Local(local_trainer) => {
-                local_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
+                local_trainer.forward(x, labels, position_ids, num_logits_to_keep, loss_scale)
             }
             #[cfg(feature = "python")]
-            Trainer::PythonDistributed(python_distributed_trainer) => {
-                python_distributed_trainer.forward(x, labels, num_logits_to_keep, loss_scale)
-            }
+            Trainer::PythonDistributed(python_distributed_trainer) => python_distributed_trainer
+                .forward(x, labels, position_ids, num_logits_to_keep, loss_scale),
         }
     }
 

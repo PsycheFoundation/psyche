@@ -68,26 +68,69 @@ pub struct DeepseekConfig {
 }
 
 pub fn apply_rotary_pos_emb(
+    cache: &RoPECache,
     q: &Tensor,
     k: &Tensor,
-    index_pos: i64,
-    cache: &RoPECache,
+    position_ids: Option<&Tensor>,
 ) -> (Tensor, Tensor) {
-    let (_b_sz, _, seq_len, _hidden_size) = q.size4().unwrap();
-    let cos = cache.cos.narrow(0, index_pos, seq_len);
-    let sin = cache.sin.narrow(0, index_pos, seq_len);
-    let cos = Tensor::cat(&[&cos, &cos], -1);
-    let sin = Tensor::cat(&[&sin, &sin], -1);
-    let cos = cos.unsqueeze(0).unsqueeze(0);
-    let sin = sin.unsqueeze(0).unsqueeze(0);
-
     let (b, h, s, d) = q.size4().unwrap();
+    let position_ids = match position_ids {
+        Some(ids) => ids,
+        None => &Tensor::arange(s as i64, (Kind::Int64, q.device()))
+            .unsqueeze(0)
+            .expand([b, s], false),
+    };
+    let pos_shape = position_ids.size();
+    assert_eq!(
+        pos_shape.len(),
+        2,
+        "position_ids must be 2D [batch, seq_len]"
+    );
+    let pos_b = pos_shape[0] as i64;
+    let pos_s = pos_shape[1] as i64;
+    assert_eq!(
+        pos_s, s,
+        "sequence length mismatch between q and position_ids"
+    );
+    assert!(
+        pos_b == 1 || pos_b == b,
+        "batch size mismatch between position_ids and q"
+    );
+
+    let head_dim_2 = cache.inv_freq.size()[0];
+    let inv_freq_expanded = cache
+        .inv_freq
+        .to_kind(Kind::Float)
+        .unsqueeze(0)
+        .unsqueeze(-1)
+        .expand([pos_b, head_dim_2, 1], true);
+    let position_ids_expanded = position_ids.to_kind(Kind::Float).unsqueeze(1); // [pos_b, 1, seq_len]
+
+    let freqs = inv_freq_expanded.matmul(&position_ids_expanded); // [pos_b, head_dim_2, seq_len]
+    let freqs = freqs.transpose(1, 2); // [pos_b, seq_len, head_dim_2]
+
+    let emb = Tensor::cat(&[&freqs, &freqs], -1); // [pos_b, seq_len, head_dim]
+
+    let mut cos = emb.cos();
+    let mut sin = emb.sin();
+
+    if cache.mscale != 1.0 {
+        let _ = cos.g_mul_scalar_(cache.mscale);
+        let _ = sin.g_mul_scalar_(cache.mscale);
+    }
+
+    let cos = cos.unsqueeze(1); // [pos_b, 1, seq_len, head_dim]
+    let sin = sin.unsqueeze(1); // [pos_b, 1, seq_len, head_dim]
+
+    let kind = q.kind();
+    let cos = cos.to_kind(kind);
+    let sin = sin.to_kind(kind);
+
     let q = q
         .view([b, h, s, d / 2, 2])
         .transpose(4, 3)
         .reshape([b, h, s, d]);
 
-    let (b, h, s, d) = k.size4().unwrap();
     let k = k
         .view([b, h, s, d / 2, 2])
         .transpose(4, 3)
@@ -262,7 +305,7 @@ impl MLAAttention {
         (a, b)
     }
 
-    fn forward(&self, x: &Tensor, index_pos: i64, cache: &RoPECache) -> Tensor {
+    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
         let (b, t, _) = x.size3().unwrap();
         let kind = x.kind();
 
@@ -314,7 +357,7 @@ impl MLAAttention {
             .parallel_expand_heads(&self.comm, [b, t, self.num_heads, self.qk_rope_head_dim])
             .transpose(1, 2);
 
-        let (q_pe, k_pe) = apply_rotary_pos_emb(&q_pe, &k_pe, index_pos, cache);
+        let (q_pe, k_pe) = apply_rotary_pos_emb(cache, &q_pe, &k_pe, position_ids);
 
         let query_states = Tensor::cat(&[&q_nope, &q_pe], -1);
         let key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
@@ -750,11 +793,11 @@ impl DeepseekBlock {
         }
     }
 
-    fn forward(&self, x: &Tensor, index_pos: i64, cache: &RoPECache) -> Tensor {
+    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
         let residual = x;
         let x = self
             .mla
-            .forward(&self.input_layernorm.forward(x), index_pos, cache);
+            .forward(&self.input_layernorm.forward(x), position_ids, cache);
         let x = &x + residual;
 
         let residual = &x;
@@ -806,11 +849,9 @@ impl Deepseek {
         );
 
         let rope_cache = RoPECache::new(
-            vs.kind(),
             &config.rope_config(),
             config.qk_rope_head_dim.unwrap(),
             config.rope_theta(),
-            config.max_position_embeddings(),
             &vs.device(),
         );
 
@@ -824,14 +865,14 @@ impl Deepseek {
 }
 
 impl LanguageModelForward for Deepseek {
-    fn forward(&self, x: &Tensor, index_pos: i64, training: bool) -> Tensor {
+    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, training: bool) -> Tensor {
         if let NetworkBlock::MoE(_) = &self.blocks[0].network {
             assert!(!training, "DeepseekMoE training not yet supported");
         }
         let mut hidden_states = self.embed_tokens.forward(x);
 
         for block in &self.blocks {
-            hidden_states = block.forward(&hidden_states, index_pos, &self.rope_cache);
+            hidden_states = block.forward(&hidden_states, position_ids, &self.rope_cache);
         }
 
         self.norm.forward(&hidden_states)
