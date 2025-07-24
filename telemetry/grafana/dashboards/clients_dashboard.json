@@ -419,7 +419,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 26
+            "y": 36
           },
           "id": 2,
           "options": {
@@ -521,7 +521,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 26
+            "y": 36
           },
           "id": 3,
           "options": {
@@ -585,7 +585,7 @@
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 123
+            "y": 37
           },
           "id": 1,
           "options": {
@@ -631,8 +631,8 @@
     "list": [
       {
         "current": {
-          "text": "",
-          "value": ""
+          "text": "450f1bf9f9d1fe9098e39d64801f336a70d2336ea14bea7e3a46f8228c8a9e97",
+          "value": "450f1bf9f9d1fe9098e39d64801f336a70d2336ea14bea7e3a46f8228c8a9e97"
         },
         "definition": "",
         "name": "clients",
@@ -650,12 +650,12 @@
     ]
   },
   "time": {
-    "from": "2025-07-22T20:20:50.068Z",
-    "to": "2025-07-22T20:21:32.925Z"
+    "from": "now-15m",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Clients",
   "uid": "516c64b6-0d50-4a36-a3fe-c562a5a91771",
-  "version": 3
+  "version": 2
 } 
