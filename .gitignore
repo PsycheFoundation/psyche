@@ -13,6 +13,7 @@ target/
 
 ### Python ###
 __pycache__
+.nix-torchtitan-venv/
 
 ### Windows ###
 Thumbs.db
