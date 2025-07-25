@@ -1,9 +1,12 @@
-use crate::traits::{Document, LogLikelihoodTask};
+use crate::ASCII_UPPERCASE;
+use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
-use psyche_modeling::CausalLM;
+use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
 use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
+use regex::Regex;
+use std::sync::RwLock;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
@@ -12,6 +15,7 @@ use tracing::info;
 
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
+    GenerateUntil(Box<dyn GenerateUntilTask>),
 }
 
 pub struct Task {
@@ -36,6 +40,7 @@ impl Display for Task {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.task_type {
             TaskType::LogLikelihood(x) => write!(f, "{x}"),
+            TaskType::GenerateUntil(x) => write!(f, "{x}"),
         }
     }
 }
@@ -45,6 +50,11 @@ enum PreparedTaskType {
     LogLikelihood {
         docs: Vec<TokenizedLLHDocument>,
         tokenized_fewshot: Vec<i64>,
+    },
+    GenerateUntil {
+        requests: Vec<TokenizedGenerateUntilDocument>,
+        tokenizer: Tokenizer,
+        generated_tokens: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
     },
 }
 
@@ -68,6 +78,13 @@ struct TokenizedLLHDocument {
     answer: usize,
     choices_token_len: Vec<usize>,
     requests: Vec<Vec<i64>>,
+}
+
+#[derive(Debug)]
+pub struct TokenizedGenerateUntilDocument {
+    request_str: String,
+    request: Vec<i64>,
+    answer: usize,
 }
 
 impl TokenizedLLHDocument {
@@ -182,6 +199,96 @@ impl Task {
                     },
                 }
             }
+            TaskType::GenerateUntil(gu_docs) => {
+                let mut docs = gu_docs.get_documents();
+                docs.shuffle(&mut self.rand);
+                if let Some(limit) = limit {
+                    docs.truncate(limit);
+                }
+
+                let fewshot = gu_docs.get_fewshot_documents();
+
+                let mut requests = Vec::new();
+
+                // Prepare prompts for each document
+                for doc in &docs {
+                    // Get the category for this document
+                    let category = doc.category.as_ref().map(|s| s.as_str()).unwrap();
+
+                    // Get fewshot examples for this category
+                    let fewshot_examples = fewshot.get(category).map(|v| v.as_slice()).unwrap();
+
+                    // Build the prompt string
+
+                    let mut request_str = format!(
+                        "The following are multiple choice questions (with answers) about {}. Think step by step and then finish your answer with \"the answer is (X)\" where X is the correct letter choice.\n",
+                        category
+                    );
+
+                    // Add fewshot examples with their answers
+                    for example in fewshot_examples.iter().take(self.num_fewshot) {
+                        request_str.push_str("Question:\n");
+
+                        request_str.push_str(&example.text);
+                        request_str.push_str("\nOptions:\n");
+
+                        // Format choices with letter labels
+                        for (i, choice) in example.choices.iter().enumerate() {
+                            let letter = ASCII_UPPERCASE[i];
+                            request_str.push_str(&format!("{}. {}\n", letter, choice));
+                        }
+
+                        // Replace "A:" with "Answer:" in cot_content
+                        let mut cot_content = example.cot_content.as_ref().unwrap().clone();
+                        if cot_content.starts_with("A:") {
+                            cot_content = format!("Answer:{}", &cot_content[2..]);
+                        }
+                        request_str.push_str(&cot_content);
+                        request_str.push_str("\n\n");
+                    }
+
+                    // Add the current question without answer
+                    request_str.push_str("Question:\n");
+                    request_str.push_str(&doc.text);
+                    request_str.push_str("\nOptions:\n");
+
+                    // Format choices with letter labels
+                    for (i, choice) in doc.choices.iter().enumerate() {
+                        let letter = ASCII_UPPERCASE[i];
+                        request_str.push_str(&format!("{}. {}\n", letter, choice));
+                    }
+
+                    request_str.push_str("Answer: Let's think step by step.");
+
+                    // Tokenize the request
+                    let request = tokenizer
+                        .encode(request_str.clone(), false)
+                        .unwrap()
+                        .get_ids()
+                        .iter()
+                        .map(|x| *x as i64)
+                        .collect::<Vec<_>>();
+
+                    // Create the tokenized document
+                    let tokenized_doc = TokenizedGenerateUntilDocument {
+                        request_str: request_str,
+                        request,
+                        answer: doc.answer,
+                    };
+
+                    requests.push(tokenized_doc);
+                }
+
+                PreparedTask {
+                    name,
+                    num: docs.len(),
+                    prepared_task_type: PreparedTaskType::GenerateUntil {
+                        requests,
+                        tokenizer: tokenizer.clone(),
+                        generated_tokens: Arc::new(RwLock::new(HashMap::new())),
+                    },
+                }
+            }
         }
     }
 }
@@ -215,6 +322,17 @@ impl PreparedTask {
                 docs,
                 tokenized_fewshot,
             } => Self::run_log_likelihood(options, docs, tokenized_fewshot, pbar),
+            PreparedTaskType::GenerateUntil {
+                requests,
+                tokenizer,
+                generated_tokens,
+            } => Self::run_generate_until(
+                options,
+                generated_tokens.clone(),
+                requests,
+                tokenizer,
+                pbar,
+            ),
         }
     }
 
@@ -354,6 +472,252 @@ impl PreparedTask {
         }
     }
 
+    fn run_generate_until(
+        options: EvalTaskOptions,
+        generated_tokens: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
+        requests: &Vec<TokenizedGenerateUntilDocument>,
+        tokenizer: &Tokenizer,
+        pbar: Option<ProgressBar>,
+    ) -> PreparedTaskResult {
+        let results = options.live_results.unwrap_or_default();
+        let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
+        results.add_entry_if_needed("acc", requests.len());
+        let mut next_index = skip;
+        let fast_forward = (skip / requests.len()) * requests.len();
+        skip -= fast_forward;
+        let mut cancelled = false;
+        let mut scores: Vec<(f32, bool)> = Vec::new();
+        let mut documents_processed = 0;
+
+        // Simple sampling setup
+        let mut logits_processor = LogitsProcessor::from_sampling(
+            //todo check this rand
+            rand::random(),
+            Sampling::ArgMax, // Greedy decoding for deterministic results
+        );
+
+        // Get EOS token IDs from model
+        let eos_token_ids = options.model.eos_token_ids();
+
+        // Regex to match "The answer is (X)." where X is a single uppercase letter
+        let answer_regex = Regex::new(r"The answer is \(([A-Z])\)\.").unwrap();
+
+        for (
+            num_iterations,
+            (
+                doc_index,
+                &TokenizedGenerateUntilDocument {
+                    ref request_str,
+                    ref request,
+                    answer,
+                },
+            ),
+        ) in requests
+            .iter()
+            .cycle()
+            .enumerate()
+            .skip(skip)
+            .step_by(step_by)
+            .enumerate()
+        {
+            let mut is_correct = false;
+            let mut finish_request = false;
+            // Calculate the actual global index accounting for fast_forward, skip, and iterations
+            let global_index = fast_forward + skip + (num_iterations * step_by);
+            // For caching, we need a unique identifier for each document being processed
+            // This should account for the actual position in the evaluation sequence
+            let cache_key = global_index;
+            let doc_idx = doc_index; // This is the index within the requests array (0 to requests.len()-1)
+            tracing::info!(
+                "global_index: {}, doc_idx: {}, cache_key: {}, num_iterations: {}",
+                global_index,
+                doc_idx,
+                cache_key,
+                num_iterations
+            );
+            tracing::info!(
+                "Processing iteration {} (document index {})",
+                num_iterations,
+                doc_idx
+            );
+            if let Some(cancel) = options.cancel.as_ref() {
+                if cancel.is_cancelled() {
+                    cancelled = true;
+                    break;
+                }
+            }
+            if !options.loop_if_empty && doc_idx >= requests.len() && num_iterations > 0 {
+                break;
+            }
+            if let Some(limit) = options.limit {
+                if num_iterations >= limit {
+                    break;
+                }
+            }
+
+            // Start with the tokenized prompt
+            let mut tokens = request.clone();
+            tracing::info!(
+                "request for  {:?}",
+                request_str.get(request_str.len() - 100..)
+            );
+
+            // Check if we have cached generated tokens for this document
+            let mut local_generated_tokens = {
+                let cache = generated_tokens.read().unwrap();
+                cache.get(&cache_key).cloned().unwrap_or_else(Vec::new)
+            };
+
+            if !local_generated_tokens.is_empty() {
+                tracing::info!(
+                    "Resuming generation for document {} (cache_key: {}) from checkpoint with {} tokens",
+                    doc_idx,
+                    cache_key,
+                    local_generated_tokens.len()
+                );
+            }
+
+            // If we have cached tokens, append them to the prompt
+            if !local_generated_tokens.is_empty() {
+                tokens.extend(local_generated_tokens.iter().map(|&t| t as i64));
+            }
+
+            let max_generation_tokens = 600; // Maximum tokens to generate
+            let max_context_size = 2047;
+
+            // Generate tokens until we find "The answer is" pattern or reach limit
+            let starting_tokens_count = local_generated_tokens.len();
+            let mut generated_tokens_len = local_generated_tokens.len();
+            let mut a = "".to_string();
+            while !finish_request {
+                if let Some(cancel) = options.cancel.as_ref() {
+                    if cancel.is_cancelled() {
+                        // Save progress before cancelling
+                        let mut cache = generated_tokens.write().unwrap();
+                        cache.insert(cache_key, local_generated_tokens.clone());
+                        tracing::info!(
+                            "Cancellation requested: saving {} tokens for document {} (cache_key: {})",
+                            local_generated_tokens.len(),
+                            doc_idx,
+                            cache_key
+                        );
+                        cancelled = true;
+                        break;
+                    }
+                }
+                if tokens.len() > max_context_size {
+                    tokens.drain(0..(tokens.len() - max_context_size));
+                }
+                let input = Tensor::from_slice(&tokens)
+                    .to(options.model.device())
+                    .unsqueeze(0);
+
+                let (logits, _) = options.model.forward(&input, None, Some(1), None);
+                let logits = logits.squeeze();
+
+                let next_token = logits_processor.sample(&logits).unwrap();
+                tokens.push(next_token as i64);
+                local_generated_tokens.push(next_token as u32);
+                generated_tokens_len += 1;
+
+                // Check if we hit an EOS token
+                if let Some(eos_ids) = &eos_token_ids {
+                    if eos_ids.contains(next_token as i64) {
+                        finish_request = true;
+                        break;
+                    }
+                }
+
+                // Decode all generated tokens together
+                if let Ok(generated_text) = tokenizer.decode(&local_generated_tokens, false) {
+                    // Check if we've generated "The answer is (X)" pattern using regex
+                    if let Some(captures) = answer_regex.captures(&generated_text) {
+                        if let Some(answer_char) = captures.get(1) {
+                            // Found an answer, check if it matches
+                            let generated_answer = crate::ASCII_UPPERCASE
+                                .iter()
+                                .position(|&c| c == answer_char.as_str())
+                                .unwrap_or(usize::MAX);
+                            a = generated_text;
+                            is_correct = generated_answer == answer;
+                            finish_request = true;
+
+                            break;
+                        }
+                    }
+                }
+
+                if generated_tokens_len >= max_generation_tokens {
+                    finish_request = true;
+                    break;
+                }
+            }
+
+            // Clear the cache for this document after successful completion
+            if finish_request {
+                let mut cache = generated_tokens.write().unwrap();
+                cache.remove(&cache_key);
+                tracing::info!(
+                    "Cleared cache for document {} (cache_key: {}) after completion (is_correct: {}, tokens: {})",
+                    doc_idx,
+                    cache_key,
+                    is_correct,
+                    local_generated_tokens.len()
+                );
+                let score = match is_correct {
+                    true => 1.,
+                    false => 0.,
+                };
+                results.push("acc", score);
+                scores.push((score as f32, true));
+                documents_processed += 1;
+
+                tracing::info!(
+                    "Generated answer for document {} (global_index: {}): {:?}",
+                    doc_idx,
+                    global_index,
+                    a
+                );
+                tracing::info!("is_correct: {}", is_correct);
+
+                if let Some(pbar) = &pbar {
+                    pbar.inc(1);
+                }
+            } else if cancelled {
+                // If we were cancelled mid-generation, we need to track this differently
+                // We should resume from the current document, not skip it
+                tracing::info!(
+                    "Generation cancelled for document {} (global_index: {}) with {} tokens generated",
+                    doc_idx,
+                    global_index,
+                    local_generated_tokens.len()
+                );
+            }
+        }
+
+        // Calculate the next index to be processed
+        // This should be the next base index that workers will use
+        // Each worker adds its dp_index to this base
+        // If cancelled, we want to resume from where we left off
+        let processed_up_to = if cancelled && documents_processed == 0 {
+            // If we cancelled before completing any documents, resume from the same position
+            fast_forward + skip
+        } else {
+            // Otherwise, advance by the number of documents we fully processed
+            fast_forward + skip + (documents_processed * step_by)
+        };
+
+        PreparedTaskResult {
+            scores: results
+                .get_all_averages()
+                .into_iter()
+                .map(|(key, value)| (key, value.unwrap_or_default()))
+                .collect(),
+            next_index: processed_up_to,
+            cancelled,
+        }
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -364,6 +728,7 @@ impl PreparedTask {
                 docs: _,
                 tokenized_fewshot: _,
             } => "acc_norm",
+            PreparedTaskType::GenerateUntil { .. } => "acc",
         }
     }
 }
