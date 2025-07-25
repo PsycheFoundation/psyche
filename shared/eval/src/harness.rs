@@ -487,6 +487,7 @@ impl PreparedTask {
         skip -= fast_forward;
         let mut cancelled = false;
         let mut scores: Vec<(f32, bool)> = Vec::new();
+        let mut documents_processed = 0;
 
         // Simple sampling setup
         let mut logits_processor = LogitsProcessor::from_sampling(
@@ -503,27 +504,49 @@ impl PreparedTask {
 
         for (
             num_iterations,
-            &TokenizedGenerateUntilDocument {
-                ref request_str,
-                ref request,
-                answer,
-            },
+            (
+                doc_index,
+                &TokenizedGenerateUntilDocument {
+                    ref request_str,
+                    ref request,
+                    answer,
+                },
+            ),
         ) in requests
             .iter()
             .cycle()
+            .enumerate()
             .skip(skip)
             .step_by(step_by)
             .enumerate()
         {
             let mut is_correct = false;
-            next_index = num_iterations;
+            let mut finish_request = false;
+            // Calculate the actual global index accounting for fast_forward, skip, and iterations
+            let global_index = fast_forward + skip + (num_iterations * step_by);
+            // For caching, we need a unique identifier for each document being processed
+            // This should account for the actual position in the evaluation sequence
+            let cache_key = global_index;
+            let doc_idx = doc_index; // This is the index within the requests array (0 to requests.len()-1)
+            tracing::info!(
+                "global_index: {}, doc_idx: {}, cache_key: {}, num_iterations: {}",
+                global_index,
+                doc_idx,
+                cache_key,
+                num_iterations
+            );
+            tracing::info!(
+                "Processing iteration {} (document index {})",
+                num_iterations,
+                doc_idx
+            );
             if let Some(cancel) = options.cancel.as_ref() {
                 if cancel.is_cancelled() {
                     cancelled = true;
                     break;
                 }
             }
-            if !options.loop_if_empty && next_index >= requests.len() {
+            if !options.loop_if_empty && doc_idx >= requests.len() && num_iterations > 0 {
                 break;
             }
             if let Some(limit) = options.limit {
@@ -534,14 +557,50 @@ impl PreparedTask {
 
             // Start with the tokenized prompt
             let mut tokens = request.clone();
-            let mut generated_tokens: Vec<u32> = Vec::new();
+            tracing::info!(
+                "request for  {:?}",
+                request_str.get(request_str.len() - 100..)
+            );
+
+            // Check if we have cached generated tokens for this document
+            let mut local_generated_tokens = {
+                let cache = generated_tokens.read().unwrap();
+                cache.get(&cache_key).cloned().unwrap_or_else(Vec::new)
+            };
+
+            if !local_generated_tokens.is_empty() {
+                tracing::info!(
+                    "Resuming generation for document {} (cache_key: {}) from checkpoint with {} tokens",
+                    doc_idx,
+                    cache_key,
+                    local_generated_tokens.len()
+                );
+            }
+
+            // If we have cached tokens, append them to the prompt
+            if !local_generated_tokens.is_empty() {
+                tokens.extend(local_generated_tokens.iter().map(|&t| t as i64));
+            }
+
             let max_generation_tokens = 600; // Maximum tokens to generate
             let max_context_size = 2047;
 
             // Generate tokens until we find "The answer is" pattern or reach limit
-            for _ in 0..max_generation_tokens {
+            let starting_tokens_count = local_generated_tokens.len();
+            let mut generated_tokens_len = local_generated_tokens.len();
+            let mut a = "".to_string();
+            while !finish_request {
                 if let Some(cancel) = options.cancel.as_ref() {
                     if cancel.is_cancelled() {
+                        // Save progress before cancelling
+                        let mut cache = generated_tokens.write().unwrap();
+                        cache.insert(cache_key, local_generated_tokens.clone());
+                        tracing::info!(
+                            "Cancellation requested: saving {} tokens for document {} (cache_key: {})",
+                            local_generated_tokens.len(),
+                            doc_idx,
+                            cache_key
+                        );
                         cancelled = true;
                         break;
                     }
@@ -558,17 +617,19 @@ impl PreparedTask {
 
                 let next_token = logits_processor.sample(&logits).unwrap();
                 tokens.push(next_token as i64);
-                generated_tokens.push(next_token as u32);
+                local_generated_tokens.push(next_token as u32);
+                generated_tokens_len += 1;
 
                 // Check if we hit an EOS token
                 if let Some(eos_ids) = &eos_token_ids {
                     if eos_ids.contains(next_token as i64) {
+                        finish_request = true;
                         break;
                     }
                 }
 
                 // Decode all generated tokens together
-                if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
+                if let Ok(generated_text) = tokenizer.decode(&local_generated_tokens, false) {
                     // Check if we've generated "The answer is (X)" pattern using regex
                     if let Some(captures) = answer_regex.captures(&generated_text) {
                         if let Some(answer_char) = captures.get(1) {
@@ -577,28 +638,74 @@ impl PreparedTask {
                                 .iter()
                                 .position(|&c| c == answer_char.as_str())
                                 .unwrap_or(usize::MAX);
-
+                            a = generated_text;
                             is_correct = generated_answer == answer;
+                            finish_request = true;
 
                             break;
                         }
                     }
                 }
+
+                if generated_tokens_len >= max_generation_tokens {
+                    finish_request = true;
+                    break;
+                }
             }
 
-            results.push(
-                "acc",
-                match is_correct {
+            // Clear the cache for this document after successful completion
+            if finish_request {
+                let mut cache = generated_tokens.write().unwrap();
+                cache.remove(&cache_key);
+                tracing::info!(
+                    "Cleared cache for document {} (cache_key: {}) after completion (is_correct: {}, tokens: {})",
+                    doc_idx,
+                    cache_key,
+                    is_correct,
+                    local_generated_tokens.len()
+                );
+                let score = match is_correct {
                     true => 1.,
                     false => 0.,
-                },
-            );
-            tracing::info!("is_correct: {}", is_correct);
+                };
+                results.push("acc", score);
+                scores.push((score as f32, true));
+                documents_processed += 1;
 
-            if let Some(pbar) = &pbar {
-                pbar.inc(1);
+                tracing::info!(
+                    "Generated answer for document {} (global_index: {}): {:?}",
+                    doc_idx,
+                    global_index,
+                    a
+                );
+                tracing::info!("is_correct: {}", is_correct);
+
+                if let Some(pbar) = &pbar {
+                    pbar.inc(1);
+                }
+            } else if cancelled {
+                // If we were cancelled mid-generation, we need to track this differently
+                // We should resume from the current document, not skip it
+                tracing::info!(
+                    "Generation cancelled for document {} (global_index: {}) with {} tokens generated",
+                    doc_idx,
+                    global_index,
+                    local_generated_tokens.len()
+                );
             }
         }
+
+        // Calculate the next index to be processed
+        // This should be the next base index that workers will use
+        // Each worker adds its dp_index to this base
+        // If cancelled, we want to resume from where we left off
+        let processed_up_to = if cancelled && documents_processed == 0 {
+            // If we cancelled before completing any documents, resume from the same position
+            fast_forward + skip
+        } else {
+            // Otherwise, advance by the number of documents we fully processed
+            fast_forward + skip + (documents_processed * step_by)
+        };
 
         PreparedTaskResult {
             scores: results
@@ -606,7 +713,7 @@ impl PreparedTask {
                 .into_iter()
                 .map(|(key, value)| (key, value.unwrap_or_default()))
                 .collect(),
-            next_index: fast_forward + next_index,
+            next_index: processed_up_to,
             cancelled,
         }
     }
