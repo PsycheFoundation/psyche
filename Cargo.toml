@@ -38,7 +38,7 @@ psyche-solana-coordinator = { path = "./architectures/decentralized/solana-coord
 psyche-solana-treasurer = { path = "./architectures/decentralized/solana-treasurer/programs/solana-treasurer" }
 psyche-solana-tooling = { path = "./architectures/decentralized/solana-tooling" }
 
-hf-hub = { git = "https://github.com/IAvecilla/hf-hub.git", rev = "d10abc83f3c161671474e65c501667fc4585762d" }
+hf-hub = { git = "https://github.com/IAvecilla/hf-hub.git", rev = "c56317d02ff8e10acccdf48efd01a532eea9181b" }
 tokio = { version = "1", features = [
   "io-util",
   "rt",
