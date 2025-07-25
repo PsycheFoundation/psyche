@@ -13,7 +13,7 @@ fmt:
 
 # spin up a local testnet
 local-testnet *args='':
-    cargo run -p psyche-centralized-local-testnet -- start {{ args }}
+    OLTP_METRICS_URL="http://localhost:4318/v1/metrics" OLTP_TRACING_URL="http://localhost:4318/v1/traces" OLTP_LOGS_URL="http://localhost:4318/v1/logs" cargo run -p psyche-centralized-local-testnet -- start {{ args }}
 
 # run integration tests
 integration-test test_name="":
