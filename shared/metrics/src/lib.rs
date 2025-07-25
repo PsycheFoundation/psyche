@@ -3,7 +3,7 @@ mod iroh;
 use std::{
     collections::HashMap,
     fmt::Display,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
@@ -58,9 +58,8 @@ pub struct ClientMetrics {
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
 
     // p2p model sharing
-    pub(crate) num_params: Option<u64>,
-    pub(crate) p2p_downloaded_params_total: u64,
-    pub(crate) p2p_downloaded_params_percent: Option<Gauge<f64>>,
+    pub(crate) num_params: OnceLock<u64>,
+    pub(crate) p2p_downloaded_params_percent: OnceLock<Gauge<f64>>,
     pub(crate) p2p_params_download_failed_counter: Counter<u64>,
 }
 
@@ -210,9 +209,8 @@ impl ClientMetrics {
             tcp_server,
             tcp_metrics,
 
-            num_params: None,
-            p2p_downloaded_params_total: 0,
-            p2p_downloaded_params_percent: None,
+            num_params: OnceLock::new(),
+            p2p_downloaded_params_percent: OnceLock::new(),
             p2p_params_download_failed_counter: meter
                 .u64_counter("psyche_p2p_params_download_failed_counter")
                 .with_description("The total amount of p2p parameter sharing downloads that failed")
@@ -378,21 +376,21 @@ impl ClientMetrics {
         );
     }
 
-    pub fn initialize_model_parameters_gauge(&mut self, num_params: u64) {
+    pub fn initialize_model_parameters_gauge(&self, num_params: u64) {
         let meter = global::meter("psyche_client");
-        self.num_params = Some(num_params);
-        self.p2p_downloaded_params_percent = Some(meter
+        let _ = self.num_params.set(num_params);
+        let _ = self.p2p_downloaded_params_percent.set(meter
             .f64_gauge("psyche_p2p_model_params_downloaded")
             .with_description("Percentaje of the total model parameters that have been downloaded from other peers")
-            .build());
+            .build()
+        );
     }
 
-    pub fn update_model_sharing_total_params_downloaded(&mut self) {
-        self.p2p_downloaded_params_total += 1;
-        if let Some(total_params) = self.num_params {
-            if let Some(gauge) = self.p2p_downloaded_params_percent.as_ref() {
+    pub fn update_model_sharing_total_params_downloaded(&self, num_downloaded_params: u64) {
+        if let Some(total_params) = self.num_params.get() {
+            if let Some(gauge) = self.p2p_downloaded_params_percent.get() {
                 gauge.record(
-                    (self.p2p_downloaded_params_total as f64 / total_params as f64) * 100.0,
+                    (num_downloaded_params as f64 / *total_params as f64) * 100.0,
                     &[],
                 )
             }

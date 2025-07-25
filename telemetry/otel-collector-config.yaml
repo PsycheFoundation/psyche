@@ -21,8 +21,8 @@ exporters:
       service: 'otel-collector'
 
   # Useful for debugging to see logs in the collector's stdout
-  # debug:
-  #  verbosity: detailed
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:

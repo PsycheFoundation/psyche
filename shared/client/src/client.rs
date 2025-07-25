@@ -60,7 +60,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
         allowlist: allowlist::AllowDynamic,
         mut p2p: NC,
         init_config: RunInitConfig<T, A>,
-        mut metrics: ClientMetrics,
+        metrics: Arc<ClientMetrics>,
     ) -> Self {
         let cancel = CancellationToken::new();
         let (tx_tui, rx_tui) = watch::channel::<TUIStates>(Default::default());
@@ -102,7 +102,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let max_concurrent_parameter_requests =
                     init_config.max_concurrent_parameter_requests;
 
-                let mut current_downloaded_parameters = 0_u16;
+                let mut current_downloaded_parameters = 0_u64;
                 let mut total_parameters = None;
 
                 let mut run = RunManager::<T, A>::new(RunInitConfigAndIO {
@@ -280,7 +280,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 info!("Download complete: parameter {}", parameter.name()?);
                                                 if let Some(total_parameters) = total_parameters {
                                                     info!("Downloaded parameters total: {}/{}", current_downloaded_parameters, total_parameters);
-                                                    metrics.update_model_sharing_total_params_downloaded();
+                                                    metrics.update_model_sharing_total_params_downloaded(current_downloaded_parameters);
                                                 } else {
                                                     error!("Total parameters not set");
                                                 }
