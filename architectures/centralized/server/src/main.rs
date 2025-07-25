@@ -172,7 +172,7 @@ async fn main() -> Result<()> {
                     MetricsDestination::OpenTelemetry(OpenTelemetry {
                         endpoint,
                         authorization_header: run_args.oltp_auth_header.clone(),
-                        report_interval: Duration::from_secs(10),
+                        report_interval: Duration::from_secs(60),
                     })
                 }))
                 .with_trace_destination(run_args.oltp_tracing_url.clone().map(|endpoint| {
