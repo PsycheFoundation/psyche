@@ -278,7 +278,9 @@ impl PreparedTask {
 
                 let (logits, _) = {
                     let _no_grad = tch::no_grad_guard();
-                    options.model.forward(&request, None, None, None, None)
+                    options
+                        .model
+                        .forward(&request, None, None, None, None, None)
                 };
 
                 let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);

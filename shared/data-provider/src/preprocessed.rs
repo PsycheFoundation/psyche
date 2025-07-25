@@ -1,3 +1,4 @@
+use crate::LengthKnownDataProvider;
 use crate::{
     Dataset, Field, Row, Split, TokenizedData, TokenizedDataProvider,
     file_extensions::PARQUET_EXTENSION,
@@ -127,5 +128,11 @@ impl TokenizedDataProvider for PreprocessedDataProvider {
             bail!("{data_ids} out of range");
         }
         Ok(self.data[start..=end].into_iter().cloned().collect())
+    }
+}
+
+impl LengthKnownDataProvider for PreprocessedDataProvider {
+    fn num_sequences(&self) -> usize {
+        self.data.len()
     }
 }

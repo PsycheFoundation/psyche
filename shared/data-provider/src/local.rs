@@ -35,6 +35,7 @@ impl LengthKnownDataProvider for LocalDataProvider {
         self.sequences.len()
     }
 }
+
 impl LocalDataProvider {
     pub fn new_from_directory(
         dir: impl AsRef<std::path::Path>,

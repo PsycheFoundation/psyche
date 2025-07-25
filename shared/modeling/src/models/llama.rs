@@ -2,7 +2,7 @@ use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, CausalSelfAttention,
     ColumnParallelLinear, CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward,
     ModelConfig, ModelLoadError, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RowParallelLinear, auto_config::UseSDPA, default_rope, parallelism::Communicator,
+    RowParallelLinear, attention::create_cu_seqlens, default_rope, parallelism::Communicator,
 };
 use std::sync::Arc;
 use tch::{
@@ -113,7 +113,7 @@ impl Block {
     fn new(
         vs: nn::Path,
         config: &LlamaConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let rms_1 = RMSNorm::new(
@@ -129,7 +129,7 @@ impl Block {
                 .unwrap_or(config.num_attention_heads) as i64,
             config.hidden_size as i64,
             (config.max_position_embeddings + 1) as i64,
-            use_sdpa,
+            attn_implementation,
             comm.clone(),
         );
         let rms_2 = RMSNorm::new(
@@ -151,11 +151,19 @@ impl Block {
         }
     }
 
-    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
-        let x = self
-            .attn
-            .forward(&self.rms_1.forward(x), position_ids, cache)
-            + x;
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&(Tensor, i32)>,
+        cache: &RoPECache,
+    ) -> Tensor {
+        let x = self.attn.forward(
+            &self.rms_1.forward(x),
+            position_ids,
+            sequence_lengths,
+            cache,
+        ) + x;
         self.mlp.forward(&self.rms_2.forward(&x)) + x
     }
 }
@@ -165,6 +173,7 @@ pub struct Llama {
     wte: nn::Embedding,
     blocks: Vec<Block>,
     ln_f: RMSNorm,
+    attn_implementation: AttentionImplementation,
     rope_cache: RoPECache,
 }
 
@@ -172,7 +181,7 @@ impl Llama {
     pub fn new(
         vs: nn::Path,
         config: &LlamaConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let wte = nn::embedding(
@@ -187,7 +196,14 @@ impl Llama {
             config.rms_norm_eps,
         );
         let blocks = (0..config.num_hidden_layers)
-            .map(|i| Block::new(&vs / "model" / "layers" / i, config, use_sdpa, comm.clone()))
+            .map(|i| {
+                Block::new(
+                    &vs / "model" / "layers" / i,
+                    config,
+                    attn_implementation,
+                    comm.clone(),
+                )
+            })
             .collect::<Vec<_>>();
         let rope_cache = RoPECache::new(
             &config.rope_config(),
@@ -199,16 +215,36 @@ impl Llama {
             wte,
             blocks,
             ln_f,
+            attn_implementation,
             rope_cache,
         }
     }
 }
 
 impl LanguageModelForward for Llama {
-    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, _training: bool) -> Tensor {
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
+        _training: bool,
+    ) -> Tensor {
         let mut x = self.wte.forward(x);
         for block in &self.blocks {
-            x = block.forward(&x, position_ids, &self.rope_cache);
+            x = block.forward(
+                &x,
+                position_ids,
+                sequence_lengths
+                    .map(|sequence_lengths| {
+                        if self.attn_implementation == AttentionImplementation::FlashAttention2 {
+                            create_cu_seqlens(sequence_lengths, x.device())
+                        } else {
+                            panic!("`sequence_lengths` only supported for FlashAttention2")
+                        }
+                    })
+                    .as_ref(),
+                &self.rope_cache,
+            );
         }
         self.ln_f.forward(&x)
     }
@@ -226,7 +262,7 @@ impl LlamaForCausalLM {
         Ok(Llama::new(
             vs,
             config,
-            attn_implementation.use_sdpa()?,
+            attn_implementation.unwrap_or_default(),
             comm,
         ))
     }
@@ -258,7 +294,7 @@ impl ModelConfig for LlamaConfig {
     fn get_parameter_names(&self) -> Vec<String> {
         let mut variables: nn::VarStore = nn::VarStore::new(Device::Cpu);
         variables.set_kind(Kind::BFloat16);
-        let _model = Llama::new(variables.root(), self, false, None);
+        let _model = Llama::new(variables.root(), self, Default::default(), None);
         let c = nn::LinearConfig {
             bias: false,
             ..Default::default()

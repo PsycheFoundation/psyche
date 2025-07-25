@@ -29,6 +29,7 @@ pub trait CausalLM: Send {
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>);
@@ -42,7 +43,13 @@ pub trait CausalLM: Send {
 }
 
 pub trait LanguageModelForward: Send + Debug {
-    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, training: bool) -> Tensor;
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
+        training: bool,
+    ) -> Tensor;
 }
 
 pub trait LanguageModelConfig: ModelConfig + Send + Debug + serde::de::DeserializeOwned {
@@ -168,11 +175,14 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
         let (_, t) = x.size2().unwrap();
-        let mut x = self.model.forward(x, position_ids, self.training);
+        let mut x = self
+            .model
+            .forward(x, position_ids, sequence_lengths, self.training);
         if let Some(num_logits_to_keep) = num_logits_to_keep {
             // Only compute necessary logits, and do not upcast them to float if we are not computing the loss
             x = x.slice(1, t - num_logits_to_keep, t, 1);

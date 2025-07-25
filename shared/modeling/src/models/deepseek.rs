@@ -2,12 +2,12 @@ use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, ColumnParallelLinear, Communicator,
     CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig,
     ModelLoadError, ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RoPEType, RowParallelLinear, auto_config::UseSDPA, rotate_half, yarn_get_mscale,
+    RoPEType, RowParallelLinear, attention::create_cu_seqlens, rotate_half, yarn_get_mscale,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
 use tch::{
-    Device, Kind, Tensor,
+    Device, Kind, Tensor, flash_attention_forward,
     nn::{
         self, Init, Module,
         init::{FanInOut, NonLinearity, NormalOrUniform},
@@ -161,7 +161,7 @@ struct MLAAttention {
     qk_nope_head_dim: i64,
     softmax_scale: f64,
     device: Device,
-    use_sdpa: bool,
+    attn_implementation: AttentionImplementation,
     num_heads: i64,
     num_local_heads: i64,
 
@@ -174,7 +174,7 @@ impl MLAAttention {
     fn new(
         vs: nn::Path,
         config: &DeepseekConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let tp_size = comm.as_ref().map(|x| x.size()).unwrap_or(1);
@@ -291,7 +291,7 @@ impl MLAAttention {
             kv_lora_rank,
             softmax_scale,
             device: vs.device(),
-            use_sdpa,
+            attn_implementation,
             num_heads,
             num_local_heads,
             comm,
@@ -305,7 +305,13 @@ impl MLAAttention {
         (a, b)
     }
 
-    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&(Tensor, i32)>,
+        cache: &RoPECache,
+    ) -> Tensor {
         let (b, t, _) = x.size3().unwrap();
         let kind = x.kind();
 
@@ -362,53 +368,104 @@ impl MLAAttention {
         let query_states = Tensor::cat(&[&q_nope, &q_pe], -1);
         let key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
 
-        let y = if self.use_sdpa {
-            // Flash Attention only supports equal dimensions for query, keys, and values.
-            // It's actually more efficient to pad to these dimensions so that SDPA will use FA
-            // rather than doing vanilla math attention on the smaller value dimension
+        let y = match self.attn_implementation {
+            AttentionImplementation::FlashAttention2 => {
+                let mut padded_value_states = value_states.shallow_clone();
+                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
+                    let pad_size = self.qk_nope_head_dim + self.qk_rope_head_dim - self.head_v_dim;
+                    padded_value_states = Tensor::cat(
+                        &[
+                            &value_states,
+                            &Tensor::zeros(
+                                [b, self.num_local_heads, t, pad_size],
+                                (kind, self.device),
+                            ),
+                        ],
+                        -1,
+                    );
+                }
 
-            let mut padded_value_states = value_states.shallow_clone();
-            if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
-                let pad_size = self.qk_nope_head_dim + self.qk_rope_head_dim - self.head_v_dim;
-                padded_value_states = Tensor::cat(
-                    &[
-                        &value_states,
-                        &Tensor::zeros([b, self.num_local_heads, t, pad_size], (kind, self.device)),
-                    ],
-                    -1,
+                let (cum_seq, max_len) = match sequence_lengths {
+                    Some((cum_seq, max_len)) => (Some(cum_seq), *max_len as i64),
+                    None => (None, t),
+                };
+                let (att, _, _, _, _) = flash_attention_forward(
+                    &query_states.transpose(1, 2),
+                    &key_states.transpose(1, 2),
+                    &padded_value_states.transpose(1, 2),
+                    cum_seq,
+                    cum_seq,
+                    max_len,
+                    max_len,
+                    0.0,
+                    t > 1,
+                    false,
+                    Some(self.softmax_scale),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+
+                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
+                    att.narrow(-1, 0, self.head_v_dim)
+                } else {
+                    att
+                }
+            }
+            AttentionImplementation::Sdpa => {
+                // Flash Attention only supports equal dimensions for query, keys, and values.
+                // It's actually more efficient to pad to these dimensions so that SDPA will use FA
+                // rather than doing vanilla math attention on the smaller value dimension
+
+                let mut padded_value_states = value_states.shallow_clone();
+                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
+                    let pad_size = self.qk_nope_head_dim + self.qk_rope_head_dim - self.head_v_dim;
+                    padded_value_states = Tensor::cat(
+                        &[
+                            &value_states,
+                            &Tensor::zeros(
+                                [b, self.num_local_heads, t, pad_size],
+                                (kind, self.device),
+                            ),
+                        ],
+                        -1,
+                    );
+                }
+
+                let att = Tensor::scaled_dot_product_attention::<Tensor>(
+                    &query_states,
+                    &key_states,
+                    &padded_value_states,
+                    None,
+                    0.0,
+                    true,
+                    Some(self.softmax_scale),
+                    false,
                 );
-            }
 
-            let att = Tensor::scaled_dot_product_attention::<Tensor>(
-                &query_states,
-                &key_states,
-                &padded_value_states,
-                None,
-                0.0,
-                true,
-                Some(self.softmax_scale),
-                false,
-            );
-
-            if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
-                att.narrow(-1, 0, self.head_v_dim)
-            } else {
-                att
+                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
+                    att.narrow(-1, 0, self.head_v_dim)
+                } else {
+                    att
+                }
+                .transpose(1, 2)
             }
-        } else {
-            let att = query_states.matmul(&key_states.transpose(-2, -1)) * self.softmax_scale;
-            let mask = Tensor::ones([t, t], (kind, self.device))
-                .tril(0)
-                .reshape([1, 1, t, t]);
-            let att = att.masked_fill(&mask.eq(0.), f64::NEG_INFINITY);
-            att.softmax(-1, kind).matmul(&value_states)
+            AttentionImplementation::Eager => {
+                let att = query_states.matmul(&key_states.transpose(-2, -1)) * self.softmax_scale;
+                let mask = Tensor::ones([t, t], (kind, self.device))
+                    .tril(0)
+                    .reshape([1, 1, t, t]);
+                let att = att.masked_fill(&mask.eq(0.), f64::NEG_INFINITY);
+                att.softmax(-1, kind).matmul(&value_states).transpose(1, 2)
+            }
         };
 
         // Project back to hidden size
-        let y =
-            y.transpose(1, 2)
-                .contiguous()
-                .reshape([b, t, self.num_local_heads * self.head_v_dim]);
+        let y = y
+            .contiguous()
+            .reshape([b, t, self.num_local_heads * self.head_v_dim]);
 
         self.o_proj.forward(&y)
     }
@@ -760,10 +817,10 @@ impl DeepseekBlock {
         vs: nn::Path,
         config: &DeepseekConfig,
         layer_idx: usize,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
-        let mla = MLAAttention::new(&vs / "self_attn", config, use_sdpa, comm.clone());
+        let mla = MLAAttention::new(&vs / "self_attn", config, attn_implementation, comm.clone());
 
         let network = if config.n_routed_experts.is_some()
             && layer_idx >= config.first_k_dense_replace.unwrap()
@@ -793,11 +850,20 @@ impl DeepseekBlock {
         }
     }
 
-    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&(Tensor, i32)>,
+        cache: &RoPECache,
+    ) -> Tensor {
         let residual = x;
-        let x = self
-            .mla
-            .forward(&self.input_layernorm.forward(x), position_ids, cache);
+        let x = self.mla.forward(
+            &self.input_layernorm.forward(x),
+            position_ids,
+            sequence_lengths,
+            cache,
+        );
         let x = &x + residual;
 
         let residual = &x;
@@ -813,6 +879,7 @@ pub struct Deepseek {
     embed_tokens: nn::Embedding,
     blocks: Vec<DeepseekBlock>,
     norm: RMSNorm,
+    attn_implementation: AttentionImplementation,
     rope_cache: RoPECache,
 }
 
@@ -820,7 +887,7 @@ impl Deepseek {
     pub fn new(
         vs: nn::Path,
         config: &DeepseekConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let embed_tokens = nn::embedding(
@@ -836,7 +903,7 @@ impl Deepseek {
                     &vs / "model" / "layers" / i,
                     config,
                     i,
-                    use_sdpa,
+                    attn_implementation,
                     comm.clone(),
                 )
             })
@@ -859,20 +926,41 @@ impl Deepseek {
             embed_tokens,
             blocks,
             norm,
+            attn_implementation,
             rope_cache,
         }
     }
 }
 
 impl LanguageModelForward for Deepseek {
-    fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, training: bool) -> Tensor {
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
+        training: bool,
+    ) -> Tensor {
         if let NetworkBlock::MoE(_) = &self.blocks[0].network {
             assert!(!training, "DeepseekMoE training not yet supported");
         }
+
         let mut hidden_states = self.embed_tokens.forward(x);
 
         for block in &self.blocks {
-            hidden_states = block.forward(&hidden_states, position_ids, &self.rope_cache);
+            hidden_states = block.forward(
+                &hidden_states,
+                position_ids,
+                sequence_lengths
+                    .map(|sequence_lengths| {
+                        if self.attn_implementation == AttentionImplementation::FlashAttention2 {
+                            create_cu_seqlens(sequence_lengths, x.device())
+                        } else {
+                            panic!("`sequence_lengths` only supported for FlashAttention2")
+                        }
+                    })
+                    .as_ref(),
+                &self.rope_cache,
+            );
         }
 
         self.norm.forward(&hidden_states)
@@ -891,7 +979,7 @@ impl DeepseekForCausalLM {
         Ok(Deepseek::new(
             vs,
             config,
-            attn_implementation.use_sdpa()?,
+            attn_implementation.unwrap_or_default(),
             comm,
         ))
     }
@@ -923,7 +1011,7 @@ impl ModelConfig for DeepseekConfig {
     fn get_parameter_names(&self) -> Vec<String> {
         let mut variables: nn::VarStore = nn::VarStore::new(Device::Cpu);
         variables.set_kind(Kind::BFloat16);
-        let _model = Deepseek::new(variables.root(), self, false, None);
+        let _model = Deepseek::new(variables.root(), self, Default::default(), None);
         let c = nn::LinearConfig {
             bias: false,
             ..Default::default()

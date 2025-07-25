@@ -1,6 +1,8 @@
-use crate::{ColumnParallelLinear, Communicator, RoPECache, RowParallelLinear};
+use crate::{
+    AttentionImplementation, ColumnParallelLinear, Communicator, RoPECache, RowParallelLinear,
+};
 use std::sync::Arc;
-use tch::{Device, Tensor, nn::Module};
+use tch::{Device, Tensor, flash_attention_forward, nn::Module};
 
 fn repeat_kv(hidden_states: &Tensor, n_rep: i64) -> Tensor {
     let (batch, num_key_value_heads, slen, head_dim) = hidden_states.size4().unwrap();
@@ -16,6 +18,55 @@ fn repeat_kv(hidden_states: &Tensor, n_rep: i64) -> Tensor {
     hidden_states.reshape([batch, num_key_value_heads * n_rep, slen, head_dim])
 }
 
+pub fn create_cu_seqlens(lengths: &Vec<Vec<i32>>, device: Device) -> (Tensor, i32) {
+    let mut seq_lens: Vec<i32> = Vec::new();
+    for batch in lengths.iter() {
+        for &len in batch.iter() {
+            if len > 0 {
+                seq_lens.push(len);
+            }
+        }
+    }
+
+    println!("seq_lens: {:?}", seq_lens);
+
+    let mut cum: Vec<i32> = vec![0];
+    let mut current: i32 = 0;
+    let mut max = 0;
+    for &len in seq_lens.iter() {
+        if len > max {
+            max = len;
+        }
+        current += len;
+        cum.push(current);
+    }
+
+    println!("cum: {:?}, max: {}", cum, max);
+
+    (Tensor::from_slice(&cum).to(device), max)
+
+    // let max_inner_len = lengths.iter().map(|v| v.len()).max().unwrap_or(0);
+    // let mut max_len = 0;
+    // let mut padded = Vec::with_capacity(lengths.len());
+    // for mut v in lengths.clone() {
+    //     v.resize(max_inner_len, 0);
+    //     for x in &v {
+    //         if *x > max_len {
+    //             max_len = *x;
+    //         }
+    //     }
+    //     padded.push(v);
+    // }
+    // println!("padded: {:?}: max_len: {}", padded, max_len);
+    // (
+    //     Tensor::from_slice2(&padded)
+    //         .to(device)
+    //         .cumsum(0, None).pad([1,0], "constant", None)
+    //         .to_kind(tch::Kind::Int),
+    //     max_len,
+    // )
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct CausalSelfAttention {
@@ -29,7 +80,7 @@ pub struct CausalSelfAttention {
     n_max_seq_len: i64,
     head_dim: i64,
     device: Device,
-    use_sdpa: bool,
+    attn_implementation: AttentionImplementation,
     tp_size: i64,
 }
 
@@ -40,7 +91,7 @@ impl CausalSelfAttention {
         n_kvheads: i64,
         n_embd: i64,
         n_max_seq_len: i64,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let tp_size = comm.as_ref().map(|x| x.size()).unwrap_or(1);
@@ -74,12 +125,18 @@ impl CausalSelfAttention {
             n_max_seq_len,
             head_dim,
             device: vs.device(),
-            use_sdpa,
+            attn_implementation,
             tp_size,
         }
     }
 
-    pub fn forward(&self, x: &Tensor, position_ids: Option<&Tensor>, cache: &RoPECache) -> Tensor {
+    pub fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&(Tensor, i32)>,
+        cache: &RoPECache,
+    ) -> Tensor {
         let (b, t, c) = x.size3().unwrap();
         assert_eq!(c, self.n_embd, "Input hidden size mismatch");
         let kind = x.kind();
@@ -112,30 +169,60 @@ impl CausalSelfAttention {
 
         let scale = 1.0 / (self.head_dim as f64).sqrt();
 
-        let y = if self.use_sdpa {
-            let att = Tensor::scaled_dot_product_attention::<Tensor>(
-                &q,
-                &k,
-                &v,
-                None,
-                0.0,
-                t > 1,
-                Some(scale),
-                false,
-            );
-            att.transpose(1, 2)
-                .contiguous()
-                .reshape([b, t, local_n_head * self.head_dim])
-        } else {
-            let att = q.matmul(&k.transpose(-2, -1)) * scale;
-            let mask = Tensor::ones([t, t], (kind, self.device))
-                .tril(0)
-                .reshape([1, 1, t, t]);
-            let att = att.masked_fill(&mask.eq(0.), f64::NEG_INFINITY);
-            let y = att.softmax(-1, kind).matmul(&v);
-            y.transpose(1, 2)
-                .contiguous()
-                .reshape([b, t, local_n_head * self.head_dim])
+        let y = match self.attn_implementation {
+            AttentionImplementation::FlashAttention2 => {
+                let (cum_seq, max_len) = match sequence_lengths {
+                    Some((cum_seq, max_len)) => (Some(cum_seq), *max_len as i64),
+                    None => (None, t),
+                };
+                println!("cum_seq: {:?}, max_len: {}", cum_seq, max_len);
+                let (att, _, _, _, _) = flash_attention_forward(
+                    &q.transpose(1, 2),
+                    &k.transpose(1, 2),
+                    &v.transpose(1, 2),
+                    cum_seq,
+                    cum_seq,
+                    max_len,
+                    max_len,
+                    0.0,
+                    t > 1,
+                    false,
+                    Some(scale),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+                att.contiguous()
+                    .reshape([b, t, local_n_head * self.head_dim])
+            }
+            AttentionImplementation::Sdpa => {
+                let att = Tensor::scaled_dot_product_attention::<Tensor>(
+                    &q,
+                    &k,
+                    &v,
+                    None,
+                    0.0,
+                    t > 1,
+                    Some(scale),
+                    false,
+                );
+                att.transpose(1, 2)
+                    .contiguous()
+                    .reshape([b, t, local_n_head * self.head_dim])
+            }
+            AttentionImplementation::Eager => {
+                let att = q.matmul(&k.transpose(-2, -1)) * scale;
+                let mask = Tensor::ones([t, t], (kind, self.device))
+                    .tril(0)
+                    .reshape([1, 1, t, t]);
+                let att = att.masked_fill(&mask.eq(0.), f64::NEG_INFINITY);
+                let y = att.softmax(-1, kind).matmul(&v);
+                y.transpose(1, 2)
+                    .contiguous()
+                    .reshape([b, t, local_n_head * self.head_dim])
+            }
         };
 
         self.o_proj.forward(&y)
