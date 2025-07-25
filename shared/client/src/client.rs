@@ -244,7 +244,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 let apply_result = run.apply_message(client.id, broadcast)?;
                                                 match apply_result {
                                                     ApplyMessageOutcome::Ignored => {
-                                                        metrics.record_apply_message_ignored(broadcast_step, broadcast_kind);
+                                                        metrics.record_apply_message_ignored(broadcast_kind);
                                                     },
                                                     ApplyMessageOutcome::Applied => {
                                                         metrics.record_apply_message_success(broadcast_step, from, broadcast_kind);
