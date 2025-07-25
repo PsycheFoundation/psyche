@@ -21,20 +21,20 @@ exporters:
       service: 'otel-collector'
 
   # Useful for debugging to see logs in the collector's stdout
-  debug:
-    verbosity: detailed
+  # debug:
+  #  verbosity: detailed
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loki, debug] # Send to both Loki and debug output
+      exporters: [loki, debug]
 
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug] # Send traces to Jaeger and debug output
+      exporters: [debug]
 
     metrics:
       receivers: [otlp]
