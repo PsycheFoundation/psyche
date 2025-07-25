@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -eo pipefail
 
 # use the agenix provided wallet if you have it
 DEFAULT_WALLET=${devnet__keypair__wallet_PATH:-"$HOME/.config/solana/id.json"}
@@ -19,14 +19,30 @@ solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || tru
 
 export RUST_LOG="info,psyche=debug"
 
-cargo run --release --bin psyche-solana-client -- \
-    train \
-    --wallet-private-key-path ${WALLET_FILE} \
-    --rpc ${RPC} \
-    --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID} \
-    --data-parallelism ${DP} \
-    --tensor-parallelism ${TP} \
-    --micro-batch-size ${BATCH_SIZE} \
-    --logs "console" \
-    "$@"
+if [[ "$OTLP_METRICS_URL" == "" ]]; then
+    cargo run --release --bin psyche-solana-client -- \
+        train \
+        --wallet-private-key-path ${WALLET_FILE} \
+        --rpc ${RPC} \
+        --ws-rpc ${WS_RPC} \
+        --run-id ${RUN_ID} \
+        --data-parallelism ${DP} \
+        --tensor-parallelism ${TP} \
+        --micro-batch-size ${BATCH_SIZE} \
+        --logs "console" \
+        "$@"
+else
+    cargo run --release --bin psyche-solana-client -- \
+        train \
+        --wallet-private-key-path ${WALLET_FILE} \
+        --rpc ${RPC} \
+        --ws-rpc ${WS_RPC} \
+        --run-id ${RUN_ID} \
+        --data-parallelism ${DP} \
+        --tensor-parallelism ${TP} \
+        --micro-batch-size ${BATCH_SIZE} \
+        --logs "console" \
+        --oltp-metrics-url "http://localhost:4318/v1/metrics" \
+        --oltp-logs-url "http://localhost:4318/v1/logs" \
+        "$@"
+fi
