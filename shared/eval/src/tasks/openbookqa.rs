@@ -11,8 +11,9 @@
 
 */
 use crate::{
-    TaskType, load_dataset,
+    load_dataset,
     traits::{Document, LogLikelihoodTask},
+    TaskType,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
@@ -46,7 +47,7 @@ impl OpenbookQA {
         "OpenBookQA"
     }
 
-    fn row_to_document(dataset: &Dataset, row: Row) -> Document {
+    pub fn row_to_document(dataset: &Dataset, row: Row) -> Document {
         let question_stem = row
             .get_string(dataset.get_column_id("question_stem").unwrap())
             .unwrap()
