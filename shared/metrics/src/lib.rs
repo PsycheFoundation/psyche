@@ -213,36 +213,21 @@ impl ClientMetrics {
 
     pub fn record_apply_message_success(&self, step: u32, from_peer: impl Display, kind: &str) {
         debug!(name: "apply_message_success", step=%step, kind=%kind, from=%from_peer);
-        self.apply_message_success_counter.add(
-            1,
-            &[
-                KeyValue::new("step", step as i64),
-                KeyValue::new("type", kind.to_string()),
-            ],
-        );
+        self.apply_message_success_counter
+            .add(1, &[KeyValue::new("type", kind.to_string())]);
         self.tcp_metrics.lock().unwrap().apply_message_success += 1;
     }
 
     pub fn record_apply_message_failure(&self, step: u32, from_peer: impl Display, kind: &str) {
         debug!(name: "apply_message_failure", step=%step, kind=%kind, from=%from_peer);
-        self.apply_message_failure_counter.add(
-            1,
-            &[
-                KeyValue::new("step", step as i64),
-                KeyValue::new("type", kind.to_string()),
-            ],
-        );
+        self.apply_message_failure_counter
+            .add(1, &[KeyValue::new("type", kind.to_string())]);
         self.tcp_metrics.lock().unwrap().apply_message_failure += 1;
     }
 
-    pub fn record_apply_message_ignored(&self, step: u32, kind: impl Display) {
-        self.apply_message_ignored_counter.add(
-            1,
-            &[
-                KeyValue::new("step", step as i64),
-                KeyValue::new("type", kind.to_string()),
-            ],
-        );
+    pub fn record_apply_message_ignored(&self, kind: impl Display) {
+        self.apply_message_ignored_counter
+            .add(1, &[KeyValue::new("type", kind.to_string())]);
         self.tcp_metrics.lock().unwrap().apply_message_ignored += 1;
     }
 
@@ -264,11 +249,9 @@ impl ClientMetrics {
         self.tcp_metrics.lock().unwrap().downloads_retry += 1;
     }
 
-    pub fn update_download_progress(&self, hash: impl Display, newly_downloaded_bytes: u64) {
-        self.downloads_bytes_counter.add(
-            newly_downloaded_bytes,
-            &[KeyValue::new("hash", hash.to_string())],
-        );
+    pub fn update_download_progress(&self, newly_downloaded_bytes: u64) {
+        self.downloads_bytes_counter
+            .add(newly_downloaded_bytes, &[]);
         self.tcp_metrics.lock().unwrap().downloads_bytes += newly_downloaded_bytes;
     }
 
