@@ -43,6 +43,7 @@ pub struct ClientMetrics {
     pub(crate) peer_connections: Gauge<u64>,
     pub(crate) gossip_neighbors: Gauge<u64>,
 
+    // networking stats
     pub(crate) downloads_started_counter: Counter<u64>,
     pub(crate) downloads_finished_counter: Counter<u64>,
     pub(crate) downloads_retry_counter: Counter<u64>,
@@ -53,6 +54,7 @@ pub struct ClientMetrics {
     pub(crate) round_step_gauge: Gauge<u64>,
     pub(crate) connection_latency: Histogram<f64>,
     pub(crate) bandwidth: Gauge<f64>,
+    pub(crate) last_train_time_seconds: Gauge<f64>,
 
     /// Just a boolean
     pub(crate) participating_in_round: Gauge<u64>,
@@ -68,10 +70,25 @@ pub struct ClientMetrics {
     pub(crate) num_params: OnceLock<u64>,
     pub(crate) p2p_downloaded_params_percent: OnceLock<Gauge<f64>>,
     pub(crate) p2p_params_download_failed_counter: Counter<u64>,
+
+    // training metrics
+    pub(crate) training_loss: Gauge<f64>,
+    pub(crate) training_perplexity: Gauge<f64>,
+    pub(crate) training_confidence: Gauge<f64>,
+    pub(crate) learning_rate: Gauge<f64>,
+    pub(crate) total_tokens: Gauge<u64>,
+    pub(crate) tokens_per_second: Gauge<f64>,
+    pub(crate) token_batch_size: Gauge<u64>,
+    pub(crate) training_efficiency: Gauge<f64>,
+
+    // evals & optimizer metrics
+    pub(crate) eval_metrics: Gauge<f64>,
+    pub(crate) optimizer_stats: Gauge<f64>,
 }
 
 #[derive(Serialize, Debug, Clone, Default)]
 struct TcpMetrics {
+    // networking stats
     connected_peers: Vec<PeerConnection>,
     bandwidth: f64,
     round_step: u32,
@@ -243,9 +260,57 @@ impl ClientMetrics {
                 .f64_gauge("psyche_bandwidth_bytes_per_second")
                 .with_description("Current bandwidth usage in bytes per second")
                 .build(),
+            last_train_time_seconds: meter
+                .f64_gauge("psyche_last_train_time_seconds")
+                .with_description("Last training round's training time")
+                .build(),
             connection_latency: meter
                 .f64_histogram("psyche_connection_latency_seconds")
                 .with_description("Connection latency to peers")
+                .build(),
+
+            // Training metrics
+            training_loss: meter
+                .f64_gauge("psyche_training_loss")
+                .with_description("Current training loss")
+                .build(),
+            training_perplexity: meter
+                .f64_gauge("psyche_training_perplexity")
+                .with_description("Current training perplexity")
+                .build(),
+            training_confidence: meter
+                .f64_gauge("psyche_training_confidence")
+                .with_description("Current training confidence")
+                .build(),
+            learning_rate: meter
+                .f64_gauge("psyche_learning_rate")
+                .with_description("Current learning rate")
+                .build(),
+            total_tokens: meter
+                .u64_gauge("psyche_total_tokens")
+                .with_description("Total tokens processed")
+                .build(),
+            tokens_per_second: meter
+                .f64_gauge("psyche_tokens_per_second")
+                .with_description("Tokens processed per second")
+                .build(),
+            token_batch_size: meter
+                .u64_gauge("psyche_token_batch_size")
+                .with_description("Current token batch size")
+                .build(),
+            training_efficiency: meter
+                .f64_gauge("psyche_training_efficiency")
+                .with_description("Training efficiency metric")
+                .build(),
+
+            // Evals &
+            eval_metrics: meter
+                .f64_gauge("psyche_eval_metrics")
+                .with_description("Training eval metrics")
+                .build(),
+            optimizer_stats: meter
+                .f64_gauge("psyche_optimizer_stats")
+                .with_description("Optimizer stats")
                 .build(),
 
             system_monitor: Self::start_system_monitoring(&meter),
@@ -486,7 +551,8 @@ impl ClientMetrics {
         let _ = self.p2p_downloaded_params_percent.set(meter
             .f64_gauge("psyche_p2p_model_params_downloaded")
             .with_description("Percentage of the total model parameters that have been downloaded from other peers")
-            .build());
+            .build()
+        );
     }
 
     pub fn update_model_sharing_total_params_downloaded(&self, num_downloaded_params: u64) {
@@ -498,6 +564,54 @@ impl ClientMetrics {
                 )
             }
         }
+    }
+
+    pub fn record_training_loss(&self, loss: f64) {
+        self.training_loss.record(loss, &[]);
+    }
+
+    pub fn record_training_perplexity(&self, perplexity: f64) {
+        self.training_perplexity.record(perplexity, &[]);
+    }
+
+    pub fn record_training_confidence(&self, confidence: f64) {
+        self.training_confidence.record(confidence, &[]);
+    }
+
+    pub fn record_learning_rate(&self, lr: f64) {
+        self.learning_rate.record(lr, &[]);
+    }
+
+    pub fn record_total_tokens(&self, tokens: u64) {
+        self.total_tokens.record(tokens, &[]);
+    }
+
+    pub fn record_tokens_per_second(&self, tokens_per_sec: f64) {
+        self.tokens_per_second.record(tokens_per_sec, &[]);
+    }
+
+    pub fn record_token_batch_size(&self, batch_size: u64) {
+        self.token_batch_size.record(batch_size, &[]);
+    }
+
+    pub fn record_training_efficiency(&self, efficiency: f64) {
+        self.training_efficiency.record(efficiency, &[]);
+    }
+
+    pub fn record_last_train_time(&self, time: f64) {
+        self.last_train_time_seconds.record(time, &[]);
+    }
+
+    // Evaluation metrics
+    pub fn record_eval_metric(&self, metric_name: &str, value: f64) {
+        self.eval_metrics
+            .record(value, &[KeyValue::new("metric", metric_name.to_string())]);
+    }
+
+    // Optimizer metrics
+    pub fn record_optimizer_stat(&self, stat_name: &str, value: f64) {
+        self.optimizer_stats
+            .record(value, &[KeyValue::new("stat", stat_name.to_string())]);
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
