@@ -175,6 +175,7 @@ pub struct WitnessMetadata {
     pub loss: f32,
     pub evals: FixedVec<WitnessEvalResult, 8>,
     // TODO see issue https://github.com/PsycheFoundation/psyche/issues/213
+    pub prompt_results: FixedVec<i32, { MAX_TOKENS_TO_SEND }>,
     pub prompt_index: u8,
     pub efficency: f32,
 }
