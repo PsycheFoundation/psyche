@@ -12,6 +12,8 @@ use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
+const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
+const GENERATE_UNTIL_MAX_CONTEXT_SIZE: usize = 2047;
 
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
@@ -54,7 +56,10 @@ enum PreparedTaskType {
     GenerateUntil {
         requests: Vec<TokenizedGenerateUntilDocument>,
         tokenizer: Tokenizer,
-        generated_tokens: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
+        // Since a single GenerateUntil request can take a long time to generate a answer, we cache the generated tokens
+        // in case the task gets interrupted, so next time we can resume from where we left off.
+        cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
+        answer_regex: Regex,
     },
 }
 
@@ -279,13 +284,17 @@ impl Task {
                     requests.push(tokenized_doc);
                 }
 
+                // Regex to match "The answer is (X)." where X is a single uppercase letter;
+                let answer_regex = Regex::new(r"The answer is \(([A-Z])\)\.").unwrap();
+
                 PreparedTask {
                     name,
                     num: docs.len(),
                     prepared_task_type: PreparedTaskType::GenerateUntil {
                         requests,
                         tokenizer: tokenizer.clone(),
-                        generated_tokens: Arc::new(RwLock::new(HashMap::new())),
+                        cache: Arc::new(RwLock::new(HashMap::new())),
+                        answer_regex,
                     },
                 }
             }
@@ -325,12 +334,14 @@ impl PreparedTask {
             PreparedTaskType::GenerateUntil {
                 requests,
                 tokenizer,
-                generated_tokens,
+                cache,
+                answer_regex,
             } => Self::run_generate_until(
                 options,
-                generated_tokens.clone(),
+                cache.clone(),
                 requests,
                 tokenizer,
+                &answer_regex,
                 pbar,
             ),
         }
@@ -486,6 +497,7 @@ impl PreparedTask {
         cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
         requests: &[TokenizedGenerateUntilDocument],
         tokenizer: &Tokenizer,
+        answer_regex: &Regex,
         pbar: Option<ProgressBar>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
@@ -511,9 +523,6 @@ impl PreparedTask {
 
         // Get EOS token IDs from model
         let eos_token_ids = options.model.eos_token_ids();
-
-        // Regex to match "The answer is (X)." where X is a single uppercase letter
-        let answer_regex = Regex::new(r"The answer is \(([A-Z])\)\.").unwrap();
 
         for (
             num_iterations,
@@ -586,9 +595,6 @@ impl PreparedTask {
                 full_sequence.extend(generated_tokens.iter().map(|&t| t as i64));
             }
 
-            let max_generation_tokens = 600; // Maximum tokens to generate
-            let max_context_size = 2047;
-
             // Generate tokens until we find "The answer is" pattern or reach limit
             let mut tokens_generated_count = generated_tokens.len();
             let mut current_output = "".to_string();
@@ -609,8 +615,8 @@ impl PreparedTask {
                         break;
                     }
                 }
-                if full_sequence.len() > max_context_size {
-                    full_sequence.drain(0..(full_sequence.len() - max_context_size));
+                if full_sequence.len() > GENERATE_UNTIL_MAX_CONTEXT_SIZE {
+                    full_sequence.drain(0..(full_sequence.len() - GENERATE_UNTIL_MAX_CONTEXT_SIZE));
                 }
                 let model_input = Tensor::from_slice(&full_sequence)
                     .to(options.model.device())
@@ -656,7 +662,7 @@ impl PreparedTask {
                     }
                 }
 
-                if tokens_generated_count >= max_generation_tokens {
+                if tokens_generated_count >= GENERATE_UNTIL_MAX_TOKENS {
                     generation_complete = true;
                     break;
                 }
