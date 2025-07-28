@@ -25,6 +25,7 @@ pub struct ModelTask {
     pub task: EnumModelTask,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum EnumModelTask {
     EvalTask(EvalTask),

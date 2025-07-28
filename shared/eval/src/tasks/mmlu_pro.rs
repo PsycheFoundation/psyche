@@ -11,7 +11,7 @@ use crate::{
     traits::{Document, GenerateUntilTask},
 };
 use anyhow::Result;
-use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
+use psyche_data_provider::{Dataset, Row, RowAccessor, Split};
 use std::{collections::HashMap, fmt::Display};
 
 pub struct MMLUPro {

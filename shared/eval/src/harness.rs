@@ -44,7 +44,7 @@ impl Display for Task {
         }
     }
 }
-
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 enum PreparedTaskType {
     LogLikelihood {
@@ -82,7 +82,7 @@ struct TokenizedLLHDocument {
 
 #[derive(Debug)]
 pub struct TokenizedGenerateUntilDocument {
-    request_str: String,
+    _request_str: String,
     request: Vec<i64>,
     answer: usize,
 }
@@ -213,7 +213,7 @@ impl Task {
                 // Prepare prompts for each document
                 for doc in &docs {
                     // Get the category for this document
-                    let category = doc.category.as_ref().map(|s| s.as_str()).unwrap();
+                    let category = doc.category.as_deref().unwrap();
 
                     // Get fewshot examples for this category
                     let fewshot_examples = fewshot.get(category).map(|v| v.as_slice()).unwrap();
@@ -271,7 +271,7 @@ impl Task {
 
                     // Create the tokenized document
                     let tokenized_doc = TokenizedGenerateUntilDocument {
-                        request_str: request_str,
+                        _request_str: request_str,
                         request,
                         answer: doc.answer,
                     };
@@ -344,10 +344,16 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
+        tracing::info!("Starting log likelihood evaluation");
+        tracing::info!("skip: {}", skip);
+        tracing::info!("step_by: {}", step_by);
         results.add_entry_if_needed("acc", docs.len());
         results.add_entry_if_needed("acc_norm", docs.len());
         let mut next_index = skip;
+        tracing::info!("next_index: {}", next_index);
+
         let fast_forward = (skip / docs.len()) * docs.len();
+        tracing::info!("fast_forward: {}", fast_forward);
         skip -= fast_forward;
         let mut cancelled = false;
 
@@ -360,6 +366,9 @@ impl PreparedTask {
             .enumerate()
         {
             next_index = doc_index;
+            tracing::info!("next_index: {}", next_index);
+            tracing::info!("num_iterations: {}", num_iterations);
+            tracing::info!("options.limit: {:?}", options.limit);
             if let Some(cancel) = options.cancel.as_ref() {
                 if cancel.is_cancelled() {
                     cancelled = true;
@@ -475,16 +484,21 @@ impl PreparedTask {
     fn run_generate_until(
         options: EvalTaskOptions,
         generated_tokens: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
-        requests: &Vec<TokenizedGenerateUntilDocument>,
+        requests: &[TokenizedGenerateUntilDocument],
         tokenizer: &Tokenizer,
         pbar: Option<ProgressBar>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
+        tracing::info!("skip: {}", skip);
+        tracing::info!("step_by: {}", step_by);
+        tracing::info!("requests.len: {}", requests.len());
+        tracing::info!("results: {:?}", results);
+
         results.add_entry_if_needed("acc", requests.len());
-        let mut next_index = skip;
         let fast_forward = (skip / requests.len()) * requests.len();
         skip -= fast_forward;
+        tracing::info!("fast_forward(: {}", fast_forward);
         let mut cancelled = false;
         let mut scores: Vec<(f32, bool)> = Vec::new();
         let mut documents_processed = 0;
@@ -507,7 +521,7 @@ impl PreparedTask {
             (
                 doc_index,
                 &TokenizedGenerateUntilDocument {
-                    ref request_str,
+                    ref _request_str,
                     ref request,
                     answer,
                 },
@@ -559,7 +573,7 @@ impl PreparedTask {
             let mut tokens = request.clone();
             tracing::info!(
                 "request for  {:?}",
-                request_str.get(request_str.len() - 100..)
+                _request_str.get(_request_str.len() - 100..)
             );
 
             // Check if we have cached generated tokens for this document
@@ -586,7 +600,6 @@ impl PreparedTask {
             let max_context_size = 2047;
 
             // Generate tokens until we find "The answer is" pattern or reach limit
-            let starting_tokens_count = local_generated_tokens.len();
             let mut generated_tokens_len = local_generated_tokens.len();
             let mut a = "".to_string();
             while !finish_request {
@@ -630,6 +643,8 @@ impl PreparedTask {
 
                 // Decode all generated tokens together
                 if let Ok(generated_text) = tokenizer.decode(&local_generated_tokens, false) {
+                    a = generated_text.clone();
+
                     // Check if we've generated "The answer is (X)" pattern using regex
                     if let Some(captures) = answer_regex.captures(&generated_text) {
                         if let Some(answer_char) = captures.get(1) {
@@ -638,7 +653,10 @@ impl PreparedTask {
                                 .iter()
                                 .position(|&c| c == answer_char.as_str())
                                 .unwrap_or(usize::MAX);
-                            a = generated_text;
+                            tracing::info!(
+                                "Found answer: {} for global_index: {global_index}",
+                                generated_answer
+                            );
                             is_correct = generated_answer == answer;
                             finish_request = true;
 
