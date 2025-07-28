@@ -122,7 +122,7 @@ where
     _broadcast_message: PhantomData<BroadcastMessage>,
     _download: PhantomData<Download>,
     update_stats_interval: Interval,
-    metrics: ClientMetrics,
+    metrics: Arc<ClientMetrics>,
     _iroh_metrics: IrohMetricsCollector,
 }
 
@@ -160,7 +160,7 @@ where
         secret_key: Option<SecretKey>,
         allowlist: A,
         max_concurrent_downloads: usize,
-        metrics: ClientMetrics,
+        metrics: Arc<ClientMetrics>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rngs::OsRng),

@@ -50,7 +50,7 @@ pub struct App {
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
     authorizer: Option<Pubkey>,
-    metrics: ClientMetrics,
+    metrics: Arc<ClientMetrics>,
     allowlist: allowlist::AllowDynamic,
     p2p: NC,
     state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
@@ -100,7 +100,7 @@ impl AppBuilder {
             *p.identity_secret_key.public().as_bytes(),
         );
 
-        let metrics = ClientMetrics::new(p.metrics_local_port);
+        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
 
         let allowlist = allowlist::AllowDynamic::new();
 

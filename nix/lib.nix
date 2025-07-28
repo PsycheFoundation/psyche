@@ -58,7 +58,7 @@ let
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    cargoExtraArgs = "--features python-extension";
+    cargoExtraArgs = "--features python-extension,parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
@@ -101,7 +101,7 @@ let
     craneLib.buildPackage (
       rustWorkspaceArgs
       // {
-        inherit cargoArtifacts;
+        cargoExtraArgs = ""; # *remove* features - we don't want the cuda stuff in here.
         pname = name;
         doCheck = false;
 
@@ -146,8 +146,6 @@ let
 
   useHostGpuDrivers =
     if pkgs.config.cudaSupport then
-      (package: package)
-    else
       (
         package:
         pkgs.runCommandNoCC "${package.name}-nixgl-wrapped"
@@ -163,7 +161,9 @@ let
               fi
             done
           ''
-      );
+      )
+    else
+      (package: package);
 
   solanaCraneLib =
     (inputs.crane.mkLib pkgs).overrideToolchain
