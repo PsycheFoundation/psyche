@@ -28,8 +28,6 @@ pub fn create_cu_seqlens(lengths: &Vec<Vec<i32>>, device: Device) -> (Tensor, i3
         }
     }
 
-    println!("seq_lens: {:?}", seq_lens);
-
     let mut cum: Vec<i32> = vec![0];
     let mut current: i32 = 0;
     let mut max = 0;
@@ -40,8 +38,6 @@ pub fn create_cu_seqlens(lengths: &Vec<Vec<i32>>, device: Device) -> (Tensor, i3
         current += len;
         cum.push(current);
     }
-
-    println!("cum: {:?}, max: {}", cum, max);
 
     (Tensor::from_slice(&cum).to(device), max)
 
@@ -175,11 +171,13 @@ impl CausalSelfAttention {
                     Some((cum_seq, max_len)) => (Some(cum_seq), *max_len as i64),
                     None => (None, t),
                 };
-                println!("cum_seq: {:?}, max_len: {}", cum_seq, max_len);
                 let (att, _, _, _, _) = flash_attention_forward(
-                    &q.transpose(1, 2),
-                    &k.transpose(1, 2),
-                    &v.transpose(1, 2),
+                    &q.transpose(1, 2)
+                        .reshape([b * t, local_n_head, self.head_dim]),
+                    &k.transpose(1, 2)
+                        .reshape([b * t, local_n_head, self.head_dim]),
+                    &v.transpose(1, 2)
+                        .reshape([b * t, local_n_head, self.head_dim]),
                     cum_seq,
                     cum_seq,
                     max_len,
