@@ -60,7 +60,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
         allowlist: allowlist::AllowDynamic,
         mut p2p: NC,
         init_config: RunInitConfig<T, A>,
-        metrics: ClientMetrics,
+        metrics: Arc<ClientMetrics>,
     ) -> Self {
         let cancel = CancellationToken::new();
         let (tx_tui, rx_tui) = watch::channel::<TUIStates>(Default::default());
