@@ -1,5 +1,6 @@
 use psyche_coordinator::{Coordinator, WitnessEvalResult, WitnessMetadata, model};
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
+use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
@@ -13,6 +14,7 @@ use super::evals::EvalRunner;
 pub struct StatsLogger {
     tokenizer: Arc<Tokenizer>,
     wandb_run: Option<Arc<wandb::Run>>,
+    pub metrics: Arc<ClientMetrics>,
     eval_runner: EvalRunner,
 
     step_durations: BoundedQueue<Duration, 16>,
@@ -32,6 +34,7 @@ impl StatsLogger {
         eval_runner: EvalRunner,
         lr_schedule: LearningRateSchedule,
         wandb_run: Option<wandb::Run>,
+        metrics: Arc<ClientMetrics>,
     ) -> Self {
         Self {
             tokenizer,
@@ -44,6 +47,7 @@ impl StatsLogger {
             eval_history: HashMap::new(),
             last_optim_stats: HashMap::new(),
             node_info: HashMap::new(),
+            metrics,
         }
     }
 

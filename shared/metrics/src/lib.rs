@@ -31,6 +31,13 @@ pub struct ClientMetrics {
     pub(crate) apply_message_failure_counter: Counter<u64>,
     pub(crate) apply_message_ignored_counter: Counter<u64>,
 
+    pub(crate) finishes_received_current_round_gauge: Gauge<u64>,
+    pub(crate) finishes_received_previous_round_gauge: Gauge<u64>,
+    pub(crate) result_announcements_received_current_round_gauge: Gauge<u64>,
+    pub(crate) result_announcements_received_previous_round_gauge: Gauge<u64>,
+    pub(crate) results_downloaded_current_round_gauge: Gauge<u64>,
+    pub(crate) results_downloaded_previous_round_gauge: Gauge<u64>,
+
     pub(crate) witnesses_sent: Counter<u64>,
 
     pub(crate) peer_connections: Gauge<u64>,
@@ -73,6 +80,12 @@ struct TcpMetrics {
     apply_message_success: u64,
     apply_message_failure: u64,
     apply_message_ignored: u64,
+    finishes_received_current_round: u64,
+    finishes_received_previous_round: u64,
+    result_announcements_received_current_round: u64,
+    result_announcements_received_previous_round: u64,
+    results_downloaded_current_round: u64,
+    results_downloaded_previous_round: u64,
     witnesses_sent: u64,
     gossip_neighbors: Vec<String>,
     downloads_started: u64,
@@ -145,6 +158,36 @@ impl ClientMetrics {
                 .with_description(
                     "Number of broadcasts we ignored during apply, probably due to rebroadcast",
                 )
+                .build(),
+
+            // results state
+            finishes_received_current_round_gauge: meter
+                .u64_gauge("psyche_finishes_received_this_round")
+                .with_description("Number of `ready` broadcasts received for the current round")
+                .build(),
+            finishes_received_previous_round_gauge: meter
+                .u64_gauge("psyche_finishes_received_previous_round")
+                .with_description("Number of `ready` broadcasts received for the previous round")
+                .build(),
+            result_announcements_received_current_round_gauge: meter
+                .u64_gauge("psyche_result_announcements_received_current_round")
+                .with_description(
+                    "Number of `training result` broadcasts received for the current round",
+                )
+                .build(),
+            result_announcements_received_previous_round_gauge: meter
+                .u64_gauge("psyche_result_announcements_received_previous_round")
+                .with_description(
+                    "Number of `training result` broadcasts received for the previous round",
+                )
+                .build(),
+            results_downloaded_current_round_gauge: meter
+                .u64_gauge("psyche_results_downloaded_current_round")
+                .with_description("Number of training results downloaded for the current round")
+                .build(),
+            results_downloaded_previous_round_gauge: meter
+                .u64_gauge("psyche_results_downloaded_previous_round")
+                .with_description("Number of training results downloaded for the previous round")
                 .build(),
 
             // downloads
@@ -243,6 +286,83 @@ impl ClientMetrics {
         self.tcp_metrics.lock().unwrap().apply_message_ignored += 1;
     }
 
+    pub fn record_finishes_received(
+        &self,
+        count: u64,
+        step: u32,
+        current_round: bool,
+        hash: impl Display,
+        from: impl Display,
+    ) {
+        debug!(name: "ready_received", count=count, step, hash=%hash, from=%from);
+        if current_round {
+            self.finishes_received_current_round_gauge
+                .record(count, &[]);
+            self.tcp_metrics
+                .lock()
+                .unwrap()
+                .finishes_received_current_round = count;
+        } else {
+            self.finishes_received_previous_round_gauge
+                .record(count, &[]);
+            self.tcp_metrics
+                .lock()
+                .unwrap()
+                .finishes_received_previous_round = count;
+        }
+    }
+
+    pub fn record_result_announcements_received(
+        &self,
+        count: u64,
+        step: u32,
+        current_round: bool,
+        hash: impl Display,
+        from: impl Display,
+    ) {
+        debug!(name: "result_announcement_received", count=count, step, hash=%hash, from=%from);
+        if current_round {
+            self.result_announcements_received_current_round_gauge
+                .record(count, &[]);
+            self.tcp_metrics
+                .lock()
+                .unwrap()
+                .result_announcements_received_current_round = count;
+        } else {
+            self.result_announcements_received_previous_round_gauge
+                .record(count, &[]);
+            self.tcp_metrics
+                .lock()
+                .unwrap()
+                .result_announcements_received_previous_round = count;
+        }
+    }
+
+    pub fn record_result_downloaded(
+        &self,
+        count: u64,
+        current_round: bool,
+        hash: impl Display,
+        batch: impl Display,
+    ) {
+        debug!(name: "result_downloaded_received", count=count, hash=%hash, batch=%batch);
+        if current_round {
+            self.results_downloaded_current_round_gauge
+                .record(count, &[]);
+            self.tcp_metrics
+                .lock()
+                .unwrap()
+                .results_downloaded_current_round = count;
+        } else {
+            self.results_downloaded_previous_round_gauge
+                .record(count, &[]);
+            self.tcp_metrics
+                .lock()
+                .unwrap()
+                .results_downloaded_previous_round = count;
+        }
+    }
+
     pub fn record_witness_send(&self, kind: impl Display) {
         self.witnesses_sent
             .add(1, &[KeyValue::new("type", kind.to_string())]);
@@ -281,6 +401,7 @@ impl ClientMetrics {
         self.downloads_failed_counter.add(1, &[]);
         self.tcp_metrics.lock().unwrap().downloads_failed += 1;
     }
+
     pub fn record_download_perma_failed(&self) {
         self.downloads_perma_failed_counter.add(1, &[]);
         self.tcp_metrics.lock().unwrap().downloads_perma_failed += 1;

@@ -107,7 +107,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                 let mut run = RunManager::<T, A>::new(RunInitConfigAndIO {
                     init_config,
-
+                    metrics: metrics.clone(),
                     tx_witness,
                     tx_health_check,
                     tx_checkpoint,
