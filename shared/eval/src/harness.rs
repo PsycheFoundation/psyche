@@ -535,19 +535,7 @@ impl PreparedTask {
         {
             let mut generated_answer = None;
             let mut generation_complete = false;
-            // Calculate the actual global index accounting for fast_forward, skip, and iterations
-            let global_index = fast_forward + skip + (num_iterations * step_by);
-            // For caching, we need a unique identifier for each document being processed
-            // This should account for the actual position in the evaluation sequence
-            let cache_key = global_index;
 
-            tracing::info!(
-                "global_index: {}, doc_idx: {}, cache_key: {}, num_iterations: {}",
-                global_index,
-                doc_index,
-                cache_key,
-                num_iterations
-            );
             tracing::info!(
                 "Processing iteration {} (document index {})",
                 num_iterations,
@@ -580,16 +568,15 @@ impl PreparedTask {
                 cache
                     .read()
                     .unwrap()
-                    .get(&cache_key)
+                    .get(&doc_index)
                     .cloned()
                     .unwrap_or_else(Vec::new)
             };
 
             if !generated_tokens.is_empty() {
                 tracing::info!(
-                    "Resuming generation for document {} (cache_key: {}) from checkpoint with {} tokens",
+                    "Resuming generation for document {} from checkpoint with {} tokens",
                     doc_index,
-                    cache_key,
                     generated_tokens.len()
                 );
             }
@@ -612,12 +599,11 @@ impl PreparedTask {
                         cache
                             .write()
                             .unwrap()
-                            .insert(cache_key, generated_tokens.clone());
+                            .insert(doc_index, generated_tokens.clone());
                         tracing::info!(
-                            "Cancellation requested: saving {} tokens for document {} (cache_key: {})",
+                            "Cancellation requested: saving {} tokens for document {}",
                             generated_tokens.len(),
                             doc_index,
-                            cache_key
                         );
                         cancelled = true;
                         break;
@@ -660,7 +646,7 @@ impl PreparedTask {
                                     .unwrap_or(usize::MAX),
                             );
                             tracing::info!(
-                                "Found answer: {:?} for global_index: {global_index}",
+                                "Found answer: {:?} for document: {doc_index}",
                                 generated_answer
                             );
                             generation_complete = true;
@@ -678,11 +664,10 @@ impl PreparedTask {
 
             // Clear the cache for this document after successful completion
             if generation_complete {
-                cache.write().unwrap().remove(&cache_key);
+                cache.write().unwrap().remove(&doc_index);
                 tracing::info!(
-                    "Cleared cache for document {} (cache_key: {}) after completion ( tokens: {})",
+                    "Cleared cache for document {} after completion ( tokens: {})",
                     doc_index,
-                    cache_key,
                     generated_tokens.len()
                 );
 
@@ -696,9 +681,8 @@ impl PreparedTask {
                 documents_processed += 1;
 
                 tracing::info!(
-                    "Generated answer for document {} (global_index: {}): {:?}",
+                    "Generated answer for document {}: {:?}",
                     doc_index,
-                    global_index,
                     current_output
                 );
                 tracing::info!("is_correct: {}", score == 1.);
@@ -710,25 +694,12 @@ impl PreparedTask {
                 // If we were cancelled mid-generation, we need to track this differently
                 // We should resume from the current document, not skip it
                 tracing::info!(
-                    "Generation cancelled for document {} (global_index: {}) with {} tokens generated",
+                    "Generation cancelled for document {} with {} tokens generated",
                     doc_index,
-                    global_index,
                     generated_tokens.len()
                 );
             }
         }
-
-        // Calculate the next index to be processed
-        // This should be the next base index that workers will use
-        // Each worker adds its dp_index to this base
-        // If cancelled, we want to resume from where we left off
-        let processed_up_to = if cancelled && documents_processed == 0 {
-            // If we cancelled before completing any documents, resume from the same position
-            fast_forward + skip
-        } else {
-            // Otherwise, advance by the number of documents we fully processed
-            fast_forward + skip + (documents_processed * step_by)
-        };
 
         PreparedTaskResult {
             scores: results
@@ -736,7 +707,7 @@ impl PreparedTask {
                 .into_iter()
                 .map(|(key, value)| (key, value.unwrap_or_default()))
                 .collect(),
-            next_index: processed_up_to,
+            next_index: fast_forward + skip + (documents_processed * step_by),
             cancelled,
         }
     }
