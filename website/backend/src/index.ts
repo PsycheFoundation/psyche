@@ -127,12 +127,32 @@ async function main() {
 	const shutdown = async () => {
 		console.log('got shutdown signal, shutting down!')
 		cancel()
-		await fastify.close()
+
+		try {
+			await fastify.close()
+		} catch (err) {
+			console.error('Error closing fastify:', err)
+		}
+
 		const allCoordinatorPromises = Array.from(coordinators.values()).map(
 			(c) => c.stopped
 		)
-		await Promise.all([...allCoordinatorPromises, miningPool.stopped])
-		process.exit(0)
+
+		const shutdownTimeout = setTimeout(() => {
+			console.error('Shutdown timeout reached, forcing exit!')
+			process.exit(1)
+		}, 10000)
+
+		try {
+			await Promise.all([...allCoordinatorPromises, miningPool.stopped])
+			clearTimeout(shutdownTimeout)
+			console.log('Clean shutdown completed')
+			process.exit(0)
+		} catch (err) {
+			console.error('Error during shutdown:', err)
+			clearTimeout(shutdownTimeout)
+			process.exit(1)
+		}
 	}
 
 	let coordinatorCrashed: Error | null = null
