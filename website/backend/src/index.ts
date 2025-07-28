@@ -7,7 +7,6 @@ import {
 	ApiGetContributionInfo,
 	ApiGetRun,
 	ApiGetRuns,
-	coordinatorIdl,
 	formats,
 	IndexerStatus,
 	miningPoolIdl,
@@ -83,7 +82,7 @@ async function main() {
 	> = new Map()
 
 	// Set up event listeners for all coordinators
-	for (const [programId, coordinator] of coordinators) {
+	for (const [_programId, coordinator] of coordinators) {
 		coordinator.dataStore.eventEmitter.addListener('update', (key) => {
 			const listeners = liveRunListeners.get(key)
 			if (listeners) {

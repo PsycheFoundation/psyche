@@ -1,5 +1,5 @@
 import { Program } from '@coral-xyz/anchor'
-import { Connection, PublicKey } from '@solana/web3.js'
+import { Connection } from '@solana/web3.js'
 import {
 	coordinatorIdl,
 	miningPoolIdl,
@@ -12,7 +12,6 @@ import { mkdirSync, readdirSync } from 'fs'
 import { FlatFileCoordinatorDataStore } from './dataStores/flatFileCoordinator.js'
 import { FlatFileMiningPoolDataStore } from './dataStores/flatFileMiningPool.js'
 import { startWatchMiningPoolChainLoop } from './miningPoolChainLoop.js'
-import path from 'path'
 
 interface ServiceConfig {
 	connection: Connection

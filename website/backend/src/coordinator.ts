@@ -15,12 +15,12 @@ export function getRunFromKey(
 ): [programId: string, runId: string, index: number] {
 	const parts = runKey.split('-')
 	if (parts.length < 3) {
-		// Backward compatibility: assume old format runId-index without programId
+		// Backward compatibility: runId-index
 		const [runId, index] = splitAtLastInstance(runKey, '-')
 		return ['', runId, Number.parseInt(index, 10)]
 	}
 
-	// New format: programId-runId-index
+	// programId-runId-index
 	// Handle case where runId might contain dashes by joining middle parts
 	const programId = parts[0]
 	const index = parts[parts.length - 1]

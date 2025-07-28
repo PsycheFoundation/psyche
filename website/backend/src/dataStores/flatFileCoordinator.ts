@@ -76,6 +76,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 	}
 	#db: string
 	#programId: PublicKey
+	#programIdString: string // Cache instead of calling .toString() each time
 
 	#runsMutatedSinceLastSync: Set<UniqueRunKey> = new Set()
 	eventEmitter: EventEmitter<{ update: [runKey: UniqueRunKey] }> =
@@ -88,6 +89,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 	constructor(dir: string, programId: PublicKey) {
 		this.#db = path.join(dir, `./coordinator-db-${programId}.json`)
 		this.#programId = programId
+		this.#programIdString = programId.toString()
 		console.log(`loading coordinator db from disk at path ${this.#db}...`)
 		try {
 			const { version, data } = readVersionedFile(this.#db)
@@ -192,7 +194,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		})
 
 		this.#runsMutatedSinceLastSync.add(
-			runKey(this.#programId.toString(), runId, runsAtThisAddress.length - 1)
+			runKey(this.#programIdString, runId, runsAtThisAddress.length - 1)
 		)
 	}
 
@@ -264,7 +266,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 
 		this.#runsMutatedSinceLastSync.add(
-			runKey(this.#programId.toString(), lastRun.runId, index)
+			runKey(this.#programIdString, lastRun.runId, index)
 		)
 	}
 
@@ -281,7 +283,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.pauseTimestamps.push([newPauseState, timestamp])
 
 		this.#runsMutatedSinceLastSync.add(
-			runKey(this.#programId.toString(), lastRun.runId, index)
+			runKey(this.#programIdString, lastRun.runId, index)
 		)
 	}
 
@@ -323,7 +325,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		])
 
 		this.#runsMutatedSinceLastSync.add(
-			runKey(this.#programId.toString(), lastRun.runId, runs.length - 1)
+			runKey(this.#programIdString, lastRun.runId, runs.length - 1)
 		)
 	}
 
@@ -344,7 +346,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.destroyedAt = timestamp
 
 		this.#runsMutatedSinceLastSync.add(
-			runKey(this.#programId.toString(), lastRun.runId, runs.length - 1)
+			runKey(this.#programIdString, lastRun.runId, runs.length - 1)
 		)
 	}
 
@@ -375,7 +377,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			lastRun.recentTxs = lastRun.recentTxs.slice(-MAX_RECENT_TXS)
 		}
 		this.#runsMutatedSinceLastSync.add(
-			runKey(this.#programId.toString(), lastRun.runId, runs.length - 1)
+			runKey(this.#programIdString, lastRun.runId, runs.length - 1)
 		)
 	}
 
@@ -391,7 +393,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 							r,
 							i,
 							runs.filter((r) => !!r.lastState).length === 1,
-							this.#programId.toString()
+							this.#programIdString
 						),
 						r,
 					] as const
@@ -444,7 +446,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 	getRunDataById(runId: string, index: number): RunData | null {
 		const cachedRun = this.#runCache.get(
-			runKey(this.#programId.toString(), runId, index)
+			runKey(this.#programIdString, runId, index)
 		)
 		if (cachedRun) {
 			return cachedRun
@@ -461,7 +463,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			run,
 			realIndex,
 			runsAtThisAddress!.filter((r) => !!r.lastState).length === 1,
-			this.#programId.toString()
+			this.#programIdString
 		)
 		if (!info) {
 			return null
@@ -591,7 +593,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 		const runData = {
 			info,
-			programId: this.#programId.toString(),
+			programId: this.#programIdString,
 			state,
 			recentTxs: run.recentTxs,
 			metrics: {
@@ -599,10 +601,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				history,
 			},
 		}
-		this.#runCache.set(
-			runKey(this.#programId.toString(), runId, index),
-			runData
-		)
+		this.#runCache.set(runKey(this.#programIdString, runId, index), runData)
 		return runData
 	}
 }

@@ -69,7 +69,7 @@ function makeDecodeState(): DecodeState {
 export async function fetchRunStreaming(
 	runId: string,
 	indexStr: string,
-	programId?: string
+	programId: string
 ): Promise<ReadableStream<ApiGetRun>> {
 	if (import.meta.env.VITE_FAKE_DATA) {
 		const seed = Math.random() * 1_000_000_000
@@ -102,11 +102,6 @@ export async function fetchRunStreaming(
 	}
 
 	console.log('opening run stream for', runId, indexStr, programId)
-
-	if (!programId) {
-		throw new Error('programId is required')
-	}
-
 	return makeStreamingNdJsonDecode(`run/${runId}/${programId}/${indexStr}`)
 }
 

@@ -149,7 +149,7 @@ interface ChainStatus {
 export interface IndexerStatus {
 	initTime: number
 	commit: string
-	coordinator: CoordinatorStatus
+	coordinators: Record<string, CoordinatorStatus>
 	miningPool: MiningPoolStatus
 }
 
