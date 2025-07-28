@@ -483,7 +483,7 @@ impl PreparedTask {
 
     fn run_generate_until(
         options: EvalTaskOptions,
-        generated_tokens: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
+        cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
         requests: &[TokenizedGenerateUntilDocument],
         tokenizer: &Tokenizer,
         pbar: Option<ProgressBar>,
@@ -505,8 +505,7 @@ impl PreparedTask {
 
         // Simple sampling setup
         let mut logits_processor = LogitsProcessor::from_sampling(
-            //todo check this rand
-            rand::random(),
+            0,
             Sampling::ArgMax, // Greedy decoding for deterministic results
         );
 
@@ -534,25 +533,25 @@ impl PreparedTask {
             .step_by(step_by)
             .enumerate()
         {
-            let mut is_correct = false;
-            let mut finish_request = false;
+            let mut generated_answer = None;
+            let mut generation_complete = false;
             // Calculate the actual global index accounting for fast_forward, skip, and iterations
             let global_index = fast_forward + skip + (num_iterations * step_by);
             // For caching, we need a unique identifier for each document being processed
             // This should account for the actual position in the evaluation sequence
             let cache_key = global_index;
-            let doc_idx = doc_index; // This is the index within the requests array (0 to requests.len()-1)
+
             tracing::info!(
                 "global_index: {}, doc_idx: {}, cache_key: {}, num_iterations: {}",
                 global_index,
-                doc_idx,
+                doc_index,
                 cache_key,
                 num_iterations
             );
             tracing::info!(
                 "Processing iteration {} (document index {})",
                 num_iterations,
-                doc_idx
+                doc_index
             );
             if let Some(cancel) = options.cancel.as_ref() {
                 if cancel.is_cancelled() {
@@ -560,7 +559,7 @@ impl PreparedTask {
                     break;
                 }
             }
-            if !options.loop_if_empty && doc_idx >= requests.len() && num_iterations > 0 {
+            if !options.loop_if_empty && doc_index >= requests.len() && num_iterations > 0 {
                 break;
             }
             if let Some(limit) = options.limit {
@@ -570,121 +569,127 @@ impl PreparedTask {
             }
 
             // Start with the tokenized prompt
-            let mut tokens = request.clone();
+            let mut full_sequence = request.clone();
             tracing::info!(
                 "request for  {:?}",
                 _request_str.get(_request_str.len() - 100..)
             );
 
             // Check if we have cached generated tokens for this document
-            let mut local_generated_tokens = {
-                let cache = generated_tokens.read().unwrap();
-                cache.get(&cache_key).cloned().unwrap_or_else(Vec::new)
+            let mut generated_tokens = {
+                cache
+                    .read()
+                    .unwrap()
+                    .get(&cache_key)
+                    .cloned()
+                    .unwrap_or_else(Vec::new)
             };
 
-            if !local_generated_tokens.is_empty() {
+            if !generated_tokens.is_empty() {
                 tracing::info!(
                     "Resuming generation for document {} (cache_key: {}) from checkpoint with {} tokens",
-                    doc_idx,
+                    doc_index,
                     cache_key,
-                    local_generated_tokens.len()
+                    generated_tokens.len()
                 );
             }
 
             // If we have cached tokens, append them to the prompt
-            if !local_generated_tokens.is_empty() {
-                tokens.extend(local_generated_tokens.iter().map(|&t| t as i64));
+            if !generated_tokens.is_empty() {
+                full_sequence.extend(generated_tokens.iter().map(|&t| t as i64));
             }
 
             let max_generation_tokens = 600; // Maximum tokens to generate
             let max_context_size = 2047;
 
             // Generate tokens until we find "The answer is" pattern or reach limit
-            let mut generated_tokens_len = local_generated_tokens.len();
-            let mut a = "".to_string();
-            while !finish_request {
+            let mut tokens_generated_count = generated_tokens.len();
+            let mut current_output = "".to_string();
+            while !generation_complete {
                 if let Some(cancel) = options.cancel.as_ref() {
                     if cancel.is_cancelled() {
                         // Save progress before cancelling
-                        let mut cache = generated_tokens.write().unwrap();
-                        cache.insert(cache_key, local_generated_tokens.clone());
+                        cache
+                            .write()
+                            .unwrap()
+                            .insert(cache_key, generated_tokens.clone());
                         tracing::info!(
                             "Cancellation requested: saving {} tokens for document {} (cache_key: {})",
-                            local_generated_tokens.len(),
-                            doc_idx,
+                            generated_tokens.len(),
+                            doc_index,
                             cache_key
                         );
                         cancelled = true;
                         break;
                     }
                 }
-                if tokens.len() > max_context_size {
-                    tokens.drain(0..(tokens.len() - max_context_size));
+                if full_sequence.len() > max_context_size {
+                    full_sequence.drain(0..(full_sequence.len() - max_context_size));
                 }
-                let input = Tensor::from_slice(&tokens)
+                let model_input = Tensor::from_slice(&full_sequence)
                     .to(options.model.device())
                     .unsqueeze(0);
 
-                let (logits, _) = options.model.forward(&input, None, Some(1), None);
+                let (logits, _) = options.model.forward(&model_input, None, Some(1), None);
                 let logits = logits.squeeze();
 
                 let next_token = logits_processor.sample(&logits).unwrap();
-                tokens.push(next_token as i64);
-                local_generated_tokens.push(next_token as u32);
-                generated_tokens_len += 1;
+                full_sequence.push(next_token as i64);
+                generated_tokens.push(next_token as u32);
+                tokens_generated_count += 1;
 
                 // Check if we hit an EOS token
                 if let Some(eos_ids) = &eos_token_ids {
                     if eos_ids.contains(next_token as i64) {
-                        finish_request = true;
+                        generation_complete = true;
                         break;
                     }
                 }
 
                 // Decode all generated tokens together
-                if let Ok(generated_text) = tokenizer.decode(&local_generated_tokens, false) {
-                    a = generated_text.clone();
+                if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
+                    current_output = generated_text.clone();
 
                     // Check if we've generated "The answer is (X)" pattern using regex
                     if let Some(captures) = answer_regex.captures(&generated_text) {
                         if let Some(answer_char) = captures.get(1) {
-                            // Found an answer, check if it matches
-                            let generated_answer = crate::ASCII_UPPERCASE
-                                .iter()
-                                .position(|&c| c == answer_char.as_str())
-                                .unwrap_or(usize::MAX);
+                            generated_answer = Some(
+                                crate::ASCII_UPPERCASE
+                                    .iter()
+                                    .position(|&c| c == answer_char.as_str())
+                                    .unwrap_or(usize::MAX),
+                            );
                             tracing::info!(
-                                "Found answer: {} for global_index: {global_index}",
+                                "Found answer: {:?} for global_index: {global_index}",
                                 generated_answer
                             );
-                            is_correct = generated_answer == answer;
-                            finish_request = true;
+                            generation_complete = true;
 
                             break;
                         }
                     }
                 }
 
-                if generated_tokens_len >= max_generation_tokens {
-                    finish_request = true;
+                if tokens_generated_count >= max_generation_tokens {
+                    generation_complete = true;
                     break;
                 }
             }
 
             // Clear the cache for this document after successful completion
-            if finish_request {
-                let mut cache = generated_tokens.write().unwrap();
-                cache.remove(&cache_key);
+            if generation_complete {
+                cache.write().unwrap().remove(&cache_key);
                 tracing::info!(
-                    "Cleared cache for document {} (cache_key: {}) after completion (is_correct: {}, tokens: {})",
-                    doc_idx,
+                    "Cleared cache for document {} (cache_key: {}) after completion ( tokens: {})",
+                    doc_index,
                     cache_key,
-                    is_correct,
-                    local_generated_tokens.len()
+                    generated_tokens.len()
                 );
-                let score = match is_correct {
-                    true => 1.,
-                    false => 0.,
+
+                let score = if generated_answer == Some(answer) {
+                    1.
+                } else {
+                    0.
                 };
                 results.push("acc", score);
                 scores.push((score as f32, true));
@@ -692,11 +697,11 @@ impl PreparedTask {
 
                 tracing::info!(
                     "Generated answer for document {} (global_index: {}): {:?}",
-                    doc_idx,
+                    doc_index,
                     global_index,
-                    a
+                    current_output
                 );
-                tracing::info!("is_correct: {}", is_correct);
+                tracing::info!("is_correct: {}", score == 1.);
 
                 if let Some(pbar) = &pbar {
                     pbar.inc(1);
@@ -706,9 +711,9 @@ impl PreparedTask {
                 // We should resume from the current document, not skip it
                 tracing::info!(
                     "Generation cancelled for document {} (global_index: {}) with {} tokens generated",
-                    doc_idx,
+                    doc_index,
                     global_index,
-                    local_generated_tokens.len()
+                    generated_tokens.len()
                 );
             }
         }
