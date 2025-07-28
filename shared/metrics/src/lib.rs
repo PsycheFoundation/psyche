@@ -20,7 +20,7 @@ pub use iroh::{IrohMetricsCollector, create_iroh_registry};
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
 use tracing::{debug, info, warn};
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 /// metrics collector for Psyche clients
 pub struct ClientMetrics {
     // opentelemtery instruments

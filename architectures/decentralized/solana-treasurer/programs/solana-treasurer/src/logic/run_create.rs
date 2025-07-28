@@ -84,7 +84,6 @@ pub fn run_create_processor(
 
     run.collateral_mint = context.accounts.collateral_mint.key();
 
-    run.total_funded_collateral_amount = 0;
     run.total_claimed_collateral_amount = 0;
     run.total_claimed_earned_points = 0;
 

@@ -122,7 +122,7 @@ where
     _broadcast_message: PhantomData<BroadcastMessage>,
     _download: PhantomData<Download>,
     update_stats_interval: Interval,
-    metrics: ClientMetrics,
+    metrics: Arc<ClientMetrics>,
     _iroh_metrics: IrohMetricsCollector,
 }
 
@@ -160,7 +160,7 @@ where
         secret_key: Option<SecretKey>,
         allowlist: A,
         max_concurrent_downloads: usize,
-        metrics: ClientMetrics,
+        metrics: Arc<ClientMetrics>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rngs::OsRng),
@@ -399,7 +399,7 @@ where
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
 
-        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        info!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let blobs_client = self.blobs.client().clone();
         tokio::spawn(async move {
@@ -804,7 +804,7 @@ pub async fn blob_ticket_param_request_task(
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
 ) {
-    let max_attempts = 1000u16;
+    let max_attempts = 500u16;
     let mut attempts = 0u16;
 
     while attempts < max_attempts {
@@ -815,7 +815,7 @@ pub async fn blob_ticket_param_request_task(
             continue;
         };
 
-        debug!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
+        info!(type = ?&model_request_type, peer = %peer_id, "Requesting model");
         let result = timeout(
             Duration::from_secs(MODEL_REQUEST_TIMEOUT_SECS),
             request_model_blob_ticket(router.clone(), peer_id, &model_request_type),
@@ -835,7 +835,7 @@ pub async fn blob_ticket_param_request_task(
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
-                peer_manager.report_blob_ticket_request_error(peer_id);
+                peer_manager.report_blob_ticket_request_error(peer_id, None);
 
                 warn!("Request failed for peer {peer_id}: {e}. Trying next peer");
                 attempts += 1;
