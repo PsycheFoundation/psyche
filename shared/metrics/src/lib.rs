@@ -3,7 +3,7 @@ mod iroh;
 use std::{
     collections::HashMap,
     fmt::Display,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
@@ -56,6 +56,11 @@ pub struct ClientMetrics {
 
     // shared state for TCP server
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
+
+    // p2p model sharing
+    pub(crate) num_params: OnceLock<u64>,
+    pub(crate) p2p_downloaded_params_percent: OnceLock<Gauge<f64>>,
+    pub(crate) p2p_params_download_failed_counter: Counter<u64>,
 }
 
 #[derive(Serialize, Debug, Clone, Default)]
@@ -160,7 +165,7 @@ impl ClientMetrics {
                 .with_description("Total number of download attempts that failed")
                 .build(),
             downloads_perma_failed_counter: meter
-                .u64_counter("psyche_downloads_failed_total")
+                .u64_counter("psyche_downloads_perma_failed_total")
                 .with_description("Total number of downloads that permantently failed")
                 .build(),
             downloads_bytes_counter: meter
@@ -203,6 +208,13 @@ impl ClientMetrics {
             system_monitor: Self::start_system_monitoring(&meter),
             tcp_server,
             tcp_metrics,
+
+            num_params: OnceLock::new(),
+            p2p_downloaded_params_percent: OnceLock::new(),
+            p2p_params_download_failed_counter: meter
+                .u64_counter("psyche_p2p_params_download_failed_counter")
+                .with_description("The total amount of p2p parameter sharing downloads that failed")
+                .build(),
         }
     }
 
@@ -291,6 +303,11 @@ impl ClientMetrics {
         self.tcp_metrics.lock().unwrap().downloads_perma_failed += 1;
     }
 
+    pub fn record_p2p_model_parameter_download_failed(&self) {
+        self.record_download_perma_failed();
+        self.p2p_params_download_failed_counter.add(1, &[]);
+    }
+
     pub fn update_peer_connections(&self, connections: &[PeerConnection]) {
         let mut connection_counts = HashMap::new();
 
@@ -357,6 +374,26 @@ impl ClientMetrics {
                 },
             )],
         );
+    }
+
+    pub fn initialize_model_parameters_gauge(&self, num_params: u64) {
+        let meter = global::meter("psyche_client");
+        let _ = self.num_params.set(num_params);
+        let _ = self.p2p_downloaded_params_percent.set(meter
+            .f64_gauge("psyche_p2p_model_params_downloaded")
+            .with_description("Percentage of the total model parameters that have been downloaded from other peers")
+            .build());
+    }
+
+    pub fn update_model_sharing_total_params_downloaded(&self, num_downloaded_params: u64) {
+        if let Some(total_params) = self.num_params.get() {
+            if let Some(gauge) = self.p2p_downloaded_params_percent.get() {
+                gauge.record(
+                    (num_downloaded_params as f64 / *total_params as f64) * 100.0,
+                    &[],
+                )
+            }
+        }
     }
 
     fn start_system_monitoring(meter: &Meter) -> Arc<tokio::task::JoinHandle<()>> {
