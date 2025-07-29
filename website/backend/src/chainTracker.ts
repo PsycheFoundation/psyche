@@ -38,11 +38,12 @@ function discoverExistingCoordinators(stateDirectory: string): string[] {
 			(file) => file.startsWith('coordinator-db-') && file.endsWith('.json')
 		)
 
-		return coordinatorFiles.map((file) => {
-			// Extract program ID from filename: coordinator-db-{programId}.json
-			const programId = file.slice('coordinator-db-'.length, -'.json'.length)
-			return programId
-		})
+		// Extract program ID from filename: coordinator-db-{programId}.json
+		const programIds = coordinatorFiles.map((file) =>
+			file.slice('coordinator-db-'.length, -'.json'.length)
+		)
+
+		return programIds
 	} catch (error) {
 		console.warn('Failed to discover existing coordinators:', error)
 		return []
@@ -100,9 +101,9 @@ function startCoordinatorService(
 		.then(resolve)
 
 	console.log('Coordinator service initialized:')
-	console.log(`  ProgramID: ${program.programId}`)
-	console.log(`  RPC: ${config.connection.rpcEndpoint}`)
-	console.log(`  Websocket RPC: ${websocketRpcUrl}`)
+	console.log(`Coordinator ProgramID: ${program.programId}`)
+	console.log(`Coordinator RPC: ${config.connection.rpcEndpoint}`)
+	console.log(`Coordinator websocket RPC: ${websocketRpcUrl}`)
 
 	return { stopped, dataStore, errors }
 }
@@ -144,9 +145,9 @@ function startMiningPoolService(
 		.then(resolve)
 
 	console.log('Mining pool service initialized:')
-	console.log(`  ProgramID: ${program.programId}`)
-	console.log(`  RPC: ${config.connection.rpcEndpoint}`)
-	console.log(`  Websocket RPC: ${websocketRpcUrl}`)
+	console.log(`MiningPool ProgramID: ${program.programId}`)
+	console.log(`MiningPool RPC: ${config.connection.rpcEndpoint}`)
+	console.log(`MiningPool Websocket RPC: ${websocketRpcUrl}`)
 
 	return { stopped, dataStore, errors }
 }

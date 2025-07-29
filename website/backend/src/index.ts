@@ -179,6 +179,14 @@ async function main() {
 
 	const initTime = Date.now()
 
+	function getTotalRuns(): number {
+		let totalRuns = 0
+		for (const [_, coordinator] of coordinators) {
+			totalRuns += coordinator.dataStore.getNumRuns()
+		}
+		return totalRuns
+	}
+
 	function getContributionInfo(
 		req: FastifyRequest,
 		res: Fastify.FastifyReply,
@@ -308,10 +316,7 @@ async function main() {
 					}
 				}
 
-				// Still calculate total runs across all coordinators
-				for (const [_, coordinator] of coordinators) {
-					totalRuns += coordinator.dataStore.getNumRuns()
-				}
+				totalRuns = getTotalRuns()
 			}
 
 			const data: ApiGetRun = {
@@ -348,10 +353,7 @@ async function main() {
 
 			function sendRunData(runData: RunData) {
 				// Calculate total runs across all coordinators
-				let totalRuns = 0
-				for (const [_, coordinator] of coordinators) {
-					totalRuns += coordinator.dataStore.getNumRuns()
-				}
+				const totalRuns = getTotalRuns()
 
 				const data: ApiGetRun = {
 					run: runData,
