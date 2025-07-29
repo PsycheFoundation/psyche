@@ -148,6 +148,9 @@ struct Args {
     #[arg(long)]
     attn_implementation: Option<AttnImpl>,
 
+    #[arg(long, default_value_t = 0)]
+    device: usize,
+
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
@@ -283,6 +286,7 @@ async fn main() -> Result<()> {
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);
             let tp = args.tensor_parallelism.unwrap_or(1);
+            let device = args.device;
 
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
@@ -290,7 +294,7 @@ async fn main() -> Result<()> {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
                             source,
-                            Device::cuda_if_available(),
+                            Device::Cuda(device),
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
                         )?;
@@ -311,7 +315,7 @@ async fn main() -> Result<()> {
                             if args.cpu {
                                 Device::Cpu
                             } else {
-                                Device::cuda_if_available()
+                                Device::Cuda(device)
                             },
                             None,
                             Some(args.sequence_length),
@@ -340,6 +344,7 @@ async fn main() -> Result<()> {
             let repo_files = repo_files.clone();
             let data_parallel = data_parallel.clone();
             let barrier = barrier.clone();
+            let device = args.device;
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     let id = if tp_world_size > 1 {
@@ -362,7 +367,7 @@ async fn main() -> Result<()> {
                             let device = if args.cpu && tp_world_size <= 1 {
                                 Device::Cpu
                             } else {
-                                Device::Cuda(rank)
+                                Device::Cuda(rank + device)
                             };
                             let id = id.clone();
                             let repo_files = repo_files.clone();
@@ -424,21 +429,9 @@ async fn main() -> Result<()> {
 
     info!("Done loading, starting training.");
 
-    //let mut dataset = dataset.into_iter();
     let mut prev_distro_results = if args.distro { Some(vec![]) } else { None };
     for step in 1..=args.total_steps {
         let start_time = SystemTime::now();
-        // let data: Vec<_> = (0..args.total_batch)
-        //     .map(|_| {
-        //         let data = dataset.next().unwrap();
-        //         BatchDataCPU {
-        //             input_ids: data.input_ids,
-        //             labels: data.labels,
-        //             position_ids: data.position_ids,
-        //             sequence_lengths: data.sequence_lengths,
-        //         }
-        //     })
-        //     .collect();
         let data: Vec<BatchDataCPU> = dataset
             .get_samples(BatchId(ClosedInterval::new(
                 (step as u64 - 1) * args.total_batch as u64,

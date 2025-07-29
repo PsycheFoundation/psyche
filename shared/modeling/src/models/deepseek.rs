@@ -365,14 +365,15 @@ impl MLAAttention {
 
         let (q_pe, k_pe) = apply_rotary_pos_emb(cache, &q_pe, &k_pe, position_ids);
 
-        let query_states = Tensor::cat(&[&q_nope, &q_pe], -1);
-        let key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
+        let mut query_states = Tensor::cat(&[&q_nope, &q_pe], -1);
+        let mut key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
 
         let y = match self.attn_implementation {
             AttentionImplementation::FlashAttention2 => {
                 let mut padded_value_states = value_states.shallow_clone();
-                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
-                    let pad_size = self.qk_nope_head_dim + self.qk_rope_head_dim - self.head_v_dim;
+                let full_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim;
+                if full_head_dim != self.head_v_dim {
+                    let pad_size = full_head_dim - self.head_v_dim;
                     padded_value_states = Tensor::cat(
                         &[
                             &value_states,
@@ -389,10 +390,24 @@ impl MLAAttention {
                     Some((cum_seq, max_len)) => (Some(cum_seq), *max_len as i64),
                     None => (None, t),
                 };
+
+                let _ = query_states.transpose_(1, 2);
+                let _ = key_states.transpose_(1, 2);
+                let _ = padded_value_states.transpose_(1, 2);
+
+                if cum_seq.is_some() {
+                    // reshape to 3D packed format for FA varlen
+                    query_states =
+                        query_states.reshape([b * t, self.num_local_heads, full_head_dim]);
+                    key_states = key_states.reshape([b * t, self.num_local_heads, full_head_dim]);
+                    padded_value_states =
+                        padded_value_states.reshape([b * t, self.num_local_heads, full_head_dim]);
+                }
+
                 let (att, _, _, _, _) = flash_attention_forward(
-                    &query_states.transpose(1, 2),
-                    &key_states.transpose(1, 2),
-                    &padded_value_states.transpose(1, 2),
+                    &query_states,
+                    &key_states,
+                    &padded_value_states,
                     cum_seq,
                     cum_seq,
                     max_len,
@@ -408,7 +423,7 @@ impl MLAAttention {
                 )
                 .unwrap();
 
-                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
+                if full_head_dim != self.head_v_dim {
                     att.narrow(-1, 0, self.head_v_dim)
                 } else {
                     att

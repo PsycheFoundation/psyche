@@ -79,11 +79,12 @@ indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-# tch = { path = "../tch-rs" }
-# torch-sys = { path = "../tch-rs/torch-sys" }
+tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "79f3512d8f3d41c79da0eecf8244e6ccf58f39c8" }
+torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "79f3512d8f3d41c79da0eecf8244e6ccf58f39c8" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "79f3512d8f3d41c79da0eecf8244e6ccf58f39c8" }
+#tch = { path = "../tch-rs" }
+#torch-sys = { path = "../tch-rs/torch-sys" }
+#pyo3-tch = { path = "../tch-rs/pyo3-tch" }
 time = { version = "0.3.36", features = ["formatting", "macros"] }
 serde_with = { version = "3.11.0", features = ["macros"] }
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }

@@ -157,11 +157,11 @@ impl CausalSelfAttention {
             .reshape([b, t, local_n_kvhead, self.head_dim])
             .transpose(1, 2);
 
-        let q = cache.apply_rotary_emb(&q, position_ids).to_kind(kind);
+        let mut q = cache.apply_rotary_emb(&q, position_ids).to_kind(kind);
         let k = cache.apply_rotary_emb(&k, position_ids).to_kind(kind);
 
-        let k = repeat_kv(&k, local_n_head / local_n_kvhead);
-        let v = repeat_kv(&v, local_n_head / local_n_kvhead);
+        let mut k = repeat_kv(&k, local_n_head / local_n_kvhead);
+        let mut v = repeat_kv(&v, local_n_head / local_n_kvhead);
 
         let scale = 1.0 / (self.head_dim as f64).sqrt();
 
@@ -171,13 +171,22 @@ impl CausalSelfAttention {
                     Some((cum_seq, max_len)) => (Some(cum_seq), *max_len as i64),
                     None => (None, t),
                 };
+
+                let _ = q.transpose_(1, 2);
+                let _ = k.transpose_(1, 2);
+                let _ = v.transpose_(1, 2);
+
+                if cum_seq.is_some() {
+                    // reshape to 3D packed format for FA varlen
+                    q = q.reshape([b * t, local_n_head, self.head_dim]);
+                    k = k.reshape([b * t, local_n_head, self.head_dim]);
+                    v = v.reshape([b * t, local_n_head, self.head_dim]);
+                }
+
                 let (att, _, _, _, _) = flash_attention_forward(
-                    &q.transpose(1, 2)
-                        .reshape([b * t, local_n_head, self.head_dim]),
-                    &k.transpose(1, 2)
-                        .reshape([b * t, local_n_head, self.head_dim]),
-                    &v.transpose(1, 2)
-                        .reshape([b * t, local_n_head, self.head_dim]),
+                    &q,
+                    &k,
+                    &v,
                     cum_seq,
                     cum_seq,
                     max_len,
