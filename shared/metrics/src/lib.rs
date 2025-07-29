@@ -481,9 +481,9 @@ impl ClientMetrics {
         let mut connection_counts = HashMap::new();
 
         for PeerConnection {
-            node_id,
             connection_type,
             latency,
+            ..
         } in connections
         {
             *connection_counts
@@ -494,8 +494,7 @@ impl ClientMetrics {
                 })
                 .or_insert(0u64) += 1;
 
-            self.connection_latency
-                .record((*latency).into(), &[KeyValue::new("ping", node_id.clone())]);
+            self.connection_latency.record((*latency).into(), &[]);
         }
 
         // Update shared state
