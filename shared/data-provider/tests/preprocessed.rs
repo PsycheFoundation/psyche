@@ -28,9 +28,7 @@ struct DecodedData {
 
 #[tokio::test]
 async fn loads_hermes3_subset() {
-    //let data_dir = PathBuf::from_str("/home/admin/.cache/huggingface/hub/datasets--emozilla--Hermes-3-Preprocessed-Llama3/snapshots/1e1b1bc828e0fb5e9f869189f381f68849854303/data").unwrap();
     let data_dir = test_path(&["resources", "hermes3", "data"]);
-    let start_time = Instant::now();
     let mut data_loader = PreprocessedDataProvider::new_from_directory(
         data_dir,
         4096,
@@ -39,8 +37,6 @@ async fn loads_hermes3_subset() {
         None,
     )
     .unwrap();
-    let elapsed = start_time.elapsed();
-    println!("DATA LOADING TOOK {}", elapsed.as_secs());
 
     let samples = data_loader
         .get_samples(BatchId((0, 1).into()))
