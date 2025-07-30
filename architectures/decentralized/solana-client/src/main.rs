@@ -22,7 +22,7 @@ use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, RunState, get_data_index_for_step,
     model::{Checkpoint, HubRepo, Model},
 };
-use psyche_core::{FixedString, sha256};
+use psyche_core::FixedString;
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
@@ -31,8 +31,6 @@ use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     maybe_start_render_loop,
 };
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -89,6 +87,9 @@ enum ShowChoices {
 enum Commands {
     ShowStaticP2PIdentity {
         identity_secret_key_path: Option<PathBuf>,
+
+        #[clap(flatten)]
+        wallet: WalletArgs,
     },
     CreateStaticP2PIdentity {
         save_path: PathBuf,
@@ -318,7 +319,20 @@ async fn async_main() -> Result<()> {
     match args.command {
         Commands::ShowStaticP2PIdentity {
             identity_secret_key_path,
-        } => print_identity_keys(identity_secret_key_path.as_ref()),
+            wallet,
+        } => {
+            if print_identity_keys(identity_secret_key_path.as_ref()).is_err() {
+                let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+
+                // Iroh key *is* the Solana key
+                let identity_secret_key =
+                    SecretKey::from_bytes(&wallet_keypair.secret().to_bytes());
+
+                println!("Solana Public key: {}", wallet_keypair.pubkey());
+                println!("Iroh Public key: {}", identity_secret_key.public());
+            }
+            Ok(())
+        }
         Commands::CreateStaticP2PIdentity { save_path } => {
             let identity_secret_key = SecretKey::generate(&mut rand::rngs::OsRng);
             std::fs::write(&save_path, identity_secret_key.secret().as_bytes())?;
@@ -721,12 +735,8 @@ async fn async_main() -> Result<()> {
 
             let identity_secret_key: SecretKey =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
-                    // Iroh key should be deterministically derived from Solana key
-                    .unwrap_or_else(|| {
-                        let mut rng =
-                            ChaCha8Rng::from_seed(sha256(wallet_keypair.secret().as_bytes()));
-                        SecretKey::generate(&mut rng)
-                    });
+                    // Iroh key *is* the Solana key
+                    .unwrap_or_else(|| SecretKey::from_bytes(&wallet_keypair.secret().to_bytes()));
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
