@@ -56,7 +56,7 @@ impl Display for Split {
 }
 
 pub struct Dataset {
-    pub files: Vec<SerializedFileReader<File>>,
+    files: Vec<SerializedFileReader<File>>,
     split: Split,
     column_ids: HashMap<String, usize>,
     column_types: HashMap<String, Field>,
@@ -213,19 +213,6 @@ impl Dataset {
             row_iter,
         }
     }
-
-    // pub fn par_iter(&self) -> impl ParallelIterator<Item = Result<Row>> + '_ {
-    //     self.files()
-    //         .par_iter()
-    //         .filter_map(|file| {
-    //             match file.get_row_iter(None) {
-    //                 Ok(rows) => Some(rows.par_bridge()),
-    //                 Err(_) => None, // Skip files that can't be opened
-    //             }
-    //         })
-    //         .flatten()
-    //         .map(|row| row.map_err(Into::into))
-    // }
 
     pub fn columns(&self) -> impl Iterator<Item = (&String, &Field)> {
         self.column_types.iter()

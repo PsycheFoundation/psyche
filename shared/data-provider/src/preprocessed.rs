@@ -93,38 +93,37 @@ impl PreprocessedDataProvider {
             .par_iter()
             .map(|file| -> anyhow::Result<Vec<TokenizedData>> {
                 let rows = file.get_row_iter(None).unwrap();
-                rows.par_bridge()
-                    .map(|row| {
-                        if let Ok(row) = row {
-                            let input_ids =
-                                list_to_vec(&row, inputs_column, Some(num_tokens_per_sequence))?;
-                            let labels = match labels_column {
-                                Some(column) => {
-                                    Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?)
-                                }
-                                None => None,
-                            };
-                            let position_ids = match position_ids_column {
-                                Some(column) => {
-                                    Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?)
-                                }
-                                None => None,
-                            };
-                            let sequence_lengths = match sequence_lengths_column {
-                                Some(column) => Some(list_to_vec(&row, column, None)?),
-                                None => None,
-                            };
-                            Ok(TokenizedData {
-                                input_ids,
-                                labels,
-                                position_ids,
-                                sequence_lengths,
-                            })
-                        } else {
-                            Err(anyhow::anyhow!("Invalid row"))
-                        }
-                    })
-                    .collect()
+                rows.map(|row| {
+                    if let Ok(row) = row {
+                        let input_ids =
+                            list_to_vec(&row, inputs_column, Some(num_tokens_per_sequence))?;
+                        let labels = match labels_column {
+                            Some(column) => {
+                                Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?)
+                            }
+                            None => None,
+                        };
+                        let position_ids = match position_ids_column {
+                            Some(column) => {
+                                Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?)
+                            }
+                            None => None,
+                        };
+                        let sequence_lengths = match sequence_lengths_column {
+                            Some(column) => Some(list_to_vec(&row, column, None)?),
+                            None => None,
+                        };
+                        Ok(TokenizedData {
+                            input_ids,
+                            labels,
+                            position_ids,
+                            sequence_lengths,
+                        })
+                    } else {
+                        Err(anyhow::anyhow!("Invalid row"))
+                    }
+                })
+                .collect()
             })
             .collect::<Result<Vec<Vec<TokenizedData>>, _>>()
             .map(|nested| nested.into_iter().flatten().collect());
