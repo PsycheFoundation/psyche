@@ -4,6 +4,10 @@ use parquet::{
     file::reader::{FileReader, SerializedFileReader},
     record::reader::RowIter,
 };
+use rayon::{
+    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    slice::Iter,
+};
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -204,6 +208,21 @@ impl Dataset {
             files_iter,
             row_iter,
         }
+    }
+
+    pub fn par_iter(&self) -> impl ParallelIterator<Item = Row> + '_ {
+        self.files.par_iter().flat_map(|file| {
+            // Process each file and collect its rows
+            let mut rows = Vec::new();
+            if let Ok(row_iter) = file.get_row_iter(None) {
+                for row_result in row_iter {
+                    if let Ok(row) = row_result {
+                        rows.push(row);
+                    }
+                }
+            }
+            rows
+        })
     }
 
     pub fn columns(&self) -> impl Iterator<Item = (&String, &Field)> {

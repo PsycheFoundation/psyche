@@ -3,6 +3,7 @@ use crate::{
     Dataset, Field, Row, Split, TokenizedData, TokenizedDataProvider,
     file_extensions::PARQUET_EXTENSION,
 };
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use anyhow::{Result, anyhow, bail};
 use parquet::record::RowAccessor;
