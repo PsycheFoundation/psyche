@@ -1,16 +1,17 @@
 use crate::LengthKnownDataProvider;
 use crate::{
-    Dataset, Field, Row, Split, TokenizedData, TokenizedDataProvider,
-    file_extensions::PARQUET_EXTENSION,
+    file_extensions::PARQUET_EXTENSION, Dataset, Field, Row, Split, TokenizedData,
+    TokenizedDataProvider,
 };
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use parquet::file::reader::FileReader;
+use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use parquet::record::RowAccessor;
 use psyche_core::{BatchId, Shuffle};
 use rand::seq::SliceRandom;
-use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 
 fn field_to_int(field: &Field) -> i32 {
     match field {
@@ -87,31 +88,76 @@ impl PreprocessedDataProvider {
         let position_ids_column = dataset.get_column_id("position_ids");
         let sequence_lengths_column = dataset.get_column_id("sequence_lengths");
 
-        let data: Result<Vec<TokenizedData>> = dataset
-            .iter()
-            .map(|row| {
-                let input_ids = list_to_vec(&row, inputs_column, Some(num_tokens_per_sequence))?;
-                let labels = match labels_column {
-                    Some(column) => Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?),
-                    None => None,
-                };
-                let position_ids = match position_ids_column {
-                    Some(column) => Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?),
-                    None => None,
-                };
-                let sequence_lengths = match sequence_lengths_column {
-                    Some(column) => Some(list_to_vec(&row, column, None)?),
-                    None => None,
-                };
-                Ok(TokenizedData {
-                    input_ids,
-                    labels,
-                    position_ids,
-                    sequence_lengths,
-                })
+        let data: Result<Vec<TokenizedData>, _> = dataset
+            .files()
+            .par_iter()
+            .map(|file| -> anyhow::Result<Vec<TokenizedData>> {
+                let rows = file.get_row_iter(None).unwrap();
+                rows.par_bridge()
+                    .map(|row| {
+                        if let Ok(row) = row {
+                            let input_ids =
+                                list_to_vec(&row, inputs_column, Some(num_tokens_per_sequence))?;
+                            let labels = match labels_column {
+                                Some(column) => {
+                                    Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?)
+                                }
+                                None => None,
+                            };
+                            let position_ids = match position_ids_column {
+                                Some(column) => {
+                                    Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?)
+                                }
+                                None => None,
+                            };
+                            let sequence_lengths = match sequence_lengths_column {
+                                Some(column) => Some(list_to_vec(&row, column, None)?),
+                                None => None,
+                            };
+                            Ok(TokenizedData {
+                                input_ids,
+                                labels,
+                                position_ids,
+                                sequence_lengths,
+                            })
+                        } else {
+                            Err(anyhow::anyhow!("Invalid row"))
+                        }
+                    })
+                    .collect()
             })
-            .collect();
-        let mut data = data?;
+            .collect::<Result<Vec<Vec<TokenizedData>>, _>>()
+            .map(|nested| nested.into_iter().flatten().collect());
+
+        // let data: Result<Vec<TokenizedData>, _> = dataset
+        //     .par_iter()
+        //     .map(|row_result| -> anyhow::Result<TokenizedData> {
+        //         let row = row_result?;
+
+        //         let input_ids = list_to_vec(&row, inputs_column, Some(num_tokens_per_sequence))?;
+
+        //         let labels = labels_column
+        //             .map(|column| list_to_vec(&row, column, Some(num_tokens_per_sequence)))
+        //             .transpose()?;
+
+        //         let position_ids = position_ids_column
+        //             .map(|column| list_to_vec(&row, column, Some(num_tokens_per_sequence)))
+        //             .transpose()?;
+
+        //         let sequence_lengths = sequence_lengths_column
+        //             .map(|column| list_to_vec(&row, column, None))
+        //             .transpose()?;
+
+        //         Ok(TokenizedData {
+        //             input_ids,
+        //             labels,
+        //             position_ids,
+        //             sequence_lengths,
+        //         })
+        //     })
+        //     .collect();
+
+        let mut data = data.unwrap();
 
         if let Shuffle::Seeded(random_seed) = shuffle {
             data.shuffle(&mut ChaCha8Rng::from_seed(random_seed));

@@ -1,11 +1,11 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use parquet::{
     errors::ParquetError,
     file::reader::{FileReader, SerializedFileReader},
     record::reader::RowIter,
 };
 use rayon::{
-    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator},
     slice::Iter,
 };
 use std::{
@@ -56,7 +56,7 @@ impl Display for Split {
 }
 
 pub struct Dataset {
-    files: Vec<SerializedFileReader<File>>,
+    pub files: Vec<SerializedFileReader<File>>,
     split: Split,
     column_ids: HashMap<String, usize>,
     column_types: HashMap<String, Field>,
@@ -197,11 +197,15 @@ impl Dataset {
             .fold(0, |acc, x| acc + x.metadata().file_metadata().num_rows()) as usize
     }
 
+    pub fn files(&self) -> &Vec<SerializedFileReader<File>> {
+        &self.files
+    }
+
     pub fn split(&self) -> Split {
         self.split
     }
 
-    pub fn iter(&self) -> DatasetIter {
+    pub fn iter(&self) -> DatasetIter<'_> {
         let mut files_iter = self.files.iter();
         let row_iter = files_iter.next().unwrap().get_row_iter(None).unwrap();
         DatasetIter {
@@ -210,20 +214,18 @@ impl Dataset {
         }
     }
 
-    pub fn par_iter(&self) -> impl ParallelIterator<Item = Row> + '_ {
-        self.files.par_iter().flat_map(|file| {
-            // Process each file and collect its rows
-            let mut rows = Vec::new();
-            if let Ok(row_iter) = file.get_row_iter(None) {
-                for row_result in row_iter {
-                    if let Ok(row) = row_result {
-                        rows.push(row);
-                    }
-                }
-            }
-            rows
-        })
-    }
+    // pub fn par_iter(&self) -> impl ParallelIterator<Item = Result<Row>> + '_ {
+    //     self.files()
+    //         .par_iter()
+    //         .filter_map(|file| {
+    //             match file.get_row_iter(None) {
+    //                 Ok(rows) => Some(rows.par_bridge()),
+    //                 Err(_) => None, // Skip files that can't be opened
+    //             }
+    //         })
+    //         .flatten()
+    //         .map(|row| row.map_err(Into::into))
+    // }
 
     pub fn columns(&self) -> impl Iterator<Item = (&String, &Field)> {
         self.column_types.iter()
