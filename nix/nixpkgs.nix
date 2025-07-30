@@ -6,6 +6,8 @@
 
 let
   cudaSupported = builtins.elem system [ "x86_64-linux" ];
+  metalSupported = builtins.elem system [ "aarch64-darwin" ];
+  gpuSupported = cudaSupported || metalSupported;
 in
 (
   lib.optionalAttrs (system != null) { inherit system; }
@@ -35,6 +37,9 @@ in
       // lib.optionalAttrs cudaSupported {
         cudaSupport = true;
         cudaVersion = "12.8";
+      }
+      // lib.optionalAttrs metalSupported {
+        metalSupport = true;
       };
   }
 )

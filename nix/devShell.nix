@@ -75,6 +75,10 @@
                 # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
                 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
               ''
+              + lib.optionalString pkgs.stdenv.isDarwin ''
+                # macOS: Ensure PyTorch can use Metal Performance Shaders
+                export PYTORCH_ENABLE_MPS_FALLBACK=1
+              ''
               + ''
                 echo "Welcome to the Psyche development shell.";
               '';

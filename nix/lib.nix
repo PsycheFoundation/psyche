@@ -51,13 +51,21 @@ let
           cuda_cudart
           nccl
         ]
-      );
+      )
+      ++ lib.optionals pkgs.stdenv.isDarwin [
+        pkgs.darwin.apple_sdk.frameworks.Accelerate
+        pkgs.darwin.apple_sdk.frameworks.CoreML
+        pkgs.darwin.apple_sdk.frameworks.Metal
+        pkgs.darwin.apple_sdk.frameworks.MetalPerformanceShaders
+      ];
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    cargoExtraArgs = "--features python-extension,parallelism";
+    # Disable parallelism feature on macOS as NCCL is not supported
+    cargoExtraArgs =
+      "--features python-extension" + lib.optionalString (!pkgs.stdenv.isDarwin) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
@@ -86,8 +94,7 @@ let
         inherit cargoArtifacts;
         pname = name;
         cargoExtraArgs =
-          rustWorkspaceArgsWithPython.cargoExtraArgs
-          + (if isExample then " --example ${name}" else " --bin ${name}");
+          rustWorkspaceArgs.cargoExtraArgs + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
       }
     );
