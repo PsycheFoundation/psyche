@@ -2,7 +2,7 @@ use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, CausalSelfAttention,
     ColumnParallelLinear, CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward,
     ModelConfig, ModelLoadError, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RowParallelLinear, attention::create_cu_seqlens, default_rope, parallelism::Communicator,
+    RowParallelLinear, default_rope, parallelism::Communicator,
 };
 use std::sync::Arc;
 use tch::{
@@ -168,6 +168,7 @@ impl Block {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Llama {
     wte: nn::Embedding,
@@ -222,6 +223,7 @@ impl Llama {
 }
 
 impl LanguageModelForward for Llama {
+    #[allow(unused_variables)]
     fn forward(
         &self,
         x: &Tensor,
@@ -229,20 +231,28 @@ impl LanguageModelForward for Llama {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         _training: bool,
     ) -> Tensor {
+        let sequence_lengths = sequence_lengths.map(|sequence_lengths| {
+            #[cfg(feature = "parallelism")]
+            {
+                if self.attn_implementation == AttentionImplementation::FlashAttention2 {
+                    crate::attention::create_cu_seqlens(sequence_lengths, x.device())
+                } else {
+                    panic!("`sequence_lengths` only supported for FlashAttention2");
+                }
+            }
+
+            #[cfg(not(feature = "parallelism"))]
+            {
+                panic!("`sequence_lengths` only supported for FlashAttention2");
+            }
+        });
+
         let mut x = self.wte.forward(x);
         for block in &self.blocks {
             x = block.forward(
                 &x,
                 position_ids,
-                sequence_lengths
-                    .map(|sequence_lengths| {
-                        if self.attn_implementation == AttentionImplementation::FlashAttention2 {
-                            create_cu_seqlens(sequence_lengths, x.device())
-                        } else {
-                            panic!("`sequence_lengths` only supported for FlashAttention2")
-                        }
-                    })
-                    .as_ref(),
+                sequence_lengths.as_ref(),
                 &self.rope_cache,
             );
         }
