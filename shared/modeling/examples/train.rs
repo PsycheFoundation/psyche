@@ -22,6 +22,7 @@ use tracing::info;
 enum AttnImpl {
     Eager,
     Sdpa,
+    #[cfg(feature = "parallelism")]
     FlashAttention2,
 }
 
@@ -30,6 +31,7 @@ impl Into<AttentionImplementation> for AttnImpl {
         match self {
             AttnImpl::Eager => AttentionImplementation::Eager,
             AttnImpl::Sdpa => AttentionImplementation::Sdpa,
+            #[cfg(feature = "parallelism")]
             AttnImpl::FlashAttention2 => AttentionImplementation::FlashAttention2,
         }
     }

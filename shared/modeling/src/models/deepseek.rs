@@ -2,12 +2,12 @@ use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, ColumnParallelLinear, Communicator,
     CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig,
     ModelLoadError, ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RoPEType, RowParallelLinear, attention::create_cu_seqlens, rotate_half, yarn_get_mscale,
+    RoPEType, RowParallelLinear, rotate_half, yarn_get_mscale,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
 use tch::{
-    Device, Kind, Tensor, flash_attention_forward,
+    Device, Kind, Tensor,
     nn::{
         self, Init, Module,
         init::{FanInOut, NonLinearity, NormalOrUniform},
@@ -305,6 +305,8 @@ impl MLAAttention {
         (a, b)
     }
 
+    #[allow(unused_mut)]
+    #[allow(unused_variables)]
     fn forward(
         &self,
         x: &Tensor,
@@ -369,6 +371,7 @@ impl MLAAttention {
         let mut key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
 
         let y = match self.attn_implementation {
+            #[cfg(feature = "parallelism")]
             AttentionImplementation::FlashAttention2 => {
                 let mut padded_value_states = value_states.shallow_clone();
                 let full_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim;
@@ -404,7 +407,7 @@ impl MLAAttention {
                         padded_value_states.reshape([b * t, self.num_local_heads, full_head_dim]);
                 }
 
-                let (att, _, _, _, _) = flash_attention_forward(
+                let (att, _, _, _, _) = tch::flash_attention_forward(
                     &query_states,
                     &key_states,
                     &padded_value_states,
@@ -889,6 +892,7 @@ impl DeepseekBlock {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Deepseek {
     embed_tokens: nn::Embedding,
@@ -948,6 +952,7 @@ impl Deepseek {
 }
 
 impl LanguageModelForward for Deepseek {
+    #[allow(unused_variables)]
     fn forward(
         &self,
         x: &Tensor,
@@ -959,21 +964,29 @@ impl LanguageModelForward for Deepseek {
             assert!(!training, "DeepseekMoE training not yet supported");
         }
 
+        let sequence_lengths = sequence_lengths.map(|sequence_lengths| {
+            #[cfg(feature = "parallelism")]
+            {
+                if self.attn_implementation == AttentionImplementation::FlashAttention2 {
+                    crate::attention::create_cu_seqlens(sequence_lengths, x.device())
+                } else {
+                    panic!("`sequence_lengths` only supported for FlashAttention2");
+                }
+            }
+
+            #[cfg(not(feature = "parallelism"))]
+            {
+                panic!("`sequence_lengths` only supported for FlashAttention2");
+            }
+        });
+
         let mut hidden_states = self.embed_tokens.forward(x);
 
         for block in &self.blocks {
             hidden_states = block.forward(
                 &hidden_states,
                 position_ids,
-                sequence_lengths
-                    .map(|sequence_lengths| {
-                        if self.attn_implementation == AttentionImplementation::FlashAttention2 {
-                            create_cu_seqlens(sequence_lengths, x.device())
-                        } else {
-                            panic!("`sequence_lengths` only supported for FlashAttention2")
-                        }
-                    })
-                    .as_ref(),
+                sequence_lengths.as_ref(),
                 &self.rope_cache,
             );
         }

@@ -2,7 +2,7 @@ use crate::{
     AttentionImplementation, ColumnParallelLinear, Communicator, RoPECache, RowParallelLinear,
 };
 use std::sync::Arc;
-use tch::{Device, Tensor, flash_attention_forward, nn::Module};
+use tch::{Device, Tensor, nn::Module};
 
 fn repeat_kv(hidden_states: &Tensor, n_rep: i64) -> Tensor {
     let (batch, num_key_value_heads, slen, head_dim) = hidden_states.size4().unwrap();
@@ -18,6 +18,7 @@ fn repeat_kv(hidden_states: &Tensor, n_rep: i64) -> Tensor {
     hidden_states.reshape([batch, num_key_value_heads * n_rep, slen, head_dim])
 }
 
+#[allow(dead_code)]
 pub fn create_cu_seqlens(lengths: &Vec<Vec<i32>>, device: Device) -> (Tensor, i32) {
     let mut seq_lens: Vec<i32> = Vec::new();
     for batch in lengths.iter() {
@@ -40,27 +41,6 @@ pub fn create_cu_seqlens(lengths: &Vec<Vec<i32>>, device: Device) -> (Tensor, i3
     }
 
     (Tensor::from_slice(&cum).to(device), max)
-
-    // let max_inner_len = lengths.iter().map(|v| v.len()).max().unwrap_or(0);
-    // let mut max_len = 0;
-    // let mut padded = Vec::with_capacity(lengths.len());
-    // for mut v in lengths.clone() {
-    //     v.resize(max_inner_len, 0);
-    //     for x in &v {
-    //         if *x > max_len {
-    //             max_len = *x;
-    //         }
-    //     }
-    //     padded.push(v);
-    // }
-    // println!("padded: {:?}: max_len: {}", padded, max_len);
-    // (
-    //     Tensor::from_slice2(&padded)
-    //         .to(device)
-    //         .cumsum(0, None).pad([1,0], "constant", None)
-    //         .to_kind(tch::Kind::Int),
-    //     max_len,
-    // )
 }
 
 #[allow(dead_code)]
@@ -126,6 +106,7 @@ impl CausalSelfAttention {
         }
     }
 
+    #[allow(unused_mut)]
     pub fn forward(
         &self,
         x: &Tensor,
@@ -166,6 +147,7 @@ impl CausalSelfAttention {
         let scale = 1.0 / (self.head_dim as f64).sqrt();
 
         let y = match self.attn_implementation {
+            #[cfg(feature = "parallelism")]
             AttentionImplementation::FlashAttention2 => {
                 let (cum_seq, max_len) = match sequence_lengths {
                     Some((cum_seq, max_len)) => (Some(cum_seq), *max_len as i64),
@@ -183,7 +165,7 @@ impl CausalSelfAttention {
                     v = v.reshape([b * t, local_n_head, self.head_dim]);
                 }
 
-                let (att, _, _, _, _) = flash_attention_forward(
+                let (att, _, _, _, _) = tch::flash_attention_forward(
                     &q,
                     &k,
                     &v,
@@ -205,6 +187,7 @@ impl CausalSelfAttention {
                     .reshape([b, t, local_n_head * self.head_dim])
             }
             AttentionImplementation::Sdpa => {
+                assert!(sequence_lengths.is_none());
                 let att = Tensor::scaled_dot_product_attention::<Tensor>(
                     &q,
                     &k,
@@ -220,6 +203,7 @@ impl CausalSelfAttention {
                     .reshape([b, t, local_n_head * self.head_dim])
             }
             AttentionImplementation::Eager => {
+                assert!(sequence_lengths.is_none());
                 let att = q.matmul(&k.transpose(-2, -1)) * scale;
                 let mask = Tensor::ones([t, t], (kind, self.device))
                     .tril(0)

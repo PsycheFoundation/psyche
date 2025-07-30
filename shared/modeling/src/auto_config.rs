@@ -146,6 +146,7 @@ pub enum AttentionImplementation {
     #[serde(rename = "sdpa")]
     #[default]
     Sdpa,
+    #[cfg(feature = "parallelism")]
     #[serde(rename = "flash_attention_2")]
     FlashAttention2,
 }
