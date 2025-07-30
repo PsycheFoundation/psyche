@@ -28,7 +28,7 @@ bytemuck.workspace = true
 reqwest = "0.12.12"
 google-cloud-storage = "0.24.0"
 ts-rs.workspace = true
-rayon = "1.10.0"
+rayon.workspace = true
 
 [dev-dependencies]
 psyche-tui.workspace = true
@@ -39,4 +39,3 @@ clap.workspace = true
 tempfile = "3.15.0"
 static-web-server = { git = "https://github.com/arilotter/static-web-server", rev = "c91445427b56c5ddff0365d8ec116e3b567377ac" } # forked to add a channel for getting the port
 serde_json.workspace = true
-rayon = "1.10.0"

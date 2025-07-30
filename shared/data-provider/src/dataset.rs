@@ -1,12 +1,8 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use parquet::{
     errors::ParquetError,
     file::reader::{FileReader, SerializedFileReader},
     record::reader::RowIter,
-};
-use rayon::{
-    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator},
-    slice::Iter,
 };
 use std::{
     collections::HashMap,

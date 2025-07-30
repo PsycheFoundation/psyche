@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr, time::Instant};
+use std::path::PathBuf;
 
 use pretty_assertions::assert_eq;
 use psyche_core::{BatchId, Shuffle};
@@ -43,7 +43,7 @@ async fn loads_hermes3_subset() {
         .await
         .unwrap();
     for (i, sample) in samples.into_iter().enumerate() {
-        let decoded_path = test_path(&[&format!("output{i}.json")]);
+        let decoded_path = test_path(&["resources", "hermes3", "decoded", &format!("{i}.json")]);
         let expected = read_to_string(&decoded_path)
             .await
             .unwrap_or_else(|_| panic!("no decoded file at {decoded_path:?}"));
