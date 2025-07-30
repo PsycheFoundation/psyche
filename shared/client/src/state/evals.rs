@@ -20,7 +20,7 @@ use tracing::{Level, error, info, span, trace};
 pub struct EvalTask {
     task: psyche_eval::PreparedTask,
     results: Arc<RunningAverage>,
-    next_index: Arc<AtomicUsize>,
+    next_indices: std::sync::RwLock<Vec<usize>>,
 }
 
 impl EvalTask {
@@ -51,8 +51,10 @@ impl EvalTask {
             },
             false,
         );
-        self.next_index
-            .fetch_max(result.next_index, Ordering::SeqCst);
+        self.next_indices
+            .write()
+            .unwrap()
+            .insert(0, result.next_index);
     }
 }
 
@@ -97,7 +99,7 @@ impl EvalRunner {
                         Arc::new(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
-                            next_index: Arc::new(AtomicUsize::new(0)),
+                            next_indices: std::sync::RwLock::new(Vec::new()),
                         })
                     })
                     .collect::<Vec<_>>()
@@ -203,7 +205,16 @@ impl EvalRunner {
                                     .zip(
                                         prepared_eval_tasks
                                             .iter()
-                                            .map(|x| x.next_index.load(Ordering::SeqCst))
+                                            .map(|eval_task| {
+                                                let mut next_indices =
+                                                    eval_task.next_indices.write().unwrap();
+                                                if next_indices.is_empty() {
+                                                    next_indices.push(dp_index);
+                                                }
+                                                let next_index = next_indices.pop().unwrap();
+
+                                                next_index
+                                            })
                                             .collect::<Vec<_>>(),
                                     )
                                     .collect::<Vec<_>>();
@@ -216,14 +227,14 @@ impl EvalRunner {
                                     trace!(
                                         "Running eval task {} on index {}",
                                         eval_task.task.name(),
-                                        next_index + dp_index
+                                        next_index
                                     );
                                     eval_task.run(
                                         &mut trainer,
                                         cancel.clone(),
-                                        Some((next_index + dp_index, data_parallelism)),
+                                        Some((next_index, data_parallelism)),
                                         Some(10),
-                                        true,
+                                        false,
                                     );
                                     trace!("Done eval task {}", eval_task.task.name());
                                 }
