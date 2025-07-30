@@ -1,11 +1,13 @@
-use tch::{Device, Kind, Tensor};
+use tch::Device;
+#[cfg(target_os = "macos")]
+use tch::{Kind, Tensor};
 
 #[cfg(target_os = "macos")]
 pub fn has_mps() -> bool {
     // Try to create a small tensor on MPS to verify it's actually available
     // Use a panic catch to handle potential failures
     std::panic::catch_unwind(|| {
-        let _tensor = Tensor::zeros(&[1], (Kind::Float, Device::Mps));
+        let _tensor = Tensor::zeros([1], (Kind::Float, Device::Mps));
         true
     })
     .unwrap_or(false)
@@ -86,6 +88,7 @@ pub fn parse_device(device_str: &str) -> anyhow::Result<Device> {
 ///
 /// On macOS with MPS, returns MPS for rank 0, CPU for others (MPS doesn't support multi-GPU).
 /// On other platforms, returns appropriate CUDA device
+#[allow(unused_variables)] // world_size is only used on macOS
 pub fn get_device_for_rank(rank: usize, world_size: usize) -> Device {
     #[cfg(target_os = "macos")]
     {
@@ -200,7 +203,7 @@ mod tests {
 
         // This should not panic
         let result = std::panic::catch_unwind(|| {
-            let tensor = Tensor::zeros(&[2, 3], (Kind::Float, device));
+            let tensor = Tensor::zeros([2, 3], (Kind::Float, device));
             assert_eq!(tensor.size(), vec![2, 3]);
             assert_eq!(tensor.device(), device);
 
