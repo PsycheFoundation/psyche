@@ -1,5 +1,5 @@
 use tch::Device;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 use tch::{Kind, Tensor};
 
 #[cfg(target_os = "macos")]
