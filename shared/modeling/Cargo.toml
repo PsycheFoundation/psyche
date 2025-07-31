@@ -27,6 +27,7 @@ flume.workspace = true
 clap.workspace = true
 psyche-data-provider.workspace = true
 psyche-python-extension-impl.workspace = true
+psyche-eval.workspace = true
 psyche-tui.workspace = true
 tokio.workspace = true
 itertools = "0.14"
