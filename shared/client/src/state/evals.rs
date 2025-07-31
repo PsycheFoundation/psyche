@@ -35,7 +35,6 @@ impl EvalTask {
         cancel: CancellationToken,
         skip_and_step_by: Option<(usize, usize)>,
         limit: Option<usize>,
-        loop_if_empty: bool,
     ) {
         let result = self.task.run(
             EvalTaskOptions {
@@ -44,7 +43,6 @@ impl EvalTask {
                 live_results: Some(self.results.clone()),
                 cancel: Some(cancel),
                 limit,
-                loop_if_empty,
             },
             false,
         );
@@ -221,7 +219,6 @@ impl EvalRunner {
                                         cancel.clone(),
                                         Some((next_index, data_parallelism)),
                                         Some(10),
-                                        false,
                                     );
                                     trace!("Done eval task {}", eval_task.task.name());
                                 }
