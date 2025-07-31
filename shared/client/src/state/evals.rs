@@ -3,10 +3,7 @@ use psyche_core::RunningAverage;
 use psyche_eval::{EvalTaskOptions, Task};
 use psyche_modeling::Trainer;
 use rand::{seq::SliceRandom, thread_rng};
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::Arc;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 use tokio::{
@@ -99,7 +96,9 @@ impl EvalRunner {
                         Arc::new(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
-                            next_indices: std::sync::RwLock::new(Vec::new()),
+                            next_indices: std::sync::RwLock::new(Vec::from_iter(
+                                0..data_parallelism,
+                            )),
                         })
                     })
                     .collect::<Vec<_>>()
@@ -149,7 +148,7 @@ impl EvalRunner {
                         // Wait for either cancellation or completion
                         tokio::select! {
                             _ = cancel.cancelled() => {
-                                trace!("Eval tasks early-cancelled");
+                                info!("Eval tasks early-cancelled");
                                 return None;
                             }
                             _ = tasks.loaded_notify.notified() => {
@@ -186,45 +185,33 @@ impl EvalRunner {
             cancel: cancel.clone(),
             eval_trainers: trainers
                 .into_iter()
-                .enumerate()
-                .map(|(dp_index, mut trainer)| {
+                .map(|mut trainer| {
                     let data_parallelism = self.data_parallelism;
                     let cancel = cancel.clone();
                     let tasks = self.tasks.clone();
 
                     tokio::task::spawn(async move {
-                        let prepared_eval_tasks = match Self::wait_for_tasks(tasks, &cancel).await {
+                        let mut eval_tasks = match Self::wait_for_tasks(tasks, &cancel).await {
                             Some(tasks) => tasks,
                             None => return Ok(trainer), // Return early if cancelled or failed
                         };
 
                         tokio::task::spawn_blocking(move || {
                             'eval_loop: while !cancel.is_cancelled() {
-                                let mut iter = prepared_eval_tasks
-                                    .iter()
-                                    .zip(
-                                        prepared_eval_tasks
-                                            .iter()
-                                            .map(|eval_task| {
-                                                let mut next_indices =
-                                                    eval_task.next_indices.write().unwrap();
-                                                if next_indices.is_empty() {
-                                                    next_indices.push(dp_index);
-                                                }
-                                                let next_index = next_indices.pop().unwrap();
-
-                                                next_index
-                                            })
-                                            .collect::<Vec<_>>(),
-                                    )
-                                    .collect::<Vec<_>>();
-                                iter.shuffle(&mut thread_rng());
+                                eval_tasks.shuffle(&mut thread_rng());
                                 let span = span!(Level::TRACE, "eval_task").entered();
-                                for (eval_task, next_index) in iter {
+                                for eval_task in &eval_tasks {
                                     if cancel.is_cancelled() {
                                         break 'eval_loop;
                                     }
-                                    trace!(
+
+                                    let next_index = {
+                                        let mut next_indices =
+                                            eval_task.next_indices.write().unwrap();
+                                        tracing::info!("next_indices: {:?}", next_indices);
+                                        next_indices.pop().unwrap()
+                                    };
+                                    info!(
                                         "Running eval task {} on index {}",
                                         eval_task.task.name(),
                                         next_index
