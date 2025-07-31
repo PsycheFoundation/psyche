@@ -57,6 +57,9 @@
 
                 # cargo stuff
                 cargo-watch
+
+                # iroh simulation
+                (pkgs.callPackage ./n0des.nix { })
               ]
               ++ (with inputs'.solana-pkgs.packages; [
                 solana
