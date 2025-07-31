@@ -108,11 +108,14 @@ pub fn coordinator_account_from_bytes_mut(
 #[repr(C)]
 #[derive(Serialize, Deserialize, TS)]
 pub struct CoordinatorAccount {
+    pub version: u64,
     pub state: CoordinatorInstanceState,
     pub nonce: u64,
 }
 
 impl CoordinatorAccount {
+    pub const VERSION: u64 = 1;
+
     pub fn space_with_discriminator() -> usize {
         CoordinatorAccount::DISCRIMINATOR.len()
             + std::mem::size_of::<CoordinatorAccount>()
@@ -296,7 +299,8 @@ pub struct OwnerCoordinatorAccounts<'info> {
 
     #[account(
         mut,
-        constraint = coordinator_instance.coordinator_account == coordinator_account.key()
+        constraint = coordinator_instance.coordinator_account == coordinator_account.key(),
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
     )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 }
@@ -317,7 +321,8 @@ pub struct PermissionlessCoordinatorAccounts<'info> {
 
     #[account(
         mut,
-        constraint = coordinator_instance.coordinator_account == coordinator_account.key()
+        constraint = coordinator_instance.coordinator_account == coordinator_account.key(),
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
     )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 }
