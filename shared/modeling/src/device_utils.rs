@@ -1,26 +1,15 @@
 use tch::Device;
-#[cfg(any(target_os = "macos", test))]
+#[cfg(test)]
 use tch::{Kind, Tensor};
-
-#[cfg(target_os = "macos")]
-pub fn has_mps() -> bool {
-    // Try to create a small tensor on MPS to verify it's actually available
-    // Use a panic catch to handle potential failures
-    std::panic::catch_unwind(|| {
-        let _tensor = Tensor::zeros([1], (Kind::Float, Device::Mps));
-        true
-    })
-    .unwrap_or(false)
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn has_mps() -> bool {
-    false
-}
 
 /// Check if CUDA is available
 pub fn has_cuda() -> bool {
     tch::utils::has_cuda()
+}
+
+/// Check if MPS is available
+pub fn has_mps() -> bool {
+    tch::utils::has_mps()
 }
 
 /// Get the optimal device for the current platform
@@ -54,6 +43,15 @@ pub fn get_optimal_device() -> Device {
 pub fn parse_device(device_str: &str) -> anyhow::Result<Device> {
     match device_str.to_lowercase().as_str() {
         "cpu" => Ok(Device::Cpu),
+        "cuda" => Ok(Device::Cuda(0)),
+        s if s.starts_with("cuda:") => {
+            let id = s
+                .strip_prefix("cuda:")
+                .ok_or_else(|| anyhow::anyhow!("Invalid CUDA device format"))?
+                .parse::<usize>()
+                .map_err(|_| anyhow::anyhow!("Invalid CUDA device ID"))?;
+            Ok(Device::Cuda(id))
+        }
         "mps" => {
             #[cfg(target_os = "macos")]
             {
@@ -67,15 +65,6 @@ pub fn parse_device(device_str: &str) -> anyhow::Result<Device> {
             {
                 anyhow::bail!("MPS device is only available on macOS")
             }
-        }
-        "cuda" => Ok(Device::Cuda(0)),
-        s if s.starts_with("cuda:") => {
-            let id = s
-                .strip_prefix("cuda:")
-                .ok_or_else(|| anyhow::anyhow!("Invalid CUDA device format"))?
-                .parse::<usize>()
-                .map_err(|_| anyhow::anyhow!("Invalid CUDA device ID"))?;
-            Ok(Device::Cuda(id))
         }
         _ => anyhow::bail!(
             "Invalid device: {}. Supported: cpu, mps, cuda, cuda:N",
