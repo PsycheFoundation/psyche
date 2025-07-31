@@ -413,11 +413,14 @@ impl CompressDCT {
 }
 
 fn compress_idx(max_value: i64, idx: &Tensor) -> Tensor {
+    let is_mps = idx.device() == Device::Mps;
+
+    // Metal does not support uint16/uint32 for now so in those cases we work around the compression
     if max_value <= 256 {
         idx.to_kind(Kind::Uint8)
-    } else if max_value <= 65536 {
+    } else if max_value <= 65536 && !is_mps {
         idx.to_kind(Kind::UInt16).view_dtype(Kind::Uint8)
-    } else if max_value <= 4294967296 {
+    } else if max_value <= 4294967296 && !is_mps {
         idx.to_kind(Kind::UInt32).view_dtype(Kind::Uint8)
     } else {
         idx.shallow_clone()
@@ -425,11 +428,14 @@ fn compress_idx(max_value: i64, idx: &Tensor) -> Tensor {
 }
 
 fn decompress_idx(max_value: i64, idx: &Tensor) -> Tensor {
+    let is_mps = idx.device() == Device::Mps;
+
+    // Metal does not support uint16/uint32 for now so in those cases we work around the compression
     if max_value <= 256 {
         idx.view_dtype(Kind::Uint8)
-    } else if max_value <= 65536 {
+    } else if max_value <= 65536 && !is_mps {
         idx.view_dtype(Kind::UInt16)
-    } else if max_value <= 4294967296 {
+    } else if max_value <= 4294967296 && !is_mps {
         idx.view_dtype(Kind::UInt32)
     } else {
         idx.shallow_clone()

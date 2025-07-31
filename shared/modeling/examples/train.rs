@@ -4,7 +4,8 @@ use psyche_core::{Barrier, BatchId, CancellableBarrier, CosineLR, OptimizerDefin
 use psyche_data_provider::{LocalDataProvider, download_model_repo_sync};
 use psyche_modeling::{
     Batch, BatchData, CausalLM, CommunicatorId, DataParallel, LocalTrainer, ModelLoadError,
-    ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained,
+    ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained, get_optimal_device,
+    parse_device,
 };
 use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
@@ -67,6 +68,9 @@ struct Args {
     #[arg(long, default_value_t = false)]
     cpu: bool,
 
+    #[arg(long, help = "Device to use: cpu, mps, cuda, cuda:N")]
+    device: Option<String>,
+
     #[arg(long, default_value_t = false)]
     grad_accum_in_fp32: bool,
 
@@ -88,6 +92,16 @@ struct Args {
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
+}
+
+fn get_device(args: &Args) -> Result<Device> {
+    if let Some(device_str) = &args.device {
+        parse_device(device_str)
+    } else if args.cpu {
+        Ok(Device::Cpu)
+    } else {
+        Ok(get_optimal_device())
+    }
 }
 
 #[tokio::main]
@@ -219,10 +233,11 @@ async fn main() -> Result<()> {
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     if dp != 1 || tp != 1 {
+                        let device = get_device(&args)?;
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
                             source,
-                            Device::cuda_if_available(),
+                            device,
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
                         )?;
@@ -237,14 +252,11 @@ async fn main() -> Result<()> {
                         )?
                         .into())
                     } else {
+                        let device = get_device(&args)?;
                         let models = vec![Box::new(psyche_modeling::PythonCausalLM::new(
                             "hf-auto",
                             &source,
-                            if args.cpu {
-                                Device::Cpu
-                            } else {
-                                Device::cuda_if_available()
-                            },
+                            device,
                             None,
                             Some(args.sequence_length),
                         )?) as Box<dyn CausalLM>];
@@ -272,6 +284,7 @@ async fn main() -> Result<()> {
             let repo_files = repo_files.clone();
             let data_parallel = data_parallel.clone();
             let barrier = barrier.clone();
+            let args_clone = args.clone();
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     let id = if tp_world_size > 1 {
@@ -291,10 +304,11 @@ async fn main() -> Result<()> {
                     let results = (0..tp_world_size)
                         .map(|tp| {
                             let rank = (dp * tp_world_size) + tp;
-                            let device = if args.cpu && tp_world_size <= 1 {
-                                Device::Cpu
-                            } else {
+                            let device = if tp_world_size > 1 {
+                                // Multi-GPU setup requires CUDA
                                 Device::Cuda(rank)
+                            } else {
+                                get_device(&args_clone).unwrap_or(Device::Cpu)
                             };
                             let id = id.clone();
                             let repo_files = repo_files.clone();
