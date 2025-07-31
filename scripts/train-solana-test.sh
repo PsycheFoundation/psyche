@@ -2,9 +2,22 @@
 
 set -eo pipefail
 
-# use the agenix provided wallet if you have it
-DEFAULT_WALLET=${devnet__keypair__wallet_PATH:-"$HOME/.config/solana/id.json"}
-WALLET_FILE=${WALLET_FILE:-"$DEFAULT_WALLET"}
+# Handle wallet file creation
+if [[ -z "${WALLET_FILE:-}" ]]; then
+    echo "No wallet file specified, generating ephemeral keypair..."
+    # Create a named pipe for the keypair data
+    mkdir -p ~/solana-keys
+    WALLET_FILE=$(mktemp ~/solana-keys/solana-wallet-XXXXXXXXX)
+
+    # Generate keypair and write to the named pipe in the background
+    solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
+
+    echo "Using ephemeral keypair (will not persist after script exits)"
+    # Set up cleanup trap to remove the wallet file when script exits
+    # This will run on normal exit, SIGINT (Ctrl+C), SIGTERM, or ERR
+    trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
+fi
+
 RPC=${RPC:-"http://127.0.0.1:8899"}
 WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
 RUN_ID=${RUN_ID:-"test"}
