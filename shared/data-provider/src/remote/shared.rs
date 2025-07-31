@@ -1,3 +1,5 @@
+use crate::TokenizedData;
+
 use psyche_core::BatchId;
 use serde::{Deserialize, Serialize};
 
@@ -5,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum ServerToClientMessage {
     TrainingData {
         data_ids: BatchId,
-        raw_data: Vec<Vec<i32>>,
+        raw_data: Vec<TokenizedData>,
     },
     RequestRejected {
         data_ids: BatchId,

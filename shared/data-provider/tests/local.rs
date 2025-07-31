@@ -44,7 +44,11 @@ async fn loads_dolma_subset() {
 
         let decoded = tokenizer
             .decode(
-                &sample.into_iter().map(|x| x as u32).collect::<Vec<_>>(),
+                &sample
+                    .input_ids
+                    .into_iter()
+                    .map(|x| x as u32)
+                    .collect::<Vec<_>>(),
                 true,
             )
             .unwrap();
@@ -82,7 +86,11 @@ async fn loads_fineweb_subset() {
 
         let decoded = tokenizer
             .decode(
-                &sample.into_iter().map(|x| x as u32).collect::<Vec<_>>(),
+                &sample
+                    .input_ids
+                    .into_iter()
+                    .map(|x| x as u32)
+                    .collect::<Vec<_>>(),
                 true,
             )
             .unwrap();

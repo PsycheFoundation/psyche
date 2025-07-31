@@ -1,7 +1,8 @@
 use anyhow::Result;
 use psyche_core::{BatchId, ClosedInterval, Shuffle, TokenSize};
 use psyche_data_provider::{
-    DummyDataProvider, LengthKnownDataProvider, TokenizedDataProvider, WeightedDataProvider,
+    DummyDataProvider, LengthKnownDataProvider, TokenizedData, TokenizedDataProvider,
+    WeightedDataProvider,
 };
 use std::collections::HashMap;
 use test_log::test;
@@ -29,7 +30,7 @@ impl LengthKnownDataProvider for MockDataProvider {
 }
 
 impl TokenizedDataProvider for MockDataProvider {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         // Create sample sequences where each token is provider_id * 1000 + sample_id
         let mut results = Vec::with_capacity(data_ids.len());
 
@@ -40,7 +41,7 @@ impl TokenizedDataProvider for MockDataProvider {
                 .iter()
                 .map(|&pattern| base_value + pattern)
                 .collect();
-            results.push(sequence);
+            results.push(TokenizedData::from_input_ids(sequence));
         }
 
         Ok(results)
@@ -69,7 +70,7 @@ async fn test_weighted_data_provider_equal_weights() -> Result<()> {
     let mut provider_counts = HashMap::new();
     for sample in &samples {
         // first token's value will tell us which provider it came from
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         *provider_counts.entry(provider_id).or_insert(0) += 1;
     }
 
@@ -103,7 +104,7 @@ async fn test_weighted_data_provider_unequal_weights() -> Result<()> {
 
     let mut provider_counts = HashMap::new();
     for sample in &samples {
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         *provider_counts.entry(provider_id).or_insert(0) += 1;
     }
 
@@ -133,7 +134,7 @@ async fn test_weighted_data_provider_auto_weights() -> Result<()> {
 
     let mut provider_counts = HashMap::new();
     for sample in &samples {
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         *provider_counts.entry(provider_id).or_insert(0) += 1;
     }
 
@@ -199,7 +200,7 @@ async fn test_weighted_data_provider_with_dummy_provider() -> Result<()> {
     assert_eq!(samples.len(), 10);
     // each sample should have 11 tokens (10 + 1 for next token prediction)
     for sample in samples {
-        assert_eq!(sample.len(), 11);
+        assert_eq!(sample.input_ids.len(), 11);
     }
 
     Ok(())
@@ -254,7 +255,7 @@ async fn test_weighted_data_provider_exhaustive() -> Result<()> {
     let mut provider2_samples = 0;
 
     for sample in &samples {
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         match provider_id {
             1 => provider1_samples += 1,
             2 => provider2_samples += 1,
@@ -307,7 +308,10 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
 
     for sample in samples.iter() {
         // MockDataProvider encodes provider_id * 1000 + sample_id in the token
-        let value = sample.first().expect("Sample should not be empty");
+        let value = sample
+            .input_ids
+            .first()
+            .expect("Sample should not be empty");
         let provider_id = value / 1000;
         let sample_id_within_provider = value % 1000;
 
@@ -347,7 +351,7 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
     let mut first_5_p1_ids = std::collections::HashSet::new();
     let mut p1_occurrences = 0;
     for sample in &samples {
-        let value = sample[0];
+        let value = sample.input_ids[0];
         if value / 1000 == 1 {
             // If it's from provider 1
             if p1_occurrences < 5 {

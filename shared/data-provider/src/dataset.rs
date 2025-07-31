@@ -30,15 +30,6 @@ fn looks_like_parquet_file(x: &Path) -> bool {
     false
 }
 
-fn order(x: &Path) -> usize {
-    x.file_stem()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .parse::<usize>()
-        .unwrap()
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum Split {
     Train,
@@ -163,7 +154,7 @@ impl Dataset {
                 bail!("Could not determine split");
             }
         };
-        to_load.sort_by_key(|x| order(x));
+        to_load.sort_by(|a, b| a.file_stem().unwrap().cmp(b.file_stem().unwrap()));
         let files: std::io::Result<Vec<File>> = to_load.into_iter().map(File::open).collect();
         let files: Result<Vec<SerializedFileReader<File>>, ParquetError> =
             files?.into_iter().map(SerializedFileReader::new).collect();
