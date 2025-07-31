@@ -46,6 +46,7 @@ use tracing::info;
 
 mod app;
 mod backend;
+mod instructions;
 mod network_identity;
 mod retry;
 
@@ -103,6 +104,12 @@ enum Commands {
         #[clap(short, long, env)]
         run_id: String,
 
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
+
+        #[clap(long, env)]
+        treasurer_collateral_mint: Option<String>,
+
         #[clap(long)]
         join_authority: Option<String>,
     },
@@ -126,6 +133,9 @@ enum Commands {
         #[clap(long, env)]
         run_id: String,
 
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
+
         #[clap(short, long, env)]
         resume: bool,
     },
@@ -138,6 +148,9 @@ enum Commands {
 
         #[clap(short, long, env)]
         run_id: String,
+
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
 
         #[clap(long, env)]
         config_path: Option<PathBuf>,
@@ -187,6 +200,9 @@ enum Commands {
 
         #[clap(short, long, env)]
         run_id: String,
+
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
 
         #[clap(long, env)]
         earning_rate: Option<u64>,
@@ -330,6 +346,8 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
+            treasurer_collateral_mint,
             join_authority,
         } => {
             let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
@@ -341,9 +359,27 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
+
+            if treasurer_index.is_some() && treasurer_collateral_mint.is_none() {
+                bail!(
+                    "treasurer_index is set, but treasurer_collateral_mint is not. Please provide a collateral mint address."
+                );
+            }
+            let treasurer_index_and_collateral_mint =
+                treasurer_collateral_mint.map(|treasurer_collateral_mint| {
+                    (
+                        SolanaBackend::compute_deterministic_treasurer_index(
+                            &run_id,
+                            treasurer_index,
+                        ),
+                        Pubkey::from_str(&treasurer_collateral_mint).unwrap(),
+                    )
+                });
+
             let created = backend
                 .create_run(
-                    run_id.clone(),
+                    &run_id,
+                    treasurer_index_and_collateral_mint,
                     join_authority.map(|address| Pubkey::from_str(&address).unwrap()),
                 )
                 .await?;
@@ -393,6 +429,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             config_path,
             restart_from_step,
             switch_to_hub,
@@ -482,8 +519,9 @@ async fn async_main() -> Result<()> {
 
             let set: anchor_client::solana_sdk::signature::Signature = backend
                 .update(
-                    coordinator_instance,
-                    coordinator_account,
+                    &run_id,
+                    treasurer_index,
+                    &coordinator_account,
                     metadata,
                     config,
                     model,
@@ -501,6 +539,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             resume,
         } => {
             let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
@@ -519,7 +558,7 @@ async fn async_main() -> Result<()> {
                 .await?;
             let coordinator_account = coordinator_instance_state.coordinator_account;
             let set = backend
-                .set_paused(coordinator_instance, coordinator_account, paused)
+                .set_paused(&run_id, treasurer_index, &coordinator_account, paused)
                 .await?;
             println!("Set pause state to {paused} on run {run_id} with transaction {set}");
             println!("\n===== Logs =====");
@@ -570,6 +609,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             earning_rate,
             slashing_rate,
         } => {
@@ -589,8 +629,9 @@ async fn async_main() -> Result<()> {
             let coordinator_account = coordinator_instance_state.coordinator_account;
             let set = backend
                 .set_future_epoch_rates(
-                    coordinator_instance,
-                    coordinator_account,
+                    &run_id,
+                    treasurer_index,
+                    &coordinator_account,
                     earning_rate,
                     slashing_rate,
                 )
