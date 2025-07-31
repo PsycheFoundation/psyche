@@ -34,7 +34,7 @@ pub enum PythonDistributedCausalLMError {
 
 #[derive(Debug, Clone)]
 pub struct TorchDistributedCommunicator {
-    store: PyObject,
+    store: Arc<PyObject>,
     rank: Option<usize>,
     world_size: Option<usize>,
 }
@@ -71,7 +71,7 @@ impl TorchDistributedCommunicator {
             Ok(store.unbind())
         });
         Ok(Self {
-            store: result?,
+            store: Arc::new(result?),
             rank,
             world_size,
         })
@@ -220,11 +220,19 @@ impl CausalLM for PythonDistributedCausalLM {
         &mut self,
         x: &Tensor,
         labels: Option<&tch::Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local
-            .forward(x, labels, num_logits_to_keep, loss_scale)
+        self.local.forward(
+            x,
+            labels,
+            position_ids,
+            sequence_lengths,
+            num_logits_to_keep,
+            loss_scale,
+        )
     }
 
     fn device(&self) -> Device {
