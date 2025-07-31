@@ -17,7 +17,7 @@ use tracing::{Level, error, info, span, trace};
 pub struct EvalTask {
     task: psyche_eval::PreparedTask,
     results: Arc<RunningAverage>,
-    next_indices: std::sync::RwLock<Vec<usize>>,
+    next_indices: std::sync::Mutex<Vec<usize>>,
 }
 
 impl EvalTask {
@@ -47,7 +47,7 @@ impl EvalTask {
             false,
         );
         self.next_indices
-            .write()
+            .lock()
             .unwrap()
             .insert(0, result.next_index);
     }
@@ -94,7 +94,7 @@ impl EvalRunner {
                         Arc::new(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
-                            next_indices: std::sync::RwLock::new(Vec::from_iter(
+                            next_indices: std::sync::Mutex::new(Vec::from_iter(
                                 0..data_parallelism,
                             )),
                         })
@@ -205,7 +205,7 @@ impl EvalRunner {
 
                                     let next_index = {
                                         let mut next_indices =
-                                            eval_task.next_indices.write().unwrap();
+                                            eval_task.next_indices.lock().unwrap();
                                         next_indices.pop().unwrap()
                                     };
                                     trace!(
