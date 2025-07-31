@@ -202,6 +202,8 @@ impl CausalLM for PythonCausalLM {
         &mut self,
         input_ids: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
@@ -210,7 +212,15 @@ impl CausalLM for PythonCausalLM {
             let forward = causal_lm.getattr("forward")?;
             let input_ids = PyTensor(input_ids.shallow_clone());
             let labels = labels.map(|x| PyTensor(x.shallow_clone()));
-            let args = (input_ids, labels, num_logits_to_keep, loss_scale);
+            let position_ids = position_ids.map(|x| PyTensor(x.shallow_clone()));
+            let args = (
+                input_ids,
+                labels,
+                position_ids,
+                sequence_lengths,
+                num_logits_to_keep,
+                loss_scale,
+            );
             let result: Bound<PyTuple> = forward.call1(args)?.downcast_into()?;
             let logits = result.get_item(0)?;
             let logits: PyTensor = logits.extract()?;

@@ -91,7 +91,7 @@ bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 thiserror = "2.0.3"
 toml = "0.8.19"
 clap-markdown = "0.1.4"
-pyo3 = { version = "0.24", features = ["py-clone"] }
+pyo3 = { version = "0.24" }
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 anchor-client = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5", features = [
   "async",
