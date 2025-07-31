@@ -458,16 +458,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 if dp == 0 {
                                                     get_optimal_device()
                                                 } else {
-                                                    get_device_for_rank(
-                                                        dp,
-                                                        init_config.data_parallelism,
-                                                    )
+                                                    get_device_for_rank(dp)
                                                 }
                                             } else {
                                                 get_device_for_rank(
                                                     dp * init_config.tensor_parallelism + tp,
-                                                    init_config.data_parallelism
-                                                        * init_config.tensor_parallelism,
                                                 )
                                             };
                                             match llm.architecture {

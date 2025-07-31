@@ -76,14 +76,14 @@ pub fn parse_device(device_str: &str) -> anyhow::Result<Device> {
 /// Get device for data parallel training.
 ///
 /// On macOS with MPS, returns MPS for rank 0, CPU for others (MPS doesn't support multi-GPU).
-/// On other platforms, returns appropriate CUDA device
-#[allow(unused_variables)] // world_size is only used on macOS
-pub fn get_device_for_rank(rank: usize, world_size: usize) -> Device {
+/// On other platforms, returns appropriate CUDA device.
+/// Multi-worker setup is inferred from rank > 0.
+pub fn get_device_for_rank(rank: usize) -> Device {
     #[cfg(target_os = "macos")]
     {
         if rank == 0 && has_mps() {
             return Device::Mps;
-        } else if world_size > 1 {
+        } else if rank > 0 {
             return Device::Cpu;
         }
     }
@@ -125,8 +125,8 @@ mod tests {
 
     #[test]
     fn test_get_device_for_rank_single_worker() {
-        // Single worker should get optimal device
-        let device = get_device_for_rank(0, 1);
+        // Single worker (rank 0) should get optimal device
+        let device = get_device_for_rank(0);
 
         #[cfg(target_os = "macos")]
         {
@@ -152,12 +152,10 @@ mod tests {
         // Test multiple workers on different platforms
         #[cfg(target_os = "macos")]
         {
-            // On macOS with MPS, only rank 0 gets MPS
+            // On macOS with MPS, only rank 0 gets MPS, others get CPU
             if has_mps() {
-                assert_eq!(get_device_for_rank(0, 4), Device::Mps);
-                assert_eq!(get_device_for_rank(1, 4), Device::Cpu);
-                assert_eq!(get_device_for_rank(2, 4), Device::Cpu);
-                assert_eq!(get_device_for_rank(3, 4), Device::Cpu);
+                assert_eq!(get_device_for_rank(0), Device::Mps);
+                assert_eq!(get_device_for_rank(1), Device::Cpu);
             }
         }
 
@@ -165,23 +163,21 @@ mod tests {
         {
             if has_cuda() {
                 // Each rank gets its own CUDA device
-                assert_eq!(get_device_for_rank(0, 4), Device::Cuda(0));
-                assert_eq!(get_device_for_rank(1, 4), Device::Cuda(1));
-                assert_eq!(get_device_for_rank(2, 4), Device::Cuda(2));
-                assert_eq!(get_device_for_rank(3, 4), Device::Cuda(3));
+                assert_eq!(get_device_for_rank(0), Device::Cuda(0));
+                assert_eq!(get_device_for_rank(1), Device::Cuda(1));
             } else {
                 // Without CUDA, everyone gets CPU
-                assert_eq!(get_device_for_rank(0, 4), Device::Cpu);
-                assert_eq!(get_device_for_rank(1, 4), Device::Cpu);
+                assert_eq!(get_device_for_rank(0), Device::Cpu);
+                assert_eq!(get_device_for_rank(1), Device::Cpu);
             }
         }
     }
 
     #[test]
     fn test_optimal_device_consistency() {
-        // get_optimal_device should be consistent with get_device_for_rank(0, 1)
+        // get_optimal_device should be consistent with get_device_for_rank(0)
         let optimal = get_optimal_device();
-        let rank_zero = get_device_for_rank(0, 1);
+        let rank_zero = get_device_for_rank(0);
         assert_eq!(optimal, rank_zero);
     }
 
