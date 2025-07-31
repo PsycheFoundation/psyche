@@ -94,16 +94,6 @@ struct Args {
     python: bool,
 }
 
-fn get_device(args: &Args) -> Result<Device> {
-    if let Some(device_str) = &args.device {
-        parse_device(device_str)
-    } else if args.cpu {
-        Ok(Device::Cpu)
-    } else {
-        Ok(get_optimal_device())
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let logger = logging().init()?;
@@ -113,6 +103,15 @@ async fn main() -> Result<()> {
     let cancel = setup_ctrl_c();
 
     let args = Args::parse();
+
+    let target_device = if let Some(device_str) = &args.device {
+        parse_device(device_str)?
+    } else if args.cpu {
+        Device::Cpu
+    } else {
+        get_optimal_device()
+    };
+
     let repo_files = if std::fs::exists(args.model.clone()).is_ok_and(|x| x) {
         std::fs::read_dir(args.model.clone())?
             .map(|x| x.unwrap().path())
@@ -229,11 +228,11 @@ async fn main() -> Result<()> {
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);
             let tp = args.tensor_parallelism.unwrap_or(1);
+            let device = target_device;
 
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     if dp != 1 || tp != 1 {
-                        let device = get_device(&args)?;
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
                             source,
@@ -252,7 +251,6 @@ async fn main() -> Result<()> {
                         )?
                         .into())
                     } else {
-                        let device = get_device(&args)?;
                         let models = vec![Box::new(psyche_modeling::PythonCausalLM::new(
                             "hf-auto",
                             &source,
@@ -284,7 +282,7 @@ async fn main() -> Result<()> {
             let repo_files = repo_files.clone();
             let data_parallel = data_parallel.clone();
             let barrier = barrier.clone();
-            let args_clone = args.clone();
+            let device = target_device;
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     let id = if tp_world_size > 1 {
@@ -308,7 +306,7 @@ async fn main() -> Result<()> {
                                 // Multi-GPU setup requires CUDA
                                 Device::Cuda(rank)
                             } else {
-                                get_device(&args_clone).unwrap_or(Device::Cpu)
+                                device
                             };
                             let id = id.clone();
                             let repo_files = repo_files.clone();
