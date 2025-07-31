@@ -37,6 +37,7 @@ async fn loads_hermes3_subset() {
         None,
     )
     .unwrap();
+
     let samples = data_loader
         .get_samples(BatchId((0, 1).into()))
         .await

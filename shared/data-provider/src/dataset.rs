@@ -193,11 +193,15 @@ impl Dataset {
             .fold(0, |acc, x| acc + x.metadata().file_metadata().num_rows()) as usize
     }
 
+    pub fn files(&self) -> &Vec<SerializedFileReader<File>> {
+        &self.files
+    }
+
     pub fn split(&self) -> Split {
         self.split
     }
 
-    pub fn iter(&self) -> DatasetIter {
+    pub fn iter(&self) -> DatasetIter<'_> {
         let mut files_iter = self.files.iter();
         let row_iter = files_iter.next().unwrap().get_row_iter(None).unwrap();
         DatasetIter {
