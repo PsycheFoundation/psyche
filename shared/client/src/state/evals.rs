@@ -146,7 +146,7 @@ impl EvalRunner {
                         // Wait for either cancellation or completion
                         tokio::select! {
                             _ = cancel.cancelled() => {
-                                info!("Eval tasks early-cancelled");
+                                trace!("Eval tasks early-cancelled");
                                 return None;
                             }
                             _ = tasks.loaded_notify.notified() => {
@@ -206,10 +206,9 @@ impl EvalRunner {
                                     let next_index = {
                                         let mut next_indices =
                                             eval_task.next_indices.write().unwrap();
-                                        tracing::info!("next_indices: {:?}", next_indices);
                                         next_indices.pop().unwrap()
                                     };
-                                    info!(
+                                    trace!(
                                         "Running eval task {} on index {}",
                                         eval_task.task.name(),
                                         next_index
