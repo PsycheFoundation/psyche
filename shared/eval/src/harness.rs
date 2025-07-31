@@ -192,7 +192,6 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
-    pub loop_if_empty: bool,
 }
 
 impl PreparedTask {
@@ -248,7 +247,7 @@ impl PreparedTask {
                     break;
                 }
             }
-            if !options.loop_if_empty && doc_index >= docs.len() {
+            if doc_index >= docs.len() {
                 break;
             }
             if let Some(limit) = options.limit {
