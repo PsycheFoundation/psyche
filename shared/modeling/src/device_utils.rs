@@ -202,5 +202,17 @@ mod tests {
             "Failed to create tensor on device {:?}",
             device
         );
+
+        let uint32_result = std::panic::catch_unwind(|| {
+            let tensor = Tensor::randint(100000, [4], (Kind::Int64, device));
+            let compressed = tensor.to_kind(Kind::UInt32).view_dtype(Kind::Uint8);
+            let _decompressed = compressed.view_dtype(Kind::UInt32).to_kind(Kind::Int64);
+        });
+
+        assert!(
+            uint32_result.is_ok(),
+            "Failed to convert to uint32 with view_dtype on device {:?}",
+            device
+        );
     }
 }
