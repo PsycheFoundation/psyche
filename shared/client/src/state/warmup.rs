@@ -1,12 +1,12 @@
 use psyche_core::NodeIdentity;
 
 use super::{
-    evals::{EvalRunner, MaybeRunningEvals, RunningEvals},
+    evals::{MaybeRunningEvals, ModelTaskRunner, RunningEvals},
     round_state::RoundState,
 };
 
 pub struct WarmupStepMetadata {
-    pub eval_runner: EvalRunner,
+    pub model_task_runner: ModelTaskRunner,
 }
 
 impl WarmupStepMetadata {
@@ -21,7 +21,7 @@ impl WarmupStepMetadata {
         *current_round = RoundState::default();
 
         let evals = self
-            .eval_runner
+            .model_task_runner
             .start_if_not_running(evals_or_trainers.into());
         WarmupStep { evals }
     }

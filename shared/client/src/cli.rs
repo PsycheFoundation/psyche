@@ -124,6 +124,10 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub eval_task_max_docs: Option<usize>,
 
+    // enable the execution of the model prompting task
+    #[clap(long, env)]
+    pub prompt_task: bool,
+
     /// If provided, every model parameters update will be save in this directory after each epoch.
     #[clap(long, env)]
     pub checkpoint_dir: Option<PathBuf>,

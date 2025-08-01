@@ -17,7 +17,7 @@ use tracing::{Instrument, error, info, info_span};
 
 use super::{
     CheckpointConfig,
-    evals::{EvalRunner, RunningEvals},
+    evals::{ModelTaskRunner, RunningEvals},
 };
 
 #[derive(Error, Debug)]
@@ -38,7 +38,7 @@ pub struct CooldownStepMetadata {
     checkpoint_info: Option<CheckpointConfig>,
     checkpoint_extra_files: Vec<PathBuf>,
 
-    eval_runner: EvalRunner,
+    model_task_runner: ModelTaskRunner,
 }
 
 impl CooldownStepMetadata {
@@ -47,14 +47,14 @@ impl CooldownStepMetadata {
         tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
         checkpoint_info: Option<CheckpointConfig>,
         checkpoint_extra_files: Vec<PathBuf>,
-        eval_runner: EvalRunner,
+        model_task_runner: ModelTaskRunner,
     ) -> Self {
         Self {
             tx_checkpoint,
             tx_model,
             checkpoint_info,
             checkpoint_extra_files,
-            eval_runner,
+            model_task_runner,
         }
     }
 }
@@ -99,7 +99,7 @@ impl CooldownStepMetadata {
         let checkpoint_info = self.checkpoint_info.clone();
         let tx_checkpoint = self.tx_checkpoint.clone();
         let tx_model = self.tx_model.clone();
-        let eval_runner = self.eval_runner.clone();
+        let model_task_runner = self.model_task_runner.clone();
         let doing_checkpoint = checkpoint_info.is_some();
 
         let checkpointing_and_evals = tokio::task::spawn(
@@ -120,7 +120,7 @@ impl CooldownStepMetadata {
                     .collect();
 
                 trainers.push(trainer);
-                let evals = eval_runner.start(trainers);
+                let evals = model_task_runner.start(trainers);
 
                 tx_model
                     .send(variables_clone)
