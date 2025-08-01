@@ -4,6 +4,7 @@ mod auto_model;
 mod auto_tokenizer;
 mod batcher;
 mod causal_language_model;
+mod device_utils;
 mod distro;
 mod dummy;
 mod fp32_gradient_accumulator;
@@ -35,6 +36,7 @@ pub use causal_language_model::{
     CausalLM, CausalLanguageModel, EosToks, LanguageModelBuilder, LanguageModelConfig,
     LanguageModelForward,
 };
+pub use device_utils::{get_device_for_rank, get_optimal_device, has_cuda, has_mps, parse_device};
 pub use distro::{CompressDCT, Distro, DistroResult, TransformDCT};
 pub use dummy::{DummyModel, get_dummy_parameters};
 pub use fp32_gradient_accumulator::Fp32GradientAccumulator;

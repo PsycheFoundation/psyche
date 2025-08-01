@@ -3,7 +3,7 @@ use clap::Parser;
 use psyche_data_provider::download_model_repo_sync;
 use psyche_modeling::{
     CausalLM, CommunicatorId, LogitsProcessor, Sampling, TokenOutputStream,
-    auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
+    auto_model_for_causal_lm_from_pretrained, auto_tokenizer, get_optimal_device, parse_device,
 };
 use std::{
     io::Write,
@@ -91,6 +91,9 @@ struct Args {
     #[arg(long)]
     tensor_parallelism: Option<usize>,
 
+    #[arg(long, help = "Device to use: cpu, mps, cuda, cuda:N")]
+    device: Option<String>,
+
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
@@ -110,7 +113,13 @@ fn inference(
         .as_ref()
         .map(|(_, rank, _, _)| *rank)
         .unwrap_or(0);
-    let device = Device::Cuda(rank);
+    let device = if let Some(device_str) = &args.device {
+        parse_device(device_str)?
+    } else if tensor_parallelism.is_some() {
+        Device::Cuda(rank)
+    } else {
+        get_optimal_device()
+    };
 
     #[cfg(feature = "python")]
     let python = args.python;

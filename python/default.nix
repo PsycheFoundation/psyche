@@ -35,7 +35,7 @@ pkgs.python312Packages.buildPythonPackage rec {
   src = ./python/psyche;
 
   propagatedBuildInputs = with pkgs.python312Packages; [
-    torch-bin
+    torch
     transformers
   ];
 

@@ -27,6 +27,8 @@ let
 
   env = {
     LIBTORCH_USE_PYTORCH = 1;
+    # Disable version check for PyTorch to allow using nightly builds
+    LIBTORCH_BYPASS_VERSION_CHECK = 1;
   };
 
   rustWorkspaceDeps = {
@@ -38,7 +40,7 @@ let
 
     buildInputs =
       [
-        pkgs.python312Packages.torch-bin
+        pkgs.python312Packages.torch
       ]
       ++ (with pkgs; [
         openssl
@@ -57,7 +59,9 @@ let
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    cargoExtraArgs = "--features python-extension,parallelism";
+    # Disable parallelism feature on macOS as NCCL is not supported
+    cargoExtraArgs =
+      "--features python-extension" + lib.optionalString (!pkgs.stdenv.isDarwin) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
@@ -86,8 +90,7 @@ let
         inherit cargoArtifacts;
         pname = name;
         cargoExtraArgs =
-          rustWorkspaceArgsWithPython.cargoExtraArgs
-          + (if isExample then " --example ${name}" else " --bin ${name}");
+          rustWorkspaceArgs.cargoExtraArgs + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
       }
     );

@@ -4,7 +4,8 @@ use psyche_core::{Barrier, BatchId, CancellableBarrier, CosineLR, OptimizerDefin
 use psyche_data_provider::{LocalDataProvider, download_model_repo_sync};
 use psyche_modeling::{
     Batch, BatchData, CausalLM, CommunicatorId, DataParallel, LocalTrainer, ModelLoadError,
-    ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained,
+    ParallelModels, Trainer, auto_model_for_causal_lm_from_pretrained, get_optimal_device,
+    parse_device,
 };
 use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
@@ -67,6 +68,9 @@ struct Args {
     #[arg(long, default_value_t = false)]
     cpu: bool,
 
+    #[arg(long, help = "Device to use: cpu, mps, cuda, cuda:N")]
+    device: Option<String>,
+
     #[arg(long, default_value_t = false)]
     grad_accum_in_fp32: bool,
 
@@ -99,6 +103,15 @@ async fn main() -> Result<()> {
     let cancel = setup_ctrl_c();
 
     let args = Args::parse();
+
+    let target_device = if let Some(device_str) = &args.device {
+        parse_device(device_str)?
+    } else if args.cpu {
+        Device::Cpu
+    } else {
+        get_optimal_device()
+    };
+
     let repo_files = if std::fs::exists(args.model.clone()).is_ok_and(|x| x) {
         std::fs::read_dir(args.model.clone())?
             .map(|x| x.unwrap().path())
@@ -215,6 +228,7 @@ async fn main() -> Result<()> {
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);
             let tp = args.tensor_parallelism.unwrap_or(1);
+            let device = target_device;
 
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
@@ -222,7 +236,7 @@ async fn main() -> Result<()> {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
                             source,
-                            Device::cuda_if_available(),
+                            device,
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
                         )?;
@@ -240,11 +254,7 @@ async fn main() -> Result<()> {
                         let models = vec![Box::new(psyche_modeling::PythonCausalLM::new(
                             "hf-auto",
                             &source,
-                            if args.cpu {
-                                Device::Cpu
-                            } else {
-                                Device::cuda_if_available()
-                            },
+                            device,
                             None,
                             Some(args.sequence_length),
                         )?) as Box<dyn CausalLM>];
@@ -272,6 +282,7 @@ async fn main() -> Result<()> {
             let repo_files = repo_files.clone();
             let data_parallel = data_parallel.clone();
             let barrier = barrier.clone();
+            let device = target_device;
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     let id = if tp_world_size > 1 {
@@ -291,10 +302,11 @@ async fn main() -> Result<()> {
                     let results = (0..tp_world_size)
                         .map(|tp| {
                             let rank = (dp * tp_world_size) + tp;
-                            let device = if args.cpu && tp_world_size <= 1 {
-                                Device::Cpu
-                            } else {
+                            let device = if tp_world_size > 1 {
+                                // Multi-GPU setup requires CUDA
                                 Device::Cuda(rank)
+                            } else {
+                                device
                             };
                             let id = id.clone();
                             let repo_files = repo_files.clone();
