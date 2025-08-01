@@ -526,7 +526,7 @@ where
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
-                        self.metrics.update_download_progress(update.blob_ticket.hash(), update.downloaded_size_delta);
+                        self.metrics.update_download_progress(update.downloaded_size_delta);
                         Ok(self.on_download_update(update))
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {

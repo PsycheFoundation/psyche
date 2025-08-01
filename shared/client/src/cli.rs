@@ -87,7 +87,7 @@ pub struct TrainArgs {
 
     /// how often to report metrics thru opentelemetry
     #[clap(long, env,
-    default_value = "10.0",
+    default_value = "60.0",
     value_parser = parse_duration_from_seconds)]
     pub oltp_report_interval: Duration,
 
