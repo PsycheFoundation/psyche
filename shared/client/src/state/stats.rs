@@ -14,13 +14,13 @@ use crate::{
     state::evals::{EnumModelTask, PROMPT_TASK_NAME},
 };
 
-use super::evals::EvalRunner;
+use super::evals::ModelTaskRunner;
 
 pub struct StatsLogger {
     tokenizer: Arc<Tokenizer>,
     wandb_run: Option<Arc<wandb::Run>>,
     pub metrics: Arc<ClientMetrics>,
-    eval_runner: EvalRunner,
+    model_task_runner: ModelTaskRunner,
 
     step_durations: BoundedQueue<Duration, 16>,
     training_round_durations: BoundedQueue<Duration, 16>,
@@ -36,7 +36,7 @@ pub struct StatsLogger {
 impl StatsLogger {
     pub fn new(
         tokenizer: Arc<Tokenizer>,
-        eval_runner: EvalRunner,
+        model_task_runner: ModelTaskRunner,
         lr_schedule: LearningRateSchedule,
         wandb_run: Option<wandb::Run>,
         metrics: Arc<ClientMetrics>,
@@ -47,7 +47,7 @@ impl StatsLogger {
             losses: Vec::new(),
             step_durations: Default::default(),
             training_round_durations: Default::default(),
-            eval_runner,
+            model_task_runner,
             lr_schedule,
             eval_history: HashMap::new(),
             last_optim_stats: HashMap::new(),
@@ -281,7 +281,7 @@ impl StatsLogger {
     }
 
     pub fn current_eval_results(&self) -> HashMap<String, f64> {
-        self.eval_runner
+        self.model_task_runner
             .tasks()
             .iter()
             .flatten()
@@ -309,7 +309,7 @@ impl StatsLogger {
     // clear tokens_to_send buffer
     pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
         let mut results = FixedVec::new();
-        for eval_task in self.eval_runner.tasks().iter().flatten() {
+        for eval_task in self.model_task_runner.tasks().iter().flatten() {
             if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
                 {
                     let tokens = prompt_task.tokens_to_send.read().unwrap();

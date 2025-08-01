@@ -97,12 +97,12 @@ enum LoadingStateInner {
 }
 
 #[derive(Debug, Clone)]
-pub struct EvalRunner {
+pub struct ModelTaskRunner {
     tasks: Arc<LoadingState>,
     data_parallelism: usize,
 }
 
-impl EvalRunner {
+impl ModelTaskRunner {
     pub fn new(
         eval_tasks: Vec<Task>,
         prompt_task: bool,
@@ -291,7 +291,7 @@ impl EvalRunner {
                                             );
 
                                             prompt.run(&mut trainer, cancel.clone());
-                                            { *prompt.is_running.write().unwrap() = false }
+                                            *prompt.is_running.write().unwrap() = false;
                                         }
                                     }
                                     trace!("Done model task {}", model_task.name());
