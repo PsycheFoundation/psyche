@@ -1,5 +1,5 @@
-use crate::ASCII_UPPERCASE;
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
+use crate::{ASCII_UPPERCASE, ArcChallenge, ArcEasy, MMLU, MMLUPro, OpenbookQA, PIQA};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
@@ -14,6 +14,14 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
 const GENERATE_UNTIL_MAX_CONTEXT_SIZE: usize = 2047;
+
+const TASKS_WITH_ACC_NORM: [&str; 5] = [
+    ArcEasy::name(),
+    ArcChallenge::name(),
+    PIQA::name(),
+    OpenbookQA::name(),
+    MMLU::name(),
+];
 
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
@@ -329,13 +337,14 @@ impl PreparedTask {
             PreparedTaskType::LogLikelihood {
                 docs,
                 tokenized_fewshot,
-            } => Self::run_log_likelihood(options, docs, tokenized_fewshot, pbar),
+            } => Self::run_log_likelihood(&self.name, options, docs, tokenized_fewshot, pbar),
             PreparedTaskType::GenerateUntil {
                 requests,
                 tokenizer,
                 cache,
                 answer_regex,
             } => Self::run_generate_until(
+                &self.name,
                 options,
                 cache.clone(),
                 requests,
@@ -347,6 +356,7 @@ impl PreparedTask {
     }
 
     fn run_log_likelihood(
+        eval_name: &String,
         options: EvalTaskOptions,
         docs: &[TokenizedLLHDocument],
         tokenized_fewshot: &[i64],
@@ -464,25 +474,25 @@ impl PreparedTask {
                     false => 0.,
                 },
             );
-            results.push(
-                "acc_norm",
-                match selected_norm as usize == doc.answer {
-                    true => 1.,
-                    false => 0.,
-                },
-            );
+
+            if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
+                results.push(
+                    "acc_norm",
+                    match selected_norm as usize == doc.answer {
+                        true => 1.,
+                        false => 0.,
+                    },
+                );
+            }
 
             if let Some(pbar) = &pbar {
-                pbar.set_message(format!(
-                    "acc_norm: {:.3}",
-                    results.sample("acc_norm").unwrap()
-                ));
+                pbar.set_message(format!("acc: {:.3}", results.sample("acc").unwrap()));
                 pbar.inc(1);
             };
         }
+
         PreparedTaskResult {
-            scores: results
-                .get_all_averages()
+            scores: get_all_averages(results, eval_name)
                 .into_iter()
                 .map(|(key, value)| (key, value.unwrap_or_default()))
                 .collect(),
@@ -492,6 +502,7 @@ impl PreparedTask {
     }
 
     fn run_generate_until(
+        eval_name: &String,
         options: EvalTaskOptions,
         cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
         requests: &[TokenizedGenerateUntilDocument],
@@ -541,21 +552,13 @@ impl PreparedTask {
             .step_by(step_by)
             .enumerate()
         {
-            let mut generated_answer = None;
-            let mut generation_complete = false;
-
-            tracing::info!(
-                "Processing iteration {} (document index {})",
-                num_iterations,
-                doc_index
-            );
             if let Some(cancel) = options.cancel.as_ref() {
                 if cancel.is_cancelled() {
                     cancelled = true;
                     break;
                 }
             }
-            if !options.loop_if_empty && doc_index >= requests.len() && num_iterations > 0 {
+            if doc_index >= requests.len() {
                 break;
             }
             if let Some(limit) = options.limit {
@@ -564,6 +567,14 @@ impl PreparedTask {
                 }
             }
 
+            let mut generated_answer = None;
+            let mut generation_complete = false;
+
+            tracing::info!(
+                "Processing iteration {} (document index {})",
+                num_iterations,
+                doc_index
+            );
             // Start with the tokenized prompt
             let mut full_sequence = request.clone();
             tracing::info!(
@@ -693,8 +704,9 @@ impl PreparedTask {
                 tracing::info!("is_correct: {}", score == 1.);
 
                 if let Some(pbar) = &pbar {
+                    pbar.set_message(format!("acc: {:.3}", results.sample("acc").unwrap()));
                     pbar.inc(1);
-                }
+                };
             } else if cancelled {
                 // If we were cancelled mid-generation, we need to track this differently
                 // We should resume from the current document, not skip it
@@ -707,8 +719,7 @@ impl PreparedTask {
         }
 
         PreparedTaskResult {
-            scores: results
-                .get_all_averages()
+            scores: get_all_averages(results, &eval_name)
                 .into_iter()
                 .map(|(key, value)| (key, value.unwrap_or_default()))
                 .collect(),
@@ -730,4 +741,24 @@ impl PreparedTask {
             PreparedTaskType::GenerateUntil { .. } => "acc",
         }
     }
+}
+
+/// Get averages of entries
+/// Skips entries that have not filled at least half buffer to avoid unconfident scores
+fn get_all_averages(
+    running_average: Arc<RunningAverage>,
+    eval_name: &String,
+) -> HashMap<String, Option<f64>> {
+    let entries = running_average.entries.read().unwrap();
+    entries
+        .iter()
+        .filter(|(_, entry)| {
+            if eval_name == MMLUPro::name() {
+                entry.buffer.len() > entry.max_size / 10
+            } else {
+                entry.buffer.len() > entry.max_size / 2
+            }
+        })
+        .map(|(name, entry)| (name.clone(), entry.average()))
+        .collect()
 }
