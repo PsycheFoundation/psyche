@@ -9,6 +9,7 @@ use psyche_data_provider::{
     download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
+use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel, DeepseekForCausalLM,
     DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig, ModelLoadError,
@@ -28,7 +29,7 @@ use tokio::{
 use tracing::{debug, error, info};
 
 use super::{
-    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::EvalRunner,
+    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::ModelTaskRunner,
     stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
     types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
@@ -132,7 +133,7 @@ enum RawLoadedModelType {
 struct RawLoadedModel {
     models: RawLoadedModelType,
     tokenizer: Arc<Tokenizer>,
-    eval_runner: EvalRunner,
+    model_task_runner: ModelTaskRunner,
     checkpoint_extra_files: Vec<PathBuf>,
 }
 
@@ -152,6 +153,8 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
+
+    pub metrics: Arc<ClientMetrics>,
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
@@ -172,6 +175,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_request_download,
             tx_request_model_config,
             tx_broadcast_finished,
+            metrics,
         } = self;
 
         let model::Model::LLM(llm) = state.model;
@@ -242,7 +246,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         ),
                         tokenizer: tokenizer.clone(),
                         checkpoint_extra_files: vec![],
-                        eval_runner: EvalRunner::new(vec![], false, tokenizer.clone(), None, 0),
+                        model_task_runner: ModelTaskRunner::new(
+                            vec![],
+                            false,
+                            tokenizer.clone(),
+                            None,
+                            0,
+                        ),
                     };
                     #[allow(clippy::arc_with_non_send_sync)]
                     let config = &PretrainedSource::ConfigAndTensors(
@@ -375,7 +385,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                         let serialized_config = source.serialize_config()?;
 
-                        let eval_runner = EvalRunner::new(
+                        let model_task_runner = ModelTaskRunner::new(
                             init_config.eval_tasks,
                             init_config.prompt_task,
                             tokenizer.clone(),
@@ -519,7 +529,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         Ok(RawLoadedModel {
                             models: raw_loaded_model_type,
                             tokenizer,
-                            eval_runner,
+                            model_task_runner,
                             checkpoint_extra_files,
                         })
                     })
@@ -583,7 +593,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             models,
             tokenizer,
             checkpoint_extra_files,
-            eval_runner,
+            model_task_runner,
         } = models.map_err(InitRunError::ModelLoadingThreadCrashed)??;
 
         // TODO add data fetching for verifying, too..
@@ -702,11 +712,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         let wandb_run = wandb_run.map_err(InitRunError::WandbThreadCrashed)??;
 
-        let stats_logger =
-            StatsLogger::new(tokenizer, eval_runner.clone(), llm.lr_schedule, wandb_run);
+        let stats_logger = StatsLogger::new(
+            tokenizer,
+            model_task_runner.clone(),
+            llm.lr_schedule,
+            wandb_run,
+            metrics,
+        );
 
         let warmup = WarmupStepMetadata {
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
         };
 
         let training = TrainingStepMetadata {
@@ -716,11 +731,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_health_check,
             tx_distro_result,
 
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
         };
 
         let witness = WitnessStepMetadata {
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
             identity: init_config.identity,
             tx_witness: tx_witness.clone(),
         };
@@ -730,7 +745,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_model,
             init_config.checkpoint_config,
             checkpoint_extra_files,
-            eval_runner,
+            model_task_runner,
         );
 
         Ok(StepStateMachine::new(

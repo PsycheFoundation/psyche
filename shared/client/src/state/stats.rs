@@ -2,6 +2,7 @@ use psyche_coordinator::{
     Coordinator, MAX_TOKENS_TO_SEND, WitnessEvalResult, WitnessMetadata, model,
 };
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
+use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
@@ -13,12 +14,13 @@ use crate::{
     state::evals::{EnumModelTask, PROMPT_TASK_NAME},
 };
 
-use super::evals::EvalRunner;
+use super::evals::ModelTaskRunner;
 
 pub struct StatsLogger {
     tokenizer: Arc<Tokenizer>,
     wandb_run: Option<Arc<wandb::Run>>,
-    eval_runner: EvalRunner,
+    pub metrics: Arc<ClientMetrics>,
+    model_task_runner: ModelTaskRunner,
 
     step_durations: BoundedQueue<Duration, 16>,
     training_round_durations: BoundedQueue<Duration, 16>,
@@ -34,9 +36,10 @@ pub struct StatsLogger {
 impl StatsLogger {
     pub fn new(
         tokenizer: Arc<Tokenizer>,
-        eval_runner: EvalRunner,
+        model_task_runner: ModelTaskRunner,
         lr_schedule: LearningRateSchedule,
         wandb_run: Option<wandb::Run>,
+        metrics: Arc<ClientMetrics>,
     ) -> Self {
         Self {
             tokenizer,
@@ -44,11 +47,12 @@ impl StatsLogger {
             losses: Vec::new(),
             step_durations: Default::default(),
             training_round_durations: Default::default(),
-            eval_runner,
+            model_task_runner,
             lr_schedule,
             eval_history: HashMap::new(),
             last_optim_stats: HashMap::new(),
             node_info: HashMap::new(),
+            metrics,
         }
     }
 
@@ -57,49 +61,85 @@ impl StatsLogger {
 
         round_log.insert("_step", state.progress.step);
 
+        // Training metrics
         if let Some(loss) = self.losses().last() {
-            round_log.insert("train/loss", *loss);
-            round_log.insert("train/perplexity", perplexity(*loss));
-            round_log.insert("train/confidence", self.confidence(*loss));
+            let loss_val = *loss;
+            let perplexity_val = perplexity(loss_val);
+            let confidence_val = self.confidence(loss_val);
+
+            round_log.insert("train/loss", loss_val);
+            round_log.insert("train/perplexity", perplexity_val);
+            round_log.insert("train/confidence", confidence_val);
+
+            // Log to metrics
+            self.metrics.record_training_loss(loss_val as f64);
+            self.metrics
+                .record_training_perplexity(perplexity_val as f64);
+            self.metrics
+                .record_training_confidence(confidence_val as f64);
         }
-        round_log.insert(
-            "train/lr",
-            Trainer::get_lr(
-                &self.lr_schedule,
-                state.progress.step,
-                state.get_cold_start_warmup_bounds(),
-            ),
+
+        let lr = Trainer::get_lr(
+            &self.lr_schedule,
+            state.progress.step,
+            state.get_cold_start_warmup_bounds(),
         );
+        round_log.insert("train/lr", lr);
+        self.metrics.record_learning_rate(lr);
 
-        round_log.insert("train/total_tokens", total_tokens(state));
-        round_log.insert("train/tokens_per_sec", self.global_tokens_per_second(state));
-        round_log.insert("train/global_token_batch_size", token_batch_size(state));
-        round_log.insert("train/efficency", self.efficency());
+        let total_tokens_val = total_tokens(state);
+        let tokens_per_sec_val = self.global_tokens_per_second(state);
+        let token_batch_size_val = token_batch_size(state);
+        let efficiency_val = self.efficency();
 
-        round_log.insert("coordinator/num_clients", state.epoch_state.clients.len());
-        round_log.insert("coordinator/epoch", state.progress.epoch);
-        round_log.insert(
-            "coordinator/round",
-            state.current_round().map(|x| x.height).unwrap_or_default(),
-        );
+        round_log.insert("train/total_tokens", total_tokens_val);
+        round_log.insert("train/tokens_per_sec", tokens_per_sec_val);
+        round_log.insert("train/global_token_batch_size", token_batch_size_val);
+        round_log.insert("train/efficency", efficiency_val);
 
+        self.metrics.record_total_tokens(total_tokens_val);
+        self.metrics
+            .record_tokens_per_second(tokens_per_sec_val as f64);
+        self.metrics
+            .record_token_batch_size(token_batch_size_val as u64);
+        self.metrics
+            .record_training_efficiency(efficiency_val as f64);
+        if let Some(last_train_time) = self.training_round_durations.iter().last() {
+            self.metrics
+                .record_last_train_time(last_train_time.as_secs_f64());
+        }
+        // Coordinator metrics
+        let num_clients = state.epoch_state.clients.len();
+        let epoch = state.progress.epoch;
+        let round_height = state.current_round().map(|x| x.height).unwrap_or_default();
+
+        round_log.insert("coordinator/num_clients", num_clients);
+        round_log.insert("coordinator/epoch", epoch);
+        round_log.insert("coordinator/round", round_height);
+
+        // Eval metrics
         for (key, val) in self.current_eval_results() {
-            round_log.insert(
-                format!(
-                    "eval/{}",
-                    key.to_lowercase()
-                        .chars()
-                        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                        .collect::<String>()
-                ),
-                val,
+            let formatted_key = format!(
+                "eval/{}",
+                key.to_lowercase()
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                    .collect::<String>()
             );
+            round_log.insert(formatted_key.clone(), val);
+
+            self.metrics.record_eval_metric(&key, val);
         }
 
+        // Optimizer metrics
         for (name, value) in &self.last_optim_stats {
-            round_log.insert(format!("optim/{name}"), *value);
+            let optim_key = format!("optim/{name}");
+            round_log.insert(optim_key, *value);
+
+            self.metrics.record_optimizer_stat(name, *value);
         }
 
+        // P2P nodes (only for wandb, not metrics as requested)
         let p2p_nodes: HashMap<String, DataValue> = self
             .node_info
             .iter()
@@ -117,6 +157,7 @@ impl StatsLogger {
 
         round_log.insert("p2p/nodes", p2p_nodes);
 
+        // Log to wandb
         if let Some(run) = self.wandb_run.clone() {
             tokio::spawn(async move {
                 run.log(round_log).await;
@@ -240,7 +281,7 @@ impl StatsLogger {
     }
 
     pub fn current_eval_results(&self) -> HashMap<String, f64> {
-        self.eval_runner
+        self.model_task_runner
             .tasks()
             .iter()
             .flatten()
@@ -268,7 +309,7 @@ impl StatsLogger {
     // clear tokens_to_send buffer
     pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
         let mut results = FixedVec::new();
-        for eval_task in self.eval_runner.tasks().iter().flatten() {
+        for eval_task in self.model_task_runner.tasks().iter().flatten() {
             if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
                 {
                     let tokens = prompt_task.tokens_to_send.read().unwrap();
