@@ -285,7 +285,7 @@ impl ModelTaskRunner {
                                             }
                                             drop(is_running);
                                             trace!(
-                                                "Running Prompt task {}, selected prompt: {}",
+                                                "Running {} task on prompt index: {}",
                                                 model_task.name(),
                                                 prompt.selected_prompt
                                             );
