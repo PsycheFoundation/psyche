@@ -80,7 +80,7 @@
                 export PYTORCH_ENABLE_MPS_FALLBACK=1
 
                 # Set up PyTorch library path for test execution
-                export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch-bin}/lib/python3.12/site-packages/torch/lib:$DYLD_LIBRARY_PATH"
+                export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch}/lib/python3.12/site-packages/torch/lib:$DYLD_LIBRARY_PATH"
               ''
               + ''
                 echo "Welcome to the Psyche development shell.";

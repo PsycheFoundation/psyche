@@ -17,7 +17,41 @@ in
       (final: prev: {
         python312Packages = prev.python312Packages.override {
           overrides = pyfinal: pyprev: rec {
-            torch = pyprev.torch-bin;
+            torch =
+              if metalSupported then
+                # Use PyTorch nightly for MPS to get uint support
+                pyfinal.buildPythonPackage rec {
+                  pname = "torch";
+                  version = "2.9.0.dev20250731";
+                  format = "wheel";
+
+                  src = final.fetchurl {
+                    url = "https://download.pytorch.org/whl/nightly/cpu/torch-${version}-cp312-none-macosx_11_0_arm64.whl";
+                    hash = "sha256-0WADByPiZagUzUHYm6n5n30E+KZ78S63okLTYy9zNEs=";
+                  };
+
+                  propagatedBuildInputs = with pyfinal; [
+                    filelock
+                    typing-extensions
+                    sympy
+                    networkx
+                    jinja2
+                    numpy
+                    requests
+                    pyyaml
+                    setuptools
+                    fsspec
+                  ];
+
+                  doCheck = false;
+                  pythonImportsCheck = [ "torch" ];
+
+                  passthru = {
+                    cudaSupport = false;
+                  };
+                }
+              else
+                pyprev.torch-bin;
           };
         };
       })

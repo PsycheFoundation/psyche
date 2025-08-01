@@ -27,6 +27,8 @@ let
 
   env = {
     LIBTORCH_USE_PYTORCH = 1;
+    # Disable version check for PyTorch to allow using nightly builds
+    LIBTORCH_BYPASS_VERSION_CHECK = 1;
   };
 
   rustWorkspaceDeps = {
@@ -38,7 +40,7 @@ let
 
     buildInputs =
       [
-        pkgs.python312Packages.torch-bin
+        pkgs.python312Packages.torch
       ]
       ++ (with pkgs; [
         openssl
@@ -51,13 +53,7 @@ let
           cuda_cudart
           nccl
         ]
-      )
-      ++ lib.optionals pkgs.stdenv.isDarwin [
-        pkgs.darwin.apple_sdk.frameworks.Accelerate
-        pkgs.darwin.apple_sdk.frameworks.CoreML
-        pkgs.darwin.apple_sdk.frameworks.Metal
-        pkgs.darwin.apple_sdk.frameworks.MetalPerformanceShaders
-      ];
+      );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
