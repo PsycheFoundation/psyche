@@ -72,6 +72,8 @@ impl Arc {
             text,
             choices,
             answer,
+            category: None,
+            cot_content: None,
         }
     }
 }
