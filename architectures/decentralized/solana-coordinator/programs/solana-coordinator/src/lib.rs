@@ -11,17 +11,17 @@ pub use client::ClientId;
 pub use instance_state::CoordinatorInstanceState;
 use logic::*;
 pub use program_error::ProgramError;
+use psyche_coordinator::model::{HubRepo, Model};
 use psyche_coordinator::Committee;
 use psyche_coordinator::CommitteeProof;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::model::{HubRepo, Model};
+use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
@@ -57,6 +57,11 @@ pub enum DeserializeCoordinatorFromBytes {
     )]
     InvalidDiscriminator { expected: Vec<u8>, actual: Vec<u8> },
 
+    #[error(
+        "Coordinator has an invalid version. Expected {expected:?}, got {actual:?}."
+    )]
+    InvalidVersion { expected: u64, actual: u64 },
+
     #[error("Failed to cast bytes into CoordinatorAccount: {0}")]
     CastError(#[from] bytemuck::PodCastError),
 }
@@ -81,15 +86,28 @@ fn validate_coordinator_account_bytes(
     Ok(())
 }
 
+fn validate_coordinator_account_version(
+    coordinator_account: &CoordinatorAccount,
+) -> std::result::Result<(), DeserializeCoordinatorFromBytes> {
+    if coordinator_account.version != CoordinatorAccount::VERSION {
+        return Err(DeserializeCoordinatorFromBytes::InvalidVersion {
+            expected: CoordinatorAccount::VERSION,
+            actual: coordinator_account.version,
+        });
+    }
+    Ok(())
+}
+
 pub fn coordinator_account_from_bytes(
     bytes: &[u8],
 ) -> std::result::Result<&CoordinatorAccount, DeserializeCoordinatorFromBytes> {
     validate_coordinator_account_bytes(bytes)?;
-
-    Ok(bytemuck::try_from_bytes(
+    let coordinator_account: &CoordinatorAccount = bytemuck::try_from_bytes(
         &bytes[CoordinatorAccount::DISCRIMINATOR.len()
             ..CoordinatorAccount::space_with_discriminator()],
-    )?)
+    )?;
+    validate_coordinator_account_version(coordinator_account)?;
+    Ok(coordinator_account)
 }
 
 pub fn coordinator_account_from_bytes_mut(
@@ -97,11 +115,12 @@ pub fn coordinator_account_from_bytes_mut(
 ) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes>
 {
     validate_coordinator_account_bytes(bytes)?;
-
-    Ok(bytemuck::try_from_bytes_mut(
+    let coordinator_account = bytemuck::try_from_bytes_mut(
         &mut bytes[CoordinatorAccount::DISCRIMINATOR.len()
             ..CoordinatorAccount::space_with_discriminator()],
-    )?)
+    )?;
+    validate_coordinator_account_version(coordinator_account)?;
+    Ok(coordinator_account)
 }
 
 #[account(zero_copy)]
