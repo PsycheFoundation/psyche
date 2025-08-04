@@ -494,10 +494,7 @@ impl PreparedTask {
         }
 
         PreparedTaskResult {
-            scores: get_all_averages(results, eval_name)
-                .into_iter()
-                .map(|(key, value)| (key, value.unwrap_or_default()))
-                .collect(),
+            scores: get_all_averages(results, eval_name),
             next_index: next_index + fast_forward,
             cancelled,
         }
@@ -719,10 +716,7 @@ impl PreparedTask {
         }
 
         PreparedTaskResult {
-            scores: get_all_averages(results, eval_name)
-                .into_iter()
-                .map(|(key, value)| (key, value.unwrap_or_default()))
-                .collect(),
+            scores: get_all_averages(results, eval_name),
             next_index: fast_forward + skip + (documents_processed * step_by),
             cancelled,
         }
@@ -743,22 +737,22 @@ impl PreparedTask {
     }
 }
 
-/// Get averages of entries
-/// Skips entries that have not filled at least half buffer to avoid unconfident scores
+/// Get averages of all metrics with sufficient samples
+/// Filters out metrics with too few samples to ensure confident scores
 fn get_all_averages(
     running_average: Arc<RunningAverage>,
     eval_name: &String,
-) -> HashMap<String, Option<f64>> {
+) -> HashMap<String, f64> {
     let entries = running_average.entries.read().unwrap();
     entries
         .iter()
-        .filter(|(_, entry)| {
+        .filter(|(_metric_name, entry)| {
             if eval_name == MMLUPro::name() {
                 entry.buffer.len() > entry.max_size / 10
             } else {
                 entry.buffer.len() > entry.max_size / 2
             }
         })
-        .map(|(name, entry)| (name.clone(), entry.average()))
+        .map(|(metric_name, entry)| (metric_name.clone(), entry.average().unwrap()))
         .collect()
 }
