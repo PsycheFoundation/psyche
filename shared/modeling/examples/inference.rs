@@ -1,10 +1,12 @@
-use anyhow::{Error, Result};
+use anyhow::{bail, Error, Result};
 use clap::Parser;
 use psyche_data_provider::download_model_repo_sync;
+use psyche_eval::dataset_from_name;
 use psyche_modeling::{
-    CausalLM, CommunicatorId, LogitsProcessor, Sampling, TokenOutputStream,
-    auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
+    auto_model_for_causal_lm_from_pretrained, auto_tokenizer, CausalLM, CommunicatorId,
+    LogitsProcessor, Sampling, TokenOutputStream,
 };
+use serde_json::json;
 use std::{
     io::Write,
     path::PathBuf,
@@ -95,22 +97,39 @@ struct Args {
     #[clap(long)]
     python: bool,
 
+    #[arg(long)]
     prompt: Option<String>,
+
+    #[arg(long)]
+    tasks: Option<String>,
+
+    /// Eval index from where to start
+    #[arg(long, default_value_t = 0)]
+    eval_index: usize,
+
+    /// How many evals in a task to run
+    #[arg(long, default_value_t = 1)]
+    eval_limit: usize,
+
+    /// Return the output in JSON format
+    #[arg(long, default_value_t = false)]
+    json: bool,
 }
 
 fn inference(
     repo_files: Vec<PathBuf>,
     tensor_parallelism: Option<(CommunicatorId, usize, usize, Arc<Barrier>)>,
     args: Args,
-    seed: u64,
     mut tokens: Vec<i64>,
     tokenizer: Tokenizer,
-) -> Result<()> {
+) -> Result<(String, String)> {
     let rank = tensor_parallelism
         .as_ref()
         .map(|(_, rank, _, _)| *rank)
         .unwrap_or(0);
     let device = Device::Cuda(rank);
+    let seed = args.seed.unwrap_or(rand::random());
+    let print_to_stdout = !args.json;
 
     #[cfg(feature = "python")]
     let python = args.python;
@@ -163,9 +182,18 @@ fn inference(
     };
     let mut tokenizer = TokenOutputStream::new(tokenizer);
     let mut token_generated = 0;
+    let mut generated_text = String::new();
+    let prompt_text = tokenizer
+        .tokenizer()
+        .decode(
+            &tokens.iter().map(|&x| x as u32).collect::<Vec<u32>>(),
+            false,
+        )
+        .unwrap();
+
     loop {
         if let Some(max_tokens) = args.max_tokens {
-            if max_tokens >= token_generated {
+            if token_generated >= max_tokens {
                 break;
             }
         }
@@ -184,24 +212,144 @@ fn inference(
 
         if let Some(eos_token_ids) = &eos_token_ids {
             if eos_token_ids.contains(next_token as i64) {
-                if rank == 0 {
-                    println!(
-                        "{}",
-                        tokenizer.tokenizer().decode(&[next_token], false).unwrap()
-                    );
+                let token_text = tokenizer
+                    .tokenizer()
+                    .decode(&[next_token as u32], false)
+                    .unwrap();
+                generated_text.push_str(&token_text);
+                if print_to_stdout && rank == 0 {
+                    print!("{}", token_text);
                 }
                 break;
             };
         }
 
         if let Some(t) = tokenizer.next_token(next_token)? {
-            if rank == 0 {
+            generated_text.push_str(&t);
+            if print_to_stdout && rank == 0 {
                 print!("{t}");
                 std::io::stdout().flush()?;
             }
         }
     }
-    Ok(())
+    Ok((prompt_text, generated_text))
+}
+
+#[allow(unused_variables)]
+fn prompt_inference(
+    prompt: &str,
+    model_repo_files: Vec<PathBuf>,
+    args: Args,
+) -> Result<Vec<(String, String)>> {
+    let tokenizer = auto_tokenizer(&model_repo_files)?;
+    let tokens = tokenizer
+        .encode(prompt, true)
+        .map_err(Error::msg)?
+        .get_ids()
+        .iter()
+        .map(|x| *x as i64)
+        .collect::<Vec<_>>();
+
+    let result = match args.tensor_parallelism {
+        Some(0) | Some(1) | None => {
+            let (prompt, response) =
+                inference(model_repo_files, None, args.clone(), tokens, tokenizer)?;
+            vec![(prompt, response)]
+        }
+        Some(world_size) => {
+            #[cfg(feature = "python")]
+            let id = match from_python {
+                true => CommunicatorId::torch_distributed("nccl", "tcp://127.0.0.1:23456"),
+                #[cfg(feature = "parallelism")]
+                false => tch::CStore::new().into(),
+                #[cfg(not(feature = "parallelism"))]
+                false => CommunicatorId::none(),
+            };
+
+            #[cfg(not(feature = "python"))]
+            let id: CommunicatorId = {
+                #[cfg(feature = "parallelism")]
+                {
+                    tch::CStore::new().into()
+                }
+                #[cfg(not(feature = "parallelism"))]
+                {
+                    CommunicatorId::none()
+                }
+            };
+
+            let barrier = Arc::new(Barrier::new(world_size));
+            let threads = (0..world_size)
+                .map(|rank| {
+                    let repo_files = model_repo_files.clone();
+                    let args = args.clone();
+                    let tokens = tokens.clone();
+                    let tokenizer = tokenizer.clone();
+                    let id = id.clone();
+                    let barrier = barrier.clone();
+                    std::thread::spawn(move || {
+                        inference(
+                            repo_files,
+                            Some((id, rank, world_size, barrier)),
+                            args,
+                            tokens,
+                            tokenizer,
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut results = Vec::new();
+            for thread in threads {
+                let (prompt, response) = thread.join().unwrap()?;
+                results.push((prompt, response));
+            }
+            results
+        }
+    };
+
+    Ok(result)
+}
+
+fn evals_inference(
+    evals: &str,
+    model_repo_files: Vec<PathBuf>,
+    args: Args,
+) -> Result<Vec<(String, String)>> {
+    let eval_datasets: Vec<_> = evals
+        .split(",")
+        .map(|eval_name| dataset_from_name(eval_name))
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut all_results = Vec::new();
+
+    for eval_dataset in eval_datasets {
+        if args.eval_index >= eval_dataset.len() {
+            bail!(
+                "Eval index {} is out of bounds for dataset with {} entries",
+                args.eval_index,
+                eval_dataset.len()
+            );
+        }
+        for question_prompt in eval_dataset
+            .iter()
+            .skip(args.eval_index)
+            .take(args.eval_limit)
+        {
+            if !args.json {
+                println!("{:?}", question_prompt);
+                println!();
+            }
+            let results =
+                prompt_inference(&question_prompt, model_repo_files.clone(), args.clone())?;
+            all_results.extend(results);
+            if !args.json {
+                println!("------------------------------------------------------------");
+                println!();
+            }
+        }
+    }
+
+    Ok(all_results)
 }
 
 fn main() -> Result<()> {
@@ -217,67 +365,27 @@ fn main() -> Result<()> {
     } else {
         download_model_repo_sync(&args.model.clone(), args.revision.clone(), None, None, true)?
     };
-    let tokenizer = auto_tokenizer(&repo_files)?;
 
-    let prompt = args.prompt.as_ref().map_or(DEFAULT_PROMPT, |p| p.as_str());
-    let tokens = tokenizer
-        .encode(prompt, true)
-        .map_err(Error::msg)?
-        .get_ids()
-        .iter()
-        .map(|x| *x as i64)
-        .collect::<Vec<_>>();
-    let seed = args.seed.unwrap_or(rand::random());
-    match args.tensor_parallelism {
-        Some(0) | Some(1) | None => inference(repo_files, None, args, seed, tokens, tokenizer)?,
-        Some(world_size) => {
-            #[cfg(feature = "python")]
-            let id = match args.python {
-                true => CommunicatorId::torch_distributed("nccl", "tcp://127.0.0.1:23456"),
-                #[cfg(feature = "parallelism")]
-                false => tch::CStore::new().into(),
-                #[cfg(not(feature = "parallelism"))]
-                false => CommunicatorId::none(),
-            };
+    let results = if let Some(evals) = args.clone().tasks {
+        evals_inference(&evals, repo_files, args.clone())
+    } else {
+        let prompt = args.prompt.as_ref().map_or(DEFAULT_PROMPT, |p| p.as_str());
+        prompt_inference(prompt, repo_files, args.clone())
+    };
 
-            #[cfg(not(feature = "python"))]
-            let id: CommunicatorId = {
-                #[cfg(feature = "parallelism")]
-                {
-                    tch::CStore::new().into()
-                }
-
-                #[cfg(not(feature = "parallelism"))]
-                {
-                    CommunicatorId::none()
-                }
-            };
-
-            let barrier = Arc::new(Barrier::new(world_size));
-            let threads = (0..world_size)
-                .map(|rank| {
-                    let repo_files = repo_files.clone();
-                    let args = args.clone();
-                    let tokens = tokens.clone();
-                    let tokenizer = tokenizer.clone();
-                    let id = id.clone();
-                    let barrier = barrier.clone();
-                    std::thread::spawn(move || {
-                        inference(
-                            repo_files,
-                            Some((id, rank, world_size, barrier)),
-                            args,
-                            seed,
-                            tokens,
-                            tokenizer,
-                        )
-                    })
+    let results = results?;
+    if args.json {
+        let json_output = results
+            .into_iter()
+            .map(|(prompt, response)| {
+                json!({
+                    "prompt": prompt,
+                    "response": response
                 })
-                .collect::<Vec<_>>();
-            for thread in threads {
-                thread.join().unwrap()?;
-            }
-        }
+            })
+            .collect::<Vec<_>>();
+        println!("{}", serde_json::to_string_pretty(&json_output)?);
     }
+
     Ok(())
 }

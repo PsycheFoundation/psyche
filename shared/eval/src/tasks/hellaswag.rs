@@ -51,7 +51,7 @@ impl Hellaswag {
         "Hellaswag"
     }
 
-    fn row_to_document(dataset: &Dataset, row: Row) -> Document {
+    pub fn row_to_document(dataset: &Dataset, row: Row) -> Document {
         let activity_label = row
             .get_string(dataset.get_column_id("activity_label").unwrap())
             .unwrap()

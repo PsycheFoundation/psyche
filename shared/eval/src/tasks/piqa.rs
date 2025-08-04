@@ -1,6 +1,7 @@
 use crate::{
-    TaskType, load_dataset,
+    load_dataset,
     traits::{Document, LogLikelihoodTask},
+    TaskType,
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Row, RowAccessor, Split};
@@ -24,7 +25,7 @@ impl PIQA {
         "PIQA"
     }
 
-    fn row_to_document(dataset: &Dataset, row: Row) -> Document {
+    pub fn row_to_document(dataset: &Dataset, row: Row) -> Document {
         let goal = row
             .get_string(dataset.get_column_id("goal").unwrap())
             .unwrap()

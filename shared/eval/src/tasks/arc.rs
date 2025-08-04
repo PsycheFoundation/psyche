@@ -3,7 +3,7 @@ use anyhow::Result;
 use psyche_data_provider::{Dataset, Field, Row, RowAccessor, Split};
 use std::fmt::Display;
 
-struct Arc {
+pub struct Arc {
     test_split: Dataset,
     validation_dataset: Dataset,
     name: String,
@@ -44,7 +44,7 @@ impl Arc {
         Ok(TaskType::LogLikelihood(Box::new(ret)))
     }
 
-    fn row_to_document(dataset: &Dataset, row: Row) -> Document {
+    pub fn row_to_document(dataset: &Dataset, row: Row) -> Document {
         let text = row
             .get_string(dataset.get_column_id("question").unwrap())
             .unwrap()
