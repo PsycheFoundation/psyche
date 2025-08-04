@@ -428,6 +428,7 @@ impl LocalTrainer {
         Ok(Some(loss.detach()))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn forward(
         model: &mut dyn CausalLM,
         data: &Tensor,

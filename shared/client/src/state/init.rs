@@ -226,7 +226,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             false,
                         )
                         .await?
-                        .get(0)
+                        .first()
                         .ok_or(anyhow::anyhow!("No files downloaded for {url}"))?
                         .parent()
                         .unwrap()
