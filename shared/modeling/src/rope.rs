@@ -192,9 +192,9 @@ impl RoPECache {
             Some(ids) => ids,
             None => {
                 // Create default sequential position_ids starting from 0
-                &Tensor::arange(seq_len as i64, (Kind::Int64, x.device()))
+                &Tensor::arange(seq_len, (Kind::Int64, x.device()))
                     .unsqueeze(0)
-                    .expand([b_sz as i64, seq_len as i64], false)
+                    .expand([b_sz, seq_len], false)
             }
         };
         let pos_shape = position_ids.size();
@@ -203,15 +203,15 @@ impl RoPECache {
             2,
             "position_ids must be 2D [batch, seq_len]"
         );
-        let pos_b = pos_shape[0] as i64;
-        let pos_seq = pos_shape[1] as i64;
+        let pos_b = pos_shape[0];
+        let pos_seq = pos_shape[1];
         assert_eq!(
             pos_seq, seq_len,
             "sequence length mismatch between x and position_ids"
         );
         // If position_ids batch is 1, it will broadcast; otherwise, must match b_sz
         assert!(
-            pos_b == 1 || pos_b == b_sz as i64,
+            pos_b == 1 || pos_b == b_sz,
             "batch size mismatch between position_ids and x"
         );
 
@@ -221,7 +221,7 @@ impl RoPECache {
             .to_kind(Kind::Float)
             .unsqueeze(0)
             .unsqueeze(-1)
-            .expand([pos_b as i64, head_dim_2, 1], true);
+            .expand([pos_b, head_dim_2, 1], true);
         let position_ids_expanded = position_ids.to_kind(Kind::Float).unsqueeze(1); // [pos_b, 1, seq_len]
 
         let freqs = inv_freq_expanded.matmul(&position_ids_expanded); // [pos_b, head_dim_2, seq_len]

@@ -1,6 +1,6 @@
 use crate::{
     ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator, EosToks, LocalTrainer,
-    ParallelModels, PythonDistributedCausalLM, StableVariableIterator,
+    ParallelModels, PythonDistributedCausalLM, ReduceType, StableVariableIterator,
     TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
     trainer::DistroResults,
 };
@@ -8,7 +8,7 @@ use crate::{
 use psyche_core::{Barrier, CancelledBarrier, LearningRateSchedule, OptimizerDefinition};
 use pyo3::{PyErr, PyResult};
 use std::{collections::HashMap, sync::Arc};
-use tch::{Device, Tensor};
+use tch::{Device, Kind, Tensor};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, trace};
@@ -163,37 +163,46 @@ impl PythonDistributedTrainer {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
 
-        let _ = self.comm.broadcast(&batch_data.input_ids)?;
+        self.comm.broadcast(&batch_data.input_ids)?;
         if let Some(labels) = &batch_data.labels {
-            let _ = self.comm.broadcast(labels);
+            self.comm.broadcast(labels);
         }
         if let Some(position_ids) = &batch_data.position_ids {
-            let _ = self.comm.broadcast(position_ids);
+            self.comm.broadcast(position_ids);
         }
 
-        self.local
-            .train(
-                step,
-                data,
-                warmup_lr_between,
-                zero_optim,
-                rollback,
-                prev_self_distro_results,
-                cancel_training,
-            )
-            .map(|x| TrainOutput {
-                trainer: Self {
-                    local: match x.trainer {
-                        Trainer::Local(local_trainer) => Box::new(local_trainer),
-                        Trainer::PythonDistributed(_) => unreachable!(),
-                    },
-                    comm: self.comm,
-                    device: self.device,
-                    iteration: self.iteration + 1,
-                }
-                .into(),
-                ..x
-            })
+        let ret = self.local.train(
+            step,
+            data,
+            warmup_lr_between,
+            zero_optim,
+            rollback,
+            prev_self_distro_results,
+            cancel_training,
+        )?;
+
+        // reduce the loss across all shards
+        let loss = Tensor::from_slice(&[ret.loss])
+            .to_kind(Kind::Float)
+            .to_device(self.device);
+        let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
+        let loss: f32 = loss.try_into().unwrap();
+        let loss = loss / self.comm.size() as f32;
+
+        Ok(TrainOutput {
+            trainer: Self {
+                local: match ret.trainer {
+                    Trainer::Local(local_trainer) => Box::new(local_trainer),
+                    Trainer::PythonDistributed(_) => unreachable!(),
+                },
+                comm: self.comm,
+                device: self.device,
+                iteration: self.iteration + 1,
+            }
+            .into(),
+            loss,
+            ..ret
+        })
     }
 
     pub fn optimize(

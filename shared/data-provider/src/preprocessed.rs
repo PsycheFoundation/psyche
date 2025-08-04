@@ -21,7 +21,7 @@ fn field_to_int(field: &Field) -> i32 {
         },
         Field::Byte(x) => *x as i32,
         Field::Short(x) => *x as i32,
-        Field::Int(x) => *x as i32,
+        Field::Int(x) => *x,
         Field::Long(x) => *x as i32,
         Field::UByte(x) => *x as i32,
         Field::UShort(x) => *x as i32,

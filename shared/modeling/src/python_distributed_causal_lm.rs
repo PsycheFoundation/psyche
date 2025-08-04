@@ -108,7 +108,7 @@ impl TorchDistributedCommunicator {
         Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
             let all_reduce = distributed.getattr("all_reduce")?;
-            all_reduce.call1((PyTensor(tensor.shallow_clone()), 0))?;
+            all_reduce.call1((PyTensor(tensor.shallow_clone()),))?;
             Ok(())
         })
     }

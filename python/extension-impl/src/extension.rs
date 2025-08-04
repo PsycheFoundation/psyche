@@ -154,7 +154,7 @@ impl Trainer {
         sequence_lengths: Option<Vec<Vec<i32>>>,
         warmup_lr_between: Option<(u32, u32)>,
         prev_self_distro_results: Option<Vec<Vec<Py<DistroResult>>>>,
-    ) -> PyResult<Option<Vec<DistroResult>>> {
+    ) -> PyResult<(Option<Vec<DistroResult>>, f32)> {
         let trainer = self_.trainer.write().unwrap().take().unwrap();
         let id = BatchId(ClosedInterval::new(batch_id.0, batch_id.1));
         let cancel = self_.cancel.clone();
@@ -187,7 +187,7 @@ impl Trainer {
             _ => unreachable!("got a distributed trainer in local training mode"),
         });
 
-        let results: Option<Result<Vec<DistroResult>, _>> =
+        let results: Option<Result<Vec<DistroResult>, PyErr>> =
             output.distro_results.map(|distro_results| {
                 distro_results
                     .into_iter()
@@ -205,7 +205,7 @@ impl Trainer {
                     })
                     .collect()
             });
-        results.transpose()
+        Ok((results.transpose()?, output.loss))
     }
 
     pub fn optimize(

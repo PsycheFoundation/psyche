@@ -19,7 +19,7 @@ fn repeat_kv(hidden_states: &Tensor, n_rep: i64) -> Tensor {
 }
 
 #[allow(dead_code)]
-pub fn create_cu_seqlens(lengths: &Vec<Vec<i32>>, device: Device) -> (Tensor, i32) {
+pub fn create_cu_seqlens(lengths: &[Vec<i32>], device: Device) -> (Tensor, i32) {
     let mut seq_lens: Vec<i32> = Vec::new();
     for batch in lengths.iter() {
         for &len in batch.iter() {
