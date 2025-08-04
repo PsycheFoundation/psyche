@@ -3,6 +3,8 @@ use crate::{
     Dataset, Field, Row, Split, TokenizedData, TokenizedDataProvider,
     file_extensions::PARQUET_EXTENSION,
 };
+use parquet::file::reader::FileReader;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use anyhow::{Result, anyhow, bail};
 use parquet::record::RowAccessor;
@@ -86,30 +88,55 @@ impl PreprocessedDataProvider {
         let position_ids_column = dataset.get_column_id("position_ids");
         let sequence_lengths_column = dataset.get_column_id("sequence_lengths");
 
-        let data: Result<Vec<TokenizedData>> = dataset
-            .iter()
-            .map(|row| {
-                let input_ids = list_to_vec(&row, inputs_column, Some(num_tokens_per_sequence))?;
-                let labels = match labels_column {
-                    Some(column) => Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?),
-                    None => None,
-                };
-                let position_ids = match position_ids_column {
-                    Some(column) => Some(list_to_vec(&row, column, Some(num_tokens_per_sequence))?),
-                    None => None,
-                };
-                let sequence_lengths = match sequence_lengths_column {
-                    Some(column) => Some(list_to_vec(&row, column, None)?),
-                    None => None,
-                };
-                Ok(TokenizedData {
-                    input_ids,
-                    labels,
-                    position_ids,
-                    sequence_lengths,
-                })
+        let data: Result<Vec<TokenizedData>, _> = dataset
+            .files()
+            .par_iter()
+            .flat_map(|file| -> Vec<anyhow::Result<TokenizedData>> {
+                match file.get_row_iter(None) {
+                    Ok(rows) => rows
+                        .map(|row| {
+                            if let Ok(row) = row {
+                                let input_ids = list_to_vec(
+                                    &row,
+                                    inputs_column,
+                                    Some(num_tokens_per_sequence),
+                                )?;
+                                let labels = match labels_column {
+                                    Some(column) => Some(list_to_vec(
+                                        &row,
+                                        column,
+                                        Some(num_tokens_per_sequence),
+                                    )?),
+                                    None => None,
+                                };
+                                let position_ids = match position_ids_column {
+                                    Some(column) => Some(list_to_vec(
+                                        &row,
+                                        column,
+                                        Some(num_tokens_per_sequence),
+                                    )?),
+                                    None => None,
+                                };
+                                let sequence_lengths = match sequence_lengths_column {
+                                    Some(column) => Some(list_to_vec(&row, column, None)?),
+                                    None => None,
+                                };
+                                Ok(TokenizedData {
+                                    input_ids,
+                                    labels,
+                                    position_ids,
+                                    sequence_lengths,
+                                })
+                            } else {
+                                Err(anyhow::anyhow!("Invalid row"))
+                            }
+                        })
+                        .collect(),
+                    Err(e) => vec![Err(anyhow::anyhow!("Error reading parquet file {e}"))],
+                }
             })
             .collect();
+
         let mut data = data?;
 
         if let Shuffle::Seeded(random_seed) = shuffle {
