@@ -2,7 +2,7 @@ use psyche_coordinator::MAX_TOKENS_TO_SEND;
 use psyche_core::FixedVec;
 use psyche_modeling::{CausalLM, EosToks};
 use psyche_modeling::{LogitsProcessor, Sampling, Trainer};
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 use tch::Tensor;
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -17,7 +17,7 @@ pub struct PromptTask {
     pub tokens_to_send: RwLock<FixedVec<i32, MAX_TOKENS_TO_SEND>>,
     /// A flag set to `true` once the end-of-sequence token has been generated.
     pub prompt_finished: RwLock<bool>,
-    pub is_running: RwLock<bool>,
+    pub is_running: Mutex<bool>,
 }
 
 impl PromptTask {
@@ -30,7 +30,7 @@ impl PromptTask {
             tokens: RwLock::new(tokens),
             tokens_to_send: RwLock::new(FixedVec::new()),
             prompt_finished: RwLock::new(false),
-            is_running: RwLock::new(false),
+            is_running: Mutex::new(false),
         }
     }
 }

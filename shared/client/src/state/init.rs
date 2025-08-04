@@ -52,7 +52,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub optim_stats_every_n_steps: Option<u32>,
     pub grad_accum_in_fp32: bool,
 
-    // model tasks, evaluation + prompt
+    // evaluation
     pub eval_task_max_docs: Option<usize>,
     pub eval_tasks: Vec<psyche_eval::Task>,
     pub prompt_task: bool,
