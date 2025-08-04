@@ -727,12 +727,10 @@ impl PreparedTask {
     }
 
     pub fn main_metric_name(&self) -> &str {
-        match &self.prepared_task_type {
-            PreparedTaskType::LogLikelihood {
-                docs: _,
-                tokenized_fewshot: _,
-            } => "acc_norm",
-            PreparedTaskType::GenerateUntil { .. } => "acc",
+        if TASKS_WITH_ACC_NORM.contains(&self.name()) {
+            "acc_norm"
+        } else {
+            "acc"
         }
     }
 }
