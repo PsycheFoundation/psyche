@@ -7,7 +7,10 @@ use psyche_watcher::Backend;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
 
-use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
+use crate::{
+    TokenizedData,
+    traits::{LengthKnownDataProvider, TokenizedDataProvider},
+};
 
 use super::shared::{ClientToServerMessage, RejectionReason, ServerToClientMessage};
 
@@ -121,7 +124,7 @@ where
         &mut self,
         to: A,
         data_ids: BatchId,
-    ) -> Result<Vec<Vec<i32>>, RejectionReason> {
+    ) -> Result<Vec<TokenizedData>, RejectionReason> {
         if !self.in_round.contains(to.get_p2p_public_key()) {
             return Err(RejectionReason::NotInThisRound);
         }
