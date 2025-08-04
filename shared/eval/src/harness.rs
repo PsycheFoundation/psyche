@@ -13,7 +13,7 @@ use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
-const GENERATE_UNTIL_MAX_CONTEXT_SIZE: usize = 2047;
+const GENERATE_UNTIL_MAX_CONTEXT_SIZE: usize = 2048;
 
 const TASKS_WITH_ACC_NORM: [&str; 6] = [
     ArcChallenge::name(),
@@ -609,7 +609,10 @@ impl PreparedTask {
                     .to(options.model.device())
                     .unsqueeze(0);
 
-                let (logits, _) = options.model.forward(&model_input, None, Some(1), None);
+                let (logits, _) =
+                    options
+                        .model
+                        .forward(&model_input, None, None, None, Some(1), None);
                 let logits = logits.squeeze();
 
                 let next_token = logits_processor.sample(&logits).unwrap();
