@@ -163,12 +163,12 @@ impl PythonDistributedTrainer {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
 
-        let _ = self.comm.broadcast(&batch_data.input_ids)?;
+        self.comm.broadcast(&batch_data.input_ids)?;
         if let Some(labels) = &batch_data.labels {
-            let _ = self.comm.broadcast(labels);
+            self.comm.broadcast(labels);
         }
         if let Some(position_ids) = &batch_data.position_ids {
-            let _ = self.comm.broadcast(position_ids);
+            self.comm.broadcast(position_ids);
         }
 
         let ret = self.local.train(
