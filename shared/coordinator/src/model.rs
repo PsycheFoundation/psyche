@@ -81,6 +81,7 @@ pub enum LLMTrainingDataLocation {
     Http(HttpLLMTrainingDataLocation),
     /// link to a JSON file that deserializes to a Vec<LLMTrainingDataLocationAndWeight>
     WeightedHttp(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
+    Preprocessed(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
 }
 
 impl Default for LLMTrainingDataLocation {
@@ -287,6 +288,7 @@ impl Model {
                         HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
                     },
                     LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
+                    LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
                 };
                 if bad_data_location {
                     msg!("model check failed: bad LLM training data location.");

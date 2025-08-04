@@ -139,37 +139,16 @@ impl<T: ModelConfig> PretrainedSource<T> {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug, Default, Clone, Copy, PartialEq)]
 pub enum AttentionImplementation {
     #[serde(rename = "eager")]
     Eager,
     #[serde(rename = "sdpa")]
+    #[default]
     Sdpa,
+    #[cfg(feature = "parallelism")]
     #[serde(rename = "flash_attention_2")]
     FlashAttention2,
-}
-
-pub trait UseSDPA {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError>;
-}
-
-impl UseSDPA for AttentionImplementation {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError> {
-        match self {
-            AttentionImplementation::Eager => Ok(false),
-            AttentionImplementation::FlashAttention2 => Err(ModelLoadError::ModelExplicitlyUsesFA2),
-            AttentionImplementation::Sdpa => Ok(true),
-        }
-    }
-}
-
-impl UseSDPA for Option<AttentionImplementation> {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError> {
-        match self {
-            Some(x) => x.use_sdpa(),
-            None => Ok(true),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

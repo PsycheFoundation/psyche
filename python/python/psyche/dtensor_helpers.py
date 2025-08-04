@@ -39,3 +39,11 @@ def set_grad(tensor: Tensor | DTensor, grad: Tensor):
         tensor.grad._local_tensor.copy_(grad._local_tensor)
     else:
         tensor.grad.copy_(grad)
+
+
+def zero_grad(tensor: Tensor | DTensor):
+    if tensor.grad is not None:
+        if isinstance(tensor, DTensor):
+            tensor.grad._local_tensor.zero_()
+        else:
+            tensor.grad.zero_()

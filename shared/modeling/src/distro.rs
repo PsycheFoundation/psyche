@@ -490,9 +490,8 @@ impl Distro {
 
             let logical_tensor = variable.logical_tensor();
             sgd.add_parameters(&logical_tensor, 0).unwrap();
+            variable.zero_grad();
         }
-
-        sgd.zero_grad_with_set_to_none(false).unwrap();
 
         let transform = TransformDCT::new(vs.variables(), compression_chunk);
 
@@ -665,7 +664,9 @@ impl Distro {
         // SGD step
         self.sgd.set_learning_rate(lr).unwrap();
         let _ = self.sgd.step();
-        self.zero_grad();
+        for var in vars.variables() {
+            var.zero_grad();
+        }
     }
 
     pub fn error_correction(&mut self, vars: &dyn CausalLM, prev_lr: f64) {
@@ -678,10 +679,6 @@ impl Distro {
             // Apply lookahead, the signed delta, multiplied by lr
             let _t = variable.g_sub_(&state.delta.logical_tensor().sign().multiply_scalar(prev_lr));
         }
-    }
-
-    pub fn zero_grad(&mut self) {
-        let _ = self.sgd.zero_grad_with_set_to_none(false);
     }
 
     pub fn zero_optim(&mut self) {
@@ -746,6 +743,13 @@ mod tests {
 
         fn set_grad(&self, tensor: Tensor) {
             self.grad().copy_(&tensor);
+        }
+
+        fn zero_grad(&self) {
+            let grad = self.grad();
+            if grad.defined() {
+                let _ = self.grad().zero_();
+            }
         }
     }
 
