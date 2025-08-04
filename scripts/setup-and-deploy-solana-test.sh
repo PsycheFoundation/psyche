@@ -25,7 +25,6 @@ sleep 3
 solana airdrop 10 --url ${RPC} --keypair ${WALLET_FILE}
 CONFIG_FILE=${CONFIG_FILE} WALLET_FILE=${WALLET_FILE} ./scripts/deploy-solana-test.sh
 
-
 echo -e "\n[+] Testing Solana setup ready, starting Solana logs...\n"
 
 solana logs --url ${RPC}
