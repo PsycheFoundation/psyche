@@ -67,7 +67,7 @@ impl PromptTask {
         };
 
         // Run forward pass
-        let (logits, _) = trainer.forward(&input, None, Some(1), None);
+        let (logits, _) = trainer.forward(&input, None, None, None, Some(1), None);
 
         let logits = logits.squeeze();
 
