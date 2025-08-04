@@ -143,6 +143,7 @@ impl Trainer {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn train(
         self_: PyRef<'_, Self>,
         step: u32,
