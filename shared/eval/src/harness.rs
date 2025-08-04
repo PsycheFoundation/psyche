@@ -1,5 +1,5 @@
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
-use crate::{ASCII_UPPERCASE, ArcChallenge, ArcEasy, MMLU, MMLUPro, OpenbookQA, PIQA};
+use crate::{ASCII_UPPERCASE, ArcChallenge, ArcEasy, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
@@ -15,7 +15,7 @@ use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
 const GENERATE_UNTIL_MAX_CONTEXT_SIZE: usize = 2047;
 
-const TASKS_WITH_ACC_NORM: [&str; 5] = [
+const TASKS_WITH_ACC_NORM: [&str; 6] = [
     ArcChallenge::name(),
     ArcEasy::name(),
     Hellaswag::name(),
@@ -365,18 +365,13 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        tracing::info!("Starting log likelihood evaluation");
-        tracing::info!("skip: {}", skip);
-        tracing::info!("step_by: {}", step_by);
         results.add_entry_if_needed("acc", docs.len());
         if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
             results.add_entry_if_needed("acc_norm", docs.len());
         }
         let mut next_index = skip;
-        tracing::info!("next_index: {}", next_index);
 
         let fast_forward = (skip / docs.len()) * docs.len();
-        tracing::info!("fast_forward: {}", fast_forward);
         skip -= fast_forward;
         let mut cancelled = false;
 
@@ -389,9 +384,6 @@ impl PreparedTask {
             .enumerate()
         {
             next_index = doc_index;
-            tracing::info!("next_index: {}", next_index);
-            tracing::info!("num_iterations: {}", num_iterations);
-            tracing::info!("options.limit: {:?}", options.limit);
             if let Some(cancel) = options.cancel.as_ref() {
                 if cancel.is_cancelled() {
                     cancelled = true;
@@ -512,15 +504,9 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        tracing::info!("skip: {}", skip);
-        tracing::info!("step_by: {}", step_by);
-        tracing::info!("requests.len: {}", requests.len());
-        tracing::info!("results: {:?}", results);
-
         results.add_entry_if_needed("acc", requests.len());
         let fast_forward = (skip / requests.len()) * requests.len();
         skip -= fast_forward;
-        tracing::info!("fast_forward(: {}", fast_forward);
         let mut cancelled = false;
         let mut documents_processed = 0;
 
@@ -569,17 +555,8 @@ impl PreparedTask {
             let mut generated_answer = None;
             let mut generation_complete = false;
 
-            tracing::info!(
-                "Processing iteration {} (document index {})",
-                num_iterations,
-                doc_index
-            );
             // Start with the tokenized prompt
             let mut full_sequence = request.clone();
-            tracing::info!(
-                "request for  {:?}",
-                _request_str.get(_request_str.len() - 100..)
-            );
 
             // Check if we have cached generated tokens for this document
             let mut generated_tokens = {
@@ -592,7 +569,7 @@ impl PreparedTask {
             };
 
             if !generated_tokens.is_empty() {
-                tracing::info!(
+                tracing::trace!(
                     "Resuming generation for document {} from checkpoint with {} tokens",
                     doc_index,
                     generated_tokens.len()
@@ -606,7 +583,6 @@ impl PreparedTask {
 
             // Generate tokens until we find "The answer is" pattern or reach limit
             let mut tokens_generated_count = generated_tokens.len();
-            let mut current_output = "".to_string();
             while !generation_complete {
                 if let Some(cancel) = options.cancel.as_ref() {
                     if cancel.is_cancelled() {
@@ -615,7 +591,7 @@ impl PreparedTask {
                             .write()
                             .unwrap()
                             .insert(doc_index, generated_tokens.clone());
-                        tracing::info!(
+                        tracing::trace!(
                             "Cancellation requested: saving {} tokens for document {}",
                             generated_tokens.len(),
                             doc_index,
@@ -649,8 +625,6 @@ impl PreparedTask {
 
                 // Decode all generated tokens together
                 if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
-                    current_output = generated_text.clone();
-
                     // Check if we've generated "The answer is (X)" pattern using regex
                     if let Some(captures) = answer_regex.captures(&generated_text) {
                         if let Some(answer_char) = captures.get(1) {
@@ -659,10 +633,6 @@ impl PreparedTask {
                                     .iter()
                                     .position(|&c| c == answer_char.as_str())
                                     .unwrap_or(usize::MAX),
-                            );
-                            tracing::info!(
-                                "Found answer: {:?} for document: {doc_index}",
-                                generated_answer
                             );
                             generation_complete = true;
 
@@ -680,11 +650,6 @@ impl PreparedTask {
             // Clear the cache for this document after successful completion
             if generation_complete {
                 cache.write().unwrap().remove(&doc_index);
-                tracing::info!(
-                    "Cleared cache for document {} after completion ( tokens: {})",
-                    doc_index,
-                    generated_tokens.len()
-                );
 
                 let score = if generated_answer == Some(answer) {
                     1.
@@ -694,25 +659,10 @@ impl PreparedTask {
                 results.push("acc", score);
                 documents_processed += 1;
 
-                tracing::info!(
-                    "Generated answer for document {}: {:?}",
-                    doc_index,
-                    current_output
-                );
-                tracing::info!("is_correct: {}", score == 1.);
-
                 if let Some(pbar) = &pbar {
                     pbar.set_message(format!("acc: {:.3}", results.sample("acc").unwrap()));
                     pbar.inc(1);
                 };
-            } else if cancelled {
-                // If we were cancelled mid-generation, we need to track this differently
-                // We should resume from the current document, not skip it
-                tracing::info!(
-                    "Generation cancelled for document {} with {} tokens generated",
-                    doc_index,
-                    generated_tokens.len()
-                );
             }
         }
 
