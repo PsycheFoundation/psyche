@@ -49,7 +49,7 @@ const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
-const MAX_ERRORS_PER_PEER: u8 = 5;
+const MAX_ERRORS_PER_PEER: u8 = 2;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -267,6 +267,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
                                         metrics.record_download_completed(hash, from);
+                                        peer_manager.report_success(from);
                                         if retried_downloads.remove(hash).await.is_some() {
                                             info!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
