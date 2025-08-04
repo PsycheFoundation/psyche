@@ -278,7 +278,7 @@ impl ModelTaskRunner {
                                             );
                                         }
                                         EnumModelTask::PromptTask(prompt) => {
-                                            let mut is_running = prompt.is_running.write().unwrap();
+                                            let mut is_running = prompt.is_running.lock().unwrap();
                                             if *is_running {
                                                 continue;
                                             } else {
@@ -292,7 +292,7 @@ impl ModelTaskRunner {
                                             );
 
                                             prompt.run(&mut trainer, cancel.clone());
-                                            *prompt.is_running.write().unwrap() = false;
+                                            *prompt.is_running.lock().unwrap() = false;
                                         }
                                     }
                                     trace!("Done model task {}", model_task.name());
