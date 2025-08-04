@@ -50,10 +50,13 @@ impl PromptTask {
             return;
         }
 
-        // read tokens for creating input
+        // read input tokens
         let token_len = self.tokens.read().unwrap().len();
         if token_len > MAX_CONTEXT_LENGTH {
-            self.tokens.write().unwrap().drain(..MAX_CONTEXT_LENGTH / 2);
+            self.tokens
+                .write()
+                .unwrap()
+                .drain(0..token_len - MAX_CONTEXT_LENGTH);
         }
 
         let input = {
