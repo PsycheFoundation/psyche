@@ -16,11 +16,12 @@ const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
 const GENERATE_UNTIL_MAX_CONTEXT_SIZE: usize = 2047;
 
 const TASKS_WITH_ACC_NORM: [&str; 5] = [
-    ArcEasy::name(),
     ArcChallenge::name(),
-    PIQA::name(),
-    OpenbookQA::name(),
+    ArcEasy::name(),
+    Hellaswag::name(),
     MMLU::name(),
+    OpenbookQA::name(),
+    PIQA::name(),
 ];
 
 pub enum TaskType {
