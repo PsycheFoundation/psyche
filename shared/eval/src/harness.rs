@@ -349,7 +349,7 @@ impl PreparedTask {
                 cache.clone(),
                 requests,
                 tokenizer,
-                &answer_regex,
+                answer_regex,
                 pbar,
             ),
         }
@@ -368,7 +368,9 @@ impl PreparedTask {
         tracing::info!("skip: {}", skip);
         tracing::info!("step_by: {}", step_by);
         results.add_entry_if_needed("acc", docs.len());
-        results.add_entry_if_needed("acc_norm", docs.len());
+        if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
+            results.add_entry_if_needed("acc_norm", docs.len());
+        }
         let mut next_index = skip;
         tracing::info!("next_index: {}", next_index);
 
@@ -522,7 +524,6 @@ impl PreparedTask {
         skip -= fast_forward;
         tracing::info!("fast_forward(: {}", fast_forward);
         let mut cancelled = false;
-        let mut scores: Vec<(f32, bool)> = Vec::new();
         let mut documents_processed = 0;
 
         // Simple sampling setup
@@ -637,7 +638,7 @@ impl PreparedTask {
 
                 let next_token = logits_processor.sample(&logits).unwrap();
                 full_sequence.push(next_token as i64);
-                generated_tokens.push(next_token as u32);
+                generated_tokens.push(next_token);
                 tokens_generated_count += 1;
 
                 // Check if we hit an EOS token
@@ -693,7 +694,6 @@ impl PreparedTask {
                     0.
                 };
                 results.push("acc", score);
-                scores.push((score as f32, true));
                 documents_processed += 1;
 
                 tracing::info!(
@@ -719,7 +719,7 @@ impl PreparedTask {
         }
 
         PreparedTaskResult {
-            scores: get_all_averages(results, &eval_name)
+            scores: get_all_averages(results, eval_name)
                 .into_iter()
                 .map(|(key, value)| (key, value.unwrap_or_default()))
                 .collect(),
