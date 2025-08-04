@@ -116,7 +116,9 @@ class HfTransformersAuto(CausalLM):
             config.max_position_embeddings = override_max_position_embeddings
 
         with torch.device("meta"):
-            model: torch.nn.Module = AutoModelForCausalLM.from_config(config)
+            model: torch.nn.Module = AutoModelForCausalLM.from_config(
+                config,  # attn_implementation="flash_attention_2"
+            )
         if device.type == "cuda":
             torch.cuda.set_device(device)
 
@@ -227,6 +229,10 @@ class HfTransformersAuto(CausalLM):
                     input_ids = input_ids.narrow(0, start_row, shard_size).contiguous()
                     if labels is not None:
                         labels = labels.narrow(0, start_row, shard_size).contiguous()
+                    if position_ids is not None:
+                        position_ids = position_ids.narrow(
+                            0, start_row, shard_size
+                        ).contiguous()
 
         num_logits_to_keep = 0 if num_logits_to_keep is None else num_logits_to_keep
         ret = self.model(

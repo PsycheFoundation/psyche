@@ -19,7 +19,7 @@ fn field_to_int(field: &Field) -> i32 {
         },
         Field::Byte(x) => *x as i32,
         Field::Short(x) => *x as i32,
-        Field::Int(x) => *x as i32,
+        Field::Int(x) => *x,
         Field::Long(x) => *x as i32,
         Field::UByte(x) => *x as i32,
         Field::UShort(x) => *x as i32,
@@ -33,7 +33,7 @@ fn list_to_vec(row: &Row, column: usize, required_len: Option<usize>) -> Result<
     let ret: Vec<i32> = row
         .get_list(column)?
         .elements()
-        .into_iter()
+        .iter()
         .map(field_to_int)
         .collect();
     if let Some(required_len) = required_len {
@@ -127,7 +127,7 @@ impl TokenizedDataProvider for PreprocessedDataProvider {
         if start >= self.data.len() || end >= self.data.len() {
             bail!("{data_ids} out of range");
         }
-        Ok(self.data[start..=end].into_iter().cloned().collect())
+        Ok(self.data[start..=end].to_vec())
     }
 }
 

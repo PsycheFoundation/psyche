@@ -26,9 +26,9 @@ enum AttnImpl {
     FlashAttention2,
 }
 
-impl Into<AttentionImplementation> for AttnImpl {
-    fn into(self) -> AttentionImplementation {
-        match self {
+impl From<AttnImpl> for AttentionImplementation {
+    fn from(val: AttnImpl) -> Self {
+        match val {
             AttnImpl::Eager => AttentionImplementation::Eager,
             AttnImpl::Sdpa => AttentionImplementation::Sdpa,
             #[cfg(feature = "parallelism")]
@@ -373,8 +373,7 @@ async fn main() -> Result<()> {
                             };
                             let id = id.clone();
                             let repo_files = repo_files.clone();
-                            let attn_implemention =
-                                args.attn_implementation.clone().map(|x| x.into());
+                            let attn_implemention = args.attn_implementation.map(|x| x.into());
 
                             std::thread::spawn(move || {
                                 let mut model = auto_model_for_causal_lm_from_pretrained(
@@ -437,7 +436,7 @@ async fn main() -> Result<()> {
         let data: Vec<BatchDataCPU> = dataset
             .get_samples(BatchId(ClosedInterval::new(
                 (step as u64 - 1) * args.total_batch as u64,
-                step as u64 * args.total_batch as u64,
+                (step as u64 * args.total_batch as u64) - 1,
             )))
             .await?
             .into_iter()
@@ -450,7 +449,7 @@ async fn main() -> Result<()> {
             .collect();
 
         let trainings = data
-            .chunks(data.len() / dp_world_size)
+            .chunks(data.len() / trainers.len())
             .zip(trainers)
             .map(|(data, trainer)| {
                 let data = data.to_vec();

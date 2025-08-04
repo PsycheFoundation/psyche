@@ -76,7 +76,7 @@ pub fn apply_rotary_pos_emb(
     let (b, h, s, d) = q.size4().unwrap();
     let position_ids = match position_ids {
         Some(ids) => ids,
-        None => &Tensor::arange(s as i64, (Kind::Int64, q.device()))
+        None => &Tensor::arange(s, (Kind::Int64, q.device()))
             .unsqueeze(0)
             .expand([b, s], false),
     };
@@ -86,8 +86,8 @@ pub fn apply_rotary_pos_emb(
         2,
         "position_ids must be 2D [batch, seq_len]"
     );
-    let pos_b = pos_shape[0] as i64;
-    let pos_s = pos_shape[1] as i64;
+    let pos_b = pos_shape[0];
+    let pos_s = pos_shape[1];
     assert_eq!(
         pos_s, s,
         "sequence length mismatch between q and position_ids"

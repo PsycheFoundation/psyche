@@ -187,7 +187,7 @@ def main():
             # start_row = rank * shard_size
             # local_batch = batch.narrow(0, start_row, shard_size).contiguous()
 
-            trainer.train(
+            _, loss = trainer.train(
                 train.step,
                 train.zero_optim,
                 (train.batch_id[0], train.batch_id[1]),
@@ -202,6 +202,9 @@ def main():
                 ),
                 prev_self_distro_results,
             )
+
+            loss = torch.Tensor([loss]).to(device=device, dtype=torch.float32)
+            dist.all_reduce(loss)
         elif operation["operation"] == "optimize":
             with torch.no_grad():
                 optimize = OptimizeOperation(**operation)

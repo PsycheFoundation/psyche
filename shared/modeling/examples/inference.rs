@@ -73,9 +73,9 @@ enum AttnImpl {
     FlashAttention2,
 }
 
-impl Into<AttentionImplementation> for AttnImpl {
-    fn into(self) -> AttentionImplementation {
-        match self {
+impl From<AttnImpl> for AttentionImplementation {
+    fn from(val: AttnImpl) -> Self {
+        match val {
             AttnImpl::Eager => AttentionImplementation::Eager,
             AttnImpl::Sdpa => AttentionImplementation::Sdpa,
             #[cfg(feature = "parallelism")]

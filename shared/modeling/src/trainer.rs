@@ -702,7 +702,7 @@ impl LocalTrainer {
                         .map(|x| {
                             x.chunk(grad_accum_steps as i64, 0)
                                 .into_iter()
-                                .map(|y| Some(y))
+                                .map(Some)
                                 .collect::<Vec<_>>()
                         })
                         .unwrap_or_else(|| {
@@ -714,7 +714,7 @@ impl LocalTrainer {
                         .map(|x| {
                             x.chunk(grad_accum_steps as i64, 0)
                                 .into_iter()
-                                .map(|y| Some(y))
+                                .map(Some)
                                 .collect::<Vec<_>>()
                         })
                         .unwrap_or_else(|| {
@@ -725,7 +725,6 @@ impl LocalTrainer {
                     let sequence_lengths = sequence_lengths
                         .map(|x| {
                             x.chunks(micro_batch_size)
-                                .into_iter()
                                 .map(|y| Some(y.to_vec()))
                                 .collect::<Vec<_>>()
                         })
@@ -755,15 +754,17 @@ impl LocalTrainer {
                         "Train begin"
                     );
 
+                    for var in model.variables() {
+                        var.zero_grad();
+                    }
+
                     match &mut optimizer {
-                        Optimizer::Torch { optimizer, .. } => {
-                            optimizer.zero_grad().unwrap();
+                        Optimizer::Torch { .. } => {
                             if zero_optim {
                                 tracing::warn!("Zeroing optimizing states not supported for AdamW");
                             }
                         }
                         Optimizer::Distro { optimizer, .. } => {
-                            optimizer.zero_grad();
                             if zero_optim {
                                 optimizer.zero_optim();
                                 tracing::info!("Zeroed optimizer states");
