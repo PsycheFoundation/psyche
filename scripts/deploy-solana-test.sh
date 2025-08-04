@@ -20,33 +20,44 @@ echo -e "[+] RUN_ID = $RUN_ID"
 echo -e "[+] CONFIG_FILE = $CONFIG_FILE"
 echo -e "[+] -----------------------------------------------------------"
 
-echo -e "\n[+] starting authorizor deploy"
+echo -e "\n[+] Starting authorizor deploy"
 pushd architectures/decentralized/solana-authorizer
-echo -e "\n[+] syncing keys..."
-anchor keys sync --provider.cluster ${RPC} --provider.wallet $WALLET_FILE
 
-echo -e "\n[+] building..."
-anchor build --no-idl
+echo -e "\n[+] - building..."
+anchor build
 
-echo -e "\n[+] deploying..."
-anchor deploy --provider.cluster ${RPC} --provider.wallet $WALLET_FILE -- --max-len 500000
-popd
+echo -e "\n[+] - deploying..."
+anchor deploy --provider.cluster ${RPC} --provider.wallet ${WALLET_FILE}
+sleep 1 # wait for the program to be deployed and ready in the validator
+
+echo -e "\n[+] - init-idl..."
+anchor idl init \
+    --provider.cluster ${RPC} \
+    --provider.wallet ${WALLET_FILE} \
+    --filepath target/idl/psyche_solana_authorizer.json \
+    PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw
+
 echo -e "\n[+] Authorizer program deployed successfully!"
+popd
 
-echo -e "\n[+] starting coordinator deploy"
+echo -e "\n[+] Starting coordinator deploy"
 pushd architectures/decentralized/solana-coordinator
-echo -e "\n[+] syncing keys..."
-anchor keys sync --provider.cluster ${RPC} --provider.wallet $WALLET_FILE
 
-echo -e "\n[+] building..."
+echo -e "\n[+] - syncing keys..."
+anchor keys sync --provider.cluster ${RPC} --provider.wallet ${WALLET_FILE}
+
+echo -e "\n[+] - building..."
 anchor build --no-idl
 
-echo -e "\n[+] deploying..."
-anchor deploy --provider.cluster ${RPC} --provider.wallet $WALLET_FILE -- --max-len 500000
-popd
-echo -e "\n[+] Coordinator program deployed successfully!"
+echo -e "\n[+] - deploying..."
+anchor deploy --provider.cluster ${RPC} --provider.wallet ${WALLET_FILE} -- --max-len 500000
+sleep 1 # wait for the program to be deployed and ready in the validator
 
-sleep 10
+echo -e "\n[+] Coordinator program deployed successfully!"
+popd
+
+echo -e "\n[+] Creating authorization for everyone to join the run"
+bash ./scripts/join-authorization-create.sh ${RPC} ${WALLET_FILE} 11111111111111111111111111111111
 
 echo -e "\n[+] Creating training run..."
 cargo run --release --bin psyche-solana-client -- \
@@ -56,8 +67,7 @@ cargo run --release --bin psyche-solana-client -- \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} "$@"
 
-echo -e "\n[+] Training run created successfully"
-
+echo -e "\n[+] Update training run config..."
 cargo run --release --bin psyche-solana-client -- \
     update-config \
     --wallet-private-key-path ${WALLET_FILE} \
@@ -66,6 +76,7 @@ cargo run --release --bin psyche-solana-client -- \
     --run-id ${RUN_ID} \
     --config-path ${CONFIG_FILE}
 
+echo -e "\n[+] Unpause the training run..."
 cargo run --release --bin psyche-solana-client -- \
     set-paused \
     --wallet-private-key-path ${WALLET_FILE} \
