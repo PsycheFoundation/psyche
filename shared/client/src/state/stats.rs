@@ -291,10 +291,7 @@ impl StatsLogger {
                     let metric_name: &str = eval_task.task.main_metric_name();
                     let task_name = model_task.name();
                     match eval_task.results().sample(metric_name) {
-                        Some(metric) => {
-                            tracing::info!("{} metric {}", task_name, metric);
-                            Some((task_name.to_owned(), metric))
-                        }
+                        Some(metric) => Some((task_name.to_owned(), metric)),
                         None => {
                             warn!("{} missing metric {}", task_name, metric_name);
                             None
