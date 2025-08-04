@@ -9,6 +9,7 @@ use psyche_data_provider::{
     WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
+use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
     DataParallel, DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer,
@@ -151,6 +152,8 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
+
+    pub metrics: Arc<ClientMetrics>,
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
@@ -171,6 +174,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_request_download,
             tx_request_model_config,
             tx_broadcast_finished,
+            metrics,
         } = self;
 
         let model::Model::LLM(llm) = state.model;
@@ -745,8 +749,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         let wandb_run = wandb_run.map_err(InitRunError::WandbThreadCrashed)??;
 
-        let stats_logger =
-            StatsLogger::new(tokenizer, eval_runner.clone(), llm.lr_schedule, wandb_run);
+        let stats_logger = StatsLogger::new(
+            tokenizer,
+            eval_runner.clone(),
+            llm.lr_schedule,
+            wandb_run,
+            metrics,
+        );
 
         let warmup = WarmupStepMetadata {
             eval_runner: eval_runner.clone(),

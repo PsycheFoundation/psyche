@@ -2,12 +2,18 @@
 
 To create a new training run and make it available for nodes to join, you'll need to create it, configure it, and unpause it.
 
+## Creating the account
+
 First, create the run on-chain.
 You'll need to provide:
 
 - the RPC & websocket RPC urls so the client can communicate with an RPC node.
 - a unique run ID - just a few characters to uniquely identify your run.
 - a name & description for your run
+
+### Without treasurer
+
+For a standard run without token incentive distribution layer
 
 ```bash
 psyche-solana-client create-run \
@@ -17,6 +23,22 @@ psyche-solana-client create-run \
     --name [NAME] \
     --description [DESCRIPTION]
 ```
+
+### With treasurer
+
+For a run that distributes tokens as reward to the training participants, we need to specify the mint of the token mint to be distributed:
+
+```bash
+psyche-solana-client create-run \
+    --rpc [RPC] \
+    --ws-rpc [WS_RPC] \
+    --run-id [RUN_ID] \
+    --treasurer-collateral-mint [REWARD_MINT] \
+    --name [NAME] \
+    --description [DESCRIPTION]
+```
+
+## Initializing configuration
 
 Then, set the run's config.
 You'll need to provide:
@@ -32,6 +54,8 @@ psyche-solana-client update-config \
     --run-id [RUN_ID] \
     --config-path [CONFIG_FILE]
 ```
+
+## Starting the training
 
 At this point, your run is ready to go! You can now set its state to "unpaused", and let clients join & begin training your model.
 

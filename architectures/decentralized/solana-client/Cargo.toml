@@ -5,6 +5,7 @@ version.workspace = true
 
 [dependencies]
 anchor-client.workspace = true
+anchor-spl.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 bytemuck.workspace = true
@@ -16,6 +17,7 @@ psyche-core.workspace = true
 psyche-data-provider.workspace = true
 psyche-solana-authorizer.workspace = true
 psyche-solana-coordinator.workspace = true
+psyche-solana-treasurer.workspace = true
 psyche-metrics.workspace = true
 psyche-client.workspace = true
 psyche-eval.workspace = true

@@ -41,6 +41,7 @@ builds:
   # on main, might as well build everything, though
   - exclude:
       - '*.aarch64-darwin.*'
+      - 'packages.*.docker-psyche-solana-test-validator'
     include:
       - 'packages.x86_64-linux.*'
       - devShells.aarch64-darwin.default
