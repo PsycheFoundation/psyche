@@ -15,7 +15,30 @@ in
       (final: prev: {
         python312Packages = prev.python312Packages.override {
           overrides = pyfinal: pyprev: rec {
-            torch = pyprev.torch-bin;
+            torch-bin =
+              let
+                cudaVersion = "128";
+                version = "2.9.0.dev20250731";
+                srcs = {
+                  "x86_64-linux-312" = prev.fetchurl {
+                    url = "https://download.pytorch.org/whl/nightly/cu${cudaVersion}/torch-${version}%2Bcu${cudaVersion}-cp312-cp312-manylinux_2_28_x86_64.whl";
+                    hash = "sha256-Cl0L52jtEzv2B54GrSsvBUJyjXu4zMh6PTcUfyNN920=";
+                  };
+                  "aarch64-darwin-312" = prev.fetchurl {
+                    url = "https://download.pytorch.org/whl/nightly/cpu/torch-${version}-cp312-none-macosx_11_0_arm64.whl";
+                    hash = "sha256-0WADByPiZagUzUHYm6n5n30E+KZ78S63okLTYy9zNEs=";
+                  };
+                };
+                pyVerNoDot = builtins.replaceStrings [ "." ] [ "" ] pyfinal.python.pythonVersion;
+                unsupported = sys: throw "No pytorch wheel URL configured for ${sys}";
+              in
+              pyprev.torch-bin.overrideAttrs (oldAttrs: rec {
+                inherit version;
+                src =
+                  srcs."${prev.stdenv.system}-${pyVerNoDot}" or (unsupported "${prev.stdenv.system}-${pyVerNoDot}");
+              });
+
+            torch = torch-bin;
           };
         };
       })
@@ -28,13 +51,12 @@ in
       )
     ];
 
-    config =
-      {
-        allowUnfree = true;
-      }
-      // lib.optionalAttrs cudaSupported {
-        cudaSupport = true;
-        cudaVersion = "12.8";
-      };
+    config = {
+      allowUnfree = true;
+    }
+    // lib.optionalAttrs cudaSupported {
+      cudaSupport = true;
+      cudaVersion = "12.8";
+    };
   }
 )
