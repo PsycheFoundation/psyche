@@ -16,7 +16,7 @@ You'll need to provide:
 Before we can get started we need to decide who will be able to join the run.
 You can read more about [authorization here](./authentication.md).
 
-We'll need a private key that manages join permissions: `join_authority.json`
+We'll need a private key that manages join permissions, we'll call it: `join_authority.json`
 
 #### Join Authority for Public Runs
 
@@ -58,7 +58,7 @@ psyche-solana-client create-run \
     --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
     --join_authority [JOIN_AUTHORITY_PUBKEY] \
-    --treasurer-collateral-mint [REWARD_MINT] \
+    --treasurer-collateral-mint [REWARD_COLLATERAL_MINT] \
     --name [NAME] \
     --description [DESCRIPTION]
 ```

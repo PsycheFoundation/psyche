@@ -1118,6 +1118,9 @@ async fn async_main() -> Result<()> {
                 let total_unclaimed_earned_points =
                     total_claimable_earned_points - treasurer_run_state.total_claimed_earned_points;
 
+                let total_funded_unearned_points =
+                    treasurer_run_collateral_amount - total_unclaimed_earned_points;
+
                 let estimated_earned_points_per_epoch = u64::try_from(
                     coordinator_account_state
                         .state
@@ -1135,10 +1138,7 @@ async fn async_main() -> Result<()> {
                 let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
                     json!(f64::INFINITY)
                 } else {
-                    json!(
-                        (treasurer_run_collateral_amount - total_unclaimed_earned_points)
-                            / estimated_earned_points_per_epoch
-                    )
+                    json!(total_funded_unearned_points / estimated_earned_points_per_epoch)
                 };
 
                 Some(json!({
@@ -1151,6 +1151,7 @@ async fn async_main() -> Result<()> {
                     "total_claimed_earned_points": treasurer_run_state.total_claimed_earned_points,
                     "total_claimable_earned_points": total_claimable_earned_points,
                     "total_unclaimed_earned_points": total_unclaimed_earned_points,
+                    "total_funded_unearned_points": total_funded_unearned_points,
                     "estimated_earned_points_per_epoch": estimated_earned_points_per_epoch,
                     "estimated_funded_epochs_count": estimated_funded_epochs_count,
                 }))
