@@ -70,7 +70,7 @@ echo "PSYCHE_AUTH_SCOPE: $PSYCHE_AUTH_SCOPE"
 
 # Find how the authorization was created and simulate it
 AUTHORIZATION_CREATE_JSON=$( \
-    solana-toolbox --rpc=$SOLANA_RPC instruction \
+        solana-toolbox --rpc=$SOLANA_RPC instruction \
         $PSYCHE_AUTHORIZER_ID authorization_create \
         grantor:$GRANTOR_PUBKEY \
         --args=params.grantee:$GRANTEE_PUBKEY \
@@ -85,7 +85,7 @@ echo "AUTHORIZATION_PUBKEY: $AUTHORIZATION_PUBKEY"
 echo "----"
 echo "Setting delegates..."
 AUTHORIZATION_DELEGATES_JSON=$( \
-    solana-toolbox --rpc=$SOLANA_RPC instruction \
+        solana-toolbox --rpc=$SOLANA_RPC instruction \
         $PSYCHE_AUTHORIZER_ID authorization_grantee_update \
         payer:keypair \
         grantee:$GRANTEE_KEYPAIR_FILE \

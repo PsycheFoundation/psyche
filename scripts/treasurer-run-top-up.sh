@@ -43,7 +43,7 @@ echo "COLLATERAL_AMOUNT: $COLLATERAL_AMOUNT"
 echo "----"
 echo "Fetch run info..."
 RUN_INFO=$( \
-    cargo run --release --bin psyche-solana-client -- \
+        cargo run --release --bin psyche-solana-client -- \
         info \
         --rpc $SOLANA_RPC \
         --run-id "$RUN_ID"
