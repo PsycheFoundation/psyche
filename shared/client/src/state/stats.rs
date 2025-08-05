@@ -237,24 +237,20 @@ impl StatsLogger {
         match self.step_durations.is_empty() {
             true => 0.,
             false => match &state.model {
-                model::Model::LLM(llm) => match llm.data_type {
-                    model::LLMTrainingDataType::Pretraining => {
-                        let tokens = state.get_target_global_batch_size(state.current_round())
-                            as u32
-                            * state.get_sequence_length()
-                            * self.step_durations.len() as u32;
-                        let seconds = self
-                            .step_durations
-                            .iter()
-                            .fold(0f32, |acc, ele| acc + ele.as_secs_f32());
-                        if seconds == 0.0 {
-                            0.0
-                        } else {
-                            tokens as f32 / seconds
-                        }
+                model::Model::LLM(_) => {
+                    let tokens = state.get_target_global_batch_size(state.current_round()) as u32
+                        * state.get_sequence_length()
+                        * self.step_durations.len() as u32;
+                    let seconds = self
+                        .step_durations
+                        .iter()
+                        .fold(0f32, |acc, ele| acc + ele.as_secs_f32());
+                    if seconds == 0.0 {
+                        0.0
+                    } else {
+                        tokens as f32 / seconds
                     }
-                    model::LLMTrainingDataType::Finetuning => todo!(),
-                },
+                }
             },
         }
     }
@@ -306,10 +302,7 @@ fn total_tokens<T: NodeIdentity>(state: &Coordinator<T>) -> u64 {
         .map(|y| y.data_index)
         .unwrap_or_default()
         * match &state.model {
-            model::Model::LLM(llm) => match llm.data_type {
-                model::LLMTrainingDataType::Pretraining => llm.max_seq_len as u64,
-                model::LLMTrainingDataType::Finetuning => todo!(),
-            },
+            model::Model::LLM(llm) => llm.max_seq_len as u64,
         }
 }
 

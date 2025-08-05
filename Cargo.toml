@@ -79,18 +79,19 @@ indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", branch = "nccl-2.7.0" }
-# tch = { path = "../tch-rs" }
-# torch-sys = { path = "../tch-rs/torch-sys" }
+tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "93d2130502f4be082cbaf0929cf12d7e4ded2471" }
+torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "93d2130502f4be082cbaf0929cf12d7e4ded2471" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "93d2130502f4be082cbaf0929cf12d7e4ded2471" }
+#tch = { path = "../tch-rs" }
+#torch-sys = { path = "../tch-rs/torch-sys" }
+#pyo3-tch = { path = "../tch-rs/pyo3-tch" }
 time = { version = "0.3.36", features = ["formatting", "macros"] }
 serde_with = { version = "3.11.0", features = ["macros"] }
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 thiserror = "2.0.3"
 toml = "0.8.19"
 clap-markdown = "0.1.4"
-pyo3 = { version = "0.24", features = ["py-clone"] }
+pyo3 = { version = "0.24" }
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 anchor-spl = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 anchor-client = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5", features = [
@@ -103,6 +104,7 @@ anchor-lang-idl = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a2
 ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9bb868ad8f25b26f110a795099", features = [
   "psyche-impl",
 ] }
+rayon = "1.10.0"
 
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }

@@ -1,4 +1,4 @@
-use crate::{LengthKnownDataProvider, traits::TokenizedDataProvider};
+use crate::{LengthKnownDataProvider, TokenizedData, traits::TokenizedDataProvider};
 use anyhow::{Result, bail};
 use psyche_core::{BatchId, TokenSize};
 
@@ -21,7 +21,7 @@ impl DummyDataProvider {
         }
     }
 
-    fn internal_get_samples(&self, num_samples: usize) -> Result<Vec<Vec<i32>>> {
+    fn internal_get_samples(&self, num_samples: usize) -> Result<Vec<TokenizedData>> {
         let mut ret: Vec<_> = Vec::new();
         for _ in 0..num_samples {
             let data_len = usize::from(self.token_size_in_bytes) * (self.seq_len + 1);
@@ -37,14 +37,14 @@ impl DummyDataProvider {
                     }
                 })
                 .collect();
-            ret.push(tokens);
+            ret.push(TokenizedData::from_input_ids(tokens));
         }
         Ok(ret)
     }
 }
 
 impl TokenizedDataProvider for DummyDataProvider {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         for id in data_ids.iter() {
             if id > self.num_sequences {
                 bail!("id {id} > self.num_sequences {}", self.num_sequences)

@@ -7297,6 +7297,7 @@ dependencies = [
  "psyche-watcher",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
+ "rayon",
  "reqwest 0.12.22",
  "serde",
  "serde_json",
@@ -7390,6 +7391,7 @@ dependencies = [
  "memmap2 0.9.5",
  "psyche-core",
  "psyche-data-provider",
+ "psyche-network",
  "psyche-python-extension-impl",
  "psyche-tui",
  "pyo3",
@@ -7668,7 +7670,7 @@ dependencies = [
 [[package]]
 name = "pyo3-tch"
 version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
 dependencies = [
  "pyo3",
  "tch",
@@ -12070,7 +12072,7 @@ dependencies = [
 [[package]]
 name = "tch"
 version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
 dependencies = [
  "half",
  "lazy_static",
@@ -12553,7 +12555,7 @@ dependencies = [
 [[package]]
 name = "torch-sys"
 version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
 dependencies = [
  "anyhow",
  "cc",

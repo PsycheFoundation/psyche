@@ -209,7 +209,10 @@ mod tests {
             Duration::from_secs(2),
             provider.get_samples(BatchId((0, 8).into())),
         )
-        .await??;
+        .await??
+        .into_iter()
+        .map(|x| x.input_ids)
+        .collect::<Vec<_>>();
 
         assert_eq!(samples.len(), 9);
         assert_eq!(
