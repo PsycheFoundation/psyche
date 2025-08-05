@@ -1,6 +1,7 @@
 use crate::instructions;
 use crate::retry::RetryError;
 use anchor_client::solana_sdk::hash::hash;
+use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
     Client, Cluster, Program,
     anchor_lang::system_program,
@@ -776,17 +777,28 @@ impl SolanaBackend {
         });
     }
 
+    pub async fn get_treasurer_run(
+        &self,
+        treasurer_run: &Pubkey,
+    ) -> Result<psyche_solana_treasurer::state::Run> {
+        self.program_coordinators[0]
+            .account::<psyche_solana_treasurer::state::Run>(*treasurer_run)
+            .await
+            .context(format!(
+                "Unable to get the treasurer_run: {treasurer_run:?}"
+            ))
+    }
+
     pub async fn get_coordinator_instance(
         &self,
         coordinator_instance: &Pubkey,
     ) -> Result<psyche_solana_coordinator::CoordinatorInstance> {
-        let coordinator_instance_state = self.program_coordinators[0]
+        self.program_coordinators[0]
             .account::<psyche_solana_coordinator::CoordinatorInstance>(*coordinator_instance)
             .await
             .context(format!(
                 "Unable to get the coordinator_instance: {coordinator_instance:?}"
-            ))?;
-        Ok(coordinator_instance_state)
+            ))
     }
 
     pub async fn get_coordinator_account(
@@ -807,6 +819,18 @@ impl SolanaBackend {
             .rpc()
             .get_balance(account)
             .await?)
+    }
+
+    pub async fn get_token_amount(&self, account: &Pubkey) -> Result<u64> {
+        let data = self.program_coordinators[0]
+            .rpc()
+            .get_account_data(account)
+            .await?;
+        Ok(spl_token::state::Account::unpack(&data)
+            .context(format!(
+                "Unable to decode token account data for {account:?}"
+            ))?
+            .amount)
     }
 
     pub async fn get_logs(&self, tx: &Signature) -> Result<Vec<String>> {
