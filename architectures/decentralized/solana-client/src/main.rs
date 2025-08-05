@@ -36,8 +36,8 @@ use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::{to_string, Map};
+use std::str::FromStr;
 use std::sync::Arc;
-use std::{f64::INFINITY, str::FromStr};
 use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::{
@@ -1134,7 +1134,7 @@ async fn async_main() -> Result<()> {
                         .current_epoch_rates
                         .earning_rate;
                 let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
-                    json!(INFINITY)
+                    json!(f64::INFINITY)
                 } else {
                     json!(
                         (treasurer_run_collateral_amount - total_unclaimed_earned_points)
