@@ -34,8 +34,8 @@ use psyche_tui::{
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
-use serde_json::Map;
-use serde_json::{json, to_string_pretty};
+use serde_json::json;
+use serde_json::{to_string, Map};
 use std::sync::Arc;
 use std::{f64::INFINITY, str::FromStr};
 use std::{io::Cursor, path::PathBuf, time::Duration};
@@ -1161,7 +1161,7 @@ async fn async_main() -> Result<()> {
 
             println!(
                 "{}",
-                to_string_pretty(&json!({
+                to_string(&json!({
                     "treasurer_run": treasurer_run_json,
                     "coordinator_instance": coordinator_instance_json,
                     "coordinator_account": coordinator_account_json,
