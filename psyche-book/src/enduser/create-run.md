@@ -68,3 +68,16 @@ psyche-solana-client set-paused \
 ```
 
 Congratulations! As soon as your first client joins, your model is being trained.
+
+## Configuring training rewards
+
+You can configure how many points does each client earns and loses for each epoch of training.
+
+```bash
+psyche-solana-client set-future-epoch-rates \
+    --rpc [RPC] \
+    --ws-rpc [WS_RPC] \
+    --run-id [RUN_ID] \
+    --earning-rate [EARNING_RATE] \
+    --slashing-rate [SLASHING_RATE]
+```

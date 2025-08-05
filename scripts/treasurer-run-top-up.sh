@@ -52,9 +52,8 @@ RUN_INFO=$( \
 echo "----"
 echo "Extract treasurer fields..."
 TREASURER_RUN_ADDRESS=$(echo $RUN_INFO | jq -r '.treasurer_run.address')
-TREASURER_RUN_COLLATERAL_MINT=$(echo $RUN_INFO | jq -r '.treasurer_run.collateral_mint')
-
 echo "TREASURER_RUN_ADDRESS: $TREASURER_RUN_ADDRESS"
+TREASURER_RUN_COLLATERAL_MINT=$(echo $RUN_INFO | jq -r '.treasurer_run.collateral_mint')
 echo "TREASURER_RUN_COLLATERAL_MINT: $TREASURER_RUN_COLLATERAL_MINT"
 
 echo "----"
