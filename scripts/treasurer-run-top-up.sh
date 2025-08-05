@@ -1,9 +1,13 @@
 #!/bin/bash
 
+set -o errexit
+set -e
+set -m
+
 _usage() {
-    echo "Usage: $0 <SOLANA_RPC> <PAYER_KEYPAIR_FILE> <RUN_ID> <COLLATERAL_AMOUNT>"
+    echo "Usage: $0 <SOLANA_RPC> <SENDER_KEYPAIR_FILE> <RUN_ID> <COLLATERAL_AMOUNT>"
     echo "  SOLANA_RPC: The solana RPC url or moniker to use"
-    echo "  PAYER_KEYPAIR_FILE: The keypair file of the payer"
+    echo "  SENDER_KEYPAIR_FILE: The keypair file of the payer"
     echo "  RUN_ID: The run ID"
     echo "  COLLATERAL_AMOUNT: The amount of collateral token to deposit"
     exit 1
@@ -16,14 +20,13 @@ fi
 SOLANA_RPC="$1"
 shift
 
-PAYER_KEYPAIR_FILE="$1"
+SENDER_KEYPAIR_FILE="$1"
 shift
 
-if [[ ! -f "$PAYER_KEYPAIR_FILE" ]]; then
-    echo "Error: Payer keypair file '$PAYER_KEYPAIR_FILE' not found."
+if [[ ! -f "$SENDER_KEYPAIR_FILE" ]]; then
+    echo "Error: Payer keypair file '$SENDER_KEYPAIR_FILE' not found."
     _usage
 fi
-PAYER_PUBKEY=$(solana-keygen pubkey $PAYER_KEYPAIR_FILE)
 
 RUN_ID="$1"
 shift
@@ -33,8 +36,7 @@ shift
 
 # Make sure all is good to go
 echo "SOLANA_RPC: $SOLANA_RPC"
-echo "PAYER_KEYPAIR_FILE: $PAYER_KEYPAIR_FILE"
-echo "PAYER_PUBKEY: $PAYER_PUBKEY"
+echo "SENDER_KEYPAIR_FILE: $SENDER_KEYPAIR_FILE"
 echo "RUN_ID: $RUN_ID"
 echo "COLLATERAL_AMOUNT: $COLLATERAL_AMOUNT"
 
@@ -58,6 +60,7 @@ echo "TREASURER_RUN_COLLATERAL_MINT: $TREASURER_RUN_COLLATERAL_MINT"
 echo "----"
 echo "Deposit collateral..."
 spl-token transfer \
+    --owner $SENDER_KEYPAIR_FILE \
     $TREASURER_RUN_COLLATERAL_MINT \
     $COLLATERAL_AMOUNT \
     $TREASURER_RUN_ADDRESS \

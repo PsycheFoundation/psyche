@@ -1,5 +1,9 @@
 #!/bin/bash
 
+set -o errexit
+set -e
+set -m
+
 _usage() {
     echo "Usage: $0 <SOLANA_RPC> <GRANTOR_PUBKEY> <GRANTEE_KEYPAIR_FILE> [DELEGATES_KEYPAIR_FILES...]"
     echo "  SOLANA_RPC: The solana RPC url or moniker to use"
