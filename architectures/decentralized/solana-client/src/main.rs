@@ -34,9 +34,10 @@ use psyche_tui::{
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::Map;
 use serde_json::{json, to_string_pretty};
-use std::str::FromStr;
 use std::sync::Arc;
+use std::{f64::INFINITY, str::FromStr};
 use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::{
@@ -1038,28 +1039,57 @@ async fn async_main() -> Result<()> {
                 .get_coordinator_account(&coordinator_account_address)
                 .await?;
 
-            let coordinator_account_json = json!({
+            let coordinator_account_json: serde_json::Value = json!({
                 "address": coordinator_account_address.to_string(),
-                "run_id": coordinator_account_state.state.coordinator.run_id,
-                "run_state": coordinator_account_state.state.coordinator.run_state.to_string(),
-                "run_clients": coordinator_account_state.state.clients_state.clients.len(),
-                "progress": {
+                "metadata": {
+                    "run_id": coordinator_account_state.state.coordinator.run_id,
+                    "description": coordinator_account_state.state.metadata.description,
+                    "name": coordinator_account_state.state.metadata.name,
+                    "num_parameters": coordinator_account_state.state.metadata.num_parameters,
+                    "vocab_size": coordinator_account_state.state.metadata.vocab_size,
+                    "model": format!("{:?}", coordinator_account_state.state.coordinator.model),
+                },
+                "joined_clients": Map::from_iter(coordinator_account_state.state.clients_state.clients.iter().map(|client| {
+                    (
+                        client.id.to_string(),
+                        json!({
+                            "earned": client.earned,
+                            "slashed": client.slashed,
+                            "active": client.active,
+                        }),
+                    )
+                })),
+                "status": {
+                    "next_active": coordinator_account_state.state.clients_state.next_active,
+                    "state": coordinator_account_state.state.coordinator.run_state.to_string(),
                     "epoch": coordinator_account_state.state.coordinator.progress.epoch,
                     "step": coordinator_account_state.state.coordinator.progress.step,
                 },
                 "epoch": {
-                    "alive_clients": coordinator_account_state.state.coordinator.epoch_state.clients.len(),
-                    "exited_clients": coordinator_account_state.state.coordinator.epoch_state.exited_clients.len(),
-                },
-                "epoch_rates": {
-                    "current": {
-                        "earning_rate": coordinator_account_state.state.clients_state.current_epoch_rates.earning_rate,
-                        "slashing_rate": coordinator_account_state.state.clients_state.current_epoch_rates.slashing_rate,
+                    "clients": {
+                        "alive": Map::from_iter(coordinator_account_state.state.coordinator.epoch_state.clients.iter().map(|client| {
+                            (
+                                client.id.to_string(),
+                                json!(client.state.to_string()),
+                            )
+                        })),
+                        "exited": Map::from_iter(coordinator_account_state.state.coordinator.epoch_state.exited_clients.iter().map(|client| {
+                            (
+                                client.id.to_string(),
+                                json!(client.state.to_string()),
+                            )
+                        })),
                     },
-                    "future": {
-                        "earning_rate": coordinator_account_state.state.clients_state.future_epoch_rates.earning_rate,
-                        "slashing_rate": coordinator_account_state.state.clients_state.future_epoch_rates.slashing_rate,
-                    },
+                    "rates": {
+                        "current": {
+                            "earning": coordinator_account_state.state.clients_state.current_epoch_rates.earning_rate,
+                            "slashing": coordinator_account_state.state.clients_state.current_epoch_rates.slashing_rate,
+                        },
+                        "future": {
+                            "earning": coordinator_account_state.state.clients_state.future_epoch_rates.earning_rate,
+                            "slashing": coordinator_account_state.state.clients_state.future_epoch_rates.slashing_rate,
+                        },
+                    }
                 },
                 "nonce": coordinator_account_state.nonce,
             });
@@ -1103,9 +1133,14 @@ async fn async_main() -> Result<()> {
                         .clients_state
                         .current_epoch_rates
                         .earning_rate;
-                let estimated_funded_epochs_count = (treasurer_run_collateral_amount
-                    - total_unclaimed_earned_points)
-                    / estimated_earned_points_per_epoch;
+                let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
+                    json!(INFINITY)
+                } else {
+                    json!(
+                        (treasurer_run_collateral_amount - total_unclaimed_earned_points)
+                            / estimated_earned_points_per_epoch
+                    )
+                };
 
                 Some(json!({
                     "address": treasurer_run_address.to_string(),
