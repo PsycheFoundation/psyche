@@ -954,7 +954,10 @@ async fn async_main() -> Result<()> {
                 .state
                 .coordinator;
 
-            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+            let is_paused = matches!(
+                coordinator_account_state.run_state,
+                RunState::Paused | RunState::Uninitialized
+            );
 
             if !is_paused {
                 let client_with_our_key = coordinator_account_state
