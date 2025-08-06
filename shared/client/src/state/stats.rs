@@ -181,6 +181,7 @@ impl StatsLogger {
         };
 
         let prompt_results = self.get_prompt_results();
+        let prompt_index = self.get_prompt_index();
 
         // NOTE: no NaNs allowed in borsh serialized data.
         let tokens_per_sec = self.global_tokens_per_second(state);
@@ -195,6 +196,7 @@ impl StatsLogger {
             efficency: no_nan(self.efficency(), 0.0),
             evals,
             prompt_results,
+            prompt_index,
         }
     }
 
@@ -332,6 +334,17 @@ impl StatsLogger {
             results.iter().collect::<Vec<_>>()
         );
         results
+    }
+
+    // Get current prompt index for witness metadata
+    pub fn get_prompt_index(&self) -> u8 {
+        for eval_task in self.model_task_runner.tasks().iter().flatten() {
+            if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
+                return prompt_task.selected_prompt as u8;
+            }
+        }
+        // Default to 0 if no prompt task found
+        0
     }
 
     // normalized metric for how "confident" a model is, regardless of vocab size.

@@ -209,6 +209,7 @@ function RouteComponent() {
 
 								<PromptResults
 									tokens={run.metrics.summary.promptResults || []}
+									promptIndex={run.metrics.summary.promptIndex}
 								/>
 
 								<StatsContainer>

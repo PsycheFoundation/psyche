@@ -1,0 +1,44 @@
+{
+	"prompts": [
+		{
+			"index": 0,
+			"name": "Henry VI",
+			"file": "henry_VI.txt"
+		},
+		{
+			"index": 1,
+			"name": "Macbeth",
+			"file": "macbeth.txt"
+		},
+		{
+			"index": 2,
+			"name": "Philosophy",
+			"text": "What is the meaning of life?"
+		},
+		{
+			"index": 3,
+			"name": "Science",
+			"text": "Explain quantum physics in simple terms."
+		},
+		{
+			"index": 4,
+			"name": "Creative Writing",
+			"text": "Write a short story about a robot learning to love."
+		},
+		{
+			"index": 5,
+			"name": "Environment",
+			"text": "What are the benefits of renewable energy?"
+		},
+		{
+			"index": 6,
+			"name": "Technology",
+			"text": "How do neural networks work?"
+		},
+		{
+			"index": 7,
+			"name": "Lifestyle",
+			"text": "Describe the perfect day."
+		}
+	]
+}

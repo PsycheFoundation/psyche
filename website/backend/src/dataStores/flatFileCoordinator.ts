@@ -30,8 +30,13 @@ import { existsSync, renameSync } from 'fs'
 // any run ID outside this list will not be returned to the frontend in the summary list,
 const ALLOWLISTED_RUN_IDS =
 	process.env.NODE_ENV === 'development' ? null : ['consilience-40b-1']
-type Witness = Omit<WitnessMetadata, 'evals'> & {
+type Witness = Omit<
+	WitnessMetadata,
+	'evals' | 'prompt_results' | 'prompt_index'
+> & {
 	evals: Array<[string, number]>
+	prompt_results: number[]
+	prompt_index: number
 }
 
 interface RunHistory {
@@ -297,7 +302,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = timestamp
 
 		// format evals to nice strings to save tons of space
-		const { evals, prompt_results, ...restWitness } = witness
+		const { evals, prompt_results, prompt_index, ...restWitness } = witness
 
 		// could be a bigint, could be a BN, kind of annoying. TODO fix somewhere else.
 		const l =
@@ -328,8 +333,16 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			}
 		}
 
+		// extract prompt index - simple u8 value
+		const promptIndex = prompt_index || 0
+
 		lastRun.witnessUpdates.push([
-			{ ...restWitness, evals: fixedEvals, prompt_results: promptTokens },
+			{
+				...restWitness,
+				evals: fixedEvals,
+				prompt_results: promptTokens,
+				prompt_index: promptIndex,
+			},
 			timestamp,
 		])
 
@@ -491,6 +504,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 		// collect prompt results by step (no aggregation needed since only 1 client runs prompts)
 		const promptResults: Array<readonly [number, number[]]> = []
+		const promptIndices: Array<readonly [number, number]> = []
 		for (const [step, r] of linearWitnessHistory) {
 			if (
 				r.prompt_results &&
@@ -498,6 +512,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				r.prompt_results.length > 0
 			) {
 				promptResults.push([step, r.prompt_results] as const)
+			}
+			if (r.prompt_index !== undefined && typeof r.prompt_index === 'number') {
+				promptIndices.push([step, r.prompt_index] as const)
 			}
 		}
 
@@ -529,6 +546,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			lr: run.observedLrByStep.filter(goodNumber),
 			evals,
 			promptResults,
+			promptIndex: promptIndices,
 		}
 
 		const summary: Metrics = {
@@ -542,6 +560,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					.filter((x): x is [string, number] => x[1] !== undefined)
 			),
 			promptResults: promptResults.at(-1)?.[1] ?? [],
+			promptIndex: promptIndices.at(-1)?.[1] ?? 0,
 		}
 
 		let state: RunData['state']
