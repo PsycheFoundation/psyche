@@ -505,6 +505,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		// collect prompt results by step (no aggregation needed since only 1 client runs prompts)
 		const promptResults: Array<readonly [number, number[]]> = []
 		const promptIndices: Array<readonly [number, number]> = []
+		const cumulativePromptResults: Array<readonly [number, number[]]> = []
+
+		let cumulativeTokens: number[] = []
 		for (const [step, r] of linearWitnessHistory) {
 			if (
 				r.prompt_results &&
@@ -512,6 +515,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				r.prompt_results.length > 0
 			) {
 				promptResults.push([step, r.prompt_results] as const)
+				// Accumulate tokens for cumulative results
+				cumulativeTokens = [...cumulativeTokens, ...r.prompt_results]
+				cumulativePromptResults.push([step, [...cumulativeTokens]] as const)
 			}
 			if (r.prompt_index !== undefined && typeof r.prompt_index === 'number') {
 				promptIndices.push([step, r.prompt_index] as const)
@@ -547,6 +553,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			evals,
 			promptResults,
 			promptIndex: promptIndices,
+			cumulativePromptResults,
 		}
 
 		const summary: Metrics = {
@@ -561,6 +568,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			),
 			promptResults: promptResults.at(-1)?.[1] ?? [],
 			promptIndex: promptIndices.at(-1)?.[1] ?? 0,
+			cumulativePromptResults: cumulativePromptResults.at(-1)?.[1] ?? [],
 		}
 
 		let state: RunData['state']

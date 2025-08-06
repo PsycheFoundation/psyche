@@ -208,7 +208,7 @@ function RouteComponent() {
 								)}
 
 								<PromptResults
-									tokens={run.metrics.summary.promptResults || []}
+									tokens={run.metrics.summary.cumulativePromptResults || []}
 									promptIndex={run.metrics.summary.promptIndex}
 								/>
 
