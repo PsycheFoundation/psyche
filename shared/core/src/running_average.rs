@@ -87,4 +87,13 @@ impl RunningAverage {
         let entries = self.entries.read().unwrap();
         entries.get(name).map(|entry| entry.all_time_pushes)
     }
+
+    /// Check if a specific metric has sufficient samples (more than half the buffer size)
+    pub fn has_sufficient_samples(&self, name: &str) -> bool {
+        let entries = self.entries.read().unwrap();
+        entries
+            .get(name)
+            .map(|entry| entry.buffer.len() > entry.max_size / 2)
+            .unwrap_or(false)
+    }
 }

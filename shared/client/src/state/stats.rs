@@ -277,7 +277,14 @@ impl StatsLogger {
                 let task = eval_task.task();
                 let metric_name: &str = task.main_metric_name();
                 let task_name = task.name();
-                match eval_task.results().sample(metric_name) {
+                let results = eval_task.results();
+
+                // Only include results with sufficient data points (more than half the buffer size)
+                if !results.has_sufficient_samples(metric_name) {
+                    return None;
+                }
+
+                match results.sample(metric_name) {
                     Some(metric) => Some((task_name.to_owned(), metric)),
                     None => {
                         warn!("{} missing metric {}", task_name, metric_name);
