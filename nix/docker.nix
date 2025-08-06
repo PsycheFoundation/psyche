@@ -2,6 +2,7 @@
   pkgs,
   nixglhostRustPackages,
   inputs,
+  solana_toolbox_cli,
 }:
 let
   # We need this because the solana validator require the compiled .so files of the Solana programs,
@@ -18,23 +19,6 @@ let
   };
 
   solana = inputs.solana-pkgs.packages.${pkgs.system}.default;
-  solana_toolbox_cli = pkgs.rustPlatform.buildRustPackage rec {
-    pname = "solana_toolbox_cli";
-    version = "0.4.3"; # Replace with actual version
-
-    src = pkgs.fetchCrate {
-      inherit pname version;
-      sha256 = "sha256-6bCbFtVAs4MctSYslTNBk859LxfdOjwetvq/1Ub3VVg=";
-    };
-
-    cargoHash = "sha256-cQ8XkfWdU2HxYnyZQNC59lWWDMbJ0OLocmTiH+N5zrc=";
-
-    nativeBuildInputs = with pkgs; [
-      pkg-config
-      perl
-    ];
-    buildInputs = with pkgs; [ openssl ];
-  };
 in
 {
   docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
