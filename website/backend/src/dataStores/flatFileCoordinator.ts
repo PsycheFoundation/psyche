@@ -297,7 +297,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = timestamp
 
 		// format evals to nice strings to save tons of space
-		const { evals, ...restWitness } = witness
+		const { evals, prompt_results, ...restWitness } = witness
 
 		// could be a bigint, could be a BN, kind of annoying. TODO fix somewhere else.
 		const l =
@@ -313,8 +313,23 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString('utf-8')
 			fixedEvals.push([nameStr, value])
 		}
+
+		// extract prompt results - convert FixedVec to regular array
+		const promptTokens: number[] = []
+		if (prompt_results && prompt_results.data) {
+			const promptLen =
+				typeof prompt_results.len === 'object' &&
+				prompt_results.len &&
+				'toNumber' in prompt_results.len
+					? prompt_results.len.toNumber()
+					: Number(prompt_results.len)
+			for (let i = 0; i < promptLen && i < prompt_results.data.length; i++) {
+				promptTokens.push(prompt_results.data[i])
+			}
+		}
+
 		lastRun.witnessUpdates.push([
-			{ ...restWitness, evals: fixedEvals },
+			{ ...restWitness, evals: fixedEvals, prompt_results: promptTokens },
 			timestamp,
 		])
 
@@ -473,6 +488,19 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				numSamples
 			)
 		}
+
+		// collect prompt results by step (no aggregation needed since only 1 client runs prompts)
+		const promptResults: Array<readonly [number, number[]]> = []
+		for (const [step, r] of linearWitnessHistory) {
+			if (
+				r.prompt_results &&
+				Array.isArray(r.prompt_results) &&
+				r.prompt_results.length > 0
+			) {
+				promptResults.push([step, r.prompt_results] as const)
+			}
+		}
+
 		const history: OverTime<Metrics> = {
 			bandwidth: fairSample(
 				averageSameStepValues(
@@ -500,6 +528,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			),
 			lr: run.observedLrByStep.filter(goodNumber),
 			evals,
+			promptResults,
 		}
 
 		const summary: Metrics = {
@@ -512,6 +541,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					.map(([k, v]) => [k, v.at(-1)?.[1]] as const)
 					.filter((x): x is [string, number] => x[1] !== undefined)
 			),
+			promptResults: promptResults.at(-1)?.[1] ?? [],
 		}
 
 		let state: RunData['state']
