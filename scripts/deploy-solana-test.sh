@@ -43,9 +43,6 @@ popd
 echo -e "\n[+] Starting coordinator deploy"
 pushd architectures/decentralized/solana-coordinator
 
-echo -e "\n[+] - syncing keys..."
-anchor keys sync --provider.cluster ${RPC} --provider.wallet ${WALLET_FILE}
-
 echo -e "\n[+] - building..."
 anchor build --no-idl
 
