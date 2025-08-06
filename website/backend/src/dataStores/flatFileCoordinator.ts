@@ -508,19 +508,31 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		const cumulativePromptResults: Array<readonly [number, number[]]> = []
 
 		let cumulativeTokens: number[] = []
+		let currentPromptIndex: number | null = null
+
 		for (const [step, r] of linearWitnessHistory) {
+			// Check if prompt index changed - if so, reset cumulative tokens
+			if (r.prompt_index !== undefined && typeof r.prompt_index === 'number') {
+				if (
+					currentPromptIndex !== null &&
+					r.prompt_index !== currentPromptIndex
+				) {
+					// Prompt changed - reset cumulative tokens
+					cumulativeTokens = []
+				}
+				currentPromptIndex = r.prompt_index
+				promptIndices.push([step, r.prompt_index] as const)
+			}
+
 			if (
 				r.prompt_results &&
 				Array.isArray(r.prompt_results) &&
 				r.prompt_results.length > 0
 			) {
 				promptResults.push([step, r.prompt_results] as const)
-				// Accumulate tokens for cumulative results
+				// Accumulate tokens for cumulative results (within current prompt)
 				cumulativeTokens = [...cumulativeTokens, ...r.prompt_results]
 				cumulativePromptResults.push([step, [...cumulativeTokens]] as const)
-			}
-			if (r.prompt_index !== undefined && typeof r.prompt_index === 'number') {
-				promptIndices.push([step, r.prompt_index] as const)
 			}
 		}
 

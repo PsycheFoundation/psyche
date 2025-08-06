@@ -287,7 +287,7 @@ impl ModelTaskRunner {
                                             trace!(
                                                 "Running {} task on prompt index: {}",
                                                 model_task.name(),
-                                                prompt.selected_prompt
+                                                *prompt.selected_prompt.read().unwrap()
                                             );
 
                                             prompt.run(&mut trainer, cancel.clone());

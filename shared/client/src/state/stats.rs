@@ -340,7 +340,7 @@ impl StatsLogger {
     pub fn get_prompt_index(&self) -> u8 {
         for eval_task in self.model_task_runner.tasks().iter().flatten() {
             if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
-                return prompt_task.selected_prompt as u8;
+                return *prompt_task.selected_prompt.read().unwrap() as u8;
             }
         }
         // Default to 0 if no prompt task found
