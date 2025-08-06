@@ -6,7 +6,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
-use tracing::warn;
+use tracing::{info, warn};
 use wandb::{DataValue, LogData};
 
 use crate::{
@@ -302,16 +302,35 @@ impl StatsLogger {
     // clear tokens_to_send buffer
     pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
         let mut results = FixedVec::new();
+        let witness_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        info!("get_prompt_results WITNESS-{} Starting", witness_id);
+
         for eval_task in self.model_task_runner.tasks().iter().flatten() {
             if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
                 {
                     let tokens = prompt_task.tokens_to_send.read().unwrap();
+                    info!(
+                        "get_prompt_results WITNESS-{} Before clear - tokens_to_send: {:?}",
+                        witness_id,
+                        tokens.iter().collect::<Vec<_>>()
+                    );
                     results.extend(tokens.iter().cloned()).unwrap();
                 }
                 prompt_task.tokens_to_send.write().unwrap().clear();
+                info!(
+                    "get_prompt_results WITNESS-{} After clear - buffer cleared",
+                    witness_id
+                );
             }
         }
-
+        info!(
+            "get_prompt_results WITNESS-{} Final witness prompt results: {:?}",
+            witness_id,
+            results.iter().collect::<Vec<_>>()
+        );
         results
     }
 

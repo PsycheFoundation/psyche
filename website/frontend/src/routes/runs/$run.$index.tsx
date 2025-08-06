@@ -18,6 +18,7 @@ import {
 	RunStateIndicator,
 } from '../../components/RunStateIndicator.js'
 import { fetchRunStreaming } from '../../fetchRuns.js'
+import { PromptResults } from '../../components/PromptResults.js'
 import { useStreamingLoaderData } from '../../useStreamingData.js'
 import { RunBox } from '../../components/RunBox.js'
 import { FullPagePortal } from '../../components/FullPagePortal.js'
@@ -206,40 +207,9 @@ function RouteComponent() {
 									</Button>
 								)}
 
-								<div
-									className={c(
-										css`
-											padding: 16px;
-											border-radius: 8px;
-											max-width: 600px;
-										`,
-										text['body/base/regular']
-									)}
-								>
-									<div
-										className={c(
-											text['body/base/medium'],
-											css`
-												margin-bottom: 8px;
-											`
-										)}
-									>
-										Latest Prompt Results:
-									</div>
-									<span
-										className={css`
-											font-family: 'Courier New', monospace;
-											font-size: 14px;
-											word-break: break-all;
-											line-height: 1.4;
-										`}
-									>
-										{run.metrics.summary.promptResults &&
-										run.metrics.summary.promptResults.length > 0
-											? `[${run.metrics.summary.promptResults.join(', ')}]`
-											: '(no prompt results yet)'}
-									</span>
-								</div>
+								<PromptResults
+									tokens={run.metrics.summary.promptResults || []}
+								/>
 
 								<StatsContainer>
 									{Object.entries(goodEvals).length >= 3 && (

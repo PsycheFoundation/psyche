@@ -97,6 +97,14 @@ impl PromptTask {
             .unwrap();
         self.tokens.write().unwrap().push(next_token as i32);
 
-        debug!("Prompt generated token: {:?}", next_token);
+        // Debug logging for token buffer state
+        {
+            let current_buffer = self.tokens_to_send.read().unwrap();
+            debug!(
+                "Prompt generated token: {:?}, current buffer: {:?}",
+                next_token,
+                current_buffer.iter().collect::<Vec<_>>()
+            );
+        }
     }
 }
