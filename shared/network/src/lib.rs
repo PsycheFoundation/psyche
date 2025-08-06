@@ -654,7 +654,7 @@ pub async fn request_model_blob_ticket(
     router: Arc<Router>,
     node_addr: NodeId,
     request_type: &ModelRequestType,
-) -> Result<BlobTicket> {
+) -> Result<Vec<BlobTicket>> {
     let conn = router
         .endpoint()
         .connect(node_addr, p2p_model_sharing::ALPN)
@@ -668,7 +668,7 @@ pub async fn request_model_blob_ticket(
 
     // Receive parameter value blob ticket
     let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
-    let parameter_blob_ticket: Result<Result<BlobTicket, SharableModelError>, postcard::Error> =
+    let parameter_blob_ticket: Result<Result<Vec<BlobTicket>, SharableModelError>, postcard::Error> =
         postcard::from_bytes(&parameter_blob_ticket_bytes);
     let result = parameter_blob_ticket
         .with_context(|| "Error parsing model parameter blob ticket".to_string())?;
@@ -858,11 +858,14 @@ pub async fn blob_ticket_param_request_task(
         .await;
 
         match result {
-            Ok(Ok(blob_ticket)) => {
+            Ok(Ok(blob_tickets)) => {
+                for blob_ticket in blob_tickets.into_iter() {
+
                 model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push((blob_ticket, model_request_type));
+                    .push((blob_ticket, model_request_type.clone()));
+                }
 
                 peer_manager.report_success(peer_id);
                 return;
