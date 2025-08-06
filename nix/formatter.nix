@@ -10,10 +10,6 @@
         rustfmt.enable = true;
         taplo.enable = true; # toml files
         nixfmt.enable = true;
-        mdformat = {
-          enable = false; # for some reason, non-deterministic.
-          settings.number = true;
-        };
 
         clang-format = {
           enable = true;
