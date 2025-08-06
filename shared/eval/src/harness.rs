@@ -192,7 +192,6 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
-    pub loop_if_empty: bool,
 }
 
 impl PreparedTask {
@@ -248,7 +247,7 @@ impl PreparedTask {
                     break;
                 }
             }
-            if !options.loop_if_empty && doc_index >= docs.len() {
+            if doc_index >= docs.len() {
                 break;
             }
             if let Some(limit) = options.limit {
@@ -278,7 +277,9 @@ impl PreparedTask {
 
                 let (logits, _) = {
                     let _no_grad = tch::no_grad_guard();
-                    options.model.forward(&request, None, None, None)
+                    options
+                        .model
+                        .forward(&request, None, None, None, None, None)
                 };
 
                 let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);

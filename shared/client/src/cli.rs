@@ -87,7 +87,7 @@ pub struct TrainArgs {
 
     /// how often to report metrics thru opentelemetry
     #[clap(long, env,
-    default_value = "10.0",
+    default_value = "60.0",
     value_parser = parse_duration_from_seconds)]
     pub oltp_report_interval: Duration,
 
@@ -225,19 +225,26 @@ impl TrainArgs {
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {
         let eval_tasks = match &self.eval_tasks {
             Some(eval_tasks) => {
-                let result: Result<Vec<psyche_eval::Task>> = eval_tasks
-                    .split(",")
-                    .map(|eval_task| {
-                        tasktype_from_name(eval_task).map(|task_type| {
-                            psyche_eval::Task::new(task_type, self.eval_fewshot, self.eval_seed)
-                        })
-                    })
-                    .collect();
-                result?
+                Self::eval_tasks_from_args(eval_tasks, self.eval_fewshot, self.eval_seed)?
             }
             None => Vec::new(),
         };
         Ok(eval_tasks)
+    }
+
+    pub fn eval_tasks_from_args(
+        eval_tasks: &str,
+        eval_fewshot: usize,
+        eval_seed: u64,
+    ) -> Result<Vec<psyche_eval::Task>> {
+        let result: Result<Vec<psyche_eval::Task>> = eval_tasks
+            .split(",")
+            .map(|eval_task| {
+                tasktype_from_name(eval_task)
+                    .map(|task_type| psyche_eval::Task::new(task_type, eval_fewshot, eval_seed))
+            })
+            .collect();
+        result
     }
 }
 

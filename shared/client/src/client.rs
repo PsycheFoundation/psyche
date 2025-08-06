@@ -102,12 +102,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let max_concurrent_parameter_requests =
                     init_config.max_concurrent_parameter_requests;
 
-                let mut current_downloaded_parameters = 0_u16;
+                let mut current_downloaded_parameters = 0_u64;
                 let mut total_parameters = None;
 
                 let mut run = RunManager::<T, A>::new(RunInitConfigAndIO {
                     init_config,
-
+                    metrics: metrics.clone(),
                     tx_witness,
                     tx_health_check,
                     tx_checkpoint,
@@ -178,6 +178,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             ensure_gossip_connected(new_state, &mut p2p, &mut last_gossip_connection_time);
 
                             if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
+
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
                                 p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
@@ -243,7 +244,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 let apply_result = run.apply_message(client.id, broadcast)?;
                                                 match apply_result {
                                                     ApplyMessageOutcome::Ignored => {
-                                                        metrics.record_apply_message_ignored(broadcast_step, broadcast_kind);
+                                                        metrics.record_apply_message_ignored(broadcast_kind);
                                                     },
                                                     ApplyMessageOutcome::Applied => {
                                                         metrics.record_apply_message_success(broadcast_step, from, broadcast_kind);
@@ -279,6 +280,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 info!("Download complete: parameter {}", parameter.name()?);
                                                 if let Some(total_parameters) = total_parameters {
                                                     info!("Downloaded parameters total: {}/{}", current_downloaded_parameters, total_parameters);
+                                                    metrics.update_model_sharing_total_params_downloaded(current_downloaded_parameters);
                                                 } else {
                                                     error!("Total parameters not set");
                                                 }
@@ -302,7 +304,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                         match dl.download_type {
                                             DownloadType::ModelSharing(request_type) => {
-                                                metrics.record_download_failed();
+                                                metrics.record_p2p_model_parameter_download_failed();
                                                 // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
                                                 let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
@@ -425,7 +427,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
                             let ticket = p2p.add_downloadable(transmittable_distro_result, step).await?;
                             let hash = ticket.hash();
-                            trace!(
+                            info!(
                                 client_id = %identity, step = step,
                                 "Broadcasting payload batch id {batch_id} hash 0x{}",
                                 hex::encode(hash),
@@ -530,6 +532,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             sharable_model.update_config(config_string, tokenizer)?;
                         }
                         Some((param_names, tx_params_response)) = rx_parameters_req.recv() => {
+                            metrics.initialize_model_parameters_gauge(param_names.len().try_into().unwrap());
                             total_parameters = Some(param_names.len());
                             sharable_model.initialize_parameters(&param_names, tx_params_response);
 

@@ -1,10 +1,13 @@
+use crate::instructions;
 use crate::retry::RetryError;
+use anchor_client::solana_sdk::hash::hash;
+use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
     Client, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
-        rpc_config::{RpcAccountInfoConfig, RpcSendTransactionConfig, RpcTransactionConfig},
+        rpc_config::{RpcAccountInfoConfig, RpcTransactionConfig},
         rpc_response::Response as RpcResponse,
     },
     solana_sdk::{
@@ -22,6 +25,7 @@ use psyche_coordinator::{
     model::{HubRepo, Model},
 };
 use psyche_solana_coordinator::RunMetadata;
+use psyche_solana_treasurer::logic::RunUpdateParams;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
@@ -35,7 +39,6 @@ use tracing::{debug, error, info, trace, warn};
 const SEND_RETRIES: usize = 3;
 
 pub struct SolanaBackend {
-    program_authorizer: Program<Arc<Keypair>>,
     program_coordinators: Vec<Arc<Program<Arc<Keypair>>>>,
     cluster: Cluster,
     backup_clusters: Vec<Cluster>,
@@ -144,7 +147,6 @@ impl SolanaBackend {
         committment: CommitmentConfig,
     ) -> Result<Self> {
         let client = Client::new_with_options(cluster.clone(), payer.clone(), committment);
-        let program_authorizer = client.program(psyche_solana_authorizer::ID)?;
 
         let mut program_coordinators = vec![];
         program_coordinators.push(Arc::new(client.program(psyche_solana_coordinator::ID)?));
@@ -159,7 +161,6 @@ impl SolanaBackend {
         program_coordinators.extend(backup_program_coordinators?.into_iter().map(Arc::new));
 
         Ok(Self {
-            program_authorizer,
             program_coordinators,
             cluster,
             backup_clusters,
@@ -262,7 +263,8 @@ impl SolanaBackend {
 
     pub async fn create_run(
         &self,
-        run_id: String,
+        run_id: &str,
+        treasurer_index_and_collateral_mint: Option<(u64, Pubkey)>,
         join_authority: Option<Pubkey>,
     ) -> Result<CreatedRun> {
         let space = psyche_solana_coordinator::CoordinatorAccount::space_with_discriminator();
@@ -275,9 +277,8 @@ impl SolanaBackend {
         let main_authority = payer;
         let join_authority = join_authority.unwrap_or(payer);
 
-        let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
-
-        let coordinator_account_signer = Arc::new(Keypair::new());
+        let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
+        let coordinator_account_signer = Keypair::new();
         let coordinator_account = coordinator_account_signer.pubkey();
 
         let create_coordinator_signature = self.program_coordinators[0]
@@ -290,120 +291,37 @@ impl SolanaBackend {
                 &self.program_coordinators[0].id(),
             ))
             .instruction(
-                self.program_coordinators[0]
-                    .request()
-                    .accounts(
-                        psyche_solana_coordinator::accounts::InitCoordinatorAccounts {
-                            payer,
-                            coordinator_instance,
-                            coordinator_account,
-                            system_program: system_program::ID,
-                        },
+                if let Some(treasurer_index_and_collateral_mint) =
+                    treasurer_index_and_collateral_mint
+                {
+                    instructions::treasurer_run_create(
+                        &payer,
+                        run_id,
+                        treasurer_index_and_collateral_mint.0,
+                        &treasurer_index_and_collateral_mint.1,
+                        &coordinator_account,
+                        &main_authority,
+                        &join_authority,
                     )
-                    .args(psyche_solana_coordinator::instruction::InitCoordinator {
-                        params: psyche_solana_coordinator::logic::InitCoordinatorParams {
-                            main_authority,
-                            join_authority,
-                            run_id,
-                        },
-                    })
-                    .instructions()
-                    .unwrap()[0]
-                    .clone(),
+                } else {
+                    instructions::coordinator_init_coordinator(
+                        &payer,
+                        run_id,
+                        &coordinator_account,
+                        &main_authority,
+                        &join_authority,
+                    )
+                },
             )
-            .signer(coordinator_account_signer.clone())
+            .signer(coordinator_account_signer)
             .send()
             .await?;
-
-        let mut create_signatures = vec![create_coordinator_signature];
-
-        if join_authority == payer {
-            let (authorization_create, authorization_activate) =
-                self.create_run_ensure_permissionless().await?;
-            create_signatures.push(authorization_create);
-            create_signatures.push(authorization_activate);
-        }
 
         Ok(CreatedRun {
             instance: coordinator_instance,
             account: coordinator_account,
-            create_signatures,
+            create_signatures: vec![create_coordinator_signature],
         })
-    }
-
-    async fn create_run_ensure_permissionless(&self) -> Result<(Signature, Signature)> {
-        let payer = self.program_coordinators[0].payer();
-        let authorization_from_payer_to_everyone = psyche_solana_authorizer::find_authorization(
-            &payer,
-            &system_program::ID,
-            psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-        );
-        let authorization_create = self
-            .program_authorizer
-            .request()
-            .instruction(
-                self.program_authorizer
-                    .request()
-                    .accounts(
-                        psyche_solana_authorizer::accounts::AuthorizationCreateAccounts {
-                            payer,
-                            grantor: payer,
-                            authorization: authorization_from_payer_to_everyone,
-                            system_program: system_program::ID,
-                        },
-                    )
-                    .args(psyche_solana_authorizer::instruction::AuthorizationCreate {
-                        params: psyche_solana_authorizer::logic::AuthorizationCreateParams {
-                            grantee: system_program::ID,
-                            scope: psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE
-                                .to_vec(),
-                        },
-                    })
-                    .instructions()
-                    .unwrap()
-                    .remove(0),
-            )
-            .send_with_spinner_and_config(RpcSendTransactionConfig {
-                skip_preflight: true,
-                preflight_commitment: None,
-                encoding: None,
-                max_retries: None,
-                min_context_slot: None,
-            })
-            .await?;
-        let authorization_activate = self
-            .program_authorizer
-            .request()
-            .instruction(
-                self.program_authorizer
-                    .request()
-                    .accounts(
-                        psyche_solana_authorizer::accounts::AuthorizationGrantorUpdateAccounts {
-                            grantor: payer,
-                            authorization: authorization_from_payer_to_everyone,
-                        },
-                    )
-                    .args(
-                        psyche_solana_authorizer::instruction::AuthorizationGrantorUpdate {
-                            params:
-                                psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams {
-                                    active: true,
-                                },
-                        },
-                    )
-                    .instructions()
-                    .unwrap()
-                    .remove(0),
-            )
-            .send_with_spinner_and_config(RpcSendTransactionConfig {
-                skip_preflight: true,
-                preflight_commitment: None,
-                encoding: None,
-                max_retries: None,
-                min_context_slot: None,
-            })
-            .await?;
-        Ok((authorization_create, authorization_activate))
     }
 
     pub async fn close_run(
@@ -507,83 +425,144 @@ impl SolanaBackend {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
-        coordinator_instance: Pubkey,
-        coordinator_account: Pubkey,
+        run_id: &str,
+        treasurer_index: Option<u64>,
+        coordinator_account: &Pubkey,
         metadata: Option<RunMetadata>,
         config: Option<CoordinatorConfig>,
         model: Option<Model>,
         progress: Option<CoordinatorProgress>,
     ) -> Result<Signature> {
+        let main_authority = self.program_coordinators[0].payer();
         let signature = self.program_coordinators[0]
             .request()
-            .accounts(
-                psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
-                    authority: self.program_coordinators[0].payer(),
-                    coordinator_instance,
-                    coordinator_account,
+            .instruction(
+                if let Some(treasurer_index) = self
+                    .resolve_treasurer_index(run_id, treasurer_index)
+                    .await?
+                {
+                    instructions::treasurer_run_update(
+                        run_id,
+                        treasurer_index,
+                        coordinator_account,
+                        &main_authority,
+                        RunUpdateParams {
+                            metadata,
+                            config,
+                            model,
+                            progress,
+                            epoch_earning_rate: None,
+                            epoch_slashing_rate: None,
+                            paused: None,
+                        },
+                    )
+                } else {
+                    instructions::coordinator_update(
+                        run_id,
+                        coordinator_account,
+                        &main_authority,
+                        metadata,
+                        config,
+                        model,
+                        progress,
+                    )
                 },
             )
-            .args(psyche_solana_coordinator::instruction::Update {
-                metadata,
-                config,
-                model,
-                progress,
-            })
             .send()
             .await?;
-
         Ok(signature)
     }
 
     pub async fn set_paused(
         &self,
-        coordinator_instance: Pubkey,
-        coordinator_account: Pubkey,
+        run_id: &str,
+        treasurer_index: Option<u64>,
+        coordinator_account: &Pubkey,
         paused: bool,
     ) -> Result<Signature> {
+        let main_authority = self.program_coordinators[0].payer();
         let signature = self.program_coordinators[0]
             .request()
-            .accounts(
-                psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
-                    authority: self.program_coordinators[0].payer(),
-                    coordinator_instance,
-                    coordinator_account,
+            .instruction(
+                if let Some(treasurer_index) = self
+                    .resolve_treasurer_index(run_id, treasurer_index)
+                    .await?
+                {
+                    instructions::treasurer_run_update(
+                        run_id,
+                        treasurer_index,
+                        coordinator_account,
+                        &main_authority,
+                        RunUpdateParams {
+                            metadata: None,
+                            config: None,
+                            model: None,
+                            progress: None,
+                            epoch_earning_rate: None,
+                            epoch_slashing_rate: None,
+                            paused: Some(paused),
+                        },
+                    )
+                } else {
+                    instructions::coordinator_set_paused(
+                        run_id,
+                        coordinator_account,
+                        &main_authority,
+                        paused,
+                    )
                 },
             )
-            .args(psyche_solana_coordinator::instruction::SetPaused { paused })
             .send()
             .await?;
-
         Ok(signature)
     }
 
     pub async fn set_future_epoch_rates(
         &self,
-        coordinator_instance: Pubkey,
-        coordinator_account: Pubkey,
+        run_id: &str,
+        treasurer_index: Option<u64>,
+        coordinator_account: &Pubkey,
         epoch_earning_rate: Option<u64>,
         epoch_slashing_rate: Option<u64>,
     ) -> Result<Signature> {
+        let main_authority = self.program_coordinators[0].payer();
         let signature = self.program_coordinators[0]
             .request()
-            .accounts(
-                psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
-                    authority: self.program_coordinators[0].payer(),
-                    coordinator_instance,
-                    coordinator_account,
-                },
-            )
-            .args(
-                psyche_solana_coordinator::instruction::SetFutureEpochRates {
-                    epoch_earning_rate,
-                    epoch_slashing_rate,
+            .instruction(
+                if let Some(treasurer_index) = self
+                    .resolve_treasurer_index(run_id, treasurer_index)
+                    .await?
+                {
+                    instructions::treasurer_run_update(
+                        run_id,
+                        treasurer_index,
+                        coordinator_account,
+                        &main_authority,
+                        RunUpdateParams {
+                            metadata: None,
+                            config: None,
+                            model: None,
+                            progress: None,
+                            epoch_earning_rate,
+                            epoch_slashing_rate,
+                            paused: None,
+                        },
+                    )
+                } else {
+                    instructions::coordinator_set_future_epoch_rates(
+                        run_id,
+                        coordinator_account,
+                        &main_authority,
+                        epoch_earning_rate,
+                        epoch_slashing_rate,
+                    )
                 },
             )
             .send()
             .await?;
-
         Ok(signature)
     }
 
@@ -798,17 +777,28 @@ impl SolanaBackend {
         });
     }
 
+    pub async fn get_treasurer_run(
+        &self,
+        treasurer_run: &Pubkey,
+    ) -> Result<psyche_solana_treasurer::state::Run> {
+        self.program_coordinators[0]
+            .account::<psyche_solana_treasurer::state::Run>(*treasurer_run)
+            .await
+            .context(format!(
+                "Unable to get the treasurer_run: {treasurer_run:?}"
+            ))
+    }
+
     pub async fn get_coordinator_instance(
         &self,
         coordinator_instance: &Pubkey,
     ) -> Result<psyche_solana_coordinator::CoordinatorInstance> {
-        let coordinator_instance_state = self.program_coordinators[0]
+        self.program_coordinators[0]
             .account::<psyche_solana_coordinator::CoordinatorInstance>(*coordinator_instance)
             .await
             .context(format!(
                 "Unable to get the coordinator_instance: {coordinator_instance:?}"
-            ))?;
-        Ok(coordinator_instance_state)
+            ))
     }
 
     pub async fn get_coordinator_account(
@@ -831,6 +821,18 @@ impl SolanaBackend {
             .await?)
     }
 
+    pub async fn get_token_amount(&self, account: &Pubkey) -> Result<u64> {
+        let data = self.program_coordinators[0]
+            .rpc()
+            .get_account_data(account)
+            .await?;
+        Ok(spl_token::state::Account::unpack(&data)
+            .context(format!(
+                "Unable to decode token account data for {account:?}"
+            ))?
+            .amount)
+    }
+
     pub async fn get_logs(&self, tx: &Signature) -> Result<Vec<String>> {
         let tx = self.program_coordinators[0]
             .rpc()
@@ -850,6 +852,31 @@ impl SolanaBackend {
             .ok_or(anyhow!("Transaction has no meta information"))?
             .log_messages
             .unwrap_or(Vec::new()))
+    }
+
+    pub fn compute_deterministic_treasurer_index(
+        run_id: &str,
+        treasurer_index: Option<u64>,
+    ) -> u64 {
+        treasurer_index.unwrap_or_else(|| {
+            let hashed = hash(run_id.as_bytes()).to_bytes();
+            u64::from_le_bytes(hashed[0..8].try_into().unwrap())
+        })
+    }
+
+    pub async fn resolve_treasurer_index(
+        &self,
+        run_id: &str,
+        treasurer_index: Option<u64>,
+    ) -> Result<Option<u64>> {
+        let treasurer_index = Self::compute_deterministic_treasurer_index(run_id, treasurer_index);
+        let run = psyche_solana_treasurer::find_run(treasurer_index);
+        let run_balance = self.get_balance(&run).await?;
+        Ok(if run_balance > 0 {
+            Some(treasurer_index)
+        } else {
+            None
+        })
     }
 }
 

@@ -89,6 +89,9 @@ pub enum StepError {
 pub enum ApplyMessageError {
     #[error("Failed to put blob up for download")]
     StartDownloadBlob,
+
+    #[error("Stats logger mutex is poisoned")]
+    StatsLoggerMutex,
 }
 
 #[derive(Error, Debug)]
@@ -338,10 +341,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         broadcast: Broadcast,
     ) -> Result<ApplyMessageOutcome, ApplyMessageError> {
         let result_step = broadcast.step;
-        let round_state = if self.current_round.step == broadcast.step {
-            &mut self.current_round
+        let (round_state, current_round) = if self.current_round.step == broadcast.step {
+            (&mut self.current_round, true)
         } else if self.previous_round.step == broadcast.step {
-            &mut self.previous_round
+            (&mut self.previous_round, false)
         } else {
             trace!(
                 "Unknown round for gossiped, says it's for step {} but our current round is step {} and previous round is step {}",
@@ -451,11 +454,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 let download_state =
                     PayloadState::Downloading((from_client_id, batch_id, ticket.clone()));
 
-                round_state
-                    .downloads
+                let mut downloads = round_state.downloads.lock().unwrap();
+
+                downloads.insert(hash, download_state);
+
+                self.stats_logger
                     .lock()
-                    .unwrap()
-                    .insert(hash, download_state);
+                    .map_err(|_| ApplyMessageError::StatsLoggerMutex)?
+                    .metrics
+                    .record_result_announcements_received(
+                        downloads.len() as u64,
+                        broadcast.step,
+                        current_round,
+                        hex::encode(broadcast.commitment.data_hash),
+                        from_client_id,
+                    );
 
                 // start downloading the payload unless this is a self-message
                 // (assuming the caller will put our payload in the proper place)
@@ -477,6 +490,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 round_state
                     .clients_finished
                     .insert(from_client_id, finished.clone());
+
+                self.stats_logger
+                    .lock()
+                    .map_err(|_| ApplyMessageError::StatsLoggerMutex)?
+                    .metrics
+                    .record_finishes_received(
+                        round_state.clients_finished.len() as u64,
+                        broadcast.step,
+                        current_round,
+                        hex::encode(broadcast.commitment.data_hash),
+                        from_client_id,
+                    );
 
                 if finished.warmup {
                     info!(
@@ -506,22 +531,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         distro_result: TransmittableDistroResult,
         self_result: Option<Vec<DistroResult>>,
     ) {
-        let round_state = if self.current_round.distro_result_blob_downloaded(&hash) {
-            trace!(
-                "Got download {hash} for current round {}",
-                self.current_round.height
-            );
-            &mut self.current_round
-        } else if self.previous_round.distro_result_blob_downloaded(&hash) {
-            trace!(
-                "Got download {hash} for previous round {}",
-                self.previous_round.height
-            );
-            &mut self.previous_round
-        } else {
-            warn!("Unknown download {}", hash);
-            return;
-        };
+        let (round_state, current_round) =
+            if self.current_round.distro_result_blob_downloaded(&hash) {
+                trace!(
+                    "Got download {hash} for current round {}",
+                    self.current_round.height
+                );
+                (&mut self.current_round, true)
+            } else if self.previous_round.distro_result_blob_downloaded(&hash) {
+                trace!(
+                    "Got download {hash} for previous round {}",
+                    self.previous_round.height
+                );
+                (&mut self.previous_round, false)
+            } else {
+                warn!("Unknown download {}", hash);
+                return;
+            };
 
         if let Some(self_result) = self_result {
             trace!(
@@ -569,6 +595,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         let batch_ids_not_yet_trained_on = round_state.batch_ids_not_yet_trained_on.clone();
         let blooms = round_state.blooms.clone();
         let downloads = round_state.downloads.clone();
+        let stats_logger = self.stats_logger.clone();
         tokio::spawn(async move {
             // verify that the result matches the commitment
             let (distro_hash, distro_result) =
@@ -645,10 +672,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 Ok(maybe_results)
             });
 
-            downloads
+            let mut downloads = downloads.lock().unwrap();
+
+            downloads.insert(hash, PayloadState::Deserializing(deserializing));
+
+            stats_logger
                 .lock()
-                .unwrap()
-                .insert(hash, PayloadState::Deserializing(deserializing));
+                .expect("stats logger mutex poisoned")
+                .metrics
+                .record_result_downloaded(downloads.len() as u64, current_round, hash, batch_id);
         });
     }
 

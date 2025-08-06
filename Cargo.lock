@@ -4471,7 +4471,8 @@ dependencies = [
 [[package]]
 name = "iroh"
 version = "0.35.0"
-source = "git+https://github.com/n0-computer/iroh.git?rev=b08df6a04d011fa4681fb5cd44ceaa6e53e6b32f#b08df6a04d011fa4681fb5cd44ceaa6e53e6b32f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ca758f4ce39ae3f07de922be6c73de6a48a07f39554e78b5745585652ce38f5"
 dependencies = [
  "aead",
  "anyhow",
@@ -4532,7 +4533,8 @@ dependencies = [
 [[package]]
 name = "iroh-base"
 version = "0.35.0"
-source = "git+https://github.com/n0-computer/iroh.git?rev=b08df6a04d011fa4681fb5cd44ceaa6e53e6b32f#b08df6a04d011fa4681fb5cd44ceaa6e53e6b32f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f91ac4aaab68153d726c4e6b39c30f9f9253743f0e25664e52f4caeb46f48d11"
 dependencies = [
  "curve25519-dalek 4.2.0",
  "data-encoding",
@@ -4735,7 +4737,8 @@ dependencies = [
 [[package]]
 name = "iroh-relay"
 version = "0.35.0"
-source = "git+https://github.com/n0-computer/iroh.git?rev=b08df6a04d011fa4681fb5cd44ceaa6e53e6b32f#b08df6a04d011fa4681fb5cd44ceaa6e53e6b32f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c63f122cdfaa4b4e0e7d6d3921d2b878f42a0c6d3ee5a29456dc3f5ab5ec931f"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7294,6 +7297,7 @@ dependencies = [
  "psyche-watcher",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
+ "rayon",
  "reqwest 0.12.22",
  "serde",
  "serde_json",
@@ -7387,6 +7391,7 @@ dependencies = [
  "memmap2 0.9.5",
  "psyche-core",
  "psyche-data-provider",
+ "psyche-network",
  "psyche-python-extension-impl",
  "psyche-tui",
  "pyo3",
@@ -7476,6 +7481,7 @@ name = "psyche-solana-client"
 version = "0.1.0"
 dependencies = [
  "anchor-client",
+ "anchor-spl",
  "anyhow",
  "async-trait",
  "backon",
@@ -7494,6 +7500,7 @@ dependencies = [
  "psyche-python-extension-impl",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
+ "psyche-solana-treasurer",
  "psyche-tui",
  "psyche-watcher",
  "rand 0.8.5",
@@ -7502,6 +7509,8 @@ dependencies = [
  "serde_json",
  "solana-account-decoder-client-types",
  "solana-transaction-status-client-types",
+ "spl-associated-token-account 6.0.0",
+ "spl-token 4.0.2",
  "time",
  "tokio",
  "tokio-util 0.7.15",
@@ -7661,7 +7670,7 @@ dependencies = [
 [[package]]
 name = "pyo3-tch"
 version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
 dependencies = [
  "pyo3",
  "tch",
@@ -12063,7 +12072,7 @@ dependencies = [
 [[package]]
 name = "tch"
 version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
 dependencies = [
  "half",
  "lazy_static",
@@ -12546,7 +12555,7 @@ dependencies = [
 [[package]]
 name = "torch-sys"
 version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?branch=nccl-2.7.0#aa2dfe787daf3525fdb40b3bc2488b227702416e"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
 dependencies = [
  "anyhow",
  "cc",

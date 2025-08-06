@@ -56,7 +56,6 @@ fn main() -> Result<()> {
                 live_results: None,
                 cancel: None,
                 limit: None,
-                loop_if_empty: false,
             },
             !args.quiet,
         );
