@@ -36,7 +36,8 @@ lib.extendMkDerivation {
       nativeBuildInputs = [
         pnpm.configHook
         nodejs
-      ] ++ extraInputs;
+      ]
+      ++ extraInputs;
 
       inherit preBuild installPhase;
 

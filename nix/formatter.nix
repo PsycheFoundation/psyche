@@ -11,7 +11,7 @@
         taplo.enable = true; # toml files
         nixfmt.enable = true;
         mdformat = {
-          enable = true;
+          enable = false; # for some reason, non-deterministic.
           settings.number = true;
         };
 
