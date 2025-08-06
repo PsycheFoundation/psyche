@@ -149,8 +149,10 @@ impl PreprocessedDataProvider {
 
 impl TokenizedDataProvider for PreprocessedDataProvider {
     async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
-        let start = data_ids.0.start as usize;
-        let end = data_ids.0.end as usize;
+        let len = self.data.len();
+        assert!(len > 0);
+        let start = data_ids.0.start as usize % len;
+        let end = data_ids.0.end as usize % len;
         if start >= self.data.len() || end >= self.data.len() {
             bail!("{data_ids} out of range");
         }
