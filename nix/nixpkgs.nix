@@ -6,6 +6,7 @@
 
 let
   cudaSupported = builtins.elem system [ "x86_64-linux" ];
+  cudaVersion = "12.8";
 in
 (
   lib.optionalAttrs (system != null) { inherit system; }
@@ -17,11 +18,12 @@ in
           overrides = pyfinal: pyprev: rec {
             torch-bin =
               let
-                cudaVersion = "128";
+                # 12.8 -> 128, etc.
+                pyCudaVer = builtins.replaceStrings [ "." ] [ "" ] cudaVersion;
                 version = "2.9.0.dev20250731";
                 srcs = {
                   "x86_64-linux-312" = prev.fetchurl {
-                    url = "https://download.pytorch.org/whl/nightly/cu${cudaVersion}/torch-${version}%2Bcu${cudaVersion}-cp312-cp312-manylinux_2_28_x86_64.whl";
+                    url = "https://download.pytorch.org/whl/nightly/cu${pyCudaVer}/torch-${version}%2Bcu${pyCudaVer}-cp312-cp312-manylinux_2_28_x86_64.whl";
                     hash = "sha256-Cl0L52jtEzv2B54GrSsvBUJyjXu4zMh6PTcUfyNN920=";
                   };
                   "aarch64-darwin-312" = prev.fetchurl {
@@ -56,7 +58,7 @@ in
     }
     // lib.optionalAttrs cudaSupported {
       cudaSupport = true;
-      cudaVersion = "12.8";
+      inherit cudaVersion;
     };
   }
 )
