@@ -1,0 +1,28 @@
+{
+	"prompts": [
+		{
+			"file": "henry_VI.txt"
+		},
+		{
+			"file": "macbeth.txt"
+		},
+		{
+			"text": "What is the meaning of life?"
+		},
+		{
+			"text": "Explain quantum physics in simple terms."
+		},
+		{
+			"text": "Write a short story about a robot learning to love."
+		},
+		{
+			"text": "What are the benefits of renewable energy?"
+		},
+		{
+			"text": "How do neural networks work?"
+		},
+		{
+			"text": "Describe the perfect day."
+		}
+	]
+}

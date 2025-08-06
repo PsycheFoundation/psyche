@@ -135,6 +135,9 @@ export interface RunData {
 		summary: NullableRecursive<Metrics>
 		history: OverTime<Metrics>
 	}
+	promptResults: number[]
+	promptIndex: number
+	cumulativePromptResults: number[]
 }
 
 interface ChainStatus {

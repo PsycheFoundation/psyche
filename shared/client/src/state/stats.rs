@@ -6,7 +6,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
-use tracing::warn;
+use tracing::{info, warn};
 use wandb::{DataValue, LogData};
 
 use crate::{
@@ -180,8 +180,9 @@ impl StatsLogger {
             evals
         };
 
-        // See issue https://github.com/PsycheFoundation/psyche/issues/213
-        // let prompt_results = self.get_prompt_results();
+        // TODO see issue https://github.com/PsycheFoundation/psyche/issues/213
+        let prompt_results = self.get_prompt_results();
+        let prompt_index = self.get_prompt_index();
 
         // NOTE: no NaNs allowed in borsh serialized data.
         let tokens_per_sec = self.global_tokens_per_second(state);
@@ -195,7 +196,8 @@ impl StatsLogger {
             ),
             efficency: no_nan(self.efficency(), 0.0),
             evals,
-            // prompt_results,
+            prompt_results,
+            prompt_index,
         }
     }
 
@@ -303,6 +305,7 @@ impl StatsLogger {
     // clear tokens_to_send buffer
     pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
         let mut results = FixedVec::new();
+
         for eval_task in self.model_task_runner.tasks().iter().flatten() {
             if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
                 {
@@ -312,8 +315,22 @@ impl StatsLogger {
                 prompt_task.tokens_to_send.write().unwrap().clear();
             }
         }
-
+        info!(
+            "Final witness prompt results: {:?}",
+            results.iter().collect::<Vec<_>>()
+        );
         results
+    }
+
+    // Get current prompt index for witness metadata
+    pub fn get_prompt_index(&self) -> u8 {
+        for eval_task in self.model_task_runner.tasks().iter().flatten() {
+            if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
+                return *prompt_task.selected_prompt.read().unwrap() as u8;
+            }
+        }
+        // Default to 0 if no prompt task found
+        0
     }
 
     // normalized metric for how "confident" a model is, regardless of vocab size.
