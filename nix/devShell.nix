@@ -65,19 +65,18 @@
               ++ rustWorkspaceArgs.buildInputs
               ++ rustWorkspaceArgs.nativeBuildInputs;
 
-            shellHook =
-              ''
-                source ${lib.getExe config.agenix-shell.installationScript}
-                ${config.pre-commit.installationScript}
-              ''
-              + lib.optionalString pkgs.config.cudaSupport ''
-                # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
-                # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
-                export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
-              ''
-              + ''
-                echo "Welcome to the Psyche development shell.";
-              '';
+            shellHook = ''
+              source ${lib.getExe config.agenix-shell.installationScript}
+              ${config.pre-commit.installationScript}
+            ''
+            + lib.optionalString pkgs.config.cudaSupport ''
+              # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
+              # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
+              export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
+            ''
+            + ''
+              echo "Welcome to the Psyche development shell.";
+            '';
           };
         in
         {
@@ -88,11 +87,9 @@
               packages = defaultShell.packages ++ [
                 pythonWithPsycheExtension
               ];
-              shellHook =
-                defaultShell.shellHook
-                + ''
-                  echo "This shell has the 'psyche' module available in its python interpreter.";
-                '';
+              shellHook = defaultShell.shellHook + ''
+                echo "This shell has the 'psyche' module available in its python interpreter.";
+              '';
             }
           );
         };
