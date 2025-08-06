@@ -1,8 +1,8 @@
 use allowlist::Allowlist;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
-use futures_util::{StreamExt, TryFutureExt};
+use futures_util::{future::join_all, StreamExt, TryFutureExt};
 use iroh::endpoint::{RemoteInfo, TransportConfig};
 use iroh_blobs::{
     downloader::{ConcurrencyLimits, RetryConfig},
@@ -16,8 +16,8 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
-    PeerManagerHandle,
+    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
+    MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 use router::Router;
@@ -38,15 +38,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{Interval, interval},
+    time::{interval, Interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
-pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
+pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
+pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -68,23 +68,23 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
 pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
-    RetriedDownloadsHandle, TransmittableDownload,
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
+    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
 };
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
 pub use p2p_model_sharing::{
-    ALPN, ModelRequestType, ModelSharing, SharableModel, SharableModelError,
-    TransmittableModelConfig,
+    ModelRequestType, ModelSharing, SharableModel, SharableModelError, TransmittableModelConfig,
+    ALPN,
 };
 pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
-    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
-    distro_results_from_reader, distro_results_to_bytes,
+    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
+    SerializedDistroResult, TransmittableDistroResult,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -454,6 +454,40 @@ where
         Ok(blob_ticket)
     }
 
+    pub async fn add_downloadables(&mut self, data: Download, tag: u32) -> Result<Vec<BlobTicket>> {
+        let bytes_chunks = data.to_chunks(1024);
+
+        let blobs_res =
+            join_all(bytes_chunks.into_iter().map(async |bytes_chunk| {
+                self.blobs.client().add_bytes(bytes_chunk).await.unwrap()
+            }))
+            .await;
+
+        let addr = self.router.endpoint().node_addr().await?;
+        let blobs_res = blobs_res
+            .into_iter()
+            .map(|res| {
+                let ret = BlobTicket::new(addr.clone(), res.hash, res.format).unwrap();
+                debug!(
+                    name: "blob_upload",
+                    hash = res.hash.fmt_short(),
+                    size = res.size,
+                    "blob added for upload with hash {} and size {}",
+                    res.hash.fmt_short(),
+                    res.size
+                );
+
+                let hash = ret.hash();
+                self.state.currently_sharing_blobs.insert(hash);
+                self.state.blob_tags.insert((tag, hash));
+
+                ret
+            })
+            .collect::<Vec<_>>();
+
+        Ok(blobs_res)
+    }
+
     // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
     pub fn remove_blobs_with_tag_less_than(&mut self, tag: u32) {
         self.state.blob_tags.retain(|(t, _)| *t >= tag);
@@ -704,9 +738,9 @@ where
     DownloadFailed(DownloadFailed),
     ParameterRequest(
         String,
-        oneshot::Sender<Result<BlobTicket, SharableModelError>>,
+        oneshot::Sender<Result<Vec<BlobTicket>, SharableModelError>>,
     ),
-    ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
+    ModelConfigRequest(oneshot::Sender<Result<Vec<BlobTicket>, SharableModelError>>),
 }
 
 async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {

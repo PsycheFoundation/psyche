@@ -303,12 +303,12 @@ pub enum ModelRequestType {
 pub enum ParameterSharingMessage {
     Get(
         String,
-        oneshot::Sender<Result<BlobTicket, SharableModelError>>,
+        oneshot::Sender<Result<Vec<BlobTicket>, SharableModelError>>,
     ),
 }
 
 pub enum ModelConfigSharingMessage {
-    Get(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
+    Get(oneshot::Sender<Result<Vec<BlobTicket>, SharableModelError>>),
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -351,7 +351,7 @@ pub struct SharableModel {
     serializing_parameters: Option<
         HashMap<String, JoinHandle<Result<TransmittableModelParameter, SharableModelError>>>,
     >,
-    serialized_parameters: Option<HashMap<String, BlobTicket>>,
+    serialized_parameters: Option<HashMap<String, Vec<BlobTicket>>>,
     model_config: Option<String>,
     tokenizer_config: Option<Tokenizer>,
     config_and_tokenizer_ticket: Option<BlobTicket>,
@@ -444,7 +444,7 @@ impl SharableModel {
         param_name: &str,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
         tag: u32,
-    ) -> Result<BlobTicket, SharableModelError> {
+    ) -> Result<Vec<BlobTicket>, SharableModelError> {
         let Some(loading_parameters) = self.serializing_parameters.as_mut() else {
             return Err(SharableModelError::ParametersNotInitialized);
         };
@@ -467,7 +467,7 @@ impl SharableModel {
                         TransmittableDownload::ModelParameter(transmittable_parameter);
                     trace!("Adding paramerter downloadable {param_name}");
                     let blob_ticket = p2p
-                        .add_downloadable(transmittable_download, tag)
+                        .add_downloadables(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                     loaded_parameters.insert(param_name.to_string(), blob_ticket.clone());
@@ -484,11 +484,11 @@ impl SharableModel {
         &mut self,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
         tag: u32,
-    ) -> Result<BlobTicket, SharableModelError> {
+    ) -> Result<Vec<BlobTicket>, SharableModelError> {
         match self.config_and_tokenizer_ticket.as_ref() {
             Some(ticket) => {
                 trace!("Using cached config and tokenizer downloadable");
-                Ok(ticket.clone())
+                Ok(vec![ticket.clone()])
             }
             None => {
                 trace!("Building config and tokenizer downloadable");
@@ -510,7 +510,7 @@ impl SharableModel {
                     .await
                     .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                 self.config_and_tokenizer_ticket = Some(ticket.clone());
-                Ok(ticket)
+                Ok(vec![ticket])
             }
         }
     }
@@ -673,7 +673,7 @@ impl ModelSharing {
                     // Create channel for requesting the model parameter to the client backend
                     // and add a new blob for it
                     let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                        oneshot::channel::<Result<Vec<BlobTicket>, SharableModelError>>();
                     let request = ParameterSharingMessage::Get(parameter_request, tx_req);
                     tx_model_parameter_req.send(request)?;
 
@@ -683,7 +683,7 @@ impl ModelSharing {
                 ModelRequestType::Config => {
                     // Create channel for requesting the model config to the client backend and add a new blob for it
                     let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                        oneshot::channel::<Result<Vec<BlobTicket>, SharableModelError>>();
                     let request = ModelConfigSharingMessage::Get(tx_req);
                     tx_model_config_req.send(request)?;
 
