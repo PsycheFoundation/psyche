@@ -37,6 +37,7 @@ pkgs.python312Packages.buildPythonPackage rec {
   propagatedBuildInputs = with pkgs.python312Packages; [
     torch-bin
     transformers
+    (pkgs.python312Packages.callPackage ./flash-attn.nix { })
   ];
 
   installPhase = ''
