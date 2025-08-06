@@ -2,6 +2,7 @@
   pkgs,
   nixglhostRustPackages,
   inputs,
+  externalRustPackages,
 }:
 let
   # We need this because the solana validator require the compiled .so files of the Solana programs,
@@ -18,23 +19,6 @@ let
   };
 
   solana = inputs.solana-pkgs.packages.${pkgs.system}.default;
-  solana_toolbox_cli = pkgs.rustPlatform.buildRustPackage rec {
-    pname = "solana_toolbox_cli";
-    version = "0.4.3"; # Replace with actual version
-
-    src = pkgs.fetchCrate {
-      inherit pname version;
-      sha256 = "sha256-6bCbFtVAs4MctSYslTNBk859LxfdOjwetvq/1Ub3VVg=";
-    };
-
-    cargoHash = "sha256-cQ8XkfWdU2HxYnyZQNC59lWWDMbJ0OLocmTiH+N5zrc=";
-
-    nativeBuildInputs = with pkgs; [
-      pkg-config
-      perl
-    ];
-    buildInputs = with pkgs; [ openssl ];
-  };
 in
 {
   docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
@@ -75,7 +59,7 @@ in
       busybox
       cacert
       nixglhostRustPackages."psyche-solana-client-nixglhost"
-      solana_toolbox_cli
+      externalRustPackages.solana_toolbox_cli
       jq
 
       # Create proper system structure including /tmp
@@ -100,15 +84,10 @@ in
       '')
 
       (pkgs.runCommand "entrypoint" { } ''
-        # cargo install solana_toolbox_cli
         mkdir -p $out/bin
-        mkdir -p $out/local
-        chmod 755 $out/local
         cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
         cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
         cp ${../scripts/join-authorization-create.sh} $out/bin/join-authorization-create.sh
-        cp -r ${authorizerSrc} $out/local
-        mv $out/local/*solana-authorizer $out/local/solana-authorizer
         chmod +x $out/bin/client_test_entrypoint.sh
         chmod +x $out/bin/run_owner_entrypoint.sh
         chmod +x $out/bin/join-authorization-create.sh

@@ -9,15 +9,14 @@ check: build-all-flake-outputs
 # Build all flake outputs in one command (no checks)
 build-all-flake-outputs:
     nix flake show --json | jq -r '\
-        (.packages."x86_64-linux" | to_entries | map(select(.key != "docker-psyche-solana-test-validator" and .key != "docker-psyche-solana-test-client")) | .[].key | ".#" + .),\
+        (.packages."x86_64-linux" | to_entries | map(select(.key != "docker-psyche-solana-test-validator")) | .[].key | ".#" + .),\
     	(.devShells."x86_64-linux" | keys[] | ".#devShells.\"x86_64-linux\"." + .),\
     	(.nixosConfigurations | keys[] | ".#nixosConfigurations." + . + ".config.system.build.toplevel")\
     ' | xargs nom build
 
-    # This validator and the client are used only for tests.They currently need to be built using the impure flag.
-    # We exclude them from the general checks and build them separately with the impure flag
-    # This ensures that everything else works as expected without them.
-    PSYCHE_HOME=$(realpath ..) nom build --impure .#docker-psyche-solana-test-client
+    # This validator is used only for tests, and it currently needs to be built using the impure flag.
+    # We exclude it from the general checks and build it separately with the impure flag
+    # This ensure that everything else works as expected without it.
     PSYCHE_HOME=$(realpath ..) nom build --impure .#docker-psyche-solana-test-validator
 
 # Build the centralized client Docker image
@@ -32,7 +31,7 @@ build_docker_solana_client:
 
 # Build the image for the solana client used for testing
 build_docker_solana_test_client:
-    PSYCHE_HOME=$(realpath ..) nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client --impure
+    nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
     nix-results/docker-psyche-solana-test-client | docker load
 
 # Build the image for the solana vaidator used for testing

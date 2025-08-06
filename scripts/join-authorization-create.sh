@@ -4,10 +4,6 @@ set -o errexit
 set -e
 set -m
 
-set -o errexit
-set -e
-set -m
-
 _usage() {
     echo "Usage: $0 <SOLANA_RPC> <GRANTOR_KEYPAIR_FILE> <GRANTEE_PUBKEY>"
     echo "  SOLANA_RPC: The solana RPC url or moniker to use"

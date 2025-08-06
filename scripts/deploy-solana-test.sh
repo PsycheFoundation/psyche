@@ -5,7 +5,12 @@ set -e
 set -m
 
 # use the agenix provided wallet if you have it
-DEFAULT_WALLET=${devnet__keypair__wallet_PATH:-"$HOME/.config/solana/id.json"}
+
+if [[ -n "${devnet__keypair__wallet_PATH}" && -f "${devnet__keypair__wallet_PATH}" ]]; then
+    DEFAULT_WALLET="${devnet__keypair__wallet_PATH}"
+else
+    DEFAULT_WALLET="$HOME/.config/solana/id.json"
+fi
 WALLET_FILE=${KEY_FILE:-"$DEFAULT_WALLET"}
 RPC=${RPC:-"http://127.0.0.1:8899"}
 WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
