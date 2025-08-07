@@ -58,7 +58,7 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 		if (hasNewTokens) {
 			setNewTokensHighlight(true)
 			// Remove highlight after animation
-			setTimeout(() => setNewTokensHighlight(false), 100)
+			setTimeout(() => setNewTokensHighlight(false), 250)
 		}
 		setPreviousTokensLength(tokens.length)
 
@@ -87,16 +87,6 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 					text['body/base/regular']
 				)}
 			>
-				<div
-					className={c(
-						text['body/base/medium'],
-						css`
-							margin-bottom: 8px;
-						`
-					)}
-				>
-					Latest Prompt & Results:
-				</div>
 				<span
 					className={css`
 						font-style: italic;
@@ -113,240 +103,164 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 		<div
 			className={c(
 				css`
-					padding: 16px;
-					border-radius: 8px;
-					max-width: 800px;
+					width: 600px;
 				`,
 				text['body/base/regular']
 			)}
 		>
-			<div
-				className={c(
-					text['body/base/medium'],
-					css`
-						margin-bottom: 16px;
-					`
-				)}
-			>
-				Latest Prompt & Results:
-				{tokens.length > 0 && (
-					<>
-						<span
-							className={c(
-								css`
-									margin-left: 8px;
-									font-size: 12px;
-									padding: 2px 6px;
-									border-radius: 12px;
-									color: #666;
-									background-color: #f8f9fa;
-									border: 1px solid #dee2e6;
-									transition: all 0.3s ease;
-								`,
-								newTokensHighlight &&
-									css`
-										background-color: #e8f5e8 !important;
-										border: 1px solid #28a745 !important;
-									`
-							)}
-						>
-							{tokens.length} tokens
-							{newTokensHighlight && (
-								<span
-									className={css`
-										color: #28a745;
-										font-weight: bold;
-										margin-left: 4px;
-									`}
-								>
-									+{tokens.length - previousTokensLength}
-								</span>
-							)}
-						</span>
-						<button
-							onClick={() => setShowTokens(!showTokens)}
-							className={css`
-								margin-left: 8px;
-								background: none;
-								border: 1px solid #ccc;
-								border-radius: 4px;
-								padding: 2px 8px;
-								cursor: pointer;
-								font-size: 12px;
-								&:hover {
-									background: #f0f0f0;
-								}
-							`}
-						>
-							{showTokens ? 'Show Text' : 'Show Tokens'}
-						</button>
-					</>
-				)}
-			</div>
-
-			{/* Show Prompt Text */}
+			{/* Show Prompt Text with token info */}
 			{promptText && (
 				<div
 					className={css`
-						margin-bottom: 16px;
+						margin-bottom: 12px;
+						display: flex;
+						align-items: center;
+						gap: 16px;
 					`}
 				>
 					<div
-						className={c(
-							text['body/sm/medium'],
-							css`
-								margin-bottom: 8px;
-								color: #666;
-							`
-						)}
-					>
-						{promptName ? `${promptName}:` : 'Prompt:'}
-					</div>
-					<div
 						className={css`
-							border: 1px solid #e9ecef;
-							border-radius: 4px;
-							padding: 12px;
 							font-family: 'Georgia', serif;
-							font-size: 14px;
+							font-size: 16px;
 							line-height: 1.5;
-							white-space: pre-wrap;
-							color: #495057;
+							color: #fafafa;
+							font-weight: 500;
+							flex: 1;
 						`}
 					>
 						{promptText}
 					</div>
-				</div>
-			)}
-
-			{/* Show Results */}
-			{tokens.length > 0 && (
-				<div>
-					<div
-						className={c(
-							text['body/sm/medium'],
-							css`
-								margin-bottom: 8px;
-								color: #666;
-							`
-						)}
-					>
-						Generated Response:
-					</div>
-					{isLoading ? (
+					{tokens.length > 0 && (
 						<div
 							className={css`
-								padding: 12px;
-								border-radius: 4px;
-								border-left: 4px solid #007bff;
-								background: #f8f9fa;
 								display: flex;
 								align-items: center;
 								gap: 8px;
+								color: #4b9551;
+								background-color: #1f3320;
+								font-size: 14px;
 							`}
 						>
-							<div
+							<span>({tokens.length} tokens)</span>
+							<button
+								onClick={() => setShowTokens(!showTokens)}
 								className={css`
-									width: 12px;
-									height: 12px;
-									border: 2px solid #007bff;
-									border-top: 2px solid transparent;
-									border-radius: 50%;
-									animation: spin 1s linear infinite;
-									@keyframes spin {
-										0% {
-											transform: rotate(0deg);
-										}
-										100% {
-											transform: rotate(360deg);
-										}
+									background: none;
+									border: none;
+									color: #4b9551;
+									cursor: pointer;
+									font-size: 14px;
+									text-decoration: underline;
+									&:hover {
+										color: #4b9551;
 									}
 								`}
-							/>
-							<span
-								className={css`
-									font-style: italic;
-									color: #666;
-								`}
 							>
-								Detokenizing...
-							</span>
-						</div>
-					) : showTokens ? (
-						<span
-							className={css`
-								font-family: 'Courier New', monospace;
-								font-size: 14px;
-								word-break: break-all;
-								line-height: 1.4;
-								padding: 12px;
-								border-radius: 4px;
-								border: 1px solid #e9ecef;
-								display: block;
-							`}
-						>
-							[{tokens.join(', ')}]
-						</span>
-					) : (
-						<div
-							className={c(
-								css`
-									font-family: 'Georgia', serif;
-									font-size: 16px;
-									line-height: 1.6;
-									padding: 12px;
-									border-radius: 4px;
-									border-left: 4px solid #007bff;
-									white-space: pre-wrap;
-									background-color: transparent;
-									transition: all 0.3s ease;
-									position: relative;
-									max-height: 200px;
-									overflow-y: auto;
-									border: 1px solid #e9ecef;
-								`,
-								newTokensHighlight &&
-									css`
-										border-left: 4px solid #28a745 !important;
-										background-color: #f8fff8 !important;
-									`
-							)}
-						>
-							"{detokenizedText}"
-							{newTokensHighlight && (
-								<span
-									className={css`
-										position: absolute;
-										top: -8px;
-										right: 8px;
-										background: #28a745;
-										color: white;
-										font-size: 11px;
-										padding: 2px 6px;
-										border-radius: 12px;
-										font-weight: bold;
-									`}
-								>
-									NEW
-								</span>
-							)}
+								[show {showTokens ? 'text' : 'tokens'}]
+							</button>
 						</div>
 					)}
 				</div>
 			)}
 
-			{tokens.length === 0 && promptIndex !== undefined && (
-				<div
-					className={css`
-						font-style: italic;
-						color: #666;
-						text-align: center;
-						padding: 12px;
-					`}
-				>
-					(generating response...)
-				</div>
-			)}
+			{/* Show Results in box */}
+			<div
+				className={c(
+					css`
+						border: 1px solid #4b9551;
+						border-radius: 8px;
+						padding: 16px;
+						height: 200px;
+					`,
+					newTokensHighlight &&
+						css`
+							border-color: #4b9551 !important;
+							background-color: #29442aff !important;
+						`
+				)}
+			>
+				{/* Content */}
+				{tokens.length === 0 && promptIndex !== undefined ? (
+					<div
+						className={css`
+							font-style: italic;
+							color: #4b9551;
+							text-align: center;
+							height: 100%;
+							display: flex;
+							align-items: center;
+							justify-content: center;
+						`}
+					>
+						(generating response...)
+					</div>
+				) : isLoading ? (
+					<div
+						className={css`
+							display: flex;
+							align-items: center;
+							justify-content: center;
+							gap: 8px;
+							height: 100%;
+						`}
+					>
+						<div
+							className={css`
+								width: 12px;
+								height: 12px;
+								border: 2px solid #4b9551;
+								border-top: 2px solid transparent;
+								border-radius: 50%;
+								animation: spin 1s linear infinite;
+								@keyframes spin {
+									0% {
+										transform: rotate(0deg);
+									}
+									100% {
+										transform: rotate(360deg);
+									}
+								}
+							`}
+						/>
+						<span
+							className={css`
+								font-style: italic;
+								color: #4b9551;
+							`}
+						>
+							Detokenizing...
+						</span>
+					</div>
+				) : showTokens ? (
+					<div
+						className={css`
+							font-family: 'Courier New', monospace;
+							font-size: 12px;
+							word-break: break-all;
+							line-height: 1.4;
+							color: #4b9551;
+							height: 100%;
+							overflow-y: auto;
+						`}
+					>
+						[{tokens.join(', ')}]
+					</div>
+				) : (
+					<div
+						className={css`
+							font-family: 'Georgia', serif;
+							font-size: 15px;
+							line-height: 1.6;
+							white-space: pre-wrap;
+							color: #4b9551;
+							height: 100%;
+							overflow-y: auto;
+						`}
+					>
+						{detokenizedText}
+					</div>
+				)}
+			</div>
 		</div>
 	)
 }
