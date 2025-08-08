@@ -317,6 +317,7 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
+    pub min_reporting_ratio: Option<f32>,
 }
 
 impl PreparedTask {
@@ -365,9 +366,13 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        results.add_entry_if_needed("acc", docs.len());
+        let min_samples = options
+            .min_reporting_ratio
+            .map(|x| (x * docs.len() as f32) as usize);
+
+        results.add_entry_if_needed("acc", docs.len(), min_samples);
         if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
-            results.add_entry_if_needed("acc_norm", docs.len());
+            results.add_entry_if_needed("acc_norm", docs.len(), min_samples);
         }
         let mut next_index = skip;
 
@@ -506,7 +511,7 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        results.add_entry_if_needed("acc", requests.len());
+        results.add_entry_if_needed("acc", requests.len(), None);
         let fast_forward = (skip / requests.len()) * requests.len();
         skip -= fast_forward;
         let mut cancelled = false;
