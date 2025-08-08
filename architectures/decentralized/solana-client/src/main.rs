@@ -277,6 +277,9 @@ enum Commands {
         #[clap(long, env, action)]
         predownload_model: bool,
 
+        #[clap(long, env, action)]
+        predownload_eval_tasks: Option<String>,
+
         #[clap(long, env, default_value_t = 3)]
         hub_max_concurrent_downloads: usize,
     },
@@ -888,6 +891,7 @@ async fn async_main() -> Result<()> {
             authorizer,
             pubkey,
             predownload_model,
+            predownload_eval_tasks,
             hub_max_concurrent_downloads,
         } => {
             // when we call join_run, we check
@@ -951,7 +955,10 @@ async fn async_main() -> Result<()> {
                 .state
                 .coordinator;
 
-            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+            let is_paused = matches!(
+                coordinator_account_state.run_state,
+                RunState::Paused | RunState::Uninitialized
+            );
 
             if !is_paused {
                 let client_with_our_key = coordinator_account_state
@@ -1007,6 +1014,10 @@ async fn async_main() -> Result<()> {
                 )
                 .await?;
                 println!("Model predownloaded successfully.")
+            }
+            if let Some(predownload_eval_tasks) = predownload_eval_tasks {
+                let _ = TrainArgs::eval_tasks_from_args(&predownload_eval_tasks, 0, 0)?;
+                println!("Eval tasks `{predownload_eval_tasks}` predownloaded successfully.");
             }
             Ok(())
         }

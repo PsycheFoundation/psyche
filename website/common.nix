@@ -29,6 +29,7 @@ lib.extendMkDerivation {
 
       pnpmDeps = pnpm.fetchDeps {
         inherit (finalAttrs) pname version;
+        fetcherVersion = 2;
         src = workspaceSrc;
         hash = "sha256-FjZt0cNKlMBdgocLTbr6RkGMBjqu3rp7NWgyAX3imY4=";
       };
@@ -36,7 +37,8 @@ lib.extendMkDerivation {
       nativeBuildInputs = [
         pnpm.configHook
         nodejs
-      ] ++ extraInputs;
+      ]
+      ++ extraInputs;
 
       inherit preBuild installPhase;
 
