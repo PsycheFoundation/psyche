@@ -78,6 +78,8 @@ impl OpenbookQA {
             text,
             choices,
             answer,
+            category: None,
+            cot_content: None,
         }
     }
 }
