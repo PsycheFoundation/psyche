@@ -218,12 +218,8 @@ function RouteComponent() {
 								)}
 
 								<PromptResults
-									tokens={
-										run.metrics.summary.cumulativePromptResults?.filter(
-											(x): x is number => x !== null
-										) || []
-									}
-									promptIndex={run.metrics.summary.promptIndex || undefined}
+									tokens={run.cumulativePromptResults || []}
+									promptIndex={run.promptIndex || undefined}
 								/>
 
 								<StatsContainer>

@@ -4,6 +4,7 @@ use anchor_client::solana_client::rpc_config::RpcSendTransactionConfig;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
+    Client, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
@@ -16,14 +17,13 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
         system_instruction,
     },
-    Client, Cluster, Program,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{
-    model::{HubRepo, Model},
     CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
+    model::{HubRepo, Model},
 };
 use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -321,7 +321,7 @@ impl SolanaBackend {
             .send()
             .await?;
 
-        let mut create_signatures = vec![create_coordinator_signature.clone()];
+        let mut create_signatures = vec![create_coordinator_signature];
         if join_authority == payer {
             let (authorization_create, authorization_activate) =
                 self.create_run_ensure_permissionless().await?;

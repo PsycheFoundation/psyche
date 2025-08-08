@@ -329,7 +329,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					? prompt_results.len.toNumber()
 					: Number(prompt_results.len)
 			for (let i = 0; i < promptLen && i < prompt_results.data.length; i++) {
-				promptTokens.push(prompt_results.data[i])
+				promptTokens.push(Number(prompt_results.data[i]))
 			}
 		}
 
@@ -503,9 +503,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 
 		// collect prompt results by step (no aggregation needed since only 1 client runs prompts)
-		const promptResults: Array<[number, number[]]> = []
-		const promptIndices: Array<[number, number]> = []
-		const cumulativePromptResults: Array<[number, number[]]> = []
+		const promptResults: Array<readonly [number, number[]]> = []
+		const promptIndices: Array<readonly [number, number]> = []
+		const cumulativePromptResults: Array<readonly [number, number[]]> = []
 
 		let cumulativeTokens: number[] = []
 		let currentPromptIndex: number | null = null
@@ -563,9 +563,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			),
 			lr: run.observedLrByStep.filter(goodNumber),
 			evals,
-			promptResults,
-			promptIndex: promptIndices,
-			cumulativePromptResults,
 		}
 
 		const summary: Metrics = {
@@ -578,9 +575,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					.map(([k, v]) => [k, v.at(-1)?.[1]] as const)
 					.filter((x): x is [string, number] => x[1] !== undefined)
 			),
-			promptResults: promptResults.at(-1)?.[1] ?? [],
-			promptIndex: promptIndices.at(-1)?.[1] ?? 0,
-			cumulativePromptResults: cumulativePromptResults.at(-1)?.[1] ?? [],
 		}
 
 		let state: RunData['state']
@@ -648,6 +642,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				summary,
 				history,
 			},
+			promptResults: promptResults.at(-1)?.[1] ?? [],
+			promptIndex: promptIndices.at(-1)?.[1] ?? 0,
+			cumulativePromptResults: cumulativePromptResults.at(-1)?.[1] ?? [],
 		}
 		this.#runCache.set(runKey(runId, index), runData)
 		return runData
