@@ -38,30 +38,29 @@ let
       python312
     ];
 
-    buildInputs =
+    buildInputs = [
+      pkgs.python312Packages.torch
+    ]
+    ++ (with pkgs; [
+      openssl
+      fontconfig # for lr plot
+    ])
+    ++ lib.optionals pkgs.config.cudaSupport (
+      with pkgs.cudaPackages;
       [
-        pkgs.python312Packages.torch
+        cudatoolkit
+        cuda_cudart
+        nccl
       ]
-      ++ (with pkgs; [
-        openssl
-        fontconfig # for lr plot
-      ])
-      ++ lib.optionals pkgs.config.cudaSupport (
-        with pkgs.cudaPackages;
-        [
-          cudatoolkit
-          cuda_cudart
-          nccl
-        ]
-      );
+    );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    # Disable parallelism feature on macOS as NCCL is not supported
+    # Enable parallelism feature only on CUDA-supported platforms
     cargoExtraArgs =
-      "--features python-extension" + lib.optionalString (!pkgs.stdenv.isDarwin) ",parallelism";
+      "--features python-extension" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
@@ -225,7 +224,8 @@ let
 
         nativeBuildInputs = [
           inputs.solana-pkgs.packages.${system}.anchor
-        ] ++ rustWorkspaceDeps.nativeBuildInputs;
+        ]
+        ++ rustWorkspaceDeps.nativeBuildInputs;
 
         buildPhaseCargoCommand = ''
           mkdir $out

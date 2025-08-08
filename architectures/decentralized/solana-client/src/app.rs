@@ -18,6 +18,7 @@ use psyche_client::{
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_metrics::ClientMetrics;
+use psyche_modeling::Devices;
 use psyche_network::{
     DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey, allowlist, psyche_relay_map,
 };
@@ -85,6 +86,7 @@ pub struct AppParams {
     pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,
     pub metrics_local_port: Option<u16>,
+    pub device: Devices,
 }
 
 impl AppBuilder {
@@ -136,6 +138,7 @@ impl AppBuilder {
                 grad_accum_in_fp32: p.grad_accum_in_fp32,
                 dummy_training_delay_secs: p.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+                device: p.device,
             };
         let app = App {
             run_id: p.run_id.clone(),

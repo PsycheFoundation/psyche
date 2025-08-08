@@ -45,22 +45,21 @@ lib.makeScope pkgs.newScope (
       inherit pkgs nixglhostRustPackages inputs;
     };
 
-    psychePackages =
-      {
-        psyche-website-wasm = self.callPackage ../website/wasm { };
-        psyche-website-shared = self.callPackage ../website/shared { };
+    psychePackages = {
+      psyche-website-wasm = self.callPackage ../website/wasm { };
+      psyche-website-shared = self.callPackage ../website/shared { };
 
-        psyche-deserialize-zerocopy-wasm = self.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
+      psyche-deserialize-zerocopy-wasm = self.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
 
-        solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
-        solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
+      solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
+      solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
-        psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+      psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
 
-      }
-      // rustPackages
-      // nixglhostRustPackages
-      // dockerPackages;
+    }
+    // rustPackages
+    // nixglhostRustPackages
+    // dockerPackages;
   in
   {
     psycheLib = import ./lib.nix {

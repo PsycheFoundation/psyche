@@ -65,26 +65,25 @@
               ++ rustWorkspaceArgs.buildInputs
               ++ rustWorkspaceArgs.nativeBuildInputs;
 
-            shellHook =
-              ''
-                source ${lib.getExe config.agenix-shell.installationScript}
-                ${config.pre-commit.installationScript}
-              ''
-              + lib.optionalString pkgs.config.cudaSupport ''
-                # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
-                # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
-                export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
-              ''
-              + lib.optionalString pkgs.stdenv.isDarwin ''
-                # macOS: Ensure PyTorch can use Metal Performance Shaders
-                export PYTORCH_ENABLE_MPS_FALLBACK=1
+            shellHook = ''
+              source ${lib.getExe config.agenix-shell.installationScript}
+              ${config.pre-commit.installationScript}
+            ''
+            + lib.optionalString pkgs.config.cudaSupport ''
+              # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
+              # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
+              export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
+            ''
+            + lib.optionalString pkgs.config.metalSupport ''
+              # macOS: Ensure PyTorch can use Metal Performance Shaders
+              export PYTORCH_ENABLE_MPS_FALLBACK=1
 
-                # Set up PyTorch library path for test execution
-                export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch}/lib/python3.12/site-packages/torch/lib:$DYLD_LIBRARY_PATH"
-              ''
-              + ''
-                echo "Welcome to the Psyche development shell.";
-              '';
+              # Set up PyTorch library path for test execution
+              export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch}/lib/python3.12/site-packages/torch/lib:$DYLD_LIBRARY_PATH"
+            ''
+            + ''
+              echo "Welcome to the Psyche development shell.";
+            '';
           };
         in
         {
@@ -95,11 +94,9 @@
               packages = defaultShell.packages ++ [
                 pythonWithPsycheExtension
               ];
-              shellHook =
-                defaultShell.shellHook
-                + ''
-                  echo "This shell has the 'psyche' module available in its python interpreter.";
-                '';
+              shellHook = defaultShell.shellHook + ''
+                echo "This shell has the 'psyche' module available in its python interpreter.";
+              '';
             }
           );
         };

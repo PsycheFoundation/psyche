@@ -164,8 +164,22 @@ def main():
                     device=device,
                 )
 
-            batch = torch.empty(train.batch_shape, dtype=torch.long, device=device)
-            dist.broadcast(batch, 0)
+            input_ids = torch.empty(train.batch_shape, dtype=torch.long, device=device)
+            labels = (
+                torch.empty(train.batch_shape, dtype=torch.long, device=device)
+                if train.batch_has_labels
+                else None
+            )
+            position_ids = (
+                torch.empty(train.batch_shape, dtype=torch.long, device=device)
+                if train.batch_has_position_ids
+                else None
+            )
+            dist.broadcast(input_ids, 0)
+            if train.batch_has_labels:
+                dist.broadcast(labels, 0)
+            if train.batch_has_position_ids:
+                dist.broadcast(position_ids, 0)
 
             # world_size = dist.get_world_size()
             # rank = dist.get_rank()
@@ -173,11 +187,14 @@ def main():
             # start_row = rank * shard_size
             # local_batch = batch.narrow(0, start_row, shard_size).contiguous()
 
-            trainer.train(
+            _, loss = trainer.train(
                 train.step,
-                (train.batch_id[0], train.batch_id[1]),
-                batch,
                 train.zero_optim,
+                (train.batch_id[0], train.batch_id[1]),
+                input_ids,
+                labels,
+                position_ids,
+                train.batch_sequence_lengths,
                 (
                     (train.warmup_lr_between[0], train.warmup_lr_between[1])
                     if train.warmup_lr_between is not None
@@ -185,6 +202,9 @@ def main():
                 ),
                 prev_self_distro_results,
             )
+
+            loss = torch.Tensor([loss]).to(device=device, dtype=torch.float32)
+            dist.all_reduce(loss)
         elif operation["operation"] == "optimize":
             with torch.no_grad():
                 optimize = OptimizeOperation(**operation)

@@ -36,7 +36,7 @@ pub use causal_language_model::{
     CausalLM, CausalLanguageModel, EosToks, LanguageModelBuilder, LanguageModelConfig,
     LanguageModelForward,
 };
-pub use device_utils::{get_device_for_rank, get_optimal_device, has_cuda, has_mps, parse_device};
+pub use device_utils::{Devices, get_optimal_devices};
 pub use distro::{CompressDCT, Distro, DistroResult, TransformDCT};
 pub use dummy::{DummyModel, get_dummy_parameters};
 pub use fp32_gradient_accumulator::Fp32GradientAccumulator;
@@ -65,8 +65,8 @@ pub use safetensor_utils::{
 pub use sampling::{LogitsProcessor, Sampling};
 pub use token_output_stream::TokenOutputStream;
 pub use trainer::{
-    ApplyDistroResultError, Batch, BatchData, DataParallel, LocalTrainer, ParallelModels,
-    TrainOutput, Trainer, TrainerThreadCommunicationError,
+    ApplyDistroResultError, Batch, BatchData, BatchDataCPU, BatchDataGPU, DataParallel,
+    LocalTrainer, ParallelModels, TrainOutput, Trainer, TrainerThreadCommunicationError,
 };
 pub use variable::{StableVarStoreIterator, StableVariableIterator, Variable};
 

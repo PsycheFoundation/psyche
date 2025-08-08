@@ -1,10 +1,12 @@
 {
-  pkgs,
+  psycheLib,
+  python312Packages,
+  config,
+  python312,
   system,
 }:
 let
-  inherit (pkgs.psycheLib)
-    psycheLib
+  inherit (psycheLib)
     cargoArtifacts
     craneLib
     rustWorkspaceArgs
@@ -20,37 +22,42 @@ let
       cargoExtraArgs = rustWorkspaceArgs.cargoExtraArgs + " --package psyche-python-extension";
 
       nativeBuildInputs = rustWorkspaceArgs.nativeBuildInputs ++ [
-        pkgs.python312
+        python312
       ];
       doCheck = false;
     }
   );
 
 in
-pkgs.python312Packages.buildPythonPackage rec {
+python312Packages.buildPythonPackage rec {
   pname = "psyche";
   version = "0.1.0";
   format = "other"; # skip setup.py, we're assembling it ourselves
 
   src = ./python/psyche;
 
-  propagatedBuildInputs = with pkgs.python312Packages; [
-    torch
-    transformers
-  ];
+  propagatedBuildInputs =
+    with python312Packages;
+    [
+      torch
+      transformers
+    ]
+    ++ (lib.optionals config.cudaSupport [
+      (python312Packages.callPackage ./flash-attn.nix { })
+    ]);
 
   installPhase = ''
     runHook preInstall
 
     # create python package dir
-    mkdir -p $out/${pkgs.python312.sitePackages}/psyche
+    mkdir -p $out/${python312.sitePackages}/psyche
 
     # copy all python files
-    cp -r * $out/${pkgs.python312.sitePackages}/psyche/
+    cp -r * $out/${python312.sitePackages}/psyche/
 
     # copy the extension .so file
     cp ${rustExtension}/lib/lib${builtins.replaceStrings [ "-" ] [ "_" ] rustExtension.pname}.so \
-       $out/${pkgs.python312.sitePackages}/psyche/_psyche_ext.so
+       $out/${python312.sitePackages}/psyche/_psyche_ext.so
 
     runHook postInstall
   '';

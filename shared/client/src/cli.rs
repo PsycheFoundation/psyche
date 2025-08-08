@@ -3,6 +3,7 @@ use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
+use psyche_modeling::Devices;
 use psyche_network::SecretKey;
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
@@ -164,6 +165,13 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 4, env)]
     pub max_concurrent_downloads: usize,
+
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    pub device: Devices,
 }
 
 impl TrainArgs {
@@ -225,19 +233,26 @@ impl TrainArgs {
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {
         let eval_tasks = match &self.eval_tasks {
             Some(eval_tasks) => {
-                let result: Result<Vec<psyche_eval::Task>> = eval_tasks
-                    .split(",")
-                    .map(|eval_task| {
-                        tasktype_from_name(eval_task).map(|task_type| {
-                            psyche_eval::Task::new(task_type, self.eval_fewshot, self.eval_seed)
-                        })
-                    })
-                    .collect();
-                result?
+                Self::eval_tasks_from_args(eval_tasks, self.eval_fewshot, self.eval_seed)?
             }
             None => Vec::new(),
         };
         Ok(eval_tasks)
+    }
+
+    pub fn eval_tasks_from_args(
+        eval_tasks: &str,
+        eval_fewshot: usize,
+        eval_seed: u64,
+    ) -> Result<Vec<psyche_eval::Task>> {
+        let result: Result<Vec<psyche_eval::Task>> = eval_tasks
+            .split(",")
+            .map(|eval_task| {
+                tasktype_from_name(eval_task)
+                    .map(|task_type| psyche_eval::Task::new(task_type, eval_fewshot, eval_seed))
+            })
+            .collect();
+        result
     }
 }
 
