@@ -40,9 +40,32 @@ lib.makeScope pkgs.newScope (
       ) rustExampleNames)
     );
 
+    solana_toolbox_cli = pkgs.rustPlatform.buildRustPackage rec {
+      pname = "solana_toolbox_cli";
+      version = "0.4.3"; # Replace with actual version
+
+      src = pkgs.fetchCrate {
+        inherit pname version;
+        sha256 = "sha256-6bCbFtVAs4MctSYslTNBk859LxfdOjwetvq/1Ub3VVg=";
+      };
+
+      cargoHash = "sha256-cQ8XkfWdU2HxYnyZQNC59lWWDMbJ0OLocmTiH+N5zrc=";
+
+      nativeBuildInputs = with pkgs; [
+        pkg-config
+        perl
+      ];
+      buildInputs = with pkgs; [ openssl ];
+    };
+
     # Import Docker configurations
     dockerPackages = import ./docker.nix {
-      inherit pkgs nixglhostRustPackages inputs;
+      inherit
+        pkgs
+        nixglhostRustPackages
+        inputs
+        solana_toolbox_cli
+        ;
     };
 
     psychePackages = {
@@ -55,7 +78,7 @@ lib.makeScope pkgs.newScope (
       solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
       psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-
+      solana_toolbox_cli = solana_toolbox_cli;
     }
     // rustPackages
     // nixglhostRustPackages

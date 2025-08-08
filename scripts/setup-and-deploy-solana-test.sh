@@ -7,7 +7,11 @@ set -m
 RPC=${RPC:-"http://127.0.0.1:8899"}
 CONFIG_FILE=${CONFIG_FILE:-"./config/solana-test/config.toml"}
 # use the agenix provided wallet if you have it
-DEFAULT_WALLET=${devnet__keypair__wallet_PATH:-"$HOME/.config/solana/id.json"}
+if [[ -n "${devnet__keypair__wallet_PATH}" && -f "${devnet__keypair__wallet_PATH}" ]]; then
+    DEFAULT_WALLET="${devnet__keypair__wallet_PATH}"
+else
+    DEFAULT_WALLET="$HOME/.config/solana/id.json"
+fi
 WALLET_FILE=${KEY_FILE:-"$DEFAULT_WALLET"}
 
 cleanup() {
@@ -24,7 +28,6 @@ sleep 3
 
 solana airdrop 10 --url ${RPC} --keypair ${WALLET_FILE}
 CONFIG_FILE=${CONFIG_FILE} WALLET_FILE=${WALLET_FILE} ./scripts/deploy-solana-test.sh
-
 
 echo -e "\n[+] Testing Solana setup ready, starting Solana logs...\n"
 
