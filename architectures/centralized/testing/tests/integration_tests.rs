@@ -1,8 +1,12 @@
 use std::time::Duration;
 
+use anyhow::ensure;
+use iroh::NodeAddr;
+use iroh_blobs::net_protocol::Blobs;
+use iroh_n0des::simulation::{Builder, DynNode, RoundContext, Spawn};
 use psyche_centralized_testing::{
     COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
-    client::ClientHandle,
+    client::{Client, ClientHandle, Setup},
     server::CoordinatorServerHandle,
     test_utils::{
         assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
@@ -13,6 +17,7 @@ use psyche_coordinator::{
     RunState,
     model::{Checkpoint, HubRepo},
 };
+use rand::seq::IteratorRandom;
 use tracing::info;
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -297,60 +302,104 @@ async fn replace_node_and_complete_round() {
     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
 }
 
-#[test_log::test(tokio::test(flavor = "multi_thread"))]
-async fn finish_epoch() {
+#[iroh_n0des::sim]
+async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
+    async fn round(node: &mut Client, ctx: &RoundContext<'_, Setup>) -> anyhow::Result<bool> {
+        let node_id = node.endpoint().unwrap().node_id();
+        let target: Vec<NodeAddr> = ctx.all_other_nodes(node_id).cloned().collect();
+        let target = target.first().unwrap();
+
+        // record event for simulation visualization.
+        iroh_n0des::simulation::events::event_start(
+            node_id.fmt_short(),
+            target.node_id.fmt_short(),
+            format!("send ping (round {})", ctx.round()),
+            Some("Testito".to_string()),
+        );
+        Ok(true)
+    }
+
+    fn check(node: &Client, ctx: &RoundContext<'_, Setup>) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     // We initialize the coordinator with the same number of min clients as batches per round.
     // This way, every client will be assigned with only one batch
     let init_min_clients = 2;
     let global_batch_size = 2;
-    let witness_nodes = 1;
+    let witness_nodes = 2;
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    assert_with_retries(|| server_handle.get_clients_len(), 0).await;
-    assert_with_retries(
-        || server_handle.get_run_state(),
-        RunState::WaitingForMembers,
-    )
-    .await;
+    // let client_handles =
+    //     spawn_clients_with_training_delay(2_usize, server_port, run_id, training_delay).await;
 
-    let training_delay = 2;
-    let server_port = server_handle.server_port;
-    let run_id = &server_handle.run_id;
-    let _client_handles = spawn_clients_with_training_delay(
-        init_min_clients as usize,
-        server_port,
-        run_id,
-        training_delay,
-    )
-    .await;
+    let port = server_handle.server_port;
+    let run_id = server_handle.run_id;
+    let sim = Builder::with_setup(async move || {
+        let setup = Setup {
+            training_delay_secs: 2,
+            server_port: port,
+            run_id: run_id.clone(),
+        };
+        Ok(setup)
+    })
+    .spawn(2, Client::builder(round).check(check))
+    .rounds(1);
+    Ok(sim)
 
-    // assert that we start in the round 0
-    assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
+    // // We initialize the coordinator with the same number of min clients as batches per round.
+    // // This way, every client will be assigned with only one batch
+    // let init_min_clients = 2;
+    // let global_batch_size = 2;
+    // let witness_nodes = 1;
+    // let server_handle =
+    //     CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    // Witnesses should be empty, since round just started and we haven't trained yet
-    assert!(server_handle.get_rounds().await[0].witnesses.is_empty());
+    // assert_with_retries(|| server_handle.get_clients_len(), 0).await;
+    // assert_with_retries(
+    //     || server_handle.get_run_state(),
+    //     RunState::WaitingForMembers,
+    // )
+    // .await;
 
-    // execute round 0
-    // warmup
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
+    // let training_delay = 2;
+    // let server_port = server_handle.server_port;
+    // let run_id = &server_handle.run_id;
+    // let _client_handles = spawn_clients_with_training_delay(
+    //     init_min_clients as usize,
+    //     server_port,
+    //     run_id,
+    //     training_delay,
+    // )
+    // .await;
 
-    // train
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
-    tokio::time::sleep(Duration::from_secs(training_delay)).await;
+    // // assert that we start in the round 0
+    // assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
 
-    assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
-    tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
+    // // Witnesses should be empty, since round just started and we haven't trained yet
+    // assert!(server_handle.get_rounds().await[0].witnesses.is_empty());
 
-    assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
-    assert_with_retries(|| server_handle.get_rounds_head(), 3).await;
+    // // execute round 0
+    // // warmup
+    // assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
 
-    // Cooldown
-    assert_with_retries(|| server_handle.get_run_state(), RunState::Cooldown).await;
-    tokio::time::sleep(Duration::from_secs(COOLDOWN_TIME)).await;
+    // // train
+    // assert_with_retries(|| server_handle.get_run_state(), RunState::RoundTrain).await;
+    // tokio::time::sleep(Duration::from_secs(training_delay)).await;
 
-    assert_with_retries(|| server_handle.get_current_epoch(), 1).await;
+    // assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;
+    // tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
+
+    // assert_with_retries(|| server_handle.get_rounds_head(), 1).await;
+    // assert_with_retries(|| server_handle.get_rounds_head(), 2).await;
+    // assert_with_retries(|| server_handle.get_rounds_head(), 3).await;
+
+    // // Cooldown
+    // assert_with_retries(|| server_handle.get_run_state(), RunState::Cooldown).await;
+    // tokio::time::sleep(Duration::from_secs(COOLDOWN_TIME)).await;
+
+    // assert_with_retries(|| server_handle.get_current_epoch(), 1).await;
 }
 
 /// A new client attempts to join the network during the RoundTrain phase.

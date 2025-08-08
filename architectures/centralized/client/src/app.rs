@@ -6,10 +6,11 @@ use psyche_client::{
     CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
-use psyche_metrics::ClientMetrics;
+use psyche_metrics::{ClientMetrics, IrohMetricsRegistry};
+use psyche_network::router::Router;
 use psyche_network::{
-    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
-    SecretKey, TcpClient, allowlist, psyche_relay_map,
+    AuthenticatableIdentity, DiscoveryMode, Endpoint, NetworkTUIState, NetworkTui, NodeId,
+    RelayMode, SecretKey, TcpClient, allowlist, psyche_relay_map,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
@@ -80,6 +81,7 @@ pub struct App {
     tx_tui_state: Option<Sender<TabsData>>,
     coordinator_state: Coordinator<ClientId>,
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
+    pub router: Arc<Router>,
 
     metrics: Arc<ClientMetrics>,
 }
@@ -111,6 +113,7 @@ pub struct AppParams {
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
     pub metrics_local_port: Option<u16>,
+    pub sim_endpoint: Option<Endpoint>,
 }
 
 impl AppBuilder {
@@ -150,6 +153,7 @@ impl AppBuilder {
             allowlist.clone(),
             p.max_concurrent_downloads,
             metrics.clone(),
+            p.sim_endpoint,
         )
         .await?;
 
@@ -180,6 +184,7 @@ impl AppBuilder {
             server_conn,
             run_id: p.run_id,
             metrics,
+            router: p2p.router(),
         };
         Ok((app, allowlist, p2p, state_options))
     }

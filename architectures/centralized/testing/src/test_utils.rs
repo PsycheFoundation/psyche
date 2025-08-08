@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use crate::client::ClientHandle;
 use crate::server::CoordinatorServerHandle;
+use iroh::Endpoint;
+use iroh_n0des::Registry;
 use psyche_centralized_client::app::AppParams;
 use psyche_network::{DiscoveryMode, SecretKey};
 use rand::distributions::{Alphanumeric, DistString};
@@ -113,6 +115,7 @@ pub fn dummy_client_app_params_with_training_delay(
     server_port: u16,
     run_id: &str,
     training_delay_secs: u64,
+    sim_endpoint: Option<Endpoint>,
 ) -> AppParams {
     AppParams {
         cancel: CancellationToken::default(),
@@ -139,6 +142,7 @@ pub fn dummy_client_app_params_with_training_delay(
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
         metrics_local_port: None,
+        sim_endpoint,
     }
 }
 
@@ -168,5 +172,6 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
         metrics_local_port: None,
+        sim_endpoint: None,
     }
 }

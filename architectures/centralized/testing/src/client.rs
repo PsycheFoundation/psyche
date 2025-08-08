@@ -1,12 +1,20 @@
 use std::time::Duration;
 
 use anyhow::{Error, Result};
+use iroh::Endpoint;
+use iroh_n0des::Registry;
+use iroh_n0des::simulation::Node;
+use iroh_n0des::simulation::SetupData;
+use iroh_n0des::simulation::Spawn;
+use iroh_n0des::simulation::SpawnContext;
 use psyche_centralized_client::app::App as ClientApp;
 use psyche_centralized_client::app::AppBuilder as ClientAppBuilder;
 use psyche_centralized_shared::ClientId;
 use psyche_client::NC;
 use psyche_client::RunInitConfig;
+use psyche_network::NetworkConnection;
 use psyche_network::allowlist;
+use serde::{Deserialize, Serialize};
 use tokio::select;
 use tokio::task::JoinHandle;
 use tracing::debug;
@@ -14,7 +22,7 @@ use tracing::debug;
 use crate::test_utils::dummy_client_app_params_default;
 use crate::test_utils::dummy_client_app_params_with_training_delay;
 
-struct Client {
+pub struct Client {
     inner: ClientApp,
 }
 
@@ -41,19 +49,23 @@ impl Client {
         server_port: u16,
         run_id: &str,
         training_delay_secs: u64,
+        endpoint: Option<Endpoint>,
     ) -> (
         Self,
         allowlist::AllowDynamic,
         NC,
         RunInitConfig<ClientId, ClientId>,
     ) {
-        let client_app_params =
-            dummy_client_app_params_with_training_delay(server_port, run_id, training_delay_secs);
+        let client_app_params = dummy_client_app_params_with_training_delay(
+            server_port,
+            run_id,
+            training_delay_secs,
+            endpoint,
+        );
         let (client_app, allowlist, p2p, state_options) = ClientAppBuilder::new(client_app_params)
             .build()
             .await
             .unwrap();
-
         (Self { inner: client_app }, allowlist, p2p, state_options)
     }
 
@@ -74,6 +86,45 @@ impl Client {
                 run_res = &mut client_run => run_res?,
             }
         }
+    }
+}
+
+impl Node for Client {
+    fn endpoint(&self) -> Option<&Endpoint> {
+        Some(self.inner.router.endpoint())
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        self.inner.router.shutdown().await?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Setup {
+    pub server_port: u16,
+    pub training_delay_secs: u64,
+    pub run_id: String,
+}
+
+impl Spawn<Setup> for Client {
+    async fn spawn(ctx: &mut SpawnContext<'_, Setup>) -> Result<Self> {
+        let endpoint = ctx.bind_endpoint().await?;
+        let setup_data = ctx.setup_data().clone();
+        let registry = ctx.metrics_registry();
+        let (mut node, allow_list, p2p, state_options) = Client::new_with_training_delay(
+            setup_data.server_port,
+            &setup_data.run_id,
+            setup_data.training_delay_secs,
+            Some(endpoint),
+        )
+        .await;
+        // registry.register_all_prefixed(endpoint.metrics());
+        // registry.register(p2p.blobs.metrics().clone());
+        // registry.register(p2p.gossip.metrics().clone());
+        node.run(allow_list, p2p, state_options).await?;
+
+        Ok(node)
     }
 }
 
@@ -100,7 +151,7 @@ impl ClientHandle {
     ) -> Self {
         debug!("spawning new client...");
         let (mut client, allowlist, p2p, state_options) =
-            Client::new_with_training_delay(server_port, run_id, training_delay_secs).await;
+            Client::new_with_training_delay(server_port, run_id, training_delay_secs, None).await;
         let client_handle =
             tokio::spawn(async move { client.run(allowlist, p2p, state_options).await });
         tokio::time::sleep(Duration::from_millis(100)).await;
