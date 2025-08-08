@@ -235,8 +235,7 @@ impl Task {
                     // Build the prompt string
 
                     let mut request_str = format!(
-                        "The following are multiple choice questions (with answers) about {}. Think step by step and then finish your answer with \"the answer is (X)\" where X is the correct letter choice.\n",
-                        category
+                        "The following are multiple choice questions (with answers) about {category}. Think step by step and then finish your answer with \"the answer is (X)\" where X is the correct letter choice.\n"
                     );
 
                     // Add fewshot examples with their answers
@@ -249,7 +248,7 @@ impl Task {
                         // Format choices with letter labels
                         for (i, choice) in example.choices.iter().enumerate() {
                             let letter = ASCII_UPPERCASE[i];
-                            request_str.push_str(&format!("{}. {}\n", letter, choice));
+                            request_str.push_str(&format!("{letter}. {choice}\n"));
                         }
 
                         // Replace "A:" with "Answer:" in cot_content
@@ -269,7 +268,7 @@ impl Task {
                     // Format choices with letter labels
                     for (i, choice) in doc.choices.iter().enumerate() {
                         let letter = ASCII_UPPERCASE[i];
-                        request_str.push_str(&format!("{}. {}\n", letter, choice));
+                        request_str.push_str(&format!("{letter}. {choice}\n"));
                     }
 
                     request_str.push_str("Answer: Let's think step by step.");
