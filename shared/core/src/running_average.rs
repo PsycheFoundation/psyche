@@ -3,9 +3,9 @@ use std::collections::VecDeque;
 use std::sync::RwLock;
 
 #[derive(Debug)]
-pub struct AverageEntry {
-    pub buffer: VecDeque<f64>,
-    pub max_size: usize,
+struct AverageEntry {
+    buffer: VecDeque<f64>,
+    max_size: usize,
     sum: f64,
     all_time_pushes: usize,
     min_samples: usize,
@@ -33,7 +33,7 @@ impl AverageEntry {
         self.all_time_pushes += 1;
     }
 
-    pub fn average(&self) -> Option<f64> {
+    fn average(&self) -> Option<f64> {
         if self.buffer.len() >= self.min_samples {
             None
         } else {
@@ -44,7 +44,7 @@ impl AverageEntry {
 
 #[derive(Debug, Default)]
 pub struct RunningAverage {
-    pub entries: RwLock<HashMap<String, AverageEntry>>,
+    entries: RwLock<HashMap<String, AverageEntry>>,
 }
 
 impl RunningAverage {

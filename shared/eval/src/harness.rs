@@ -1,5 +1,7 @@
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
-use crate::{ASCII_UPPERCASE, ArcChallenge, ArcEasy, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA};
+use crate::{
+    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA,
+};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
@@ -316,7 +318,6 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
-    pub min_reporting_ratio: Option<f32>,
 }
 
 impl PreparedTask {
@@ -365,9 +366,7 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        let min_samples = options
-            .min_reporting_ratio
-            .map(|x| (x * docs.len() as f32) as usize);
+        let min_samples = min_reporting_ratio(eval_name).map(|x| (x * docs.len() as f32) as usize);
 
         results.add_entry_if_needed("acc", docs.len(), min_samples);
         if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
@@ -493,7 +492,11 @@ impl PreparedTask {
         }
 
         PreparedTaskResult {
-            scores: get_all_averages(results, eval_name),
+            scores: results
+                .get_all_averages()
+                .into_iter()
+                .map(|(key, value)| (key, value.unwrap_or_default()))
+                .collect(),
             next_index: next_index + fast_forward,
             cancelled,
         }
@@ -510,7 +513,10 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        results.add_entry_if_needed("acc", requests.len(), None);
+        let min_samples =
+            min_reporting_ratio(eval_name).map(|x| (x * requests.len() as f32) as usize);
+        results.add_entry_if_needed("acc", requests.len(), min_samples);
+
         let fast_forward = (skip / requests.len()) * requests.len();
         skip -= fast_forward;
         let mut cancelled = false;
@@ -676,7 +682,11 @@ impl PreparedTask {
         }
 
         PreparedTaskResult {
-            scores: get_all_averages(results, eval_name),
+            scores: results
+                .get_all_averages()
+                .into_iter()
+                .map(|(key, value)| (key, value.unwrap_or_default()))
+                .collect(),
             next_index: fast_forward + skip + (documents_processed * step_by),
             cancelled,
         }
@@ -695,22 +705,20 @@ impl PreparedTask {
     }
 }
 
-/// Get averages of all metrics with sufficient samples
-/// Filters out metrics with too few samples to ensure confident scores
-fn get_all_averages(
-    running_average: Arc<RunningAverage>,
-    eval_name: &String,
-) -> HashMap<String, f64> {
-    let entries = running_average.entries.read().unwrap();
-    entries
-        .iter()
-        .filter(|(_metric_name, entry)| {
-            if eval_name == MMLUPro::name() {
-                entry.buffer.len() > entry.max_size / 10
-            } else {
-                entry.buffer.len() > entry.max_size / 2
-            }
-        })
-        .map(|(metric_name, entry)| (metric_name.clone(), entry.average().unwrap()))
-        .collect()
+fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
+    if eval_name == MMLUPro::name() {
+        Some(0.1)
+    } else if eval_name == ArcChallenge::name()
+        || eval_name == BoolQ::name()
+        || eval_name == ArcEasy::name()
+        || eval_name == Hellaswag::name()
+        || eval_name == OpenbookQA::name()
+        || eval_name == MMLU::name()
+        || eval_name == PIQA::name()
+    {
+        Some(0.5)
+    } else {
+        tracing::warn!("eval name min_reporting_ratio not defined");
+        None
+    }
 }
