@@ -1,4 +1,6 @@
-use psyche_coordinator::{Coordinator, WitnessEvalResult, WitnessMetadata, model};
+use psyche_coordinator::{
+    Coordinator, MAX_TOKENS_TO_SEND, WitnessEvalResult, WitnessMetadata, model,
+};
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
@@ -7,15 +9,18 @@ use tokenizers::Tokenizer;
 use tracing::warn;
 use wandb::{DataValue, LogData};
 
-use crate::client::P2PNodeInfo;
+use crate::{
+    client::P2PNodeInfo,
+    state::evals::{EnumModelTask, PROMPT_TASK_NAME},
+};
 
-use super::evals::EvalRunner;
+use super::evals::ModelTaskRunner;
 
 pub struct StatsLogger {
     tokenizer: Arc<Tokenizer>,
     wandb_run: Option<Arc<wandb::Run>>,
     pub metrics: Arc<ClientMetrics>,
-    eval_runner: EvalRunner,
+    model_task_runner: ModelTaskRunner,
 
     step_durations: BoundedQueue<Duration, 16>,
     training_round_durations: BoundedQueue<Duration, 16>,
@@ -31,7 +36,7 @@ pub struct StatsLogger {
 impl StatsLogger {
     pub fn new(
         tokenizer: Arc<Tokenizer>,
-        eval_runner: EvalRunner,
+        model_task_runner: ModelTaskRunner,
         lr_schedule: LearningRateSchedule,
         wandb_run: Option<wandb::Run>,
         metrics: Arc<ClientMetrics>,
@@ -42,7 +47,7 @@ impl StatsLogger {
             losses: Vec::new(),
             step_durations: Default::default(),
             training_round_durations: Default::default(),
-            eval_runner,
+            model_task_runner,
             lr_schedule,
             eval_history: HashMap::new(),
             last_optim_stats: HashMap::new(),
@@ -175,6 +180,9 @@ impl StatsLogger {
             evals
         };
 
+        // See issue https://github.com/PsycheFoundation/psyche/issues/213
+        // let prompt_results = self.get_prompt_results();
+
         // NOTE: no NaNs allowed in borsh serialized data.
         let tokens_per_sec = self.global_tokens_per_second(state);
         WitnessMetadata {
@@ -187,6 +195,7 @@ impl StatsLogger {
             ),
             efficency: no_nan(self.efficency(), 0.0),
             evals,
+            // prompt_results,
         }
     }
 
@@ -269,25 +278,42 @@ impl StatsLogger {
     }
 
     pub fn current_eval_results(&self) -> HashMap<String, f64> {
-        self.eval_runner
+        self.model_task_runner
             .tasks()
             .iter()
             .flatten()
-            .flat_map(|eval_task| {
-                let task = eval_task.task();
-                let metric_name: &str = task.main_metric_name();
-                let task_name = task.name();
-                let results = eval_task.results();
-
-                match results.sample(metric_name) {
-                    Some(metric) => Some((task_name.to_owned(), metric)),
-                    None => {
-                        warn!("{} missing metric {}", task_name, metric_name);
-                        None
+            .filter(|model_task| model_task.name() != PROMPT_TASK_NAME)
+            .flat_map(|model_task| match &model_task.task {
+                EnumModelTask::EvalTask(eval_task) => {
+                    let metric_name: &str = eval_task.task.main_metric_name();
+                    let task_name = model_task.name();
+                    match eval_task.results().sample(metric_name) {
+                        Some(metric) => Some((task_name.to_owned(), metric)),
+                        None => {
+                            warn!("{} missing metric {}", task_name, metric_name);
+                            None
+                        }
                     }
                 }
+                EnumModelTask::PromptTask(_) => None,
             })
             .collect()
+    }
+
+    // clear tokens_to_send buffer
+    pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
+        let mut results = FixedVec::new();
+        for eval_task in self.model_task_runner.tasks().iter().flatten() {
+            if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
+                {
+                    let tokens = prompt_task.tokens_to_send.read().unwrap();
+                    results.extend(tokens.iter().cloned()).unwrap();
+                }
+                prompt_task.tokens_to_send.write().unwrap().clear();
+            }
+        }
+
+        results
     }
 
     // normalized metric for how "confident" a model is, regardless of vocab size.
