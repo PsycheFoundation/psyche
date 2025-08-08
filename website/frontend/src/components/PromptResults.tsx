@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { detokenize } from '../utils/tokenizer.js'
-import { loadPromptTextByIndex, getPromptName } from '../utils/prompts.js'
+import { loadPromptTextByIndex } from '../utils/prompts.js'
 import { c } from '../utils.js'
 import { css } from '@linaria/core'
 import { text } from '../fonts.js'
@@ -13,7 +13,6 @@ interface PromptResultsProps {
 export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 	const [detokenizedText, setDetokenizedText] = useState<string>('')
 	const [promptText, setPromptText] = useState<string>('')
-	const [promptName, setPromptName] = useState<string>('')
 	const [isLoading, setIsLoading] = useState(true)
 	const [showTokens, setShowTokens] = useState(false)
 	const [previousTokensLength, setPreviousTokensLength] = useState(0)
@@ -30,17 +29,8 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 					console.error('Failed to load prompt text:', error)
 					setPromptText('[Failed to load prompt]')
 				})
-
-			getPromptName(promptIndex)
-				.then((name) => {
-					setPromptName(name)
-				})
-				.catch(() => {
-					setPromptName(`Prompt ${promptIndex}`)
-				})
 		} else {
 			setPromptText('')
-			setPromptName('')
 		}
 	}, [promptIndex])
 

@@ -503,9 +503,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 
 		// collect prompt results by step (no aggregation needed since only 1 client runs prompts)
-		const promptResults: Array<readonly [number, number[]]> = []
-		const promptIndices: Array<readonly [number, number]> = []
-		const cumulativePromptResults: Array<readonly [number, number[]]> = []
+		const promptResults: Array<[number, number[]]> = []
+		const promptIndices: Array<[number, number]> = []
+		const cumulativePromptResults: Array<[number, number[]]> = []
 
 		let cumulativeTokens: number[] = []
 		let currentPromptIndex: number | null = null

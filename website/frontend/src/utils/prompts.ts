@@ -76,13 +76,3 @@ export async function loadPromptTextByIndex(index: number): Promise<string> {
 		return `[Error loading prompt ${index}]`
 	}
 }
-
-export async function getPromptName(index: number): Promise<string> {
-	try {
-		const promptIndex = await loadPromptsIndex()
-		const promptInfo = promptIndex.prompts.find((p) => p.index === index)
-		return promptInfo?.name || `Prompt ${index}`
-	} catch (error) {
-		return `Prompt ${index}`
-	}
-}

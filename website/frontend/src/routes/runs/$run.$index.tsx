@@ -50,10 +50,20 @@ function RouteComponent() {
 	)
 	const graphData = useMemo(() => {
 		if (run) {
-			const graphs = metricToGraph(run.metrics.history)
-			for (const vals of Object.values(graphs.evals)) {
-				for (const val of vals) {
-					val.y *= 100
+			const {
+				promptResults,
+				promptIndex,
+				cumulativePromptResults,
+				...historyForGraph
+			} = run.metrics.history
+			const graphs = metricToGraph(historyForGraph)
+			if (graphs.evals) {
+				for (const vals of Object.values(graphs.evals)) {
+					if (Array.isArray(vals)) {
+						for (const val of vals) {
+							val.y *= 100
+						}
+					}
 				}
 			}
 			return graphs
@@ -208,8 +218,12 @@ function RouteComponent() {
 								)}
 
 								<PromptResults
-									tokens={run.metrics.summary.cumulativePromptResults || []}
-									promptIndex={run.metrics.summary.promptIndex}
+									tokens={
+										run.metrics.summary.cumulativePromptResults?.filter(
+											(x): x is number => x !== null
+										) || []
+									}
+									promptIndex={run.metrics.summary.promptIndex || undefined}
 								/>
 
 								<StatsContainer>
@@ -310,20 +324,21 @@ function RouteComponent() {
 										/>
 									</LineGraphContainer>
 
-									{Object.entries(graphData.evals).map(([label, points]) => (
-										<LineGraphContainer key={label}>
-											<ResponsiveLineGraph
-												renderValue={(x) => (+`${x.toFixed(2)}`).toString()}
-												xLabel="step"
-												title={`Model Evaluation: ${label}`}
-												line={{
-													label,
-													points,
-													unit: '%',
-												}}
-											/>
-										</LineGraphContainer>
-									))}
+									{graphData &&
+										Object.entries(graphData.evals).map(([label, points]) => (
+											<LineGraphContainer key={label}>
+												<ResponsiveLineGraph
+													renderValue={(x) => (+`${x.toFixed(2)}`).toString()}
+													xLabel="step"
+													title={`Model Evaluation: ${label}`}
+													line={{
+														label,
+														points,
+														unit: '%',
+													}}
+												/>
+											</LineGraphContainer>
+										))}
 								</>
 							)}
 						</HistoryContainer>
