@@ -1,9 +1,8 @@
-use anyhow::Result;
 use solana_toolbox_endpoint::toolbox_endpoint_program_test_builtin_program_anchor;
 use solana_toolbox_endpoint::ToolboxEndpoint;
 use solana_toolbox_endpoint::ToolboxEndpointLoggerPrinter;
 
-pub async fn create_memnet_endpoint() -> Result<ToolboxEndpoint> {
+pub async fn create_memnet_endpoint() -> ToolboxEndpoint {
     let mut endpoint =
         ToolboxEndpoint::new_program_test_with_builtin_programs(&[
             toolbox_endpoint_program_test_builtin_program_anchor!(
@@ -24,5 +23,5 @@ pub async fn create_memnet_endpoint() -> Result<ToolboxEndpoint> {
         ])
         .await;
     endpoint.add_logger(Box::new(ToolboxEndpointLoggerPrinter::default()));
-    Ok(endpoint)
+    endpoint
 }

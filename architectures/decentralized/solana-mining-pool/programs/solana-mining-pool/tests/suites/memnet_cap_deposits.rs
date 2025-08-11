@@ -10,7 +10,7 @@ use crate::api::process_pool_update::process_pool_update;
 
 #[tokio::test]
 pub async fn run() {
-    let mut endpoint = create_memnet_endpoint().await.unwrap();
+    let mut endpoint = create_memnet_endpoint().await;
 
     // Test constants
     let payer = Keypair::new();

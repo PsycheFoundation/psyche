@@ -13,7 +13,7 @@ use solana_sdk::signer::Signer;
 
 #[tokio::test]
 pub async fn run() {
-    let mut endpoint = create_memnet_endpoint().await.unwrap();
+    let mut endpoint = create_memnet_endpoint().await;
 
     // Create payer key and fund it
     let payer = Keypair::new();

@@ -33,7 +33,7 @@ use solana_sdk::signer::Signer;
 
 #[tokio::test]
 pub async fn run() {
-    let mut endpoint = create_memnet_endpoint().await.unwrap();
+    let mut endpoint = create_memnet_endpoint().await;
 
     // Create payer key and fund it
     let payer = Keypair::new();
@@ -152,18 +152,6 @@ pub async fn run() {
     .await
     .is_err());
 
-    // Unpause
-    process_coordinator_set_paused(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &coordinator_instance,
-        &coordinator_account,
-        false,
-    )
-    .await
-    .unwrap();
-
     // Generate the client key
     let client_id = ClientId::new(client.pubkey(), Default::default());
 
@@ -247,7 +235,8 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Rejoin run, should be a no-op
+    // Rejoin run after waiting a while, should be a no-op
+    endpoint.forward_clock_slot(1).await.unwrap();
     process_coordinator_join_run(
         &mut endpoint,
         &payer,
