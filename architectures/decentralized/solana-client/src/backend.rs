@@ -1,6 +1,5 @@
 use crate::instructions;
 use crate::retry::RetryError;
-use anchor_client::solana_client::rpc_config::RpcSendTransactionConfig;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
@@ -40,7 +39,6 @@ use tracing::{debug, error, info, trace, warn};
 const SEND_RETRIES: usize = 3;
 
 pub struct SolanaBackend {
-    program_authorizer: Program<Arc<Keypair>>,
     program_coordinators: Vec<Arc<Program<Arc<Keypair>>>>,
     cluster: Cluster,
     backup_clusters: Vec<Cluster>,
@@ -149,7 +147,6 @@ impl SolanaBackend {
         committment: CommitmentConfig,
     ) -> Result<Self> {
         let client = Client::new_with_options(cluster.clone(), payer.clone(), committment);
-        let program_authorizer = client.program(psyche_solana_authorizer::ID)?;
 
         let mut program_coordinators = vec![];
         program_coordinators.push(Arc::new(client.program(psyche_solana_coordinator::ID)?));
@@ -164,7 +161,6 @@ impl SolanaBackend {
         program_coordinators.extend(backup_program_coordinators?.into_iter().map(Arc::new));
 
         Ok(Self {
-            program_authorizer,
             program_coordinators,
             cluster,
             backup_clusters,
@@ -321,94 +317,11 @@ impl SolanaBackend {
             .send()
             .await?;
 
-        let mut create_signatures = vec![create_coordinator_signature];
-        if join_authority == payer {
-            let (authorization_create, authorization_activate) =
-                self.create_run_ensure_permissionless().await?;
-            create_signatures.push(authorization_create);
-            create_signatures.push(authorization_activate);
-        }
-
         Ok(CreatedRun {
             instance: coordinator_instance,
             account: coordinator_account,
-            create_signatures,
+            create_signatures: vec![create_coordinator_signature],
         })
-    }
-
-    async fn create_run_ensure_permissionless(&self) -> Result<(Signature, Signature)> {
-        let payer = self.program_coordinators[0].payer();
-        let authorization_from_payer_to_everyone = psyche_solana_authorizer::find_authorization(
-            &payer,
-            &system_program::ID,
-            psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-        );
-        let authorization_create = self
-            .program_authorizer
-            .request()
-            .instruction(
-                self.program_authorizer
-                    .request()
-                    .accounts(
-                        psyche_solana_authorizer::accounts::AuthorizationCreateAccounts {
-                            payer,
-                            grantor: payer,
-                            authorization: authorization_from_payer_to_everyone,
-                            system_program: system_program::ID,
-                        },
-                    )
-                    .args(psyche_solana_authorizer::instruction::AuthorizationCreate {
-                        params: psyche_solana_authorizer::logic::AuthorizationCreateParams {
-                            grantee: system_program::ID,
-                            scope: psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE
-                                .to_vec(),
-                        },
-                    })
-                    .instructions()
-                    .unwrap()
-                    .remove(0),
-            )
-            .send_with_spinner_and_config(RpcSendTransactionConfig {
-                skip_preflight: true,
-                preflight_commitment: None,
-                encoding: None,
-                max_retries: None,
-                min_context_slot: None,
-            })
-            .await?;
-        let authorization_activate = self
-            .program_authorizer
-            .request()
-            .instruction(
-                self.program_authorizer
-                    .request()
-                    .accounts(
-                        psyche_solana_authorizer::accounts::AuthorizationGrantorUpdateAccounts {
-                            grantor: payer,
-                            authorization: authorization_from_payer_to_everyone,
-                        },
-                    )
-                    .args(
-                        psyche_solana_authorizer::instruction::AuthorizationGrantorUpdate {
-                            params:
-                                psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams {
-                                    active: true,
-                                },
-                        },
-                    )
-                    .instructions()
-                    .unwrap()
-                    .remove(0),
-            )
-            .send_with_spinner_and_config(RpcSendTransactionConfig {
-                skip_preflight: true,
-                preflight_commitment: None,
-                encoding: None,
-                max_retries: None,
-                min_context_slot: None,
-            })
-            .await?;
-        Ok((authorization_create, authorization_activate))
     }
 
     pub async fn close_run(
