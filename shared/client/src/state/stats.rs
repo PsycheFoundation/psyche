@@ -305,7 +305,6 @@ impl StatsLogger {
     // clear tokens_to_send buffer
     pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
         let mut results = FixedVec::new();
-
         for eval_task in self.model_task_runner.tasks().iter().flatten() {
             if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
                 {
