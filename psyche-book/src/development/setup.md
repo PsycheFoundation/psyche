@@ -13,6 +13,12 @@ If you can't / don't want to use Nix, it's also possible to manually install all
 
 To install `nix`, simply run `curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install` or find it at your local package manager.
 
+You may need to add the following line to `~/.config/nix/nix.conf` or `/etc/nix/nix.conf`
+
+```
+experimental-features = nix-command flakes
+```
+
 #### Binary cache
 
 To speed up your builds & your local dev shell, we recommend enabling the binary cache from `garnix`, our CI provider.
@@ -41,7 +47,7 @@ Each time you open a new shell in the Psyche directory, run `nix develop` to ent
 
 The following instructions are needed for a server with a fresh Ubuntu installation
 
-#### 1. Install drivers
+#### 1. Install drivers (if not already installed)
 
 ```bash
 sudo apt update
@@ -49,45 +55,28 @@ sudo apt install -y ubuntu-drivers-common
 sudo ubuntu-drivers install
 ```
 
-#### 2. Install CUDA libraries
+#### 2. Create and enter a Python virtual env
 
 ```bash
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-sudo dpkg -i cuda-keyring_1.1-1_all.deb
-sudo apt-get update
-sudo apt-get -y install cuda-toolkit-12-4
-rm cuda-keyring_1.1-1_all.deb
-sudo apt-get install libnccl-dev libnccl2
-sudo apt install nvidia-cuda-toolkit
+sudo apt install -y python3-pip python3-venv
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-#### 3. Download libtorch & extract
+#### 3. Install Torch 2.7.0 CUDA 12.8
 
 ```bash
-wget https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcu124.zip
-unzip libtorch-cxx11-abi-shared-with-deps-2.6.0+cu124.zip
-rm libtorch-cxx11-abi-shared-with-deps-2.6.0+cu124.zip
+pip3 install torch==2.7.0 --index-url https://download.pytorch.org/whl/cu128
 ```
 
 #### 4. Libtorch environment variables
 
-In the `.bashrc` file, set the following libtorch environment variables. Here `<path_to_libtorch>` is the absolute path to the extracted `libtorch` folder from the previous step
-
-```bash
-export LIBTORCH=<path_to_libtorch>
-export LIBTORCH_INCLUDE=<path_to_libtorch>
-export LIBTORCH_LIB=<path_to_libtorch>
-export LD_LIBRARY_PATH=<path_to_libtorch>/lib:$LD_LIBRARY_PATH
-export CUDA_ROOT=/usr/local/cuda-12.4
-```
-
-These variables can also be provided to cargo by creating a `.cargo/config.toml` file in your home directory
+Add the following section to `.cargo/config.toml`. Adjust `LD_LIBRARY_PATH` for your `<repo_directory>` and specific version of Python (3.10 shown here). **NOTE: Don't commit these changes!**
 
 ```toml
 [env]
-LIBTORCH=<path_to_libtorch>
-LD_LIBRARY_PATH=<path_to_libtorch>/lib
-CUDA_ROOT = "/usr/local/cuda-12.4"
+LIBTORCH_USE_PYTORCH = "1"
+LD_LIBRARY_PATH = "<repo_directory>/.venv/lib/python3.10/site-packages/torch/lib"
 ```
 
 #### 5. Download & install Rust
@@ -124,7 +113,7 @@ This may require
 sudo apt install pkg-config libudev-dev libssl-dev libfontconfig-dev
 ```
 
-### Windows
+### Windows (outdated)
 
 1. Install CUDA libraries: https://developer.nvidia.com/cuda-12-4-1-download-archive?target_os=Windows&target_arch=x86_64&target_version=11
 
@@ -152,6 +141,8 @@ PRs welcome!
 
 ### Docker
 
+> requires Nix!
+
 Create a Docker image with the necessary dependencies to run a Psyche client:
 
 1. Install the necessary NVIDIA and CUDA drivers as explained in the previous sections.
@@ -163,7 +154,7 @@ sudo apt-get install -y nvidia-container-toolkit
 ```
 
 3. Create an `.env` file following the `.env.example` in `psyche/config/client` and update the necessary environment variables.
-4. Run `docker compose build`.
+4. Run `just nix build_docker_solana_client`.
 
 ## Useful commands
 

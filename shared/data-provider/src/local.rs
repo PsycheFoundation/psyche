@@ -1,12 +1,13 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use psyche_core::{BatchId, ClosedInterval, Shuffle, TokenSize};
 use rand::seq::SliceRandom;
-use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use rand_chacha::rand_core::SeedableRng;
 use std::fs;
 use tracing::info;
 
 use crate::{
+    TokenizedData,
     file_extensions::DATA_FILE_EXTENSIONS,
     traits::{LengthKnownDataProvider, TokenizedDataProvider},
 };
@@ -34,6 +35,7 @@ impl LengthKnownDataProvider for LocalDataProvider {
         self.sequences.len()
     }
 }
+
 impl LocalDataProvider {
     pub fn new_from_directory(
         dir: impl AsRef<std::path::Path>,
@@ -110,7 +112,7 @@ impl LocalDataProvider {
         })
     }
 
-    fn internal_get_samples(&self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    fn internal_get_samples(&self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         let mut ret: Vec<_> = Vec::new();
         for data_id in data_ids.iter() {
             let SequencePointer {
@@ -137,14 +139,14 @@ impl LocalDataProvider {
                     }
                 })
                 .collect();
-            ret.push(tokens);
+            ret.push(TokenizedData::from_input_ids(tokens));
         }
         Ok(ret)
     }
 }
 
 impl TokenizedDataProvider for LocalDataProvider {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         self.internal_get_samples(data_ids)
     }
 }
@@ -155,7 +157,7 @@ pub struct LocalDataProviderIter {
 }
 
 impl Iterator for LocalDataProviderIter {
-    type Item = Vec<i32>;
+    type Item = TokenizedData;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_index < self.provider.num_sequences() as u64 {
@@ -177,7 +179,7 @@ impl Iterator for LocalDataProviderIter {
 }
 
 impl IntoIterator for LocalDataProvider {
-    type Item = Vec<i32>;
+    type Item = TokenizedData;
     type IntoIter = LocalDataProviderIter;
 
     fn into_iter(self) -> Self::IntoIter {

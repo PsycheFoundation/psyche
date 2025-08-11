@@ -3,10 +3,7 @@ use psyche_core::RunningAverage;
 use psyche_eval::{EvalTaskOptions, Task};
 use psyche_modeling::Trainer;
 use rand::{seq::SliceRandom, thread_rng};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 use tokio::{
@@ -14,13 +11,13 @@ use tokio::{
     task::{JoinError, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, span, trace, Level};
+use tracing::{Level, error, info, span, trace};
 
 #[derive(Debug)]
 pub struct EvalTask {
     task: psyche_eval::PreparedTask,
     results: Arc<RunningAverage>,
-    next_index: Arc<AtomicUsize>,
+    next_indices: std::sync::Mutex<Vec<usize>>,
 }
 
 impl EvalTask {
@@ -38,7 +35,7 @@ impl EvalTask {
         cancel: CancellationToken,
         skip_and_step_by: Option<(usize, usize)>,
         limit: Option<usize>,
-        loop_if_empty: bool,
+        min_reporting_ratio: Option<f32>,
     ) {
         let result = self.task.run(
             EvalTaskOptions {
@@ -47,12 +44,14 @@ impl EvalTask {
                 live_results: Some(self.results.clone()),
                 cancel: Some(cancel),
                 limit,
-                loop_if_empty,
+                min_reporting_ratio,
             },
             false,
         );
-        self.next_index
-            .fetch_max(result.next_index, Ordering::SeqCst);
+        self.next_indices
+            .lock()
+            .unwrap()
+            .insert(0, result.next_index);
     }
 }
 
@@ -97,7 +96,9 @@ impl EvalRunner {
                         Arc::new(EvalTask {
                             task: prepared,
                             results: Arc::new(RunningAverage::new()),
-                            next_index: Arc::new(AtomicUsize::new(0)),
+                            next_indices: std::sync::Mutex::new(Vec::from_iter(
+                                0..data_parallelism,
+                            )),
                         })
                     })
                     .collect::<Vec<_>>()
@@ -184,46 +185,42 @@ impl EvalRunner {
             cancel: cancel.clone(),
             eval_trainers: trainers
                 .into_iter()
-                .enumerate()
-                .map(|(dp_index, mut trainer)| {
+                .map(|mut trainer| {
                     let data_parallelism = self.data_parallelism;
                     let cancel = cancel.clone();
                     let tasks = self.tasks.clone();
 
                     tokio::task::spawn(async move {
-                        let prepared_eval_tasks = match Self::wait_for_tasks(tasks, &cancel).await {
+                        let mut eval_tasks = match Self::wait_for_tasks(tasks, &cancel).await {
                             Some(tasks) => tasks,
                             None => return Ok(trainer), // Return early if cancelled or failed
                         };
 
                         tokio::task::spawn_blocking(move || {
                             'eval_loop: while !cancel.is_cancelled() {
-                                let mut iter = prepared_eval_tasks
-                                    .iter()
-                                    .zip(
-                                        prepared_eval_tasks
-                                            .iter()
-                                            .map(|x| x.next_index.load(Ordering::SeqCst))
-                                            .collect::<Vec<_>>(),
-                                    )
-                                    .collect::<Vec<_>>();
-                                iter.shuffle(&mut thread_rng());
+                                eval_tasks.shuffle(&mut thread_rng());
                                 let span = span!(Level::TRACE, "eval_task").entered();
-                                for (eval_task, next_index) in iter {
+                                for eval_task in &eval_tasks {
                                     if cancel.is_cancelled() {
                                         break 'eval_loop;
                                     }
+
+                                    let next_index = {
+                                        let mut next_indices =
+                                            eval_task.next_indices.lock().unwrap();
+                                        next_indices.pop().unwrap()
+                                    };
                                     trace!(
                                         "Running eval task {} on index {}",
                                         eval_task.task.name(),
-                                        next_index + dp_index
+                                        next_index
                                     );
                                     eval_task.run(
                                         &mut trainer,
                                         cancel.clone(),
-                                        Some((next_index + dp_index, data_parallelism)),
+                                        Some((next_index, data_parallelism)),
                                         Some(10),
-                                        true,
+                                        Some(0.1), // don't report until at least 10% of the eval is run
                                     );
                                     trace!("Done eval task {}", eval_task.task.name());
                                 }

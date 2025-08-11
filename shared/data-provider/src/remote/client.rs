@@ -1,9 +1,9 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use psyche_core::BatchId;
 use psyche_network::{AuthenticatableIdentity, TcpClient};
 use tracing::trace;
 
-use crate::TokenizedDataProvider;
+use crate::{TokenizedData, TokenizedDataProvider};
 
 use super::shared::{ClientToServerMessage, ServerToClientMessage};
 
@@ -26,7 +26,7 @@ impl<T: AuthenticatableIdentity> DataProviderTcpClient<T> {
         })
     }
 
-    async fn receive_training_data(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn receive_training_data(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         self.tcp_client
             .send(ClientToServerMessage::RequestTrainingData { data_ids })
             .await?;
@@ -53,7 +53,7 @@ impl<T: AuthenticatableIdentity> DataProviderTcpClient<T> {
 }
 
 impl<T: AuthenticatableIdentity> TokenizedDataProvider for DataProviderTcpClient<T> {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         trace!("[{:?}] get samples..", self.tcp_client.get_identity());
         self.receive_training_data(data_ids).await
     }

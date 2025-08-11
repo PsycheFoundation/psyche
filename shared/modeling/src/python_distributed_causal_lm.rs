@@ -1,10 +1,10 @@
 use crate::{
-    python_causal_lm::{PythonCausalLMError, PythonModelConfig},
     CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType,
     StableVariableIterator,
+    python_causal_lm::{PythonCausalLMError, PythonModelConfig},
 };
 
-use pyo3::{prelude::*, types::PyDict, PyErr, PyResult, Python};
+use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
     process::{Child, Command},
@@ -34,7 +34,7 @@ pub enum PythonDistributedCausalLMError {
 
 #[derive(Debug, Clone)]
 pub struct TorchDistributedCommunicator {
-    store: PyObject,
+    store: Arc<PyObject>,
     rank: Option<usize>,
     world_size: Option<usize>,
 }
@@ -49,9 +49,9 @@ impl TorchDistributedCommunicator {
         world_size: Option<usize>,
     ) -> PyResult<Self> {
         let result: PyResult<PyObject> = Python::with_gil(|py| {
-            let distributed = Python::import_bound(py, "torch.distributed")?;
+            let distributed = Python::import(py, "torch.distributed")?;
             let init_process_group = distributed.getattr("init_process_group")?;
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             if let Some(backend) = backend {
                 kwargs.set_item("backend", backend).unwrap();
             }
@@ -65,13 +65,13 @@ impl TorchDistributedCommunicator {
                 kwargs.set_item("rank", rank).unwrap();
             }
             init_process_group.call((), Some(&kwargs))?;
-            let distributed_c10d = Python::import_bound(py, "torch.distributed.distributed_c10d")?;
+            let distributed_c10d = Python::import(py, "torch.distributed.distributed_c10d")?;
             let get_default_store = distributed_c10d.getattr("_get_default_store")?;
             let store = get_default_store.call0()?;
             Ok(store.unbind())
         });
         Ok(Self {
-            store: result?,
+            store: Arc::new(result?),
             rank,
             world_size,
         })
@@ -96,7 +96,7 @@ impl TorchDistributedCommunicator {
 
     pub fn broadcast(&self, tensor: &Tensor) -> PyResult<()> {
         Python::with_gil(|py| {
-            let distributed = Python::import_bound(py, "torch.distributed")?;
+            let distributed = Python::import(py, "torch.distributed")?;
             let broadcast = distributed.getattr("broadcast")?;
             broadcast.call1((PyTensor(tensor.shallow_clone()), 0))?;
             Ok(())
@@ -106,9 +106,9 @@ impl TorchDistributedCommunicator {
     pub fn all_reduce(&self, tensor: &Tensor, op: ReduceType) -> PyResult<()> {
         assert!(op == ReduceType::Sum);
         Python::with_gil(|py| {
-            let distributed = Python::import_bound(py, "torch.distributed")?;
+            let distributed = Python::import(py, "torch.distributed")?;
             let all_reduce = distributed.getattr("all_reduce")?;
-            all_reduce.call1((PyTensor(tensor.shallow_clone()), 0))?;
+            all_reduce.call1((PyTensor(tensor.shallow_clone()),))?;
             Ok(())
         })
     }
@@ -137,7 +137,7 @@ impl PythonDistributedCausalLM {
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
-                return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank))
+                return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank));
             }
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
@@ -181,7 +181,6 @@ impl PythonDistributedCausalLM {
         let pid = format!("{}", std::process::id());
         tracing::debug!("Spawned local model load, pid is {pid}");
         let children: Result<Vec<Child>, _> = (1..world_size)
-            .into_iter()
             .map(|rank| {
                 let res = Command::new("python")
                     .arg("-m")
@@ -221,11 +220,19 @@ impl CausalLM for PythonDistributedCausalLM {
         &mut self,
         x: &Tensor,
         labels: Option<&tch::Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local
-            .forward(x, labels, num_logits_to_keep, loss_scale)
+        self.local.forward(
+            x,
+            labels,
+            position_ids,
+            sequence_lengths,
+            num_logits_to_keep,
+            loss_scale,
+        )
     }
 
     fn device(&self) -> Device {
@@ -233,6 +240,8 @@ impl CausalLM for PythonDistributedCausalLM {
     }
 
     fn communicator(&self) -> Option<Arc<Communicator>> {
+        #[allow(clippy::arc_with_non_send_sync)]
+        // TODO: analyze how we're using Arc here, is this right?
         Some(Arc::new(self.comm.clone().into()))
     }
 

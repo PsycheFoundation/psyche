@@ -152,43 +152,38 @@ pub async fn run() {
     .unwrap();
 
     // Add a few clients to the run
-    for client_chunk in clients.chunks(17) {
-        // Let clients join by chunk over multiple slots
-        endpoint.forward_clock_slot(1).await.unwrap();
-        // Authorize and join clients
-        for client in client_chunk {
-            // Add clients to whitelist
-            let authorization = process_authorizer_authorization_create(
-                &mut endpoint,
-                &payer,
-                &join_authority,
-                &client.pubkey(),
-                JOIN_RUN_AUTHORIZATION_SCOPE,
-            )
-            .await
-            .unwrap();
-            process_authorizer_authorization_grantor_update(
-                &mut endpoint,
-                &payer,
-                &join_authority,
-                &authorization,
-                AuthorizationGrantorUpdateParams { active: true },
-            )
-            .await
-            .unwrap();
-            // Whitelisted, can join
-            process_coordinator_join_run(
-                &mut endpoint,
-                &payer,
-                &client,
-                &authorization,
-                &coordinator_instance,
-                &coordinator_account,
-                ClientId::new(client.pubkey(), Default::default()),
-            )
-            .await
-            .unwrap();
-        }
+    for client in &clients {
+        // Add clients to whitelist
+        let authorization = process_authorizer_authorization_create(
+            &mut endpoint,
+            &payer,
+            &join_authority,
+            &client.pubkey(),
+            JOIN_RUN_AUTHORIZATION_SCOPE,
+        )
+        .await
+        .unwrap();
+        process_authorizer_authorization_grantor_update(
+            &mut endpoint,
+            &payer,
+            &join_authority,
+            &authorization,
+            AuthorizationGrantorUpdateParams { active: true },
+        )
+        .await
+        .unwrap();
+        // Whitelisted, can join
+        process_coordinator_join_run(
+            &mut endpoint,
+            &payer,
+            client,
+            &authorization,
+            &coordinator_instance,
+            &coordinator_account,
+            ClientId::new(client.pubkey(), Default::default()),
+        )
+        .await
+        .unwrap();
     }
 
     // Tick to transition from waiting for members to warmup

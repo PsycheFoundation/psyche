@@ -1,13 +1,14 @@
 use crate::{
-    trainer::DistroResults, ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator,
-    EosToks, LocalTrainer, ParallelModels, PythonDistributedCausalLM, StableVariableIterator,
+    ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator, EosToks, LocalTrainer,
+    ParallelModels, PythonDistributedCausalLM, ReduceType, StableVariableIterator,
     TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
+    trainer::DistroResults,
 };
 
 use psyche_core::{Barrier, CancelledBarrier, LearningRateSchedule, OptimizerDefinition};
 use pyo3::{PyErr, PyResult};
 use std::{collections::HashMap, sync::Arc};
-use tch::{Device, Tensor};
+use tch::{Device, Kind, Tensor};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, trace};
@@ -36,7 +37,7 @@ pub enum PythonDistributedTrainerError {
 }
 
 #[derive(Debug)]
-pub struct NopBarrier {}
+pub struct NopBarrier;
 
 impl Barrier for NopBarrier {
     fn wait(&self) -> Result<(), CancelledBarrier> {
@@ -52,9 +53,9 @@ impl Barrier for NopBarrier {
     }
 }
 
-impl NopBarrier {
-    pub fn new() -> Self {
-        Self {}
+impl Default for NopBarrier {
+    fn default() -> Self {
+        Self
     }
 }
 
@@ -96,21 +97,18 @@ impl PythonDistributedTrainer {
         comm.set("hyperparameters", &hyperparameters.to_string())?;
 
         let device = model.device();
-        let local = Box::new(
-            LocalTrainer::new(
-                ParallelModels {
-                    models: vec![Box::new(model) as Box<dyn CausalLM>],
-                    barrier: Arc::new(NopBarrier::new()) as Arc<dyn Barrier>,
-                    data_parallel: None,
-                },
-                lr_scheduler,
-                optimizer,
-                micro_batch_size,
-                stats,
-                grad_accum_in_fp32,
-            )
-            .into(),
-        );
+        let local = Box::new(LocalTrainer::new(
+            ParallelModels {
+                models: vec![Box::new(model) as Box<dyn CausalLM>],
+                barrier: Arc::new(NopBarrier) as Arc<dyn Barrier>,
+                data_parallel: None,
+            },
+            lr_scheduler,
+            optimizer,
+            micro_batch_size,
+            stats,
+            grad_accum_in_fp32,
+        ));
 
         Ok(Self {
             local,
@@ -120,6 +118,7 @@ impl PythonDistributedTrainer {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn train(
         self,
         step: u32,
@@ -131,8 +130,8 @@ impl PythonDistributedTrainer {
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
         let data = data.gpu(self.device);
-        let tensor = match &data.data {
-            BatchData::GPU(tensor) => tensor,
+        let batch_data = match &data.data {
+            BatchData::GPU(batch_data) => batch_data,
             _ => unreachable!(),
         };
 
@@ -146,11 +145,14 @@ impl PythonDistributedTrainer {
             "operation": "train",
             "step": step,
             "batch_id": (data.id.0.start, data.id.0.end),
-            "batch_shape": tensor.size(),
+            "batch_shape": batch_data.input_ids.size(),
+            "batch_has_labels": batch_data.labels.is_some(),
+            "batch_has_position_ids": batch_data.position_ids.is_some(),
+            "batch_sequence_lengths": batch_data.sequence_lengths,
             "warmup_lr_between": warmup_lr_between,
             "zero_optim": zero_optim,
             "results_len": results_len,
-            "results_metadata": prev_self_distro_results.as_ref().map(|x| Self::distro_results_metadata(x)),
+            "results_metadata": prev_self_distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
         trace!("Sending operation to Python clients: {:#}", operation);
@@ -161,31 +163,46 @@ impl PythonDistributedTrainer {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
 
-        self.comm.broadcast(&tensor)?;
+        self.comm.broadcast(&batch_data.input_ids)?;
+        if let Some(labels) = &batch_data.labels {
+            self.comm.broadcast(labels)?;
+        }
+        if let Some(position_ids) = &batch_data.position_ids {
+            self.comm.broadcast(position_ids)?;
+        }
 
-        self.local
-            .train(
-                step,
-                data,
-                warmup_lr_between,
-                zero_optim,
-                rollback,
-                prev_self_distro_results,
-                cancel_training,
-            )
-            .map(|x| TrainOutput {
-                trainer: Self {
-                    local: match x.trainer {
-                        Trainer::Local(local_trainer) => Box::new(local_trainer),
-                        Trainer::PythonDistributed(_) => unreachable!(),
-                    },
-                    comm: self.comm,
-                    device: self.device,
-                    iteration: self.iteration + 1,
-                }
-                .into(),
-                ..x
-            })
+        let ret = self.local.train(
+            step,
+            data,
+            warmup_lr_between,
+            zero_optim,
+            rollback,
+            prev_self_distro_results,
+            cancel_training,
+        )?;
+
+        // reduce the loss across all shards
+        let loss = Tensor::from_slice(&[ret.loss])
+            .to_kind(Kind::Float)
+            .to_device(self.device);
+        let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
+        let loss: f32 = loss.try_into().unwrap();
+        let loss = loss / self.comm.size() as f32;
+
+        Ok(TrainOutput {
+            trainer: Self {
+                local: match ret.trainer {
+                    Trainer::Local(local_trainer) => Box::new(local_trainer),
+                    Trainer::PythonDistributed(_) => unreachable!(),
+                },
+                comm: self.comm,
+                device: self.device,
+                iteration: self.iteration + 1,
+            }
+            .into(),
+            loss,
+            ..ret
+        })
     }
 
     pub fn optimize(
@@ -207,7 +224,7 @@ impl PythonDistributedTrainer {
             "step": step,
             "warmup_lr_between": warmup_lr_between,
             "results_len": results_len,
-            "results_metadata": distro_results.as_ref().map(|x| Self::distro_results_metadata(x)),
+            "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
         trace!("Sending operation to Python clients: {:#}", operation);
@@ -241,7 +258,7 @@ impl PythonDistributedTrainer {
         self.local.extract()
     }
 
-    fn broadcast_distro_results(&self, distro_results: &Vec<DistroResults>) -> PyResult<()> {
+    fn broadcast_distro_results(&self, distro_results: &[DistroResults]) -> PyResult<()> {
         let first = distro_results.first().unwrap();
         let params = first.len();
         for param_index in 0..params {
@@ -261,7 +278,7 @@ impl PythonDistributedTrainer {
         Ok(())
     }
 
-    fn distro_results_metadata(distro_results: &Vec<DistroResults>) -> serde_json::Value {
+    fn distro_results_metadata(distro_results: &[DistroResults]) -> serde_json::Value {
         serde_json::json!({
             "sparse_idx_size": distro_results.first().map(|y| y.iter().map(|z| z.sparse_idx.size()).collect::<Vec<_>>()),
             "sparse_idx_dtype": distro_results.first().map(|y| y.first().map(|z| z.sparse_idx.kind().c_int())),
@@ -284,11 +301,19 @@ impl CausalLM for PythonDistributedTrainer {
         &mut self,
         x: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local
-            .forward(x, labels, num_logits_to_keep, loss_scale)
+        self.local.forward(
+            x,
+            labels,
+            position_ids,
+            sequence_lengths,
+            num_logits_to_keep,
+            loss_scale,
+        )
     }
 
     fn bos_token_id(&self) -> Option<i64> {

@@ -1,6 +1,5 @@
 use anchor_lang::InstructionData;
 use anchor_lang::ToAccountMetas;
-use anyhow::Result;
 use psyche_coordinator::model::Model;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;

@@ -188,19 +188,66 @@ pub async fn run() {
     .unwrap();
 
     // Whitelisted with the wrong account, can't join
-    assert!(process_coordinator_join_run(
+    process_coordinator_join_run(
         &mut endpoint,
         &payer,
         &payer,
         &authorization,
         &coordinator_instance,
         &coordinator_account,
-        client_id
+        client_id,
     )
     .await
-    .is_err());
+    .unwrap_err();
 
-    // Whitelisted properly, can join
+    // Whitelisted, can join
+    process_coordinator_join_run(
+        &mut endpoint,
+        &payer,
+        &client,
+        &authorization,
+        &coordinator_instance,
+        &coordinator_account,
+        client_id,
+    )
+    .await
+    .unwrap();
+
+    // Coordinator should still not be ready
+    assert_eq!(
+        get_coordinator_account_state(&mut endpoint, &coordinator_account)
+            .await
+            .unwrap()
+            .unwrap()
+            .coordinator
+            .run_state,
+        RunState::Uninitialized
+    );
+
+    // Can't tick yet because paused
+    process_coordinator_tick(
+        &mut endpoint,
+        &payer,
+        &ticker,
+        &coordinator_instance,
+        &coordinator_account,
+    )
+    .await
+    .unwrap_err();
+
+    // Unpause
+    process_coordinator_set_paused(
+        &mut endpoint,
+        &payer,
+        &main_authority,
+        &coordinator_instance,
+        &coordinator_account,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // Rejoin run, should be a no-op
     process_coordinator_join_run(
         &mut endpoint,
         &payer,
@@ -277,7 +324,7 @@ pub async fn run() {
         broadcast_merkle: Default::default(),
         metadata: Default::default(),
     };
-    assert!(process_coordinator_witness(
+    process_coordinator_witness(
         &mut endpoint,
         &payer,
         &ticker,
@@ -286,7 +333,7 @@ pub async fn run() {
         &witness,
     )
     .await
-    .is_err());
+    .unwrap_err();
     process_coordinator_witness(
         &mut endpoint,
         &payer,

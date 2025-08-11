@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use psyche_data_provider::download_model_repo_sync;
-use psyche_eval::{tasktype_from_name, EvalTaskOptions, Task, ALL_TASK_NAMES};
+use psyche_eval::{ALL_TASK_NAMES, EvalTaskOptions, Task, tasktype_from_name};
 use psyche_modeling::{auto_model_for_causal_lm_from_pretrained, auto_tokenizer};
 use tch::{Device, Kind};
 
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
                 live_results: None,
                 cancel: None,
                 limit: None,
-                loop_if_empty: false,
+                min_reporting_ratio: None,
             },
             !args.quiet,
         );

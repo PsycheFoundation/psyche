@@ -3,17 +3,18 @@ use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
-use psyche_coordinator::{model, Coordinator, HealthChecks};
+use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    allowlist, psyche_relay_map, AuthenticatableIdentity, DiscoveryMode, NetworkTUIState,
-    NetworkTui, NodeId, RelayMode, SecretKey, TcpClient,
+    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
+    SecretKey, TcpClient, allowlist, psyche_relay_map,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
 use psyche_watcher::{Backend as WatcherBackend, CoordinatorTui, OpportunisticData};
+use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
@@ -80,7 +81,7 @@ pub struct App {
     coordinator_state: Coordinator<ClientId>,
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
 
-    metrics: ClientMetrics,
+    metrics: Arc<ClientMetrics>,
 }
 
 pub struct AppBuilder(AppParams);
@@ -127,7 +128,7 @@ impl AppBuilder {
     )> {
         let p = self.0;
 
-        let metrics = ClientMetrics::new(p.metrics_local_port);
+        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
         let server_conn =
             TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
                 &p.server_addr,

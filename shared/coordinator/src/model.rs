@@ -1,8 +1,8 @@
-use crate::{coordinator::SOLANA_MAX_URL_STRING_LEN, SOLANA_MAX_STRING_LEN};
+use crate::{SOLANA_MAX_STRING_LEN, coordinator::SOLANA_MAX_URL_STRING_LEN};
 
 use anchor_lang::{
-    prelude::{borsh, msg},
     AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, msg},
 };
 use bytemuck::{Zeroable, ZeroableInOption};
 use psyche_core::{
@@ -81,6 +81,7 @@ pub enum LLMTrainingDataLocation {
     Http(HttpLLMTrainingDataLocation),
     /// link to a JSON file that deserializes to a Vec<LLMTrainingDataLocationAndWeight>
     WeightedHttp(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
+    Preprocessed(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
 }
 
 impl Default for LLMTrainingDataLocation {
@@ -287,6 +288,7 @@ impl Model {
                         HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
                     },
                     LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
+                    LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
                 };
                 if bad_data_location {
                     msg!("model check failed: bad LLM training data location.");

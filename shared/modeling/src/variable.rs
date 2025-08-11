@@ -1,12 +1,12 @@
 use crate::{
-    parallelism::{tensor_shard, unsharded_tensor_size},
     Communicator,
+    parallelism::{tensor_shard, unsharded_tensor_size},
 };
 
 use std::{iter::Iterator, sync::Arc};
 use tch::{
-    nn::{Shard, VarStore},
     Tensor,
+    nn::{Shard, VarStore},
 };
 
 #[cfg(feature = "parallelism")]
@@ -22,6 +22,7 @@ pub trait Variable {
     fn is_sharded(&self) -> bool;
     fn zeros_like(&self, name: String) -> Box<dyn Variable>;
     fn set_grad(&self, tensor: Tensor);
+    fn zero_grad(&self);
 }
 
 #[derive(Debug)]
@@ -94,8 +95,8 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
                     .map(|_| self.1.empty_like())
                     .collect::<Vec<_>>();
                 self.1.all_gather(&shards, &self.3);
-                let gathered = crate::parallelism::unshard_tensor(shards, shard);
-                gathered
+
+                crate::parallelism::unshard_tensor(shards, shard)
             }
             #[cfg(not(feature = "parallelism"))]
             Some(_) => panic!("Sharded tensor without parallelism feature?"),
@@ -129,5 +130,12 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
         self.1
             .grad()
             .copy_(&self.shard_other_tensor_like_me(tensor));
+    }
+
+    fn zero_grad(&self) {
+        let grad = self.1.grad();
+        if grad.defined() {
+            let _ = self.1.grad().zero_();
+        }
     }
 }

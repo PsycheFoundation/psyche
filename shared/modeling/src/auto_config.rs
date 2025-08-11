@@ -1,6 +1,6 @@
 use crate::{
-    parallelism::tensor_shard, safetensor_utils::load_safetensors_into_variables, DeepseekConfig,
-    LlamaConfig, LoadSafetensorsError,
+    DeepseekConfig, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
+    safetensor_utils::load_safetensors_into_variables,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -25,9 +25,7 @@ pub enum ModelLoadError {
     #[error("this model uses tied embeddings, which aren't supported.")]
     ModelHasTiedEmbeddings,
 
-    #[error(
-        "Directly setting attention implementation to FlashAttention-2 is unsupported for now"
-    )]
+    #[error("Directly setting attention implementation to FlashAttention-2 is unsupported for now")]
     ModelExplicitlyUsesFA2,
 
     #[error("Failed to initialize CNCCL for tensor parallelism {0}")]
@@ -141,37 +139,16 @@ impl<T: ModelConfig> PretrainedSource<T> {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug, Default, Clone, Copy, PartialEq)]
 pub enum AttentionImplementation {
     #[serde(rename = "eager")]
     Eager,
     #[serde(rename = "sdpa")]
+    #[default]
     Sdpa,
+    #[cfg(feature = "parallelism")]
     #[serde(rename = "flash_attention_2")]
     FlashAttention2,
-}
-
-pub trait UseSDPA {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError>;
-}
-
-impl UseSDPA for AttentionImplementation {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError> {
-        match self {
-            AttentionImplementation::Eager => Ok(false),
-            AttentionImplementation::FlashAttention2 => Err(ModelLoadError::ModelExplicitlyUsesFA2),
-            AttentionImplementation::Sdpa => Ok(true),
-        }
-    }
-}
-
-impl UseSDPA for Option<AttentionImplementation> {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError> {
-        match self {
-            Some(x) => x.use_sdpa(),
-            None => Ok(true),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

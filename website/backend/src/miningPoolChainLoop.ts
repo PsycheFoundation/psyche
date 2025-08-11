@@ -64,15 +64,19 @@ export async function startWatchMiningPoolChainLoop(
 					(s) => s.split(':') as [string, string]
 				)
 				for (const [user, lenderAccountAddress] of updatedAddresses) {
-					const account = await miningPool.account.lender.fetch(
-						lenderAccountAddress,
-						'processed'
-					)
-					if (!account) {
-						console.warn(
-							`[mining pool] failed to fetch account for lender ${lenderAccountAddress} mentioned in tx data...`
+					let account = null
+					try {
+						account = await miningPool.account.lender.fetch(
+							lenderAccountAddress,
+							'processed'
 						)
-						continue
+					} finally {
+						if (!account) {
+							console.warn(
+								`[mining pool] failed to fetch account for lender ${lenderAccountAddress} mentioned in tx data...`
+							)
+							continue
+						}
 					}
 					console.log(
 						`[mining pool] new user amount for ${user} is ${account.depositedCollateralAmount.toString()}`

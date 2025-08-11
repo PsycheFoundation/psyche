@@ -1,5 +1,8 @@
-use crate::traits::{LengthKnownDataProvider, TokenizedDataProvider};
-use anyhow::{anyhow, Result};
+use crate::{
+    TokenizedData,
+    traits::{LengthKnownDataProvider, TokenizedDataProvider},
+};
+use anyhow::{Result, anyhow};
 use psyche_core::{BatchId, ClosedInterval, Shuffle};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -120,7 +123,7 @@ impl<T: TokenizedDataProvider + LengthKnownDataProvider> LengthKnownDataProvider
 impl<T: TokenizedDataProvider + LengthKnownDataProvider + Send> TokenizedDataProvider
     for WeightedDataProvider<T>
 {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         let mut provider_requests: Vec<Vec<(usize, u64)>> = vec![Vec::new(); self.providers.len()];
 
         for (original_idx, id) in data_ids.iter().enumerate() {
@@ -129,7 +132,7 @@ impl<T: TokenizedDataProvider + LengthKnownDataProvider + Send> TokenizedDataPro
         }
 
         // all results in their original order
-        let mut results = vec![Vec::new(); data_ids.len()];
+        let mut results = vec![TokenizedData::empty(); data_ids.len()];
 
         for (provider_idx, requests) in provider_requests.iter().enumerate() {
             if !requests.is_empty() {
@@ -156,14 +159,14 @@ impl<T: TokenizedDataProvider + LengthKnownDataProvider + Send> TokenizedDataPro
                     let batch_id = BatchId(ClosedInterval { start, end });
 
                     let range_samples = self.providers[provider_idx].get_samples(batch_id).await?;
-                    for ((orig_idx, _), sample) in range.iter().zip(range_samples) {
-                        results[*orig_idx] = sample;
+                    for ((orig_idx, _), sample) in range.into_iter().zip(range_samples) {
+                        results[orig_idx] = sample;
                     }
                 }
             }
         }
 
-        if results.iter().any(|v| v.is_empty()) {
+        if results.iter().any(|v| v.input_ids.is_empty()) {
             return Err(anyhow!("Failed to get all requested samples"));
         }
 

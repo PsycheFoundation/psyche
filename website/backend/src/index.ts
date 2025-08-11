@@ -8,17 +8,20 @@ import {
 	ApiGetRun,
 	ApiGetRuns,
 	coordinatorIdl,
+	formats,
 	IndexerStatus,
 	miningPoolIdl,
-	psycheJsonReplacer,
 	RunData,
 } from 'shared'
 import { Connection } from '@solana/web3.js'
 import { makeRateLimitedFetch } from './rateLimit.js'
 import { PassThrough } from 'node:stream'
 import { getRunFromKey, runKey, UniqueRunKey } from './coordinator.js'
+import { CURRENT_VERSION } from 'shared/formats/type.js'
 
 const requiredEnvVars = ['COORDINATOR_RPC', 'MINING_POOL_RPC'] as const
+
+const replacer = formats[CURRENT_VERSION].replacer
 
 async function main() {
 	for (const v of requiredEnvVars) {
@@ -150,13 +153,17 @@ async function main() {
 
 	const initTime = Date.now()
 
-	fastify.get('/contributionInfo', (req, res) => {
+	function getContributionInfo(
+		req: FastifyRequest,
+		res: Fastify.FastifyReply,
+		address?: string
+	) {
 		const isStreamingRequest = req.headers.accept?.includes(
 			'application/x-ndjson'
 		)
 
 		const data: ApiGetContributionInfo = {
-			...miningPool.dataStore.getContributionInfo(),
+			...miningPool.dataStore.getContributionInfo(address),
 			miningPoolProgramId: process.env.MINING_POOL_PROGRAM_ID!,
 			error: miningPoolCrashed,
 		}
@@ -168,7 +175,7 @@ async function main() {
 		)
 
 		if (!isStreamingRequest) {
-			res.send(JSON.stringify(data, psycheJsonReplacer))
+			res.send(JSON.stringify(data, replacer))
 			return
 		}
 
@@ -182,7 +189,7 @@ async function main() {
 				miningPoolProgramId: process.env.MINING_POOL_PROGRAM_ID!,
 				error: miningPoolCrashed,
 			}
-			stream.write(JSON.stringify(data, psycheJsonReplacer) + '\n')
+			stream.write(JSON.stringify(data, replacer) + '\n')
 		}
 
 		// send the initial run data to populate the UI
@@ -196,7 +203,16 @@ async function main() {
 			liveMiningPoolListeners.delete(sendContributionData)
 			stream.end()
 		})
+	}
+	fastify.get('/contributionInfo', (req: FastifyRequest, res) => {
+		getContributionInfo(req, res)
 	})
+	fastify.get(
+		'/contributionInfo/:address',
+		(req: FastifyRequest<{ Params: { address?: string } }>, res) => {
+			getContributionInfo(req, res, req.params.address)
+		}
+	)
 
 	fastify.get('/runs', (_req, res) => {
 		const runs: ApiGetRuns = {
@@ -206,7 +222,7 @@ async function main() {
 
 		res
 			.header('content-type', 'application/json')
-			.send(JSON.stringify(runs, psycheJsonReplacer))
+			.send(JSON.stringify(runs, replacer))
 	})
 
 	fastify.get(
@@ -242,7 +258,7 @@ async function main() {
 			)
 
 			if (!isStreamingRequest || !matchingRun) {
-				res.send(JSON.stringify(data, psycheJsonReplacer))
+				res.send(JSON.stringify(data, replacer))
 				return
 			}
 
@@ -263,7 +279,7 @@ async function main() {
 					error: coordinatorCrashed,
 					isOnlyRun: coordinator.dataStore.getNumRuns() === 1,
 				}
-				stream.write(JSON.stringify(data, psycheJsonReplacer) + '\n')
+				stream.write(JSON.stringify(data, replacer) + '\n')
 			}
 
 			// send the initial run data to populate the UI
@@ -314,7 +330,7 @@ async function main() {
 		} satisfies IndexerStatus
 		res
 			.header('content-type', 'application/json')
-			.send(JSON.stringify(data, psycheJsonReplacer))
+			.send(JSON.stringify(data, replacer))
 	})
 
 	await fastify.listen({ port: 3000 })

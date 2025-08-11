@@ -1,25 +1,26 @@
-use crate::{fetch_data::DataFetcher, IntegrationTestLogMarker, WandBInfo};
+use crate::{IntegrationTestLogMarker, WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
-    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
     Coordinator, HealthChecks,
+    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
-use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, TokenSize};
+use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
 use psyche_data_provider::{
-    download_model_repo_async,
+    DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
+    WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
-    DataProvider, DataProviderTcpClient, DummyDataProvider, WeightedDataProvider,
 };
+use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
-    auto_tokenizer, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel,
-    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig,
-    ModelLoadError, ParallelModels, PretrainedSource, Trainer,
+    AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
+    DataParallel, DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer,
+    ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tokenizers::{models::wordlevel::WordLevel, ModelWrapper, Tokenizer};
+use tokenizers::{ModelWrapper, Tokenizer, models::wordlevel::WordLevel};
 use tokio::{
     io,
     sync::{mpsc::UnboundedSender, oneshot},
@@ -28,9 +29,9 @@ use tokio::{
 use tracing::{debug, error, info};
 
 use super::{
-    cooldown::CooldownStepMetadata, evals::EvalRunner, stats::StatsLogger, steps::StepStateMachine,
-    train::TrainingStepMetadata, types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata,
-    witness::WitnessStepMetadata, CheckpointConfig, FinishedBroadcast,
+    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::EvalRunner,
+    stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
+    types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
 
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
@@ -151,6 +152,8 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
+
+    pub metrics: Arc<ClientMetrics>,
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
@@ -171,10 +174,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_request_download,
             tx_request_model_config,
             tx_broadcast_finished,
+            metrics,
         } = self;
 
         let model::Model::LLM(llm) = state.model;
 
+        let hub_read_token = init_config.hub_read_token.clone();
+        let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
         let data_future = async {
             debug!("Setting up data provider from {:?}", llm.data_location);
             let data_provider = match llm.data_location {
@@ -210,6 +216,34 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     )
                     .await?,
                 ),
+                LLMTrainingDataLocation::Preprocessed(url) => {
+                    let url: String = (&url).into();
+                    let dir = if std::fs::exists(&url).unwrap_or_default() {
+                        PathBuf::from(url)
+                    } else {
+                        download_dataset_repo_async(
+                            url.clone(),
+                            None,
+                            None,
+                            hub_read_token,
+                            Some(hub_max_concurrent_downloads),
+                            false,
+                        )
+                        .await?
+                        .first()
+                        .ok_or(anyhow::anyhow!("No files downloaded for {url}"))?
+                        .parent()
+                        .unwrap()
+                        .into()
+                    };
+                    DataProvider::Preprocessed(PreprocessedDataProvider::new_from_directory(
+                        dir,
+                        llm.max_seq_len as usize,
+                        Shuffle::DontShuffle,
+                        Some(Split::Train),
+                        None,
+                    )?)
+                }
             };
             Ok(data_provider)
         };
@@ -330,14 +364,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     model::LLMArchitecture::HfAuto => {
                                         #[cfg(feature = "python")]
                                         {
-                                            AutoConfig::Auto(
-                                                serde_json::from_str::<
-                                                    psyche_modeling::PythonModelConfig,
-                                                >(
-                                                    &model_config
-                                                )?
-                                                .into(),
-                                            )
+                                            AutoConfig::Auto(serde_json::from_str::<
+                                                psyche_modeling::PythonModelConfig,
+                                            >(
+                                                &model_config
+                                            )?)
                                         }
 
                                         #[cfg(not(feature = "python"))]
@@ -401,8 +432,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             psyche_modeling::ParallelismConfig { dp, tp },
                                             Some(llm.max_seq_len as usize),
                                         )
-                                        .map(|x| RawLoadedModelType::PythonDistributed(x))
-                                        .map_err(|x| InitRunError::PythonDistributedError(x))
+                                        .map(RawLoadedModelType::PythonDistributed)
+                                        .map_err(InitRunError::PythonDistributedError)
                                     } else {
                                         psyche_modeling::PythonCausalLM::new(
                                             "hf-auto",
@@ -411,8 +442,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             None,
                                             Some(llm.max_seq_len as usize),
                                         )
-                                        .map(|x| RawLoadedModelType::Python(x))
-                                        .map_err(|x| InitRunError::PythonModelError(x))
+                                        .map(RawLoadedModelType::Python)
+                                        .map_err(InitRunError::PythonModelError)
                                     }
                                 })
                                 .await
@@ -431,6 +462,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             > = Vec::with_capacity(
                                 init_config.data_parallelism * init_config.tensor_parallelism,
                             );
+
+                            let attn_implementation: Option<AttentionImplementation> =
+                                match llm.data_type {
+                                    model::LLMTrainingDataType::Finetuning => {
+                                        #[cfg(feature = "parallelism")]
+                                        {
+                                            // use varlen backend if available
+                                            Some(AttentionImplementation::FlashAttention2)
+                                        }
+
+                                        #[cfg(not(feature = "parallelism"))]
+                                        None
+                                    }
+                                    model::LLMTrainingDataType::Pretraining => None,
+                                };
 
                             for dp in 0..init_config.data_parallelism {
                                 let communicator_id: Option<CommunicatorId> =
@@ -467,7 +513,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 LlamaForCausalLM::from_pretrained(
                                                     &source.try_into()?,
                                                     Some(Kind::BFloat16),
-                                                    None,
+                                                    attn_implementation,
                                                     Some(device),
                                                     tensor_parallelism_world,
                                                     Some(llm.max_seq_len as usize),
@@ -478,7 +524,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 DeepseekForCausalLM::from_pretrained(
                                                     &source.try_into()?,
                                                     Some(Kind::BFloat16),
-                                                    None,
+                                                    attn_implementation,
                                                     Some(device),
                                                     tensor_parallelism_world,
                                                     Some(llm.max_seq_len as usize),
@@ -561,7 +607,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         match wandb.new_run(run_info.build()?).await {
                             Ok(run) => Ok(Some(run)),
                             Err(e) => {
-                                error!("[init_run] Could not connect to wandb. Will continue training without it.");
+                                error!(
+                                    "[init_run] Could not connect to wandb. Will continue training without it."
+                                );
                                 debug!("[init_run] wandb error: {:?}", e);
                                 Ok(None)
                             }
@@ -667,38 +715,47 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             }
             #[cfg(feature = "python")]
             RawLoadedModelType::Python(model) => {
-                vec![psyche_modeling::LocalTrainer::new(
-                    ParallelModels {
-                        models: vec![Box::new(model) as Box<dyn CausalLM>],
-                        barrier: Arc::new(psyche_modeling::NopBarrier::new()) as Arc<dyn Barrier>,
-                        data_parallel: None,
-                    },
-                    llm.lr_schedule,
-                    llm.optimizer,
-                    init_config.micro_batch_size,
-                    init_config.optim_stats_every_n_steps,
-                    init_config.grad_accum_in_fp32,
-                )
-                .into()]
+                vec![
+                    psyche_modeling::LocalTrainer::new(
+                        ParallelModels {
+                            models: vec![Box::new(model) as Box<dyn CausalLM>],
+                            barrier: Arc::new(psyche_modeling::NopBarrier) as Arc<dyn Barrier>,
+                            data_parallel: None,
+                        },
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )
+                    .into(),
+                ]
             }
             #[cfg(feature = "python")]
             RawLoadedModelType::PythonDistributed(model) => {
-                vec![psyche_modeling::PythonDistributedTrainer::new(
-                    model,
-                    llm.lr_schedule,
-                    llm.optimizer,
-                    init_config.micro_batch_size,
-                    init_config.optim_stats_every_n_steps,
-                    init_config.grad_accum_in_fp32,
-                )?
-                .into()]
+                vec![
+                    psyche_modeling::PythonDistributedTrainer::new(
+                        model,
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )?
+                    .into(),
+                ]
             }
         };
 
         let wandb_run = wandb_run.map_err(InitRunError::WandbThreadCrashed)??;
 
-        let stats_logger =
-            StatsLogger::new(tokenizer, eval_runner.clone(), llm.lr_schedule, wandb_run);
+        let stats_logger = StatsLogger::new(
+            tokenizer,
+            eval_runner.clone(),
+            llm.lr_schedule,
+            wandb_run,
+            metrics,
+        );
 
         let warmup = WarmupStepMetadata {
             eval_runner: eval_runner.clone(),

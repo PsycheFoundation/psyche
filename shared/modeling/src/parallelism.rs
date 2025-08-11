@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::{collections::HashMap, sync::Arc};
 use tch::{
-    nn::{self, Module, Shard},
     Device, TchError, Tensor,
+    nn::{self, Module, Shard},
 };
 use torch_sys::IntList;
 
@@ -13,7 +13,7 @@ pub struct ParallelismConfig {
 }
 
 #[cfg(feature = "parallelism")]
-use tch::{CStore, ReduceOpType, CNCCL};
+use tch::{CNCCL, CStore, ReduceOpType};
 
 use crate::CausalLM;
 #[cfg(feature = "python")]
@@ -311,8 +311,8 @@ impl ParallelExpandHeads for Tensor {
         shape: impl IntList,
     ) -> Tensor {
         match comm {
-            Some(comm) => comm.parallel_expand_heads(&self, shape).unwrap(),
-            None => _expand_heads(&self, shape),
+            Some(comm) => comm.parallel_expand_heads(self, shape).unwrap(),
+            None => _expand_heads(self, shape),
         }
     }
 
@@ -550,17 +550,14 @@ pub(crate) mod tests {
     use super::*;
     use crate::{set_suggested_env_vars, set_torch_rng_seed};
     use std::sync::{Arc, Barrier, Mutex};
-    use tch::{nn::VarStore, Device, Kind, Tensor};
+    use tch::{Device, Kind, Tensor, nn::VarStore};
 
     fn run_parallel_test<F>(world_size: usize, test_fn: F)
     where
         F: Fn(CommunicatorId, usize, Arc<Barrier>, Device) -> Result<()> + Send + Sync + 'static,
     {
         if !tch::utils::has_cuda() || tch::Cuda::device_count() < world_size as i64 {
-            println!(
-                "Skipping parallel test: requires CUDA and {} GPUs.",
-                world_size
-            );
+            println!("Skipping parallel test: requires CUDA and {world_size} GPUs.");
             return;
         }
 
@@ -627,11 +624,13 @@ pub(crate) mod tests {
                         OUT_FEATURES,
                         false, // no bias
                         GATHER_OUTPUT,
+                        #[allow(clippy::arc_with_non_send_sync)]
+                        // TODO: analyze how we're using Arc here, is this right?
                         Some(Arc::new(nccl.into())),
                     );
 
                     let input =
-                        Tensor::randn(&[BATCH_SIZE, SEQ_LEN, IN_FEATURES], (Kind::Float, device))
+                        Tensor::randn([BATCH_SIZE, SEQ_LEN, IN_FEATURES], (Kind::Float, device))
                             .set_requires_grad(true);
 
                     let target_shape = if GATHER_OUTPUT {
@@ -679,8 +678,7 @@ pub(crate) mod tests {
                     1e-5,
                     false
                 ),
-                "Input gradients differ between rank 0 and rank {}",
-                i
+                "Input gradients differ between rank 0 and rank {i}"
             );
         }
 
@@ -688,8 +686,7 @@ pub(crate) mod tests {
         for (rank, shape) in weight_grads_shapes.iter().enumerate() {
             assert_eq!(
                 *shape, expected_weight_grad_shape,
-                "Weight gradient shape mismatch on rank {}",
-                rank
+                "Weight gradient shape mismatch on rank {rank}"
             );
         }
 
@@ -742,11 +739,13 @@ pub(crate) mod tests {
                             OUT_FEATURES,
                             bias,
                             input_is_parallel,
+                            #[allow(clippy::arc_with_non_send_sync)]
+                            // TODO: analyze how we're using Arc here, is this right?
                             Some(Arc::new(nccl.into())),
                         );
 
                         let original_input = Tensor::randn(
-                            &[BATCH_SIZE, SEQ_LEN, IN_FEATURES],
+                            [BATCH_SIZE, SEQ_LEN, IN_FEATURES],
                             (Kind::Float, device),
                         )
                         .set_requires_grad(!input_is_parallel);
@@ -764,7 +763,7 @@ pub(crate) mod tests {
                         };
 
                         let target = Tensor::randn(
-                            &[BATCH_SIZE, SEQ_LEN, OUT_FEATURES],
+                            [BATCH_SIZE, SEQ_LEN, OUT_FEATURES],
                             (Kind::Float, device),
                         );
 
@@ -824,19 +823,16 @@ pub(crate) mod tests {
                             1e-5,
                             false
                         ),
-                        "RowParallelLinear (input_is_parallel=false): Original input gradients differ between rank 0 and rank {}",
-                        i
+                        "RowParallelLinear (input_is_parallel=false): Original input gradients differ between rank 0 and rank {i}"
                     );
                 }
-            } else {
             }
 
             let expected_weight_grad_shape = vec![OUT_FEATURES, IN_FEATURES / WORLD_SIZE as i64];
             for (rank, shape) in weight_grads_shapes.iter().enumerate() {
                 assert_eq!(
                     *shape, expected_weight_grad_shape,
-                    "RowParallelLinear: Weight gradient shape mismatch on rank {}",
-                    rank
+                    "RowParallelLinear: Weight gradient shape mismatch on rank {rank}"
                 );
             }
 
@@ -849,8 +845,7 @@ pub(crate) mod tests {
                             1e-5,
                             false
                         ),
-                        "RowParallelLinear (bias=true): Bias gradients differ between rank 0 and rank {}",
-                        i
+                        "RowParallelLinear (bias=true): Bias gradients differ between rank 0 and rank {i}"
                     );
                 }
             }
