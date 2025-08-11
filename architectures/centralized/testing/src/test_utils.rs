@@ -43,7 +43,8 @@ pub async fn spawn_clients_with_training_delay(
     let mut client_handles = Vec::new();
     for _ in 0..num_clients {
         client_handles.push(
-            ClientHandle::new_with_training_delay(server_port, run_id, training_delay_secs).await,
+            ClientHandle::new_with_training_delay(server_port, run_id, training_delay_secs, None)
+                .await,
         )
     }
     client_handles
