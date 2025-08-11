@@ -305,18 +305,20 @@ use tracing::info;
 #[iroh_n0des::sim]
 async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
     async fn round(node: &mut ClientHandle, ctx: &RoundContext<'_, Setup>) -> anyhow::Result<bool> {
+        let server_handler = ctx.setup_data().server_handler.clone();
+
         // let node_id = node.endpoint().unwrap().node_id();
         // let target: Vec<NodeAddr> = ctx.all_other_nodes(node_id).cloned().collect();
         // let target = target.first().unwrap();
 
-        // // record event for simulation visualization.
-        // iroh_n0des::simulation::events::event_start(
-        //     node_id.fmt_short(),
-        //     target.node_id.fmt_short(),
-        //     format!("send ping (round {})", ctx.round()),
-        //     Some("Testito".to_string()),
-        // );
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        println!("RUN STATE: {}", server_handler.get_run_state().await);
+        // assert_with_retries(|| server_handler.get_run_state(), RunState::RoundTrain).await;
+        loop {
+            if server_handler.get_run_state().await == RunState::RoundWitness {
+                tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
+                break;
+            }
+        }
         Ok(true)
     }
 
@@ -332,23 +334,25 @@ async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
     let server_handle =
         CoordinatorServerHandle::new(init_min_clients, global_batch_size, witness_nodes).await;
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // let client_handles =
     //     spawn_clients_with_training_delay(2_usize, server_port, run_id, training_delay).await;
 
     let port = server_handle.server_port;
-    let run_id = server_handle.run_id;
+    let run_id = server_handle.clone().run_id;
+    let server_handler = server_handle.clone();
     let sim = Builder::with_setup(async move || {
         let setup = Setup {
             training_delay_secs: 2,
             server_port: port,
             run_id: run_id.clone(),
+            server_handler: server_handler.clone(),
         };
         Ok(setup)
     })
-    .spawn(2, ClientHandle::builder(round).check(check))
-    .rounds(3);
+    .spawn(10, ClientHandle::builder(round).check(check))
+    .rounds(4);
     Ok(sim)
 
     // // We initialize the coordinator with the same number of min clients as batches per round.

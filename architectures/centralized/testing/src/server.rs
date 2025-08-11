@@ -7,6 +7,7 @@ use psyche_coordinator::{
     model::{Checkpoint, LLM, Model},
 };
 use psyche_core::FixedVec;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::HashSet, mem::Discriminant, ops::ControlFlow};
 use tokio::{
     select,
@@ -181,10 +182,98 @@ impl CoordinatorServer {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct CoordinatorServerHandle {
     query_chan_sender: mpsc::Sender<TestingQueryMsg>,
     pub server_port: u16,
     pub run_id: String,
+}
+
+impl Serialize for CoordinatorServerHandle {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        // We can only serialize the data that can be reconstructed
+        let mut state = serializer.serialize_struct("CoordinatorServerHandle", 2)?;
+        state.serialize_field("server_port", &self.server_port)?;
+        state.serialize_field("run_id", &self.run_id)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for CoordinatorServerHandle {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            ServerPort,
+            RunId,
+        }
+
+        struct CoordinatorServerHandleVisitor;
+
+        impl<'de> Visitor<'de> for CoordinatorServerHandleVisitor {
+            type Value = CoordinatorServerHandle;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct CoordinatorServerHandle")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<CoordinatorServerHandle, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut server_port = None;
+                let mut run_id = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::ServerPort => {
+                            if server_port.is_some() {
+                                return Err(de::Error::duplicate_field("server_port"));
+                            }
+                            server_port = Some(map.next_value()?);
+                        }
+                        Field::RunId => {
+                            if run_id.is_some() {
+                                return Err(de::Error::duplicate_field("run_id"));
+                            }
+                            run_id = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let server_port =
+                    server_port.ok_or_else(|| de::Error::missing_field("server_port"))?;
+                let run_id = run_id.ok_or_else(|| de::Error::missing_field("run_id"))?;
+
+                // Create a dummy channel since we can't serialize/deserialize the actual sender
+                let (query_chan_sender, _) = mpsc::channel(64);
+
+                Ok(CoordinatorServerHandle {
+                    query_chan_sender,
+                    server_port,
+                    run_id,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &["server_port", "run_id"];
+        deserializer.deserialize_struct(
+            "CoordinatorServerHandle",
+            FIELDS,
+            CoordinatorServerHandleVisitor,
+        )
+    }
 }
 
 impl CoordinatorServerHandle {

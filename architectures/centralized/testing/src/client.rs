@@ -21,6 +21,7 @@ use tokio::select;
 use tokio::task::JoinHandle;
 use tracing::debug;
 
+use crate::server::CoordinatorServerHandle;
 use crate::test_utils::dummy_client_app_params_default;
 use crate::test_utils::dummy_client_app_params_with_training_delay;
 
@@ -107,6 +108,7 @@ pub struct Setup {
     pub server_port: u16,
     pub training_delay_secs: u64,
     pub run_id: String,
+    pub server_handler: CoordinatorServerHandle,
 }
 
 impl Spawn<Setup> for Client {
@@ -135,6 +137,7 @@ impl Spawn<Setup> for Client {
 pub struct ClientHandle {
     pub client_handle: JoinHandle<Result<(), Error>>,
     pub router: Arc<Router>,
+    pub server_handler: Option<CoordinatorServerHandle>,
 }
 
 impl ClientHandle {
@@ -148,6 +151,7 @@ impl ClientHandle {
         Self {
             client_handle,
             router,
+            server_handler: None,
         }
     }
 
@@ -169,6 +173,7 @@ impl ClientHandle {
         Self {
             client_handle,
             router,
+            server_handler: None,
         }
     }
 }
@@ -196,6 +201,7 @@ impl Spawn<Setup> for ClientHandle {
             None,
         )
         .await;
+        handle.server_handler = Some(setup_data.server_handler.clone());
         // registry.register_all_prefixed(endpoint.metrics());
         // registry.register(p2p.blobs.metrics().clone());
         // registry.register(p2p.gossip.metrics().clone());
