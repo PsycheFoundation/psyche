@@ -1,4 +1,4 @@
-use crate::state::prompt_texts::PROMPT_TEXTS;
+use crate::state::prompt_texts::get_prompt_texts;
 use psyche_coordinator::MAX_TOKENS_TO_SEND;
 use psyche_core::FixedVec;
 use psyche_modeling::{CausalLM, EosToks};
@@ -48,7 +48,8 @@ impl PromptTask {
     fn reset_with_new_prompt(&self) {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let new_prompt_index = rng.gen_range(0..PROMPT_TEXTS.len());
+        let prompt_texts = get_prompt_texts();
+        let new_prompt_index = rng.gen_range(0..prompt_texts.len());
 
         let old_prompt_index = *self.selected_prompt.read().unwrap();
         debug!(
@@ -56,8 +57,11 @@ impl PromptTask {
             old_prompt_index, new_prompt_index
         );
 
-        let new_prompt_text = PROMPT_TEXTS[new_prompt_index];
-        let encoding = self.tokenizer.encode(new_prompt_text, true).unwrap();
+        let new_prompt_text = &prompt_texts[new_prompt_index];
+        let encoding = self
+            .tokenizer
+            .encode(new_prompt_text.as_str(), true)
+            .unwrap();
         let new_tokens: Vec<i32> = encoding.get_ids().iter().map(|x| *x as i32).collect();
 
         // Update the prompt data

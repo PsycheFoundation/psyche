@@ -13,7 +13,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, info, span, trace};
 
-use crate::state::{prompt::PromptTask, prompt_texts::PROMPT_TEXTS};
+use crate::state::{prompt::PromptTask, prompt_texts::get_prompt_texts};
 pub const PROMPT_TASK_NAME: &str = "Prompt";
 
 #[derive(Debug)]
@@ -138,8 +138,9 @@ impl ModelTaskRunner {
 
                 if prompt_task {
                     let mut rng = rand::thread_rng();
+                    let prompt_texts = get_prompt_texts();
 
-                    let prompt_index = rng.gen_range(0..PROMPT_TEXTS.len());
+                    let prompt_index = rng.gen_range(0..prompt_texts.len());
                     tracing::info!(
                         "Loading prompt task, selected prompt index {}",
                         prompt_index
@@ -147,7 +148,7 @@ impl ModelTaskRunner {
 
                     let prompt_task = Arc::new(ModelTask::new_prompt_task(PromptTask::new(
                         prompt_index,
-                        PROMPT_TEXTS[prompt_index].to_string(),
+                        prompt_texts[prompt_index].clone(),
                         &tokenizer,
                     )));
                     model_tasks.push(prompt_task);

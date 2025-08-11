@@ -1,10 +1,20 @@
-pub const PROMPT_TEXTS: [&str; 8] = [
-    include_str!("prompt_texts/henry_VI.txt"),
-    include_str!("prompt_texts/macbeth.txt"),
-    "What is the meaning of life?",
-    "Explain quantum physics in simple terms.",
-    "Write a short story about a robot learning to love.",
-    "What are the benefits of renewable energy?",
-    "How do neural networks work?",
-    "Describe the perfect day.",
-];
+use serde::{Deserialize, Serialize};
+use std::fs;
+
+#[derive(Deserialize, Serialize)]
+struct PromptEntry {
+    text: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct PromptsJson {
+    prompts: Vec<PromptEntry>,
+}
+
+pub fn get_prompt_texts() -> Vec<String> {
+    let json_content = fs::read_to_string("website/frontend/public/prompts/index.json")
+        .expect("Failed to read prompts JSON file");
+    let prompts_data: PromptsJson =
+        serde_json::from_str(&json_content).expect("Failed to parse prompts JSON");
+    prompts_data.prompts.into_iter().map(|p| p.text).collect()
+}
