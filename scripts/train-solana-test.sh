@@ -30,7 +30,6 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --tensor-parallelism ${TP} \
         --micro-batch-size ${BATCH_SIZE} \
         --logs "console" \
-        --prompt-task \
         "$@"
 else
     cargo run --release --bin psyche-solana-client -- \
@@ -43,7 +42,6 @@ else
         --tensor-parallelism ${TP} \
         --micro-batch-size ${BATCH_SIZE} \
         --logs "console" \
-        --prompt-task \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
         --oltp-logs-url "http://localhost:4318/v1/logs" \
         "$@"

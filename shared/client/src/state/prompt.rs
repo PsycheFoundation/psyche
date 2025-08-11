@@ -135,7 +135,6 @@ impl PromptTask {
             _ => (),
         }
 
-        // We might want to pass this as config or similar, but it's hardcoded for now.
         let generated_tokens = token_len - *self.original_prompt_len.read().unwrap();
         if generated_tokens >= MAX_TOKENS_TO_GENERATE {
             *self.prompt_finished.write().unwrap() = true;

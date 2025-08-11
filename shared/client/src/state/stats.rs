@@ -6,7 +6,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 use wandb::{DataValue, LogData};
 
 use crate::{
@@ -180,7 +180,6 @@ impl StatsLogger {
             evals
         };
 
-        // TODO see issue https://github.com/PsycheFoundation/psyche/issues/213
         let prompt_results = self.get_prompt_results();
         let prompt_index = self.get_prompt_index();
 
@@ -314,7 +313,7 @@ impl StatsLogger {
                 prompt_task.tokens_to_send.write().unwrap().clear();
             }
         }
-        info!(
+        debug!(
             "Final witness prompt results: {:?}",
             results.iter().collect::<Vec<_>>()
         );
