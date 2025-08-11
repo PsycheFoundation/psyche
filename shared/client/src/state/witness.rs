@@ -9,7 +9,7 @@ use tokio::{
 use tracing::{info, trace};
 
 use super::{
-    evals::{EvalError, EvalRunner, MaybeRunningEvals, RunningEvals},
+    evals::{EvalError, MaybeRunningEvals, ModelTaskRunner, RunningEvals},
     round_state::RoundState,
 };
 
@@ -30,7 +30,7 @@ pub enum WitnessingError {
 
 pub struct WitnessStepMetadata<T: NodeIdentity> {
     pub identity: T,
-    pub eval_runner: EvalRunner,
+    pub model_task_runner: ModelTaskRunner,
     pub tx_witness: mpsc::UnboundedSender<OpportunisticData>,
 }
 
@@ -54,7 +54,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
             return Err(WitnessingError::NoTrainers);
         }
 
-        let evals = self.eval_runner.start_if_not_running(trainers);
+        let evals = self.model_task_runner.start_if_not_running(trainers);
 
         let sending_witness = if let Some(witness) =
             WitnessStep::get_witness_to_send(previous_round, current_round)
