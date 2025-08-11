@@ -1,6 +1,6 @@
 use anchor_lang::AccountDeserialize;
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::CoordinatorInstanceState;
 use psyche_solana_coordinator::coordinator_account_from_bytes;
