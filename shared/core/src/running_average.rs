@@ -18,7 +18,7 @@ impl AverageEntry {
             max_size: size,
             sum: 0.0,
             all_time_pushes: 0,
-            min_samples: min_samples.unwrap_or(1),
+            min_samples: min_samples.unwrap_or(0),
         }
     }
 

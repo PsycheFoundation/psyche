@@ -15,13 +15,12 @@ use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
-const GENERATE_UNTIL_MAX_CONTEXT_SIZE: usize = 2048;
+const MAX_CONTEXT_SIZE: usize = 2048;
 
-const TASKS_WITH_ACC_NORM: [&str; 6] = [
+const TASKS_WITH_ACC_NORM: [&str; 5] = [
     ArcChallenge::name(),
     ArcEasy::name(),
     Hellaswag::name(),
-    MMLU::name(),
     OpenbookQA::name(),
     PIQA::name(),
 ];
@@ -366,7 +365,12 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        let min_samples = min_reporting_ratio(eval_name).map(|x| (x * docs.len() as f32) as usize);
+        // if pbar is some we are running examples evaluate crate
+        let min_samples = if pbar.is_some() {
+            None
+        } else {
+            min_reporting_ratio(eval_name).map(|x| (x * docs.len() as f32) as usize)
+        };
 
         results.add_entry_if_needed("acc", docs.len(), min_samples);
         if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
@@ -513,8 +517,12 @@ impl PreparedTask {
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        let min_samples =
-            min_reporting_ratio(eval_name).map(|x| (x * requests.len() as f32) as usize);
+        // if pbar is some we are running examples evaluate crate
+        let min_samples = if pbar.is_some() {
+            None
+        } else {
+            min_reporting_ratio(eval_name).map(|x| (x * requests.len() as f32) as usize)
+        };
         results.add_entry_if_needed("acc", requests.len(), min_samples);
 
         let fast_forward = (skip / requests.len()) * requests.len();
@@ -612,8 +620,8 @@ impl PreparedTask {
                         break;
                     }
                 }
-                if full_sequence.len() > GENERATE_UNTIL_MAX_CONTEXT_SIZE {
-                    full_sequence.drain(0..(full_sequence.len() - GENERATE_UNTIL_MAX_CONTEXT_SIZE));
+                if full_sequence.len() > MAX_CONTEXT_SIZE {
+                    full_sequence.drain(0..(full_sequence.len() - MAX_CONTEXT_SIZE));
                 }
                 let model_input = Tensor::from_slice(&full_sequence)
                     .to(options.model.device())
