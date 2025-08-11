@@ -7528,9 +7528,6 @@ dependencies = [
  "psyche-core",
  "psyche-solana-authorizer",
  "serde",
- "solana-sdk",
- "solana_toolbox_endpoint",
- "tokio",
  "ts-rs",
 ]
 
@@ -11085,9 +11082,9 @@ dependencies = [
 
 [[package]]
 name = "solana_toolbox_endpoint"
-version = "0.4.2-solana-2.1.4"
+version = "0.4.4-solana-2.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1e26ff4cc00676acb28894bcea80831c964aaeaaa024718e8c173ea74daf96c"
+checksum = "62189aeb27e98382284aef10048e8c67356f143bccf4e3b20d03ad4a72fa4c11"
 dependencies = [
  "anyhow",
  "async-trait",

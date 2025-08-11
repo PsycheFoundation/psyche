@@ -2,6 +2,7 @@ use anchor_lang::InstructionData;
 use anchor_lang::ToAccountMetas;
 use anchor_spl::associated_token;
 use anchor_spl::token;
+use anyhow::Result;
 use psyche_solana_coordinator::find_coordinator_instance;
 use psyche_solana_treasurer::accounts::ParticipantClaimAccounts;
 use psyche_solana_treasurer::accounts::ParticipantCreateAccounts;
@@ -23,8 +24,6 @@ use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use solana_sdk::system_program;
 use solana_toolbox_endpoint::ToolboxEndpoint;
-
-use anyhow::Result;
 
 pub async fn process_treasurer_run_create(
     endpoint: &mut ToolboxEndpoint,
