@@ -3,6 +3,12 @@
 set -o errexit
 set -euo pipefail
 
+# check if this should run as a sidecar instead of main training
+if [[ "${PSYCHE_MAIN_HOST:-}" != "" ]]; then
+    echo "PSYCHE_MAIN_HOST detected - switching to sidecar mode"
+    exec /bin/sidecar_entrypoint.sh
+fi
+
 # Some sanity checks before starting
 
 if [[ "$NVIDIA_DRIVER_CAPABILITIES" == "" ]]; then
@@ -66,11 +72,18 @@ while true; do
 
     start_time=$SECONDS  # Record start time
 
-    /bin/psyche-solana-client-wrapped train \
+    # Support custom init method for multi-node training
+    INIT_METHOD_ARG=""
+    if [[ "${PSYCHE_INIT_METHOD:-}" != "" ]]; then
+        INIT_METHOD_ARG="--init-method ${PSYCHE_INIT_METHOD}"
+    fi
+
+    /bin/psyche-solana-client train \
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
-        --logs "console" &
+        --logs "console" \
+        ${INIT_METHOD_ARG} &
 
     PSYCHE_CLIENT_PID=$!
     wait "$PSYCHE_CLIENT_PID" || true  # Wait for the app to exit; continue on signal interrupt
