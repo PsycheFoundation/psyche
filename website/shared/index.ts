@@ -82,6 +82,9 @@ export type Metrics = {
 	tokensPerSecond: number
 	lr: number
 	evals: Record<string, number>
+	promptResults: number[]
+	promptIndex: number
+	cumulativePromptResults: number[]
 }
 
 export type OverTime<T extends object> = {
