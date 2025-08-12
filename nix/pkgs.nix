@@ -13,6 +13,7 @@ lib.makeScope pkgs.newScope (
       "psyche-centralized-local-testnet"
       "expand-distro"
       "preview-lr"
+      "psyche-sidecar"
     ];
 
     rustExampleNames = [
