@@ -7474,6 +7474,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "clap-markdown",
  "tokio",
  "tracing",
  "tracing-subscriber",
