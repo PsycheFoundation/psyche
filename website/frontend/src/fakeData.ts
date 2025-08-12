@@ -137,6 +137,9 @@ export const makeFakeRunData: Record<
 			: {
 					info: fakeRunSummaries[0],
 					recentTxs: [],
+					promptResults: [],
+					promptIndex: 0,
+					cumulativePromptResults: [],
 					metrics: {
 						summary: {
 							loss: 0.0,
@@ -163,6 +166,9 @@ export const makeFakeRunData: Record<
 	'run-002': () => ({
 		info: fakeRunSummaries[1],
 		recentTxs: [],
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.0,
@@ -189,6 +195,9 @@ export const makeFakeRunData: Record<
 	'run-003': () => ({
 		info: fakeRunSummaries[2],
 		recentTxs: [],
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.18,
@@ -330,6 +339,9 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 				time: new Date(Date.now() - step * 3_000),
 			},
 		})),
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.32 + seededRandom() * 0.3,
