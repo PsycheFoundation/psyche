@@ -41,6 +41,13 @@ enum Commands {
 
     /// Run Rust sidecar process (TODO: implement)
     Rust,
+
+    // Prints the help, optionally as markdown. Used for docs generation.
+    #[clap(hide = true)]
+    PrintAllHelp {
+        #[arg(long, required = true)]
+        markdown: bool,
+    },
 }
 
 #[tokio::main]
@@ -63,6 +70,14 @@ async fn main() -> Result<()> {
         }
         Commands::Rust => {
             unimplemented!("Rust sidecar not yet implemented");
+        }
+        Commands::PrintAllHelp { markdown } => {
+            // This is a required argument for the time being.
+            assert!(markdown);
+
+            let () = clap_markdown::print_help_markdown::<Args>();
+
+            return Ok(());
         }
     }
 }

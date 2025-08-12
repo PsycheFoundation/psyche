@@ -9,6 +9,7 @@ clap.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber = "0.3"
+clap-markdown.workspace = true
 
 [features]
 default = []
