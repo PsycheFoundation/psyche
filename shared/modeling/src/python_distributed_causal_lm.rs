@@ -264,4 +264,8 @@ impl CausalLM for PythonDistributedCausalLM {
     fn eos_token_ids(&self) -> Option<crate::EosToks> {
         self.local.eos_token_ids()
     }
+
+    fn max_context_length(&self) -> usize {
+        self.local.max_context_length()
+    }
 }
