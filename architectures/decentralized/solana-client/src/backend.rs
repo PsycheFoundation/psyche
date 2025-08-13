@@ -3,7 +3,6 @@ use crate::retry::RetryError;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
-    Client, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
@@ -16,13 +15,14 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
         system_instruction,
     },
+    Client, Cluster, Program,
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{
-    CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
     model::{HubRepo, Model},
+    CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
 };
 use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -528,7 +528,7 @@ impl SolanaBackend {
         epoch_earning_rate: Option<u64>,
         epoch_slashing_rate: Option<u64>,
     ) -> Result<Signature> {
-        let main_authority = self.program_coordinators[0].payer();
+        let main_authority = self.get_payer();
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
@@ -571,11 +571,12 @@ impl SolanaBackend {
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
     ) -> Result<Signature> {
+        let user = self.get_payer();
         let signature = self.program_coordinators[0]
             .request()
             .accounts(
                 psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                    user: self.program_coordinators[0].payer(),
+                    user,
                     coordinator_instance,
                     coordinator_account,
                 },
@@ -587,7 +588,42 @@ impl SolanaBackend {
         Ok(signature)
     }
 
+    pub async fn treasurer_participant_create(&self, treasurer_index: u64) -> Result<Signature> {
+        let user = self.get_payer();
+        Ok(self.program_coordinators[0]
+            .request()
+            .instruction(instructions::treasurer_participant_create(
+                &self.get_payer(),
+                treasurer_index,
+                user,
+            ))
+            .send()
+            .await?)
+    }
+
+    pub async fn treasurer_participant_claim(
+        &self,
+        treasurer_index: u64,
+        collateral_mint: &Pubkey,
+        coordinator_account: &Pubkey,
+        claim_earned_points: u64,
+    ) -> Result<Signature> {
+        let user = self.get_payer();
+        Ok(self.program_coordinators[0]
+            .request()
+            .instruction(instructions::treasurer_participant_claim(
+                treasurer_index,
+                collateral_mint,
+                coordinator_account,
+                user,
+                claim_earned_points,
+            ))
+            .send()
+            .await?)
+    }
+
     pub fn send_tick(&self, coordinator_instance: Pubkey, coordinator_account: Pubkey) {
+        let user = self.get_payer();
         let program_coordinators = self.program_coordinators.clone();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
@@ -597,7 +633,7 @@ impl SolanaBackend {
                         .request()
                         .accounts(
                             psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                user: payer,
+                                user,
                                 coordinator_instance,
                                 coordinator_account,
                             },
@@ -606,14 +642,14 @@ impl SolanaBackend {
                         .send();
                     match pending_tx.await {
                         Ok(tx) => {
-                            info!(from = %payer, tx = %tx, "Tick transaction");
+                            info!(from = %user, tx = %tx, "Tick transaction");
                             return;
                         }
-                        Err(err) => debug!(from = %payer, "Error sending tick transaction: {err}"),
+                        Err(err) => debug!(from = %user, "Error sending tick transaction: {err}"),
                     }
                 }
             }
-            error!(from = %program_coordinators[0].payer(), "All attempts to send tick transaction failed")
+            error!(from = %user, "All attempts to send tick transaction failed")
         });
     }
 
@@ -623,17 +659,17 @@ impl SolanaBackend {
         coordinator_account: Pubkey,
         opportunistic_data: OpportunisticData,
     ) {
+        let user = self.get_payer();
         let program_coordinators = self.program_coordinators.clone();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
                 for program_coordinator in &program_coordinators {
-                    let payer = program_coordinator.payer();
                     let pending_tx = match opportunistic_data {
                         OpportunisticData::WitnessStep(witness, metadata) => program_coordinator
                             .request()
                             .accounts(
                                 psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                    user: payer,
+                                    user,
                                     coordinator_instance,
                                     coordinator_account,
                                 },
@@ -649,7 +685,7 @@ impl SolanaBackend {
                             .request()
                             .accounts(
                                 psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                    user: payer,
+                                    user,
                                     coordinator_instance,
                                     coordinator_account,
                                 },
@@ -663,16 +699,16 @@ impl SolanaBackend {
                     }.send();
                     match pending_tx.await {
                         Ok(tx) => {
-                            info!(from = %payer, tx = %tx, "Witness transaction");
+                            info!(from = %user, tx = %tx, "Witness transaction");
                             return;
                         }
                         Err(err) => {
-                            warn!(from = %payer, "Error sending witness transaction: {err}")
+                            warn!(from = %user, "Error sending witness transaction: {err}")
                         }
                     }
                 }
             }
-            error!(from = %program_coordinators[0].payer(), "All attempts to send witness transaction failed");
+            error!(from = %user, "All attempts to send witness transaction failed");
         });
     }
 
@@ -849,7 +885,7 @@ impl SolanaBackend {
         Ok(tx
             .transaction
             .meta
-            .ok_or(anyhow!("Transaction has no meta information"))?
+            .context("Transaction has no meta information")?
             .log_messages
             .unwrap_or(Vec::new()))
     }
@@ -877,6 +913,10 @@ impl SolanaBackend {
         } else {
             None
         })
+    }
+
+    pub fn get_payer(&self) -> Pubkey {
+        self.program_coordinators[0].payer().pubkey()
     }
 }
 

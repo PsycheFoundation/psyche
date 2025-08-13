@@ -1,13 +1,13 @@
+use anchor_client::anchor_lang::system_program;
 use anchor_client::anchor_lang::InstructionData;
 use anchor_client::anchor_lang::ToAccountMetas;
-use anchor_client::anchor_lang::system_program;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anchor_spl::token;
+use psyche_coordinator::model::Model;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::RunMetadata;
 
 pub fn coordinator_init_coordinator(
@@ -168,5 +168,61 @@ pub fn treasurer_run_update(
         }
         .to_account_metas(None),
         data: psyche_solana_treasurer::instruction::RunUpdate { params }.data(),
+    }
+}
+
+pub fn treasurer_participant_create(
+    payer: &Pubkey,
+    treasurer_index: u64,
+    user: &Pubkey,
+) -> Instruction {
+    let run = psyche_solana_treasurer::find_run(treasurer_index);
+    let participant = psyche_solana_treasurer::find_participant(&run, user);
+    Instruction {
+        program_id: psyche_solana_treasurer::ID,
+        accounts: psyche_solana_treasurer::accounts::ParticipantCreateAccounts {
+            payer: *payer,
+            run,
+            participant,
+            user: *user,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: psyche_solana_treasurer::instruction::ParticipantCreate {
+            params: psyche_solana_treasurer::logic::ParticipantCreateParams {},
+        }
+        .data(),
+    }
+}
+
+pub fn treasurer_participant_claim(
+    treasurer_index: u64,
+    collateral_mint: &Pubkey,
+    coordinator_account: &Pubkey,
+    user: &Pubkey,
+    claim_earned_points: u64,
+) -> Instruction {
+    let user_collateral = associated_token::get_associated_token_address(&user, collateral_mint);
+    let run = psyche_solana_treasurer::find_run(treasurer_index);
+    let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
+    let participant = psyche_solana_treasurer::find_participant(&run, user);
+    Instruction {
+        program_id: psyche_solana_treasurer::ID,
+        accounts: psyche_solana_treasurer::accounts::ParticipantClaimAccounts {
+            user: *user,
+            user_collateral,
+            run,
+            run_collateral,
+            participant,
+            coordinator_account: *coordinator_account,
+            token_program: token::ID,
+        }
+        .to_account_metas(None),
+        data: psyche_solana_treasurer::instruction::ParticipantClaim {
+            params: psyche_solana_treasurer::logic::ParticipantClaimParams {
+                claim_earned_points,
+            },
+        }
+        .data(),
     }
 }
