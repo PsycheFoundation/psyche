@@ -560,9 +560,11 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			),
 			lr: run.observedLrByStep.filter(goodNumber),
 			evals,
-			promptResults: promptResults,
+			promptResults:
+				promptResults as unknown as OverTime<Metrics>['promptResults'],
 			promptIndex: promptIndices,
-			cumulativePromptResults: cumulativePromptResults,
+			cumulativePromptResults:
+				cumulativePromptResults as unknown as OverTime<Metrics>['cumulativePromptResults'],
 		}
 
 		const summary: Metrics = {
