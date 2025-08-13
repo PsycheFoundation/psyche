@@ -139,5 +139,8 @@ run_test_infra_with_proxies_validator num_clients="1":
 run_test_infra_three_clients:
     cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
 
+run_simulation:
+    cd architectures/centralized/testing/tests && n0des run-sim --release --nocapture
+
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down

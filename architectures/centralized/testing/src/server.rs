@@ -1,4 +1,6 @@
 use bytemuck::Zeroable;
+use iroh::Endpoint;
+use iroh_n0des::simulation::{Node, Spawn, SpawnContext};
 use psyche_centralized_server::app::App as ServerApp;
 use psyche_centralized_shared::ClientId;
 use psyche_coordinator::{Client, Round};
@@ -18,7 +20,10 @@ use tokio::{
 };
 use tracing::debug;
 
-use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
+use crate::{
+    COOLDOWN_TIME,
+    test_utils::{Setup, sample_rand_run_id},
+};
 use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 
 enum TestingQueryMsg {
@@ -67,6 +72,8 @@ impl CoordinatorServer {
         min_clients: u16,
         global_batch_size: u16,
         witness_nodes: u16,
+        run_id: Option<String>,
+        port: Option<u16>,
     ) -> Self {
         let coordinator_config = CoordinatorConfig {
             warmup_time: WARMUP_TIME,
@@ -89,7 +96,7 @@ impl CoordinatorServer {
             ..CoordinatorEpochState::<ClientId>::zeroed()
         };
 
-        let run_id = sample_rand_run_id();
+        let run_id = run_id.unwrap_or(sample_rand_run_id());
         let coordinator: Coordinator<ClientId> = Coordinator {
             run_id: run_id.as_str().try_into().unwrap(),
             model: Model::LLM(LLM::dummy()),
@@ -104,7 +111,7 @@ impl CoordinatorServer {
             false,
             coordinator,
             None,
-            None,
+            port,
             None,
             Some(WARMUP_TIME),
             true,
@@ -189,95 +196,14 @@ pub struct CoordinatorServerHandle {
     pub run_id: String,
 }
 
-impl Serialize for CoordinatorServerHandle {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        use serde::ser::SerializeStruct;
-
-        // We can only serialize the data that can be reconstructed
-        let mut state = serializer.serialize_struct("CoordinatorServerHandle", 2)?;
-        state.serialize_field("server_port", &self.server_port)?;
-        state.serialize_field("run_id", &self.run_id)?;
-        state.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for CoordinatorServerHandle {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::{self, MapAccess, Visitor};
-        use std::fmt;
-
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "snake_case")]
-        enum Field {
-            ServerPort,
-            RunId,
-        }
-
-        struct CoordinatorServerHandleVisitor;
-
-        impl<'de> Visitor<'de> for CoordinatorServerHandleVisitor {
-            type Value = CoordinatorServerHandle;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct CoordinatorServerHandle")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<CoordinatorServerHandle, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut server_port = None;
-                let mut run_id = None;
-
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::ServerPort => {
-                            if server_port.is_some() {
-                                return Err(de::Error::duplicate_field("server_port"));
-                            }
-                            server_port = Some(map.next_value()?);
-                        }
-                        Field::RunId => {
-                            if run_id.is_some() {
-                                return Err(de::Error::duplicate_field("run_id"));
-                            }
-                            run_id = Some(map.next_value()?);
-                        }
-                    }
-                }
-
-                let server_port =
-                    server_port.ok_or_else(|| de::Error::missing_field("server_port"))?;
-                let run_id = run_id.ok_or_else(|| de::Error::missing_field("run_id"))?;
-
-                // Create a dummy channel since we can't serialize/deserialize the actual sender
-                let (query_chan_sender, _) = mpsc::channel(64);
-
-                Ok(CoordinatorServerHandle {
-                    query_chan_sender,
-                    server_port,
-                    run_id,
-                })
-            }
-        }
-
-        const FIELDS: &[&str] = &["server_port", "run_id"];
-        deserializer.deserialize_struct(
-            "CoordinatorServerHandle",
-            FIELDS,
-            CoordinatorServerHandleVisitor,
-        )
-    }
-}
-
 impl CoordinatorServerHandle {
-    pub async fn new(init_min_clients: u16, global_batch_size: u16, witness_nodes: u16) -> Self {
+    pub async fn new(
+        init_min_clients: u16,
+        global_batch_size: u16,
+        witness_nodes: u16,
+        run_id: Option<String>,
+        port: Option<u16>,
+    ) -> Self {
         debug!("creating coordinator server...");
         let (query_chan_sender, query_chan_receiver) = mpsc::channel(64);
 
@@ -295,6 +221,8 @@ impl CoordinatorServerHandle {
                 init_min_clients,
                 global_batch_size,
                 witness_nodes,
+                run_id,
+                port,
             ))
             .await
             .unwrap();
@@ -386,5 +314,36 @@ impl CoordinatorServerHandle {
         let msg = TestingQueryMsg::Coordinator { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
         recv.await.expect("Coordinator actor task has been killed")
+    }
+}
+
+impl Node for CoordinatorServerHandle {
+    fn endpoint(&self) -> Option<&Endpoint> {
+        None
+    }
+
+    async fn shutdown(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+impl Spawn<Setup> for CoordinatorServerHandle {
+    async fn spawn(ctx: &mut SpawnContext<'_, Setup>) -> anyhow::Result<Self> {
+        let endpoint = ctx.bind_endpoint().await?;
+        let setup_data = ctx.setup_data().clone();
+        // let registry = ctx.metrics_registry();
+        let mut handle = CoordinatorServerHandle::new(
+            setup_data.init_min_clients,
+            setup_data.global_batch_size,
+            setup_data.witness_nodes,
+            Some(setup_data.run_id),
+            Some(setup_data.server_port),
+        )
+        .await;
+        // registry.register_all_prefixed(endpoint.metrics());
+        // registry.register(p2p.blobs.metrics().clone());
+        // registry.register(p2p.gossip.metrics().clone());
+
+        Ok(handle)
     }
 }

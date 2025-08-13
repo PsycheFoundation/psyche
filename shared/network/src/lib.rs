@@ -271,18 +271,18 @@ where
         trace!("model parameter sharing created!");
 
         // init metrics
-        // let iroh_metrics = {
-        //     let registry = Arc::new(RwLock::new(IrohMetricsRegistry::default()));
-        //     {
-        //         let mut locked_registry = registry
-        //             .write()
-        //             .map_err(|_| anyhow!("failed to lock metrics registry"))?;
-        //         locked_registry.register_all_prefixed(endpoint.metrics());
-        //         locked_registry.register(gossip.metrics().clone());
-        //         locked_registry.register(blobs.metrics().clone());
-        //     }
-        //     IrohMetricsCollector::new(registry.clone())
-        // };
+        let iroh_metrics = {
+            let registry = Arc::new(RwLock::new(IrohMetricsRegistry::default()));
+            {
+                let mut locked_registry = registry
+                    .write()
+                    .map_err(|_| anyhow!("failed to lock metrics registry"))?;
+                locked_registry.register_all_prefixed(endpoint.metrics());
+                locked_registry.register(gossip.metrics().clone());
+                locked_registry.register(blobs.metrics().clone());
+            }
+            IrohMetricsCollector::new(registry.clone())
+        };
 
         trace!("creating router...");
         let router = Arc::new(

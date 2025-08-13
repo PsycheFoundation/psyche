@@ -8,6 +8,7 @@ use iroh_n0des::Registry;
 use psyche_centralized_client::app::AppParams;
 use psyche_network::{DiscoveryMode, SecretKey};
 use rand::distributions::{Alphanumeric, DistString};
+use serde::{Deserialize, Serialize};
 use std::env;
 use tokio_util::sync::CancellationToken;
 
@@ -43,8 +44,14 @@ pub async fn spawn_clients_with_training_delay(
     let mut client_handles = Vec::new();
     for _ in 0..num_clients {
         client_handles.push(
-            ClientHandle::new_with_training_delay(server_port, run_id, training_delay_secs, None)
-                .await,
+            ClientHandle::new_with_training_delay(
+                server_port,
+                run_id,
+                training_delay_secs,
+                None,
+                None,
+            )
+            .await,
         )
     }
     client_handles
@@ -175,4 +182,14 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         metrics_local_port: None,
         sim_endpoint: None,
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Setup {
+    pub server_port: u16,
+    pub training_delay_secs: u64,
+    pub init_min_clients: u16,
+    pub global_batch_size: u16,
+    pub witness_nodes: u16,
+    pub run_id: String,
 }

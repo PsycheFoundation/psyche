@@ -22,6 +22,7 @@ use tokio::task::JoinHandle;
 use tracing::debug;
 
 use crate::server::CoordinatorServerHandle;
+use crate::test_utils::Setup;
 use crate::test_utils::dummy_client_app_params_default;
 use crate::test_utils::dummy_client_app_params_with_training_delay;
 
@@ -103,14 +104,6 @@ impl Node for Client {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Setup {
-    pub server_port: u16,
-    pub training_delay_secs: u64,
-    pub run_id: String,
-    pub server_handler: CoordinatorServerHandle,
-}
-
 impl Spawn<Setup> for Client {
     async fn spawn(ctx: &mut SpawnContext<'_, Setup>) -> Result<Self> {
         let endpoint = ctx.bind_endpoint().await?;
@@ -120,12 +113,12 @@ impl Spawn<Setup> for Client {
             setup_data.server_port,
             &setup_data.run_id,
             setup_data.training_delay_secs,
-            Some(endpoint),
+            Some(endpoint.clone()),
         )
         .await;
-        // registry.register_all_prefixed(endpoint.metrics());
-        // registry.register(p2p.blobs.metrics().clone());
-        // registry.register(p2p.gossip.metrics().clone());
+        registry.register_all_prefixed(endpoint.metrics());
+        registry.register(p2p.blobs.metrics().clone());
+        registry.register(p2p.gossip.metrics().clone());
         node.run(allow_list, p2p, state_options).await?;
 
         Ok(node)
@@ -137,7 +130,6 @@ impl Spawn<Setup> for Client {
 pub struct ClientHandle {
     pub client_handle: JoinHandle<Result<(), Error>>,
     pub router: Arc<Router>,
-    pub server_handler: Option<CoordinatorServerHandle>,
 }
 
 impl ClientHandle {
@@ -151,7 +143,6 @@ impl ClientHandle {
         Self {
             client_handle,
             router,
-            server_handler: None,
         }
     }
 
@@ -160,12 +151,20 @@ impl ClientHandle {
         run_id: &str,
         training_delay_secs: u64,
         sim_endpoint: Option<Endpoint>,
+        registry: Option<&mut Registry>,
     ) -> Self {
         debug!("spawning new client...");
         let (mut client, allowlist, p2p, state_options) =
             Client::new_with_training_delay(server_port, run_id, training_delay_secs, sim_endpoint)
                 .await;
         let router = client.inner.router.clone();
+
+        if let Some(registry) = registry {
+            registry.register_all_prefixed(router.endpoint().metrics());
+            registry.register(p2p.blobs.metrics().clone());
+            registry.register(p2p.gossip.metrics().clone());
+        }
+
         let client_handle =
             tokio::spawn(async move { client.run(allowlist, p2p, state_options).await });
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -173,7 +172,6 @@ impl ClientHandle {
         Self {
             client_handle,
             router,
-            server_handler: None,
         }
     }
 }
@@ -191,7 +189,6 @@ impl Node for ClientHandle {
 
 impl Spawn<Setup> for ClientHandle {
     async fn spawn(ctx: &mut SpawnContext<'_, Setup>) -> Result<Self> {
-        // let endpoint = ctx.bind_endpoint().await?;
         let setup_data = ctx.setup_data().clone();
         let registry = ctx.metrics_registry();
         let mut handle = ClientHandle::new_with_training_delay(
@@ -199,12 +196,9 @@ impl Spawn<Setup> for ClientHandle {
             &setup_data.run_id,
             setup_data.training_delay_secs,
             None,
+            Some(registry),
         )
         .await;
-        handle.server_handler = Some(setup_data.server_handler.clone());
-        // registry.register_all_prefixed(endpoint.metrics());
-        // registry.register(p2p.blobs.metrics().clone());
-        // registry.register(p2p.gossip.metrics().clone());
 
         Ok(handle)
     }
