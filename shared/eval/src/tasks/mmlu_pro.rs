@@ -22,8 +22,13 @@ pub struct MMLUPro {
 impl MMLUPro {
     pub fn load() -> Result<TaskType> {
         let ret = Self {
-            test_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Test, None)?,
-            validation_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Validation, None)?,
+            test_dataset: load_dataset("pefontana/mmlu_pro_reduced", None, Split::Test, None)?,
+            validation_dataset: load_dataset(
+                "pefontana/mmlu_pro_reduced",
+                None,
+                Split::Validation,
+                None,
+            )?,
         };
         Ok(TaskType::GenerateUntil(Box::new(ret)))
     }
@@ -92,6 +97,14 @@ impl GenerateUntilTask for MMLUPro {
                 .push(doc);
         });
         fewshot_documents
+    }
+
+    fn get_stop_tokens(&self) -> Vec<String> {
+        vec!["Question:".to_string()]
+    }
+
+    fn get_answer_extraction_regex(&self) -> String {
+        r"answer is \(?([ABCDEFGHIJ])\)?".to_string()
     }
 }
 

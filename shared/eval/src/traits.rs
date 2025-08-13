@@ -16,4 +16,6 @@ pub trait LogLikelihoodTask: Send + Display {
 pub trait GenerateUntilTask: Send + Display {
     fn get_documents(&self) -> Vec<Document>;
     fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>>;
+    fn get_stop_tokens(&self) -> Vec<String>;
+    fn get_answer_extraction_regex(&self) -> String;
 }
