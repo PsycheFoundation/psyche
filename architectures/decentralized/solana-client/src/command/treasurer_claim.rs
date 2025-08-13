@@ -11,7 +11,7 @@ pub struct CommandTreasurerClaimParams {
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
-    max_collateral_amount: Option<u64>,
+    max_claimed_points: Option<u64>,
 }
 
 pub async fn command_treasurer_claim_run(
@@ -25,14 +25,6 @@ pub async fn command_treasurer_claim_run(
 
     let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
     let treasurer_run_state = backend.get_treasurer_run(&treasurer_run_address).await?;
-    let treasurer_run_collateral_address =
-        spl_associated_token_account::get_associated_token_address(
-            &treasurer_run_address,
-            &treasurer_run_state.collateral_mint,
-        );
-    let treasurer_run_collateral_amount = backend
-        .get_token_amount(&treasurer_run_collateral_address)
-        .await?;
 
     let coordinator_account_state = backend
         .get_coordinator_account(&treasurer_run_state.coordinator_account)
@@ -47,30 +39,24 @@ pub async fn command_treasurer_claim_run(
         }
     }
 
-    let earned_collateral_amount = signer_earned_points;
-    let claimable_collateral_amount =
-        std::cmp::min(treasurer_run_collateral_amount, earned_collateral_amount);
-
-    let claim_collateral_amount = std::cmp::min(
-        claimable_collateral_amount,
-        params.max_collateral_amount.unwrap_or(u64::MAX),
-    );
-
     let treasurer_participant_address =
         psyche_solana_treasurer::find_participant(&treasurer_run_address, &signer);
-
     if backend.get_balance(&treasurer_participant_address).await? == 0 {
         backend
             .treasurer_participant_create(treasurer_index)
             .await?;
     }
 
+    let claim_earned_points = std::cmp::min(
+        signer_earned_points,
+        params.max_claimed_points.unwrap_or(u64::MAX),
+    );
     backend
         .treasurer_participant_claim(
             treasurer_index,
             &treasurer_run_state.collateral_mint,
             &treasurer_run_state.coordinator_account,
-            claim_collateral_amount,
+            claim_earned_points,
         )
         .await?;
 

@@ -2,6 +2,8 @@ use crate::command::json_info::command_json_info_run;
 use crate::command::json_info::CommandJsonInfoParams;
 use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_run;
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
+use crate::command::treasurer_claim::command_treasurer_claim_run;
+use crate::command::treasurer_claim::CommandTreasurerClaimParams;
 use crate::{
     app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
     backend::SolanaBackend,
@@ -203,6 +205,14 @@ enum Commands {
         wallet: WalletArgs,
         #[clap(flatten)]
         params: CommandSetFutureEpochRatesParams,
+    },
+    TreasurerClaim {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandTreasurerClaimParams,
     },
     Show {
         #[clap(flatten)]
@@ -623,6 +633,21 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_set_future_epoch_rates_run(backend, params).await
+        }
+        Commands::TreasurerClaim {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_treasurer_claim_run(backend, params).await
         }
         Commands::Checkpoint {
             cluster,

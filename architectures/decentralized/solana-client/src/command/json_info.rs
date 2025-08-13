@@ -70,6 +70,13 @@ pub async fn command_json_info_run(
             }),
     );
 
+    let coordinator_account_clients_max_active = coordinator_account_state
+        .state
+        .clients_state
+        .clients
+        .iter()
+        .map(|client| client.active)
+        .max();
     let coordinator_account_clients_total_earned = coordinator_account_state
         .state
         .clients_state
@@ -118,9 +125,10 @@ pub async fn command_json_info_run(
             }
         },
         "clients": coordinator_account_clients_json,
-        "clients_total": {
-            "earned": coordinator_account_clients_total_earned,
-            "slashed": coordinator_account_clients_total_slashed,
+        "accounting": {
+            "max_active": coordinator_account_clients_max_active,
+            "total_earned": coordinator_account_clients_total_earned,
+            "total_slashed": coordinator_account_clients_total_slashed,
         },
         "nonce": coordinator_account_state.nonce,
     });

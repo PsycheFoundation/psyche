@@ -42,6 +42,7 @@ pub struct SolanaBackend {
     program_coordinators: Vec<Arc<Program<Arc<Keypair>>>>,
     cluster: Cluster,
     backup_clusters: Vec<Cluster>,
+    wallet: Arc<Keypair>,
 }
 
 pub struct SolanaBackendRunner {
@@ -164,6 +165,7 @@ impl SolanaBackend {
             program_coordinators,
             cluster,
             backup_clusters,
+            wallet: payer,
         })
     }
 
@@ -273,7 +275,7 @@ impl SolanaBackend {
             .get_minimum_balance_for_rent_exemption(space)
             .await?;
 
-        let payer = self.program_coordinators[0].payer();
+        let payer = self.get_payer();
         let main_authority = payer;
         let join_authority = join_authority.unwrap_or(payer);
 
@@ -284,7 +286,7 @@ impl SolanaBackend {
         let create_coordinator_signature = self.program_coordinators[0]
             .request()
             .instruction(system_instruction::create_account(
-                &self.program_coordinators[0].payer(),
+                &payer,
                 &coordinator_account,
                 rent,
                 space as u64,
@@ -329,12 +331,13 @@ impl SolanaBackend {
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
     ) -> Result<Signature> {
-        let signature = self.program_coordinators[0]
+        let main_authority = self.get_payer();
+        Ok(self.program_coordinators[0]
             .request()
             .accounts(
                 psyche_solana_coordinator::accounts::FreeCoordinatorAccounts {
-                    authority: self.program_coordinators[0].payer(),
-                    spill: self.program_coordinators[0].payer(),
+                    authority: main_authority,
+                    spill: main_authority,
                     coordinator_instance,
                     coordinator_account,
                 },
@@ -343,9 +346,7 @@ impl SolanaBackend {
                 params: psyche_solana_coordinator::logic::FreeCoordinatorParams {},
             })
             .send()
-            .await?;
-
-        Ok(signature)
+            .await?)
     }
 
     #[allow(unused)]
@@ -356,6 +357,7 @@ impl SolanaBackend {
         id: psyche_solana_coordinator::ClientId,
         authorizer: Option<Pubkey>,
     ) -> Result<Signature> {
+        let user = self.get_payer();
         let coordinator_instance_state =
             self.get_coordinator_instance(&coordinator_instance).await?;
         let authorization = psyche_solana_authorizer::find_authorization(
@@ -366,7 +368,7 @@ impl SolanaBackend {
         let signature = self.program_coordinators[0]
             .request()
             .accounts(psyche_solana_coordinator::accounts::JoinRunAccounts {
-                user: self.program_coordinators[0].payer(),
+                user,
                 authorization,
                 coordinator_instance,
                 coordinator_account,
@@ -386,6 +388,7 @@ impl SolanaBackend {
         id: psyche_solana_coordinator::ClientId,
         authorizer: Option<Pubkey>,
     ) -> Result<Signature, RetryError<String>> {
+        let user = self.get_payer();
         let coordinator_instance_state = self
             .get_coordinator_instance(&coordinator_instance)
             .await
@@ -398,7 +401,7 @@ impl SolanaBackend {
         let pending_tx = self.program_coordinators[0]
             .request()
             .accounts(psyche_solana_coordinator::accounts::JoinRunAccounts {
-                user: self.program_coordinators[0].payer(),
+                user,
                 authorization: authorization_global,
                 coordinator_instance,
                 coordinator_account,
@@ -436,7 +439,7 @@ impl SolanaBackend {
         model: Option<Model>,
         progress: Option<CoordinatorProgress>,
     ) -> Result<Signature> {
-        let main_authority = self.program_coordinators[0].payer();
+        let main_authority = self.get_payer();
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
@@ -483,7 +486,7 @@ impl SolanaBackend {
         coordinator_account: &Pubkey,
         paused: bool,
     ) -> Result<Signature> {
-        let main_authority = self.program_coordinators[0].payer();
+        let main_authority = self.get_payer();
         let signature = self.program_coordinators[0]
             .request()
             .instruction(
@@ -628,7 +631,6 @@ impl SolanaBackend {
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
                 for program_coordinator in &program_coordinators {
-                    let payer = program_coordinator.payer();
                     let pending_tx = program_coordinator
                         .request()
                         .accounts(
@@ -719,16 +721,16 @@ impl SolanaBackend {
         id: psyche_solana_coordinator::ClientId,
         check: CommitteeProof,
     ) {
+        let user = self.get_payer();
         let program_coordinators = self.program_coordinators.clone();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
                 for program_coordinator in &program_coordinators {
-                    let payer = program_coordinator.payer();
                     let pending_tx = program_coordinator
                         .request()
                         .accounts(
                             psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                user: payer,
+                                user,
                                 coordinator_instance,
                                 coordinator_account,
                             },
@@ -741,16 +743,16 @@ impl SolanaBackend {
                         }).send();
                     match pending_tx.await {
                         Ok(tx) => {
-                            info!(from = %payer, tx = %tx, "Health check transaction");
+                            info!(from = %user, tx = %tx, "Health check transaction");
                             return;
                         }
                         Err(err) => {
-                            warn!(from = %payer, "Error sending health check transaction: {err}")
+                            warn!(from = %user, "Error sending health check transaction: {err}")
                         }
                     }
                 }
             }
-            error!(from = %program_coordinators[0].payer(), "All attempts to send health check transaction failed");
+            error!(from = %user, "All attempts to send health check transaction failed");
         });
     }
 
@@ -760,12 +762,12 @@ impl SolanaBackend {
         coordinator_account: Pubkey,
         repo: HubRepo,
     ) -> Result<Signature> {
-        let payer = self.program_coordinators[0].payer();
+        let user = self.get_payer();
         let signature = self.program_coordinators[0]
             .request()
             .accounts(
                 psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                    user: payer,
+                    user,
                     coordinator_instance,
                     coordinator_account,
                 },
@@ -782,16 +784,16 @@ impl SolanaBackend {
         coordinator_account: Pubkey,
         repo: HubRepo,
     ) {
+        let user = self.get_payer();
         let program_coordinators = self.program_coordinators.clone();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
                 for program_coordinator in &program_coordinators {
-                    let payer = program_coordinator.payer();
                     let pending_tx = program_coordinator
                         .request()
                         .accounts(
                             psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                user: payer,
+                                user,
                                 coordinator_instance,
                                 coordinator_account,
                             },
@@ -800,16 +802,16 @@ impl SolanaBackend {
                         .send();
                     match pending_tx.await {
                         Ok(tx) => {
-                            info!(from = %payer, tx = %tx, "Checkpoint transaction");
+                            info!(from = %user, tx = %tx, "Checkpoint transaction");
                             return;
                         }
                         Err(err) => {
-                            warn!(from = %payer, "Error sending checkpoint transaction: {err}")
+                            warn!(from = %user, "Error sending checkpoint transaction: {err}")
                         }
                     }
                 }
             }
-            error!(from = %program_coordinators[0].payer(), "All attempts to send checkpoint transaction failed");
+            error!(from = %user, "All attempts to send checkpoint transaction failed");
         });
     }
 
@@ -916,7 +918,7 @@ impl SolanaBackend {
     }
 
     pub fn get_payer(&self) -> Pubkey {
-        self.program_coordinators[0].payer().pubkey()
+        self.wallet.pubkey()
     }
 }
 
