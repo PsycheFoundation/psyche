@@ -34,4 +34,4 @@ tokio.workspace = true
 
 [features]
 parallelism = ["tch/nccl", "torch-sys/nccl"]
-python = ["psyche-python-extension-impl/python", "pyo3", "pyo3-tch"]
+python = ["pyo3", "pyo3-tch"]

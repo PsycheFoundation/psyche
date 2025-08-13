@@ -9,9 +9,7 @@ name = "psyche_python_extension"
 crate-type = ["cdylib"]
 
 [dependencies]
-psyche-python-extension-impl = { workspace = true, optional = true }
+psyche-python-extension-impl.workspace = true
 
 [features]
-python = ["psyche-python-extension-impl"]
-python-extension = ["psyche-python-extension-impl/python-extension"]
 parallelism = ["psyche-python-extension-impl/parallelism"]

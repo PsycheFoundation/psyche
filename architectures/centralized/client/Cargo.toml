@@ -28,4 +28,4 @@ psyche-python-extension-impl = { workspace = true, optional = true }
 
 [features]
 parallelism = ["psyche-client/parallelism"]
-python = ["psyche-python-extension-impl/python"]
+python = ["psyche-python-extension-impl"]

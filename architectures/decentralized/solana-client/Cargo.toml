@@ -43,4 +43,4 @@ spl-associated-token-account = "6.0.0"
 
 [features]
 parallelism = ["psyche-client/parallelism"]
-python = ["psyche-python-extension-impl/python"]
+python = ["psyche-python-extension-impl"]
