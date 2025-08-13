@@ -38,8 +38,6 @@ solana-account-decoder-client-types = "=2.1.4"
 solana-transaction-status-client-types = "=2.1.4"
 backon = "1.4.1"
 psyche-python-extension-impl = { workspace = true, optional = true }
-spl-token = "4.0"
-spl-associated-token-account = "6.0.0"
 
 [features]
 parallelism = ["psyche-client/parallelism"]

@@ -1,9 +1,11 @@
-use crate::command::json_info::command_json_info_run;
-use crate::command::json_info::CommandJsonInfoParams;
+use crate::command::json_info_dump::command_json_info_dump_run;
+use crate::command::json_info_dump::CommandJsonInfoDumpParams;
 use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_run;
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
-use crate::command::treasurer_claim::command_treasurer_claim_run;
-use crate::command::treasurer_claim::CommandTreasurerClaimParams;
+use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_run;
+use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
+use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_run;
+use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
 use crate::{
     app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
     backend::SolanaBackend,
@@ -206,13 +208,21 @@ enum Commands {
         #[clap(flatten)]
         params: CommandSetFutureEpochRatesParams,
     },
-    TreasurerClaim {
+    TreasurerClaimRewards {
         #[clap(flatten)]
         cluster: ClusterArgs,
         #[clap(flatten)]
         wallet: WalletArgs,
         #[clap(flatten)]
-        params: CommandTreasurerClaimParams,
+        params: CommandTreasurerClaimRewardsParams,
+    },
+    TreasurerTopUpRewards {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandTreasurerTopUpRewardsParams,
     },
     Show {
         #[clap(flatten)]
@@ -285,14 +295,12 @@ enum Commands {
         #[clap(long, env, default_value_t = 3)]
         hub_max_concurrent_downloads: usize,
     },
-
-    JsonInfo {
+    JsonInfoDump {
         #[clap(flatten)]
         cluster: ClusterArgs,
         #[clap(flatten)]
-        params: CommandJsonInfoParams,
+        params: CommandJsonInfoDumpParams,
     },
-
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
     PrintAllHelp {
@@ -634,7 +642,7 @@ async fn async_main() -> Result<()> {
             .unwrap();
             command_set_future_epoch_rates_run(backend, params).await
         }
-        Commands::TreasurerClaim {
+        Commands::TreasurerClaimRewards {
             cluster,
             wallet,
             params,
@@ -647,7 +655,22 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_treasurer_claim_run(backend, params).await
+            command_treasurer_claim_rewards_run(backend, params).await
+        }
+        Commands::TreasurerTopUpRewards {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_treasurer_top_up_rewards_run(backend, params).await
         }
         Commands::Checkpoint {
             cluster,
@@ -1010,7 +1033,7 @@ async fn async_main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::JsonInfo { cluster, params } => {
+        Commands::JsonInfoDump { cluster, params } => {
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -1018,7 +1041,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_json_info_run(backend, params).await
+            command_json_info_dump_run(backend, params).await
         }
     }
 }

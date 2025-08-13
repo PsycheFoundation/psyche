@@ -1,3 +1,4 @@
-pub mod json_info;
+pub mod json_info_dump;
 pub mod set_future_epoch_rates;
-pub mod treasurer_claim;
+pub mod treasurer_claim_rewards;
+pub mod treasurer_top_up_rewards;

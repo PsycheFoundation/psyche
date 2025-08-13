@@ -1,3 +1,4 @@
+use anchor_spl::associated_token;
 use anyhow::Result;
 use clap::Args;
 use serde_json::json;
@@ -7,16 +8,16 @@ use crate::SolanaBackend;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
-pub struct CommandJsonInfoParams {
+pub struct CommandJsonInfoDumpParams {
     #[clap(short, long, env)]
     run_id: String,
     #[clap(long, env)]
     treasurer_index: Option<u64>,
 }
 
-pub async fn command_json_info_run(
+pub async fn command_json_info_dump_run(
     backend: SolanaBackend,
-    params: CommandJsonInfoParams,
+    params: CommandJsonInfoDumpParams,
 ) -> Result<()> {
     let coordinator_instance_address =
         psyche_solana_coordinator::find_coordinator_instance(&params.run_id);
@@ -139,11 +140,10 @@ pub async fn command_json_info_run(
     {
         let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
         let treasurer_run_state = backend.get_treasurer_run(&treasurer_run_address).await?;
-        let treasurer_run_collateral_address =
-            spl_associated_token_account::get_associated_token_address(
-                &treasurer_run_address,
-                &treasurer_run_state.collateral_mint,
-            );
+        let treasurer_run_collateral_address = associated_token::get_associated_token_address(
+            &treasurer_run_address,
+            &treasurer_run_state.collateral_mint,
+        );
         let treasurer_run_collateral_amount = backend
             .get_token_amount(&treasurer_run_collateral_address)
             .await?;

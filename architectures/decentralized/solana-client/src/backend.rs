@@ -17,6 +17,7 @@ use anchor_client::{
     },
     Client, Cluster, Program,
 };
+use anchor_spl::token;
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
@@ -625,6 +626,28 @@ impl SolanaBackend {
             .await?)
     }
 
+    pub async fn spl_token_transfer(
+        &self,
+        account_from: &Pubkey,
+        account_to: &Pubkey,
+        amount: u64,
+    ) -> Result<Signature> {
+        let authority = self.get_payer();
+        let instruction = token::spl_token::instruction::transfer(
+            &token::ID,
+            account_from,
+            account_to,
+            &authority,
+            &[],
+            amount,
+        )?;
+        Ok(self.program_coordinators[0]
+            .request()
+            .instruction(instruction)
+            .send()
+            .await?)
+    }
+
     pub fn send_tick(&self, coordinator_instance: Pubkey, coordinator_account: Pubkey) {
         let user = self.get_payer();
         let program_coordinators = self.program_coordinators.clone();
@@ -827,6 +850,18 @@ impl SolanaBackend {
             ))
     }
 
+    pub async fn get_treasurer_participant(
+        &self,
+        treasurer_participant: &Pubkey,
+    ) -> Result<psyche_solana_treasurer::state::Participant> {
+        self.program_coordinators[0]
+            .account::<psyche_solana_treasurer::state::Participant>(*treasurer_participant)
+            .await
+            .context(format!(
+                "Unable to get the treasurer_participant: {treasurer_participant:?}"
+            ))
+    }
+
     pub async fn get_coordinator_instance(
         &self,
         coordinator_instance: &Pubkey,
@@ -864,7 +899,7 @@ impl SolanaBackend {
             .rpc()
             .get_account_data(account)
             .await?;
-        Ok(spl_token::state::Account::unpack(&data)
+        Ok(token::spl_token::state::Account::unpack(&data)
             .context(format!(
                 "Unable to decode token account data for {account:?}"
             ))?
