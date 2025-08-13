@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use clap::Args;
 
 use crate::SolanaBackend;
@@ -19,7 +19,7 @@ pub async fn command_treasurer_claim_run(
     params: CommandTreasurerClaimParams,
 ) -> Result<()> {
     let treasurer_index = backend
-        .resolve_treasurer_index(params.run_id, params.treasurer_index)
+        .resolve_treasurer_index(&params.run_id, params.treasurer_index)
         .await?
         .context("Failed to resolve treasurer")?;
 
@@ -49,9 +49,9 @@ pub async fn command_treasurer_claim_run(
 
     let earned_collateral_amount = signer_earned_points;
     let claimable_collateral_amount =
-        std::min(treasurer_run_collateral_amount, earned_collateral_amount);
+        std::cmp::min(treasurer_run_collateral_amount, earned_collateral_amount);
 
-    let claimed_collateral_amount = std::min(
+    let claim_collateral_amount = std::cmp::min(
         claimable_collateral_amount,
         params.max_collateral_amount.unwrap_or(u64::MAX),
     );
@@ -59,18 +59,18 @@ pub async fn command_treasurer_claim_run(
     let treasurer_participant_address =
         psyche_solana_treasurer::find_participant(&treasurer_run_address, &signer);
 
-    if backend.get_balance(treasurer_participant_address).await? == 0 {
+    if backend.get_balance(&treasurer_participant_address).await? == 0 {
         backend
             .treasurer_participant_create(treasurer_index)
             .await?;
     }
 
     backend
-        .treasurer_participant_create(
+        .treasurer_participant_claim(
             treasurer_index,
-            treasurer_run_state.collateral_mint,
-            treasurer_run_state.coordinator_account,
-            claimable_collateral_amount,
+            &treasurer_run_state.collateral_mint,
+            &treasurer_run_state.coordinator_account,
+            claim_collateral_amount,
         )
         .await?;
 

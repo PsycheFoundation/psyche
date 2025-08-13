@@ -595,7 +595,7 @@ impl SolanaBackend {
             .instruction(instructions::treasurer_participant_create(
                 &self.get_payer(),
                 treasurer_index,
-                user,
+                &user,
             ))
             .send()
             .await?)
@@ -615,7 +615,7 @@ impl SolanaBackend {
                 treasurer_index,
                 collateral_mint,
                 coordinator_account,
-                user,
+                &user,
                 claim_earned_points,
             ))
             .send()
