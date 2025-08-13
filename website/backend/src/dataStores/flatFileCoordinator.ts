@@ -560,8 +560,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			),
 			lr: run.observedLrByStep.filter(goodNumber),
 			evals,
-			promptResults: promptResultsHistory,
-			promptIndex: promptIndexHistory,
+			promptResults: promptResults,
+			promptIndex: promptIndices,
 			cumulativePromptResults: cumulativePromptResults,
 		}
 
@@ -575,10 +575,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					.map(([k, v]) => [k, v.at(-1)?.[1]] as const)
 					.filter((x): x is [string, number] => x[1] !== undefined)
 			),
-			promptResults: history.promptResults.at(-1)?.[1] ?? [],
+			promptResults: (history.promptResults.at(-1)?.[1] ?? []) as number[],
 			promptIndex: history.promptIndex.at(-1)?.[1] ?? 0,
-			cumulativePromptResults:
-				history.cumulativePromptResults.at(-1)?.[1] ?? [],
+			cumulativePromptResults: (history.cumulativePromptResults.at(-1)?.[1] ??
+				[]) as number[],
 		}
 
 		let state: RunData['state']
