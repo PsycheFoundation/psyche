@@ -94,8 +94,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let (tx_request_download, mut rx_request_download) = mpsc::unbounded_channel();
                 let (tx_parameters_req, mut rx_parameters_req) = mpsc::unbounded_channel();
                 let (tx_config, mut rx_config) = mpsc::unbounded_channel();
-                let (tx_params_download, mut rx_params_download) = mpsc::unbounded_channel();
-                let (tx_config_download, mut rx_config_download) = mpsc::unbounded_channel();
+                let (tx_params_download, mut rx_params_download) = mpsc::unbounded_channel::<Vec<(Vec<BlobTicket>, ModelRequestType)>>();
+                let (tx_config_download, mut rx_config_download) = mpsc::unbounded_channel::<Vec<BlobTicket>>();
                 let (tx_request_model_config, mut rx_request_model_config) =
                     mpsc::unbounded_channel();
                 let (tx_broadcast_finished, mut rx_broadcast_finished) = mpsc::unbounded_channel();
@@ -317,7 +317,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         retried_downloads.remove(hash).await;
                                                         new_blob_ticket
                                                     } else {
-                                                        dl.blob_ticket
+                                                        vec![dl.blob_ticket]
                                                     };
 
                                                     retried_downloads.insert(DownloadRetryInfo {
@@ -501,7 +501,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
                             let kind = DownloadType::DistroResult(other_possible_nodes);
                             metrics.record_download_started(download_ticket.hash(), kind.kind());
-                            p2p.start_download(download_ticket, tag, kind);
+                            p2p.start_download(vec![download_ticket], tag, kind);
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
                             metrics.record_witness_send(opportunistic_data.kind());
@@ -556,7 +556,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         max_concurrent_request_futures.push(request_handle);
                                         // We don't care about the errors because we are already handling them inside the task
                                         join_all(max_concurrent_request_futures).await;
-                                        let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
+                                        let current_parameter_blob_tickets: Vec<(Vec<BlobTicket>, ModelRequestType)> = {
                                             let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
                                             parameter_blob_tickets_lock.drain(..).collect()
                                         };
@@ -569,7 +569,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 // All parameters have been requested, wait all the remaining request futures to complete
                                 // and download the blobs
                                 join_all(request_handles).await;
-                                let parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
+                                let parameter_blob_tickets: Vec<(Vec<BlobTicket>, ModelRequestType)> = {
                                     let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
                                     parameter_blob_tickets_lock.drain(..).collect()
                                 };
@@ -607,7 +607,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for (ticket, request_type) in param_blob_tickets {
                                 let kind = DownloadType::ModelSharing(request_type);
-                                metrics.record_download_started(ticket.hash(), kind.kind());
+                                metrics.record_download_started(ticket[0].hash(), kind.kind());
                                 // tag 0 means when we enter a train step, it'll get wiped.
                                 p2p.start_download(ticket, 0, kind);
                             }
@@ -616,7 +616,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let kind = DownloadType::ModelSharing(ModelRequestType::Config);
                             metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
                             // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket, 0, kind);
+                            p2p.start_download(vec![config_blob_ticket], 0, kind);
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
                         _ = check_connection_interval.tick() => {
@@ -822,7 +822,7 @@ async fn get_blob_ticket_to_download(
     request_type: ModelRequestType,
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
-) -> Result<BlobTicket, anyhow::Error> {
+) -> Result<Vec<BlobTicket>, anyhow::Error> {
     let blob_ticket = Arc::new(std::sync::Mutex::new(Vec::with_capacity(1)));
 
     blob_ticket_param_request_task(

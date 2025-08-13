@@ -20,6 +20,7 @@ pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
+use rand::seq::SliceRandom;
 use router::Router;
 use state::State;
 use std::{
@@ -383,50 +384,71 @@ where
         Ok(())
     }
 
-    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
-        let provider_node_id = ticket.node_addr().clone();
-        let ticket_hash = ticket.hash();
+    pub fn start_download(
+        &mut self,
+        tickets: Vec<BlobTicket>,
+        tag: u32,
+        download_type: DownloadType,
+    ) {
         let additional_peers_to_try = match download_type.clone() {
             DownloadType::DistroResult(peers) => peers,
             DownloadType::ModelSharing(_) => {
                 vec![]
             }
         };
-        let (tx, rx) = mpsc::unbounded_channel();
 
-        self.state.currently_sharing_blobs.insert(ticket_hash);
-        self.state.blob_tags.insert((tag, ticket_hash));
-        self.download_manager
-            .add(ticket, tag, rx, download_type.clone());
+        let provider_node_id = tickets
+            .iter()
+            .map(|ticket| ticket.node_addr().clone())
+            .chain(additional_peers_to_try.iter().cloned())
+            .collect::<Vec<_>>();
+        //let ticket_hash = ticket.hash();
 
-        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        let mut download_updaters = Vec::new();
 
-        let blobs_client = self.blobs.client().clone();
-        tokio::spawn(async move {
-            let download_opts = DownloadOptions {
-                format: BlobFormat::Raw,
-                nodes: std::iter::once(provider_node_id)
-                    .chain(additional_peers_to_try.iter().cloned())
-                    .collect(),
-                tag: SetTagOption::Auto,
-                mode: DownloadMode::Queued,
-            };
+        for (idx, ticket) in tickets.into_iter().enumerate() {
+            let ticket_hash = ticket.hash();
+            self.state.currently_sharing_blobs.insert(ticket_hash);
+            self.state.blob_tags.insert((tag, ticket_hash));
 
-            let download_start_result = blobs_client
-                .download_with_opts(ticket_hash, download_opts)
-                .await;
+            debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
-            match download_start_result {
-                Ok(mut progress) => {
-                    while let Some(val) = progress.next().await {
-                        if let Err(err) = tx.send(val) {
-                            panic!("Failed to send download progress: {err:?} {:?}", err.0);
+            let (tx, rx) = mpsc::unbounded_channel();
+            download_updaters.push(rx);
+
+            let blobs_client = self.blobs.client().clone();
+
+            // reuse the nodes list for our N blobs to download
+            // and try to randomize the nodes we get the various blobs of the download from.
+            // this is super inefficient though, and ideally, iroh would just have an Arc<Vec<_>>
+            // with an RNG taken in DownloadOptions and just randomize the order that way
+            let mut provider_node_id_clone = provider_node_id[..].to_vec();
+            provider_node_id_clone.shuffle(&mut rand::thread_rng());
+
+            tokio::spawn(async move {
+                let download_opts = DownloadOptions {
+                    format: BlobFormat::Raw,
+                    nodes: provider_node_id_clone,
+                    tag: SetTagOption::Auto,
+                    mode: DownloadMode::Queued,
+                };
+
+                let download_start_result = blobs_client
+                    .download_with_opts(ticket_hash, download_opts)
+                    .await;
+
+                match download_start_result {
+                    Ok(mut progress) => {
+                        while let Some(val) = progress.next().await {
+                            if let Err(err) = tx.send((val, idx)) {
+                                panic!("Failed to send download progress: {err:?} {:?}", err.0);
+                            }
                         }
                     }
+                    Err(e) => panic!("Failed to start download: {e}"),
                 }
-                Err(e) => panic!("Failed to start download: {e}"),
-            }
-        });
+            });
+        }
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
@@ -668,8 +690,10 @@ pub async fn request_model_blob_ticket(
 
     // Receive parameter value blob ticket
     let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
-    let parameter_blob_ticket: Result<Result<Vec<BlobTicket>, SharableModelError>, postcard::Error> =
-        postcard::from_bytes(&parameter_blob_ticket_bytes);
+    let parameter_blob_ticket: Result<
+        Result<Vec<BlobTicket>, SharableModelError>,
+        postcard::Error,
+    > = postcard::from_bytes(&parameter_blob_ticket_bytes);
     let result = parameter_blob_ticket
         .with_context(|| "Error parsing model parameter blob ticket".to_string())?;
 
@@ -834,7 +858,7 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
+    model_blob_tickets: Arc<std::sync::Mutex<Vec<(Vec<BlobTicket>, ModelRequestType)>>>,
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
 ) {
@@ -859,13 +883,10 @@ pub async fn blob_ticket_param_request_task(
 
         match result {
             Ok(Ok(blob_tickets)) => {
-                for blob_ticket in blob_tickets.into_iter() {
-
                 model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push((blob_ticket, model_request_type.clone()));
-                }
+                    .push((blob_tickets, model_request_type.clone()));
 
                 peer_manager.report_success(peer_id);
                 return;
