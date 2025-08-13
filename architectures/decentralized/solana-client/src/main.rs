@@ -1,17 +1,18 @@
-use crate::command::json_info_dump::command_json_info_dump_run;
 use crate::command::json_info_dump::CommandJsonInfoDumpParams;
-use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_run;
+use crate::command::json_info_dump::command_json_info_dump_run;
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
-use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_run;
+use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_run;
 use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
-use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_run;
+use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_run;
 use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
+use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_run;
 use crate::{
-    app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
+    app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
 };
 
 use anchor_client::{
+    Client, Cluster,
     anchor_lang::system_program,
     solana_sdk::{
         commitment_config::{CommitmentConfig, CommitmentLevel},
@@ -20,24 +21,23 @@ use anchor_client::{
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
-    Client, Cluster,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use bytemuck::Zeroable;
 use clap::{Args, Parser, Subcommand};
-use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
+use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
 use psyche_coordinator::{
-    get_data_index_for_step,
+    CoordinatorConfig, CoordinatorProgress, RunState, get_data_index_for_step,
     model::{Checkpoint, HubRepo, Model},
-    CoordinatorConfig, CoordinatorProgress, RunState,
 };
-use psyche_core::{sha256, FixedString};
+use psyche_core::{FixedString, sha256};
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
 use psyche_tui::{
+    LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop, LogOutput, ServiceInfo,
+    maybe_start_render_loop,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -48,7 +48,7 @@ use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::{
     runtime::Builder,
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
 use tracing::info;
 
@@ -992,8 +992,7 @@ async fn async_main() -> Result<()> {
                 }
 
                 #[allow(irrefutable_let_patterns)]
-                let Model::LLM(model) = coordinator_account_state.model
-                else {
+                let Model::LLM(model) = coordinator_account_state.model else {
                     bail!("model is not an LLM, unsure how to predownload.");
                 };
 

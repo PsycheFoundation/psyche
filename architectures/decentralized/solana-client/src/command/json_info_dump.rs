@@ -2,7 +2,7 @@ use anchor_spl::associated_token;
 use anyhow::Result;
 use clap::Args;
 use serde_json::json;
-use serde_json::{to_string, Map};
+use serde_json::{Map, to_string};
 
 use crate::SolanaBackend;
 

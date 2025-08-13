@@ -3,6 +3,7 @@ use crate::retry::RetryError;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
+    Client, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
@@ -15,15 +16,14 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
         system_instruction,
     },
-    Client, Cluster, Program,
 };
-use anchor_spl::token;
-use anyhow::{anyhow, Context, Result};
+use anchor_spl::{associated_token, token};
+use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{
-    model::{HubRepo, Model},
     CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
+    model::{HubRepo, Model},
 };
 use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -633,17 +633,34 @@ impl SolanaBackend {
         amount: u64,
     ) -> Result<Signature> {
         let authority = self.get_payer();
-        let instruction = token::spl_token::instruction::transfer(
-            &token::ID,
-            account_from,
-            account_to,
-            &authority,
-            &[],
-            amount,
-        )?;
         Ok(self.program_coordinators[0]
             .request()
-            .instruction(instruction)
+            .instruction(token::spl_token::instruction::transfer(
+                &token::ID,
+                account_from,
+                account_to,
+                &authority,
+                &[],
+                amount,
+            )?)
+            .send()
+            .await?)
+    }
+
+    pub async fn spl_associated_token_create(
+        &self,
+        mint: &Pubkey,
+        owner: &Pubkey,
+    ) -> Result<Signature> {
+        let payer = self.get_payer();
+        Ok(self.program_coordinators[0]
+            .request()
+            .instruction(associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+            &payer,
+            owner,
+            mint,
+            &token::ID,
+        ))
             .send()
             .await?)
     }

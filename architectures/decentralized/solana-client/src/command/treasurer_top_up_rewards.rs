@@ -45,11 +45,10 @@ pub async fn command_treasurer_top_up_rewards_run(
     );
 
     let user = backend.get_payer();
-    let user_collateral_address =
-        associated_token::get_associated_token_address(&user, &treasurer_run_state.collateral_mint);
-
     println!("User: {}", user);
 
+    let user_collateral_address =
+        associated_token::get_associated_token_address(&user, &treasurer_run_state.collateral_mint);
     let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
     println!("User collateral amount: {}", user_collateral_amount);
 

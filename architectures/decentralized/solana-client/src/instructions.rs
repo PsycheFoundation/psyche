@@ -1,13 +1,13 @@
-use anchor_client::anchor_lang::system_program;
 use anchor_client::anchor_lang::InstructionData;
 use anchor_client::anchor_lang::ToAccountMetas;
+use anchor_client::anchor_lang::system_program;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anchor_spl::token;
-use psyche_coordinator::model::Model;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::RunMetadata;
 
 pub fn coordinator_init_coordinator(

@@ -47,6 +47,21 @@ pub async fn command_treasurer_claim_rewards_run(
     let user = backend.get_payer();
     println!("User: {}", user);
 
+    let user_collateral_address =
+        associated_token::get_associated_token_address(&user, &treasurer_run_state.collateral_mint);
+    if backend.get_balance(&user_collateral_address).await? == 0 {
+        let signature = backend
+            .spl_associated_token_create(&treasurer_run_state.collateral_mint, &user)
+            .await?;
+        println!(
+            "Created associated token account for user during transaction: {}",
+            signature
+        );
+    }
+
+    let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
+    println!("User collateral amount: {}", user_collateral_amount);
+
     let treasurer_participant_address =
         psyche_solana_treasurer::find_participant(&treasurer_run_address, &user);
     if backend.get_balance(&treasurer_participant_address).await? == 0 {
