@@ -112,7 +112,7 @@ psyche-solana-client set-future-epoch-rates \
 To distribute collateral to users, we need to periodically top-up the run's treasury so that points earned by users during compute can then be claimed against the treasury.
 
 ```sh
-psyche-solana-client treasurer-top-up-reward \
+psyche-solana-client treasurer-top-up-rewards \
     --wallet-private-key-path [AUTHORITY_WALLET_PATH] \
     --rpc [RPC] \
     --run-id [RUN_ID] \

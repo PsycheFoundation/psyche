@@ -61,3 +61,14 @@ docker run -d \
     --network "host" \
     nousresearch/psyche-client:latest
 ```
+
+### Fetching earned rewards
+
+If you have accumulated training, you can claim those using the following command
+
+```bash
+psyche-solana-client treasurer-claim-rewards \
+    --wallet-private-key-path [CLIENT_WALLET_PATH] \
+    --rpc [RPC] \
+    --run-id [RUN_ID]
+```
