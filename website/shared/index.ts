@@ -82,6 +82,9 @@ export type Metrics = {
 	tokensPerSecond: number
 	lr: number
 	evals: Record<string, number>
+	promptResults: number[]
+	promptIndex: number
+	cumulativePromptResults: number[]
 }
 
 export type OverTime<T extends object> = {
@@ -135,6 +138,9 @@ export interface RunData {
 		summary: NullableRecursive<Metrics>
 		history: OverTime<Metrics>
 	}
+	promptResults: number[]
+	promptIndex: number
+	cumulativePromptResults: number[]
 }
 
 interface ChainStatus {
