@@ -8,7 +8,7 @@ use iroh_blobs::{
     downloader::{ConcurrencyLimits, RetryConfig},
     net_protocol::{Blobs, DownloadMode},
     rpc::client::blobs::DownloadOptions,
-    store::mem::Store,
+    store::fs::Store,
     util::SetTagOption,
 };
 use iroh_gossip::{
@@ -28,6 +28,8 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
+    path::PathBuf,
+    str::FromStr,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -227,10 +229,13 @@ where
         let node_addr = endpoint.node_addr().await?;
 
         info!("Our node addr: {}", node_addr.node_id);
-        info!("Our join ticket: {}", PeerList(vec![node_addr]));
+        info!("Our join ticket: {}", PeerList(vec![node_addr.clone()]));
 
         trace!("creating blobs...");
-        let blobs = Blobs::memory()
+        let store_dir = PathBuf::from_str(&format!("test-store-{}", node_addr.node_id)).unwrap();
+        let blobs = Blobs::persistent(store_dir)
+            .await
+            .unwrap()
             .concurrency_limits(ConcurrencyLimits {
                 max_concurrent_requests_per_node: 1,
                 max_concurrent_requests: max_concurrent_downloads,
