@@ -628,23 +628,23 @@ impl ClientMetrics {
 
         struct GpuMeters {
             nvml: Nvml,
-            gpu_usage: Histogram<f64>,
-            gpu_memory: Histogram<u64>,
-            gpu_temp: Histogram<u64>,
+            gpu_usage: Gauge<f64>,
+            gpu_memory: Gauge<u64>,
+            gpu_temp: Gauge<u64>,
         }
 
         let gpu_meters = Nvml::init().ok().map(|nvml| GpuMeters {
             nvml,
             gpu_usage: meter
-                .f64_histogram("psyche_gpu_usage_percent")
+                .f64_gauge("psyche_gpu_usage_percent")
                 .with_description("GPU usage percentage")
                 .build(),
             gpu_memory: meter
-                .u64_histogram("psyche_gpu_memory")
+                .u64_gauge("psyche_gpu_memory")
                 .with_description("GPU memory usage")
                 .build(),
             gpu_temp: meter
-                .u64_histogram("psyche_gpu_temp")
+                .u64_gauge("psyche_gpu_temp")
                 .with_description("GPU usage percentage")
                 .build(),
         });

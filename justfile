@@ -129,8 +129,8 @@ docker_push_centralized_client:
 
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra:
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
+    cd architectures/decentralized/solana-coordinator && anchor build
+    cd architectures/decentralized/solana-authorizer && anchor build
     just nix build_docker_solana_test_client
     just nix build_docker_solana_test_validator
 

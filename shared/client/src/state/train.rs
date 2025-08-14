@@ -33,7 +33,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, trace, trace_span, warn};
 
 use super::{
-    evals::{EvalRunner, MaybeRunningEvals},
+    evals::{MaybeRunningEvals, ModelTaskRunner},
     round_state::RoundState,
     types::DistroBroadcastAndPayload,
 };
@@ -99,7 +99,7 @@ pub struct TrainingStepMetadata<T: NodeIdentity, A: AuthenticatableIdentity> {
 
     pub write_gradients_dir: Option<PathBuf>,
 
-    pub eval_runner: EvalRunner,
+    pub model_task_runner: ModelTaskRunner,
 }
 
 #[derive(Debug)]
@@ -250,7 +250,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             "Got training assignment for step {} (round {}/epoch {}): index={} committee position={} committee={} witness position={} witness={} warmup_lr_between={:?}",
             state.progress.step, round.height, epoch, client_index, committee_proof.position, committee_proof.committee, witness_proof.position, witness_proof.witness, warmup_lr_between
         );
-        let eval_runner = self.eval_runner.clone();
+        let model_task_runner = self.model_task_runner.clone();
         let finished = Arc::new(AtomicBool::new(false));
 
         let prev_self_distro_results = previous_round.self_distro_results.clone();
@@ -265,7 +265,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     finished.store(true, Ordering::SeqCst);
                     Ok(FinishedTrainers {
                         evals_or_trainers: MaybeRunningEvals::Running(
-                            eval_runner
+                            model_task_runner
                                 .start(applying.await.map_err(|_| TrainError::ApplyCrashed)??),
                         ),
                         round_losses: vec![],
@@ -472,7 +472,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         MaybeRunningEvals::NotRunning(available_trainers)
                     } else {
                         // we finished before getting cancelled, have some time to start evals.
-                        MaybeRunningEvals::Running(eval_runner.start(available_trainers))
+                        MaybeRunningEvals::Running(model_task_runner.start(available_trainers))
                     };
                     let round_duration = Instant::now() - round_start;
                     debug!("Training for round finished, duration {:?}", round_duration);

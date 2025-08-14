@@ -18,7 +18,8 @@ let
     (builtins.match ".*tests/resources/.*$" path != null)
     || (builtins.match ".*tests/fixtures/.*$" path != null)
     || (builtins.match ".*.config/.*$" path != null)
-    || (builtins.match ".*local-dev-keypair.json$" path != null);
+    || (builtins.match ".*local-dev-keypair.json$" path != null)
+    || (builtins.match ".*shared/client/src/state/prompt_texts/.*\\.txt$" path != null);
 
   src = lib.cleanSourceWith {
     src = ../.;
@@ -36,22 +37,21 @@ let
       python312
     ];
 
-    buildInputs =
+    buildInputs = [
+      pkgs.python312Packages.torch-bin
+    ]
+    ++ (with pkgs; [
+      openssl
+      fontconfig # for lr plot
+    ])
+    ++ lib.optionals pkgs.config.cudaSupport (
+      with pkgs.cudaPackages;
       [
-        pkgs.python312Packages.torch-bin
+        cudatoolkit
+        cuda_cudart
+        nccl
       ]
-      ++ (with pkgs; [
-        openssl
-        fontconfig # for lr plot
-      ])
-      ++ lib.optionals pkgs.config.cudaSupport (
-        with pkgs.cudaPackages;
-        [
-          cudatoolkit
-          cuda_cudart
-          nccl
-        ]
-      );
+    );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
@@ -222,7 +222,8 @@ let
 
         nativeBuildInputs = [
           inputs.solana-pkgs.packages.${system}.anchor
-        ] ++ rustWorkspaceDeps.nativeBuildInputs;
+        ]
+        ++ rustWorkspaceDeps.nativeBuildInputs;
 
         buildPhaseCargoCommand = ''
           mkdir $out

@@ -34,6 +34,8 @@ use psyche_tui::{
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use serde_json::{Map, to_string};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::{io::Cursor, path::PathBuf, time::Duration};
@@ -46,6 +48,7 @@ use tracing::info;
 
 mod app;
 mod backend;
+mod instructions;
 mod network_identity;
 mod retry;
 
@@ -103,6 +106,12 @@ enum Commands {
         #[clap(short, long, env)]
         run_id: String,
 
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
+
+        #[clap(long, env)]
+        treasurer_collateral_mint: Option<String>,
+
         #[clap(long)]
         join_authority: Option<String>,
     },
@@ -126,6 +135,9 @@ enum Commands {
         #[clap(long, env)]
         run_id: String,
 
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
+
         #[clap(short, long, env)]
         resume: bool,
     },
@@ -138,6 +150,9 @@ enum Commands {
 
         #[clap(short, long, env)]
         run_id: String,
+
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
 
         #[clap(long, env)]
         config_path: Option<PathBuf>,
@@ -187,6 +202,9 @@ enum Commands {
 
         #[clap(short, long, env)]
         run_id: String,
+
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
 
         #[clap(long, env)]
         earning_rate: Option<u64>,
@@ -259,8 +277,22 @@ enum Commands {
         #[clap(long, env, action)]
         predownload_model: bool,
 
+        #[clap(long, env, action)]
+        predownload_eval_tasks: Option<String>,
+
         #[clap(long, env, default_value_t = 3)]
         hub_max_concurrent_downloads: usize,
+    },
+
+    Info {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+
+        #[clap(short, long, env)]
+        run_id: String,
+
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
     },
 
     // Prints the help, optionally as markdown. Used for docs generation.
@@ -330,6 +362,8 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
+            treasurer_collateral_mint,
             join_authority,
         } => {
             let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
@@ -341,9 +375,27 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
+
+            if treasurer_index.is_some() && treasurer_collateral_mint.is_none() {
+                bail!(
+                    "treasurer_index is set, but treasurer_collateral_mint is not. Please provide a collateral mint address."
+                );
+            }
+            let treasurer_index_and_collateral_mint =
+                treasurer_collateral_mint.map(|treasurer_collateral_mint| {
+                    (
+                        SolanaBackend::compute_deterministic_treasurer_index(
+                            &run_id,
+                            treasurer_index,
+                        ),
+                        Pubkey::from_str(&treasurer_collateral_mint).unwrap(),
+                    )
+                });
+
             let created = backend
                 .create_run(
-                    run_id.clone(),
+                    &run_id,
+                    treasurer_index_and_collateral_mint,
                     join_authority.map(|address| Pubkey::from_str(&address).unwrap()),
                 )
                 .await?;
@@ -393,6 +445,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             config_path,
             restart_from_step,
             switch_to_hub,
@@ -482,8 +535,9 @@ async fn async_main() -> Result<()> {
 
             let set: anchor_client::solana_sdk::signature::Signature = backend
                 .update(
-                    coordinator_instance,
-                    coordinator_account,
+                    &run_id,
+                    treasurer_index,
+                    &coordinator_account,
                     metadata,
                     config,
                     model,
@@ -501,6 +555,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             resume,
         } => {
             let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
@@ -519,7 +574,7 @@ async fn async_main() -> Result<()> {
                 .await?;
             let coordinator_account = coordinator_instance_state.coordinator_account;
             let set = backend
-                .set_paused(coordinator_instance, coordinator_account, paused)
+                .set_paused(&run_id, treasurer_index, &coordinator_account, paused)
                 .await?;
             println!("Set pause state to {paused} on run {run_id} with transaction {set}");
             println!("\n===== Logs =====");
@@ -570,6 +625,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             earning_rate,
             slashing_rate,
         } => {
@@ -589,8 +645,9 @@ async fn async_main() -> Result<()> {
             let coordinator_account = coordinator_instance_state.coordinator_account;
             let set = backend
                 .set_future_epoch_rates(
-                    coordinator_instance,
-                    coordinator_account,
+                    &run_id,
+                    treasurer_index,
+                    &coordinator_account,
                     earning_rate,
                     slashing_rate,
                 )
@@ -796,6 +853,7 @@ async fn async_main() -> Result<()> {
                 write_gradients_dir: args.write_gradients_dir,
                 eval_task_max_docs: args.eval_task_max_docs,
                 eval_tasks,
+                prompt_task: args.prompt_task,
                 checkpoint_upload_info,
                 hub_read_token,
                 hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
@@ -833,6 +891,7 @@ async fn async_main() -> Result<()> {
             authorizer,
             pubkey,
             predownload_model,
+            predownload_eval_tasks,
             hub_max_concurrent_downloads,
         } => {
             // when we call join_run, we check
@@ -896,7 +955,10 @@ async fn async_main() -> Result<()> {
                 .state
                 .coordinator;
 
-            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+            let is_paused = matches!(
+                coordinator_account_state.run_state,
+                RunState::Paused | RunState::Uninitialized
+            );
 
             if !is_paused {
                 let client_with_our_key = coordinator_account_state
@@ -953,6 +1015,171 @@ async fn async_main() -> Result<()> {
                 .await?;
                 println!("Model predownloaded successfully.")
             }
+            if let Some(predownload_eval_tasks) = predownload_eval_tasks {
+                let _ = TrainArgs::eval_tasks_from_args(&predownload_eval_tasks, 0, 0)?;
+                println!("Eval tasks `{predownload_eval_tasks}` predownloaded successfully.");
+            }
+            Ok(())
+        }
+        Commands::Info {
+            cluster,
+            run_id,
+            treasurer_index,
+        } => {
+            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+
+            let coordinator_instance_address = find_coordinator_instance(&run_id);
+            let coordinator_instance_state = backend
+                .get_coordinator_instance(&coordinator_instance_address)
+                .await?;
+            let coordinator_instance_json = json!({
+                "address": coordinator_instance_address.to_string(),
+                "join_authority": coordinator_instance_state.join_authority.to_string(),
+                "main_authority": coordinator_instance_state.main_authority.to_string(),
+            });
+
+            let coordinator_account_address = coordinator_instance_state.coordinator_account;
+            let coordinator_account_state = backend
+                .get_coordinator_account(&coordinator_account_address)
+                .await?;
+
+            let coordinator_account_json: serde_json::Value = json!({
+                "address": coordinator_account_address.to_string(),
+                "metadata": {
+                    "run_id": coordinator_account_state.state.coordinator.run_id,
+                    "description": coordinator_account_state.state.metadata.description,
+                    "name": coordinator_account_state.state.metadata.name,
+                    "num_parameters": coordinator_account_state.state.metadata.num_parameters,
+                    "vocab_size": coordinator_account_state.state.metadata.vocab_size,
+                    "model": format!("{:?}", coordinator_account_state.state.coordinator.model),
+                },
+                "joined_clients": Map::from_iter(coordinator_account_state.state.clients_state.clients.iter().map(|client| {
+                    (
+                        client.id.to_string(),
+                        json!({
+                            "earned": client.earned,
+                            "slashed": client.slashed,
+                            "active": client.active,
+                        }),
+                    )
+                })),
+                "status": {
+                    "next_active": coordinator_account_state.state.clients_state.next_active,
+                    "state": coordinator_account_state.state.coordinator.run_state.to_string(),
+                    "epoch": coordinator_account_state.state.coordinator.progress.epoch,
+                    "step": coordinator_account_state.state.coordinator.progress.step,
+                },
+                "epoch": {
+                    "clients": {
+                        "alive": Map::from_iter(coordinator_account_state.state.coordinator.epoch_state.clients.iter().map(|client| {
+                            (
+                                client.id.to_string(),
+                                json!(client.state.to_string()),
+                            )
+                        })),
+                        "exited": Map::from_iter(coordinator_account_state.state.coordinator.epoch_state.exited_clients.iter().map(|client| {
+                            (
+                                client.id.to_string(),
+                                json!(client.state.to_string()),
+                            )
+                        })),
+                    },
+                    "rates": {
+                        "current": {
+                            "earning": coordinator_account_state.state.clients_state.current_epoch_rates.earning_rate,
+                            "slashing": coordinator_account_state.state.clients_state.current_epoch_rates.slashing_rate,
+                        },
+                        "future": {
+                            "earning": coordinator_account_state.state.clients_state.future_epoch_rates.earning_rate,
+                            "slashing": coordinator_account_state.state.clients_state.future_epoch_rates.slashing_rate,
+                        },
+                    }
+                },
+                "nonce": coordinator_account_state.nonce,
+            });
+
+            let treasurer_run_json = if let Some(treasurer_index) = backend
+                .resolve_treasurer_index(&run_id, treasurer_index)
+                .await?
+            {
+                let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
+                let treasurer_run_state = backend.get_treasurer_run(&treasurer_run_address).await?;
+                let treasurer_run_collateral_address =
+                    spl_associated_token_account::get_associated_token_address(
+                        &treasurer_run_address,
+                        &treasurer_run_state.collateral_mint,
+                    );
+                let treasurer_run_collateral_amount = backend
+                    .get_token_amount(&treasurer_run_collateral_address)
+                    .await?;
+
+                let total_claimable_earned_points = coordinator_account_state
+                    .state
+                    .clients_state
+                    .clients
+                    .iter()
+                    .map(|client| client.earned)
+                    .sum::<u64>();
+                let total_unclaimed_earned_points =
+                    total_claimable_earned_points - treasurer_run_state.total_claimed_earned_points;
+
+                let total_funded_unearned_points =
+                    treasurer_run_collateral_amount - total_unclaimed_earned_points;
+
+                let estimated_earned_points_per_epoch = u64::try_from(
+                    coordinator_account_state
+                        .state
+                        .coordinator
+                        .epoch_state
+                        .clients
+                        .len(),
+                )
+                .unwrap()
+                    * coordinator_account_state
+                        .state
+                        .clients_state
+                        .current_epoch_rates
+                        .earning_rate;
+                let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
+                    json!(f64::INFINITY)
+                } else {
+                    json!(total_funded_unearned_points / estimated_earned_points_per_epoch)
+                };
+
+                Some(json!({
+                    "address": treasurer_run_address.to_string(),
+                    "index": treasurer_run_state.index,
+                    "main_authority": treasurer_run_state.main_authority.to_string(),
+                    "join_authority": treasurer_run_state.join_authority.to_string(),
+                    "collateral_mint": treasurer_run_state.collateral_mint.to_string(),
+                    "funded_collateral_amount": treasurer_run_collateral_amount,
+                    "total_claimed_earned_points": treasurer_run_state.total_claimed_earned_points,
+                    "total_claimable_earned_points": total_claimable_earned_points,
+                    "total_unclaimed_earned_points": total_unclaimed_earned_points,
+                    "total_funded_unearned_points": total_funded_unearned_points,
+                    "estimated_earned_points_per_epoch": estimated_earned_points_per_epoch,
+                    "estimated_funded_epochs_count": estimated_funded_epochs_count,
+                }))
+            } else {
+                None
+            };
+
+            println!(
+                "{}",
+                to_string(&json!({
+                    "treasurer_run": treasurer_run_json,
+                    "coordinator_instance": coordinator_instance_json,
+                    "coordinator_account": coordinator_account_json,
+                }))?
+            );
+
             Ok(())
         }
     }

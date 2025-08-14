@@ -69,6 +69,8 @@ impl CausalLM for DummyModel {
         &mut self,
         _x: &tch::Tensor,
         _labels: Option<&tch::Tensor>,
+        _position_ids: Option<&tch::Tensor>,
+        _sequence_lengths: Option<&Vec<Vec<i32>>>,
         _num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (tch::Tensor, Option<tch::Tensor>) {

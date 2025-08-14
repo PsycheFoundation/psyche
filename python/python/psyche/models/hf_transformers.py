@@ -2,7 +2,7 @@ import torch
 import json
 import os
 
-from . import CausalLM, PretrainedSourceRepoFiles, PretrainedSourceStateDict
+from .causal_lm import CausalLM, PretrainedSourceRepoFiles, PretrainedSourceStateDict
 from transformers import AutoModelForCausalLM, PreTrainedModel
 from typing import Union, Iterable, Optional, Tuple
 from safetensors import safe_open
@@ -12,7 +12,6 @@ from torch.distributed import init_device_mesh
 from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
 from torch.distributed.tensor import DTensor, distribute_tensor
-from torch.distributed.tensor._utils import compute_local_shape_and_global_offset
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -117,7 +116,9 @@ class HfTransformersAuto(CausalLM):
             config.max_position_embeddings = override_max_position_embeddings
 
         with torch.device("meta"):
-            model: torch.nn.Module = AutoModelForCausalLM.from_config(config)
+            model: torch.nn.Module = AutoModelForCausalLM.from_config(
+                config, attn_implementation="flash_attention_2"
+            )
         if device.type == "cuda":
             torch.cuda.set_device(device)
 
@@ -210,6 +211,8 @@ class HfTransformersAuto(CausalLM):
         self,
         input_ids: torch.Tensor,
         labels: Optional[torch.Tensor],
+        position_ids: Optional[torch.Tensor] = None,
+        sequence_lengths: Optional[list[list[int]]] = None,
         num_logits_to_keep: Optional[int] = None,
         loss_scale: Optional[float] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
@@ -226,11 +229,16 @@ class HfTransformersAuto(CausalLM):
                     input_ids = input_ids.narrow(0, start_row, shard_size).contiguous()
                     if labels is not None:
                         labels = labels.narrow(0, start_row, shard_size).contiguous()
+                    if position_ids is not None:
+                        position_ids = position_ids.narrow(
+                            0, start_row, shard_size
+                        ).contiguous()
 
         num_logits_to_keep = 0 if num_logits_to_keep is None else num_logits_to_keep
         ret = self.model(
             input_ids,
             labels=labels,
+            position_ids=position_ids,
             num_logits_to_keep=num_logits_to_keep,
             return_dict=True,
         )
