@@ -20,8 +20,6 @@ use psyche_coordinator::{
 use rand::seq::IteratorRandom;
 use tracing::info;
 
-mod simulations;
-
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn connect_single_node() {
     let init_min_clients = 2;
