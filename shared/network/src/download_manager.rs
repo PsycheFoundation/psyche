@@ -23,11 +23,13 @@ use tracing::{error, info, trace, warn};
 
 pub const MAX_DOWNLOAD_RETRIES: usize = 3;
 
+// todo: this implies that we'll retry the entire download (e.g. parameter) if even 1 blob download fails
+// ideally, we'd allow to retry only failed blob downloads, while keeping the association of each blob with its download
 #[derive(Debug, Clone)]
 pub struct DownloadRetryInfo {
     pub retries: usize,
     pub retry_time: Option<Instant>,
-    pub ticket: BlobTicket,
+    pub tickets: Vec<BlobTicket>,
     pub tag: u32,
     pub r#type: DownloadType,
 }
@@ -46,7 +48,7 @@ pub enum RetriedDownloadsMessage {
         response: oneshot::Sender<Option<DownloadRetryInfo>>,
     },
     PendingRetries {
-        response: oneshot::Sender<Vec<(Hash, BlobTicket, u32, DownloadType)>>,
+        response: oneshot::Sender<Vec<(Hash, Vec<BlobTicket>, u32, DownloadType)>>,
     },
     UpdateTime {
         hash: Hash,
@@ -118,7 +120,7 @@ impl RetriedDownloadsHandle {
     }
 
     /// Get the retries that are considered pending and have not been retried yet
-    pub async fn pending_retries(&self) -> Vec<(Hash, BlobTicket, u32, DownloadType)> {
+    pub async fn pending_retries(&self) -> Vec<(Hash, Vec<BlobTicket>, u32, DownloadType)> {
         let (response_tx, response_rx) = oneshot::channel();
 
         if self
@@ -167,7 +169,9 @@ impl RetriedDownloadsActor {
     fn handle_message(&mut self, message: RetriedDownloadsMessage) {
         match message {
             RetriedDownloadsMessage::Insert { info } => {
-                let hash = info.ticket.hash();
+                // this assumes each download will have at least 1 blob, and each blob is unique
+                // across all downloads (e.g. each blob into which all the params are subdivided will be unique)
+                let hash = info.tickets[0].hash();
                 self.downloads.insert(hash, info);
             }
 
@@ -191,7 +195,7 @@ impl RetriedDownloadsActor {
                             .map(|retry_time| now >= retry_time)
                             .unwrap_or(false)
                     })
-                    .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.r#type.clone()))
+                    .map(|(hash, info)| (*hash, info.tickets[..].to_vec(), info.tag, info.r#type.clone()))
                     .collect();
 
                 let _ = response.send(pending);

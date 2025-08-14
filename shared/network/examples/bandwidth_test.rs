@@ -166,7 +166,7 @@ impl App {
                 info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network.start_download(
-                    blob_ticket,
+                    vec![blob_ticket],
                     step,
                     DownloadType::DistroResult(Vec::new()),
                 )
