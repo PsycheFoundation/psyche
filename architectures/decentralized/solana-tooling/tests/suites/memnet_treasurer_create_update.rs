@@ -26,7 +26,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 5_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
