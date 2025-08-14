@@ -99,7 +99,7 @@ impl CausalLM for DummyModel {
     }
 
     fn device(&self) -> tch::Device {
-        Device::Cpu
+        Device::cuda_if_available()
     }
 
     fn variables(&self) -> StableVariableIterator {

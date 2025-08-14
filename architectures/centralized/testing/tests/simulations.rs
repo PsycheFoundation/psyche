@@ -61,7 +61,7 @@ async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
     let run_id = String::from("test_run");
     let sim = Builder::with_setup(async move || {
         let setup = Setup {
-            training_delay_secs: 2,
+            training_delay_secs: 1000,
             server_port: port,
             run_id: run_id.clone(),
             init_min_clients: init_min_clients,
@@ -132,14 +132,14 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
     // We initialize the coordinator with the same number of min clients as batches per round.
     // This way, every client will be assigned with only one batch
     let init_min_clients = 5;
-    let global_batch_size = 10;
+    let global_batch_size = 20;
     let witness_nodes = 5;
 
     let port = 51000;
     let run_id = String::from("test_run");
     let sim = Builder::with_setup(async move || {
         let setup = Setup {
-            training_delay_secs: 2,
+            training_delay_secs: 1000,
             server_port: port,
             run_id: run_id.clone(),
             init_min_clients: init_min_clients,
@@ -150,7 +150,7 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
     })
     .spawn(1, CoordinatorServerHandle::builder(coordinator_round))
     .spawn(5, ClientHandle::builder(client_round))
-    .spawn(5, ClientHandleWithDelay::builder(delay_client_round))
+    .spawn(15, ClientHandleWithDelay::builder(delay_client_round))
     .rounds(10);
     Ok(sim)
 }
