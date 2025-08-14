@@ -31,6 +31,26 @@ lib.makeScope pkgs.newScope (
       )
     );
 
+    externalRustPackages = {
+      solana_toolbox_cli = pkgs.rustPlatform.buildRustPackage rec {
+        pname = "solana_toolbox_cli";
+        version = "0.4.3"; # Replace with actual version
+
+        src = pkgs.fetchCrate {
+          inherit pname version;
+          sha256 = "sha256-6bCbFtVAs4MctSYslTNBk859LxfdOjwetvq/1Ub3VVg=";
+        };
+
+        cargoHash = "sha256-cQ8XkfWdU2HxYnyZQNC59lWWDMbJ0OLocmTiH+N5zrc=";
+
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+          perl
+        ];
+        buildInputs = with pkgs; [ openssl ];
+      };
+    };
+
     nixglhostRustPackages = lib.listToAttrs (
       (map (
         name: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers rustPackages.${name})
@@ -42,7 +62,12 @@ lib.makeScope pkgs.newScope (
 
     # Import Docker configurations
     dockerPackages = import ./docker.nix {
-      inherit pkgs nixglhostRustPackages inputs;
+      inherit
+        pkgs
+        nixglhostRustPackages
+        inputs
+        externalRustPackages
+        ;
     };
 
     psychePackages = {
@@ -55,9 +80,9 @@ lib.makeScope pkgs.newScope (
       solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
       psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-
     }
     // rustPackages
+    // externalRustPackages
     // nixglhostRustPackages
     // dockerPackages;
   in

@@ -11,6 +11,8 @@ You'll need to provide:
 - a unique run ID - just a few characters to uniquely identify your run.
 - a name & description for your run
 
+Also, for all the commands you will need to provide the path to you Solana private key.
+
 ### Setup Joining Authorizations
 
 Before we can get started we need to decide who will be able to join the run.
@@ -43,9 +45,8 @@ psyche-solana-client create-run \
     --rpc [RPC] \
     --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    --join_authority [JOIN_AUTHORITY_PUBKEY] \
-    --name [NAME] \
-    --description [DESCRIPTION]
+    --join-authority [JOIN_AUTHORITY_PUBKEY] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ### Creating a run with token rewards
@@ -59,8 +60,7 @@ psyche-solana-client create-run \
     --run-id [RUN_ID] \
     --join_authority [JOIN_AUTHORITY_PUBKEY] \
     --treasurer-collateral-mint [REWARD_COLLATERAL_MINT] \
-    --name [NAME] \
-    --description [DESCRIPTION]
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Initializing configuration
@@ -77,7 +77,8 @@ psyche-solana-client update-config \
     --rpc [RPC] \
     --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    --config-path [CONFIG_FILE]
+    --config-path [CONFIG_FILE_PATH] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Starting the training
@@ -89,7 +90,8 @@ psyche-solana-client set-paused \
     --rpc [RPC] \
     --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    resume
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
+    --resume
 ```
 
 Congratulations! As soon as your first client joins, your model is being trained.
@@ -104,7 +106,8 @@ psyche-solana-client set-future-epoch-rates \
     --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
     --earning-rate [EARNING_RATE] \
-    --slashing-rate [SLASHING_RATE]
+    --slashing-rate [SLASHING_RATE] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Funding the run with collateral
