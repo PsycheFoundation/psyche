@@ -60,7 +60,7 @@ pub async fn command_treasurer_claim_rewards_run(
     }
 
     let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
-    println!("User collateral amount: {}", user_collateral_amount);
+    println!("User collateral amount: {user_collateral_amount}");
 
     let treasurer_participant_address =
         psyche_solana_treasurer::find_participant(&treasurer_run_address, &user);

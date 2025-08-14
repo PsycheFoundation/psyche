@@ -19,8 +19,13 @@ pub async fn command_json_info_dump_run(
     backend: SolanaBackend,
     params: CommandJsonInfoDumpParams,
 ) -> Result<()> {
+    let CommandJsonInfoDumpParams {
+        run_id,
+        treasurer_index,
+    } = params;
+
     let coordinator_instance_address =
-        psyche_solana_coordinator::find_coordinator_instance(&params.run_id);
+        psyche_solana_coordinator::find_coordinator_instance(&run_id);
     let coordinator_instance_state = backend
         .get_coordinator_instance(&coordinator_instance_address)
         .await?;
@@ -135,7 +140,7 @@ pub async fn command_json_info_dump_run(
     });
 
     let treasurer_run_json = if let Some(treasurer_index) = backend
-        .resolve_treasurer_index(&params.run_id, params.treasurer_index)
+        .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
         let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
