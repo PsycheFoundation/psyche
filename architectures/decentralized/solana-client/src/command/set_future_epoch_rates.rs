@@ -20,7 +20,14 @@ pub async fn command_set_future_epoch_rates_run(
     backend: SolanaBackend,
     params: CommandSetFutureEpochRatesParams,
 ) -> Result<()> {
-    let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&params.run_id);
+    let CommandSetFutureEpochRatesParams {
+        run_id,
+        treasurer_index,
+        earning_rate,
+        slashing_rate,
+    } = params;
+
+    let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
     let coordinator_instance_state = backend
         .get_coordinator_instance(&coordinator_instance)
         .await?;
@@ -28,17 +35,17 @@ pub async fn command_set_future_epoch_rates_run(
     let coordinator_account = coordinator_instance_state.coordinator_account;
     let set = backend
         .set_future_epoch_rates(
-            &params.run_id,
-            params.treasurer_index,
+            &run_id,
+            treasurer_index,
             &coordinator_account,
-            params.earning_rate,
-            params.slashing_rate,
+            earning_rate,
+            slashing_rate,
         )
         .await?;
 
-    println!("On run {} with transaction {}:", params.run_id, set);
-    println!(" - Set earning rate to {:?}", params.earning_rate);
-    println!(" - Set slashing rate to {:?}", params.slashing_rate);
+    println!("On run {run_id} with transaction {set}:");
+    println!(" - Set earning rate to {earning_rate:?}");
+    println!(" - Set slashing rate to {slashing_rate:?}");
     println!("\n===== Logs =====");
     for log in backend.get_logs(&set).await? {
         println!("{log}");

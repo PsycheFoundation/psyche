@@ -34,15 +34,13 @@ pub async fn run() {
     }
 
     // Authorization PDA doesnt exist at the start
-    assert!(
-        get_authorization(
-            &mut endpoint,
-            &find_authorization(&grantor.pubkey(), &grantee.pubkey(), &scope)
-        )
-        .await
-        .unwrap()
-        .is_none()
-    );
+    assert!(get_authorization(
+        &mut endpoint,
+        &find_authorization(&grantor.pubkey(), &grantee.pubkey(), &scope)
+    )
+    .await
+    .unwrap()
+    .is_none());
 
     // Create the authorization
     let authorization = process_authorizer_authorization_create(
@@ -71,12 +69,12 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[1],
         &scope
-    ),);
+    ));
 
     // The grantee can now set the delegates
     process_authorizer_authorization_grantee_update(
@@ -108,12 +106,12 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[1],
         &scope
-    ),);
+    ));
 
     // The grantee can increase the set the delegates
     process_authorizer_authorization_grantee_update(
@@ -157,7 +155,7 @@ pub async fn run() {
         &grantor.pubkey(),
         &delegates[80],
         &scope
-    ),);
+    ));
 
     // The grantor can enable the authorization at any time
     process_authorizer_authorization_grantor_update(
@@ -186,17 +184,17 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[3],
         &scope
-    ),);
+    ));
     assert!(authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[75],
         &scope
-    ),);
+    ));
 
     // The grantee can decrease the set the delegates
     process_authorizer_authorization_grantee_update(
@@ -228,17 +226,17 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[3],
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[75],
         &scope
-    ),);
+    ));
 
     // The grantor can disable the authorization at any time
     process_authorizer_authorization_grantor_update(
@@ -267,17 +265,17 @@ pub async fn run() {
         &grantor.pubkey(),
         &grantee.pubkey(),
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[3],
         &scope
-    ),);
+    ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
         &delegates[75],
         &scope
-    ),);
+    ));
 
     // The grantor can only close the authorization once all the delegate has been cleared
     process_authorizer_authorization_close(
@@ -316,10 +314,8 @@ pub async fn run() {
     .unwrap();
 
     // Authorization PDA must not exist anymore
-    assert!(
-        get_authorization(&mut endpoint, &authorization)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(get_authorization(&mut endpoint, &authorization)
+        .await
+        .unwrap()
+        .is_none());
 }

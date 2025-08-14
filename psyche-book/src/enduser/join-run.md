@@ -68,7 +68,7 @@ If you have accumulated training, you can claim those using the following comman
 
 ```bash
 psyche-solana-client treasurer-claim-rewards \
-    --wallet-private-key-path [CLIENT_WALLET_PATH] \
     --rpc [RPC] \
-    --run-id [RUN_ID]
+    --run-id [RUN_ID] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```

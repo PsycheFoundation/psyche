@@ -1,13 +1,13 @@
+use anchor_client::anchor_lang::system_program;
 use anchor_client::anchor_lang::InstructionData;
 use anchor_client::anchor_lang::ToAccountMetas;
-use anchor_client::anchor_lang::system_program;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anchor_spl::token;
+use psyche_coordinator::model::Model;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::RunMetadata;
 
 pub fn coordinator_init_coordinator(
@@ -202,7 +202,7 @@ pub fn treasurer_participant_claim(
     user: &Pubkey,
     claim_earned_points: u64,
 ) -> Instruction {
-    let user_collateral = associated_token::get_associated_token_address(&user, collateral_mint);
+    let user_collateral = associated_token::get_associated_token_address(user, collateral_mint);
     let run = psyche_solana_treasurer::find_run(treasurer_index);
     let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
     let participant = psyche_solana_treasurer::find_participant(&run, user);

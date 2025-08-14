@@ -42,7 +42,6 @@ For a standard run without token incentive distribution layer
 
 ```bash
 psyche-solana-client create-run \
-    --wallet-private-key-path [AUTHORITY_WALLET_PATH] \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
@@ -55,11 +54,10 @@ For a run that distributes tokens as reward to the training participants, we nee
 
 ```bash
 psyche-solana-client create-run \
-    --wallet-private-key-path [AUTHORITY_WALLET_PATH] \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --join_authority [JOIN_AUTHORITY_PUBKEY] \
-    --treasurer-collateral-mint [REWARD_COLLATERAL_MINT] \
+    --join-authority [JOIN_AUTHORITY_PUBKEY] \
+    --treasurer-collateral-mint [COLLATERAL_MINT_PUBKEY] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
@@ -74,7 +72,6 @@ You'll need to provide:
 
 ```bash
 psyche-solana-client update-config \
-    --wallet-private-key-path [AUTHORITY_WALLET_PATH] \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --config-path [CONFIG_FILE_PATH] \
@@ -87,11 +84,10 @@ At this point, your run is ready to go! You can now set its state to "unpaused",
 
 ```bash
 psyche-solana-client set-paused \
-    --wallet-private-key-path [AUTHORITY_WALLET_PATH] \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
-    --resume
+    --resume \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 Congratulations! As soon as your first client joins, your model is being trained.
@@ -102,7 +98,6 @@ You can configure how many points does each client earns and loses for each epoc
 
 ```bash
 psyche-solana-client set-future-epoch-rates \
-    --wallet-private-key-path [AUTHORITY_WALLET_PATH] \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --earning-rate [EARNING_RATE] \
@@ -116,10 +111,10 @@ To distribute collateral to users, we need to periodically top-up the run's trea
 
 ```sh
 psyche-solana-client treasurer-top-up-rewards \
-    --wallet-private-key-path [AUTHORITY_WALLET_PATH] \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --collateral-amount [COLLATERAL_AMOUNT]
+    --collateral-amount [COLLATERAL_AMOUNT] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Inspect the content of a run

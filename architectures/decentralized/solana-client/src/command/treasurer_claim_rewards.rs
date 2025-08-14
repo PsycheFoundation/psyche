@@ -19,11 +19,17 @@ pub async fn command_treasurer_claim_rewards_run(
     backend: SolanaBackend,
     params: CommandTreasurerClaimRewardsParams,
 ) -> Result<()> {
+    let CommandTreasurerClaimRewardsParams {
+        run_id,
+        treasurer_index,
+        max_claimed_points,
+    } = params;
+
     let treasurer_index = backend
-        .resolve_treasurer_index(&params.run_id, params.treasurer_index)
+        .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
         .context("Failed to resolve treasurer")?;
-    println!("Found treasurer at index: 0x{:08x?}", treasurer_index);
+    println!("Found treasurer at index: 0x{treasurer_index:08x?}");
 
     let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
     let treasurer_run_state = backend.get_treasurer_run(&treasurer_run_address).await?;
@@ -39,13 +45,10 @@ pub async fn command_treasurer_claim_rewards_run(
     let treasurer_run_collateral_amount = backend
         .get_token_amount(&treasurer_run_collateral_address)
         .await?;
-    println!(
-        "Treasurer collateral amount: {}",
-        treasurer_run_collateral_amount
-    );
+    println!("Treasurer collateral amount: {treasurer_run_collateral_amount}");
 
     let user = backend.get_payer();
-    println!("User: {}", user);
+    println!("User: {user}");
 
     let user_collateral_address =
         associated_token::get_associated_token_address(&user, &treasurer_run_state.collateral_mint);
@@ -53,10 +56,7 @@ pub async fn command_treasurer_claim_rewards_run(
         let signature = backend
             .spl_associated_token_create(&treasurer_run_state.collateral_mint, &user)
             .await?;
-        println!(
-            "Created associated token account for user during transaction: {}",
-            signature
-        );
+        println!("Created associated token account for user during transaction: {signature}");
     }
 
     let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
@@ -68,10 +68,7 @@ pub async fn command_treasurer_claim_rewards_run(
         let signature = backend
             .treasurer_participant_create(treasurer_index)
             .await?;
-        println!(
-            "Created the participant claim during transaction: {}",
-            signature
-        );
+        println!("Created the participant claim during transaction: {signature}");
     }
 
     let mut client_earned_points = 0;
@@ -84,7 +81,7 @@ pub async fn command_treasurer_claim_rewards_run(
             break;
         }
     }
-    println!("Total earned points: {}", client_earned_points);
+    println!("Total earned points: {client_earned_points}");
 
     let treasurer_participiant_state = backend
         .get_treasurer_participant(&treasurer_participant_address)
@@ -96,11 +93,11 @@ pub async fn command_treasurer_claim_rewards_run(
 
     let claimable_earned_points =
         client_earned_points - treasurer_participiant_state.claimed_earned_points;
-    println!("Claimable earned points: {}", claimable_earned_points);
+    println!("Claimable earned points: {claimable_earned_points}");
 
     let claim_earned_points = std::cmp::min(
         claimable_earned_points,
-        params.max_claimed_points.unwrap_or(u64::MAX),
+        max_claimed_points.unwrap_or(u64::MAX),
     );
     let signature = backend
         .treasurer_participant_claim(
@@ -110,10 +107,7 @@ pub async fn command_treasurer_claim_rewards_run(
             claim_earned_points,
         )
         .await?;
-    println!(
-        "Claimed {} earned points in transaction: {}",
-        claim_earned_points, signature
-    );
+    println!("Claimed {claim_earned_points} earned points in transaction: {signature}");
 
     Ok(())
 }
