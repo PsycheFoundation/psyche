@@ -30,6 +30,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
     let args = Args::parse();
     let tasks: Result<Vec<Task>> = args
         .tasks
@@ -49,13 +50,13 @@ fn main() -> Result<()> {
     )?;
     for task in tasks {
         let name = format!("{task}");
-        let result = task.prepare(&tokenizer, Some(1)).run(
+        let result = task.prepare(&tokenizer, Some(10)).run(
             EvalTaskOptions {
                 model: model.as_mut(),
                 skip_and_step_by: None,
                 live_results: None,
                 cancel: None,
-                limit: Some(1),
+                limit: Some(10),
             },
             !args.quiet,
         );

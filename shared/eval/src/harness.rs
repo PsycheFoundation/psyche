@@ -678,8 +678,10 @@ impl PreparedTask {
 
                 // Extract answer from the complete generated text using regex
                 if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
+                    tracing::info!("Generated text: {}", generated_text);
                     if let Some(captures) = answer_extraction_regex.captures(&generated_text) {
                         if let Some(answer_char) = captures.get(1) {
+                            tracing::info!("Extracted answer char: {}", answer_char.as_str());
                             generated_answer = Some(
                                 crate::ASCII_UPPERCASE
                                     .iter()
@@ -687,7 +689,11 @@ impl PreparedTask {
                                     .unwrap_or(usize::MAX),
                             );
                         }
+                    } else {
+                        tracing::info!("No regex match found in generated text");
                     }
+                } else {
+                    tracing::info!("Failed to decode generated tokens");
                 }
 
                 let score = if generated_answer == Some(answer) {
@@ -695,6 +701,15 @@ impl PreparedTask {
                 } else {
                     0.
                 };
+                tracing::info!(
+                    "Expected answer: {} ({}), Generated answer: {:?}, Score: {}",
+                    answer,
+                    crate::ASCII_UPPERCASE.get(answer).unwrap_or(&"?"),
+                    generated_answer
+                        .and_then(|idx| crate::ASCII_UPPERCASE.get(idx))
+                        .unwrap_or(&"INVALID"),
+                    score
+                );
                 results.push("acc", score);
                 documents_processed += 1;
 
