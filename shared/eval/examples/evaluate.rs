@@ -49,13 +49,13 @@ fn main() -> Result<()> {
     )?;
     for task in tasks {
         let name = format!("{task}");
-        let result = task.prepare(&tokenizer, None).run(
+        let result = task.prepare(&tokenizer, Some(1)).run(
             EvalTaskOptions {
                 model: model.as_mut(),
                 skip_and_step_by: None,
                 live_results: None,
                 cancel: None,
-                limit: None,
+                limit: Some(1),
             },
             !args.quiet,
         );
