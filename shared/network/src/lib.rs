@@ -449,6 +449,9 @@ where
                 }
             });
         }
+
+        self.download_manager
+            .add(tickets, tag, download_updaters, download_type.clone());
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
@@ -620,6 +623,8 @@ where
         if update.all_done {
             self.state.download_progesses.remove(&hash);
 
+            //todo: we need some way to associate blob tickets with their Downloadable, to have the final Bytes from all the blobs
+            // after all the blobs are done downloading
             let blobs = self.blobs.client().clone();
             let (send, recv) = oneshot::channel();
             trace!(name: "blob_download_read_start", hash = hash.fmt_short());
