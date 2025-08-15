@@ -180,6 +180,7 @@
                 size = 8 * 1024;
               }
             ];
+            zramSwap.enable = true;
 
             # custom pkgs overlays
             nixpkgs = import ./nixpkgs.nix { inherit inputs; };
