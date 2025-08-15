@@ -49,7 +49,7 @@ stdenvNoCC.mkDerivation {
 
     ${lib.concatMapStringsSep "\n" (
       name:
-      "${rustPackages.${name}}/bin/${name} print-all-help --markdown > generated/cli/${
+      "${rustPackages.${name}}/bin/${name}-wrapped print-all-help --markdown > generated/cli/${
         lib.replaceStrings [ "-" ] [ "-" ] name
       }.md"
     ) rustPackageNames}
