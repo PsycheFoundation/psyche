@@ -96,6 +96,14 @@ impl PythonModelConfig {
                 _ => None,
             })
     }
+
+    pub fn max_position_embeddings(&self) -> Option<usize> {
+        self.config
+            .as_object()
+            .and_then(|x| x.get("max_position_embeddings"))
+            .and_then(|x| x.as_u64())
+            .map(|x| x as usize)
+    }
 }
 
 #[derive(Debug, Error)]
@@ -114,6 +122,7 @@ pub struct PythonCausalLM {
     order: StablePythonParametersIterator,
     bos_token_id: Option<i64>,
     eos_token_id: Option<EosToks>,
+    max_context_length: usize,
 }
 
 unsafe impl Send for PythonCausalLM {}
@@ -172,12 +181,16 @@ impl PythonCausalLM {
         });
         let causal_lm = result?;
         let order = StablePythonParametersIterator::new(&causal_lm);
+        let max_context_length = override_max_position_embeddings
+            .or(config.max_position_embeddings())
+            .unwrap_or(2048); // Default fallback
         Ok(Self {
             causal_lm,
             device,
             order,
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
+            max_context_length,
         })
     }
 
@@ -189,6 +202,7 @@ impl PythonCausalLM {
             device,
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
+            max_context_length: config.max_position_embeddings().unwrap_or(2048),
         }
     }
 
@@ -295,6 +309,10 @@ impl CausalLM for PythonCausalLM {
 
     fn eos_token_ids(&self) -> Option<EosToks> {
         self.eos_token_id.clone()
+    }
+
+    fn max_context_length(&self) -> usize {
+        self.max_context_length
     }
 }
 
