@@ -78,7 +78,7 @@ while true; do
         INIT_METHOD_ARG="--init-method ${PSYCHE_INIT_METHOD}"
     fi
 
-    /bin/psyche-solana-client train \
+    /bin/psyche-solana-client-wrapped train \
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
