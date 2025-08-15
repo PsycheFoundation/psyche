@@ -51,6 +51,8 @@ impl PIQA {
             text,
             choices,
             answer,
+            category: None,
+            cot_content: None,
         }
     }
 }
