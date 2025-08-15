@@ -8,7 +8,6 @@ jobs:
   push-docker-image:
     runs-on: ubuntu-latest
     steps:
-    
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
 
