@@ -12,6 +12,9 @@ from torch.distributed import init_device_mesh
 from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
 from torch.distributed.tensor import DTensor, distribute_tensor
+from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+    apply_activation_checkpointing,
+)
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -148,6 +151,11 @@ class HfTransformersAuto(CausalLM):
                             fsdp_modules = model.model._no_split_modules
                 if fsdp_modules is None:
                     raise RuntimeError("Could not determine models to apply FSDP to")
+
+                apply_activation_checkpointing(
+                    model,
+                    check_fn=lambda module: module.__class__.__name__ in fsdp_modules,
+                )
 
                 for module in model.modules():
                     if module.__class__.__name__ in fsdp_modules:
