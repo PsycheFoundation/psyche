@@ -28,7 +28,7 @@ psycheLib.mkWebsitePackage {
 
     cat - <<EOF > $out/bin/backend
     #!/usr/bin/env bash
-    exec ${nodejs}/bin/node ${placeholder "out"}/lib/index.cjs "$@"
+    exec ${nodejs}/bin/node max-old-space-size=12288 ${placeholder "out"}/lib/index.cjs "$@"
     EOF
 
     chmod +x $out/bin/backend
