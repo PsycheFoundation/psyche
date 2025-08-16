@@ -16,7 +16,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
-    #[error("Local deivce must be rank 0, instead got {0}")]
+    #[error("Local device must be rank 0, instead got {0}")]
     LocalNotRankZero(usize),
 
     #[error("Local device not a CUDA device")]
