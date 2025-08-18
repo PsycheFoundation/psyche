@@ -102,6 +102,7 @@ def main():
         init_method=args.init_method,
         world_size=args.world_size,
         rank=args.rank if args.world_size else None,
+        timeout=timedelta(hours=2),
     )
 
     store = dist.distributed_c10d._get_default_store()
