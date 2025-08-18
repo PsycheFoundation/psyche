@@ -150,7 +150,7 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
     })
     .spawn(1, CoordinatorServerHandle::builder(coordinator_round))
     .spawn(5, ClientHandle::builder(client_round))
-    .spawn(15, ClientHandleWithDelay::builder(delay_client_round))
+    .spawn(10, ClientHandleWithDelay::builder(delay_client_round))
     .rounds(10);
     Ok(sim)
 }

@@ -233,9 +233,10 @@ where
 
         trace!("creating blobs...");
         let store_dir = PathBuf::from_str(&format!("test-store-{}", node_addr.node_id)).unwrap();
-        let blobs = Blobs::persistent(store_dir)
-            .await
-            .unwrap()
+        // let blobs = Blobs::persistent(store_dir)
+        //     .await
+        //     .unwrap()
+        let blobs = Blobs::memory()
             .concurrency_limits(ConcurrencyLimits {
                 max_concurrent_requests_per_node: 1,
                 max_concurrent_requests: max_concurrent_downloads,

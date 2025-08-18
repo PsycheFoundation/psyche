@@ -18,18 +18,18 @@ pub struct DummyModel {
 pub fn get_dummy_parameters() -> HashMap<String, Tensor> {
     // You may tweak these numbers if you want less/more dummy training and p2p blob size
     [
-        ("model.norm.weight", vec![512]),
-        ("model.layers.0.mlp.up_proj.weight", vec![512, 512]),
-        ("model.layers.0.post_attention_layernorm.weight", vec![512]),
-        ("model.layers.0.self_attn.q_proj.weight", vec![512, 512]),
-        ("model.embed_tokens.weight", vec![512, 512]),
-        ("model.layers.0.self_attn.o_proj.weight", vec![512, 512]),
-        ("model.layers.0.self_attn.v_proj.weight", vec![512, 512]),
-        ("model.layers.0.self_attn.k_proj.weight", vec![512, 512]),
-        ("model.layers.0.mlp.gate_proj.weight", vec![512, 512]),
-        ("model.layers.0.mlp.down_proj.weight", vec![512, 512]),
-        ("lm_head.weight", vec![512, 512]),
-        ("model.layers.0.input_layernorm.weight", vec![512]),
+        ("model.norm.weight", vec![5000]),
+        ("model.layers.0.mlp.up_proj.weight", vec![5000, 5000]),
+        ("model.layers.0.post_attention_layernorm.weight", vec![5000]),
+        ("model.layers.0.self_attn.q_proj.weight", vec![5000, 5000]),
+        ("model.embed_tokens.weight", vec![5000, 5000]),
+        ("model.layers.0.self_attn.o_proj.weight", vec![5000, 5000]),
+        ("model.layers.0.self_attn.v_proj.weight", vec![5000, 5000]),
+        ("model.layers.0.self_attn.k_proj.weight", vec![5000, 5000]),
+        ("model.layers.0.mlp.gate_proj.weight", vec![5000, 5000]),
+        ("model.layers.0.mlp.down_proj.weight", vec![5000, 5000]),
+        ("lm_head.weight", vec![5000, 5000]),
+        ("model.layers.0.input_layernorm.weight", vec![5000]),
     ]
     .into_iter()
     .map(|(name, shape)| {

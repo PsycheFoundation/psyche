@@ -217,7 +217,7 @@ impl ClientHandleWithDelay {
             Client::default(server_port, run_id).await;
         let router = client.inner.router.clone();
         let client_handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::time::sleep(Duration::from_secs(20)).await;
             client.run(allowlist, p2p, state_options).await
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -247,7 +247,8 @@ impl ClientHandleWithDelay {
         }
 
         let client_handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::time::sleep(Duration::from_secs(20)).await;
+            println!("Joining new client");
             client.run(allowlist, p2p, state_options).await
         });
         tokio::time::sleep(Duration::from_millis(100)).await;
