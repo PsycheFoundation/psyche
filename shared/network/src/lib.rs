@@ -8,7 +8,7 @@ use iroh_blobs::{
     downloader::{ConcurrencyLimits, RetryConfig},
     net_protocol::{Blobs, DownloadMode},
     rpc::client::blobs::DownloadOptions,
-    store::fs::Store,
+    store::mem::Store,
     util::SetTagOption,
 };
 use iroh_gossip::{

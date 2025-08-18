@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use iroh_blobs::{net_protocol::Blobs, store::fs::Store};
+use iroh_blobs::{net_protocol::Blobs, store::mem::Store};
 use iroh_gossip::net::Gossip;
 use tokio::{sync::Mutex, task::JoinSet};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
