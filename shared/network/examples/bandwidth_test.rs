@@ -199,7 +199,7 @@ impl App {
     async fn on_tick(&mut self) {
         let unix_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("time went forwads :)");
+            .expect("time went forward :)");
         let step = ((unix_time.as_secs() + 2) / 15) as u32;
         info!("new step {step}");
         if step != self.current_step + 1 {
