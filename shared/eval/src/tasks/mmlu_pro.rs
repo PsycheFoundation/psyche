@@ -8,11 +8,11 @@
 */
 use crate::{
     ASCII_UPPERCASE, TaskType, load_dataset,
-    traits::{Document, LogLikelihoodTask},
+    traits::{Document, GenerateUntilTask},
 };
 use anyhow::Result;
-use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
-use std::fmt::Display;
+use psyche_data_provider::{Dataset, Row, RowAccessor, Split};
+use std::{collections::HashMap, fmt::Display};
 
 pub struct MMLUPro {
     test_dataset: Dataset,
@@ -25,7 +25,7 @@ impl MMLUPro {
             test_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Test, None)?,
             validation_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Validation, None)?,
         };
-        Ok(TaskType::LogLikelihood(Box::new(ret)))
+        Ok(TaskType::GenerateUntil(Box::new(ret)))
     }
 
     pub const fn name() -> &'static str {
@@ -37,29 +37,43 @@ impl MMLUPro {
             .get_string(dataset.get_column_id("question").unwrap())
             .unwrap()
             .to_owned();
-        let options = row
+        let choices: Vec<String> = row
             .get_list(dataset.get_column_id("options").unwrap())
-            .unwrap();
-        let options = (0..options.len())
-            .map(|i| format!("{}. {}", ASCII_UPPERCASE[i], options.get_string(i).unwrap()))
-            .collect::<Vec<_>>();
-        let choices = (0..options.len())
-            .map(|i| ASCII_UPPERCASE[i].to_owned())
-            .collect::<Vec<_>>();
-        let text = format!("{}\n{}\nAnswer: ", text, options.join("\n"));
+            .unwrap()
+            .elements()
+            .iter()
+            .map(|field| {
+                let mut s = field.to_string();
+                // Remove \" at the start and end of the String
+                s.remove(0);
+                s.pop();
+                s
+            })
+            .collect();
         let answer = row
             .get_string(dataset.get_column_id("answer").unwrap())
             .unwrap();
         let answer = ASCII_UPPERCASE.iter().position(|x| x == answer).unwrap();
+        let category = row
+            .get_string(dataset.get_column_id("category").unwrap())
+            .unwrap()
+            .to_owned();
+        let cot_content = row
+            .get_string(dataset.get_column_id("cot_content").unwrap())
+            .unwrap()
+            .to_owned();
+
         Document {
             text,
             choices,
             answer,
+            category: Some(category),
+            cot_content: Some(cot_content),
         }
     }
 }
 
-impl LogLikelihoodTask for MMLUPro {
+impl GenerateUntilTask for MMLUPro {
     fn get_documents(&self) -> Vec<Document> {
         self.test_dataset
             .iter()
@@ -67,11 +81,17 @@ impl LogLikelihoodTask for MMLUPro {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.validation_dataset
-            .iter()
-            .map(|row| MMLUPro::row_to_document(&self.validation_dataset, row))
-            .collect()
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        self.validation_dataset.iter().for_each(|row| {
+            let doc = MMLUPro::row_to_document(&self.validation_dataset, row);
+            let category = doc.category.as_ref().unwrap().clone();
+            fewshot_documents
+                .entry(category)
+                .or_insert_with(Vec::new)
+                .push(doc);
+        });
+        fewshot_documents
     }
 }
 
