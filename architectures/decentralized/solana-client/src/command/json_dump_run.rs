@@ -160,7 +160,7 @@ pub async fn command_json_dump_run_execute(
             total_claimable_earned_points.saturating_sub(total_claimed_earned_points);
 
         let total_funded_unearned_points =
-            treasurer_run_collateral_amount.saturating_sub(total_unclaimed_earned_points);
+            i128::from(treasurer_run_collateral_amount) - i128::from(total_unclaimed_earned_points);
 
         let estimated_earned_points_per_epoch = u64::try_from(
             coordinator_account_state
@@ -179,7 +179,7 @@ pub async fn command_json_dump_run_execute(
         let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
             json!(f64::INFINITY)
         } else {
-            json!(total_funded_unearned_points / estimated_earned_points_per_epoch)
+            json!(total_funded_unearned_points / i128::from(estimated_earned_points_per_epoch))
         };
 
         Some(json!({

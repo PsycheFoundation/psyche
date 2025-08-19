@@ -77,7 +77,7 @@ pub async fn command_json_dump_user_execute(
         .state
         .coordinator
         .epoch_state
-        .clients
+        .exited_clients
     {
         if client.id.signer == address {
             epoch_exited_json = Some(json!({
