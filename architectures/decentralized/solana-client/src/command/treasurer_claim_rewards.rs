@@ -100,8 +100,11 @@ pub async fn command_treasurer_claim_rewards_execute(
         max_claimed_points.unwrap_or(u64::MAX),
     );
     if claim_earned_points > treasurer_run_collateral_amount {
-        return bail!(
-            "Claimed points ({claim_earned_points}) exceed funded collateral amount ({treasurer_run_collateral_amount}), specify a smaller value for --max-claimed-points or wait for more funding to be added to the run"
+        bail!(
+            "Claimed points ({claim_earned_points}) \
+            exceed available funded collateral ({treasurer_run_collateral_amount}), \
+            specify a smaller value with --max-claimed-points \
+            or wait for more funding to be top-up'd into the run's treasurer"
         );
     }
 

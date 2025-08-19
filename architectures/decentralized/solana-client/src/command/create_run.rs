@@ -34,7 +34,8 @@ pub async fn command_create_run_execute(
 
     if treasurer_index.is_some() && treasurer_collateral_mint.is_none() {
         bail!(
-            "treasurer_index is set, but treasurer_collateral_mint is not. Please provide a collateral mint address."
+            "The treasurer_index is set, but treasurer_collateral_mint is not. \
+            Please provide a collateral mint address if you want to create a run with a treasurer."
         );
     }
 
