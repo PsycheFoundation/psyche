@@ -1,7 +1,9 @@
 use crate::command::create_run::CommandCreateRunParams;
 use crate::command::create_run::command_create_run_execute;
-use crate::command::json_info_dump::CommandJsonInfoDumpParams;
-use crate::command::json_info_dump::command_json_info_dump_execute;
+use crate::command::json_dump_run::CommandJsonDumpRunParams;
+use crate::command::json_dump_run::command_json_dump_run_execute;
+use crate::command::json_dump_user::CommandJsonDumpUserParams;
+use crate::command::json_dump_user::command_json_dump_user_execute;
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
 use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
 use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
@@ -286,11 +288,17 @@ enum Commands {
         #[clap(long, env, default_value_t = 3)]
         hub_max_concurrent_downloads: usize,
     },
-    JsonInfoDump {
+    JsonDumpRun {
         #[clap(flatten)]
         cluster: ClusterArgs,
         #[clap(flatten)]
-        params: CommandJsonInfoDumpParams,
+        params: CommandJsonDumpRunParams,
+    },
+    JsonDumpUser {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandJsonDumpUserParams,
     },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
@@ -987,7 +995,7 @@ async fn async_main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::JsonInfoDump { cluster, params } => {
+        Commands::JsonDumpRun { cluster, params } => {
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -995,7 +1003,17 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_json_info_dump_execute(backend, params).await
+            command_json_dump_run_execute(backend, params).await
+        }
+        Commands::JsonDumpUser { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_json_dump_user_execute(backend, params).await
         }
     }
 }
