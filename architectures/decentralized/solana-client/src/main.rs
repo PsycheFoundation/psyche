@@ -1,3 +1,4 @@
+use crate::command::create_run::command_create_run_execute;
 use crate::command::json_info_dump::CommandJsonInfoDumpParams;
 use crate::command::json_info_dump::command_json_info_dump_run;
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
@@ -106,21 +107,10 @@ enum Commands {
     CreateRun {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        treasurer_index: Option<u64>,
-
-        #[clap(long, env)]
-        treasurer_collateral_mint: Option<String>,
-
-        #[clap(long)]
-        join_authority: Option<String>,
+        #[clap(flatten)]
+        params: CommandCreateRunParams,
     },
     CloseRun {
         #[clap(flatten)]
@@ -367,12 +357,8 @@ async fn async_main() -> Result<()> {
         Commands::CreateRun {
             cluster,
             wallet,
-            run_id,
-            treasurer_index,
-            treasurer_collateral_mint,
-            join_authority,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -381,39 +367,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-
-            if treasurer_index.is_some() && treasurer_collateral_mint.is_none() {
-                bail!(
-                    "treasurer_index is set, but treasurer_collateral_mint is not. Please provide a collateral mint address."
-                );
-            }
-            let treasurer_index_and_collateral_mint =
-                treasurer_collateral_mint.map(|treasurer_collateral_mint| {
-                    (
-                        SolanaBackend::compute_deterministic_treasurer_index(
-                            &run_id,
-                            treasurer_index,
-                        ),
-                        Pubkey::from_str(&treasurer_collateral_mint).unwrap(),
-                    )
-                });
-
-            let created = backend
-                .create_run(
-                    &run_id,
-                    treasurer_index_and_collateral_mint,
-                    join_authority.map(|address| Pubkey::from_str(&address).unwrap()),
-                )
-                .await?;
-            let locked = backend.get_balance(&created.account).await?;
-            println!(
-                "Created run {} with transactions signatures: {:?}",
-                run_id, created.create_signatures,
-            );
-            println!("Instance account: {}", created.instance);
-            println!("Coordinator account: {}", created.account);
-            println!("Locked for storage: {:.9} SOL", lamports_to_sol(locked));
-            Ok(())
+            command_create_run_execute(backend, params)
         }
         Commands::CloseRun {
             cluster,

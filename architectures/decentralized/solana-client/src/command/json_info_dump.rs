@@ -15,7 +15,7 @@ pub struct CommandJsonInfoDumpParams {
     treasurer_index: Option<u64>,
 }
 
-pub async fn command_json_info_dump_run(
+pub async fn command_json_info_dump_execute(
     backend: SolanaBackend,
     params: CommandJsonInfoDumpParams,
 ) -> Result<()> {
@@ -154,11 +154,11 @@ pub async fn command_json_info_dump_run(
             .await?;
 
         let total_claimable_earned_points = coordinator_account_clients_total_earned;
-        let total_unclaimed_earned_points =
-            total_claimable_earned_points - treasurer_run_state.total_claimed_earned_points;
+        let total_unclaimed_earned_points = total_claimable_earned_points
+            .saturating_sub(treasurer_run_state.total_claimed_earned_points);
 
         let total_funded_unearned_points =
-            treasurer_run_collateral_amount - total_unclaimed_earned_points;
+            treasurer_run_collateral_amount.saturating_sub(total_unclaimed_earned_points);
 
         let estimated_earned_points_per_epoch = u64::try_from(
             coordinator_account_state

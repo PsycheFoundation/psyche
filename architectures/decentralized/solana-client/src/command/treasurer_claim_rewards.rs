@@ -1,5 +1,5 @@
 use anchor_spl::associated_token;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Args;
 
 use crate::SolanaBackend;
@@ -15,7 +15,7 @@ pub struct CommandTreasurerClaimRewardsParams {
     max_claimed_points: Option<u64>,
 }
 
-pub async fn command_treasurer_claim_rewards_run(
+pub async fn command_treasurer_claim_rewards_execute(
     backend: SolanaBackend,
     params: CommandTreasurerClaimRewardsParams,
 ) -> Result<()> {
@@ -99,6 +99,12 @@ pub async fn command_treasurer_claim_rewards_run(
         claimable_earned_points,
         max_claimed_points.unwrap_or(u64::MAX),
     );
+    if claim_earned_points > treasurer_run_collateral_amount {
+        return bail!(
+            "Claimed points ({claim_earned_points}) exceed funded collateral amount ({treasurer_run_collateral_amount}), specify a smaller value for --max-claimed-points or wait for more funding to be added to the run"
+        );
+    }
+
     let signature = backend
         .treasurer_participant_claim(
             treasurer_index,
