@@ -132,6 +132,6 @@ For more info about a specific user inside of a run, you can also use:
 ```bash
 psyche-solana-client json-dump-user \
     --rpc [RPC] \
-    --run-id [RUN_ID]
+    --run-id [RUN_ID] \
     --wallet [PUBLIC_KEY]
 ```
