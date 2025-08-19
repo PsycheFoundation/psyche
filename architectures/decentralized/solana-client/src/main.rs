@@ -1,12 +1,13 @@
+use crate::command::create_run::CommandCreateRunParams;
 use crate::command::create_run::command_create_run_execute;
 use crate::command::json_info_dump::CommandJsonInfoDumpParams;
-use crate::command::json_info_dump::command_json_info_dump_run;
+use crate::command::json_info_dump::command_json_info_dump_execute;
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
-use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_run;
+use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
 use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
-use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_run;
+use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
 use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
-use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_run;
+use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
 use crate::{
     app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
@@ -367,7 +368,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_create_run_execute(backend, params)
+            command_create_run_execute(backend, params).await
         }
         Commands::CloseRun {
             cluster,
@@ -594,7 +595,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_set_future_epoch_rates_run(backend, params).await
+            command_set_future_epoch_rates_execute(backend, params).await
         }
         Commands::TreasurerClaimRewards {
             cluster,
@@ -609,7 +610,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_treasurer_claim_rewards_run(backend, params).await
+            command_treasurer_claim_rewards_execute(backend, params).await
         }
         Commands::TreasurerTopUpRewards {
             cluster,
@@ -624,7 +625,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_treasurer_top_up_rewards_run(backend, params).await
+            command_treasurer_top_up_rewards_execute(backend, params).await
         }
         Commands::Checkpoint {
             cluster,
@@ -994,7 +995,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_json_info_dump_run(backend, params).await
+            command_json_info_dump_execute(backend, params).await
         }
     }
 }

@@ -1,9 +1,10 @@
+use std::str::FromStr;
+
 use anchor_client::solana_sdk::native_token::lamports_to_sol;
-use anchor_spl::associated_token;
+use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::Result;
+use anyhow::bail;
 use clap::Args;
-use serde_json::json;
-use serde_json::{to_string, Map};
 
 use crate::SolanaBackend;
 
@@ -41,8 +42,7 @@ pub async fn command_create_run_execute(
         treasurer_collateral_mint.map(|treasurer_collateral_mint| {
             let treasurer_index =
                 SolanaBackend::compute_deterministic_treasurer_index(&run_id, treasurer_index);
-            let treasurer_collateral_mint = treasurer_collateral_mint
-                .parse::<Pubkey>()
+            let treasurer_collateral_mint = Pubkey::from_str(&treasurer_collateral_mint)
                 .expect("Invalid collateral mint address");
             (treasurer_index, treasurer_collateral_mint)
         });

@@ -323,7 +323,7 @@ impl SolanaBackend {
         Ok(CreatedRun {
             instance: coordinator_instance,
             account: coordinator_account,
-            signature: signature,
+            signature,
         })
     }
 
