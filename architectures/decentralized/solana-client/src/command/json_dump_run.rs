@@ -1,25 +1,26 @@
 use anchor_spl::associated_token;
 use anyhow::Result;
 use clap::Args;
+use serde_json::Map;
 use serde_json::json;
-use serde_json::{Map, to_string};
+use serde_json::to_string_pretty;
 
 use crate::SolanaBackend;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
-pub struct CommandJsonInfoDumpParams {
+pub struct CommandJsonDumpRunParams {
     #[clap(short, long, env)]
     run_id: String,
     #[clap(long, env)]
     treasurer_index: Option<u64>,
 }
 
-pub async fn command_json_info_dump_run(
+pub async fn command_json_dump_run_execute(
     backend: SolanaBackend,
-    params: CommandJsonInfoDumpParams,
+    params: CommandJsonDumpRunParams,
 ) -> Result<()> {
-    let CommandJsonInfoDumpParams {
+    let CommandJsonDumpRunParams {
         run_id,
         treasurer_index,
     } = params;
@@ -68,9 +69,9 @@ pub async fn command_json_info_dump_run(
                 (
                     client.id.to_string(),
                     json!({
+                        "active": client.active,
                         "earned": client.earned,
                         "slashed": client.slashed,
-                        "active": client.active,
                     }),
                 )
             }),
@@ -83,14 +84,14 @@ pub async fn command_json_info_dump_run(
         .iter()
         .map(|client| client.active)
         .max();
-    let coordinator_account_clients_total_earned = coordinator_account_state
+    let coordinator_account_clients_sum_earned = coordinator_account_state
         .state
         .clients_state
         .clients
         .iter()
         .map(|client| client.earned)
         .sum::<u64>();
-    let coordinator_account_clients_total_slashed = coordinator_account_state
+    let coordinator_account_clients_sum_slashed = coordinator_account_state
         .state
         .clients_state
         .clients
@@ -100,13 +101,11 @@ pub async fn command_json_info_dump_run(
 
     let coordinator_account_json = json!({
         "address": coordinator_account_address.to_string(),
-        "metadata": {
-            "run_id": coordinator_account_state.state.coordinator.run_id,
-            "description": coordinator_account_state.state.metadata.description,
-            "name": coordinator_account_state.state.metadata.name,
-            "num_parameters": coordinator_account_state.state.metadata.num_parameters,
-            "vocab_size": coordinator_account_state.state.metadata.vocab_size,
-            "model": format!("{:?}", coordinator_account_state.state.coordinator.model),
+        "run_id": coordinator_account_state.state.coordinator.run_id,
+        "setup": {
+            "metadata": coordinator_account_state.state.metadata,
+            "model": coordinator_account_state.state.coordinator.model,
+            "config": coordinator_account_state.state.coordinator.config,
         },
         "status": {
             "next_active": coordinator_account_state.state.clients_state.next_active,
@@ -133,8 +132,8 @@ pub async fn command_json_info_dump_run(
         "clients": coordinator_account_clients_json,
         "accounting": {
             "max_active": coordinator_account_clients_max_active,
-            "total_earned": coordinator_account_clients_total_earned,
-            "total_slashed": coordinator_account_clients_total_slashed,
+            "sum_earned": coordinator_account_clients_sum_earned,
+            "sum_slashed": coordinator_account_clients_sum_slashed,
         },
         "nonce": coordinator_account_state.nonce,
     });
@@ -153,12 +152,13 @@ pub async fn command_json_info_dump_run(
             .get_token_amount(&treasurer_run_collateral_address)
             .await?;
 
-        let total_claimable_earned_points = coordinator_account_clients_total_earned;
+        let total_claimed_earned_points = treasurer_run_state.total_claimed_earned_points;
+        let total_claimable_earned_points = coordinator_account_clients_sum_earned;
         let total_unclaimed_earned_points =
-            total_claimable_earned_points - treasurer_run_state.total_claimed_earned_points;
+            total_claimable_earned_points.saturating_sub(total_claimed_earned_points);
 
         let total_funded_unearned_points =
-            treasurer_run_collateral_amount - total_unclaimed_earned_points;
+            i128::from(treasurer_run_collateral_amount) - i128::from(total_unclaimed_earned_points);
 
         let estimated_earned_points_per_epoch = u64::try_from(
             coordinator_account_state
@@ -177,7 +177,7 @@ pub async fn command_json_info_dump_run(
         let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
             json!(f64::INFINITY)
         } else {
-            json!(total_funded_unearned_points / estimated_earned_points_per_epoch)
+            json!(total_funded_unearned_points / i128::from(estimated_earned_points_per_epoch))
         };
 
         Some(json!({
@@ -187,7 +187,7 @@ pub async fn command_json_info_dump_run(
             "join_authority": treasurer_run_state.join_authority.to_string(),
             "collateral_mint": treasurer_run_state.collateral_mint.to_string(),
             "funded_collateral_amount": treasurer_run_collateral_amount,
-            "total_claimed_earned_points": treasurer_run_state.total_claimed_earned_points,
+            "total_claimed_earned_points": total_claimed_earned_points,
             "total_claimable_earned_points": total_claimable_earned_points,
             "total_unclaimed_earned_points": total_unclaimed_earned_points,
             "total_funded_unearned_points": total_funded_unearned_points,
@@ -200,7 +200,7 @@ pub async fn command_json_info_dump_run(
 
     println!(
         "{}",
-        to_string(&json!({
+        to_string_pretty(&json!({
             "coordinator_instance": coordinator_instance_json,
             "coordinator_account": coordinator_account_json,
             "treasurer_run": treasurer_run_json,
