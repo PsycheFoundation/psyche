@@ -93,11 +93,11 @@ impl CMMLU {
                 Some(subject_en.to_string()),
             )?;
 
-            // Use test dataset for both test and dev for now as a workaround
+            // cmmlu does not have a "validation" split, so we use "dev" split as few-shot examples
             let dev_dataset = load_dataset(
                 "haonan-li/cmmlu",
                 Some("refs/convert/parquet".to_owned()),
-                Split::Test,
+                Split::Dev,
                 Some(subject_en.to_string()),
             )?;
 
