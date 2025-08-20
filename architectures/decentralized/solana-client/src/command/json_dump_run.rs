@@ -1,9 +1,9 @@
 use anchor_spl::associated_token;
 use anyhow::Result;
 use clap::Args;
-use serde_json::Map;
 use serde_json::json;
 use serde_json::to_string_pretty;
+use serde_json::Map;
 
 use crate::SolanaBackend;
 
@@ -101,13 +101,11 @@ pub async fn command_json_dump_run_execute(
 
     let coordinator_account_json = json!({
         "address": coordinator_account_address.to_string(),
-        "metadata": {
-            "run_id": coordinator_account_state.state.coordinator.run_id,
-            "description": coordinator_account_state.state.metadata.description,
-            "name": coordinator_account_state.state.metadata.name,
-            "num_parameters": coordinator_account_state.state.metadata.num_parameters,
-            "vocab_size": coordinator_account_state.state.metadata.vocab_size,
-            "model": format!("{:?}", coordinator_account_state.state.coordinator.model),
+        "run_id": coordinator_account_state.state.coordinator.run_id,
+        "setup": {
+            "metadata": coordinator_account_state.state.metadata,
+            "model": coordinator_account_state.state.coordinator.model,
+            "config": coordinator_account_state.state.coordinator.config,
         },
         "status": {
             "next_active": coordinator_account_state.state.clients_state.next_active,
