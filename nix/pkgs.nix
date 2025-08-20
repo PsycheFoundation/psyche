@@ -25,7 +25,7 @@ lib.makeScope pkgs.newScope (
     rustPackages = lib.mapAttrs (_: lib.id) (
       lib.genAttrs (rustPackageNames ++ rustExampleNames) (
         name:
-        self.psycheLib.buildRustPackageWithPythonSidecar {
+        self.psycheLib.buildRustPackageWithPsychePythonEnvironment {
           inherit name;
           isExample = lib.elem name rustExampleNames;
         }

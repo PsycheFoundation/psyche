@@ -76,7 +76,7 @@ let
     ])
   );
 
-  buildRustPackageWithPythonSidecar =
+  buildRustPackageWithPsychePythonEnvironment =
     {
       name,
       isExample ? false,
@@ -91,16 +91,18 @@ let
             rustWorkspaceArgsWithPython.cargoExtraArgs
             + (if isExample then " --example ${name}" else " --bin ${name}");
           doCheck = false;
+
+          meta.mainProgram = name;
         }
       );
     in
-    pkgs.runCommand "${name}-wrapped"
+    pkgs.runCommand "${name}"
       {
         buildInputs = [ pkgs.makeWrapper ];
       }
       ''
         mkdir -p $out/bin
-        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name}-wrapped \
+        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
           --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
           --prefix PATH : "${pythonWithPsycheExtension}/bin"
       '';
@@ -255,7 +257,7 @@ in
     rustWorkspaceArgs
     rustWorkspaceArgsWithPython
     cargoArtifacts
-    buildRustPackageWithPythonSidecar
+    buildRustPackageWithPsychePythonEnvironment
     buildRustWasmTsPackage
     useHostGpuDrivers
     env
