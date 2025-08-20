@@ -16,7 +16,7 @@ use psyche_tui::{CustomWidget, TabbedWidget};
 use psyche_watcher::{Backend as WatcherBackend, CoordinatorTui, OpportunisticData};
 use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::time::interval;
 use tokio::{select, sync::mpsc, time::Interval};
 use tokio_util::sync::CancellationToken;
@@ -74,17 +74,22 @@ impl WatcherBackend<ClientId> for Backend {
 }
 
 pub struct App {
-    run_id: String,
-    cancel: CancellationToken,
-    update_tui_interval: Interval,
-    tx_tui_state: Option<Sender<TabsData>>,
+    // Runtime state
     coordinator_state: Coordinator<ClientId>,
-    server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
+    update_tui_interval: Interval,
+    cancel: CancellationToken,
+    tx_tui_state: Option<Sender<TabsData>>,
+    run_id: String,
 
-    metrics: Arc<ClientMetrics>,
+    // Dependencies (initialized during run)
+    server_conn: Option<TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>>,
+    client: Option<Client<ClientId, ClientId, Backend>>,
+    metrics: Option<Arc<ClientMetrics>>,
+
+    // Communication channels
+    tx_from_server_message: Option<UnboundedSender<psyche_coordinator::Coordinator<ClientId>>>,
+    rx_to_server_message: Option<UnboundedReceiver<ToSend>>,
 }
-
-pub struct AppBuilder(AppParams);
 
 pub struct AppParams {
     pub cancel: CancellationToken,
@@ -114,88 +119,76 @@ pub struct AppParams {
     pub metrics_local_port: Option<u16>,
 }
 
-impl AppBuilder {
-    pub fn new(params: AppParams) -> Self {
-        Self(params)
-    }
+impl App {
+    /// Creates an application instance (consumes params).
+    pub async fn new(params: AppParams) -> Result<Self> {
+        let cancel = params.cancel.clone();
+        let tx_tui_state = params.tx_tui_state.clone();
+        let run_id = params.run_id.clone();
 
-    pub async fn build(
-        self,
-    ) -> Result<(
-        App,
-        allowlist::AllowDynamic,
-        NC,
-        RunInitConfig<ClientId, ClientId>,
-    )> {
-        let p = self.0;
+        let metrics = Arc::new(ClientMetrics::new(params.metrics_local_port));
 
-        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
         let server_conn =
             TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
-                &p.server_addr,
-                p.identity_secret_key.public().into(),
-                p.identity_secret_key.clone(),
+                &params.server_addr,
+                params.identity_secret_key.public().into(),
+                params.identity_secret_key.clone(),
             )
             .await?;
 
-        let allowlist = allowlist::AllowDynamic::new();
-
-        let p2p = NC::init(
-            &p.run_id,
-            p.p2p_port,
-            p.p2p_interface,
-            RelayMode::Custom(psyche_relay_map()),
-            p.discovery_mode,
-            vec![],
-            Some(p.identity_secret_key.clone()),
-            allowlist.clone(),
-            p.max_concurrent_downloads,
-            metrics.clone(),
-        )
-        .await?;
-
-        let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
-            data_parallelism: p.data_parallelism,
-            tensor_parallelism: p.tensor_parallelism,
-            micro_batch_size: p.micro_batch_size,
-            write_gradients_dir: p.write_gradients_dir,
-            eval_tasks: p.eval_tasks,
-            eval_task_max_docs: p.eval_task_max_docs,
-            prompt_task: p.prompt_task,
-            checkpoint_config: p.checkpoint_upload_info,
-            hub_read_token: p.hub_read_token,
-            hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
-            wandb_info: p.wandb_info,
-            identity: p.identity_secret_key.public().into(),
-            network_identity: p.identity_secret_key.public().into(),
-            private_key: p.identity_secret_key,
-            optim_stats_every_n_steps: p.optim_stats,
-            grad_accum_in_fp32: p.grad_accum_in_fp32,
-            dummy_training_delay_secs: p.dummy_training_delay_secs,
-            max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
-        };
-        let app = App {
-            cancel: p.cancel,
-            tx_tui_state: p.tx_tui_state,
-            update_tui_interval: interval(Duration::from_millis(150)),
+        let mut app = Self {
+            cancel,
+            tx_tui_state,
+            run_id,
             coordinator_state: Coordinator::zeroed(),
-            server_conn,
-            run_id: p.run_id,
-            metrics,
+            update_tui_interval: interval(Duration::from_millis(150)),
+            server_conn: Some(server_conn),
+            client: None,
+            metrics: Some(metrics),
+            tx_from_server_message: None,
+            rx_to_server_message: None,
         };
-        Ok((app, allowlist, p2p, state_options))
-    }
-}
 
-impl App {
-    pub async fn run(
-        &mut self,
-        allowlist: allowlist::AllowDynamic,
-        p2p: NC,
-        state_options: RunInitConfig<ClientId, ClientId>,
-    ) -> Result<()> {
-        // sanity checks
-        if let Some(checkpoint_config) = &state_options.checkpoint_config {
+        // Perform sanity checks immediately
+        app.validate_configuration(&params).await?;
+
+        // Join the server
+        app.join_server().await?;
+
+        // Set up communication channels
+        let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
+        let (tx_to_server_message, rx_to_server_message) = mpsc::unbounded_channel();
+
+        // Initialize the client (this consumes params)
+        app.initialize_client(params, rx_from_server_message, tx_to_server_message)
+            .await?;
+
+        // Store channels in the struct so `run()` can use them later
+        app.tx_from_server_message = Some(tx_from_server_message);
+        app.rx_to_server_message = Some(rx_to_server_message);
+
+        Ok(app)
+    }
+
+    /// Runs the already-created app (doesn't need params anymore).
+    pub async fn run(mut self) -> Result<()> {
+        debug!("Starting app loop");
+
+        let tx_from_server_message = self
+            .tx_from_server_message
+            .take()
+            .expect("tx_from_server_message missing");
+        let mut rx_to_server_message = self
+            .rx_to_server_message
+            .take()
+            .expect("rx_to_server_message missing");
+
+        self.run_main_loop(tx_from_server_message, &mut rx_to_server_message)
+            .await
+    }
+
+    async fn validate_configuration(&self, params: &AppParams) -> Result<()> {
+        if let Some(checkpoint_config) = &params.checkpoint_upload_info {
             if let Some(hub_upload) = &checkpoint_config.hub_upload {
                 let api = hf_hub::api::tokio::ApiBuilder::new()
                     .with_token(Some(hub_upload.hub_token.clone()))
@@ -212,48 +205,121 @@ impl App {
                 }
             }
         }
+        Ok(())
+    }
 
-        self.server_conn
+    async fn join_server(&mut self) -> Result<()> {
+        let server_conn = self
+            .server_conn
+            .as_mut()
+            .ok_or_else(|| Error::msg("Server connection not initialized"))?;
+
+        server_conn
             .send(ClientToServerMessage::Join {
                 run_id: self.run_id.clone(),
             })
             .await?;
 
-        let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
-        let (tx_to_server_message, mut rx_to_server_message) = mpsc::unbounded_channel();
-        let mut client = Client::new(
-            Backend {
-                allowlist: allowlist.clone(),
-                rx: rx_from_server_message,
-                tx: tx_to_server_message,
-            },
+        Ok(())
+    }
+
+    async fn initialize_client(
+        &mut self,
+        params: AppParams,
+        rx_from_server_message: mpsc::UnboundedReceiver<Coordinator<ClientId>>,
+        tx_to_server_message: mpsc::UnboundedSender<ToSend>,
+    ) -> Result<()> {
+        let allowlist = allowlist::AllowDynamic::new();
+
+        let p2p = NC::init(
+            &params.run_id,
+            params.p2p_port,
+            params.p2p_interface,
+            RelayMode::Custom(psyche_relay_map()),
+            params.discovery_mode,
+            vec![],
+            Some(params.identity_secret_key.clone()),
+            allowlist.clone(),
+            params.max_concurrent_downloads,
+            self.metrics.as_ref().unwrap().clone(),
+        )
+        .await?;
+
+        let state_options = RunInitConfig {
+            data_parallelism: params.data_parallelism,
+            tensor_parallelism: params.tensor_parallelism,
+            micro_batch_size: params.micro_batch_size,
+            write_gradients_dir: params.write_gradients_dir,
+            eval_tasks: params.eval_tasks, // Move ownership
+            eval_task_max_docs: params.eval_task_max_docs,
+            prompt_task: params.prompt_task,
+            checkpoint_config: params.checkpoint_upload_info, // Move ownership
+            hub_read_token: params.hub_read_token,            // Move ownership
+            hub_max_concurrent_downloads: params.hub_max_concurrent_downloads,
+            wandb_info: params.wandb_info, // Move ownership
+            identity: params.identity_secret_key.public().into(),
+            network_identity: params.identity_secret_key.public().into(),
+            private_key: params.identity_secret_key,
+            optim_stats_every_n_steps: params.optim_stats,
+            grad_accum_in_fp32: params.grad_accum_in_fp32,
+            dummy_training_delay_secs: params.dummy_training_delay_secs,
+            max_concurrent_parameter_requests: params.max_concurrent_parameter_requests,
+        };
+
+        let backend = Backend {
+            allowlist: allowlist.clone(),
+            rx: rx_from_server_message,
+            tx: tx_to_server_message,
+        };
+
+        let client = Client::new(
+            backend,
             allowlist,
             p2p,
             state_options,
-            self.metrics.clone(),
+            self.metrics.as_ref().unwrap().clone(),
         );
 
-        debug!("Starting app loop");
+        self.client = Some(client);
+        Ok(())
+    }
+
+    async fn run_main_loop(
+        &mut self,
+        tx_from_server_message: mpsc::UnboundedSender<Coordinator<ClientId>>,
+        rx_to_server_message: &mut mpsc::UnboundedReceiver<ToSend>,
+    ) -> Result<()> {
         loop {
             select! {
                 _ = self.cancel.cancelled() => {
                    break;
                 }
-                message = self.server_conn.receive() => {
+                message = async {
+                    let server_conn = self.server_conn.as_mut()
+                        .ok_or_else(|| Error::msg("Server connection not initialized"))?;
+                    server_conn.receive().await
+                } => {
                     self.on_server_message(message?, &tx_from_server_message).await;
                 }
                 _ = self.update_tui_interval.tick() => {
+                    let client = self.client.as_mut()
+                        .ok_or_else(|| Error::msg("Client not initialized"))?;
                     let (client_tui_state, network_tui_state) = client.tui_states().await;
                     self.update_tui(client_tui_state, network_tui_state).await?;
                 }
-                res = client.finished() => {
+                res = async {
+                    let client = self.client.as_mut().unwrap();
+                    client.finished().await
+                } => {
                     res??;
                 }
                 Some(to_send) = rx_to_server_message.recv() => {
+                    let server_conn = self.server_conn.as_mut()
+                        .ok_or_else(|| Error::msg("Server connection not initialized"))?;
                     match to_send {
-                        ToSend::Witness(witness) => self.server_conn.send(ClientToServerMessage::Witness(witness)).await?,
-                        ToSend::HealthCheck(health_checks) => self.server_conn.send(ClientToServerMessage::HealthCheck(health_checks)).await?,
-                        ToSend::Checkpoint(checkpoint) => self.server_conn.send(ClientToServerMessage::Checkpoint(checkpoint)).await?,
+                        ToSend::Witness(witness) => server_conn.send(ClientToServerMessage::Witness(witness)).await?,
+                        ToSend::HealthCheck(health_checks) => server_conn.send(ClientToServerMessage::HealthCheck(health_checks)).await?,
+                        ToSend::Checkpoint(checkpoint) => server_conn.send(ClientToServerMessage::Checkpoint(checkpoint)).await?,
                     };
                 }
             }
@@ -291,3 +357,7 @@ impl App {
         }
     }
 }
+
+// Usage becomes much simpler:
+// let app = App::new(params.clone()); // or move some fields to App::new()
+// app.run(params).await?;
