@@ -511,6 +511,7 @@ impl PreparedTask {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_generate_until(
         eval_name: &String,
         options: EvalTaskOptions,
