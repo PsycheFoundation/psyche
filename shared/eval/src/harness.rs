@@ -13,7 +13,7 @@ use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
-use tracing::info;
+use tracing::{debug, info};
 const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
 const MAX_CONTEXT_SIZE: usize = 2048;
 
@@ -88,7 +88,6 @@ pub struct PreparedTaskResult {
 
 #[derive(Debug)]
 struct TokenizedLLHDocument {
-    text: Vec<i64>,
     choices_str: Vec<String>,
     answer: usize,
     choices_token_len: Vec<usize>,
@@ -104,18 +103,10 @@ pub struct TokenizedGenerateUntilDocument {
 
 impl TokenizedLLHDocument {
     pub fn from_document(doc: Document, tokenizer: &Tokenizer) -> Self {
-        let text = tokenizer
-            .encode(doc.text.clone(), false)
-            .unwrap()
-            .get_ids()
-            .iter()
-            .map(|x| *x as i64)
-            .collect::<Vec<_>>();
         // e.g.
         // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
         // text: 'Which statement best explains why photosynthesis is the foundation of most food webs?'
         // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
-
         let mut requests: Vec<Vec<i64>> = Vec::new();
         let mut choices_str = Vec::new();
         let mut choices_token_len = Vec::new();
@@ -160,7 +151,6 @@ impl TokenizedLLHDocument {
         }
 
         Self {
-            text,
             choices_str,
             answer: doc.answer,
             requests,
@@ -405,8 +395,6 @@ impl PreparedTask {
                     break;
                 }
             }
-            let mut context = tokenized_fewshot.to_vec();
-            context.extend_from_slice(&doc.text);
             let mut scores: Vec<(f32, bool)> = Vec::new();
 
             for idx in 0..doc.requests.len() {
@@ -419,9 +407,22 @@ impl PreparedTask {
                 // Remove the last token since we dont want to pass it to the model
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
                 request.pop();
-                let input_lenght = &request.len();
 
-                let request = Tensor::from_slice(&request)
+                // [fewshot_tokens] + [question + choice_without_last_token]
+                let mut full_request = tokenized_fewshot.to_vec();
+                full_request.extend_from_slice(&request);
+                let input_length = &full_request.len();
+
+                // These are conditions that probably shouldn't happen
+                if tokenized_fewshot.is_empty() {
+                    debug!("run_log_likelihood: Fewshot tokens are empty");
+                } else if full_request.len() > request.len() {
+                    debug!(
+                        "run_log_likelihood: Fewshot tokens should increase request length but they did not"
+                    );
+                }
+
+                let request_tensor = Tensor::from_slice(&full_request)
                     .to(options.model.device())
                     .unsqueeze(0);
 
@@ -429,17 +430,19 @@ impl PreparedTask {
                     let _no_grad = tch::no_grad_guard();
                     options
                         .model
-                        .forward(&request, None, None, None, None, None)
+                        .forward(&request_tensor, None, None, None, None, None)
                 };
 
                 let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
 
                 // Get tensor of shape `[choice.len(), vocab_size]` containing the
                 // model's logits for each token of the `choice` text.
+                // Account for fewshot prefix: we want the logits for the choice tokens
+                // which are at the end of our full_request
                 let logits = logits.slice(
                     0,
-                    *input_lenght as i64 - choice.len() as i64,
-                    *input_lenght as i64,
+                    *input_length as i64 - choice.len() as i64,
+                    *input_length as i64,
                     1,
                 );
 
