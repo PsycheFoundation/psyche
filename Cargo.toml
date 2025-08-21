@@ -79,16 +79,12 @@ indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5292b22c621acf93198a49b676ff619c49c00acc", features = [
-  "python-extension",
-] }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5292b22c621acf93198a49b676ff619c49c00acc", features = [
-  "python-extension",
-] }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5292b22c621acf93198a49b676ff619c49c00acc" }
-#tch = { path = "../tch-rs" }
-#torch-sys = { path = "../tch-rs/torch-sys" }
-#pyo3-tch = { path = "../tch-rs/pyo3-tch" }
+tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "a60a34f12bb04cceb1e97a196bea8a188cd94dde" }
+torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "a60a34f12bb04cceb1e97a196bea8a188cd94dde" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "a60a34f12bb04cceb1e97a196bea8a188cd94dde" }
+# tch = { path = "../tch-rs" }
+# torch-sys = { path = "../tch-rs/torch-sys" }
+# pyo3-tch = { path = "../tch-rs/pyo3-tch" }
 time = { version = "0.3.36", features = ["formatting", "macros"] }
 serde_with = { version = "3.11.0", features = ["macros"] }
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
