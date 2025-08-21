@@ -1,3 +1,4 @@
+use anyhow::Result;
 use psyche_solana_mining_pool::accounts::PoolUpdateAccounts;
 use psyche_solana_mining_pool::find_pool;
 use psyche_solana_mining_pool::instruction::PoolUpdate;
@@ -6,7 +7,6 @@ use psyche_solana_mining_pool::state::PoolMetadata;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use solana_toolbox_anchor::ToolboxAnchor;
-use solana_toolbox_anchor::ToolboxAnchorError;
 use solana_toolbox_endpoint::ToolboxEndpoint;
 
 pub async fn process_pool_update(
@@ -17,7 +17,7 @@ pub async fn process_pool_update(
     pool_max_deposit_collateral_amount: Option<u64>,
     pool_freeze: Option<bool>,
     pool_metadata: Option<PoolMetadata>,
-) -> Result<(), ToolboxAnchorError> {
+) -> Result<()> {
     let pool = find_pool(pool_index);
 
     ToolboxAnchor::process_instruction_with_signers(
