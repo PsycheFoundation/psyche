@@ -311,6 +311,7 @@ pub struct LocalTrainer {
         flume::Receiver<ParallelResult>,
     )>,
     first_model_device: Device,
+    first_model_max_context_length: usize,
     barrier: Arc<dyn Barrier>,
     data_parallel: Option<Vec<DataParallel>>,
     is_dummy_model: bool,
@@ -351,6 +352,7 @@ impl LocalTrainer {
         assert!(!models.is_empty());
         let first_model_device = models[0].device();
         let is_dummy_model = models[0].is_dummy_model();
+        let first_model_max_context_length = models[0].max_context_length();
 
         let mut ret = Vec::with_capacity(models.len());
 
@@ -395,6 +397,7 @@ impl LocalTrainer {
         Self {
             models: ret,
             first_model_device,
+            first_model_max_context_length,
             barrier,
             data_parallel,
             is_dummy_model,
@@ -1084,6 +1087,10 @@ impl CausalLM for LocalTrainer {
         self.first_model_device
     }
 
+    fn max_context_length(&self) -> usize {
+        self.first_model_max_context_length
+    }
+
     fn variables(&self) -> StableVariableIterator {
         unimplemented!()
     }
@@ -1209,6 +1216,16 @@ impl CausalLM for Trainer {
             #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.device()
+            }
+        }
+    }
+
+    fn max_context_length(&self) -> usize {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.max_context_length(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.max_context_length()
             }
         }
     }

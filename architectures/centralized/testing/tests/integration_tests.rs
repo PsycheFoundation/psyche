@@ -18,6 +18,7 @@ use psyche_coordinator::{
     model::{Checkpoint, HubRepo},
 };
 use rand::seq::IteratorRandom;
+use tokio::task::JoinHandle;
 use tracing::info;
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -36,7 +37,8 @@ async fn connect_single_node() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let _client_handle = ClientHandle::default(server_port, run_id).await;
+    let mut client_handle = ClientHandle::default(server_port, run_id).await;
+    client_handle.run_client().await.unwrap();
     let connected_clients = || server_handle.get_pending_clients_len();
 
     assert_with_retries(connected_clients, 1).await;
@@ -59,8 +61,7 @@ async fn connect_multiple_nodes() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let _client_handles = spawn_clients(number_of_nodes, server_port, run_id).await;
-
+    let client_handles = spawn_clients(number_of_nodes, server_port, run_id).await;
     let connected_clients = || server_handle.get_pending_clients_len();
     let run_state = || server_handle.get_run_state();
 
@@ -132,17 +133,18 @@ async fn state_change_shutdown_node_in_warmup() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let [_client_1_task, client_2_task]: [ClientHandle; 2] = spawn_clients(2, server_port, run_id)
-        .await
-        .try_into()
-        .unwrap();
+    let [_client_1_task, client_2_task]: [JoinHandle<()>; 2] =
+        spawn_clients(2, server_port, run_id)
+            .await
+            .try_into()
+            .unwrap();
 
     assert_with_retries(|| server_handle.get_clients_len(), 2).await;
     assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // One client is killed, and now state returns to `WaitingForMembers` since the
     // minimum for starting the round is not reached
-    client_2_task.client_handle.abort();
+    client_2_task.abort();
     assert_with_retries(
         || server_handle.get_run_state(),
         RunState::WaitingForMembers,
@@ -330,14 +332,16 @@ async fn replace_node_and_complete_round() {
     // to join the run
 
     info!("creating third client...");
-    let _client_handle_3 =
+    let mut client_handle_3 =
         ClientHandle::new_with_training_delay(server_port, run_id, training_delay, None, None)
             .await;
+    client_handle_3.run_client().await;
 
     // A client is killed and the coordinator state returns to `WaitingForMembers`. Since client 3
     // was pending, the state immediately changes to `Warmup` again
-    client_1_task.client_handle.abort();
+    client_1_task.abort();
 
+    // We go to warmup again because there's now enough clients to keep the round going
     assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
 
     // The network advances normally
@@ -550,7 +554,7 @@ async fn shutdown_node_in_training_and_complete_round() {
 
     // shutdown node 1.
     // this round's workload should be handled entirely by node 2 and 3.
-    client_1_task.client_handle.abort();
+    client_1_task.abort();
 
     // witness
     assert_with_retries(|| server_handle.get_run_state(), RunState::RoundWitness).await;

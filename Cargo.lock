@@ -7534,6 +7534,8 @@ name = "psyche-metrics"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "iroh-blobs",
+ "iroh-gossip",
  "iroh-metrics",
  "nvml-wrapper",
  "opentelemetry 0.28.0",
@@ -7675,8 +7677,6 @@ dependencies = [
  "serde_json",
  "solana-account-decoder-client-types",
  "solana-transaction-status-client-types",
- "spl-associated-token-account 6.0.0",
- "spl-token 4.0.2",
  "time",
  "tokio",
  "tokio-util 0.7.16",

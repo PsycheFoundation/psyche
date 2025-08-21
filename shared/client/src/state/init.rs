@@ -34,6 +34,7 @@ use super::{
     types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
 
+#[derive(Debug)]
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     // identity for connecting to the data server
     pub identity: T,

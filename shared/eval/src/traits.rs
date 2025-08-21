@@ -6,7 +6,7 @@ pub struct Document {
     pub answer: usize,
 }
 
-pub trait LogLikelihoodTask: Send + Display {
+pub trait LogLikelihoodTask: Send + Display + Sync {
     fn get_documents(&self) -> Vec<Document>;
     fn get_fewshot_documents(&self) -> Vec<Document>;
 }

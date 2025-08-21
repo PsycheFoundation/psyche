@@ -43,7 +43,6 @@ For a standard run without token incentive distribution layer
 ```bash
 psyche-solana-client create-run \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
@@ -56,10 +55,9 @@ For a run that distributes tokens as reward to the training participants, we nee
 ```bash
 psyche-solana-client create-run \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    --join_authority [JOIN_AUTHORITY_PUBKEY] \
-    --treasurer-collateral-mint [REWARD_COLLATERAL_MINT] \
+    --join-authority [JOIN_AUTHORITY_PUBKEY] \
+    --treasurer-collateral-mint [COLLATERAL_MINT_PUBKEY] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
@@ -75,7 +73,6 @@ You'll need to provide:
 ```bash
 psyche-solana-client update-config \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
     --config-path [CONFIG_FILE_PATH] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
@@ -88,10 +85,9 @@ At this point, your run is ready to go! You can now set its state to "unpaused",
 ```bash
 psyche-solana-client set-paused \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
-    --resume
+    --resume \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 Congratulations! As soon as your first client joins, your model is being trained.
@@ -103,7 +99,6 @@ You can configure how many points does each client earns and loses for each epoc
 ```bash
 psyche-solana-client set-future-epoch-rates \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
     --earning-rate [EARNING_RATE] \
     --slashing-rate [SLASHING_RATE] \
@@ -115,7 +110,11 @@ psyche-solana-client set-future-epoch-rates \
 To distribute collateral to users, we need to periodically top-up the run's treasury so that points earned by users during compute can then be claimed against the treasury.
 
 ```sh
-sh scripts/treasurer-run-top-up.sh [RPC] [COLLATERAL_SENDER_KEYPAIR] [RUN_ID] [AMOUNT]
+psyche-solana-client treasurer-top-up-rewards \
+    --rpc [RPC] \
+    --run-id [RUN_ID] \
+    --collateral-amount [COLLATERAL_AMOUNT] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Inspect the content of a run
@@ -123,8 +122,7 @@ sh scripts/treasurer-run-top-up.sh [RPC] [COLLATERAL_SENDER_KEYPAIR] [RUN_ID] [A
 Optionally you can get detailled technical information about a run that was previously created for troubleshooting purposes.
 
 ```bash
-psyche-solana-client info \
+psyche-solana-client json-info-dump \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID]
 ```

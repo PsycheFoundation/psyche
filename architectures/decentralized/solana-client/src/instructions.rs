@@ -170,3 +170,59 @@ pub fn treasurer_run_update(
         data: psyche_solana_treasurer::instruction::RunUpdate { params }.data(),
     }
 }
+
+pub fn treasurer_participant_create(
+    payer: &Pubkey,
+    treasurer_index: u64,
+    user: &Pubkey,
+) -> Instruction {
+    let run = psyche_solana_treasurer::find_run(treasurer_index);
+    let participant = psyche_solana_treasurer::find_participant(&run, user);
+    Instruction {
+        program_id: psyche_solana_treasurer::ID,
+        accounts: psyche_solana_treasurer::accounts::ParticipantCreateAccounts {
+            payer: *payer,
+            run,
+            participant,
+            user: *user,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: psyche_solana_treasurer::instruction::ParticipantCreate {
+            params: psyche_solana_treasurer::logic::ParticipantCreateParams {},
+        }
+        .data(),
+    }
+}
+
+pub fn treasurer_participant_claim(
+    treasurer_index: u64,
+    collateral_mint: &Pubkey,
+    coordinator_account: &Pubkey,
+    user: &Pubkey,
+    claim_earned_points: u64,
+) -> Instruction {
+    let user_collateral = associated_token::get_associated_token_address(user, collateral_mint);
+    let run = psyche_solana_treasurer::find_run(treasurer_index);
+    let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
+    let participant = psyche_solana_treasurer::find_participant(&run, user);
+    Instruction {
+        program_id: psyche_solana_treasurer::ID,
+        accounts: psyche_solana_treasurer::accounts::ParticipantClaimAccounts {
+            user: *user,
+            user_collateral,
+            run,
+            run_collateral,
+            participant,
+            coordinator_account: *coordinator_account,
+            token_program: token::ID,
+        }
+        .to_account_metas(None),
+        data: psyche_solana_treasurer::instruction::ParticipantClaim {
+            params: psyche_solana_treasurer::logic::ParticipantClaimParams {
+                claim_earned_points,
+            },
+        }
+        .data(),
+    }
+}

@@ -19,7 +19,7 @@ let
       inherit cargoArtifacts;
       pname = "psyche-python-extension";
 
-      cargoExtraArgs = rustWorkspaceArgs.cargoExtraArgs + " --package psyche-python-extension";
+      cargoExtraArgs = " --package psyche-python-extension --features parallelism";
 
       nativeBuildInputs = rustWorkspaceArgs.nativeBuildInputs ++ [
         python312
