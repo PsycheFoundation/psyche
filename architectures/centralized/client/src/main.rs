@@ -141,8 +141,8 @@ async fn async_main() -> Result<()> {
                 max_concurrent_downloads: args.max_concurrent_downloads,
                 metrics_local_port: args.metrics_local_port,
             };
-            let app = App::new(params).await?;
-            app.run().await?;
+            let app = App::new(&params).await?;
+            app.run(params).await?;
             logger.shutdown()?;
 
             Ok(())

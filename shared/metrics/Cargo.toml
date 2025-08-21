@@ -14,3 +14,5 @@ iroh-metrics = { version = "0.34.0", features = ["metrics"] }
 tracing = "0.1"
 serde.workspace = true
 serde_json.workspace = true
+iroh-blobs.workspace = true
+iroh-gossip.workspace = true

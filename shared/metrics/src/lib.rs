@@ -17,6 +17,8 @@ use sysinfo::System;
 use tokio::{io::AsyncWriteExt, net::TcpListener, time::interval};
 
 pub use iroh::{IrohMetricsCollector, create_iroh_registry};
+pub use iroh_blobs::metrics::Metrics as BlobsMetrics;
+pub use iroh_gossip::metrics::Metrics as GossipMetrics;
 pub use iroh_metrics::Registry as IrohMetricsRegistry;
 use tracing::{debug, info, warn};
 

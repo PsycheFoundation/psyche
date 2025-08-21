@@ -7196,6 +7196,7 @@ dependencies = [
  "psyche-data-provider",
  "psyche-network",
  "rand 0.8.5",
+ "serde",
  "test-log",
  "tokio",
  "tokio-util 0.7.15",
@@ -7368,6 +7369,8 @@ name = "psyche-metrics"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "iroh-blobs",
+ "iroh-gossip",
  "iroh-metrics",
  "nvml-wrapper",
  "opentelemetry 0.28.0",

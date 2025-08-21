@@ -13,6 +13,7 @@ psyche-data-provider.workspace = true
 psyche-network.workspace = true
 psyche-core.workspace = true
 tokio-util.workspace = true
+serde.workspace = true
 tokio.workspace = true
 bytemuck.workspace = true
 anyhow.workspace = true

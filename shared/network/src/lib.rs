@@ -112,8 +112,9 @@ where
     Download: Networkable,
 {
     router: Arc<Router>,
-    blobs: Blobs<Store>,
+    pub blobs: Blobs<Store>,
     state: State,
+    pub gossip: Gossip,
     gossip_tx: GossipSender,
     gossip_rx: GossipReceiver,
     rx_model_parameter_req: UnboundedReceiver<ParameterSharingMessage>,
@@ -319,6 +320,7 @@ where
 
         Ok(Self {
             blobs,
+            gossip,
             gossip_rx,
             gossip_tx,
             rx_model_parameter_req,

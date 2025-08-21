@@ -225,6 +225,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct TcpClient<I, ToServerMessage, ToClientMessage>
 where
     I: AuthenticatableIdentity,

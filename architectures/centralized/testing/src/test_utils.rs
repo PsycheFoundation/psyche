@@ -6,7 +6,9 @@ use crate::server::CoordinatorServerHandle;
 use psyche_centralized_client::app::AppParams;
 use psyche_network::{DiscoveryMode, SecretKey};
 use rand::distributions::{Alphanumeric, DistString};
+use serde::{Deserialize, Serialize};
 use std::env;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 pub fn repo_path() -> String {
@@ -24,10 +26,12 @@ pub async fn spawn_clients(
     num_clients: usize,
     server_port: u16,
     run_id: &str,
-) -> Vec<ClientHandle> {
+) -> Vec<JoinHandle<()>> {
     let mut client_handles = Vec::new();
     for _ in 0..num_clients {
-        client_handles.push(ClientHandle::default(server_port, run_id).await)
+        let mut client_handle = ClientHandle::default(server_port, run_id).await;
+        let handle = client_handle.run_client().await.unwrap();
+        client_handles.push(handle);
     }
     client_handles
 }
@@ -37,12 +41,13 @@ pub async fn spawn_clients_with_training_delay(
     server_port: u16,
     run_id: &str,
     training_delay_secs: u64,
-) -> Vec<ClientHandle> {
+) -> Vec<JoinHandle<()>> {
     let mut client_handles = Vec::new();
     for _ in 0..num_clients {
-        client_handles.push(
-            ClientHandle::new_with_training_delay(server_port, run_id, training_delay_secs).await,
-        )
+        let mut client_handle =
+            ClientHandle::new_with_training_delay(server_port, run_id, training_delay_secs).await;
+        let handle = client_handle.run_client().await.unwrap();
+        client_handles.push(handle)
     }
     client_handles
 }
@@ -171,4 +176,14 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         max_concurrent_downloads: 10,
         metrics_local_port: None,
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Setup {
+    pub server_port: u16,
+    pub training_delay_secs: u64,
+    pub init_min_clients: u16,
+    pub global_batch_size: u16,
+    pub witness_nodes: u16,
+    pub run_id: String,
 }

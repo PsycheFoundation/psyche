@@ -6,10 +6,11 @@ use psyche_client::{
     CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
-use psyche_metrics::ClientMetrics;
+use psyche_metrics::{BlobsMetrics, ClientMetrics, GossipMetrics, IrohMetricsRegistry};
+use psyche_network::router::Router;
 use psyche_network::{
-    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
-    SecretKey, TcpClient, allowlist, psyche_relay_map,
+    AuthenticatableIdentity, DiscoveryMode, Endpoint, NetworkTUIState, NetworkTui, NodeId,
+    RelayMode, SecretKey, TcpClient, allowlist, psyche_relay_map,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
@@ -32,6 +33,7 @@ pub enum ToSend {
     Checkpoint(model::HubRepo),
 }
 
+#[derive(Debug)]
 struct Backend {
     allowlist: allowlist::AllowDynamic,
     rx: mpsc::UnboundedReceiver<Coordinator<ClientId>>,
@@ -73,6 +75,7 @@ impl WatcherBackend<ClientId> for Backend {
     }
 }
 
+#[derive(Debug)]
 pub struct App {
     // Runtime state
     coordinator_state: Coordinator<ClientId>,
@@ -89,8 +92,19 @@ pub struct App {
     // Communication channels
     tx_from_server_message: Option<UnboundedSender<psyche_coordinator::Coordinator<ClientId>>>,
     rx_to_server_message: Option<UnboundedReceiver<ToSend>>,
+
+    // Stuff needed for simulations
+    pub router: Option<Arc<Router>>,
+    pub gossip_metrics: Option<Arc<GossipMetrics>>,
+    pub blob_metrics: Option<Arc<BlobsMetrics>>,
+
+    // checks
+    backend: Option<Backend>,
+    allowlist: Option<allowlist::AllowDynamic>,
+    p2p: Option<NC>,
 }
 
+#[derive(Debug)]
 pub struct AppParams {
     pub cancel: CancellationToken,
     pub identity_secret_key: SecretKey,
@@ -121,12 +135,90 @@ pub struct AppParams {
 
 impl App {
     /// Creates an application instance (consumes params).
-    pub async fn new(params: AppParams) -> Result<Self> {
+    pub async fn new(params: &AppParams) -> Result<Self> {
         let cancel = params.cancel.clone();
         let tx_tui_state = params.tx_tui_state.clone();
         let run_id = params.run_id.clone();
-
         let metrics = Arc::new(ClientMetrics::new(params.metrics_local_port));
+
+        // let server_conn =
+        //     TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
+        //         &params.server_addr,
+        //         params.identity_secret_key.public().into(),
+        //         params.identity_secret_key.clone(),
+        //     )
+        //     .await?;
+
+        let mut app = Self {
+            cancel,
+            tx_tui_state,
+            run_id,
+            coordinator_state: Coordinator::zeroed(),
+            update_tui_interval: interval(Duration::from_millis(150)),
+            // server_conn: Some(server_conn),
+            server_conn: None,
+            client: None,
+            metrics: Some(metrics.clone()),
+            tx_from_server_message: None,
+            rx_to_server_message: None,
+            router: None,
+            gossip_metrics: None,
+            blob_metrics: None,
+            backend: None,
+            allowlist: None,
+            p2p: None,
+        };
+
+        let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
+        let (tx_to_server_message, mut rx_to_server_message) = mpsc::unbounded_channel();
+
+        // Perform sanity checks immediately
+        app.validate_configuration(&params).await?;
+
+        let allowlist = allowlist::AllowDynamic::new();
+
+        let p2p = NC::init(
+            &params.run_id,
+            params.p2p_port,
+            params.p2p_interface.clone(),
+            RelayMode::Custom(psyche_relay_map()),
+            params.discovery_mode,
+            vec![],
+            Some(params.identity_secret_key.clone()),
+            allowlist.clone(),
+            params.max_concurrent_downloads,
+            metrics.clone(),
+        )
+        .await?;
+
+        let backend = Backend {
+            allowlist: allowlist.clone(),
+            rx: rx_from_server_message,
+            tx: tx_to_server_message,
+        };
+
+        // // Join the server
+        // app.join_server().await?;
+
+        // Initialize the client (this consumes params)
+        // app.initialize_client(params, rx_from_server_message, tx_to_server_message)
+        //     .await?;
+
+        // Store channels in the struct so `run()` can use them later
+        app.tx_from_server_message = Some(tx_from_server_message);
+        app.rx_to_server_message = Some(rx_to_server_message);
+        app.gossip_metrics = Some(p2p.gossip.metrics().clone());
+        app.blob_metrics = Some(p2p.blobs.metrics().clone());
+        app.router = Some(p2p.router().clone());
+
+        app.backend = Some(backend);
+        app.p2p = Some(p2p);
+        Ok(app)
+    }
+
+    /// Runs the already-created app (doesn't need params anymore).
+    pub async fn run(mut self, params: AppParams) -> Result<()> {
+        debug!("Starting app loop");
 
         let server_conn =
             TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
@@ -135,54 +227,19 @@ impl App {
                 params.identity_secret_key.clone(),
             )
             .await?;
+        self.server_conn = Some(server_conn);
 
-        let mut app = Self {
-            cancel,
-            tx_tui_state,
-            run_id,
-            coordinator_state: Coordinator::zeroed(),
-            update_tui_interval: interval(Duration::from_millis(150)),
-            server_conn: Some(server_conn),
-            client: None,
-            metrics: Some(metrics),
-            tx_from_server_message: None,
-            rx_to_server_message: None,
-        };
-
-        // Perform sanity checks immediately
-        app.validate_configuration(&params).await?;
-
-        // Join the server
-        app.join_server().await?;
+        self.join_server().await?;
 
         // Set up communication channels
-        let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
-        let (tx_to_server_message, rx_to_server_message) = mpsc::unbounded_channel();
+        // let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
+        // let (tx_to_server_message, mut rx_to_server_message) = mpsc::unbounded_channel();
 
         // Initialize the client (this consumes params)
-        app.initialize_client(params, rx_from_server_message, tx_to_server_message)
-            .await?;
+        self.initialize_client(params).await?;
 
-        // Store channels in the struct so `run()` can use them later
-        app.tx_from_server_message = Some(tx_from_server_message);
-        app.rx_to_server_message = Some(rx_to_server_message);
-
-        Ok(app)
-    }
-
-    /// Runs the already-created app (doesn't need params anymore).
-    pub async fn run(mut self) -> Result<()> {
-        debug!("Starting app loop");
-
-        let tx_from_server_message = self
-            .tx_from_server_message
-            .take()
-            .expect("tx_from_server_message missing");
-        let mut rx_to_server_message = self
-            .rx_to_server_message
-            .take()
-            .expect("rx_to_server_message missing");
-
+        let mut rx_to_server_message = self.rx_to_server_message.take().unwrap();
+        let tx_from_server_message = self.tx_from_server_message.clone().unwrap();
         self.run_main_loop(tx_from_server_message, &mut rx_to_server_message)
             .await
     }
@@ -223,27 +280,23 @@ impl App {
         Ok(())
     }
 
-    async fn initialize_client(
-        &mut self,
-        params: AppParams,
-        rx_from_server_message: mpsc::UnboundedReceiver<Coordinator<ClientId>>,
-        tx_to_server_message: mpsc::UnboundedSender<ToSend>,
-    ) -> Result<()> {
+    async fn initialize_client(&mut self, params: AppParams) -> Result<()> {
         let allowlist = allowlist::AllowDynamic::new();
 
-        let p2p = NC::init(
-            &params.run_id,
-            params.p2p_port,
-            params.p2p_interface,
-            RelayMode::Custom(psyche_relay_map()),
-            params.discovery_mode,
-            vec![],
-            Some(params.identity_secret_key.clone()),
-            allowlist.clone(),
-            params.max_concurrent_downloads,
-            self.metrics.as_ref().unwrap().clone(),
-        )
-        .await?;
+        // let p2p = NC::init(
+        //     &params.run_id,
+        //     params.p2p_port,
+        //     params.p2p_interface,
+        //     RelayMode::Custom(psyche_relay_map()),
+        //     params.discovery_mode,
+        //     vec![],
+        //     Some(params.identity_secret_key.clone()),
+        //     allowlist.clone(),
+        //     params.max_concurrent_downloads,
+        //     self.metrics.as_ref().unwrap().clone(),
+        //     params.sim_endpoint,
+        // )
+        // .await?;
 
         let state_options = RunInitConfig {
             data_parallelism: params.data_parallelism,
@@ -266,12 +319,18 @@ impl App {
             max_concurrent_parameter_requests: params.max_concurrent_parameter_requests,
         };
 
-        let backend = Backend {
-            allowlist: allowlist.clone(),
-            rx: rx_from_server_message,
-            tx: tx_to_server_message,
-        };
+        // let backend = Backend {
+        //     allowlist: allowlist.clone(),
+        //     rx: rx_from_server_message,
+        //     tx: tx_to_server_message,
+        // };
 
+        let p2p = self.p2p.take().unwrap();
+        let backend = self.backend.take().unwrap();
+
+        let blob_metrics = p2p.blobs.metrics().clone();
+        let gossip_metrics = p2p.gossip.metrics().clone();
+        let router = p2p.router().clone();
         let client = Client::new(
             backend,
             allowlist,
@@ -280,12 +339,15 @@ impl App {
             self.metrics.as_ref().unwrap().clone(),
         );
 
+        // self.blob_metrics = Some(blob_metrics);
+        // self.gossip_metrics = Some(gossip_metrics);
+        self.router = Some(router);
         self.client = Some(client);
         Ok(())
     }
 
     async fn run_main_loop(
-        &mut self,
+        mut self,
         tx_from_server_message: mpsc::UnboundedSender<Coordinator<ClientId>>,
         rx_to_server_message: &mut mpsc::UnboundedReceiver<ToSend>,
     ) -> Result<()> {
@@ -294,11 +356,7 @@ impl App {
                 _ = self.cancel.cancelled() => {
                    break;
                 }
-                message = async {
-                    let server_conn = self.server_conn.as_mut()
-                        .ok_or_else(|| Error::msg("Server connection not initialized"))?;
-                    server_conn.receive().await
-                } => {
+                message = self.server_conn.as_mut().unwrap().receive() => {
                     self.on_server_message(message?, &tx_from_server_message).await;
                 }
                 _ = self.update_tui_interval.tick() => {
@@ -306,12 +364,6 @@ impl App {
                         .ok_or_else(|| Error::msg("Client not initialized"))?;
                     let (client_tui_state, network_tui_state) = client.tui_states().await;
                     self.update_tui(client_tui_state, network_tui_state).await?;
-                }
-                res = async {
-                    let client = self.client.as_mut().unwrap();
-                    client.finished().await
-                } => {
-                    res??;
                 }
                 Some(to_send) = rx_to_server_message.recv() => {
                     let server_conn = self.server_conn.as_mut()
