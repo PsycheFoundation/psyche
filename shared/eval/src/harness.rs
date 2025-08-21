@@ -679,7 +679,9 @@ impl PreparedTask {
                 // Extract answer from the complete generated text using regex
                 if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
                     if let Some(captures) = answer_extraction_regex.captures(&generated_text) {
+                        // captures.get(1) returns just the letter (A, B, C, ...)
                         if let Some(answer_char) = captures.get(1) {
+                            // Gets the index of the letter (A=0, B=1, C=2, ...)
                             generated_answer = Some(
                                 crate::ASCII_UPPERCASE
                                     .iter()

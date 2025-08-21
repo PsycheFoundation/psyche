@@ -104,6 +104,7 @@ impl GenerateUntilTask for MMLUPro {
     }
 
     fn get_answer_extraction_regex(&self) -> String {
+        // Matches "answer is A", "answer is B", "answer is (F)" etc.
         r"answer is \(?([ABCDEFGHIJ])\)?".to_string()
     }
 }
