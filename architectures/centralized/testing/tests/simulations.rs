@@ -113,7 +113,7 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
             println!("Spawning new nodes for next psyche round");
             node.run_client().await.unwrap();
         } else {
-            println!("Node moving on in round: {}", ctx.round());
+            println!("New node moving on in round: {}", ctx.round());
         }
         Ok(true)
     }
@@ -130,9 +130,9 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
                 }
             }
         } else {
-            println!("RUN STATE BEFORE TRAINING: {}", node.get_run_state().await);
             loop {
                 if node.get_run_state().await == RunState::RoundTrain {
+                    println!("Coordinator is in training state");
                     break;
                 }
             }
@@ -140,18 +140,26 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
             loop {
                 if node.get_run_state().await == RunState::RoundWitness {
                     tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
+                    println!("Coordinator is in witness state");
                     break;
                 }
             }
-            println!("RUN STATE AFTER WITNESS: {}", node.get_run_state().await);
+        }
+        if ctx.round() == 9 {
+            loop {
+                if node.get_run_state().await == RunState::Finished {
+                    println!("We went through two epochs");
+                    break;
+                }
+            }
         }
         Ok(true)
     }
 
     // We initialize the coordinator with the same number of min clients as batches per round.
     // This way, every client will be assigned with only one batch
-    let init_min_clients = 10;
-    let global_batch_size = 35;
+    let init_min_clients = 5;
+    let global_batch_size = 20;
     let witness_nodes = 0;
 
     let port = 51000;
@@ -168,8 +176,8 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
         Ok(setup)
     })
     .spawn(1, CoordinatorServerHandle::builder(coordinator_round))
-    .spawn(10, ClientHandle::builder(client_round))
-    .spawn(25, ClientHandle::builder(late_join_client_round))
+    .spawn(5, ClientHandle::builder(client_round))
+    .spawn(15, ClientHandle::builder(late_join_client_round))
     .rounds(10);
     Ok(sim)
 }
