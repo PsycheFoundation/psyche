@@ -22,13 +22,8 @@ pub struct MMLUPro {
 impl MMLUPro {
     pub fn load() -> Result<TaskType> {
         let ret = Self {
-            test_dataset: load_dataset("pefontana/mmlu_pro_reduced", None, Split::Test, None)?,
-            validation_dataset: load_dataset(
-                "pefontana/mmlu_pro_reduced",
-                None,
-                Split::Validation,
-                None,
-            )?,
+            test_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Test, None)?,
+            validation_dataset: load_dataset("TIGER-Lab/MMLU-Pro", None, Split::Validation, None)?,
         };
         Ok(TaskType::GenerateUntil(Box::new(ret)))
     }
