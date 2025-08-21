@@ -17,7 +17,7 @@ use crate::test_utils::dummy_client_app_params_default;
 use crate::test_utils::dummy_client_app_params_with_training_delay;
 
 #[derive(Debug)]
-struct Client {
+pub struct Client {
     inner: ClientApp,
     params: AppParams,
 }
