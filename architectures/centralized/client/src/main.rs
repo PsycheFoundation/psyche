@@ -1,7 +1,8 @@
-use crate::app::{AppBuilder, AppParams, TAB_NAMES, Tabs};
+use crate::app::{TAB_NAMES, Tabs};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use psyche_centralized_client::app::{App, AppParams};
 use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
 use psyche_network::{DiscoveryMode, SecretKey};
 use psyche_tui::{
@@ -113,7 +114,7 @@ async fn async_main() -> Result<()> {
                 (args.logs == LogOutput::TUI).then(|| Tabs::new(Default::default(), &TAB_NAMES)),
             )?;
 
-            let (mut app, allowlist, p2p, state_options) = AppBuilder::new(AppParams {
+            let params = AppParams {
                 cancel,
                 identity_secret_key,
                 server_addr,
@@ -139,12 +140,10 @@ async fn async_main() -> Result<()> {
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 max_concurrent_downloads: args.max_concurrent_downloads,
                 metrics_local_port: args.metrics_local_port,
-            })
-            .build()
-            .await
-            .unwrap();
-
-            app.run(allowlist, p2p, state_options).await?;
+                sim_endpoint: None,
+            };
+            let app = App::new(&params).await?;
+            app.run(params).await?;
             logger.shutdown()?;
 
             Ok(())

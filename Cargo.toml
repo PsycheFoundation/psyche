@@ -65,15 +65,21 @@ futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }
 fast-math = "0.1"
 async-trait = "0.1.82"
-iroh = { version = "0.35.0", features = ["metrics"] }
-iroh-relay = { version = "0.35.0", features = ["metrics"] }
-iroh-blobs = { git = "https://github.com/NousResearch/iroh-blobs", rev = "2ebe362e90fa53f346ad466f1c9ef33ed2108524", features = [
+iroh = { git = "https://github.com/n0-computer/iroh.git", branch = "matheus23/v0.35-metrics", features = [
+  "metrics",
+] }
+iroh-relay = { git = "https://github.com/n0-computer/iroh.git", branch = "matheus23/v0.35-metrics", features = [
+  "metrics",
+] }
+iroh-blobs = { git = "https://github.com/NousResearch/iroh-blobs", branch = "update-iroh-metrics", features = [
   "rpc",
   "downloader",
   "metrics",
 ] }
 flume = "0.11.1"
-iroh-gossip = { version = "0.35.0" }
+iroh-gossip = { git = "https://github.com/n0-computer/iroh-gossip.git", branch = "matheus23/v0.35-metrics", features = [
+  "metrics",
+] }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
@@ -117,3 +123,7 @@ opt-level = 1
 
 [profile.test]
 opt-level = 1
+
+[patch.crates-io]
+iroh = { git = "https://github.com/n0-computer/iroh", branch = "matheus23/v0.35-metrics" }
+iroh-base = { git = "https://github.com/n0-computer/iroh", branch = "matheus23/v0.35-metrics" }

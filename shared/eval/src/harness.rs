@@ -4,7 +4,11 @@ use psyche_core::RunningAverage;
 use psyche_modeling::CausalLM;
 use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+    sync::Arc,
+};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
@@ -14,6 +18,15 @@ pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
 }
 
+impl Debug for TaskType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskType::LogLikelihood(x) => write!(f, "Log likelihood task"),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Task {
     task_type: TaskType,
     num_fewshot: usize,

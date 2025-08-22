@@ -44,6 +44,7 @@ pub(super) const TAB_NAMES: [&str; 4] =
     ["Dashboard", "Coordinator", "Training Data Server", "Logger"];
 type TabsData = <Tabs as CustomWidget>::Data;
 
+#[derive(Debug)]
 struct Backend {
     net_server: TcpServer<ClientId, ClientToServerMessage, ServerToClientMessage>,
     pending_clients: HashSet<ClientId>,
@@ -55,6 +56,7 @@ impl Backend {
     }
 }
 
+#[derive(Debug)]
 struct ChannelCoordinatorBackend {
     rx: Receiver<Coordinator<ClientId>>,
 }

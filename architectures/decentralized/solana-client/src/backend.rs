@@ -30,6 +30,7 @@ use psyche_solana_treasurer::logic::RunUpdateParams;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
+use std::fmt::Debug;
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -46,6 +47,16 @@ pub struct SolanaBackend {
     wallet: Arc<Keypair>,
 }
 
+impl Debug for SolanaBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SolanaBackend")
+            .field("cluster", &self.cluster)
+            .field("backup_clusters", &self.backup_clusters.len())
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 pub struct SolanaBackendRunner {
     pub(crate) backend: SolanaBackend,
     instance: Pubkey,

@@ -1,110 +1,151 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Error, Result};
+use iroh::Endpoint;
+use iroh_n0des::Registry;
+use iroh_n0des::simulation::Node;
+use iroh_n0des::simulation::SetupData;
+use iroh_n0des::simulation::Spawn;
+use iroh_n0des::simulation::SpawnContext;
 use psyche_centralized_client::app::App as ClientApp;
-use psyche_centralized_client::app::AppBuilder as ClientAppBuilder;
+use psyche_centralized_client::app::AppParams;
 use psyche_centralized_shared::ClientId;
 use psyche_client::NC;
 use psyche_client::RunInitConfig;
+use psyche_network::NetworkConnection;
 use psyche_network::allowlist;
+use psyche_network::router;
+use psyche_network::router::Router;
+use serde::{Deserialize, Serialize};
 use tokio::select;
 use tokio::task::JoinHandle;
 use tracing::debug;
 
+use crate::server::CoordinatorServerHandle;
+use crate::test_utils::Setup;
 use crate::test_utils::dummy_client_app_params_default;
 use crate::test_utils::dummy_client_app_params_with_training_delay;
 
-struct Client {
+#[derive(Debug)]
+pub struct Client {
     inner: ClientApp,
+    params: AppParams,
 }
 
 impl Client {
-    pub async fn default(
-        server_port: u16,
-        run_id: &str,
-    ) -> (
-        Self,
-        allowlist::AllowDynamic,
-        NC,
-        RunInitConfig<ClientId, ClientId>,
-    ) {
+    pub async fn default(server_port: u16, run_id: &str) -> Self {
         let client_app_params = dummy_client_app_params_default(server_port, run_id);
-        let (client_app, allowlist, p2p, state_options) = ClientAppBuilder::new(client_app_params)
-            .build()
-            .await
-            .unwrap();
+        let client_app = ClientApp::new(&client_app_params).await.unwrap();
 
-        (Self { inner: client_app }, allowlist, p2p, state_options)
+        Self {
+            inner: client_app,
+            params: client_app_params,
+        }
     }
 
     pub async fn new_with_training_delay(
         server_port: u16,
         run_id: &str,
         training_delay_secs: u64,
-    ) -> (
-        Self,
-        allowlist::AllowDynamic,
-        NC,
-        RunInitConfig<ClientId, ClientId>,
-    ) {
-        let client_app_params =
-            dummy_client_app_params_with_training_delay(server_port, run_id, training_delay_secs);
-        let (client_app, allowlist, p2p, state_options) = ClientAppBuilder::new(client_app_params)
-            .build()
-            .await
-            .unwrap();
+        endpoint: Option<Endpoint>,
+    ) -> Self {
+        let client_app_params = dummy_client_app_params_with_training_delay(
+            server_port,
+            run_id,
+            training_delay_secs,
+            endpoint,
+        );
+        let client_app = ClientApp::new(&client_app_params).await.unwrap();
 
-        (Self { inner: client_app }, allowlist, p2p, state_options)
+        Self {
+            inner: client_app,
+            params: client_app_params,
+        }
     }
 
-    pub async fn run(
-        &mut self,
-        allowlist: allowlist::AllowDynamic,
-        p2p: NC,
-        state_options: RunInitConfig<ClientId, ClientId>,
-    ) -> Result<()> {
-        debug!(
-            "spawned new client: {}",
-            p2p.node_addr().await.unwrap().node_id
-        );
-        let client_run = self.inner.run(allowlist, p2p, state_options);
-        tokio::pin!(client_run);
-        loop {
-            select! {
-                run_res = &mut client_run => run_res?,
-            }
-        }
+    pub async fn run(self) -> Result<()> {
+        self.inner.run(self.params).await
     }
 }
 
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ClientHandle {
-    pub client_handle: JoinHandle<Result<(), Error>>,
+    pub client: Option<Client>,
+    pub router: Arc<Router>,
 }
 
 impl ClientHandle {
     pub async fn default(server_port: u16, run_id: &str) -> Self {
-        let (mut client, allowlist, p2p, state_options) =
-            Client::default(server_port, run_id).await;
-        let client_handle =
-            tokio::spawn(async move { client.run(allowlist, p2p, state_options).await });
+        let client = Client::default(server_port, run_id).await;
+        let router = client.inner.router.clone().unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
-        Self { client_handle }
+        Self {
+            client: Some(client),
+            router,
+        }
     }
 
     pub async fn new_with_training_delay(
         server_port: u16,
         run_id: &str,
         training_delay_secs: u64,
+        sim_endpoint: Option<Endpoint>,
+        registry: Option<&mut Registry>,
     ) -> Self {
         debug!("spawning new client...");
-        let (mut client, allowlist, p2p, state_options) =
-            Client::new_with_training_delay(server_port, run_id, training_delay_secs).await;
-        let client_handle =
-            tokio::spawn(async move { client.run(allowlist, p2p, state_options).await });
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        debug!("new client spawned!");
-        Self { client_handle }
+        let client =
+            Client::new_with_training_delay(server_port, run_id, training_delay_secs, sim_endpoint)
+                .await;
+
+        let router = client.inner.router.clone().unwrap();
+        let gossip_metrics = client.inner.gossip_metrics.clone().unwrap();
+        let blob_metrics = client.inner.blob_metrics.clone().unwrap();
+
+        if let Some(registry) = registry {
+            registry.register_all_prefixed(router.endpoint().metrics());
+            registry.register(blob_metrics);
+            registry.register(gossip_metrics);
+        }
+
+        Self {
+            client: Some(client),
+            router,
+        }
+    }
+
+    pub async fn run_client(&mut self) -> Result<JoinHandle<()>> {
+        let client = self.client.take().unwrap();
+        let handle = tokio::spawn(async move { client.run().await.unwrap() });
+        Ok(handle)
+    }
+}
+
+impl Node for ClientHandle {
+    fn endpoint(&self) -> Option<&Endpoint> {
+        Some(self.router.endpoint())
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        self.router.shutdown().await?;
+        Ok(())
+    }
+}
+
+impl Spawn<Setup> for ClientHandle {
+    async fn spawn(ctx: &mut SpawnContext<'_, Setup>) -> Result<Self> {
+        let setup_data = ctx.setup_data().clone();
+        let registry = ctx.metrics_registry();
+        let handle = ClientHandle::new_with_training_delay(
+            setup_data.server_port,
+            &setup_data.run_id,
+            setup_data.training_delay_secs,
+            None,
+            Some(registry),
+        )
+        .await;
+
+        Ok(handle)
     }
 }

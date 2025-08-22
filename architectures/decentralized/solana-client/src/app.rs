@@ -115,6 +115,7 @@ impl AppBuilder {
             allowlist.clone(),
             p.max_concurrent_downloads,
             metrics.clone(),
+            None,
         )
         .await?;
 

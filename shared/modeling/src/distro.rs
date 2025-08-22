@@ -2,6 +2,7 @@ use crate::{CausalLM, StableVariableIterator, Variable};
 
 use std::{cmp::Ordering, collections::HashMap, f64::consts::PI};
 use tch::{COptimizer, Device, Kind, Tensor};
+use tracing::{debug, info};
 
 pub struct TransformDCT {
     shape_dict: HashMap<i64, i64>,
@@ -297,17 +298,24 @@ impl TransformDCT {
             x.reshape([y * h, x_ * w])
         } else {
             // 1D weights
-            let n1 = x_shape[1];
+            let n1 = x_shape.get(1).expect("x_shape no value for index 1");
             let device = x.device();
 
-            let n1w = self.b_dict.get(&n1).unwrap().to_device(device);
-            self.b_dict.insert(n1, n1w.copy());
+            let n1w = self
+                .b_dict
+                .get(n1)
+                .unwrap_or_else(|| panic!("b_dict no value for key {n1}"))
+                .to_device(device);
+            self.b_dict.insert(*n1, n1w.copy());
 
             let x = Self::einsum_2d_t(x, &n1w, None);
             let x_shape = x.size();
 
             // Equivalent to rearrange(x, "x w -> (x w)")
-            let (x_, w) = (x_shape[0], x_shape[1]);
+            let (x_, w) = (
+                x_shape.first().expect("x_shape no value for index 0"),
+                x_shape[1],
+            );
             x.reshape([x_ * w])
         }
     }
@@ -469,6 +477,7 @@ pub struct Distro {
     weight_decay: f64,
     state: Vec<State>,
     transform: TransformDCT,
+    is_dummy_model: bool,
 }
 
 impl Distro {
@@ -502,6 +511,7 @@ impl Distro {
             weight_decay,
             state,
             transform,
+            is_dummy_model: vs.is_dummy_model(),
         }
     }
 
@@ -581,7 +591,13 @@ impl Distro {
             }
 
             // add delta to new gradient
-            let _t = delta.g_add_(&variable.grad().multiply_scalar(lr));
+            let mut var_grad = variable.grad();
+            if !var_grad.defined() {
+                // Initialize with zeros for debugging
+                var_grad = Tensor::zeros_like(&variable);
+            }
+            info!("distro: var_grad: {:?}, lr: {:?}", var_grad, lr);
+            let _t = delta.g_add_(&var_grad.multiply_scalar(lr));
 
             // Compress delta
             let full_delta = delta_var.gather_full_tensor();
@@ -656,10 +672,12 @@ impl Distro {
             );
 
             // Set the gradients!!!
-            var.set_grad(self.transform.decode(&decompressed));
-
-            // Sign-SGD
-            let _t = variable.grad().sign_();
+            debug!("utilizing gradients {:?}", decompressed);
+            // We need to skip these two if in dummy mode (not really training) since else it crashes
+            if !self.is_dummy_model {
+                var.set_grad(self.transform.decode(&decompressed));
+                let _t = variable.grad().sign_(); // Sign-SGD
+            }
         }
         // SGD step
         self.sgd.set_learning_rate(lr).unwrap();
