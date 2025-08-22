@@ -813,12 +813,18 @@ impl LocalTrainer {
                             &barrier,
                             Some(grad_accum_divisor),
                         ) {
-                            Ok(Some(batch_loss)) => match loss.as_mut() {
-                                Some(loss) => *loss += batch_loss,
-                                None => {
-                                    loss = Some(batch_loss);
+                            Ok(Some(batch_loss)) => {
+                                if batch_loss.double_value(&[]).is_finite() {
+                                    match loss.as_mut() {
+                                        Some(loss) => *loss += batch_loss,
+                                        None => {
+                                            loss = Some(batch_loss);
+                                        }
+                                    }
+                                } else {
+                                    println!("Batch loss is not finite");
                                 }
-                            },
+                            }
                             Ok(None) => {
                                 // cancelled barrier catching race to on run_state
                                 cancelled = true;
