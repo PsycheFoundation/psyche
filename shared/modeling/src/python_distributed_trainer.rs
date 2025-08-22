@@ -160,6 +160,7 @@ impl PythonDistributedTrainer {
                     let labels_preview = sample.labels.as_ref().map(|labels| {
                         labels
                             .iter()
+                            .rev()
                             .take(10)
                             .map(|&x| x as i64)
                             .collect::<Vec<i64>>()
@@ -194,6 +195,7 @@ impl PythonDistributedTrainer {
                     let labels_preview = sample.labels.as_ref().map(|labels| {
                         labels
                             .iter()
+                            .rev()
                             .take(10)
                             .map(|&x| x as i64)
                             .collect::<Vec<i64>>()
@@ -270,9 +272,15 @@ impl PythonDistributedTrainer {
         let loss = Tensor::from_slice(&[ret.loss])
             .to_kind(Kind::Float)
             .to_device(self.device);
+        println!("loss before reduction: {}", loss);
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
+        println!("loss after reduction: {}", loss);
+
         let loss: f32 = loss.try_into().unwrap();
+        println!("loss after reduction 2: {}", loss);
+
         let loss = loss / self.comm.size() as f32;
+        println!("loss after reduction 3 : {}", loss);
 
         Ok(TrainOutput {
             trainer: Self {
@@ -295,6 +303,15 @@ impl PythonDistributedTrainer {
         mut batch: Batch,
         world_size: usize,
     ) -> Result<Batch, TrainerThreadCommunicationError> {
+        use crate::EosToks::Multiple;
+        use crate::EosToks::Single;
+        let eos = {
+            match self.eos_token_ids() {
+                Some(EosToks::Single(x)) => x as i32,
+                Some(EosToks::Multiple(x)) => x[0] as i32,
+                _ => 128004,
+            }
+        };
         match &mut batch.data {
             BatchData::CPU(cpu_data) => {
                 let current_batch_size = cpu_data.len();
@@ -322,7 +339,7 @@ impl PythonDistributedTrainer {
                     for i in 0..padding_needed {
                         let padding_sample = BatchDataCPU {
                             // Use padding token ID (typically 0 for most models)
-                            input_ids: vec![0; seq_len],
+                            input_ids: vec![eos; seq_len],
                             // Set labels to -100 so they're ignored in loss computation
                             labels: Some(vec![-100; seq_len]),
                             // Position IDs can be zeros

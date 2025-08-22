@@ -524,7 +524,10 @@ impl LocalTrainer {
                 }
             }
         }
+        println!("final_loss: {}", final_loss);
+        println!("self.models.len(): {}", self.models.len());
         final_loss /= self.models.len() as f32;
+        println!("final_loss 2: {}", final_loss);
         Ok(TrainOutput {
             batch_id: data.id,
             trainer: Trainer::Local(self),
