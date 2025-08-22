@@ -273,7 +273,9 @@ impl PythonDistributedTrainer {
             .to_kind(Kind::Float)
             .to_device(self.device);
         println!("loss before reduction: {}", loss);
+        println!("Rank {}: loss before reduction: {}", self.comm.rank(), loss);
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
+        println!("Rank {}: loss after reduction: {}", self.comm.rank(), loss);
         println!("loss after reduction: {}", loss);
 
         let loss: f32 = loss.try_into().unwrap();
@@ -303,8 +305,6 @@ impl PythonDistributedTrainer {
         mut batch: Batch,
         world_size: usize,
     ) -> Result<Batch, TrainerThreadCommunicationError> {
-        use crate::EosToks::Multiple;
-        use crate::EosToks::Single;
         let eos = {
             match self.eos_token_ids() {
                 Some(EosToks::Single(x)) => x as i32,
@@ -354,7 +354,7 @@ impl PythonDistributedTrainer {
                                 .map(|sl| vec![0; sl.len()]),
                         };
                         cpu_data.push(padding_sample);
-                        trace!(
+                        println!(
                             "Added padding sample {} with seq_len={}, labels=-100",
                             i + 1,
                             seq_len

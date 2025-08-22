@@ -424,6 +424,10 @@ impl LocalTrainer {
             loss_scale,
         );
         let loss = loss.ok_or(Error::msg("No loss"))?;
+        println!("Forward loss before backward: {}", loss);
+        if !loss.double_value(&[]).is_finite() {
+            println!("WARNING: Non-finite loss detected in forward_backward!");
+        }
         loss.backward();
         if device.is_cuda() {
             device.cuda_synchronize();
