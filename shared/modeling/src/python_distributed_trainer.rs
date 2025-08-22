@@ -139,7 +139,71 @@ impl PythonDistributedTrainer {
                 "Checking batch padding: original batch size = {}, world_size = {}",
                 original_size, world_size
             );
+            // Log last 10 inputs before padding
+            if let BatchData::CPU(ref cpu_data) = data.data {
+                let start_idx = if cpu_data.len() >= 10 {
+                    cpu_data.len() - 10
+                } else {
+                    0
+                };
+                println!(
+                    "BEFORE PADDING - Last {} inputs:",
+                    cpu_data.len() - start_idx
+                );
+                for (i, sample) in cpu_data.iter().enumerate().skip(start_idx) {
+                    let input_preview: Vec<i64> = sample
+                        .input_ids
+                        .iter()
+                        .take(10)
+                        .map(|&x| x as i64)
+                        .collect();
+                    let labels_preview = sample.labels.as_ref().map(|labels| {
+                        labels
+                            .iter()
+                            .take(10)
+                            .map(|&x| x as i64)
+                            .collect::<Vec<i64>>()
+                    });
+                    println!(
+                        "  Sample {}: input_ids: {:?}, labels: {:?}",
+                        i, input_preview, labels_preview
+                    );
+                }
+            }
+
             data = self.pad_batch_for_fsdp(data, world_size)?;
+
+            // Log last 10 inputs after padding
+            if let BatchData::CPU(ref cpu_data) = data.data {
+                let start_idx = if cpu_data.len() >= 10 {
+                    cpu_data.len() - 10
+                } else {
+                    0
+                };
+                println!(
+                    "AFTER PADDING - Last {} inputs:",
+                    cpu_data.len() - start_idx
+                );
+                for (i, sample) in cpu_data.iter().enumerate().skip(start_idx) {
+                    let input_preview: Vec<i64> = sample
+                        .input_ids
+                        .iter()
+                        .take(10)
+                        .map(|&x| x as i64)
+                        .collect();
+                    let labels_preview = sample.labels.as_ref().map(|labels| {
+                        labels
+                            .iter()
+                            .take(10)
+                            .map(|&x| x as i64)
+                            .collect::<Vec<i64>>()
+                    });
+                    println!(
+                        "  Sample {}: input_ids: {:?}, labels: {:?}",
+                        i, input_preview, labels_preview
+                    );
+                }
+            }
             let new_size = data.data.size();
             if new_size != original_size {
                 println!(
@@ -280,7 +344,7 @@ impl PythonDistributedTrainer {
                         );
                     }
 
-                    debug!(
+                    println!(
                         "Successfully padded batch: new size = {} (divisible by {})",
                         cpu_data.len(),
                         world_size
