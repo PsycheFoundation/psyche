@@ -2,7 +2,7 @@ use crate::{
     ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator, EosToks, LocalTrainer,
     ParallelModels, PythonDistributedCausalLM, ReduceType, StableVariableIterator,
     TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
-    trainer::DistroResults,
+    trainer::{BatchDataCPU, DistroResults},
 };
 
 use psyche_core::{Barrier, CancelledBarrier, LearningRateSchedule, OptimizerDefinition};
@@ -77,7 +77,7 @@ impl PythonDistributedTrainer {
         };
 
         if model.parallelism.dp > 1 {
-            debug!(
+            println!(
                 "Increasing micro batch size from {} to {} to account for FSDP sharding size of {}",
                 micro_batch_size,
                 micro_batch_size * model.parallelism.dp,
@@ -122,14 +122,35 @@ impl PythonDistributedTrainer {
     pub fn train(
         self,
         step: u32,
-        data: Batch,
+        mut data: Batch,
         warmup_lr_between: Option<(u32, u32)>,
         zero_optim: bool,
         rollback: Vec<(u32, Vec<DistroResults>)>,
         prev_self_distro_results: Option<Vec<DistroResults>>,
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
+        let world_size = self.comm.size();
+        println!("FSDP world_size: {}", world_size);
+
+        // Pad the batch if necessary for FSDP
+        if world_size > 1 {
+            let original_size = data.data.size();
+            debug!(
+                "Checking batch padding: original batch size = {}, world_size = {}",
+                original_size, world_size
+            );
+            data = self.pad_batch_for_fsdp(data, world_size)?;
+            let new_size = data.data.size();
+            if new_size != original_size {
+                println!(
+                    "FSDP: Padded batch from {} to {} samples (world_size={})",
+                    original_size, new_size, world_size
+                );
+            }
+        }
+
         let data = data.gpu(self.device);
+        debug!("Training on device: {:?}", self.device);
         let batch_data = match &data.data {
             BatchData::GPU(batch_data) => batch_data,
             _ => unreachable!(),
@@ -205,6 +226,78 @@ impl PythonDistributedTrainer {
         })
     }
 
+    fn pad_batch_for_fsdp(
+        &self,
+        mut batch: Batch,
+        world_size: usize,
+    ) -> Result<Batch, TrainerThreadCommunicationError> {
+        match &mut batch.data {
+            BatchData::CPU(cpu_data) => {
+                let current_batch_size = cpu_data.len();
+                let remainder = current_batch_size % world_size;
+
+                if remainder != 0 {
+                    let padding_needed = world_size - remainder;
+                    println!(
+                        "[FSDP Padding] Batch size {} not divisible by world_size {}. Adding {} padding samples.",
+                        current_batch_size, world_size, padding_needed
+                    );
+                    debug!(
+                        "Detailed padding info: batch_size={}, world_size={}, remainder={}, padding_needed={}",
+                        current_batch_size, world_size, remainder, padding_needed
+                    );
+
+                    // Get sequence length from the first sample
+                    let seq_len = if !cpu_data.is_empty() {
+                        cpu_data[0].input_ids.len()
+                    } else {
+                        return Ok(batch); // Empty batch, nothing to pad
+                    };
+
+                    // Create padding samples with labels set to -100 (ignore index)
+                    for i in 0..padding_needed {
+                        let padding_sample = BatchDataCPU {
+                            // Use padding token ID (typically 0 for most models)
+                            input_ids: vec![0; seq_len],
+                            // Set labels to -100 so they're ignored in loss computation
+                            labels: Some(vec![-100; seq_len]),
+                            // Position IDs can be zeros
+                            position_ids: cpu_data[0]
+                                .position_ids
+                                .as_ref()
+                                .map(|_| vec![0; seq_len]),
+                            // Sequence lengths can be None or zeros
+                            sequence_lengths: cpu_data[0]
+                                .sequence_lengths
+                                .as_ref()
+                                .map(|sl| vec![0; sl.len()]),
+                        };
+                        cpu_data.push(padding_sample);
+                        trace!(
+                            "Added padding sample {} with seq_len={}, labels=-100",
+                            i + 1,
+                            seq_len
+                        );
+                    }
+
+                    debug!(
+                        "Successfully padded batch: new size = {} (divisible by {})",
+                        cpu_data.len(),
+                        world_size
+                    );
+                }
+            }
+            BatchData::GPU(_) => {
+                // Batch is already on GPU, this shouldn't happen in the current flow
+                println!(
+                    "WARNING: Attempting to pad batch that's already on GPU - skipping padding. This may cause FSDP issues!"
+                );
+            }
+        }
+
+        Ok(batch)
+    }
+
     pub fn optimize(
         self,
         step: u32,
@@ -227,7 +320,7 @@ impl PythonDistributedTrainer {
             "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
-        trace!("Sending operation to Python clients: {:#}", operation);
+        println!("Sending operation to Python clients: {:#}", operation);
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;

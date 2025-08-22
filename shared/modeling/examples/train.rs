@@ -241,9 +241,9 @@ async fn main() -> Result<()> {
     };
 
     let dp_world_size = args.data_parallelism.unwrap_or(1);
-    if args.total_batch % dp_world_size != 0 {
-        anyhow::bail!("DP world size doesn't divide global batch size");
-    }
+    // if args.total_batch % dp_world_size != 0 {
+    //     anyhow::bail!("DP world size doesn't divide global batch size");
+    // }
     let tp_world_size = args.tensor_parallelism.unwrap_or(1);
 
     #[cfg(feature = "python")]
@@ -432,6 +432,10 @@ async fn main() -> Result<()> {
 
     let mut prev_distro_results = if args.distro { Some(vec![]) } else { None };
     for step in 1..=args.total_steps {
+        println!(
+            "Starting step {}, args.total_batch {}",
+            step, args.total_batch
+        );
         let start_time = SystemTime::now();
         let data: Vec<BatchDataCPU> = dataset
             .get_samples(BatchId(ClosedInterval::new(
@@ -447,7 +451,7 @@ async fn main() -> Result<()> {
                 sequence_lengths: x.sequence_lengths,
             })
             .collect();
-
+        println!("Data loaded");
         let trainings = data
             .chunks(data.len() / trainers.len())
             .zip(trainers)
