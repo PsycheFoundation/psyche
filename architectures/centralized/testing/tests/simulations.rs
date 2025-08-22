@@ -3,17 +3,17 @@ use iroh::NodeAddr;
 use iroh_blobs::net_protocol::Blobs;
 use iroh_n0des::simulation::{Builder, DynNode, RoundContext, Spawn};
 use psyche_centralized_testing::{
-    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
     client::{Client, ClientHandle},
     server::CoordinatorServerHandle,
     test_utils::{
-        Setup, assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
-        spawn_clients_with_training_delay,
+        assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
+        spawn_clients_with_training_delay, Setup,
     },
+    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
 };
 use psyche_coordinator::{
-    RunState,
     model::{Checkpoint, HubRepo},
+    RunState,
 };
 use rand::seq::IteratorRandom;
 use std::time::Duration;
@@ -134,13 +134,14 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
                 if node.get_run_state().await == RunState::RoundTrain {
                     println!("Coordinator is in training state");
                     break;
+                } else if node.get_run_state().await == RunState::Cooldown {
+                    println!("Coordinator went to cooldown state");
                 }
             }
-            println!("RUN STATE AFTER TRAINING: {}", node.get_run_state().await);
             loop {
                 if node.get_run_state().await == RunState::RoundWitness {
-                    tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
                     println!("Coordinator is in witness state");
+                    tokio::time::sleep(Duration::from_secs(ROUND_WITNESS_TIME)).await;
                     break;
                 }
             }
@@ -158,8 +159,8 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
 
     // We initialize the coordinator with the same number of min clients as batches per round.
     // This way, every client will be assigned with only one batch
-    let init_min_clients = 5;
-    let global_batch_size = 20;
+    let init_min_clients = 36;
+    let global_batch_size = 60;
     let witness_nodes = 0;
 
     let port = 51000;
@@ -176,8 +177,8 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
         Ok(setup)
     })
     .spawn(1, CoordinatorServerHandle::builder(coordinator_round))
-    .spawn(5, ClientHandle::builder(client_round))
-    .spawn(15, ClientHandle::builder(late_join_client_round))
+    .spawn(36, ClientHandle::builder(client_round))
+    .spawn(24, ClientHandle::builder(late_join_client_round))
     .rounds(10);
     Ok(sim)
 }

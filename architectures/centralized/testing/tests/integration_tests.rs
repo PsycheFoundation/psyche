@@ -5,17 +5,17 @@ use iroh::NodeAddr;
 use iroh_blobs::net_protocol::Blobs;
 use iroh_n0des::simulation::{Builder, DynNode, RoundContext, Spawn};
 use psyche_centralized_testing::{
+    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
     client::{Client, ClientHandle},
     server::CoordinatorServerHandle,
     test_utils::{
-        assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
-        spawn_clients_with_training_delay, Setup,
+        Setup, assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
+        spawn_clients_with_training_delay,
     },
-    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
 };
 use psyche_coordinator::{
-    model::{Checkpoint, HubRepo},
     RunState,
+    model::{Checkpoint, HubRepo},
 };
 use rand::seq::IteratorRandom;
 use tokio::task::JoinHandle;
@@ -747,9 +747,9 @@ async fn client_join_in_training_and_get_model_using_p2p() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn two_clients_join_in_training_and_get_model_using_p2p() {
     // start a normal run with 2 clients
-    let init_min_clients = 2;
-    let global_batch_size = 4;
-    let witness_nodes = 1;
+    let init_min_clients = 40;
+    let global_batch_size = 65;
+    let witness_nodes = 0;
 
     let server_handle = CoordinatorServerHandle::new(
         init_min_clients,
@@ -803,7 +803,7 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
 
     // spawn new client
     let _clients_handle =
-        spawn_clients_with_training_delay(2, server_port, run_id, training_delay).await;
+        spawn_clients_with_training_delay(25, server_port, run_id, training_delay).await;
 
     info!("waiting for next epoch!");
     assert_with_retries(|| server_handle.get_current_epoch(), 1).await;
