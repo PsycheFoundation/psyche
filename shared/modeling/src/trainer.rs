@@ -424,6 +424,10 @@ impl LocalTrainer {
             loss_scale,
         );
         let loss = loss.ok_or(Error::msg("No loss"))?;
+        println!("Forward loss before backward: {}", loss);
+        if !loss.double_value(&[]).is_finite() {
+            println!("WARNING: Non-finite loss detected in forward_backward!");
+        }
         loss.backward();
         if device.is_cuda() {
             device.cuda_synchronize();
@@ -524,7 +528,10 @@ impl LocalTrainer {
                 }
             }
         }
+        println!("final_loss: {}", final_loss);
+        println!("self.models.len(): {}", self.models.len());
         final_loss /= self.models.len() as f32;
+        println!("final_loss 2: {}", final_loss);
         Ok(TrainOutput {
             batch_id: data.id,
             trainer: Trainer::Local(self),
@@ -806,12 +813,18 @@ impl LocalTrainer {
                             &barrier,
                             Some(grad_accum_divisor),
                         ) {
-                            Ok(Some(batch_loss)) => match loss.as_mut() {
-                                Some(loss) => *loss += batch_loss,
-                                None => {
-                                    loss = Some(batch_loss);
+                            Ok(Some(batch_loss)) => {
+                                if batch_loss.double_value(&[]).is_finite() {
+                                    match loss.as_mut() {
+                                        Some(loss) => *loss += batch_loss,
+                                        None => {
+                                            loss = Some(batch_loss);
+                                        }
+                                    }
+                                } else {
+                                    println!("Batch loss is not finite");
                                 }
-                            },
+                            }
                             Ok(None) => {
                                 // cancelled barrier catching race to on run_state
                                 cancelled = true;
