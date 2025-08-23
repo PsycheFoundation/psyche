@@ -155,10 +155,15 @@ impl PythonDistributedTrainer {
             "results_metadata": prev_self_distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
-        trace!("Sending operation to Python clients: {:#}", operation);
+        trace!("Sending train operation to Python clients: {}", operation);
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros(&[], (Kind::Float, self.device));
+        self.comm.all_reduce(&dummy, ReduceType::Sum)?;
+
         if results_len > 0 {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
@@ -188,6 +193,8 @@ impl PythonDistributedTrainer {
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
         let loss: f32 = loss.try_into().unwrap();
         let loss = loss / self.comm.size() as f32;
+
+        trace!("Train operation complete on all Python clients");
 
         Ok(TrainOutput {
             trainer: Self {
@@ -227,22 +234,35 @@ impl PythonDistributedTrainer {
             "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
-        trace!("Sending operation to Python clients: {:#}", operation);
+        trace!(
+            "Sending optimize operation to Python clients: {}",
+            operation
+        );
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros(&[], (Kind::Float, self.device));
+        self.comm.all_reduce(&dummy, ReduceType::Sum)?;
+
         if results_len > 0 {
             self.broadcast_distro_results(distro_results.as_ref().unwrap())?;
         }
 
-        self.local
+        let result = self
+            .local
             .optimize(step, warmup_lr_between, distro_results)
             .map(|x| Self {
                 local: Box::new(x),
                 comm: self.comm,
                 iteration: self.iteration + 1,
                 device: self.device,
-            })
+            });
+
+        trace!("Optimize operation complete on all Python clients");
+
+        result
     }
 
     pub fn extract(&mut self) -> Result<HashMap<String, Tensor>, TrainerThreadCommunicationError> {
@@ -250,12 +270,19 @@ impl PythonDistributedTrainer {
             "operation": "extract",
         });
 
-        trace!("Sending operation to Python clients: {:#}", operation);
+        trace!("Sending extract operation to Python clients: {}", operation);
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros(&[], (Kind::Float, self.device));
+        self.comm.all_reduce(&dummy, ReduceType::Sum)?;
+
         self.iteration += 1;
-        self.local.extract()
+        let result = self.local.extract();
+        trace!("Extract operation complete on all Python clients");
+        result
     }
 
     fn broadcast_distro_results(&self, distro_results: &[DistroResults]) -> PyResult<()> {
