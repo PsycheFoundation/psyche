@@ -161,7 +161,7 @@ impl PythonDistributedTrainer {
             .set(&self.iteration.to_string(), &operation.to_string())?;
 
         // barrier to ensure everyone has seen the broadcast
-        let dummy = Tensor::zeros(&[], (Kind::Float, self.device));
+        let dummy = Tensor::zeros([], (Kind::Float, self.device));
         self.comm.all_reduce(&dummy, ReduceType::Sum)?;
 
         if results_len > 0 {
@@ -243,7 +243,7 @@ impl PythonDistributedTrainer {
             .set(&self.iteration.to_string(), &operation.to_string())?;
 
         // barrier to ensure everyone has seen the broadcast
-        let dummy = Tensor::zeros(&[], (Kind::Float, self.device));
+        let dummy = Tensor::zeros([], (Kind::Float, self.device));
         self.comm.all_reduce(&dummy, ReduceType::Sum)?;
 
         if results_len > 0 {
@@ -276,7 +276,7 @@ impl PythonDistributedTrainer {
             .set(&self.iteration.to_string(), &operation.to_string())?;
 
         // barrier to ensure everyone has seen the broadcast
-        let dummy = Tensor::zeros(&[], (Kind::Float, self.device));
+        let dummy = Tensor::zeros([], (Kind::Float, self.device));
         self.comm.all_reduce(&dummy, ReduceType::Sum)?;
 
         self.iteration += 1;
