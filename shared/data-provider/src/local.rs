@@ -16,7 +16,7 @@ fn is_truthy_env_bool(value: &str) -> bool {
     matches!(value.to_lowercase().as_str(), "1" | "true" | "yes")
 }
 
-fn mmap_file(p: &std::path::PathBuf) -> Result<Box<dyn AsRef<[u8]>>> {
+fn mmap_file(p: &std::path::PathBuf) -> Result<Box<dyn AsRef<[u8]> + Send>> {
     let file = std::fs::File::open(p)?;
 
     // try to mmap first, only falling back to read if allowed
@@ -42,7 +42,7 @@ struct SequencePointer {
 }
 
 pub struct LocalDataProvider {
-    data_files: Vec<memmap2::Mmap>,
+    data_files: Vec<Box<dyn AsRef<[u8]> + Send>>,
     sequences: Vec<SequencePointer>,
     seq_len: usize,
     token_size_in_bytes: TokenSize,
@@ -64,36 +64,21 @@ impl LocalDataProvider {
         let dir = std::fs::canonicalize(&dir)
             .map_err(|e| anyhow!("Failed to open data directory {:?}: {e}", dir.as_ref()))?;
         let mut bin_files = vec![];
-        println!("looking in dir {:?}", &dir);
         for file in std::fs::read_dir(&dir)
             .map_err(|e| anyhow!("couldn't load training data from {}: {e}", dir.display()))?
             .flatten()
         {
             let file = file.path();
-            println!("found file {:?}", &file);
             if let Some(extension) = file.extension().and_then(|s| s.to_str()) {
-                println!(
-                    "extension is {:?}",
-                    &file.extension().and_then(|s| s.to_str())
-                );
                 if DATA_FILE_EXTENSIONS.contains(&extension) {
                     bin_files.push(file);
-                    println!("valid extension.");
-                } else {
-                    println!("not a valid extension, skipping.");
                 }
-            } else {
-                println!("no extension.");
             }
         }
-        println!("bin fies: {:?}", &bin_files);
         let data_files = bin_files
             .iter()
-            .inspect(|file| println!("About to mmap: {:?}", file))
             .map(mmap_file)
-            .inspect(|result| println!("mmap result: {:?}", result.as_ref().map(|_| "Ok(Mmap)")))
             .collect::<Result<Vec<_>>>()?;
-        println!("data fies: {:?}", &data_files);
 
         if data_files.is_empty() {
             bail!("No training data files in directory {:?}", dir);
@@ -121,7 +106,7 @@ impl LocalDataProvider {
                 .enumerate()
                 // find every sequence in every file
                 .flat_map(|(file_index, current_tokens)| {
-                    (0..current_tokens.len()
+                    (0..current_tokens.as_ref().as_ref().len()
                         - (seq_len_in_bytes + usize::from(token_size_in_bytes))) // +1 token for pretraining data!
                         .step_by(seq_len_in_bytes)
                         .map(move |byte_offset| SequencePointer {
@@ -160,7 +145,7 @@ impl LocalDataProvider {
 
             let file = &self.data_files[*file_index];
             let data_len = usize::from(self.token_size_in_bytes) * (self.seq_len + 1);
-            let data = &file[*byte_offset..*byte_offset + data_len];
+            let data = &file.as_ref().as_ref()[*byte_offset..*byte_offset + data_len];
 
             let tokens: Vec<i32> = data
                 .chunks(self.token_size_in_bytes.into())
