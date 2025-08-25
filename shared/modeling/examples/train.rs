@@ -198,7 +198,7 @@ async fn main() -> Result<()> {
         }
         Err(err) => {
             println!(
-                "Failed to load with local data provider. {err#?} Trying preprocessed data provider instead"
+                "Failed to load with local data provider. {err:?} Trying preprocessed data provider instead"
             );
             let dataset = PreprocessedDataProvider::new_from_directory(
                 &args.data_path,
