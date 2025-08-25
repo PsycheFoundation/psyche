@@ -71,7 +71,9 @@ impl LocalDataProvider {
         println!("bin fies: {:?}", &bin_files);
         let data_files = bin_files
             .iter()
+            .inspect(|file| println!("About to mmap: {:?}", file))
             .map(mmap_file)
+            .inspect(|result| println!("mmap result: {:?}", result.as_ref().map(|_| "Ok(Mmap)")))
             .collect::<Result<Vec<_>>>()?;
         println!("data fies: {:?}", &data_files);
 
