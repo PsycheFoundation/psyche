@@ -54,9 +54,18 @@ impl LocalDataProvider {
             let file = file.path();
             println!("found file {:?}", &file);
             if let Some(extension) = file.extension().and_then(|s| s.to_str()) {
+                println!(
+                    "extension is {:?}",
+                    &file.extension().and_then(|s| s.to_str())
+                );
                 if DATA_FILE_EXTENSIONS.contains(&extension) {
-                    bin_files.push(file)
+                    bin_files.push(file);
+                    println!("valid extension.");
+                } else {
+                    println!("not a valid extension, skipping.");
                 }
+            } else {
+                println!("no extension.");
             }
         }
         let data_files = bin_files
