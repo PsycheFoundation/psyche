@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
@@ -186,7 +186,9 @@ async fn main() -> Result<()> {
         args.token_size.try_into()?,
         args.sequence_length,
         Shuffle::DontShuffle,
-    ) {
+    )
+    .with_context(|| "Failed to load data with local data provider.")
+    {
         Ok(dataset) => {
             info!(
                 "Loaded local dataset with {} samples",
@@ -195,13 +197,15 @@ async fn main() -> Result<()> {
             DataProvider::Local(dataset)
         }
         Err(_) => {
+            println!("Trying preprocessed data provider instead");
             let dataset = PreprocessedDataProvider::new_from_directory(
                 &args.data_path,
                 args.sequence_length,
                 Shuffle::DontShuffle,
                 Some(Split::Train),
                 None,
-            )?;
+            )
+            .with_context(|| "Failed to load preprocesed data")?;
             info!(
                 "Loaded preprocessed dataset with {} samples",
                 dataset.num_sequences()
