@@ -39,7 +39,7 @@ python312Packages.buildPythonPackage rec {
   propagatedBuildInputs =
     with python312Packages;
     [
-      torch-bin
+      torch
       transformers
     ]
     ++ (lib.optionals config.cudaSupport [

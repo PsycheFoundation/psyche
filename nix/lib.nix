@@ -38,7 +38,7 @@ let
     ];
 
     buildInputs = [
-      pkgs.python312Packages.torch-bin
+      pkgs.python312Packages.torch
     ]
     ++ (with pkgs; [
       openssl
