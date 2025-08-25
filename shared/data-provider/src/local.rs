@@ -46,6 +46,7 @@ impl LocalDataProvider {
         let dir = std::fs::canonicalize(&dir)
             .map_err(|e| anyhow!("Failed to open data directory {:?}: {e}", dir.as_ref()))?;
         let mut bin_files = vec![];
+        println!("looking in dir {:?}", &dir);
         for file in std::fs::read_dir(&dir)
             .map_err(|e| anyhow!("couldn't load training data from {}: {e}", dir.display()))?
             .flatten()
