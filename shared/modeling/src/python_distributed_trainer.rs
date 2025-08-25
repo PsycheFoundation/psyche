@@ -343,4 +343,8 @@ impl CausalLM for PythonDistributedTrainer {
     fn clip_grad_norm(&mut self, max_grad_norm: f64) {
         self.local.clip_grad_norm(max_grad_norm);
     }
+
+    fn max_context_length(&self) -> usize {
+        self.local.max_context_length()
+    }
 }
