@@ -196,8 +196,10 @@ async fn main() -> Result<()> {
             );
             DataProvider::Local(dataset)
         }
-        Err(_) => {
-            println!("Trying preprocessed data provider instead");
+        Err(err) => {
+            println!(
+                "Failed to load with local data provider. {err#?} Trying preprocessed data provider instead"
+            );
             let dataset = PreprocessedDataProvider::new_from_directory(
                 &args.data_path,
                 args.sequence_length,
@@ -205,7 +207,7 @@ async fn main() -> Result<()> {
                 Some(Split::Train),
                 None,
             )
-            .with_context(|| "Failed to load preprocesed data")?;
+            .with_context(|| "Failed to load preprocessed data")?;
             info!(
                 "Loaded preprocessed dataset with {} samples",
                 dataset.num_sequences()

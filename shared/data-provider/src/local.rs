@@ -12,10 +12,28 @@ use crate::{
     traits::{LengthKnownDataProvider, TokenizedDataProvider},
 };
 
-fn mmap_file(p: &std::path::PathBuf) -> Result<memmap2::Mmap> {
+fn is_truthy_env_bool(value: &str) -> bool {
+    matches!(value.to_lowercase().as_str(), "1" | "true" | "yes")
+}
+
+fn mmap_file(p: &std::path::PathBuf) -> Result<Box<dyn AsRef<[u8]>>> {
     let file = std::fs::File::open(p)?;
-    let mmap = unsafe { memmap2::MmapOptions::new().map(&file)? };
-    Ok(mmap)
+
+    // try to mmap first, only falling back to read if allowed
+    match unsafe { memmap2::MmapOptions::new().map(&file) } {
+        Ok(mmap) => Ok(Box::new(mmap)),
+        Err(e)
+            if e.raw_os_error() == Some(22)
+                && std::env::var("ALLOW_FAIL_MMAP")
+                    .map(|v| is_truthy_env_bool(&v))
+                    .unwrap_or(false) =>
+        {
+            eprintln!("mmap failed (likely under Valgrind), falling back to file read");
+            let data = std::fs::read(p)?;
+            Ok(Box::new(data))
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 struct SequencePointer {
