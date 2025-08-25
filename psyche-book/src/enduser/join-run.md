@@ -33,7 +33,7 @@ Your `.env` file should contain at least these configuration options:
 
 - `RPC`: The RPC url of your primary Solana provider.
 - `WS_RPC`: The websocket RPC url of the same primary Solana provider.
-- `RPC_2`: The RPC url of your other Solana provider. If you don't have one, use a public alternative. For example, https://api.devnet.solana.com for Devnet.
+- `RPC_2`: The RPC url of your other Solana provider. If you don't have one, use a public alternative. For example, <https://api.devnet.solana.com> for Devnet.
 - `WS_RPC_2`: The websocket RPC url of your other Solana provider, or a public alternative if you don't have one. For example, wss://api.devnet.solana.com for Devnet.
 - `RUN_ID`: The ID of the training run you will join.
 - `NVIDIA_DRIVER_CAPABILITIES`: An environment variable that the NVIDIA Container Toolkit uses to determine which compute capabilities should be provided to your container. It is recommended to set it to 'all', e.g. `NVIDIA_DRIVER_CAPABILITIES=all`.
@@ -60,4 +60,15 @@ docker run -d \
     --gpus all \
     --network "host" \
     nousresearch/psyche-client:latest
+```
+
+### Fetching earned rewards
+
+If you have accumulated training, you can claim those using the following command
+
+```bash
+psyche-solana-client treasurer-claim-rewards \
+    --rpc [RPC] \
+    --run-id [RUN_ID] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```

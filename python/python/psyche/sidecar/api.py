@@ -27,10 +27,13 @@ class DistroResultsMetadata:
 @dataclass
 class TrainOperation(Operation):
     step: int
-    batch_id: tuple[int, int]
-    batch_shape: list[int]
     zero_optim: bool
     results_len: int
+    batch_id: tuple[int, int]
+    batch_shape: list[int]
+    batch_has_labels: bool
+    batch_has_position_ids: bool
+    batch_sequence_lengths: list[list[int]] | None = None
     warmup_lr_between: tuple[int, int] | None = None
     results_metadata: DistroResultsMetadata | None = None
 

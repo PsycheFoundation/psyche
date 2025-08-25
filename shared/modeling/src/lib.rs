@@ -65,8 +65,8 @@ pub use safetensor_utils::{
 pub use sampling::{LogitsProcessor, Sampling};
 pub use token_output_stream::TokenOutputStream;
 pub use trainer::{
-    ApplyDistroResultError, Batch, BatchData, DataParallel, LocalTrainer, ParallelModels,
-    TrainOutput, Trainer, TrainerThreadCommunicationError,
+    ApplyDistroResultError, Batch, BatchData, BatchDataCPU, BatchDataGPU, DataParallel,
+    LocalTrainer, ParallelModels, TrainOutput, Trainer, TrainerThreadCommunicationError,
 };
 pub use variable::{StableVarStoreIterator, StableVariableIterator, Variable};
 

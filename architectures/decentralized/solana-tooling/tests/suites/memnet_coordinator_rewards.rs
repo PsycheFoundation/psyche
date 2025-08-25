@@ -176,7 +176,7 @@ pub async fn run() {
         process_coordinator_join_run(
             &mut endpoint,
             &payer,
-            &client,
+            client,
             &authorization,
             &coordinator_instance,
             &coordinator_account,

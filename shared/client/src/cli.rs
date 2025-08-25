@@ -124,6 +124,10 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub eval_task_max_docs: Option<usize>,
 
+    // enable the execution of the model prompting task
+    #[clap(long, env)]
+    pub prompt_task: bool,
+
     /// If provided, every model parameters update will be save in this directory after each epoch.
     #[clap(long, env)]
     pub checkpoint_dir: Option<PathBuf>,
@@ -225,19 +229,26 @@ impl TrainArgs {
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {
         let eval_tasks = match &self.eval_tasks {
             Some(eval_tasks) => {
-                let result: Result<Vec<psyche_eval::Task>> = eval_tasks
-                    .split(",")
-                    .map(|eval_task| {
-                        tasktype_from_name(eval_task).map(|task_type| {
-                            psyche_eval::Task::new(task_type, self.eval_fewshot, self.eval_seed)
-                        })
-                    })
-                    .collect();
-                result?
+                Self::eval_tasks_from_args(eval_tasks, self.eval_fewshot, self.eval_seed)?
             }
             None => Vec::new(),
         };
         Ok(eval_tasks)
+    }
+
+    pub fn eval_tasks_from_args(
+        eval_tasks: &str,
+        eval_fewshot: usize,
+        eval_seed: u64,
+    ) -> Result<Vec<psyche_eval::Task>> {
+        let result: Result<Vec<psyche_eval::Task>> = eval_tasks
+            .split(",")
+            .map(|eval_task| {
+                tasktype_from_name(eval_task)
+                    .map(|task_type| psyche_eval::Task::new(task_type, eval_fewshot, eval_seed))
+            })
+            .collect();
+        result
     }
 }
 

@@ -18,7 +18,8 @@ let
     (builtins.match ".*tests/resources/.*$" path != null)
     || (builtins.match ".*tests/fixtures/.*$" path != null)
     || (builtins.match ".*.config/.*$" path != null)
-    || (builtins.match ".*local-dev-keypair.json$" path != null);
+    || (builtins.match ".*local-dev-keypair.json$" path != null)
+    || (builtins.match ".*shared/client/src/state/prompt_texts/.*\\.txt$" path != null);
 
   src = lib.cleanSourceWith {
     src = ../.;
@@ -64,15 +65,15 @@ let
     inherit env src;
     strictDeps = true;
     # Disable parallelism feature on macOS as NCCL is not supported
-    cargoExtraArgs =
-      "--features python-extension" + lib.optionalString (!pkgs.stdenv.isDarwin) ",parallelism";
+    cargoExtraArgs = "--features python" + lib.optionalString (!pkgs.stdenv.isDarwin) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
       pythonWithPsycheExtension
     ];
-    NIX_LDFLAGS = "-L${pkgs.python312}/lib -lpython3.12";
+    cargoExtraArgs = rustWorkspaceArgs.cargoExtraArgs;
+    NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
   };
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
@@ -88,16 +89,28 @@ let
       name,
       isExample ? false,
     }:
-    craneLib.buildPackage (
-      rustWorkspaceArgsWithPython
-      // {
-        inherit cargoArtifacts;
-        pname = name;
-        cargoExtraArgs =
-          rustWorkspaceArgs.cargoExtraArgs + (if isExample then " --example ${name}" else " --bin ${name}");
-        doCheck = false;
+    let
+      rustPackage = craneLib.buildPackage (
+        rustWorkspaceArgsWithPython
+        // {
+          inherit cargoArtifacts;
+          pname = name;
+          cargoExtraArgs =
+            rustWorkspaceArgs.cargoExtraArgs + (if isExample then " --example ${name}" else " --bin ${name}");
+          doCheck = false;
+        }
+      );
+    in
+    pkgs.runCommand "${name}-wrapped"
+      {
+        buildInputs = [ pkgs.makeWrapper ];
       }
-    );
+      ''
+        mkdir -p $out/bin
+        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name}-wrapped \
+          --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
+          --prefix PATH : "${pythonWithPsycheExtension}/bin"
+      '';
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?

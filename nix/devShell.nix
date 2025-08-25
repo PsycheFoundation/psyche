@@ -57,6 +57,8 @@
 
                 # cargo stuff
                 cargo-watch
+
+                self'.packages.solana_toolbox_cli
               ]
               ++ (with inputs'.solana-pkgs.packages; [
                 solana
