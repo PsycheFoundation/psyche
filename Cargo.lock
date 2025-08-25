@@ -7469,6 +7469,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-sidecar"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap-markdown",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "psyche-solana-authorizer"
 version = "0.1.0"
 dependencies = [
@@ -7667,8 +7679,8 @@ dependencies = [
 
 [[package]]
 name = "pyo3-tch"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a60a34f12bb04cceb1e97a196bea8a188cd94dde#a60a34f12bb04cceb1e97a196bea8a188cd94dde"
 dependencies = [
  "pyo3",
  "tch",
@@ -12069,8 +12081,8 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a60a34f12bb04cceb1e97a196bea8a188cd94dde#a60a34f12bb04cceb1e97a196bea8a188cd94dde"
 dependencies = [
  "half",
  "lazy_static",
@@ -12552,8 +12564,8 @@ dependencies = [
 
 [[package]]
 name = "torch-sys"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a60a34f12bb04cceb1e97a196bea8a188cd94dde#a60a34f12bb04cceb1e97a196bea8a188cd94dde"
 dependencies = [
  "anyhow",
  "cc",
