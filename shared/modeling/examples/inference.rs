@@ -1,8 +1,8 @@
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, anyhow};
 use clap::{Parser, ValueEnum};
 use psyche_data_provider::download_model_repo_sync;
 use psyche_modeling::{
-    AttentionImplementation, CausalLM, CommunicatorId, LogitsProcessor, Sampling,
+    AttentionImplementation, CausalLM, CommunicatorId, Devices, LogitsProcessor, Sampling,
     TokenOutputStream, auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
     get_optimal_device, parse_device,
 };
@@ -11,7 +11,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Barrier},
 };
-use tch::{Device, Kind, Tensor};
+use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 
 const DEFAULT_PROMPT: &str = r"
@@ -114,8 +114,12 @@ struct Args {
     #[arg(long)]
     attn_implementation: Option<AttnImpl>,
 
-    #[arg(long, help = "Device to use: cpu, mps, cuda, cuda:N")]
-    device: Option<String>,
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    device: Devices,
 
     #[cfg(feature = "python")]
     #[clap(long)]
@@ -136,13 +140,12 @@ fn inference(
         .as_ref()
         .map(|(_, rank, _, _)| *rank)
         .unwrap_or(0);
-    let device = if let Some(device_str) = &args.device {
-        parse_device(device_str)?
-    } else if tensor_parallelism.is_some() {
-        Device::Cuda(rank)
-    } else {
-        get_optimal_device()
-    };
+    let device = args.device.device_for_rank(rank).ok_or_else(|| {
+        anyhow!(
+            "device not available for rank {rank} with devices {}",
+            args.device
+        )
+    })?;
 
     #[cfg(feature = "python")]
     let python = args.python;

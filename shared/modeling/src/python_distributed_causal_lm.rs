@@ -140,6 +140,8 @@ impl PythonDistributedCausalLM {
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
+                // TODO: is this actually a bug?
+                // Does the 0th cuda device *have* to be rank 0?
                 return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank));
             }
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),

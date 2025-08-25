@@ -1,5 +1,5 @@
 use crate::{
-    DeepseekConfig, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
+    DeepseekConfig, Devices, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
     safetensor_utils::load_safetensors_into_variables,
 };
 use std::{
@@ -56,6 +56,9 @@ pub enum ModelLoadError {
     #[cfg(feature = "python")]
     #[error("Python distributed error: {0}")]
     PythonDistributedError(String),
+
+    #[error("No device available for rank {0} for devices config {1}")]
+    NoDeviceForRank(usize, Devices),
 }
 
 pub trait ModelConfig: serde::Serialize + Clone {

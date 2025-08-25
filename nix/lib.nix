@@ -28,6 +28,8 @@ let
 
   env = {
     LIBTORCH_USE_PYTORCH = 1;
+    # Disable version check for PyTorch to allow using nightly builds
+    LIBTORCH_BYPASS_VERSION_CHECK = 1;
   };
 
   rustWorkspaceDeps = {
@@ -37,35 +39,35 @@ let
       python312
     ];
 
-    buildInputs =
+    buildInputs = [
+      pkgs.python312Packages.torch
+    ]
+    ++ (with pkgs; [
+      openssl
+      fontconfig # for lr plot
+    ])
+    ++ lib.optionals pkgs.config.cudaSupport (
+      with pkgs.cudaPackages;
       [
-        pkgs.python312Packages.torch-bin
+        cudatoolkit
+        cuda_cudart
+        nccl
       ]
-      ++ (with pkgs; [
-        openssl
-        fontconfig # for lr plot
-      ])
-      ++ lib.optionals pkgs.config.cudaSupport (
-        with pkgs.cudaPackages;
-        [
-          cudatoolkit
-          cuda_cudart
-          nccl
-        ]
-      )
-      ++ lib.optionals pkgs.stdenv.isDarwin [
-        pkgs.darwin.apple_sdk.frameworks.Accelerate
-        pkgs.darwin.apple_sdk.frameworks.CoreML
-        pkgs.darwin.apple_sdk.frameworks.Metal
-        pkgs.darwin.apple_sdk.frameworks.MetalPerformanceShaders
-      ];
+    )
+    ++ lib.optionals pkgs.stdenv.isDarwin [
+      pkgs.darwin.apple_sdk.frameworks.Accelerate
+      pkgs.darwin.apple_sdk.frameworks.CoreML
+      pkgs.darwin.apple_sdk.frameworks.Metal
+      pkgs.darwin.apple_sdk.frameworks.MetalPerformanceShaders
+    ];
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    # Disable parallelism feature on macOS as NCCL is not supported
-    cargoExtraArgs = "--features python" + lib.optionalString (!pkgs.stdenv.isDarwin) ",parallelism";
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs =
+      "--features python-extension" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
@@ -242,7 +244,8 @@ let
 
         nativeBuildInputs = [
           inputs.solana-pkgs.packages.${system}.anchor
-        ] ++ rustWorkspaceDeps.nativeBuildInputs;
+        ]
+        ++ rustWorkspaceDeps.nativeBuildInputs;
 
         buildPhaseCargoCommand = ''
           mkdir $out

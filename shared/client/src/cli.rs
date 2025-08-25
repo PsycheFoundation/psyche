@@ -3,6 +3,7 @@ use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
+use psyche_modeling::Devices;
 use psyche_network::SecretKey;
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
@@ -168,6 +169,13 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 4, env)]
     pub max_concurrent_downloads: usize,
+
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    pub device: Devices,
 }
 
 impl TrainArgs {
