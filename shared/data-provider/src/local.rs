@@ -51,6 +51,7 @@ impl LocalDataProvider {
             .flatten()
         {
             let file = file.path();
+            println!("found file {:?}", &file);
             if let Some(extension) = file.extension().and_then(|s| s.to_str()) {
                 if DATA_FILE_EXTENSIONS.contains(&extension) {
                     bin_files.push(file)
