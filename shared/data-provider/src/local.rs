@@ -68,10 +68,12 @@ impl LocalDataProvider {
                 println!("no extension.");
             }
         }
+        println!("bin fies: {:?}", &bin_files);
         let data_files = bin_files
             .iter()
             .map(mmap_file)
             .collect::<Result<Vec<_>>>()?;
+        println!("data fies: {:?}", &data_files);
 
         if data_files.is_empty() {
             bail!("No training data files in directory {:?}", dir);
