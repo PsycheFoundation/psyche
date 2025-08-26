@@ -84,10 +84,9 @@ impl Devices {
     /// Returns the nth device in this devices set.
     pub fn device_for_rank(&self, n: usize) -> Option<Device> {
         match self {
-            Devices::Cpu if n == 0 => Some(Device::Cpu),
-            Devices::Mps if n == 0 => Some(Device::Mps),
+            Devices::Cpu => Some(Device::Cpu),
+            Devices::Mps => Some(Device::Mps),
             Devices::Cuda(device_indices) => device_indices.get(n).map(|idx| Device::Cuda(*idx)),
-            _ => None,
         }
     }
 }
@@ -262,13 +261,15 @@ mod tests {
 
     #[test]
     fn test_get_device_for_rank_multiple_workers() {
-        // Rank 1 should only work with CUDA with more than one GPU.
-        let rank_1_device = get_optimal_devices().device_for_rank(0);
+        // Rank 1 should work with MPS/CPU (same device), or CUDA with multiple GPUs
+        let rank_1_device = get_optimal_devices().device_for_rank(1);
 
         if get_cuda_devices().len() > 1 {
             assert_eq!(rank_1_device, Some(Device::Cuda(1)));
+        } else if has_mps() {
+            assert_eq!(rank_1_device, Some(Device::Mps));
         } else {
-            assert_eq!(rank_1_device, None);
+            assert_eq!(rank_1_device, Some(Device::Cpu));
         }
     }
 

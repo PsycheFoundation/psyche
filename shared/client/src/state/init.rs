@@ -14,7 +14,7 @@ use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
     LocalTrainer, ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer,
-    auto_tokenizer, get_device_for_rank, get_optimal_device,
+    auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
