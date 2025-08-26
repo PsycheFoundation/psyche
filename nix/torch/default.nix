@@ -1,5 +1,6 @@
 {
   patches,
+  setuptools,
 
   stdenv,
   lib,
@@ -275,6 +276,8 @@ buildPythonPackage rec {
   # Don't forget to update torch-bin to the same version.
   version = "2.9.0.dev20250811";
   pyproject = true;
+
+  build-system = [ setuptools ];
 
   stdenv = stdenv';
 

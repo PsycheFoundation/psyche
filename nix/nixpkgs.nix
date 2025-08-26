@@ -19,8 +19,14 @@ in
         };
         python312Packages = prev.python312Packages.override {
           overrides = pyfinal: pyprev: {
-            setuptools = pyfinal.callPackage ./torch/setuptools.nix { inherit (pyprev.setuptools) patches; };
-            torch = pyfinal.callPackage ./torch { inherit (pyprev.torch) patches; };
+            torch =
+              let
+                setuptools = pyfinal.callPackage ./torch/setuptools.nix { inherit (pyprev.setuptools) patches; };
+              in
+              pyfinal.callPackage ./torch {
+                inherit (pyprev.torch) patches;
+                inherit setuptools;
+              };
             torch-bin = throw "torch-bin not supported.";
           };
         };
