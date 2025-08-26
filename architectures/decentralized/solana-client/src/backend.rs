@@ -58,7 +58,7 @@ pub struct SolanaBackendRunner {
 pub struct CreatedRun {
     pub instance: Pubkey,
     pub account: Pubkey,
-    pub create_signatures: Vec<Signature>,
+    pub signature: Signature,
 }
 
 async fn subscribe_to_account(
@@ -284,7 +284,7 @@ impl SolanaBackend {
         let coordinator_account_signer = Keypair::new();
         let coordinator_account = coordinator_account_signer.pubkey();
 
-        let create_coordinator_signature = self.program_coordinators[0]
+        let signature = self.program_coordinators[0]
             .request()
             .instruction(system_instruction::create_account(
                 &payer,
@@ -323,7 +323,7 @@ impl SolanaBackend {
         Ok(CreatedRun {
             instance: coordinator_instance,
             account: coordinator_account,
-            create_signatures: vec![create_coordinator_signature],
+            signature,
         })
     }
 
