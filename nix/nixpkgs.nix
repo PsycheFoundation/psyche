@@ -14,9 +14,6 @@ in
     overlays = lib.optionals cudaSupported [ inputs.nix-gl-host.overlays.default ] ++ [
       inputs.rust-overlay.overlays.default
       (final: prev: {
-        cudaPackages = prev.cudaPackages // {
-          libnvshmem = final.callPackage ./nvshmem.nix { };
-        };
         python312Packages = prev.python312Packages.override {
           overrides = pyfinal: pyprev: rec {
             torch-bin =
