@@ -77,6 +77,8 @@
               export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
             ''
             + ''
+              # Add Python linking flags for PyO3 dependencies
+              export NIX_LDFLAGS="$NIX_LDFLAGS -L${pythonWithPsycheExtension}/lib -lpython3.12"
               echo "Welcome to the Psyche development shell.";
             '';
           };

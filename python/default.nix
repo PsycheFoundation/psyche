@@ -36,15 +36,14 @@ python312Packages.buildPythonPackage rec {
 
   src = ./python/psyche;
 
-  propagatedBuildInputs =
-    with python312Packages;
-    [
-      torch-bin
-      transformers
-    ]
-    ++ (lib.optionals config.cudaSupport [
-      (python312Packages.callPackage ./flash-attn.nix { })
-    ]);
+  propagatedBuildInputs = with python312Packages; [
+    torch-bin
+    transformers
+  ];
+  # Temporarily disabled flash-attn due to compilation issues with PyTorch 2.9.0
+  # ++ (lib.optionals config.cudaSupport [
+  #   (python312Packages.callPackage ./flash-attn.nix { })
+  # ]);
 
   installPhase = ''
     runHook preInstall
