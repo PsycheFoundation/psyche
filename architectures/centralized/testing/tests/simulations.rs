@@ -31,10 +31,6 @@ async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
         Ok(true)
     }
 
-    fn check(node: &ClientHandle, ctx: &RoundContext<'_, Setup>) -> anyhow::Result<()> {
-        Ok(())
-    }
-
     async fn coordinator_round(
         node: &mut CoordinatorServerHandle,
         ctx: &RoundContext<'_, Setup>,
@@ -62,6 +58,14 @@ async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
             }
             println!("RUN STATE AFTER WITNESS: {}", node.get_run_state().await);
         }
+        if ctx.round() == 5 {
+            loop {
+                if node.get_run_state().await == RunState::Cooldown {
+                    println!("We went through one epoch");
+                    break;
+                }
+            }
+        }
         Ok(true)
     }
 
@@ -86,7 +90,7 @@ async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
     })
     .spawn(1, CoordinatorServerHandle::builder(coordinator_round))
     .spawn(10, ClientHandle::builder(round))
-    .rounds(5);
+    .rounds(6);
     Ok(sim)
 }
 
@@ -136,6 +140,15 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
                     break;
                 } else if node.get_run_state().await == RunState::Cooldown {
                     println!("Coordinator went to cooldown state");
+                    tokio::time::sleep(Duration::from_secs(COOLDOWN_TIME)).await;
+                    if ctx.round() == 9 {
+                        loop {
+                            if node.get_run_state().await == RunState::Finished {
+                                println!("We went through two epochs");
+                                return Ok(true);
+                            }
+                        }
+                    }
                 }
             }
             loop {
@@ -150,7 +163,7 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
             loop {
                 if node.get_run_state().await == RunState::Finished {
                     println!("We went through two epochs");
-                    break;
+                    return Ok(true);
                 }
             }
         }

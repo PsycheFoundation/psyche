@@ -78,7 +78,7 @@ impl CoordinatorServer {
         let coordinator_config = CoordinatorConfig {
             warmup_time: WARMUP_TIME,
             cooldown_time: COOLDOWN_TIME,
-            rounds_per_epoch: 4,
+            rounds_per_epoch: 5,
             max_round_train_time: MAX_ROUND_TRAIN_TIME,
             round_witness_time: ROUND_WITNESS_TIME,
             min_clients,
