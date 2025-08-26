@@ -46,6 +46,8 @@ python312Packages.buildPythonPackage rec {
       (python312Packages.callPackage ./flash-attn.nix { })
     ]);
 
+  dontBuild = true;
+
   installPhase = ''
     runHook preInstall
 
