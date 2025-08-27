@@ -130,22 +130,22 @@ impl PythonDistributedTrainer {
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
         let world_size = self.comm.size();
+        let original_batch_size = data.data.size();
 
         // Pad the batch if necessary for FSDP
         if world_size > 1 {
-            let original_size = data.data.size();
             debug!(
                 "Checking batch padding: original batch size = {}, world_size = {}",
-                original_size, world_size
+                original_batch_size, world_size
             );
 
             data = self.pad_batch_for_fsdp(data, world_size)?;
 
             let new_size = data.data.size();
-            if new_size != original_size {
+            if new_size != original_batch_size {
                 debug!(
                     "FSDP: Padded batch from {} to {} samples (world_size={})",
-                    original_size, new_size, world_size
+                    original_batch_size, new_size, world_size
                 );
             }
         }
@@ -216,7 +216,7 @@ impl PythonDistributedTrainer {
 
         let loss: f32 = loss.try_into().unwrap();
 
-        let loss = loss / self.comm.size() as f32;
+        let loss = loss / std::cmp::min(original_batch_size, self.comm.size()) as f32;
 
         trace!("Train operation complete on all Python clients");
 

@@ -810,7 +810,6 @@ impl LocalTrainer {
                             Some(grad_accum_divisor),
                         ) {
                             Ok(Some(batch_loss)) => {
-                                println!("batch_loss");
                                 if batch_loss.double_value(&[]).is_finite() {
                                     match loss.as_mut() {
                                         Some(loss) => *loss += batch_loss,
