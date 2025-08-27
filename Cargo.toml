@@ -79,9 +79,9 @@ indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "a60a34f12bb04cceb1e97a196bea8a188cd94dde" }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "a60a34f12bb04cceb1e97a196bea8a188cd94dde" }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "a60a34f12bb04cceb1e97a196bea8a188cd94dde" }
+tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5524060922de2cd9786458729ac7063891240306" }
+torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5524060922de2cd9786458729ac7063891240306" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "5524060922de2cd9786458729ac7063891240306" }
 # tch = { path = "../tch-rs" }
 # torch-sys = { path = "../tch-rs/torch-sys" }
 # pyo3-tch = { path = "../tch-rs/pyo3-tch" }
