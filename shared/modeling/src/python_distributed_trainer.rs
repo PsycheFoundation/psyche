@@ -249,7 +249,7 @@ impl PythonDistributedTrainer {
                 if remainder != 0 {
                     let padding_needed = world_size - remainder;
                     debug!(
-                        "[FSDP Padding] Batch size {} not divisible by world_size {}. Adding {} padding samples.",
+                        "FSDP Padding: Batch size {} not divisible by world_size {}. Adding {} padding samples.",
                         current_batch_size, world_size, padding_needed
                     );
 
