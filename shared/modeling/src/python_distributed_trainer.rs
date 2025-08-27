@@ -303,6 +303,8 @@ impl PythonDistributedTrainer {
             "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
+        trace!("Sending operation to Python clients: {:#}", operation);
+
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
         if results_len > 0 {

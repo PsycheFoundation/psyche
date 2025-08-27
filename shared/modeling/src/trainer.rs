@@ -427,7 +427,6 @@ impl LocalTrainer {
             loss_scale,
         );
         let loss = loss.ok_or(Error::msg("No loss"))?;
-        println!("forward_backward loss: {}", loss);
         loss.backward();
         if device.is_cuda() {
             device.cuda_synchronize();
@@ -514,7 +513,6 @@ impl LocalTrainer {
                     cancelled,
                     nonce,
                 } => {
-                    tracing::info!("Received train result, loss: {}", loss);
                     if final_distro_results.is_none() {
                         final_distro_results = distro_results;
                         final_nonce = nonce;
