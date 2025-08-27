@@ -327,6 +327,9 @@ pub enum TrainerThreadCommunicationError {
     #[error("Got unexpected result from trainer thread: {0}")]
     UnexpectedResult(String),
 
+    #[error("Attempting to pad batch that's already on GPU")]
+    PaddingBatch,
+
     #[cfg(feature = "python")]
     #[error("Python error: {0}")]
     PythonError(#[from] pyo3::PyErr),

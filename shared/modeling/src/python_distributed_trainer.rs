@@ -77,7 +77,7 @@ impl PythonDistributedTrainer {
         };
 
         if model.parallelism.dp > 1 {
-            println!(
+            debug!(
                 "Increasing micro batch size from {} to {} to account for FSDP sharding size of {}",
                 micro_batch_size,
                 micro_batch_size * model.parallelism.dp,
@@ -130,7 +130,6 @@ impl PythonDistributedTrainer {
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
         let world_size = self.comm.size();
-        println!("FSDP world_size: {}", world_size);
 
         // Pad the batch if necessary for FSDP
         if world_size > 1 {
@@ -139,78 +138,12 @@ impl PythonDistributedTrainer {
                 "Checking batch padding: original batch size = {}, world_size = {}",
                 original_size, world_size
             );
-            // Log last 10 inputs before padding
-            if let BatchData::CPU(ref cpu_data) = data.data {
-                let start_idx = if cpu_data.len() >= 10 {
-                    cpu_data.len() - 10
-                } else {
-                    0
-                };
-                println!(
-                    "BEFORE PADDING - Last {} inputs:",
-                    cpu_data.len() - start_idx
-                );
-                for (i, sample) in cpu_data.iter().enumerate().skip(start_idx) {
-                    let input_preview: Vec<i64> = sample
-                        .input_ids
-                        .iter()
-                        .rev()
-                        .take(10)
-                        .map(|&x| x as i64)
-                        .collect();
-                    let labels_preview = sample.labels.as_ref().map(|labels| {
-                        labels
-                            .iter()
-                            .rev()
-                            .take(10)
-                            .map(|&x| x as i64)
-                            .collect::<Vec<i64>>()
-                    });
-                    println!(
-                        "  Sample {}: input_ids: {:?}, labels: {:?}",
-                        i, input_preview, labels_preview
-                    );
-                }
-            }
 
             data = self.pad_batch_for_fsdp(data, world_size)?;
 
-            // Log last 10 inputs after padding
-            if let BatchData::CPU(ref cpu_data) = data.data {
-                let start_idx = if cpu_data.len() >= 10 {
-                    cpu_data.len() - 10
-                } else {
-                    0
-                };
-                println!(
-                    "AFTER PADDING - Last {} inputs:",
-                    cpu_data.len() - start_idx
-                );
-                for (i, sample) in cpu_data.iter().enumerate().skip(start_idx) {
-                    let input_preview: Vec<i64> = sample
-                        .input_ids
-                        .iter()
-                        .rev()
-                        .take(10)
-                        .map(|&x| x as i64)
-                        .collect();
-                    let labels_preview = sample.labels.as_ref().map(|labels| {
-                        labels
-                            .iter()
-                            .rev()
-                            .take(10)
-                            .map(|&x| x as i64)
-                            .collect::<Vec<i64>>()
-                    });
-                    println!(
-                        "  Sample {}: input_ids: {:?}, labels: {:?}",
-                        i, input_preview, labels_preview
-                    );
-                }
-            }
             let new_size = data.data.size();
             if new_size != original_size {
-                println!(
+                debug!(
                     "FSDP: Padded batch from {} to {} samples (world_size={})",
                     original_size, new_size, world_size
                 );
@@ -274,19 +207,11 @@ impl PythonDistributedTrainer {
         let loss = Tensor::from_slice(&[ret.loss])
             .to_kind(Kind::Float)
             .to_device(self.device);
-        println!("ret.batch_id: {}", ret.batch_id);
-        println!("loss before reduction: {}", loss);
-        println!("Rank {}: loss before reduction: {}", self.comm.rank(), loss);
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
-        println!("Rank {}: loss after reduction: {}", self.comm.rank(), loss);
-        println!("loss after reduction: {}", loss);
 
         let loss: f32 = loss.try_into().unwrap();
-        println!("loss after reduction 2: {}", loss);
 
         let loss = loss / self.comm.size() as f32;
-        println!("self.comm.size() as f32 : {}", self.comm.size() as f32);
-        println!("loss after reduction 3 : {}", loss);
 
         Ok(TrainOutput {
             trainer: Self {
@@ -316,60 +241,40 @@ impl PythonDistributedTrainer {
 
                 if remainder != 0 {
                     let padding_needed = world_size - remainder;
-                    println!(
+                    debug!(
                         "[FSDP Padding] Batch size {} not divisible by world_size {}. Adding {} padding samples.",
                         current_batch_size, world_size, padding_needed
-                    );
-                    debug!(
-                        "Detailed padding info: batch_size={}, world_size={}, remainder={}, padding_needed={}",
-                        current_batch_size, world_size, remainder, padding_needed
                     );
 
                     // Get sequence length from the first sample
                     let seq_len = if !cpu_data.is_empty() {
                         cpu_data[0].input_ids.len()
                     } else {
-                        return Ok(batch); // Empty batch, nothing to pad
+                        return Ok(batch);
                     };
 
-                    // Create padding samples with labels set to -100 (ignore index)
-                    for i in 0..padding_needed {
+                    // Create padding samples with labels set to -100
+                    for _ in 0..padding_needed {
                         let padding_sample = BatchDataCPU {
                             // Use 0 as padding token ID
                             input_ids: vec![0; seq_len],
                             // Set labels to -100 so they're ignored in loss computation
                             labels: Some(vec![-100; seq_len]),
-                            // Position IDs can be zeros
                             position_ids: cpu_data[0]
                                 .position_ids
                                 .as_ref()
                                 .map(|_| vec![0; seq_len]),
-                            // Sequence lengths can be None or zeros
                             sequence_lengths: cpu_data[0]
                                 .sequence_lengths
                                 .as_ref()
                                 .map(|sl| vec![0; sl.len()]),
                         };
                         cpu_data.push(padding_sample);
-                        println!(
-                            "Added padding sample {} with seq_len={}, labels=-100",
-                            i + 1,
-                            seq_len
-                        );
                     }
-
-                    println!(
-                        "Successfully padded batch: new size = {} (divisible by {})",
-                        cpu_data.len(),
-                        world_size
-                    );
                 }
             }
             BatchData::GPU(_) => {
-                // Batch is already on GPU, this shouldn't happen in the current flow
-                println!(
-                    "WARNING: Attempting to pad batch that's already on GPU - skipping padding. This may cause FSDP issues!"
-                );
+                return Err(TrainerThreadCommunicationError::PaddingBatch);
             }
         }
 
@@ -397,8 +302,6 @@ impl PythonDistributedTrainer {
             "results_len": results_len,
             "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
-
-        println!("Sending operation to Python clients: {:#}", operation);
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
