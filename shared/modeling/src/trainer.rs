@@ -424,6 +424,7 @@ impl LocalTrainer {
             loss_scale,
         );
         let loss = loss.ok_or(Error::msg("No loss"))?;
+        println!("forward_backward loss: {}", loss);
         loss.backward();
         if device.is_cuda() {
             device.cuda_synchronize();
@@ -510,6 +511,7 @@ impl LocalTrainer {
                     cancelled,
                     nonce,
                 } => {
+                    tracing::info!("Received train result, loss: {}", loss);
                     if final_distro_results.is_none() {
                         final_distro_results = distro_results;
                         final_nonce = nonce;
@@ -806,12 +808,17 @@ impl LocalTrainer {
                             &barrier,
                             Some(grad_accum_divisor),
                         ) {
-                            Ok(Some(batch_loss)) => match loss.as_mut() {
-                                Some(loss) => *loss += batch_loss,
-                                None => {
-                                    loss = Some(batch_loss);
+                            Ok(Some(batch_loss)) => {
+                                println!("batch_loss");
+                                if batch_loss.double_value(&[]).is_finite() {
+                                    match loss.as_mut() {
+                                        Some(loss) => *loss += batch_loss,
+                                        None => {
+                                            loss = Some(batch_loss);
+                                        }
+                                    }
                                 }
-                            },
+                            }
                             Ok(None) => {
                                 // cancelled barrier catching race to on run_state
                                 cancelled = true;

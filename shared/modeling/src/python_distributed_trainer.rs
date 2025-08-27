@@ -154,6 +154,7 @@ impl PythonDistributedTrainer {
                     let input_preview: Vec<i64> = sample
                         .input_ids
                         .iter()
+                        .rev()
                         .take(10)
                         .map(|&x| x as i64)
                         .collect();
@@ -189,6 +190,7 @@ impl PythonDistributedTrainer {
                     let input_preview: Vec<i64> = sample
                         .input_ids
                         .iter()
+                        .rev()
                         .take(10)
                         .map(|&x| x as i64)
                         .collect();
@@ -272,6 +274,7 @@ impl PythonDistributedTrainer {
         let loss = Tensor::from_slice(&[ret.loss])
             .to_kind(Kind::Float)
             .to_device(self.device);
+        println!("ret.batch_id: {}", ret.batch_id);
         println!("loss before reduction: {}", loss);
         println!("Rank {}: loss before reduction: {}", self.comm.rank(), loss);
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
