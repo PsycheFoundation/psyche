@@ -35,7 +35,7 @@ pub async fn run() {
 
     // Prepare the payer
     endpoint
-        .process_airdrop(&payer.pubkey(), payer_lamports)
+        .request_airdrop(&payer.pubkey(), payer_lamports)
         .await
         .unwrap();
 
@@ -292,7 +292,7 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Deposit should now succeed
+    // Depositing should now succeed with partial amounts
     process_lender_deposit(
         &mut endpoint,
         &payer,
@@ -300,12 +300,23 @@ pub async fn run() {
         &user_collateral,
         pool_index,
         &collateral_mint,
-        user_collateral_amount / 2,
+        user_collateral_amount / 3,
+    )
+    .await
+    .unwrap();
+    process_lender_deposit(
+        &mut endpoint,
+        &payer,
+        &user,
+        &user_collateral,
+        pool_index,
+        &collateral_mint,
+        user_collateral_amount / 6,
     )
     .await
     .unwrap();
 
-    // Claiming should now succeed
+    // Claiming should now succeed with partial amounts
     process_lender_claim(
         &mut endpoint,
         &payer,
@@ -313,12 +324,23 @@ pub async fn run() {
         &user_redeemable,
         pool_index,
         &redeemable_mint,
-        pool_authority_redeemable_amount / 2,
+        pool_authority_redeemable_amount / 3,
+    )
+    .await
+    .unwrap();
+    process_lender_claim(
+        &mut endpoint,
+        &payer,
+        &user,
+        &user_redeemable,
+        pool_index,
+        &redeemable_mint,
+        pool_authority_redeemable_amount / 6,
     )
     .await
     .unwrap();
 
-    // Extract should still succeed for the amounts just deposited
+    // Extract should still succeed for the amounts just deposited, using partial amounts
     process_pool_extract(
         &mut endpoint,
         &payer,
@@ -326,7 +348,18 @@ pub async fn run() {
         &pool_authority,
         &pool_authority_collateral,
         &collateral_mint,
-        user_collateral_amount / 2,
+        user_collateral_amount / 3,
+    )
+    .await
+    .unwrap();
+    process_pool_extract(
+        &mut endpoint,
+        &payer,
+        pool_index,
+        &pool_authority,
+        &pool_authority_collateral,
+        &collateral_mint,
+        user_collateral_amount / 6,
     )
     .await
     .unwrap();

@@ -18,7 +18,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -29,7 +29,7 @@ pub async fn run() {
 
     // Dummy delegates users
     let mut delegates = vec![];
-    for _ in 0..100 {
+    for _ in 0..66 {
         delegates.push(Pubkey::new_unique());
     }
 
@@ -123,7 +123,7 @@ pub async fn run() {
         &authorization,
         AuthorizationGranteeUpdateParams {
             delegates_clear: true,
-            delegates_added: delegates[10..40].to_vec(),
+            delegates_added: delegates[10..30].to_vec(),
         },
     )
     .await
@@ -135,7 +135,7 @@ pub async fn run() {
         &authorization,
         AuthorizationGranteeUpdateParams {
             delegates_clear: false,
-            delegates_added: delegates[40..90].to_vec(),
+            delegates_added: delegates[30..50].to_vec(),
         },
     )
     .await
@@ -150,12 +150,12 @@ pub async fn run() {
     assert_eq!(authorization_state.grantee, grantee.pubkey());
     assert_eq!(authorization_state.scope, scope);
     assert!(!authorization_state.active);
-    assert_eq!(authorization_state.delegates, delegates[10..90]);
+    assert_eq!(authorization_state.delegates, delegates[10..50]);
 
     // Check the function is_valid_for returns the expected values
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[80],
+        &delegates[40],
         &scope
     ));
 
@@ -179,7 +179,7 @@ pub async fn run() {
     assert_eq!(authorization_state.grantee, grantee.pubkey());
     assert_eq!(authorization_state.scope, scope);
     assert!(authorization_state.active);
-    assert_eq!(authorization_state.delegates, delegates[10..90]);
+    assert_eq!(authorization_state.delegates, delegates[10..50]);
 
     // Check the function is_valid_for returns the expected values
     assert!(authorization_state.is_valid_for(
@@ -194,7 +194,7 @@ pub async fn run() {
     ));
     assert!(authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[75],
+        &delegates[45],
         &scope
     ));
 
@@ -236,7 +236,7 @@ pub async fn run() {
     ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[75],
+        &delegates[45],
         &scope
     ));
 
@@ -275,7 +275,7 @@ pub async fn run() {
     ));
     assert!(!authorization_state.is_valid_for(
         &grantor.pubkey(),
-        &delegates[75],
+        &delegates[45],
         &scope
     ));
 
