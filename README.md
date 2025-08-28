@@ -1,7 +1,7 @@
 # Psyche: Decentralized AI Training Infrastructure
 
-<p align="center">
-  <img src="https://via.placeholder.com/200x100/4A90E2/FFFFFF?text=Psyche" alt="Psyche Logo"/>
+<p align="center" width="100%">
+    <img src="./psyche-book/src/psyche.jpg">
 </p>
 
 An open infrastructure to democratize and decentralize the development of superintelligence for humanity.
