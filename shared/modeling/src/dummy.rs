@@ -59,7 +59,7 @@ impl DummyModel {
         var_store.variables_ = Arc::new(Mutex::new(variables));
         Self {
             var_store,
-            training_delay_secs: Duration::from_millis(training_delay),
+            training_delay_secs: Duration::from_secs(training_delay),
         }
     }
 }

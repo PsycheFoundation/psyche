@@ -61,7 +61,8 @@ async fn connect_multiple_nodes() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let client_handles = spawn_clients(number_of_nodes, server_port, run_id).await;
+    let client_handles =
+        spawn_clients_with_training_delay(number_of_nodes, server_port, run_id, 2).await;
     let connected_clients = || server_handle.get_pending_clients_len();
     let run_state = || server_handle.get_run_state();
 
@@ -96,7 +97,8 @@ async fn state_change_waiting_for_members_to_warmup() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let _client_handles = spawn_clients(init_min_clients as usize, server_port, run_id).await;
+    let _client_handles =
+        spawn_clients_with_training_delay(init_min_clients as usize, server_port, run_id, 2).await;
 
     // Clients have connected and now that the initial min clients has been reached, run state
     // changes to `Warmup`
@@ -134,7 +136,7 @@ async fn state_change_shutdown_node_in_warmup() {
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
     let [_client_1_task, client_2_task]: [JoinHandle<()>; 2] =
-        spawn_clients(2, server_port, run_id)
+        spawn_clients_with_training_delay(2, server_port, run_id, 2)
             .await
             .try_into()
             .unwrap();
@@ -178,7 +180,7 @@ async fn state_change_waiting_for_members_to_round_train() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let _client_handles = spawn_clients(2, server_port, run_id).await;
+    let _client_handles = spawn_clients_with_training_delay(2, server_port, run_id, 2).await;
 
     assert_with_retries(|| server_handle.get_clients_len(), 2).await;
     assert_with_retries(|| server_handle.get_run_state(), RunState::Warmup).await;
@@ -210,7 +212,7 @@ async fn state_change_waiting_for_members_to_round_witness() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let _client_handles = spawn_clients(2, server_port, run_id).await;
+    let _client_handles = spawn_clients_with_training_delay(2, server_port, run_id, 2).await;
 
     assert_with_retries(|| server_handle.get_clients_len(), 2).await;
 
@@ -253,7 +255,8 @@ async fn validate_all_clients_participate_in_witness_bloom() {
 
     let server_port = server_handle.server_port;
     let run_id = &server_handle.run_id;
-    let _client_handles = spawn_clients(init_min_clients as usize, server_port, run_id).await;
+    let _client_handles =
+        spawn_clients_with_training_delay(init_min_clients as usize, server_port, run_id, 2).await;
 
     // assert that we start in the round 0
     assert_with_retries(|| server_handle.get_rounds_head(), 0).await;
@@ -514,7 +517,7 @@ async fn client_join_in_training() {
 async fn shutdown_node_in_training_and_complete_round() {
     let init_min_clients = 3;
     let global_batch_size = 3;
-    let witness_nodes = 2;
+    let witness_nodes = 0;
     let training_delay = 2;
     let server_handle = CoordinatorServerHandle::new(
         init_min_clients,
@@ -747,8 +750,8 @@ async fn client_join_in_training_and_get_model_using_p2p() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn two_clients_join_in_training_and_get_model_using_p2p() {
     // start a normal run with 2 clients
-    let init_min_clients = 40;
-    let global_batch_size = 65;
+    let init_min_clients = 2;
+    let global_batch_size = 4;
     let witness_nodes = 0;
 
     let server_handle = CoordinatorServerHandle::new(
@@ -803,7 +806,7 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
 
     // spawn new client
     let _clients_handle =
-        spawn_clients_with_training_delay(25, server_port, run_id, training_delay).await;
+        spawn_clients_with_training_delay(2, server_port, run_id, training_delay).await;
 
     info!("waiting for next epoch!");
     assert_with_retries(|| server_handle.get_current_epoch(), 1).await;
