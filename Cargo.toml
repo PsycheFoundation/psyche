@@ -60,6 +60,7 @@ rand = "0.8.5"
 rand_chacha = "0.3.1"
 postcard = { version = "1.0.10", features = ["use-std"] }
 sha2 = "0.10.8"
+sha256 = "1.6.0"
 futures = "0.3.30"
 futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }

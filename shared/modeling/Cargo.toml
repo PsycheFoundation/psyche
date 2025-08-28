@@ -15,6 +15,7 @@ tokenizers.workspace = true
 tracing.workspace = true
 byteorder = "1.4.3"
 safetensors = "0.3.0"
+sha256.workspace = true
 itertools = "0.14"
 thiserror.workspace = true
 tokio-util.workspace = true
