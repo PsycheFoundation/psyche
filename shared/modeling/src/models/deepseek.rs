@@ -6,6 +6,8 @@ use crate::{
 };
 use std::fmt::Debug;
 use std::sync::Arc;
+use itertools::Itertools;
+use sha256::digest;
 use tch::{
     Device, Kind, Tensor,
     nn::{
@@ -1053,7 +1055,10 @@ impl ModelConfig for DeepseekConfig {
         );
 
         let variables_lock = variables.variables_.lock().unwrap();
-        variables_lock.named_variables.keys().cloned().collect()
+        
+        let combined_str = variables_lock.named_variables.keys().join("");
+
+        vec![digest(combined_str)]
     }
 }
 
