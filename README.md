@@ -57,3 +57,9 @@ Built by [Nous Research](https://nousresearch.com) - democratizing access to art
 ---
 
 *"The future of AI should be open, decentralized, and accessible to everyone."*
+
+<p align="center" width="100%">
+    <a href="https://www.youtube.com/watch?v=XMWI3nDk48c">
+        <img src="./psyche-book/src/psyche_youtube.png">
+    </a>
+</p>
