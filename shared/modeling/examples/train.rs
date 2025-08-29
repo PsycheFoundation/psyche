@@ -244,9 +244,6 @@ async fn main() -> Result<()> {
     };
 
     let dp_world_size = args.data_parallelism.unwrap_or(1);
-    if args.total_batch % dp_world_size != 0 {
-        anyhow::bail!("DP world size doesn't divide global batch size");
-    }
     let tp_world_size = args.tensor_parallelism.unwrap_or(1);
 
     #[cfg(feature = "python")]
