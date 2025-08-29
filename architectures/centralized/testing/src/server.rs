@@ -1,4 +1,11 @@
+use crate::{
+    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, SIM_COOLDOWN_TIME,
+    SIM_MAX_ROUND_TRAIN_TIME, SIM_ROUND_WITNESS_TIME, SIM_WARMUP_TIME, WARMUP_TIME,
+    test_utils::{Setup, sample_rand_run_id},
+};
 use bytemuck::Zeroable;
+use iroh::Endpoint;
+use iroh_n0des::simulation::{Node, Spawn, SpawnContext};
 use psyche_centralized_server::app::App as ServerApp;
 use psyche_centralized_shared::ClientId;
 use psyche_coordinator::{Client, Round};
@@ -7,6 +14,7 @@ use psyche_coordinator::{
     model::{Checkpoint, LLM, Model},
 };
 use psyche_core::FixedVec;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::HashSet, mem::Discriminant, ops::ControlFlow};
 use tokio::{
     select,
@@ -16,9 +24,6 @@ use tokio::{
     },
 };
 use tracing::debug;
-
-use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
-use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 
 enum TestingQueryMsg {
     Clients {
@@ -122,6 +127,69 @@ impl CoordinatorServer {
         }
     }
 
+    pub async fn new_for_simulation(
+        query_chan_receiver: Receiver<TestingQueryMsg>,
+        min_clients: u16,
+        global_batch_size: u16,
+        witness_nodes: u16,
+        run_id: Option<String>,
+        port: Option<u16>,
+    ) -> Self {
+        let coordinator_config = CoordinatorConfig {
+            warmup_time: SIM_WARMUP_TIME,
+            cooldown_time: SIM_COOLDOWN_TIME,
+            rounds_per_epoch: 5,
+            max_round_train_time: SIM_MAX_ROUND_TRAIN_TIME,
+            round_witness_time: SIM_ROUND_WITNESS_TIME,
+            min_clients,
+            init_min_clients: min_clients,
+            global_batch_size_start: global_batch_size,
+            global_batch_size_end: global_batch_size,
+            global_batch_size_warmup_tokens: 0,
+            verification_percent: 0,
+            witness_nodes,
+            total_steps: 10,
+        };
+
+        let epoch_state = CoordinatorEpochState {
+            first_round: true.into(),
+            ..CoordinatorEpochState::<ClientId>::zeroed()
+        };
+
+        let run_id = run_id.unwrap_or(sample_rand_run_id());
+        let coordinator: Coordinator<ClientId> = Coordinator {
+            run_id: run_id.as_str().try_into().unwrap(),
+            model: Model::LLM(LLM::dummy()),
+            config: coordinator_config,
+            epoch_state,
+            ..Coordinator::<ClientId>::zeroed()
+        };
+
+        debug!("ServerApp::new() waiting...");
+
+        let server = ServerApp::new(
+            false,
+            coordinator,
+            None,
+            port,
+            None,
+            Some(WARMUP_TIME),
+            true,
+        )
+        .await
+        .unwrap();
+        debug!("ServerApp::new() done!");
+
+        let port = server.get_port();
+
+        Self {
+            inner: server,
+            query_chan_receiver,
+            port,
+            run_id,
+        }
+    }
+
     pub async fn handle_message(&mut self, msg: TestingQueryMsg) {
         match msg {
             TestingQueryMsg::Clients { respond_to } => {
@@ -181,6 +249,7 @@ impl CoordinatorServer {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct CoordinatorServerHandle {
     query_chan_sender: mpsc::Sender<TestingQueryMsg>,
     pub server_port: u16,
@@ -188,7 +257,13 @@ pub struct CoordinatorServerHandle {
 }
 
 impl CoordinatorServerHandle {
-    pub async fn new(init_min_clients: u16, global_batch_size: u16, witness_nodes: u16) -> Self {
+    pub async fn new(
+        init_min_clients: u16,
+        global_batch_size: u16,
+        witness_nodes: u16,
+        run_id: Option<String>,
+        port: Option<u16>,
+    ) -> Self {
         debug!("creating coordinator server...");
         let (query_chan_sender, query_chan_receiver) = mpsc::channel(64);
 
@@ -206,6 +281,53 @@ impl CoordinatorServerHandle {
                 init_min_clients,
                 global_batch_size,
                 witness_nodes,
+            ))
+            .await
+            .unwrap();
+
+        let server_port = server.port;
+        let run_id = server.run_id.clone();
+        // tokio::spawn(async move { server.run().await });
+        // the above line will stack overflow, for reasons best left to contemplative reflection.
+        // as a substitute to madness, we suggest the reader trust us on this point.
+        std::thread::spawn(move || {
+            rt.block_on(server.run());
+        });
+        debug!("coordinator server created on port {server_port}");
+
+        Self {
+            query_chan_sender,
+            server_port,
+            run_id,
+        }
+    }
+
+    pub async fn new_for_simulation(
+        init_min_clients: u16,
+        global_batch_size: u16,
+        witness_nodes: u16,
+        run_id: Option<String>,
+        port: Option<u16>,
+    ) -> Self {
+        debug!("creating coordinator server...");
+        let (query_chan_sender, query_chan_receiver) = mpsc::channel(64);
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_time()
+            .enable_io()
+            .thread_stack_size(10 * 1024 * 1024)
+            .max_blocking_threads(8192)
+            .build()
+            .unwrap();
+
+        let mut server = rt
+            .spawn(CoordinatorServer::new_for_simulation(
+                query_chan_receiver,
+                init_min_clients,
+                global_batch_size,
+                witness_nodes,
+                run_id,
+                port,
             ))
             .await
             .unwrap();
@@ -297,5 +419,36 @@ impl CoordinatorServerHandle {
         let msg = TestingQueryMsg::Coordinator { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
         recv.await.expect("Coordinator actor task has been killed")
+    }
+}
+
+impl Node for CoordinatorServerHandle {
+    fn endpoint(&self) -> Option<&Endpoint> {
+        None
+    }
+
+    async fn shutdown(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+impl Spawn<Setup> for CoordinatorServerHandle {
+    async fn spawn(ctx: &mut SpawnContext<'_, Setup>) -> anyhow::Result<Self> {
+        let endpoint = ctx.bind_endpoint().await?;
+        let setup_data = ctx.setup_data().clone();
+        // let registry = ctx.metrics_registry();
+        let mut handle = CoordinatorServerHandle::new_for_simulation(
+            setup_data.init_min_clients,
+            setup_data.global_batch_size,
+            setup_data.witness_nodes,
+            Some(setup_data.run_id),
+            Some(setup_data.server_port),
+        )
+        .await;
+        // registry.register_all_prefixed(endpoint.metrics());
+        // registry.register(p2p.blobs.metrics().clone());
+        // registry.register(p2p.gossip.metrics().clone());
+
+        Ok(handle)
     }
 }

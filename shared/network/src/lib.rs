@@ -28,6 +28,8 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
+    path::PathBuf,
+    str::FromStr,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -112,8 +114,9 @@ where
     Download: Networkable,
 {
     router: Arc<Router>,
-    blobs: Blobs<Store>,
+    pub blobs: Blobs<Store>,
     state: State,
+    pub gossip: Gossip,
     gossip_tx: GossipSender,
     gossip_rx: GossipReceiver,
     rx_model_parameter_req: UnboundedReceiver<ParameterSharingMessage>,
@@ -123,7 +126,7 @@ where
     _download: PhantomData<Download>,
     update_stats_interval: Interval,
     metrics: Arc<ClientMetrics>,
-    _iroh_metrics: IrohMetricsCollector,
+    _iroh_metrics: Option<IrohMetricsCollector>,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -161,6 +164,7 @@ where
         allowlist: A,
         max_concurrent_downloads: usize,
         metrics: Arc<ClientMetrics>,
+        sim_endpoint: Option<Endpoint>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rngs::OsRng),
@@ -198,7 +202,9 @@ where
             Ipv4Addr::new(0, 0, 0, 0)
         };
 
-        let endpoint = {
+        let endpoint = if let Some(endpoint) = sim_endpoint {
+            endpoint
+        } else {
             let mut transport_config = TransportConfig::default();
             transport_config
                 .max_idle_timeout(Some(Duration::from_secs(5).try_into()?))
@@ -223,9 +229,13 @@ where
         let node_addr = endpoint.node_addr().await?;
 
         info!("Our node addr: {}", node_addr.node_id);
-        info!("Our join ticket: {}", PeerList(vec![node_addr]));
+        info!("Our join ticket: {}", PeerList(vec![node_addr.clone()]));
 
         trace!("creating blobs...");
+        let store_dir = PathBuf::from_str(&format!("test-store-{}", node_addr.node_id)).unwrap();
+        // let blobs = Blobs::persistent(store_dir)
+        //     .await
+        //     .unwrap()
         let blobs = Blobs::memory()
             .concurrency_limits(ConcurrencyLimits {
                 max_concurrent_requests_per_node: 1,
@@ -319,6 +329,7 @@ where
 
         Ok(Self {
             blobs,
+            gossip,
             gossip_rx,
             gossip_tx,
             rx_model_parameter_req,
@@ -326,7 +337,7 @@ where
 
             router,
             metrics,
-            _iroh_metrics: iroh_metrics,
+            _iroh_metrics: None,
 
             update_stats_interval,
             state: State::new(15),

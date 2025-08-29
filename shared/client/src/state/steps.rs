@@ -59,6 +59,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     sent_warmup_witness: bool,
 
     coordinator_state: Coordinator<T>,
+    is_dummy_model: bool,
 }
 
 #[derive(Error, Debug)]
@@ -134,6 +135,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         let mut previous_round = RoundState::default();
         let mut current_round = RoundState::default();
 
+        // Check if any trainer is using dummy models
+        let is_dummy_model = trainers
+            .iter()
+            .any(|trainer| trainer.causal_lm().is_dummy_model());
+
         let active_step =
             ActiveStep::Warmup(warmup.start(trainers, &mut previous_round, &mut current_round));
 
@@ -156,6 +162,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             tx_broadcast_finished,
 
             coordinator_state,
+            is_dummy_model,
 
             step_finish_time: None,
             sent_warmup_finished: false,
@@ -531,6 +538,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         distro_result: TransmittableDistroResult,
         self_result: Option<Vec<DistroResult>>,
     ) {
+        // Test padding was already removed during hash verification in apply_distro_result_private_broadcast
         let (round_state, current_round) =
             if self.current_round.distro_result_blob_downloaded(&hash) {
                 trace!(
@@ -596,12 +604,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         let blooms = round_state.blooms.clone();
         let downloads = round_state.downloads.clone();
         let stats_logger = self.stats_logger.clone();
+        let is_dummy_model = self.is_dummy_model;
         tokio::spawn(async move {
             // verify that the result matches the commitment
-            let (distro_hash, distro_result) =
-                tokio::task::spawn_blocking(move || (distro_result.comptue_hash(), distro_result))
-                    .await
-                    .unwrap();
+            let (distro_hash, distro_result) = tokio::task::spawn_blocking(move || {
+                // Calculate hash on padded data to match commitment hash
+                let hash = distro_result.compute_hash();
+                // Remove test padding for processing but keep original hash
+                let distro_result = if is_dummy_model {
+                    trace!("is_dummy_model: removing test padding");
+                    distro_result.without_test_padding()
+                } else {
+                    distro_result
+                };
+                (hash, distro_result)
+            })
+            .await
+            .unwrap();
 
             if distro_hash != commitment.data_hash {
                 debug!(

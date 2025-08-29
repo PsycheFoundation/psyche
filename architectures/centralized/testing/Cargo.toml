@@ -18,7 +18,15 @@ bytemuck.workspace = true
 anyhow.workspace = true
 rand.workspace = true
 toml = "0.8.19"
+serde.workspace = true
 tracing.workspace = true
+iroh-n0des = { git = "https://github.com/n0-computer/iroh-n0des", branch = "matheus23/v0.35-metrics", default-features = false, features = [
+  "iroh_v035",
+] }
+iroh.workspace = true
+iroh-blobs.workspace = true
+iroh-gossip.workspace = true
+
 
 [dev-dependencies]
 test-log.workspace = true

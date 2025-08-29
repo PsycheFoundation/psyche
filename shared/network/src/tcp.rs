@@ -36,6 +36,7 @@ pub enum ClientNotification<T: Debug, U: Debug> {
     Disconnected(U),
 }
 
+#[derive(Debug)]
 pub struct TcpServer<I, ToServerMessage, ToClientMessage>
 where
     I: AuthenticatableIdentity,
@@ -225,6 +226,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct TcpClient<I, ToServerMessage, ToClientMessage>
 where
     I: AuthenticatableIdentity,

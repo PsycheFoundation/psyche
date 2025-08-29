@@ -2,6 +2,7 @@ use anyhow::Result;
 use psyche_coordinator::{Coordinator, HealthChecks, Witness, WitnessMetadata, model};
 use psyche_core::NodeIdentity;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,7 +21,7 @@ impl OpportunisticData {
 }
 
 #[async_trait::async_trait]
-pub trait Backend<T: NodeIdentity>: Send + Sync {
+pub trait Backend<T: NodeIdentity>: Send + Sync + Debug {
     /// # Cancel safety
     ///
     /// This method must be cancel safe.

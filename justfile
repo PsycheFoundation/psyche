@@ -48,6 +48,10 @@ setup-solana-localnet-test-run run_id="test" *args='':
 setup-solana-localnet-light-test-run run_id="test" *args='':
     RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/setup-and-deploy-solana-test.sh {{ args }}
 
+# Deploy coordinator on Devnet and create a "test" run for 20m model.
+setup-solana-localnet-dummy-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/dummy-config.toml ./scripts/setup-and-deploy-solana-test.sh  {{ args }}
+
 # Start client for training on localnet.
 start-training-localnet-client run_id="test" *args='':
     RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
@@ -138,6 +142,9 @@ run_test_infra_with_proxies_validator num_clients="1":
 
 run_test_infra_three_clients:
     cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
+
+run_simulation:
+    cd architectures/centralized/testing/tests && n0des run-sim --release --nocapture
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down

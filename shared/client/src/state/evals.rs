@@ -22,7 +22,6 @@ pub struct ModelTask {
     pub task: EnumModelTask,
 }
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum EnumModelTask {
     EvalTask(EvalTask),
@@ -62,6 +61,7 @@ impl EvalTask {
         cancel: CancellationToken,
         skip_and_step_by: Option<(usize, usize)>,
         limit: Option<usize>,
+        min_reporting_ratio: Option<f32>,
     ) {
         let result = self.task.run(
             EvalTaskOptions {
@@ -70,6 +70,7 @@ impl EvalTask {
                 live_results: Some(self.results.clone()),
                 cancel: Some(cancel),
                 limit,
+                min_reporting_ratio,
             },
             false,
         );
@@ -275,6 +276,7 @@ impl ModelTaskRunner {
                                                 cancel.clone(),
                                                 Some((next_index, data_parallelism)),
                                                 Some(10),
+                                                Some(0.1), // don't report until at least 10% of the eval is run
                                             );
                                             trace!("Done eval task {}", eval_task.task.name());
                                         }

@@ -16,7 +16,7 @@ pub struct CommandSetFutureEpochRatesParams {
     slashing_rate: Option<u64>,
 }
 
-pub async fn command_set_future_epoch_rates_execute(
+pub async fn command_set_future_epoch_rates_run(
     backend: SolanaBackend,
     params: CommandSetFutureEpochRatesParams,
 ) -> Result<()> {

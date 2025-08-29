@@ -36,6 +36,7 @@ use tracing::{debug, error, info, trace, trace_span, warn};
 
 pub type TUIStates = (ClientTUIState, NetworkTUIState);
 
+#[derive(Debug)]
 pub struct Client<T: NodeIdentity, A: AuthenticatableIdentity, B: Backend<T> + 'static> {
     rx_tui: watch::Receiver<TUIStates>,
     req_tui_state: Arc<Notify>,

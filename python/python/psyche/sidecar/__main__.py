@@ -154,10 +154,6 @@ def main():
         store.wait([str(iteration)])
         operation = json.loads(store.get(str(iteration)).decode())
 
-        # dummy barrier
-        dummy = torch.zeros((), dtype=torch.float, device=device)
-        dist.all_reduce(dummy)
-
         if operation["operation"] == "train":
             train = TrainOperation(**operation)
 

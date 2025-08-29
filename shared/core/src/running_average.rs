@@ -18,7 +18,7 @@ impl AverageEntry {
             max_size: size,
             sum: 0.0,
             all_time_pushes: 0,
-            min_samples: min_samples.unwrap_or(0),
+            min_samples: min_samples.unwrap_or(1),
         }
     }
 
@@ -34,7 +34,7 @@ impl AverageEntry {
     }
 
     fn average(&self) -> Option<f64> {
-        if self.buffer.len() <= self.min_samples {
+        if self.buffer.len() < self.min_samples {
             None
         } else {
             Some(self.sum / self.buffer.len() as f64)

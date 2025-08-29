@@ -15,7 +15,7 @@ pub struct CommandTreasurerTopUpRewardsParams {
     collateral_amount: u64,
 }
 
-pub async fn command_treasurer_top_up_rewards_execute(
+pub async fn command_treasurer_top_up_rewards_run(
     backend: SolanaBackend,
     params: CommandTreasurerTopUpRewardsParams,
 ) -> Result<()> {

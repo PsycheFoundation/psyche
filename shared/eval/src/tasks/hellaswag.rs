@@ -80,8 +80,6 @@ impl Hellaswag {
             text,
             choices,
             answer,
-            category: None,
-            cot_content: None,
         }
     }
 }

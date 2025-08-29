@@ -122,16 +122,7 @@ psyche-solana-client treasurer-top-up-rewards \
 Optionally you can get detailled technical information about a run that was previously created for troubleshooting purposes.
 
 ```bash
-psyche-solana-client json-dump-run \
+psyche-solana-client json-info-dump \
     --rpc [RPC] \
     --run-id [RUN_ID]
-```
-
-For more info about a specific user inside of a run, you can also use:
-
-```bash
-psyche-solana-client json-dump-user \
-    --rpc [RPC] \
-    --run-id [RUN_ID] \
-    --wallet [PUBLIC_KEY]
 ```
