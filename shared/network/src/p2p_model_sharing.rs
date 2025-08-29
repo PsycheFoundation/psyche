@@ -157,11 +157,19 @@ impl PeerManagerActor {
                 let error_count = self.errors_per_peers.entry(peer_id).or_insert(0);
                 *error_count += 1;
 
-                warn!(
-                    "Error requesting a blob ticket {:?} from peer {peer_id}, it already failed {} time(s)",
-                    blob_ticket.map(|bl| bl.hash()),
-                    error_count
-                );
+                if let Some(blob) = blob_ticket {
+                    warn!(
+                        "Error downloading the blob ticket {:?} from peer {peer_id}, the peer already failed {} time(s)",
+                        blob.hash(),
+                        error_count
+                    );
+                } else {
+                    warn!(
+                        "Error requesting a blob ticket from peer {peer_id}, the peer already failed {} time(s)",
+                        error_count
+                    );
+                }
+
                 if *error_count >= self.max_errors_per_peer {
                     self.available_peers.retain(|id| *id != peer_id);
                     warn!("Removing peer {peer_id} after {} errors", error_count);
