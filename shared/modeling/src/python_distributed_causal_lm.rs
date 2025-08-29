@@ -136,6 +136,24 @@ impl PythonDistributedCausalLM {
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
+        Self::new_with_init_method(
+            architecture,
+            source,
+            device,
+            parallelism,
+            override_max_position_embeddings,
+            None,
+        )
+    }
+
+    pub fn new_with_init_method(
+        architecture: String,
+        source: PretrainedSource<PythonModelConfig>,
+        device: Device,
+        parallelism: ParallelismConfig,
+        override_max_position_embeddings: Option<usize>,
+        init_method: Option<String>,
+    ) -> Result<Self, PythonDistributedCausalLMError> {
         let world_size = parallelism.dp * parallelism.tp;
         let rank = match device {
             Device::Cuda(0) => 0,
@@ -145,7 +163,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = "tcp://127.0.0.1:34567".to_string();
+        let init_method = init_method.unwrap_or_else(|| "tcp://127.0.0.1:34567".to_string());
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();
