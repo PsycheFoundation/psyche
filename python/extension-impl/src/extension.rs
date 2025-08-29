@@ -1,5 +1,7 @@
 use psyche_core::{Barrier, BatchId, ClosedInterval, LearningRateSchedule, OptimizerDefinition};
-use psyche_modeling::{Batch, BatchData, CausalLM, NopBarrier, ParallelModels, PythonCausalLM};
+use psyche_modeling::{
+    Batch, BatchData, BatchDataGPU, CausalLM, NopBarrier, ParallelModels, PythonCausalLM,
+};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3_tch::{PyTensor, wrap_tch_err};
@@ -43,7 +45,6 @@ pub struct Trainer {
 }
 
 #[pyclass]
-#[derive(Clone)]
 pub struct DistroResult {
     #[pyo3(get)]
     pub sparse_idx: PyObject,
@@ -71,7 +72,7 @@ impl DistroResult {
 impl DistroResult {
     pub fn to_native(
         py: Python<'_>,
-        distro_results: Option<Vec<Vec<Self>>>,
+        distro_results: Option<Vec<Vec<Py<Self>>>>,
     ) -> PyResult<Option<Vec<Vec<psyche_modeling::DistroResult>>>> {
         match distro_results {
             Some(distro_results) => {
@@ -79,13 +80,14 @@ impl DistroResult {
                 for x in distro_results {
                     let mut vec = vec![];
                     for y in x {
-                        let sparse_idx: PyTensor = y.sparse_idx.extract(py)?;
-                        let sparse_val: PyTensor = y.sparse_val.extract(py)?;
+                        let borrowed = y.borrow(py);
+                        let sparse_idx: PyTensor = borrowed.sparse_idx.extract(py)?;
+                        let sparse_val: PyTensor = borrowed.sparse_val.extract(py)?;
                         vec.push(psyche_modeling::DistroResult {
                             sparse_idx: sparse_idx.0,
                             sparse_val: sparse_val.0,
-                            xshape: y.xshape,
-                            totalk: y.totalk,
+                            xshape: borrowed.xshape.clone(),
+                            totalk: borrowed.totalk,
                             stats: None,
                         });
                     }
@@ -141,18 +143,21 @@ impl Trainer {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn train(
         self_: PyRef<'_, Self>,
         step: u32,
-        batch_id: (u64, u64),
-        batch_data: PyTensor,
         zero_optim: bool,
+        batch_id: (u64, u64),
+        input_ids: PyTensor,
+        labels: Option<PyTensor>,
+        position_ids: Option<PyTensor>,
+        sequence_lengths: Option<Vec<Vec<i32>>>,
         warmup_lr_between: Option<(u32, u32)>,
-        prev_self_distro_results: Option<Vec<Vec<DistroResult>>>,
-    ) -> PyResult<Option<Vec<DistroResult>>> {
+        prev_self_distro_results: Option<Vec<Vec<Py<DistroResult>>>>,
+    ) -> PyResult<(Option<Vec<DistroResult>>, f32)> {
         let trainer = self_.trainer.write().unwrap().take().unwrap();
         let id = BatchId(ClosedInterval::new(batch_id.0, batch_id.1));
-        let data = BatchData::GPU(batch_data.deref().shallow_clone());
         let cancel = self_.cancel.clone();
         let prev_self_distro_results =
             DistroResult::to_native(self_.py(), prev_self_distro_results)?;
@@ -161,7 +166,15 @@ impl Trainer {
             .allow_threads(move || {
                 trainer.train(
                     step,
-                    Batch { id, data },
+                    Batch {
+                        id,
+                        data: BatchData::GPU(BatchDataGPU {
+                            input_ids: input_ids.deref().shallow_clone(),
+                            labels: labels.map(|x| x.deref().shallow_clone()),
+                            position_ids: position_ids.map(|x| x.deref().shallow_clone()),
+                            sequence_lengths,
+                        }),
+                    },
                     warmup_lr_between,
                     zero_optim,
                     vec![],
@@ -175,32 +188,32 @@ impl Trainer {
             _ => unreachable!("got a distributed trainer in local training mode"),
         });
 
-        let results: Option<Result<Vec<DistroResult>, _>> =
+        let results: Option<Result<Vec<DistroResult>, PyErr>> =
             output.distro_results.map(|distro_results| {
                 distro_results
                     .into_iter()
                     .map(|result| {
-                        Ok(DistroResult {
-                            sparse_idx: PyTensor(result.sparse_idx)
+                        Ok(DistroResult::new(
+                            PyTensor(result.sparse_idx)
                                 .into_pyobject(self_.py())?
                                 .unbind(),
-                            sparse_val: PyTensor(result.sparse_val)
+                            PyTensor(result.sparse_val)
                                 .into_pyobject(self_.py())?
                                 .unbind(),
-                            xshape: result.xshape,
-                            totalk: result.totalk,
-                        })
+                            result.xshape,
+                            result.totalk,
+                        ))
                     })
                     .collect()
             });
-        results.transpose()
+        Ok((results.transpose()?, output.loss))
     }
 
     pub fn optimize(
         self_: PyRef<'_, Self>,
         step: u32,
         warmup_lr_between: Option<(u32, u32)>,
-        distro_results: Option<Vec<Vec<DistroResult>>>,
+        distro_results: Option<Vec<Vec<Py<DistroResult>>>>,
     ) -> PyResult<()> {
         let trainer = self_.trainer.write().unwrap().take().unwrap();
         let distro_results = DistroResult::to_native(self_.py(), distro_results)?;
@@ -236,7 +249,6 @@ pub fn psyche(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "python-extension"))]
 pub fn load_module() {
     pyo3::append_to_inittab!(psyche);
 }

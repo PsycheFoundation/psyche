@@ -3,17 +3,17 @@ use psyche_coordinator::{
     Coordinator, HealthChecks,
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
-use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, TokenSize};
+use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
 use psyche_data_provider::{
-    DataProvider, DataProviderTcpClient, DummyDataProvider, WeightedDataProvider,
-    download_model_repo_async,
+    DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
+    WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
-    AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel, DeepseekForCausalLM,
-    DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer, ModelConfig, ModelLoadError,
-    ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
+    AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
+    DataParallel, DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer,
+    ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
@@ -29,7 +29,7 @@ use tokio::{
 use tracing::{debug, error, info};
 
 use super::{
-    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::EvalRunner,
+    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::ModelTaskRunner,
     stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
     types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
@@ -55,6 +55,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     // evaluation
     pub eval_task_max_docs: Option<usize>,
     pub eval_tasks: Vec<psyche_eval::Task>,
+    pub prompt_task: bool,
 
     // logging
     pub wandb_info: Option<WandBInfo>,
@@ -132,7 +133,7 @@ enum RawLoadedModelType {
 struct RawLoadedModel {
     models: RawLoadedModelType,
     tokenizer: Arc<Tokenizer>,
-    eval_runner: EvalRunner,
+    model_task_runner: ModelTaskRunner,
     checkpoint_extra_files: Vec<PathBuf>,
 }
 
@@ -179,6 +180,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         let model::Model::LLM(llm) = state.model;
 
+        let hub_read_token = init_config.hub_read_token.clone();
+        let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
         let data_future = async {
             debug!("Setting up data provider from {:?}", llm.data_location);
             let data_provider = match llm.data_location {
@@ -214,6 +217,34 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     )
                     .await?,
                 ),
+                LLMTrainingDataLocation::Preprocessed(url) => {
+                    let url: String = (&url).into();
+                    let dir = if std::fs::exists(&url).unwrap_or_default() {
+                        PathBuf::from(url)
+                    } else {
+                        download_dataset_repo_async(
+                            url.clone(),
+                            None,
+                            None,
+                            hub_read_token,
+                            Some(hub_max_concurrent_downloads),
+                            false,
+                        )
+                        .await?
+                        .first()
+                        .ok_or(anyhow::anyhow!("No files downloaded for {url}"))?
+                        .parent()
+                        .unwrap()
+                        .into()
+                    };
+                    DataProvider::Preprocessed(PreprocessedDataProvider::new_from_directory(
+                        dir,
+                        llm.max_seq_len as usize,
+                        Shuffle::DontShuffle,
+                        Some(Split::Train),
+                        None,
+                    )?)
+                }
             };
             Ok(data_provider)
         };
@@ -245,7 +276,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         ),
                         tokenizer: tokenizer.clone(),
                         checkpoint_extra_files: vec![],
-                        eval_runner: EvalRunner::new(vec![], tokenizer.clone(), None, 0),
+                        model_task_runner: ModelTaskRunner::new(
+                            vec![],
+                            false,
+                            tokenizer.clone(),
+                            None,
+                            0,
+                        ),
                     };
                     #[allow(clippy::arc_with_non_send_sync)]
                     let config = &PretrainedSource::ConfigAndTensors(
@@ -378,8 +415,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                         let serialized_config = source.serialize_config()?;
 
-                        let eval_runner = EvalRunner::new(
+                        let model_task_runner = ModelTaskRunner::new(
                             init_config.eval_tasks,
+                            init_config.prompt_task,
                             tokenizer.clone(),
                             init_config.eval_task_max_docs,
                             init_config.data_parallelism,
@@ -433,6 +471,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 init_config.data_parallelism * init_config.tensor_parallelism,
                             );
 
+                            let attn_implementation: Option<AttentionImplementation> =
+                                match llm.data_type {
+                                    model::LLMTrainingDataType::Finetuning => {
+                                        #[cfg(feature = "parallelism")]
+                                        {
+                                            // use varlen backend if available
+                                            Some(AttentionImplementation::FlashAttention2)
+                                        }
+
+                                        #[cfg(not(feature = "parallelism"))]
+                                        None
+                                    }
+                                    model::LLMTrainingDataType::Pretraining => None,
+                                };
+
                             for dp in 0..init_config.data_parallelism {
                                 let communicator_id: Option<CommunicatorId> =
                                     match init_config.tensor_parallelism {
@@ -468,7 +521,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 LlamaForCausalLM::from_pretrained(
                                                     &source.try_into()?,
                                                     Some(Kind::BFloat16),
-                                                    None,
+                                                    attn_implementation,
                                                     Some(device),
                                                     tensor_parallelism_world,
                                                     Some(llm.max_seq_len as usize),
@@ -479,7 +532,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 DeepseekForCausalLM::from_pretrained(
                                                     &source.try_into()?,
                                                     Some(Kind::BFloat16),
-                                                    None,
+                                                    attn_implementation,
                                                     Some(device),
                                                     tensor_parallelism_world,
                                                     Some(llm.max_seq_len as usize),
@@ -521,7 +574,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         Ok(RawLoadedModel {
                             models: raw_loaded_model_type,
                             tokenizer,
-                            eval_runner,
+                            model_task_runner,
                             checkpoint_extra_files,
                         })
                     })
@@ -585,7 +638,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             models,
             tokenizer,
             checkpoint_extra_files,
-            eval_runner,
+            model_task_runner,
         } = models.map_err(InitRunError::ModelLoadingThreadCrashed)??;
 
         // TODO add data fetching for verifying, too..
@@ -706,14 +759,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         let stats_logger = StatsLogger::new(
             tokenizer,
-            eval_runner.clone(),
+            model_task_runner.clone(),
             llm.lr_schedule,
             wandb_run,
             metrics,
         );
 
         let warmup = WarmupStepMetadata {
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
         };
 
         let training = TrainingStepMetadata {
@@ -723,11 +776,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_health_check,
             tx_distro_result,
 
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
         };
 
         let witness = WitnessStepMetadata {
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
             identity: init_config.identity,
             tx_witness: tx_witness.clone(),
         };
@@ -737,7 +790,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_model,
             init_config.checkpoint_config,
             checkpoint_extra_files,
-            eval_runner,
+            model_task_runner,
         );
 
         Ok(StepStateMachine::new(

@@ -103,14 +103,13 @@
                   in
                   {
                     enable = true;
-                    virtualHosts =
-                      {
-                        "http://${configName}.*.psyche.nousresearch.garnix.me".extraConfig = cfg;
-                        "http://${configName}.*.psyche.psychefoundation.garnix.me".extraConfig = cfg;
-                      }
-                      // (lib.genAttrs hostnames (_: {
-                        extraConfig = cfg;
-                      }));
+                    virtualHosts = {
+                      "http://${configName}.*.psyche.nousresearch.garnix.me".extraConfig = cfg;
+                      "http://${configName}.*.psyche.psychefoundation.garnix.me".extraConfig = cfg;
+                    }
+                    // (lib.genAttrs hostnames (_: {
+                      extraConfig = cfg;
+                    }));
                   };
               }
             )
@@ -181,6 +180,7 @@
                 size = 8 * 1024;
               }
             ];
+            zramSwap.enable = true;
 
             # custom pkgs overlays
             nixpkgs = import ./nixpkgs.nix { inherit inputs; };

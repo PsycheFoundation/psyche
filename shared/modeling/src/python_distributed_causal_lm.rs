@@ -10,6 +10,7 @@ use std::{
     process::{Child, Command},
     sync::Arc,
     thread::JoinHandle,
+    time::Duration,
 };
 use tch::{Device, Tensor};
 use thiserror::Error;
@@ -34,7 +35,7 @@ pub enum PythonDistributedCausalLMError {
 
 #[derive(Debug, Clone)]
 pub struct TorchDistributedCommunicator {
-    store: PyObject,
+    store: Arc<PyObject>,
     rank: Option<usize>,
     world_size: Option<usize>,
 }
@@ -51,6 +52,7 @@ impl TorchDistributedCommunicator {
         let result: PyResult<PyObject> = Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
             let init_process_group = distributed.getattr("init_process_group")?;
+            let timeout = Duration::from_secs(60 * 60 * 2); // use a large timeout for warmup
             let kwargs = PyDict::new(py);
             if let Some(backend) = backend {
                 kwargs.set_item("backend", backend).unwrap();
@@ -64,6 +66,7 @@ impl TorchDistributedCommunicator {
             if let Some(rank) = rank {
                 kwargs.set_item("rank", rank).unwrap();
             }
+            kwargs.set_item("timeout", timeout).unwrap();
             init_process_group.call((), Some(&kwargs))?;
             let distributed_c10d = Python::import(py, "torch.distributed.distributed_c10d")?;
             let get_default_store = distributed_c10d.getattr("_get_default_store")?;
@@ -71,7 +74,7 @@ impl TorchDistributedCommunicator {
             Ok(store.unbind())
         });
         Ok(Self {
-            store: result?,
+            store: Arc::new(result?),
             rank,
             world_size,
         })
@@ -108,7 +111,7 @@ impl TorchDistributedCommunicator {
         Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
             let all_reduce = distributed.getattr("all_reduce")?;
-            all_reduce.call1((PyTensor(tensor.shallow_clone()), 0))?;
+            all_reduce.call1((PyTensor(tensor.shallow_clone()),))?;
             Ok(())
         })
     }
@@ -220,11 +223,19 @@ impl CausalLM for PythonDistributedCausalLM {
         &mut self,
         x: &Tensor,
         labels: Option<&tch::Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local
-            .forward(x, labels, num_logits_to_keep, loss_scale)
+        self.local.forward(
+            x,
+            labels,
+            position_ids,
+            sequence_lengths,
+            num_logits_to_keep,
+            loss_scale,
+        )
     }
 
     fn device(&self) -> Device {
@@ -255,5 +266,9 @@ impl CausalLM for PythonDistributedCausalLM {
 
     fn eos_token_ids(&self) -> Option<crate::EosToks> {
         self.local.eos_token_ids()
+    }
+
+    fn max_context_length(&self) -> usize {
+        self.local.max_context_length()
     }
 }

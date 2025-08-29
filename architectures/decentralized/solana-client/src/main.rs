@@ -1,3 +1,15 @@
+use crate::command::create_run::CommandCreateRunParams;
+use crate::command::create_run::command_create_run_execute;
+use crate::command::json_dump_run::CommandJsonDumpRunParams;
+use crate::command::json_dump_run::command_json_dump_run_execute;
+use crate::command::json_dump_user::CommandJsonDumpUserParams;
+use crate::command::json_dump_user::command_json_dump_user_execute;
+use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
+use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
+use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
+use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
+use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
+use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
 use crate::{
     app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
@@ -46,6 +58,7 @@ use tracing::info;
 
 mod app;
 mod backend;
+mod command;
 mod instructions;
 mod network_identity;
 mod retry;
@@ -97,21 +110,10 @@ enum Commands {
     CreateRun {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        treasurer_index: Option<u64>,
-
-        #[clap(long, env)]
-        treasurer_collateral_mint: Option<String>,
-
-        #[clap(long)]
-        join_authority: Option<String>,
+        #[clap(flatten)]
+        params: CommandCreateRunParams,
     },
     CloseRun {
         #[clap(flatten)]
@@ -194,21 +196,26 @@ enum Commands {
     SetFutureEpochRates {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        treasurer_index: Option<u64>,
-
-        #[clap(long, env)]
-        earning_rate: Option<u64>,
-
-        #[clap(long, env)]
-        slashing_rate: Option<u64>,
+        #[clap(flatten)]
+        params: CommandSetFutureEpochRatesParams,
+    },
+    TreasurerClaimRewards {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandTreasurerClaimRewardsParams,
+    },
+    TreasurerTopUpRewards {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandTreasurerTopUpRewardsParams,
     },
     Show {
         #[clap(flatten)]
@@ -275,10 +282,24 @@ enum Commands {
         #[clap(long, env, action)]
         predownload_model: bool,
 
+        #[clap(long, env, action)]
+        predownload_eval_tasks: Option<String>,
+
         #[clap(long, env, default_value_t = 3)]
         hub_max_concurrent_downloads: usize,
     },
-
+    JsonDumpRun {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandJsonDumpRunParams,
+    },
+    JsonDumpUser {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandJsonDumpUserParams,
+    },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
     PrintAllHelp {
@@ -345,12 +366,8 @@ async fn async_main() -> Result<()> {
         Commands::CreateRun {
             cluster,
             wallet,
-            run_id,
-            treasurer_index,
-            treasurer_collateral_mint,
-            join_authority,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -359,39 +376,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-
-            if treasurer_index.is_some() && treasurer_collateral_mint.is_none() {
-                bail!(
-                    "treasurer_index is set, but treasurer_collateral_mint is not. Please provide a collateral mint address."
-                );
-            }
-            let treasurer_index_and_collateral_mint =
-                treasurer_collateral_mint.map(|treasurer_collateral_mint| {
-                    (
-                        SolanaBackend::compute_deterministic_treasurer_index(
-                            &run_id,
-                            treasurer_index,
-                        ),
-                        Pubkey::from_str(&treasurer_collateral_mint).unwrap(),
-                    )
-                });
-
-            let created = backend
-                .create_run(
-                    &run_id,
-                    treasurer_index_and_collateral_mint,
-                    join_authority.map(|address| Pubkey::from_str(&address).unwrap()),
-                )
-                .await?;
-            let locked = backend.get_balance(&created.account).await?;
-            println!(
-                "Created run {} with transactions signatures: {:?}",
-                run_id, created.create_signatures,
-            );
-            println!("Instance account: {}", created.instance);
-            println!("Coordinator account: {}", created.account);
-            println!("Locked for storage: {:.9} SOL", lamports_to_sol(locked));
-            Ok(())
+            command_create_run_execute(backend, params).await
         }
         Commands::CloseRun {
             cluster,
@@ -608,12 +593,8 @@ async fn async_main() -> Result<()> {
         Commands::SetFutureEpochRates {
             cluster,
             wallet,
-            run_id,
-            treasurer_index,
-            earning_rate,
-            slashing_rate,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -622,28 +603,37 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let set = backend
-                .set_future_epoch_rates(
-                    &run_id,
-                    treasurer_index,
-                    &coordinator_account,
-                    earning_rate,
-                    slashing_rate,
-                )
-                .await?;
-            println!(
-                "Set earning rate to {earning_rate:?} and slashing rate to {slashing_rate:?} on run {run_id} with transaction {set}"
-            );
-            println!("\n===== Logs =====");
-            for log in backend.get_logs(&set).await? {
-                println!("{log}");
-            }
-            Ok(())
+            command_set_future_epoch_rates_execute(backend, params).await
+        }
+        Commands::TreasurerClaimRewards {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_treasurer_claim_rewards_execute(backend, params).await
+        }
+        Commands::TreasurerTopUpRewards {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_treasurer_top_up_rewards_execute(backend, params).await
         }
         Commands::Checkpoint {
             cluster,
@@ -837,6 +827,7 @@ async fn async_main() -> Result<()> {
                 write_gradients_dir: args.write_gradients_dir,
                 eval_task_max_docs: args.eval_task_max_docs,
                 eval_tasks,
+                prompt_task: args.prompt_task,
                 checkpoint_upload_info,
                 hub_read_token,
                 hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
@@ -874,6 +865,7 @@ async fn async_main() -> Result<()> {
             authorizer,
             pubkey,
             predownload_model,
+            predownload_eval_tasks,
             hub_max_concurrent_downloads,
         } => {
             // when we call join_run, we check
@@ -937,7 +929,10 @@ async fn async_main() -> Result<()> {
                 .state
                 .coordinator;
 
-            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+            let is_paused = matches!(
+                coordinator_account_state.run_state,
+                RunState::Paused | RunState::Uninitialized
+            );
 
             if !is_paused {
                 let client_with_our_key = coordinator_account_state
@@ -994,7 +989,31 @@ async fn async_main() -> Result<()> {
                 .await?;
                 println!("Model predownloaded successfully.")
             }
+            if let Some(predownload_eval_tasks) = predownload_eval_tasks {
+                let _ = TrainArgs::eval_tasks_from_args(&predownload_eval_tasks, 0)?;
+                println!("Eval tasks `{predownload_eval_tasks}` predownloaded successfully.");
+            }
             Ok(())
+        }
+        Commands::JsonDumpRun { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_json_dump_run_execute(backend, params).await
+        }
+        Commands::JsonDumpUser { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_json_dump_user_execute(backend, params).await
         }
     }
 }
