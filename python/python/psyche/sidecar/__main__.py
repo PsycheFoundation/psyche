@@ -102,6 +102,7 @@ def main():
         init_method=args.init_method,
         world_size=args.world_size,
         rank=args.rank if args.world_size else None,
+        timeout=timedelta(hours=2),
     )
 
     store = dist.distributed_c10d._get_default_store()
@@ -152,6 +153,10 @@ def main():
     while True:
         store.wait([str(iteration)])
         operation = json.loads(store.get(str(iteration)).decode())
+
+        # dummy barrier
+        dummy = torch.zeros((), dtype=torch.float, device=device)
+        dist.all_reduce(dummy)
 
         if operation["operation"] == "train":
             train = TrainOperation(**operation)

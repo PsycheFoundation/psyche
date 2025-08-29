@@ -249,7 +249,6 @@ pub fn psyche(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "python-extension"))]
 pub fn load_module() {
     pyo3::append_to_inittab!(psyche);
 }

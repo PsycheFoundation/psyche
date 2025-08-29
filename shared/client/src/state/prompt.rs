@@ -8,8 +8,6 @@ use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, trace};
 
-const MAX_CONTEXT_LENGTH: usize = 2048;
-
 #[derive(Debug)]
 pub struct PromptTask {
     pub selected_prompt: usize,
@@ -52,11 +50,12 @@ impl PromptTask {
 
         // read input tokens
         let token_len = self.tokens.read().unwrap().len();
-        if token_len > MAX_CONTEXT_LENGTH {
+        let max_context_length = trainer.max_context_length();
+        if token_len > max_context_length {
             self.tokens
                 .write()
                 .unwrap()
-                .drain(0..token_len - MAX_CONTEXT_LENGTH);
+                .drain(0..token_len - max_context_length);
         }
 
         let input = {

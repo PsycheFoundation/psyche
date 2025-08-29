@@ -14,4 +14,4 @@ clap-markdown.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
 
 [features]
-python = ["psyche-python-extension-impl/python"]
+python = ["psyche-python-extension-impl"]

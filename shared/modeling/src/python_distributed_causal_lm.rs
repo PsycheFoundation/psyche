@@ -10,6 +10,7 @@ use std::{
     process::{Child, Command},
     sync::Arc,
     thread::JoinHandle,
+    time::Duration,
 };
 use tch::{Device, Tensor};
 use thiserror::Error;
@@ -51,6 +52,7 @@ impl TorchDistributedCommunicator {
         let result: PyResult<PyObject> = Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
             let init_process_group = distributed.getattr("init_process_group")?;
+            let timeout = Duration::from_secs(60 * 60 * 2); // use a large timeout for warmup
             let kwargs = PyDict::new(py);
             if let Some(backend) = backend {
                 kwargs.set_item("backend", backend).unwrap();
@@ -64,6 +66,7 @@ impl TorchDistributedCommunicator {
             if let Some(rank) = rank {
                 kwargs.set_item("rank", rank).unwrap();
             }
+            kwargs.set_item("timeout", timeout).unwrap();
             init_process_group.call((), Some(&kwargs))?;
             let distributed_c10d = Python::import(py, "torch.distributed.distributed_c10d")?;
             let get_default_store = distributed_c10d.getattr("_get_default_store")?;
@@ -263,5 +266,9 @@ impl CausalLM for PythonDistributedCausalLM {
 
     fn eos_token_ids(&self) -> Option<crate::EosToks> {
         self.local.eos_token_ids()
+    }
+
+    fn max_context_length(&self) -> usize {
+        self.local.max_context_length()
     }
 }
