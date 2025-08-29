@@ -236,7 +236,7 @@ pub enum SharableModelError {
     P2PAddDownloadError(String),
 }
 
-// This convertions are done manually since the original errors does not implement serialize and deserialize
+// This conversions are done manually since the original errors does not implement serialize and deserialize
 impl From<tch::TchError> for SharableModelError {
     fn from(err: tch::TchError) -> Self {
         SharableModelError::TchSerializeError(err.to_string())
