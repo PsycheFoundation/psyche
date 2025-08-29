@@ -79,7 +79,7 @@ async fn finish_epoch() -> anyhow::Result<Builder<Setup>> {
     let run_id = String::from("test_run");
     let sim = Builder::with_setup(async move || {
         let setup = Setup {
-            training_delay_secs: 1000,
+            training_delay_secs: 1,
             server_port: port,
             run_id: run_id.clone(),
             init_min_clients: init_min_clients,
@@ -180,7 +180,7 @@ async fn p2p_simulation() -> anyhow::Result<Builder<Setup>> {
     let run_id = String::from("test_run");
     let sim = Builder::with_setup(async move || {
         let setup = Setup {
-            training_delay_secs: 1000,
+            training_delay_secs: 1,
             server_port: port,
             run_id: run_id.clone(),
             init_min_clients: init_min_clients,
