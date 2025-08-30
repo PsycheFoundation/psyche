@@ -1,9 +1,12 @@
-use crate::instructions;
+use crate::instructions::{self, coordinator_tick};
 use crate::retry::RetryError;
+use anchor_client::anchor_lang::AccountDeserialize;
+use anchor_client::solana_client::client_error::ClientError;
+use anchor_client::solana_sdk::commitment_config::CommitmentLevel;
 use anchor_client::solana_sdk::hash::hash;
+use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
-    Client, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
@@ -16,14 +19,15 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
         system_instruction,
     },
+    Client, Cluster, Program,
 };
 use anchor_spl::{associated_token, token};
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{
-    CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
     model::{HubRepo, Model},
+    CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
 };
 use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -35,6 +39,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::timeout,
 };
+use tokio_util::time::delay_queue::Key;
 use tracing::{debug, error, info, trace, warn};
 
 const SEND_RETRIES: usize = 3;
@@ -246,14 +251,11 @@ impl SolanaBackend {
             run_id, coordinator_instance
         );
 
-        let init = psyche_solana_coordinator::coordinator_account_from_bytes(
-            &self.program_coordinators[0]
-                .rpc()
-                .get_account_data(&coordinator_account)
-                .await?,
-        )?
-        .state
-        .coordinator;
+        let init = self
+            .get_coordinator_account(&coordinator_account)
+            .await?
+            .state
+            .coordinator;
 
         Ok(SolanaBackendRunner {
             backend: self,
@@ -284,41 +286,39 @@ impl SolanaBackend {
         let coordinator_account_signer = Keypair::new();
         let coordinator_account = coordinator_account_signer.pubkey();
 
-        let signature = self.program_coordinators[0]
-            .request()
-            .instruction(system_instruction::create_account(
+        let instruction_create = system_instruction::create_account(
+            &payer,
+            &coordinator_account,
+            rent,
+            space as u64,
+            &self.program_coordinators[0].id(),
+        );
+        let instruction_init = if let Some(treasurer_index_and_collateral_mint) =
+            treasurer_index_and_collateral_mint
+        {
+            instructions::treasurer_run_create(
                 &payer,
+                run_id,
+                treasurer_index_and_collateral_mint.0,
+                &treasurer_index_and_collateral_mint.1,
                 &coordinator_account,
-                rent,
-                space as u64,
-                &self.program_coordinators[0].id(),
-            ))
-            .instruction(
-                if let Some(treasurer_index_and_collateral_mint) =
-                    treasurer_index_and_collateral_mint
-                {
-                    instructions::treasurer_run_create(
-                        &payer,
-                        run_id,
-                        treasurer_index_and_collateral_mint.0,
-                        &treasurer_index_and_collateral_mint.1,
-                        &coordinator_account,
-                        &main_authority,
-                        &join_authority,
-                    )
-                } else {
-                    instructions::coordinator_init_coordinator(
-                        &payer,
-                        run_id,
-                        &coordinator_account,
-                        &main_authority,
-                        &join_authority,
-                    )
-                },
+                &main_authority,
+                &join_authority,
             )
-            .signer(coordinator_account_signer)
-            .send()
-            .await?;
+        } else {
+            instructions::coordinator_init_coordinator(
+                &payer,
+                run_id,
+                &coordinator_account,
+                &main_authority,
+                &join_authority,
+            )
+        };
+
+        let signature = self.send(
+            &[instruction_create, instruction_init],
+            &[&coordinator_account_signer],
+        );
 
         Ok(CreatedRun {
             instance: coordinator_instance,
@@ -333,21 +333,12 @@ impl SolanaBackend {
         coordinator_account: Pubkey,
     ) -> Result<Signature> {
         let main_authority = self.get_payer();
-        Ok(self.program_coordinators[0]
-            .request()
-            .accounts(
-                psyche_solana_coordinator::accounts::FreeCoordinatorAccounts {
-                    authority: main_authority,
-                    spill: main_authority,
-                    coordinator_instance,
-                    coordinator_account,
-                },
-            )
-            .args(psyche_solana_coordinator::instruction::FreeCoordinator {
-                params: psyche_solana_coordinator::logic::FreeCoordinatorParams {},
-            })
-            .send()
-            .await?)
+        let instruction = instructions::coordinator_close_run(
+            &coordinator_instance,
+            &coordinator_account,
+            &main_authority,
+        );
+        self.send(&[instruction], &[])
     }
 
     #[allow(unused)]
@@ -358,7 +349,6 @@ impl SolanaBackend {
         id: psyche_solana_coordinator::ClientId,
         authorizer: Option<Pubkey>,
     ) -> Result<Signature> {
-        let user = self.get_payer();
         let coordinator_instance_state =
             self.get_coordinator_instance(&coordinator_instance).await?;
         let authorization = psyche_solana_authorizer::find_authorization(
@@ -366,20 +356,13 @@ impl SolanaBackend {
             &authorizer.unwrap_or(system_program::ID),
             psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
         );
-        let signature = self.program_coordinators[0]
-            .request()
-            .accounts(psyche_solana_coordinator::accounts::JoinRunAccounts {
-                user,
-                authorization,
-                coordinator_instance,
-                coordinator_account,
-            })
-            .args(psyche_solana_coordinator::instruction::JoinRun {
-                params: psyche_solana_coordinator::logic::JoinRunParams { client_id: id },
-            })
-            .send()
-            .await?;
-        Ok(signature)
+        let instruction = instructions::coordinator_join_run(
+            &coordinator_instance,
+            &coordinator_account,
+            &authorization,
+            id,
+        );
+        self.send(&[instruction], &[])
     }
 
     pub async fn join_run_retryable(
@@ -394,24 +377,20 @@ impl SolanaBackend {
             .get_coordinator_instance(&coordinator_instance)
             .await
             .map_err(|err| RetryError::Fatal(err.to_string()))?;
-        let authorization_global = psyche_solana_authorizer::find_authorization(
+        let authorization = psyche_solana_authorizer::find_authorization(
             &coordinator_instance_state.join_authority,
             &authorizer.unwrap_or(system_program::ID),
             psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
         );
-        let pending_tx = self.program_coordinators[0]
-            .request()
-            .accounts(psyche_solana_coordinator::accounts::JoinRunAccounts {
-                user,
-                authorization: authorization_global,
-                coordinator_instance,
-                coordinator_account,
-            })
-            .args(psyche_solana_coordinator::instruction::JoinRun {
-                params: psyche_solana_coordinator::logic::JoinRunParams { client_id: id },
-            })
-            .send();
+        let instruction = instructions::coordinator_join_run(
+            &coordinator_instance,
+            &coordinator_account,
+            &authorization,
+            id,
+        );
+        let pending_tx = self.send(&[instruction], &[]);
 
+        // TODO (vbrunet) - what was the point of this, i forgot ?
         // We timeout the transaction at 5s max, since internally send() polls Solana until the
         // tx is confirmed; we'd rather cancel early and attempt again.
         match timeout(Duration::from_secs(5), pending_tx).await {
@@ -441,43 +420,37 @@ impl SolanaBackend {
         progress: Option<CoordinatorProgress>,
     ) -> Result<Signature> {
         let main_authority = self.get_payer();
-        let signature = self.program_coordinators[0]
-            .request()
-            .instruction(
-                if let Some(treasurer_index) = self
-                    .resolve_treasurer_index(run_id, treasurer_index)
-                    .await?
-                {
-                    instructions::treasurer_run_update(
-                        run_id,
-                        treasurer_index,
-                        coordinator_account,
-                        &main_authority,
-                        RunUpdateParams {
-                            metadata,
-                            config,
-                            model,
-                            progress,
-                            epoch_earning_rate: None,
-                            epoch_slashing_rate: None,
-                            paused: None,
-                        },
-                    )
-                } else {
-                    instructions::coordinator_update(
-                        run_id,
-                        coordinator_account,
-                        &main_authority,
-                        metadata,
-                        config,
-                        model,
-                        progress,
-                    )
+        let instruction = if let Some(treasurer_index) = self
+            .resolve_treasurer_index(run_id, treasurer_index)
+            .await?
+        {
+            instructions::treasurer_run_update(
+                run_id,
+                treasurer_index,
+                coordinator_account,
+                &main_authority,
+                RunUpdateParams {
+                    metadata,
+                    config,
+                    model,
+                    progress,
+                    epoch_earning_rate: None,
+                    epoch_slashing_rate: None,
+                    paused: None,
                 },
             )
-            .send()
-            .await?;
-        Ok(signature)
+        } else {
+            instructions::coordinator_update(
+                run_id,
+                coordinator_account,
+                &main_authority,
+                metadata,
+                config,
+                model,
+                progress,
+            )
+        };
+        self.send(&[instruction], &[]).await
     }
 
     pub async fn set_paused(
@@ -488,40 +461,34 @@ impl SolanaBackend {
         paused: bool,
     ) -> Result<Signature> {
         let main_authority = self.get_payer();
-        let signature = self.program_coordinators[0]
-            .request()
-            .instruction(
-                if let Some(treasurer_index) = self
-                    .resolve_treasurer_index(run_id, treasurer_index)
-                    .await?
-                {
-                    instructions::treasurer_run_update(
-                        run_id,
-                        treasurer_index,
-                        coordinator_account,
-                        &main_authority,
-                        RunUpdateParams {
-                            metadata: None,
-                            config: None,
-                            model: None,
-                            progress: None,
-                            epoch_earning_rate: None,
-                            epoch_slashing_rate: None,
-                            paused: Some(paused),
-                        },
-                    )
-                } else {
-                    instructions::coordinator_set_paused(
-                        run_id,
-                        coordinator_account,
-                        &main_authority,
-                        paused,
-                    )
+        let instruction = if let Some(treasurer_index) = self
+            .resolve_treasurer_index(run_id, treasurer_index)
+            .await?
+        {
+            instructions::treasurer_run_update(
+                run_id,
+                treasurer_index,
+                coordinator_account,
+                &main_authority,
+                RunUpdateParams {
+                    metadata: None,
+                    config: None,
+                    model: None,
+                    progress: None,
+                    epoch_earning_rate: None,
+                    epoch_slashing_rate: None,
+                    paused: Some(paused),
                 },
             )
-            .send()
-            .await?;
-        Ok(signature)
+        } else {
+            instructions::coordinator_set_paused(
+                run_id,
+                coordinator_account,
+                &main_authority,
+                paused,
+            )
+        };
+        self.send(&[instruction], &[])
     }
 
     pub async fn set_future_epoch_rates(
@@ -533,41 +500,35 @@ impl SolanaBackend {
         epoch_slashing_rate: Option<u64>,
     ) -> Result<Signature> {
         let main_authority = self.get_payer();
-        let signature = self.program_coordinators[0]
-            .request()
-            .instruction(
-                if let Some(treasurer_index) = self
-                    .resolve_treasurer_index(run_id, treasurer_index)
-                    .await?
-                {
-                    instructions::treasurer_run_update(
-                        run_id,
-                        treasurer_index,
-                        coordinator_account,
-                        &main_authority,
-                        RunUpdateParams {
-                            metadata: None,
-                            config: None,
-                            model: None,
-                            progress: None,
-                            epoch_earning_rate,
-                            epoch_slashing_rate,
-                            paused: None,
-                        },
-                    )
-                } else {
-                    instructions::coordinator_set_future_epoch_rates(
-                        run_id,
-                        coordinator_account,
-                        &main_authority,
-                        epoch_earning_rate,
-                        epoch_slashing_rate,
-                    )
+        let instruction = if let Some(treasurer_index) = self
+            .resolve_treasurer_index(run_id, treasurer_index)
+            .await?
+        {
+            instructions::treasurer_run_update(
+                run_id,
+                treasurer_index,
+                coordinator_account,
+                &main_authority,
+                RunUpdateParams {
+                    metadata: None,
+                    config: None,
+                    model: None,
+                    progress: None,
+                    epoch_earning_rate,
+                    epoch_slashing_rate,
+                    paused: None,
                 },
             )
-            .send()
-            .await?;
-        Ok(signature)
+        } else {
+            instructions::coordinator_set_future_epoch_rates(
+                run_id,
+                coordinator_account,
+                &main_authority,
+                epoch_earning_rate,
+                epoch_slashing_rate,
+            )
+        };
+        self.send(&[instruction], &[])
     }
 
     pub async fn tick(
@@ -575,34 +536,17 @@ impl SolanaBackend {
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
     ) -> Result<Signature> {
-        let user = self.get_payer();
-        let signature = self.program_coordinators[0]
-            .request()
-            .accounts(
-                psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                    user,
-                    coordinator_instance,
-                    coordinator_account,
-                },
-            )
-            .args(psyche_solana_coordinator::instruction::Tick {})
-            .send()
-            .await?;
-
-        Ok(signature)
+        let ticker = self.get_payer();
+        let instruction =
+            instructions::coordinator_tick(&coordinator_instance, &coordinator_account, &ticker);
+        self.send(&[instruction], &[])
     }
 
     pub async fn treasurer_participant_create(&self, treasurer_index: u64) -> Result<Signature> {
         let user = self.get_payer();
-        Ok(self.program_coordinators[0]
-            .request()
-            .instruction(instructions::treasurer_participant_create(
-                &self.get_payer(),
-                treasurer_index,
-                &user,
-            ))
-            .send()
-            .await?)
+        let instruction =
+            instructions::treasurer_participant_create(&self.get_payer(), treasurer_index, user);
+        self.send(&[instruction], &[])
     }
 
     pub async fn treasurer_participant_claim(
@@ -613,17 +557,14 @@ impl SolanaBackend {
         claim_earned_points: u64,
     ) -> Result<Signature> {
         let user = self.get_payer();
-        Ok(self.program_coordinators[0]
-            .request()
-            .instruction(instructions::treasurer_participant_claim(
-                treasurer_index,
-                collateral_mint,
-                coordinator_account,
-                &user,
-                claim_earned_points,
-            ))
-            .send()
-            .await?)
+        let instruction = instructions::treasurer_participant_claim(
+            treasurer_index,
+            collateral_mint,
+            coordinator_account,
+            &user,
+            claim_earned_points,
+        );
+        self.send(&[instruction], &[])
     }
 
     pub async fn spl_token_transfer(
@@ -633,18 +574,15 @@ impl SolanaBackend {
         amount: u64,
     ) -> Result<Signature> {
         let authority = self.get_payer();
-        Ok(self.program_coordinators[0]
-            .request()
-            .instruction(token::spl_token::instruction::transfer(
-                &token::ID,
-                account_from,
-                account_to,
-                &authority,
-                &[],
-                amount,
-            )?)
-            .send()
-            .await?)
+        let instruction = token::spl_token::instruction::transfer(
+            &token::ID,
+            account_from,
+            account_to,
+            &authority,
+            &[],
+            amount,
+        )?;
+        self.send(&[instruction], &[])
     }
 
     pub async fn spl_associated_token_create(
@@ -653,42 +591,28 @@ impl SolanaBackend {
         owner: &Pubkey,
     ) -> Result<Signature> {
         let payer = self.get_payer();
-        Ok(self.program_coordinators[0]
-            .request()
-            .instruction(associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+        let instruction = associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
             &payer,
             owner,
             mint,
             &token::ID,
-        ))
-            .send()
-            .await?)
+        );
+        self.send(&[instruction], &[])
     }
 
     pub fn send_tick(&self, coordinator_instance: Pubkey, coordinator_account: Pubkey) {
-        let user = self.get_payer();
-        let program_coordinators = self.program_coordinators.clone();
+        let ticker = self.get_payer();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
-                for program_coordinator in &program_coordinators {
-                    let pending_tx = program_coordinator
-                        .request()
-                        .accounts(
-                            psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                user,
-                                coordinator_instance,
-                                coordinator_account,
-                            },
-                        )
-                        .args(psyche_solana_coordinator::instruction::Tick {})
-                        .send();
-                    match pending_tx.await {
-                        Ok(tx) => {
-                            info!(from = %user, tx = %tx, "Tick transaction");
-                            return;
-                        }
-                        Err(err) => debug!(from = %user, "Error sending tick transaction: {err}"),
+                let instruction =
+                    coordinator_tick(&coordinator_instance, &coordinator_account, ticker);
+                let pending_tx = self.send(&[instruction], &[]);
+                match pending_tx.await {
+                    Ok(tx) => {
+                        info!(from = %user, tx = %tx, "Tick transaction");
+                        return;
                     }
+                    Err(err) => debug!(from = %user, "Error sending tick transaction: {err}"),
                 }
             }
             error!(from = %user, "All attempts to send tick transaction failed")
@@ -702,51 +626,34 @@ impl SolanaBackend {
         opportunistic_data: OpportunisticData,
     ) {
         let user = self.get_payer();
-        let program_coordinators = self.program_coordinators.clone();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
-                for program_coordinator in &program_coordinators {
-                    let pending_tx = match opportunistic_data {
-                        OpportunisticData::WitnessStep(witness, metadata) => program_coordinator
-                            .request()
-                            .accounts(
-                                psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                    user,
-                                    coordinator_instance,
-                                    coordinator_account,
-                                },
-                            )
-                            .args(psyche_solana_coordinator::instruction::Witness {
-                                proof: witness.proof,
-                                participant_bloom: witness.participant_bloom,
-                                broadcast_bloom: witness.broadcast_bloom,
-                                broadcast_merkle: witness.broadcast_merkle,
-                                metadata,
-                            }),
-                        OpportunisticData::WarmupStep(witness) => program_coordinator
-                            .request()
-                            .accounts(
-                                psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                    user,
-                                    coordinator_instance,
-                                    coordinator_account,
-                                },
-                            )
-                            .args(psyche_solana_coordinator::instruction::WarmupWitness {
-                                proof: witness.proof,
-                                participant_bloom: witness.participant_bloom,
-                                broadcast_bloom: witness.broadcast_bloom,
-                                broadcast_merkle: witness.broadcast_merkle,
-                            }),
-                    }.send();
-                    match pending_tx.await {
-                        Ok(tx) => {
-                            info!(from = %user, tx = %tx, "Witness transaction");
-                            return;
-                        }
-                        Err(err) => {
-                            warn!(from = %user, "Error sending witness transaction: {err}")
-                        }
+                let instruction = match opportunistic_data {
+                    OpportunisticData::WitnessStep(witness, metadata) => {
+                        instructions::coordinator_witness(
+                            &coordinator_instance,
+                            &coordinator_account,
+                            &user,
+                            witness,
+                            metadata,
+                        )
+                    }
+                    OpportunisticData::WarmupStep(witness) => {
+                        instructions::coordinator_warmup_witness(
+                            &coordinator_instance,
+                            &coordinator_account,
+                            &user,
+                            witness,
+                        )
+                    }
+                };
+                match self.send(&[instruction], &[]).await {
+                    Ok(tx) => {
+                        info!(from = %user, tx = %tx, "Witness transaction");
+                        return;
+                    }
+                    Err(err) => {
+                        warn!(from = %user, "Error sending witness transaction: {err}")
                     }
                 }
             }
@@ -762,33 +669,22 @@ impl SolanaBackend {
         check: CommitteeProof,
     ) {
         let user = self.get_payer();
-        let program_coordinators = self.program_coordinators.clone();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
-                for program_coordinator in &program_coordinators {
-                    let pending_tx = program_coordinator
-                        .request()
-                        .accounts(
-                            psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                user,
-                                coordinator_instance,
-                                coordinator_account,
-                            },
-                        )
-                        .args(psyche_solana_coordinator::instruction::HealthCheck {
-                            id,
-                            committee: check.committee,
-                            position: check.position,
-                            index: check.index,
-                        }).send();
-                    match pending_tx.await {
-                        Ok(tx) => {
-                            info!(from = %user, tx = %tx, "Health check transaction");
-                            return;
-                        }
-                        Err(err) => {
-                            warn!(from = %user, "Error sending health check transaction: {err}")
-                        }
+                let instruction = instructions::coordinator_health_check(
+                    &coordinator_instance,
+                    &coordinator_account,
+                    id,
+                    check,
+                );
+                let pending_tx = self.send(&[instruction], &[]);
+                match pending_tx.await {
+                    Ok(tx) => {
+                        info!(from = %user, tx = %tx, "Health check transaction");
+                        return;
+                    }
+                    Err(err) => {
+                        warn!(from = %user, "Error sending health check transaction: {err}")
                     }
                 }
             }
@@ -803,19 +699,13 @@ impl SolanaBackend {
         repo: HubRepo,
     ) -> Result<Signature> {
         let user = self.get_payer();
-        let signature = self.program_coordinators[0]
-            .request()
-            .accounts(
-                psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                    user,
-                    coordinator_instance,
-                    coordinator_account,
-                },
-            )
-            .args(psyche_solana_coordinator::instruction::Checkpoint { repo })
-            .send()
-            .await?;
-        Ok(signature)
+        let instruction = instructions::coordinator_checkpoint(
+            &coordinator_instance,
+            &coordinator_account,
+            &user,
+            repo,
+        );
+        self.send(&[instruction], &[])
     }
 
     pub fn send_checkpoint(
@@ -825,29 +715,21 @@ impl SolanaBackend {
         repo: HubRepo,
     ) {
         let user = self.get_payer();
-        let program_coordinators = self.program_coordinators.clone();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
-                for program_coordinator in &program_coordinators {
-                    let pending_tx = program_coordinator
-                        .request()
-                        .accounts(
-                            psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-                                user,
-                                coordinator_instance,
-                                coordinator_account,
-                            },
-                        )
-                        .args(psyche_solana_coordinator::instruction::Checkpoint { repo })
-                        .send();
-                    match pending_tx.await {
-                        Ok(tx) => {
-                            info!(from = %user, tx = %tx, "Checkpoint transaction");
-                            return;
-                        }
-                        Err(err) => {
-                            warn!(from = %user, "Error sending checkpoint transaction: {err}")
-                        }
+                let instruction = instructions::coordinator_checkpoint(
+                    &coordinator_instance,
+                    &coordinator_account,
+                    &user,
+                    repo,
+                );
+                match self.send(&[instruction], &[]).await {
+                    Ok(tx) => {
+                        info!(from = %user, tx = %tx, "Checkpoint transaction");
+                        return;
+                    }
+                    Err(err) => {
+                        warn!(from = %user, "Error sending checkpoint transaction: {err}")
                     }
                 }
             }
@@ -859,63 +741,41 @@ impl SolanaBackend {
         &self,
         treasurer_run: &Pubkey,
     ) -> Result<psyche_solana_treasurer::state::Run> {
-        self.program_coordinators[0]
-            .account::<psyche_solana_treasurer::state::Run>(*treasurer_run)
-            .await
-            .context(format!(
-                "Unable to get the treasurer_run: {treasurer_run:?}"
-            ))
+        let data = self.get_data(treasurer_run).await?;
+        psyche_solana_treasurer::state::Run::try_deserialize(&mut data.as_slice())
+            .map_err(|_| anyhow!("Unable to decode treasurer run data"))
     }
 
     pub async fn get_treasurer_participant(
         &self,
         treasurer_participant: &Pubkey,
     ) -> Result<psyche_solana_treasurer::state::Participant> {
-        self.program_coordinators[0]
-            .account::<psyche_solana_treasurer::state::Participant>(*treasurer_participant)
-            .await
-            .context(format!(
-                "Unable to get the treasurer_participant: {treasurer_participant:?}"
-            ))
+        let data = self.get_data(treasurer_participant).await?;
+        psyche_solana_treasurer::state::Participant::try_deserialize(&mut data.as_slice())
+            .map_err(|_| anyhow!("Unable to decode treasurer participant data"))
     }
 
     pub async fn get_coordinator_instance(
         &self,
         coordinator_instance: &Pubkey,
     ) -> Result<psyche_solana_coordinator::CoordinatorInstance> {
-        self.program_coordinators[0]
-            .account::<psyche_solana_coordinator::CoordinatorInstance>(*coordinator_instance)
-            .await
-            .context(format!(
-                "Unable to get the coordinator_instance: {coordinator_instance:?}"
-            ))
+        let data = self.get_data(coordinator_instance).await?;
+        psyche_solana_coordinator::CoordinatorInstance::try_deserialize(&mut data.as_slice())
+            .map_err(|_| anyhow!("Unable to decode coordinator instance data"))
     }
 
     pub async fn get_coordinator_account(
         &self,
         coordinator_account: &Pubkey,
     ) -> Result<psyche_solana_coordinator::CoordinatorAccount> {
-        let data = self.program_coordinators[0]
-            .rpc()
-            .get_account_data(coordinator_account)
-            .await?;
+        let data = self.get_data(coordinator_account).await?;
         psyche_solana_coordinator::coordinator_account_from_bytes(&data)
             .map_err(|_| anyhow!("Unable to decode coordinator account data"))
             .copied()
     }
 
-    pub async fn get_balance(&self, account: &Pubkey) -> Result<u64> {
-        Ok(self.program_coordinators[0]
-            .rpc()
-            .get_balance(account)
-            .await?)
-    }
-
-    pub async fn get_token_amount(&self, account: &Pubkey) -> Result<u64> {
-        let data = self.program_coordinators[0]
-            .rpc()
-            .get_account_data(account)
-            .await?;
+    pub async fn get_token_amount(&self, token_account: &Pubkey) -> Result<u64> {
+        let data = self.get_data(token_account).await?;
         Ok(token::spl_token::state::Account::unpack(&data)
             .context(format!(
                 "Unable to decode token account data for {account:?}"
@@ -935,7 +795,6 @@ impl SolanaBackend {
                 },
             )
             .await?;
-
         Ok(tx
             .transaction
             .meta
@@ -971,6 +830,43 @@ impl SolanaBackend {
 
     pub fn get_payer(&self) -> Pubkey {
         self.wallet.pubkey()
+    }
+
+    pub fn get_commitment_level(&self) -> CommitmentLevel {
+        self.program_coordinators[0].rpc().commitment().commitment
+    }
+
+    pub async fn get_balance(&self, address: &Pubkey) -> Result<u64> {
+        // TODO - should there be a retry ?
+        Ok(self.program_coordinators[0]
+            .rpc()
+            .get_balance(address)
+            .await
+            .with_context(|| format!("Unable to get balance for {address:?}"))?)
+    }
+
+    pub async fn get_data(&self, address: &Pubkey) -> Result<Vec<u8>> {
+        // TODO - should there be a retry ?
+        Ok(self.program_coordinators[0]
+            .rpc()
+            .get_account_data(address)
+            .await
+            .with_context(|| format!("Unable to get account data for {address:?}"))?)
+    }
+
+    pub async fn send(
+        &self,
+        instructions: &[Instruction],
+        signers: &[&Keypair],
+    ) -> Result<Signature, ClientError> {
+        let mut request = self.program_coordinators[0].request();
+        for instruction in instructions {
+            request = request.instruction(instruction);
+        }
+        for signer in signers {
+            request = request.signer(*signer);
+        }
+        request.send() // TODO - should we make this smarter by differenciating retryables and non-retryables ?
     }
 }
 
