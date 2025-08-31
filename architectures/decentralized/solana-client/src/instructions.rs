@@ -5,12 +5,6 @@ use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anchor_spl::token;
-use psyche_coordinator::model::Model;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::Witness;
-use psyche_coordinator::WitnessMetadata;
-use psyche_solana_coordinator::RunMetadata;
 
 pub fn coordinator_init_coordinator(
     payer: &Pubkey,
@@ -46,25 +40,25 @@ pub fn coordinator_close_run(
     anchor_instruction(
         psyche_solana_coordinator::ID,
         psyche_solana_coordinator::accounts::FreeCoordinatorAccounts {
-            authority: main_authority,
-            spill: main_authority,
+            authority: *main_authority,
+            spill: *main_authority,
             coordinator_instance: *coordinator_instance,
             coordinator_account: *coordinator_account,
         },
         psyche_solana_coordinator::instruction::FreeCoordinator {
             params: psyche_solana_coordinator::logic::FreeCoordinatorParams {},
         },
-    );
+    )
 }
 
 pub fn coordinator_update(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
-    metadata: Option<RunMetadata>,
-    config: Option<CoordinatorConfig>,
-    model: Option<Model>,
-    progress: Option<CoordinatorProgress>,
+    metadata: Option<psyche_solana_coordinator::RunMetadata>,
+    config: Option<psyche_coordinator::CoordinatorConfig>,
+    model: Option<psyche_coordinator::model::Model>,
+    progress: Option<psyche_coordinator::CoordinatorProgress>,
 ) -> Instruction {
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     anchor_instruction(
@@ -140,7 +134,7 @@ pub fn coordinator_join_run(
         psyche_solana_coordinator::instruction::JoinRun {
             params: psyche_solana_coordinator::logic::JoinRunParams { client_id },
         },
-    );
+    )
 }
 
 pub fn coordinator_tick(
@@ -156,15 +150,15 @@ pub fn coordinator_tick(
             coordinator_account: *coordinator_account,
         },
         psyche_solana_coordinator::instruction::Tick {},
-    );
+    )
 }
 
 pub fn coordinator_witness(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    witness: Witness,
-    metadata: WitnessMetadata,
+    witness: psyche_coordinator::Witness,
+    metadata: psyche_coordinator::WitnessMetadata,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -180,14 +174,14 @@ pub fn coordinator_witness(
             broadcast_merkle: witness.broadcast_merkle,
             metadata,
         },
-    );
+    )
 }
 
 pub fn coordinator_warmup_witness(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    witness: Witness,
+    witness: psyche_coordinator::Witness,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -202,14 +196,14 @@ pub fn coordinator_warmup_witness(
             broadcast_bloom: witness.broadcast_bloom,
             broadcast_merkle: witness.broadcast_merkle,
         },
-    );
+    )
 }
 
 pub fn coordinator_health_check(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     client_id: psyche_solana_coordinator::ClientId,
-    check: CommitteeProof,
+    check: psyche_coordinator::CommitteeProof,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -224,14 +218,14 @@ pub fn coordinator_health_check(
             position: check.position,
             index: check.index,
         },
-    );
+    )
 }
 
 pub fn coordinator_checkpoint(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    repo: HubRepo,
+    repo: psyche_coordinator::model::HubRepo,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,

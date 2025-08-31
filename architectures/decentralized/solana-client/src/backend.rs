@@ -1,7 +1,6 @@
 use crate::instructions::{self, coordinator_tick};
 use crate::retry::RetryError;
 use anchor_client::anchor_lang::AccountDeserialize;
-use anchor_client::solana_client::client_error::ClientError;
 use anchor_client::solana_sdk::commitment_config::CommitmentLevel;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
@@ -17,11 +16,10 @@ use anchor_client::{
         commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{Keypair, Signature, Signer},
-        system_instruction,
     },
     Client, Cluster, Program,
 };
-use anchor_spl::{associated_token, token};
+use anchor_spl::token;
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
@@ -39,7 +37,6 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::timeout,
 };
-use tokio_util::time::delay_queue::Key;
 use tracing::{debug, error, info, trace, warn};
 
 const SEND_RETRIES: usize = 3;
@@ -266,81 +263,6 @@ impl SolanaBackend {
         })
     }
 
-    pub async fn create_run(
-        &self,
-        run_id: &str,
-        treasurer_index_and_collateral_mint: Option<(u64, Pubkey)>,
-        join_authority: Option<Pubkey>,
-    ) -> Result<CreatedRun> {
-        let space = psyche_solana_coordinator::CoordinatorAccount::space_with_discriminator();
-        let rent = self.program_coordinators[0]
-            .rpc()
-            .get_minimum_balance_for_rent_exemption(space)
-            .await?;
-
-        let payer = self.get_payer();
-        let main_authority = payer;
-        let join_authority = join_authority.unwrap_or(payer);
-
-        let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
-        let coordinator_account_signer = Keypair::new();
-        let coordinator_account = coordinator_account_signer.pubkey();
-
-        let instruction_create = system_instruction::create_account(
-            &payer,
-            &coordinator_account,
-            rent,
-            space as u64,
-            &self.program_coordinators[0].id(),
-        );
-        let instruction_init = if let Some(treasurer_index_and_collateral_mint) =
-            treasurer_index_and_collateral_mint
-        {
-            instructions::treasurer_run_create(
-                &payer,
-                run_id,
-                treasurer_index_and_collateral_mint.0,
-                &treasurer_index_and_collateral_mint.1,
-                &coordinator_account,
-                &main_authority,
-                &join_authority,
-            )
-        } else {
-            instructions::coordinator_init_coordinator(
-                &payer,
-                run_id,
-                &coordinator_account,
-                &main_authority,
-                &join_authority,
-            )
-        };
-
-        let signature = self.send(
-            &[instruction_create, instruction_init],
-            &[&coordinator_account_signer],
-        );
-
-        Ok(CreatedRun {
-            instance: coordinator_instance,
-            account: coordinator_account,
-            signature,
-        })
-    }
-
-    pub async fn close_run(
-        &self,
-        coordinator_instance: Pubkey,
-        coordinator_account: Pubkey,
-    ) -> Result<Signature> {
-        let main_authority = self.get_payer();
-        let instruction = instructions::coordinator_close_run(
-            &coordinator_instance,
-            &coordinator_account,
-            &main_authority,
-        );
-        self.send(&[instruction], &[])
-    }
-
     #[allow(unused)]
     pub async fn join_run(
         &self,
@@ -362,7 +284,7 @@ impl SolanaBackend {
             &authorization,
             id,
         );
-        self.send(&[instruction], &[])
+        self.send(&[instruction], &[]).await
     }
 
     pub async fn join_run_retryable(
@@ -388,12 +310,11 @@ impl SolanaBackend {
             &authorization,
             id,
         );
-        let pending_tx = self.send(&[instruction], &[]);
 
         // TODO (vbrunet) - what was the point of this, i forgot ?
         // We timeout the transaction at 5s max, since internally send() polls Solana until the
         // tx is confirmed; we'd rather cancel early and attempt again.
-        match timeout(Duration::from_secs(5), pending_tx).await {
+        match timeout(Duration::from_secs(5), self.send(&[instruction], &[])).await {
             Ok(Ok(s)) => Ok(s),
             Err(_elapsed) => {
                 error!("[TIMEOUT] join_run_retryable");
@@ -488,47 +409,7 @@ impl SolanaBackend {
                 paused,
             )
         };
-        self.send(&[instruction], &[])
-    }
-
-    pub async fn set_future_epoch_rates(
-        &self,
-        run_id: &str,
-        treasurer_index: Option<u64>,
-        coordinator_account: &Pubkey,
-        epoch_earning_rate: Option<u64>,
-        epoch_slashing_rate: Option<u64>,
-    ) -> Result<Signature> {
-        let main_authority = self.get_payer();
-        let instruction = if let Some(treasurer_index) = self
-            .resolve_treasurer_index(run_id, treasurer_index)
-            .await?
-        {
-            instructions::treasurer_run_update(
-                run_id,
-                treasurer_index,
-                coordinator_account,
-                &main_authority,
-                RunUpdateParams {
-                    metadata: None,
-                    config: None,
-                    model: None,
-                    progress: None,
-                    epoch_earning_rate,
-                    epoch_slashing_rate,
-                    paused: None,
-                },
-            )
-        } else {
-            instructions::coordinator_set_future_epoch_rates(
-                run_id,
-                coordinator_account,
-                &main_authority,
-                epoch_earning_rate,
-                epoch_slashing_rate,
-            )
-        };
-        self.send(&[instruction], &[])
+        self.send(&[instruction], &[]).await
     }
 
     pub async fn tick(
@@ -539,75 +420,16 @@ impl SolanaBackend {
         let ticker = self.get_payer();
         let instruction =
             instructions::coordinator_tick(&coordinator_instance, &coordinator_account, &ticker);
-        self.send(&[instruction], &[])
-    }
-
-    pub async fn treasurer_participant_create(&self, treasurer_index: u64) -> Result<Signature> {
-        let user = self.get_payer();
-        let instruction =
-            instructions::treasurer_participant_create(&self.get_payer(), treasurer_index, user);
-        self.send(&[instruction], &[])
-    }
-
-    pub async fn treasurer_participant_claim(
-        &self,
-        treasurer_index: u64,
-        collateral_mint: &Pubkey,
-        coordinator_account: &Pubkey,
-        claim_earned_points: u64,
-    ) -> Result<Signature> {
-        let user = self.get_payer();
-        let instruction = instructions::treasurer_participant_claim(
-            treasurer_index,
-            collateral_mint,
-            coordinator_account,
-            &user,
-            claim_earned_points,
-        );
-        self.send(&[instruction], &[])
-    }
-
-    pub async fn spl_token_transfer(
-        &self,
-        account_from: &Pubkey,
-        account_to: &Pubkey,
-        amount: u64,
-    ) -> Result<Signature> {
-        let authority = self.get_payer();
-        let instruction = token::spl_token::instruction::transfer(
-            &token::ID,
-            account_from,
-            account_to,
-            &authority,
-            &[],
-            amount,
-        )?;
-        self.send(&[instruction], &[])
-    }
-
-    pub async fn spl_associated_token_create(
-        &self,
-        mint: &Pubkey,
-        owner: &Pubkey,
-    ) -> Result<Signature> {
-        let payer = self.get_payer();
-        let instruction = associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-            &payer,
-            owner,
-            mint,
-            &token::ID,
-        );
-        self.send(&[instruction], &[])
+        self.send(&[instruction], &[]).await
     }
 
     pub fn send_tick(&self, coordinator_instance: Pubkey, coordinator_account: Pubkey) {
-        let ticker = self.get_payer();
+        let user = self.get_payer();
         tokio::task::spawn(async move {
             for _ in 0..SEND_RETRIES {
                 let instruction =
-                    coordinator_tick(&coordinator_instance, &coordinator_account, ticker);
-                let pending_tx = self.send(&[instruction], &[]);
-                match pending_tx.await {
+                    coordinator_tick(&coordinator_instance, &coordinator_account, &user);
+                match self.send(&[instruction], &[]).await {
                     Ok(tx) => {
                         info!(from = %user, tx = %tx, "Tick transaction");
                         return;
@@ -677,8 +499,7 @@ impl SolanaBackend {
                     id,
                     check,
                 );
-                let pending_tx = self.send(&[instruction], &[]);
-                match pending_tx.await {
+                match self.send(&[instruction], &[]).await {
                     Ok(tx) => {
                         info!(from = %user, tx = %tx, "Health check transaction");
                         return;
@@ -705,7 +526,7 @@ impl SolanaBackend {
             &user,
             repo,
         );
-        self.send(&[instruction], &[])
+        self.send(&[instruction], &[]).await
     }
 
     pub fn send_checkpoint(
@@ -737,31 +558,13 @@ impl SolanaBackend {
         });
     }
 
-    pub async fn get_treasurer_run(
-        &self,
-        treasurer_run: &Pubkey,
-    ) -> Result<psyche_solana_treasurer::state::Run> {
-        let data = self.get_data(treasurer_run).await?;
-        psyche_solana_treasurer::state::Run::try_deserialize(&mut data.as_slice())
-            .map_err(|_| anyhow!("Unable to decode treasurer run data"))
-    }
-
-    pub async fn get_treasurer_participant(
-        &self,
-        treasurer_participant: &Pubkey,
-    ) -> Result<psyche_solana_treasurer::state::Participant> {
-        let data = self.get_data(treasurer_participant).await?;
-        psyche_solana_treasurer::state::Participant::try_deserialize(&mut data.as_slice())
-            .map_err(|_| anyhow!("Unable to decode treasurer participant data"))
-    }
-
     pub async fn get_coordinator_instance(
         &self,
         coordinator_instance: &Pubkey,
     ) -> Result<psyche_solana_coordinator::CoordinatorInstance> {
         let data = self.get_data(coordinator_instance).await?;
         psyche_solana_coordinator::CoordinatorInstance::try_deserialize(&mut data.as_slice())
-            .map_err(|_| anyhow!("Unable to decode coordinator instance data"))
+            .map_err(|error| anyhow!("Unable to decode coordinator instance data: {error}"))
     }
 
     pub async fn get_coordinator_account(
@@ -770,37 +573,33 @@ impl SolanaBackend {
     ) -> Result<psyche_solana_coordinator::CoordinatorAccount> {
         let data = self.get_data(coordinator_account).await?;
         psyche_solana_coordinator::coordinator_account_from_bytes(&data)
-            .map_err(|_| anyhow!("Unable to decode coordinator account data"))
+            .map_err(|error| anyhow!("Unable to decode coordinator account data: {error}"))
             .copied()
+    }
+
+    pub async fn get_treasurer_run(
+        &self,
+        treasurer_run: &Pubkey,
+    ) -> Result<psyche_solana_treasurer::state::Run> {
+        let data = self.get_data(treasurer_run).await?;
+        psyche_solana_treasurer::state::Run::try_deserialize(&mut data.as_slice())
+            .map_err(|error| anyhow!("Unable to decode treasurer run data: {error}"))
+    }
+
+    pub async fn get_treasurer_participant(
+        &self,
+        treasurer_participant: &Pubkey,
+    ) -> Result<psyche_solana_treasurer::state::Participant> {
+        let data = self.get_data(treasurer_participant).await?;
+        psyche_solana_treasurer::state::Participant::try_deserialize(&mut data.as_slice())
+            .map_err(|error| anyhow!("Unable to decode treasurer participant data: {error}"))
     }
 
     pub async fn get_token_amount(&self, token_account: &Pubkey) -> Result<u64> {
         let data = self.get_data(token_account).await?;
         Ok(token::spl_token::state::Account::unpack(&data)
-            .context(format!(
-                "Unable to decode token account data for {account:?}"
-            ))?
+            .context(format!("Unable to decode token account data"))?
             .amount)
-    }
-
-    pub async fn get_logs(&self, tx: &Signature) -> Result<Vec<String>> {
-        let tx = self.program_coordinators[0]
-            .rpc()
-            .get_transaction_with_config(
-                tx,
-                RpcTransactionConfig {
-                    encoding: Some(UiTransactionEncoding::Json),
-                    commitment: Some(CommitmentConfig::confirmed()),
-                    max_supported_transaction_version: None,
-                },
-            )
-            .await?;
-        Ok(tx
-            .transaction
-            .meta
-            .context("Transaction has no meta information")?
-            .log_messages
-            .unwrap_or(Vec::new()))
     }
 
     pub fn compute_deterministic_treasurer_index(
@@ -836,37 +635,70 @@ impl SolanaBackend {
         self.program_coordinators[0].rpc().commitment().commitment
     }
 
+    pub async fn get_minimum_balance_for_rent_exemption(&self, space: usize) -> Result<u64> {
+        // TODO (vbrunet) - should there be a retry here ?
+        self.program_coordinators[0]
+            .rpc()
+            .get_minimum_balance_for_rent_exemption(space)
+            .await
+            .with_context(|| {
+                format!("Unable to get minimum balance for rent exemption for {space}")
+            })
+    }
+
     pub async fn get_balance(&self, address: &Pubkey) -> Result<u64> {
-        // TODO - should there be a retry ?
-        Ok(self.program_coordinators[0]
+        // TODO (vbrunet) - should there be a retry here ?
+        self.program_coordinators[0]
             .rpc()
             .get_balance(address)
             .await
-            .with_context(|| format!("Unable to get balance for {address:?}"))?)
+            .with_context(|| format!("Unable to get balance for {address}"))
     }
 
     pub async fn get_data(&self, address: &Pubkey) -> Result<Vec<u8>> {
-        // TODO - should there be a retry ?
-        Ok(self.program_coordinators[0]
+        // TODO (vbrunet) - should there be a retry here ?
+        self.program_coordinators[0]
             .rpc()
             .get_account_data(address)
             .await
-            .with_context(|| format!("Unable to get account data for {address:?}"))?)
+            .with_context(|| format!("Unable to get account data for {address}"))
     }
 
     pub async fn send(
         &self,
         instructions: &[Instruction],
         signers: &[&Keypair],
-    ) -> Result<Signature, ClientError> {
+    ) -> Result<Signature> {
         let mut request = self.program_coordinators[0].request();
         for instruction in instructions {
-            request = request.instruction(instruction);
+            request = request.instruction(instruction.clone());
         }
         for signer in signers {
-            request = request.signer(*signer);
+            request = request.signer(signer);
         }
-        request.send() // TODO - should we make this smarter by differenciating retryables and non-retryables ?
+        // TODO - should we make this smarter by differenciating retryables and non-retryables ?
+        request.send().await.context("Failed to send transaction")
+    }
+
+    pub async fn get_logs(&self, tx: &Signature) -> Result<Vec<String>> {
+        // TODO (vbrunet) - should there be a retry here ?
+        let tx = self.program_coordinators[0]
+            .rpc()
+            .get_transaction_with_config(
+                tx,
+                RpcTransactionConfig {
+                    encoding: Some(UiTransactionEncoding::Json),
+                    commitment: Some(CommitmentConfig::confirmed()),
+                    max_supported_transaction_version: None,
+                },
+            )
+            .await?;
+        Ok(tx
+            .transaction
+            .meta
+            .context("Transaction has no meta information")?
+            .log_messages
+            .unwrap_or(Vec::new()))
     }
 }
 

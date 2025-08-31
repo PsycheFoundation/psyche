@@ -1,47 +1,50 @@
-use crate::command::create_run::CommandCreateRunParams;
+use crate::command::close_run::command_close_run_execute;
+use crate::command::close_run::CommandCloseRunParams;
 use crate::command::create_run::command_create_run_execute;
-use crate::command::json_dump_run::CommandJsonDumpRunParams;
+use crate::command::create_run::CommandCreateRunParams;
 use crate::command::json_dump_run::command_json_dump_run_execute;
-use crate::command::json_dump_user::CommandJsonDumpUserParams;
+use crate::command::json_dump_run::CommandJsonDumpRunParams;
 use crate::command::json_dump_user::command_json_dump_user_execute;
-use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
+use crate::command::json_dump_user::CommandJsonDumpUserParams;
 use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
-use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
+use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
+use crate::command::set_paused::command_set_paused_execute;
+use crate::command::set_paused::CommandSetPausedParams;
 use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
-use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
+use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
 use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
+use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
 use crate::{
-    app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
+    app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
     backend::SolanaBackend,
 };
 
 use anchor_client::{
-    Client, Cluster,
     anchor_lang::system_program,
     solana_sdk::{
         commitment_config::{CommitmentConfig, CommitmentLevel},
-        native_token::lamports_to_sol,
         pubkey::Pubkey,
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
+    Client, Cluster,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use bytemuck::Zeroable;
 use clap::{Args, Parser, Subcommand};
-use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
+use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_coordinator::{
-    CoordinatorConfig, CoordinatorProgress, RunState, get_data_index_for_step,
+    get_data_index_for_step,
     model::{Checkpoint, HubRepo, Model},
+    CoordinatorConfig, CoordinatorProgress, RunState,
 };
-use psyche_core::{FixedString, sha256};
+use psyche_core::{sha256, FixedString};
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
 use psyche_tui::{
-    LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop,
+    maybe_start_render_loop, LogOutput, ServiceInfo,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -52,7 +55,7 @@ use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::{
     runtime::Builder,
-    time::{MissedTickBehavior, interval},
+    time::{interval, MissedTickBehavior},
 };
 use tracing::info;
 
@@ -118,28 +121,18 @@ enum Commands {
     CloseRun {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
+        #[clap(flatten)]
+        params: CommandCloseRunParams,
     },
     SetPaused {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        treasurer_index: Option<u64>,
-
-        #[clap(short, long, env)]
-        resume: bool,
+        #[clap(flatten)]
+        params: CommandSetPausedParams,
     },
     UpdateConfig {
         #[clap(flatten)]
@@ -381,9 +374,8 @@ async fn async_main() -> Result<()> {
         Commands::CloseRun {
             cluster,
             wallet,
-            run_id,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -392,23 +384,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let balance = backend.get_balance(&key_pair.pubkey()).await?;
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let closed = backend
-                .close_run(coordinator_instance, coordinator_account)
-                .await?;
-            println!("Closed run {run_id} with transaction {closed}");
-            let recovered = backend.get_balance(&key_pair.pubkey()).await? - balance;
-            println!("Recovered {:.9} SOL", lamports_to_sol(recovered));
-            println!("\n===== Logs =====");
-            for log in backend.get_logs(&closed).await? {
-                println!("{log}");
-            }
-            Ok(())
+            command_close_run_execute(backend, params).await
         }
         Commands::UpdateConfig {
             cluster,
@@ -523,12 +499,8 @@ async fn async_main() -> Result<()> {
         Commands::SetPaused {
             cluster,
             wallet,
-            run_id,
-            treasurer_index,
-            resume,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
-            let paused = !resume;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -537,20 +509,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let set = backend
-                .set_paused(&run_id, treasurer_index, &coordinator_account, paused)
-                .await?;
-            println!("Set pause state to {paused} on run {run_id} with transaction {set}");
-            println!("\n===== Logs =====");
-            for log in backend.get_logs(&set).await? {
-                println!("{log}");
-            }
-            Ok(())
+            command_set_paused_execute(backend, params).await
         }
         Commands::Tick {
             cluster,
@@ -955,7 +914,8 @@ async fn async_main() -> Result<()> {
                 }
 
                 #[allow(irrefutable_let_patterns)]
-                let Model::LLM(model) = coordinator_account_state.model else {
+                let Model::LLM(model) = coordinator_account_state.model
+                else {
                     bail!("model is not an LLM, unsure how to predownload.");
                 };
 

@@ -6,28 +6,26 @@ use crate::{instructions, SolanaBackend};
 
 #[derive(Debug, Clone, Args)]
 #[command()]
-pub struct CommandSetFutureEpochRatesParams {
+pub struct CommandSetPausedParams {
     #[clap(short, long, env)]
     run_id: String,
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
-    earning_rate: Option<u64>,
-    #[clap(long, env)]
-    slashing_rate: Option<u64>,
+    resume: bool,
 }
 
-pub async fn command_set_future_epoch_rates_execute(
+pub async fn command_set_paused_execute(
     backend: SolanaBackend,
-    params: CommandSetFutureEpochRatesParams,
+    params: CommandSetPausedParams,
 ) -> Result<()> {
-    let CommandSetFutureEpochRatesParams {
+    let CommandSetPausedParams {
         run_id,
         treasurer_index,
-        earning_rate,
-        slashing_rate,
+        resume,
     } = params;
 
+    let paused = !resume;
     let main_authority = backend.get_payer();
 
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
@@ -50,25 +48,17 @@ pub async fn command_set_future_epoch_rates_execute(
                 config: None,
                 model: None,
                 progress: None,
-                epoch_earning_rate: earning_rate,
-                epoch_slashing_rate: slashing_rate,
-                paused: None,
+                epoch_earning_rate: None,
+                epoch_slashing_rate: None,
+                paused: Some(paused),
             },
         )
     } else {
-        instructions::coordinator_set_future_epoch_rates(
-            &run_id,
-            &coordinator_account,
-            &main_authority,
-            earning_rate,
-            slashing_rate,
-        )
+        instructions::coordinator_set_paused(&run_id, &coordinator_account, &main_authority, paused)
     };
 
     let signature = backend.send(&[instruction], &[]).await?;
-    println!("On run {run_id} with transaction {signature}:");
-    println!(" - Set earning rate to {earning_rate:?}");
-    println!(" - Set slashing rate to {slashing_rate:?}");
+    println!("Set pause state to {paused} on run {run_id} with transaction {signature}");
 
     println!("\n===== Logs =====");
     for log in backend.get_logs(&signature).await? {
