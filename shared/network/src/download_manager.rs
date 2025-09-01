@@ -1,6 +1,7 @@
 use crate::{
-    ModelRequestType, Networkable,
+    ModelRequestType, Networkable, PeerManagerHandle,
     p2p_model_sharing::{TransmittableModelConfig, TransmittableModelParameter},
+    router::Router,
     serialized_distro::TransmittableDistroResult,
 };
 
@@ -12,13 +13,19 @@ use iroh_blobs::Hash;
 use iroh_blobs::{get::db::DownloadProgress, ticket::BlobTicket};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap, fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc,
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+    future::Future,
+    marker::PhantomData,
+    pin::Pin,
+    sync::Arc,
     time::Instant,
 };
 use tokio::{
     sync::{Mutex, mpsc, oneshot},
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, trace, warn};
 
 pub const MAX_DOWNLOAD_RETRIES: usize = 3;
@@ -213,6 +220,200 @@ impl RetriedDownloadsActor {
 
 async fn retried_downloads_actor(mut rx: mpsc::UnboundedReceiver<RetriedDownloadsMessage>) {
     let mut actor = RetriedDownloadsActor::new();
+
+    while let Some(message) = rx.recv().await {
+        actor.handle_message(message);
+    }
+}
+#[derive(Debug)]
+pub enum DownloadManagerMessage {
+    InitializeParameters { parameters: Vec<String> },
+    StartDownload { tx: mpsc::UnboundedSender<String> },
+    FinishedDownload { parameter: String },
+}
+
+/// Handler to interact with the retried downloads actor
+#[derive(Clone)]
+pub struct DownloadManagerHandle {
+    tx: mpsc::UnboundedSender<DownloadManagerMessage>,
+}
+
+impl Default for DownloadManagerHandle {
+    fn default() -> Self {
+        Self::new(5)
+    }
+}
+
+impl DownloadManagerHandle {
+    pub fn new(max_downloads_limit: usize) -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        // Spawn the actor
+        tokio::spawn(download_manager_actor(rx, max_downloads_limit, tx.clone()));
+
+        Self { tx }
+    }
+
+    /// Insert a new download to retry
+    pub fn initialize_parameters(&self, parameters: Vec<String>) {
+        let _ = self
+            .tx
+            .send(DownloadManagerMessage::InitializeParameters { parameters });
+    }
+
+    /// Insert a new download to retry
+    pub fn start_download_process(&self, tx: mpsc::UnboundedSender<String>) {
+        let _ = self.tx.send(DownloadManagerMessage::StartDownload { tx });
+    }
+
+    /// Insert a new download to retry
+    pub fn download_finished(&self, parameter: String) {
+        let _ = self
+            .tx
+            .send(DownloadManagerMessage::FinishedDownload { parameter });
+    }
+
+    // /// Remove a download from the retry list
+    // pub async fn remove(&self, hash: Hash) -> Option<DownloadRetryInfo> {
+    //     let (response_tx, response_rx) = oneshot::channel();
+
+    //     if self
+    //         .tx
+    //         .send(RetriedDownloadsMessage::Remove {
+    //             hash,
+    //             response: response_tx,
+    //         })
+    //         .is_err()
+    //     {
+    //         return None;
+    //     }
+
+    //     response_rx.await.unwrap_or(None)
+    // }
+
+    // /// Get a download from the retry list
+    // pub async fn get(&self, hash: Hash) -> Option<DownloadRetryInfo> {
+    //     let (response_tx, response_rx) = oneshot::channel();
+
+    //     if self
+    //         .tx
+    //         .send(RetriedDownloadsMessage::Get {
+    //             hash,
+    //             response: response_tx,
+    //         })
+    //         .is_err()
+    //     {
+    //         return None;
+    //     }
+
+    //     response_rx.await.unwrap_or(None)
+    // }
+
+    // /// Get the retries that are considered pending and have not been retried yet
+    // pub async fn pending_retries(&self) -> Vec<(Hash, BlobTicket, u32, DownloadType)> {
+    //     let (response_tx, response_rx) = oneshot::channel();
+
+    //     if self
+    //         .tx
+    //         .send(RetriedDownloadsMessage::PendingRetries {
+    //             response: response_tx,
+    //         })
+    //         .is_err()
+    //     {
+    //         return Vec::new();
+    //     }
+
+    //     response_rx.await.unwrap_or_else(|_| Vec::new())
+    // }
+
+    // /// Mark the retry as already being retried marking updating the retry time
+    // pub async fn update_time(&self, hash: Hash) -> usize {
+    //     let (response_tx, response_rx) = oneshot::channel();
+
+    //     if self
+    //         .tx
+    //         .send(RetriedDownloadsMessage::UpdateTime {
+    //             hash,
+    //             response: response_tx,
+    //         })
+    //         .is_err()
+    //     {
+    //         return 0;
+    //     }
+
+    //     response_rx.await.unwrap_or(0)
+    // }
+}
+
+struct DownloadManagerActor {
+    max_downloads_limit: usize,
+    current_downloads: usize,
+    parameters: VecDeque<String>,
+    tx_to_download: Option<mpsc::UnboundedSender<String>>,
+    our_tx: mpsc::UnboundedSender<DownloadManagerMessage>,
+}
+
+impl DownloadManagerActor {
+    fn new(
+        max_downloads_limit: usize,
+        our_tx: mpsc::UnboundedSender<DownloadManagerMessage>,
+    ) -> Self {
+        Self {
+            max_downloads_limit,
+            current_downloads: 0,
+            parameters: VecDeque::new(),
+            tx_to_download: None,
+            our_tx,
+        }
+    }
+
+    fn handle_message(&mut self, message: DownloadManagerMessage) {
+        match message {
+            DownloadManagerMessage::InitializeParameters { parameters } => {
+                self.parameters = VecDeque::from(parameters);
+            }
+            DownloadManagerMessage::StartDownload { tx } => {
+                self.tx_to_download = Some(tx);
+                while self.current_downloads < self.max_downloads_limit
+                    && !self.parameters.is_empty()
+                {
+                    info!(
+                        "Starting download because current downloads: {}",
+                        self.current_downloads
+                    );
+                    if let Some(parameter) = self.parameters.pop_front() {
+                        self.tx_to_download
+                            .as_ref()
+                            .unwrap()
+                            .send(parameter)
+                            .unwrap();
+                        self.current_downloads += 1;
+                    }
+                }
+                info!(
+                    "Started download of {} parameters",
+                    self.max_downloads_limit
+                );
+            }
+            DownloadManagerMessage::FinishedDownload { parameter } => {
+                info!("Finished download for parameter: {}", parameter);
+                self.current_downloads -= 1;
+                self.our_tx
+                    .send(DownloadManagerMessage::StartDownload {
+                        tx: self.tx_to_download.clone().unwrap(),
+                    })
+                    .unwrap();
+            }
+        }
+    }
+}
+
+async fn download_manager_actor(
+    mut rx: mpsc::UnboundedReceiver<DownloadManagerMessage>,
+    max_downloads_limit: usize,
+    our_tx: mpsc::UnboundedSender<DownloadManagerMessage>,
+) {
+    let mut actor = DownloadManagerActor::new(max_downloads_limit, our_tx);
 
     while let Some(message) = rx.recv().await {
         actor.handle_message(message);

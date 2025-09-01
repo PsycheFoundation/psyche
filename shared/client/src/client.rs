@@ -9,11 +9,11 @@ use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
-    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
-    router::Router,
+    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadManagerHandle,
+    DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection,
+    NetworkEvent, NetworkTUIState, Networkable, NodeAddr, NodeId, PeerManagerHandle,
+    RetriedDownloadsHandle, SharableModel, TransmittableDownload, allowlist,
+    blob_ticket_param_request_task, raw_p2p_verify, router::Router,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
@@ -26,7 +26,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio::{
-    select,
+    join, select,
     sync::{Notify, mpsc, watch},
     task::JoinHandle,
     time::interval,
@@ -51,6 +51,7 @@ const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_ERRORS_PER_PEER: u8 = 5;
+const MAX_CONCURRENT_DOWNLOADS: u8 = 4;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>
@@ -95,6 +96,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let (tx_parameters_req, mut rx_parameters_req) = mpsc::unbounded_channel();
                 let (tx_config, mut rx_config) = mpsc::unbounded_channel();
                 let (tx_params_download, mut rx_params_download) = mpsc::unbounded_channel();
+                let (tx_param_download, mut rx_param_download) = mpsc::unbounded_channel();
                 let (tx_config_download, mut rx_config_download) = mpsc::unbounded_channel();
                 let (tx_request_model_config, mut rx_request_model_config) =
                     mpsc::unbounded_channel();
@@ -126,6 +128,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let peer_manager = Arc::new(PeerManagerHandle::new(
                     MAX_ERRORS_PER_PEER,
                     param_requests_cancel_token.clone(),
+                ));
+                let download_manager = Arc::new(DownloadManagerHandle::new(
+                    MAX_CONCURRENT_DOWNLOADS as usize,
                 ));
 
                 let mut broadcasts = vec![];
@@ -279,6 +284,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             TransmittableDownload::ModelParameter(parameter) => {
                                                 current_downloaded_parameters += 1;
                                                 info!("Download complete: parameter {}", parameter.name()?);
+                                                download_manager.download_finished(parameter.name()?);
                                                 if let Some(total_parameters) = total_parameters {
                                                     info!("Downloaded parameters total: {}/{}", current_downloaded_parameters, total_parameters);
                                                     metrics.update_model_sharing_total_params_downloaded(current_downloaded_parameters);
@@ -533,64 +539,84 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             sharable_model.update_config(config_string, tokenizer)?;
                         }
                         Some((param_names, tx_params_response)) = rx_parameters_req.recv() => {
+                            // let router = p2p.router();
                             metrics.initialize_model_parameters_gauge(param_names.len().try_into().unwrap());
                             total_parameters = Some(param_names.len());
                             sharable_model.initialize_parameters(&param_names, tx_params_response);
+                            download_manager.initialize_parameters(param_names);
+                            download_manager.start_download_process(tx_param_download.clone());
 
-                            let tx_params_download = tx_params_download.clone();
-                            let router = p2p.router();
+                            // for param_name in param_names {
+                            //         // let router = router.clone();
 
-                            let peer_manager = peer_manager.clone();
-                            let param_requests_cancel_token = param_requests_cancel_token.clone();
-                            let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
-                                // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
-                                // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
-                                // and dropped immediately
-                                let parameter_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::new()));
-                                let mut request_handles = Vec::new();
-                                let peer_manager = peer_manager.clone();
+                            //         // let request_handle = tokio::spawn(
+                            //         //     blob_ticket_param_request_task(
+                            //         //         ModelRequestType::Parameter(param_name),
+                            //         //         router,
+                            //         //         parameter_blob_tickets.clone(),
+                            //         //         peer_manager.clone(),
+                            //         //         param_requests_cancel_token.clone()
+                            //         //     )
+                            //         // );
+                            // }
+                            // metrics.initialize_model_parameters_gauge(param_names.len().try_into().unwrap());
+                            // total_parameters = Some(param_names.len());
+                            // sharable_model.initialize_parameters(&param_names, tx_params_response);
 
-                                for param_name in param_names {
-                                    let router = router.clone();
+                            // let tx_params_download = tx_params_download.clone();
+                            // let router = p2p.router();
 
-                                    let request_handle = tokio::spawn(
-                                        blob_ticket_param_request_task(
-                                            ModelRequestType::Parameter(param_name),
-                                            router,
-                                            parameter_blob_tickets.clone(),
-                                            peer_manager.clone(),
-                                            param_requests_cancel_token.clone()
-                                        )
-                                    );
+                            // let peer_manager = peer_manager.clone();
+                            // let param_requests_cancel_token = param_requests_cancel_token.clone();
+                            // let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+                            //     // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
+                            //     // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
+                            //     // and dropped immediately
+                            //     let parameter_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::new()));
+                            //     let mut request_handles = Vec::new();
+                            //     let peer_manager = peer_manager.clone();
 
-                                    // Check if we reached the max number of concurrent requests, and if that is the case,
-                                    // await for all of them to complete and start downloading the blobs
-                                    if request_handles.len() == max_concurrent_parameter_requests - 1 {
-                                        let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
-                                        max_concurrent_request_futures.push(request_handle);
-                                        // We don't care about the errors because we are already handling them inside the task
-                                        join_all(max_concurrent_request_futures).await;
-                                        let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
-                                            let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
-                                            parameter_blob_tickets_lock.drain(..).collect()
-                                        };
-                                        tx_params_download.send(current_parameter_blob_tickets)?;
-                                        continue;
-                                    }
-                                    request_handles.push(request_handle);
-                                }
+                            //     for param_name in param_names {
+                            //         let router = router.clone();
 
-                                // All parameters have been requested, wait all the remaining request futures to complete
-                                // and download the blobs
-                                join_all(request_handles).await;
-                                let parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
-                                    let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
-                                    parameter_blob_tickets_lock.drain(..).collect()
-                                };
-                                tx_params_download.send(parameter_blob_tickets)?;
-                                Ok(())
-                            });
-                            drop(handle);
+                            //         let request_handle = tokio::spawn(
+                            //             blob_ticket_param_request_task(
+                            //                 ModelRequestType::Parameter(param_name),
+                            //                 router,
+                            //                 parameter_blob_tickets.clone(),
+                            //                 peer_manager.clone(),
+                            //                 param_requests_cancel_token.clone()
+                            //             )
+                            //         );
+
+                            //         // Check if we reached the max number of concurrent requests, and if that is the case,
+                            //         // await for all of them to complete and start downloading the blobs
+                            //         if request_handles.len() == max_concurrent_parameter_requests - 1 {
+                            //             let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
+                            //             max_concurrent_request_futures.push(request_handle);
+                            //             // We don't care about the errors because we are already handling them inside the task
+                            //             join_all(max_concurrent_request_futures).await;
+                            //             let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
+                            //                 let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
+                            //                 parameter_blob_tickets_lock.drain(..).collect()
+                            //             };
+                            //             tx_params_download.send(current_parameter_blob_tickets)?;
+                            //             continue;
+                            //         }
+                            //         request_handles.push(request_handle);
+                            //     }
+
+                            //     // All parameters have been requested, wait all the remaining request futures to complete
+                            //     // and download the blobs
+                            //     join_all(request_handles).await;
+                            //     let parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
+                            //         let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
+                            //         parameter_blob_tickets_lock.drain(..).collect()
+                            //     };
+                            //     tx_params_download.send(parameter_blob_tickets)?;
+                            //     Ok(())
+                            // });
+                            // drop(handle);
                         },
                         Some(tx_model_config_response) = rx_request_model_config.recv() => {
                             sharable_model.tx_model_config_response = Some(tx_model_config_response);
@@ -625,6 +651,41 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 // tag 0 means when we enter a train step, it'll get wiped.
                                 p2p.start_download(ticket, 0, kind);
                             }
+                        }
+                        Some(param_name) = rx_param_download.recv() => {
+                            let tx_params_download = tx_params_download.clone();
+                            let router = p2p.router();
+
+                            let peer_manager = peer_manager.clone();
+                            let param_requests_cancel_token = param_requests_cancel_token.clone();
+                            let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+                                // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
+                                // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
+                                // and dropped immediately
+                                let parameter_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::new()));
+                                let peer_manager = peer_manager.clone();
+
+                                    let router = router.clone();
+
+                                    let handler = blob_ticket_param_request_task(
+                                            ModelRequestType::Parameter(param_name),
+                                            router,
+                                            parameter_blob_tickets.clone(),
+                                            peer_manager.clone(),
+                                            param_requests_cancel_token.clone()
+                                        );
+
+
+                                        join!(handler);
+                                        let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
+                                            let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
+                                            parameter_blob_tickets_lock.drain(..).collect()
+                                        };
+                                        tx_params_download.send(current_parameter_blob_tickets).unwrap();
+
+                                Ok(())
+                            });
+                            drop(handle);
                         }
                         Some(config_blob_ticket) = rx_config_download.recv() => {
                             let kind = DownloadType::ModelSharing(ModelRequestType::Config);
