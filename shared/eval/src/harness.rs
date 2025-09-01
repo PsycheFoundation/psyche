@@ -15,7 +15,6 @@ use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
-const MAX_CONTEXT_SIZE: usize = 2048;
 
 const TASKS_WITH_ACC_NORM: [&str; 5] = [
     ArcChallenge::name(),
@@ -627,8 +626,9 @@ impl PreparedTask {
                         break;
                     }
                 }
-                if full_sequence.len() > MAX_CONTEXT_SIZE {
-                    full_sequence.drain(0..(full_sequence.len() - MAX_CONTEXT_SIZE));
+                if full_sequence.len() > options.model.max_context_length() {
+                    full_sequence
+                        .drain(0..(full_sequence.len() - options.model.max_context_length()));
                 }
                 let model_input = Tensor::from_slice(&full_sequence)
                     .to(options.model.device())
