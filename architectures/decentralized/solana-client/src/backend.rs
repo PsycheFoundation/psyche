@@ -263,30 +263,6 @@ impl SolanaBackend {
         })
     }
 
-    #[allow(unused)]
-    pub async fn join_run(
-        &self,
-        coordinator_instance: Pubkey,
-        coordinator_account: Pubkey,
-        id: psyche_solana_coordinator::ClientId,
-        authorizer: Option<Pubkey>,
-    ) -> Result<Signature> {
-        let coordinator_instance_state =
-            self.get_coordinator_instance(&coordinator_instance).await?;
-        let authorization = psyche_solana_authorizer::find_authorization(
-            &coordinator_instance_state.join_authority,
-            &authorizer.unwrap_or(system_program::ID),
-            psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-        );
-        let instruction = instructions::coordinator_join_run(
-            &coordinator_instance,
-            &coordinator_account,
-            &authorization,
-            id,
-        );
-        self.send(&[instruction], &[]).await
-    }
-
     pub async fn join_run_retryable(
         &self,
         coordinator_instance: Pubkey,
@@ -327,100 +303,6 @@ impl SolanaBackend {
                 Err(RetryError::from(e).into())
             }
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn update(
-        &self,
-        run_id: &str,
-        treasurer_index: Option<u64>,
-        coordinator_account: &Pubkey,
-        metadata: Option<RunMetadata>,
-        config: Option<CoordinatorConfig>,
-        model: Option<Model>,
-        progress: Option<CoordinatorProgress>,
-    ) -> Result<Signature> {
-        let main_authority = self.get_payer();
-        let instruction = if let Some(treasurer_index) = self
-            .resolve_treasurer_index(run_id, treasurer_index)
-            .await?
-        {
-            instructions::treasurer_run_update(
-                run_id,
-                treasurer_index,
-                coordinator_account,
-                &main_authority,
-                RunUpdateParams {
-                    metadata,
-                    config,
-                    model,
-                    progress,
-                    epoch_earning_rate: None,
-                    epoch_slashing_rate: None,
-                    paused: None,
-                },
-            )
-        } else {
-            instructions::coordinator_update(
-                run_id,
-                coordinator_account,
-                &main_authority,
-                metadata,
-                config,
-                model,
-                progress,
-            )
-        };
-        self.send(&[instruction], &[]).await
-    }
-
-    pub async fn set_paused(
-        &self,
-        run_id: &str,
-        treasurer_index: Option<u64>,
-        coordinator_account: &Pubkey,
-        paused: bool,
-    ) -> Result<Signature> {
-        let main_authority = self.get_payer();
-        let instruction = if let Some(treasurer_index) = self
-            .resolve_treasurer_index(run_id, treasurer_index)
-            .await?
-        {
-            instructions::treasurer_run_update(
-                run_id,
-                treasurer_index,
-                coordinator_account,
-                &main_authority,
-                RunUpdateParams {
-                    metadata: None,
-                    config: None,
-                    model: None,
-                    progress: None,
-                    epoch_earning_rate: None,
-                    epoch_slashing_rate: None,
-                    paused: Some(paused),
-                },
-            )
-        } else {
-            instructions::coordinator_set_paused(
-                run_id,
-                coordinator_account,
-                &main_authority,
-                paused,
-            )
-        };
-        self.send(&[instruction], &[]).await
-    }
-
-    pub async fn tick(
-        &self,
-        coordinator_instance: Pubkey,
-        coordinator_account: Pubkey,
-    ) -> Result<Signature> {
-        let ticker = self.get_payer();
-        let instruction =
-            instructions::coordinator_tick(&coordinator_instance, &coordinator_account, &ticker);
-        self.send(&[instruction], &[]).await
     }
 
     pub fn send_tick(&self, coordinator_instance: Pubkey, coordinator_account: Pubkey) {
@@ -511,22 +393,6 @@ impl SolanaBackend {
             }
             error!(from = %user, "All attempts to send health check transaction failed");
         });
-    }
-
-    pub async fn checkpoint(
-        &self,
-        coordinator_instance: Pubkey,
-        coordinator_account: Pubkey,
-        repo: HubRepo,
-    ) -> Result<Signature> {
-        let user = self.get_payer();
-        let instruction = instructions::coordinator_checkpoint(
-            &coordinator_instance,
-            &coordinator_account,
-            &user,
-            repo,
-        );
-        self.send(&[instruction], &[]).await
     }
 
     pub fn send_checkpoint(
@@ -676,7 +542,8 @@ impl SolanaBackend {
         for signer in signers {
             request = request.signer(signer);
         }
-        // TODO - should we make this smarter by differenciating retryables and non-retryables ?
+        // TODO (vbrunet) - should we make this smarter by differenciating retryables and non-retryables ?
+        // TODO (vbrunet) - should there be a retry here ?
         request.send().await.context("Failed to send transaction")
     }
 

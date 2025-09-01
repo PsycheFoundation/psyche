@@ -1,3 +1,5 @@
+use crate::command::checkpoint::command_checkpoint_execute;
+use crate::command::checkpoint::CommandCheckpointParams;
 use crate::command::close_run::command_close_run_execute;
 use crate::command::close_run::CommandCloseRunParams;
 use crate::command::create_run::command_create_run_execute;
@@ -10,10 +12,13 @@ use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execu
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
 use crate::command::set_paused::command_set_paused_execute;
 use crate::command::set_paused::CommandSetPausedParams;
+use crate::command::tick::CommandTickParams;
 use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
 use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
 use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
 use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
+use crate::command::update_config::command_update_config_execute;
+use crate::command::update_config::CommandUpdateConfigParams;
 use crate::{
     app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
     backend::SolanaBackend,
@@ -35,10 +40,10 @@ use clap::{Args, Parser, Subcommand};
 use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_coordinator::{
     get_data_index_for_step,
-    model::{Checkpoint, HubRepo, Model},
+    model::{Checkpoint, Model},
     CoordinatorConfig, CoordinatorProgress, RunState,
 };
-use psyche_core::{sha256, FixedString};
+use psyche_core::sha256;
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
@@ -87,20 +92,6 @@ struct ClusterArgs {
     ws_rpc: String,
 }
 
-#[derive(Serialize, Deserialize, Zeroable)]
-struct State {
-    pub config: CoordinatorConfig,
-    pub model: Model,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug)]
-enum ShowChoices {
-    Config,
-    Model,
-    EpochState,
-    Progress,
-}
-
 #[allow(clippy::large_enum_variant)] // it's only used at startup, we don't care.
 #[derive(Subcommand, Debug)]
 enum Commands {
@@ -137,54 +128,18 @@ enum Commands {
     UpdateConfig {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        treasurer_index: Option<u64>,
-
-        #[clap(long, env)]
-        config_path: Option<PathBuf>,
-
-        #[clap(long, env)]
-        restart_from_step: Option<u32>,
-
-        #[clap(long, env)]
-        switch_to_hub: bool,
-
-        // metadata
-        #[clap(long)]
-        name: Option<String>,
-
-        #[clap(long)]
-        description: Option<String>,
-
-        #[clap(long)]
-        num_parameters: Option<u64>,
-
-        #[clap(long)]
-        vocab_size: Option<u64>,
-        // end metadata
+        #[clap(flatten)]
+        params: CommandUpdateConfigParams,
     },
     Tick {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env, default_value_t = 1000)]
-        ms_interval: u64,
-
-        #[clap(long, env)]
-        count: Option<u64>,
+        #[clap(flatten)]
+        params: CommandTickParams,
     },
     SetFutureEpochRates {
         #[clap(flatten)]
@@ -210,30 +165,13 @@ enum Commands {
         #[clap(flatten)]
         params: CommandTreasurerTopUpRewardsParams,
     },
-    Show {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        choice: ShowChoices,
-    },
     Checkpoint {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        repo: String,
-
-        #[clap(long, env)]
-        revision: Option<String>,
+        #[clap(flatten)]
+        params: CommandCheckpointParams,
     },
     Train {
         #[clap(flatten)]
@@ -389,17 +327,8 @@ async fn async_main() -> Result<()> {
         Commands::UpdateConfig {
             cluster,
             wallet,
-            run_id,
-            treasurer_index,
-            config_path,
-            restart_from_step,
-            switch_to_hub,
-            name,
-            description,
-            num_parameters,
-            vocab_size,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -408,93 +337,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let account = backend
-                .get_coordinator_account(&coordinator_account)
-                .await?;
-            let progress = restart_from_step.map(|step| CoordinatorProgress {
-                epoch: account.state.coordinator.progress.epoch,
-                step,
-                epoch_start_data_index: get_data_index_for_step(&account.state.coordinator, step),
-            });
-
-            let (config, mut model) = match config_path {
-                Some(config_path) => {
-                    let state: State = toml::from_str(std::str::from_utf8(
-                        &std::fs::read(&config_path).with_context(|| {
-                            format!("failed to read config toml file {config_path:?}")
-                        })?,
-                    )?)
-                    .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
-
-                    (Some(state.config), Some(state.model))
-                }
-                None => (None, None),
-            };
-
-            model = if switch_to_hub {
-                let Model::LLM(mut llm) = model.unwrap_or(account.state.coordinator.model);
-                match llm.checkpoint {
-                    Checkpoint::P2P(hub_repo) | Checkpoint::Dummy(hub_repo) => {
-                        llm.checkpoint = Checkpoint::Hub(hub_repo)
-                    }
-                    _ => {}
-                }
-                Some(Model::LLM(llm))
-            } else {
-                model
-            };
-
-            let metadata = {
-                let mut metadata = account.state.metadata;
-
-                if let Some(name) = name {
-                    metadata.name = name
-                        .as_str()
-                        .try_into()
-                        .context("run metadata: name failed to convert to FixedString")?;
-                }
-                if let Some(description) = description {
-                    metadata.description = description
-                        .as_str()
-                        .try_into()
-                        .context("run metadata: description failed to convert to FixedString")?;
-                }
-                if let Some(num_parameters) = num_parameters {
-                    metadata.num_parameters = num_parameters;
-                }
-                if let Some(vocab_size) = vocab_size {
-                    metadata.vocab_size = vocab_size;
-                }
-                // only include if it's different
-                (metadata != account.state.metadata).then_some(metadata)
-            };
-
-            if metadata.is_none() && config.is_none() && model.is_none() && progress.is_none() {
-                bail!("this invocation would not update anything, bailing.")
-            }
-
-            let set: anchor_client::solana_sdk::signature::Signature = backend
-                .update(
-                    &run_id,
-                    treasurer_index,
-                    &coordinator_account,
-                    metadata,
-                    config,
-                    model,
-                    progress,
-                )
-                .await?;
-            println!("Updated config of {run_id} with transaction {set}");
-            println!("\n===== Logs =====");
-            for log in backend.get_logs(&set).await? {
-                println!("{log}");
-            }
-            Ok(())
+            command_update_config_execute(backend, params).await
         }
         Commands::SetPaused {
             cluster,
@@ -514,11 +357,8 @@ async fn async_main() -> Result<()> {
         Commands::Tick {
             cluster,
             wallet,
-            run_id,
-            ms_interval,
-            count,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -527,27 +367,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let mut interval = interval(Duration::from_millis(ms_interval));
-            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-            for _ in 0..count.unwrap_or(u64::MAX) {
-                let ticked = backend
-                    .tick(coordinator_instance, coordinator_account)
-                    .await?;
-                println!("Ticked run {run_id} with transaction {ticked}");
-                println!("\n===== Logs =====");
-                for log in backend.get_logs(&ticked).await? {
-                    println!("{log}");
-                }
-                println!();
-                interval.tick().await;
-            }
-
-            Ok(())
+            command_tick_execute(backend, params).await
         }
         Commands::SetFutureEpochRates {
             cluster,
@@ -597,11 +417,8 @@ async fn async_main() -> Result<()> {
         Commands::Checkpoint {
             cluster,
             wallet,
-            run_id,
-            repo,
-            revision,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -610,34 +427,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let checkpoint = backend
-                .checkpoint(
-                    coordinator_instance,
-                    coordinator_account,
-                    HubRepo {
-                        repo_id: FixedString::from_str_truncated(&repo),
-                        revision: revision
-                            .clone()
-                            .map(|x| FixedString::from_str_truncated(&x)),
-                    },
-                )
-                .await?;
-            println!(
-                "Checkpointed to repo {}{}on run {} with transaction {}",
-                repo,
-                match revision {
-                    Some(revision) => format!(" ({revision}) "),
-                    None => " ".to_string(),
-                },
-                run_id,
-                checkpoint
-            );
-            Ok(())
+            command_checkpoint_execute(backend, params).await
         }
         Commands::Show {
             cluster,
@@ -808,15 +598,6 @@ async fn async_main() -> Result<()> {
 
             Ok(())
         }
-
-        Commands::PrintAllHelp { markdown } => {
-            // This is a required argument for the time being.
-            assert!(markdown);
-
-            let () = clap_markdown::print_help_markdown::<CliArgs>();
-
-            Ok(())
-        }
         Commands::CanJoin {
             cluster,
             wallet,
@@ -974,6 +755,12 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_json_dump_user_execute(backend, params).await
+        }
+        Commands::PrintAllHelp { markdown } => {
+            // This is a required argument for the time being.
+            assert!(markdown);
+            let () = clap_markdown::print_help_markdown::<CliArgs>();
+            Ok(())
         }
     }
 }
