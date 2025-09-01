@@ -30,7 +30,7 @@ pub async fn command_close_run_execute(
 
     let instruction =
         instructions::coordinator_close_run(&coordinator_instance, &coordinator_account, &payer);
-    let signature = backend.send(&[instruction], &[]).await?;
+    let signature = backend.process(&[instruction], &[]).await?;
     println!("Closed run {run_id} with transaction {signature}");
 
     let after_lamports = backend.get_balance(&payer).await?;

@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use clap::Args;
-use psyche_solana_treasurer::logic::RunUpdateParams;
+use tokio::time::{interval, MissedTickBehavior};
 
 use crate::{instructions, SolanaBackend};
 
@@ -35,7 +37,7 @@ pub async fn command_tick_execute(backend: SolanaBackend, params: CommandTickPar
     for _ in 0..count.unwrap_or(u64::MAX) {
         let instruction =
             instructions::coordinator_tick(&coordinator_instance, &coordinator_account, &ticker);
-        let signature = backend.send(&[instruction], &[]).await?;
+        let signature = backend.process(&[instruction], &[]).await?;
         println!("Ticked run {run_id} with transaction {signature}");
 
         println!("\n===== Logs =====");

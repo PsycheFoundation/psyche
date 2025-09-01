@@ -60,7 +60,8 @@ pub async fn command_treasurer_claim_rewards_execute(
             &collateral_mint,
             &token::ID,
         );
-        let user_ata_create_signature = backend.send(&[user_ata_create_instruction], &[]).await?;
+        let user_ata_create_signature =
+            backend.process(&[user_ata_create_instruction], &[]).await?;
         println!("Created associated token account for user during transaction: {user_ata_create_signature}");
     }
 
@@ -75,8 +76,9 @@ pub async fn command_treasurer_claim_rewards_execute(
             treasurer_index,
             &user,
         );
-        let participant_create_signature =
-            backend.send(&[participant_create_instruction], &[]).await?;
+        let participant_create_signature = backend
+            .process(&[participant_create_instruction], &[])
+            .await?;
         println!(
             "Created the participant claim during transaction: {participant_create_signature}"
         );
@@ -126,7 +128,7 @@ pub async fn command_treasurer_claim_rewards_execute(
         &user,
         claim_earned_points,
     );
-    let claim_signature = backend.send(&[claim_instruction], &[]).await?;
+    let claim_signature = backend.process(&[claim_instruction], &[]).await?;
     println!("Claimed {claim_earned_points} earned points in transaction: {claim_signature}");
 
     Ok(())

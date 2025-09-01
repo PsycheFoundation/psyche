@@ -96,7 +96,7 @@ pub async fn command_create_run_execute(
         };
 
     let signature = backend
-        .send(
+        .process(
             &[instruction_create, instruction_init],
             &[&coordinator_account_signer],
         )

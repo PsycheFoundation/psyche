@@ -1,6 +1,14 @@
-use anyhow::Result;
+use std::path::PathBuf;
+
+use anyhow::{bail, Context, Result};
 use clap::Args;
+use psyche_coordinator::{
+    get_data_index_for_step,
+    model::{Checkpoint, Model},
+    CoordinatorConfig, CoordinatorProgress,
+};
 use psyche_solana_treasurer::logic::RunUpdateParams;
+use serde::{Deserialize, Serialize};
 
 use crate::{instructions, SolanaBackend};
 
@@ -69,6 +77,11 @@ pub async fn command_update_config_execute(
 
     let (config, mut model) = match config_path {
         Some(config_path) => {
+            #[derive(Serialize, Deserialize)]
+            struct State {
+                pub config: CoordinatorConfig,
+                pub model: Model,
+            }
             let state: State = toml::from_str(std::str::from_utf8(
                 &std::fs::read(&config_path)
                     .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
@@ -81,7 +94,8 @@ pub async fn command_update_config_execute(
     };
 
     model = if switch_to_hub {
-        let Model::LLM(mut llm) = model.unwrap_or(account.state.coordinator.model);
+        let Model::LLM(mut llm) =
+            model.unwrap_or(coordinator_account_state.state.coordinator.model);
         match llm.checkpoint {
             Checkpoint::P2P(hub_repo) | Checkpoint::Dummy(hub_repo) => {
                 llm.checkpoint = Checkpoint::Hub(hub_repo)
@@ -121,8 +135,8 @@ pub async fn command_update_config_execute(
         bail!("this invocation would not update anything, bailing.")
     }
 
-    let instruction = if let Some(treasurer_index) = self
-        .resolve_treasurer_index(run_id, treasurer_index)
+    let instruction = if let Some(treasurer_index) = backend
+        .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
         instructions::treasurer_run_update(
@@ -151,7 +165,7 @@ pub async fn command_update_config_execute(
             progress,
         )
     };
-    let signature = backend.send(&[instruction], &[]).await?;
+    let signature = backend.process(&[instruction], &[]).await?;
     println!("Updated config of {run_id} with transaction {signature}");
 
     println!(" - Metadata: {metadata:#?}");

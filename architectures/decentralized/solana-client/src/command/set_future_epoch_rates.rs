@@ -65,7 +65,7 @@ pub async fn command_set_future_epoch_rates_execute(
         )
     };
 
-    let signature = backend.send(&[instruction], &[]).await?;
+    let signature = backend.process(&[instruction], &[]).await?;
     println!("On run {run_id} with transaction {signature}:");
     println!(" - Set earning rate to {earning_rate:?}");
     println!(" - Set slashing rate to {slashing_rate:?}");

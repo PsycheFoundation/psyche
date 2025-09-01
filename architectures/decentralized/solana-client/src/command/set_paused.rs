@@ -57,7 +57,7 @@ pub async fn command_set_paused_execute(
         instructions::coordinator_set_paused(&run_id, &coordinator_account, &main_authority, paused)
     };
 
-    let signature = backend.send(&[instruction], &[]).await?;
+    let signature = backend.process(&[instruction], &[]).await?;
     println!("Set pause state to {paused} on run {run_id} with transaction {signature}");
 
     println!("\n===== Logs =====");

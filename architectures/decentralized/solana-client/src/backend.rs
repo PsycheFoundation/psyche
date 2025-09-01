@@ -5,6 +5,7 @@ use anchor_client::solana_sdk::commitment_config::CommitmentLevel;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::program_pack::Pack;
+use anchor_client::ClientError;
 use anchor_client::{
     anchor_lang::system_program,
     solana_client::{
@@ -23,12 +24,7 @@ use anchor_spl::token;
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
-use psyche_coordinator::{
-    model::{HubRepo, Model},
-    CommitteeProof, Coordinator, CoordinatorConfig, CoordinatorProgress, HealthChecks,
-};
-use psyche_solana_coordinator::RunMetadata;
-use psyche_solana_treasurer::logic::RunUpdateParams;
+use psyche_coordinator::{model::HubRepo, CommitteeProof, Coordinator, HealthChecks};
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
@@ -270,7 +266,6 @@ impl SolanaBackend {
         id: psyche_solana_coordinator::ClientId,
         authorizer: Option<Pubkey>,
     ) -> Result<Signature, RetryError<String>> {
-        let user = self.get_payer();
         let coordinator_instance_state = self
             .get_coordinator_instance(&coordinator_instance)
             .await
@@ -286,7 +281,6 @@ impl SolanaBackend {
             &authorization,
             id,
         );
-
         // TODO (vbrunet) - what was the point of this, i forgot ?
         // We timeout the transaction at 5s max, since internally send() polls Solana until the
         // tx is confirmed; we'd rather cancel early and attempt again.
@@ -502,7 +496,7 @@ impl SolanaBackend {
     }
 
     pub async fn get_minimum_balance_for_rent_exemption(&self, space: usize) -> Result<u64> {
-        // TODO (vbrunet) - should there be a retry here ?
+        // TODO (vbrunet) - should there be a retry mechanism here
         self.program_coordinators[0]
             .rpc()
             .get_minimum_balance_for_rent_exemption(space)
@@ -513,7 +507,7 @@ impl SolanaBackend {
     }
 
     pub async fn get_balance(&self, address: &Pubkey) -> Result<u64> {
-        // TODO (vbrunet) - should there be a retry here ?
+        // TODO (vbrunet) - should there be a retry mechanism here
         self.program_coordinators[0]
             .rpc()
             .get_balance(address)
@@ -522,7 +516,7 @@ impl SolanaBackend {
     }
 
     pub async fn get_data(&self, address: &Pubkey) -> Result<Vec<u8>> {
-        // TODO (vbrunet) - should there be a retry here ?
+        // TODO (vbrunet) - should there be a retry mechanism here
         self.program_coordinators[0]
             .rpc()
             .get_account_data(address)
@@ -530,25 +524,8 @@ impl SolanaBackend {
             .with_context(|| format!("Unable to get account data for {address}"))
     }
 
-    pub async fn send(
-        &self,
-        instructions: &[Instruction],
-        signers: &[&Keypair],
-    ) -> Result<Signature> {
-        let mut request = self.program_coordinators[0].request();
-        for instruction in instructions {
-            request = request.instruction(instruction.clone());
-        }
-        for signer in signers {
-            request = request.signer(signer);
-        }
-        // TODO (vbrunet) - should we make this smarter by differenciating retryables and non-retryables ?
-        // TODO (vbrunet) - should there be a retry here ?
-        request.send().await.context("Failed to send transaction")
-    }
-
     pub async fn get_logs(&self, tx: &Signature) -> Result<Vec<String>> {
-        // TODO (vbrunet) - should there be a retry here ?
+        // TODO (vbrunet) - should there be a retry mechanism here
         let tx = self.program_coordinators[0]
             .rpc()
             .get_transaction_with_config(
@@ -566,6 +543,32 @@ impl SolanaBackend {
             .context("Transaction has no meta information")?
             .log_messages
             .unwrap_or(Vec::new()))
+    }
+
+    pub async fn process(
+        &self,
+        instructions: &[Instruction],
+        signers: &[&Keypair],
+    ) -> Result<Signature> {
+        // TODO (vbrunet) - should there be a retry mechanism here
+        self.send(instructions, signers)
+            .await
+            .context("Failed to send transaction")
+    }
+
+    pub async fn send(
+        &self,
+        instructions: &[Instruction],
+        signers: &[&Keypair],
+    ) -> Result<Signature, ClientError> {
+        let mut request = self.program_coordinators[0].request();
+        for instruction in instructions {
+            request = request.instruction(instruction.clone());
+        }
+        for signer in signers {
+            request = request.signer(signer.clone());
+        }
+        request.send().await
     }
 }
 

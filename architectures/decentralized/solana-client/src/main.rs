@@ -12,6 +12,7 @@ use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execu
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
 use crate::command::set_paused::command_set_paused_execute;
 use crate::command::set_paused::CommandSetPausedParams;
+use crate::command::tick::command_tick_execute;
 use crate::command::tick::CommandTickParams;
 use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
 use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
@@ -35,33 +36,27 @@ use anchor_client::{
     Client, Cluster,
 };
 use anyhow::{bail, Context, Result};
-use bytemuck::Zeroable;
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_coordinator::{
-    get_data_index_for_step,
     model::{Checkpoint, Model},
-    CoordinatorConfig, CoordinatorProgress, RunState,
+    RunState,
 };
 use psyche_core::sha256;
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
-use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
+use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     maybe_start_render_loop, LogOutput, ServiceInfo,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
-use tokio::{
-    runtime::Builder,
-    time::{interval, MissedTickBehavior},
-};
+use tokio::runtime::Builder;
 use tracing::info;
 
 mod app;
@@ -428,48 +423,6 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_checkpoint_execute(backend, params).await
-        }
-        Commands::Show {
-            cluster,
-            run_id,
-            choice,
-        } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
-            let key_pair: Arc<Keypair> = Arc::new(Keypair::new());
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let account = backend
-                .get_coordinator_account(&coordinator_account)
-                .await?;
-            match choice {
-                ShowChoices::Config => println!(
-                    "{}",
-                    toml::to_string_pretty(&account.state.coordinator.config)?
-                ),
-                ShowChoices::Model => println!(
-                    "{}",
-                    toml::to_string_pretty(&account.state.coordinator.model)?
-                ),
-                ShowChoices::EpochState => println!(
-                    "{}",
-                    toml::to_string_pretty(&account.state.coordinator.epoch_state)?
-                ),
-                ShowChoices::Progress => println!(
-                    "{}",
-                    toml::to_string_pretty(&account.state.coordinator.progress)?
-                ),
-            }
-            Ok(())
         }
         Commands::Train {
             cluster,
