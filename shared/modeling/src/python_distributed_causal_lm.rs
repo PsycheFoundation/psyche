@@ -71,6 +71,7 @@ impl TorchDistributedCommunicator {
             let distributed_c10d = Python::import(py, "torch.distributed.distributed_c10d")?;
             let get_default_store = distributed_c10d.getattr("_get_default_store")?;
             let store = get_default_store.call0()?;
+
             Ok(store.unbind())
         });
         Ok(Self {
@@ -154,7 +155,9 @@ impl PythonDistributedCausalLM {
         override_max_position_embeddings: Option<usize>,
         init_method: Option<String>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
-        let world_size = parallelism.dp * parallelism.tp;
+        // let world_size = parallelism.dp * parallelism.tp;
+        // FIX(marian): THIS IS HARDCODED JUST FOR EASY TESTING!
+        let world_size = 2;
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
@@ -163,7 +166,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = init_method.unwrap_or_else(|| "tcp://127.0.0.1:34567".to_string());
+        let init_method = init_method.unwrap_or_else(|| "tcp://0.0.0.0:34567".to_string());
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();

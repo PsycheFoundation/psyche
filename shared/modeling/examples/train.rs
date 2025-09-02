@@ -298,7 +298,7 @@ async fn main() -> Result<()> {
 
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
-                    if dp != 1 || tp != 1 {
+                    if dp == 1 || tp != 1 {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
                             source,
