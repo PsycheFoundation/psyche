@@ -16,7 +16,7 @@ use psyche_network::AuthenticatableIdentity;
 use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
 use tch::{Device, Kind};
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
 enum AttnImpl {
@@ -294,11 +294,12 @@ async fn main() -> Result<()> {
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);
             let tp = args.tensor_parallelism.unwrap_or(1);
+
             let device = args.device;
 
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
-                    if dp == 1 || tp != 1 {
+                    if dp != 1 || tp != 1 {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
                             source,

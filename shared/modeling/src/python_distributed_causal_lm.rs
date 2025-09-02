@@ -23,6 +23,9 @@ pub enum PythonDistributedCausalLMError {
     #[error("Local device not a CUDA device")]
     NonCUDADevice,
 
+    #[error("Calculated world size \"{0}\" is less than number of total GPU processes \"{1}\"")]
+    IncompatibleWorldSize(usize, usize),
+
     #[error("Python error: {0}")]
     PythonError(#[from] PyErr),
 
@@ -74,6 +77,7 @@ impl TorchDistributedCommunicator {
 
             Ok(store.unbind())
         });
+
         Ok(Self {
             store: Arc::new(result?),
             rank,
@@ -144,6 +148,7 @@ impl PythonDistributedCausalLM {
             parallelism,
             override_max_position_embeddings,
             None,
+            None,
         )
     }
 
@@ -154,10 +159,21 @@ impl PythonDistributedCausalLM {
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
         init_method: Option<String>,
+        num_local_processes: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
-        // let world_size = parallelism.dp * parallelism.tp;
-        // FIX(marian): THIS IS HARDCODED JUST FOR EASY TESTING!
-        let world_size = 2;
+        if !tch::Cuda::is_available() {
+            return Err(PythonDistributedCausalLMError::NonCUDADevice);
+        }
+        let num_local_processes = num_local_processes.unwrap_or_else(|| tch::Cuda::device_count());
+        let world_size = parallelism.dp * parallelism.tp;
+
+        if world_size < (num_local_processes as usize) {
+            return Err(PythonDistributedCausalLMError::IncompatibleWorldSize(
+                world_size,
+                num_local_processes as usize,
+            ));
+        }
+
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
@@ -167,6 +183,7 @@ impl PythonDistributedCausalLM {
         };
         let backend = "nccl".to_string();
         let init_method = init_method.unwrap_or_else(|| "tcp://0.0.0.0:34567".to_string());
+
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();
@@ -177,7 +194,9 @@ impl PythonDistributedCausalLM {
                     Some(rank),
                     Some(world_size),
                 )?;
+
                 comm.set("architecture", &architecture)?;
+
                 match &source {
                     PretrainedSource::RepoFiles(path_bufs) => {
                         comm.set("source", "files")?;
@@ -190,8 +209,10 @@ impl PythonDistributedCausalLM {
                     }
                     PretrainedSource::ConfigAndTensors(_, _hash_map) => todo!(),
                 }
+
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
+
                 let local = PythonCausalLM::new(
                     &architecture,
                     &source,
@@ -204,7 +225,7 @@ impl PythonDistributedCausalLM {
         };
         let pid = format!("{}", std::process::id());
         tracing::debug!("Spawned local model load, pid is {pid}");
-        let children: Result<Vec<Child>, _> = (1..world_size)
+        let children: Result<Vec<Child>, _> = (1..num_local_processes)
             .map(|rank| {
                 let res = Command::new("python")
                     .arg("-m")
