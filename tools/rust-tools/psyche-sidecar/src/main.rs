@@ -26,9 +26,12 @@ enum Commands {
         #[arg(long, env = "PSYCHE_WORLD_SIZE")]
         world_size: usize,
 
-        /// Rank of this process
-        #[arg(long, env = "PSYCHE_RANK")]
-        rank: usize,
+        // /// Rank of this process
+        // #[arg(long, env = "PSYCHE_RANK")]
+        // rank: usize,
+        /// Start rank for distributed training
+        #[arg(long, env = "PSYCHE_START_RANK")]
+        start_rank: usize,
 
         /// Backend for torch.distributed (default: nccl)
         #[arg(long, default_value = "nccl")]
@@ -61,13 +64,61 @@ async fn main() -> Result<()> {
             main_host,
             port,
             world_size,
-            rank,
+            start_rank,
             backend,
             parent_pid,
         } => {
-            info!("Starting Python sidecar for rank {}/{}", rank, world_size);
-            run_python_sidecar(main_host, port, world_size, rank, backend, parent_pid).await
+            info!(
+                "Starting Python sidecars for ranks {} to {}",
+                start_rank,
+                world_size - 1
+            );
+
+            // Spawn all tasks
+            let mut tasks = Vec::new();
+            for rank in start_rank..world_size {
+                let main_host = main_host.clone();
+                let backend = backend.clone();
+
+                tasks.push(tokio::spawn(async move {
+                    info!("Starting Python sidecars for rank {}", rank);
+
+                    run_python_sidecar(main_host, port, world_size, rank, backend, parent_pid).await
+                }));
+            }
+
+            // Wait for all tasks
+            let mut all_success = true;
+            for (i, task) in tasks.into_iter().enumerate() {
+                let rank = start_rank + i;
+                match task.await {
+                    Ok(Ok(())) => info!("Rank {} completed successfully", rank),
+                    Ok(Err(e)) => {
+                        error!("Rank {} failed: {}", rank, e);
+                        all_success = false;
+                    }
+                    Err(e) => {
+                        error!("Task for rank {} panicked: {}", rank, e);
+                        all_success = false;
+                    }
+                }
+            }
+
+            if !all_success {
+                bail!("One or more sidecar processes failed");
+            } else {
+                tracing::info!("All sidecar processes completed successfully");
+            }
+
+            Ok(())
         }
+        // {
+        //     info!("Starting Python sidecar for rank {}/{}", rank, world_size);
+        //     run_python_sidecar(
+        //         main_host, port, world_size, rank, start_rank, backend, parent_pid,
+        //     )
+        //     .await
+        // }
         Commands::Rust => {
             unimplemented!("Rust sidecar not yet implemented");
         }
@@ -93,7 +144,7 @@ async fn run_python_sidecar(
     let init_method = format!("tcp://{main_host}:{port}");
 
     info!(
-        "Connecting to master at {} (rank {}/{})",
+        "Connecting to master at {} (rank {} to {})",
         init_method, rank, world_size
     );
 
@@ -106,7 +157,7 @@ async fn run_python_sidecar(
         .arg(&init_method)
         .arg("--world-size")
         .arg(world_size.to_string())
-        .arg("--rank")
+        .arg("--start-rank")
         .arg(rank.to_string());
 
     if let Some(pid) = parent_pid {
