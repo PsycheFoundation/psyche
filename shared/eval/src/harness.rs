@@ -13,7 +13,7 @@ use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
 const MAX_CONTEXT_SIZE: usize = 2048;
 
@@ -61,7 +61,6 @@ impl Display for Task {
 enum PreparedTaskType {
     LogLikelihood {
         docs: Vec<TokenizedLLHDocument>,
-        tokenized_fewshot: Vec<i64>,
     },
     GenerateUntil {
         requests: Vec<TokenizedGenerateUntilDocument>,
@@ -102,7 +101,7 @@ pub struct TokenizedGenerateUntilDocument {
 }
 
 impl TokenizedLLHDocument {
-    pub fn from_document(doc: Document, tokenizer: &Tokenizer) -> Self {
+    pub fn from_document(doc: Document, tokenizer: &Tokenizer, fewshot_prefix: &str) -> Self {
         // e.g.
         // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
         // text: 'Which statement best explains why photosynthesis is the foundation of most food webs?'
@@ -112,22 +111,37 @@ impl TokenizedLLHDocument {
         let mut choices_token_len = Vec::new();
         let mut choices: Vec<Vec<i64>> = Vec::new();
 
+        // Tokenize fewshot prefix once
+        let fewshot_tokens: Vec<i64> = tokenizer
+            .encode(fewshot_prefix, false)
+            .unwrap()
+            .get_ids()
+            .iter()
+            .map(|x| *x as i64)
+            .collect();
+
         for choice in doc.choices.iter() {
             choices_str.push(choice.clone());
 
-            let request = tokenizer
-                .encode(format!("{} {}", doc.text, choice), false)
+            // [fewshot_prefix] + [document_text + choice]
+            let text_and_choice = format!("{} {}", doc.text, choice);
+            let text_choice_tokens: Vec<i64> = tokenizer
+                .encode(text_and_choice, false)
                 .unwrap()
                 .get_ids()
                 .iter()
                 .map(|x| *x as i64)
-                .collect::<Vec<_>>();
-            requests.push(request.clone());
+                .collect();
 
+            let mut full_request = fewshot_tokens.clone();
+            full_request.extend_from_slice(&text_choice_tokens);
+            requests.push(full_request.clone());
+
+            // Extract choice tokens from the text_choice_tokens part
             // Tokenizing "choice" alone produces different tokens than tokenizing "text + choice" together.
             // So, we extract choice tokens iterating the full request backwards to ensure exact matching.
-            for idx in 1..request.len() {
-                let choice_tokens = &request[request.len() - idx..]
+            for idx in 1..text_choice_tokens.len() {
+                let choice_tokens = &text_choice_tokens[text_choice_tokens.len() - idx..]
                     .iter()
                     .map(|x| *x as u32)
                     .collect::<Vec<_>>();
@@ -136,18 +150,9 @@ impl TokenizedLLHDocument {
                     let choice_tokens = choice_tokens.iter().map(|x| *x as i64).collect::<Vec<_>>();
                     choices.push(choice_tokens.clone());
                     choices_token_len.push(choice_tokens.len());
-
                     break;
                 }
             }
-        }
-
-        // verify correctness
-        for x in 0..requests.len() {
-            debug_assert_eq!(
-                requests[x][requests[x].len() - choices_token_len[x]..],
-                choices[x]
-            );
         }
 
         Self {
@@ -170,38 +175,46 @@ impl Task {
                 if let Some(limit) = limit {
                     docs.truncate(limit);
                 }
-                let fewshot = if self.num_fewshot > 0 {
-                    let mut fewshot_docs = llh.get_fewshot_documents();
-                    fewshot_docs.shuffle(&mut self.rand);
-                    fewshot_docs
-                        .into_iter()
-                        .take(self.num_fewshot)
-                        .map(|x| format!("{}{}", x.text, x.choices[x.answer]))
-                        .collect::<Vec<_>>()
-                        .join("\n\n")
-                        + "\n\n"
-                } else {
-                    String::new()
-                };
+                let fewshot_by_category = llh.get_fewshot_documents();
 
-                let tokenized_fewshot = tokenizer
-                    .encode(fewshot, false)
-                    .unwrap()
-                    .get_ids()
-                    .iter()
-                    .map(|x| *x as i64)
-                    .collect::<Vec<_>>();
+                // Build individual requests with category-specific fewshot for each document
                 let docs = docs
                     .into_iter()
-                    .map(|x| TokenizedLLHDocument::from_document(x, tokenizer))
+                    .map(|doc| {
+                        // Build fewshot prefix for this document
+                        let fewshot_prefix = if self.num_fewshot > 0 {
+                            // Get fewshot examples for this document's category
+                            let category = doc.category.as_deref().unwrap_or("default");
+                            let mut fewshot_examples = fewshot_by_category
+                                .get(category)
+                                .cloned()
+                                .unwrap_or_else(|| {
+                                    // Fallback: use first available category if document's category is not found
+                                    fewshot_by_category
+                                        .values()
+                                        .next()
+                                        .cloned()
+                                        .unwrap_or_else(Vec::new)
+                                });
+                            fewshot_examples.shuffle(&mut self.rand);
+                            fewshot_examples
+                                .into_iter()
+                                .take(self.num_fewshot)
+                                .map(|x| format!("{}{}", x.text, x.choices[x.answer]))
+                                .collect::<Vec<_>>()
+                                .join("\n\n")
+                                + "\n\n"
+                        } else {
+                            String::new()
+                        };
+
+                        TokenizedLLHDocument::from_document(doc, tokenizer, &fewshot_prefix)
+                    })
                     .collect::<Vec<_>>();
                 PreparedTask {
                     name,
                     num: docs.len(),
-                    prepared_task_type: PreparedTaskType::LogLikelihood {
-                        docs,
-                        tokenized_fewshot,
-                    },
+                    prepared_task_type: PreparedTaskType::LogLikelihood { docs },
                 }
             }
             TaskType::GenerateUntil(gu_docs) => {
@@ -325,10 +338,9 @@ impl PreparedTask {
         };
 
         match &self.prepared_task_type {
-            PreparedTaskType::LogLikelihood {
-                docs,
-                tokenized_fewshot,
-            } => Self::run_log_likelihood(&self.name, options, docs, tokenized_fewshot, pbar),
+            PreparedTaskType::LogLikelihood { docs } => {
+                Self::run_log_likelihood(&self.name, options, docs, pbar)
+            }
             PreparedTaskType::GenerateUntil {
                 requests,
                 tokenizer,
@@ -350,7 +362,6 @@ impl PreparedTask {
         eval_name: &String,
         options: EvalTaskOptions,
         docs: &[TokenizedLLHDocument],
-        tokenized_fewshot: &[i64],
         pbar: Option<ProgressBar>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
@@ -408,19 +419,9 @@ impl PreparedTask {
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
                 request.pop();
 
-                // [fewshot_tokens] + [question + choice_without_last_token]
-                let mut full_request = tokenized_fewshot.to_vec();
-                full_request.extend_from_slice(&request);
+                // The request already contains [fewshot_tokens] + [question + choice_without_last_token]
+                let full_request = request;
                 let input_length = &full_request.len();
-
-                // These are conditions that probably shouldn't happen
-                if tokenized_fewshot.is_empty() {
-                    debug!("run_log_likelihood: Fewshot tokens are empty");
-                } else if full_request.len() > request.len() {
-                    debug!(
-                        "run_log_likelihood: Fewshot tokens should increase request length but they did not"
-                    );
-                }
 
                 let request_tensor = Tensor::from_slice(&full_request)
                     .to(options.model.device())
@@ -437,8 +438,7 @@ impl PreparedTask {
 
                 // Get tensor of shape `[choice.len(), vocab_size]` containing the
                 // model's logits for each token of the `choice` text.
-                // Account for fewshot prefix: we want the logits for the choice tokens
-                // which are at the end of our full_request
+                // This should skip the fewshot tokens and get the tokens from the end.
                 let logits = logits.slice(
                     0,
                     *input_length as i64 - choice.len() as i64,

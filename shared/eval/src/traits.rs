@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt::Display};
 
+#[derive(Clone)]
 pub struct Document {
     pub text: String,
     pub choices: Vec<String>,
@@ -10,7 +11,7 @@ pub struct Document {
 
 pub trait LogLikelihoodTask: Send + Display {
     fn get_documents(&self) -> Vec<Document>;
-    fn get_fewshot_documents(&self) -> Vec<Document>;
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>>;
 }
 
 pub trait GenerateUntilTask: Send + Display {
