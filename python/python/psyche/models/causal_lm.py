@@ -23,6 +23,7 @@ class CausalLM(ABC):
     def from_pretrained(
         source: PretrainedSourceRepoFiles | PretrainedSourceStateDict,
         device: torch.device,
+        attn_implementation: str,
         dp: int = 1,
         tp: int = 1,
         param_dtype: torch.dtype = torch.bfloat16,
