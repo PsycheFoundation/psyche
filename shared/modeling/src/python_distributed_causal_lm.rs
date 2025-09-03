@@ -218,7 +218,7 @@ impl PythonDistributedCausalLM {
                     .arg(format!("{rank}"))
                     .spawn();
                 match res.as_ref() {
-                    Ok(child) => tracing::debug!("Spawned sidecar process {}", child.id()),
+                    Ok(child) => tracing::info!("Spawned sidecar process {}", child.id()),
                     Err(err) => tracing::error!("{err}"),
                 };
                 res

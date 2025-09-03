@@ -155,7 +155,7 @@ impl PythonDistributedTrainer {
             "results_metadata": prev_self_distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
-        trace!("Sending operation to Python clients: {:#}", operation);
+        tracing::info!("Sending operation to Python clients: {:#}", operation);
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;

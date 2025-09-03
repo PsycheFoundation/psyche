@@ -464,6 +464,7 @@ async fn main() -> Result<()> {
                 let distro_quantization = args.distro_quantization;
                 let prev_distro_results = prev_distro_results.clone();
                 std::thread::spawn(move || {
+                    tracing::info!("Starting training thread");
                     #[allow(irrefutable_let_patterns)]
                     if let Trainer::Local(trainer) = &trainer {
                         trainer.data_parallel_barrier();

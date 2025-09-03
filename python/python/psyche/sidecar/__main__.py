@@ -97,6 +97,7 @@ def main():
     )
 
     args = parser.parse_args()
+    print(f"Sidecar iniciado - rank: {args.rank}, world_size: {args.world_size}")
 
     if args.parent_pid:
         start_process_watcher(args.parent_pid, timedelta(seconds=1))
@@ -109,7 +110,13 @@ def main():
         timeout=timedelta(hours=2),
     )
 
+    print("init_process_group")
     store = dist.distributed_c10d._get_default_store()
+    print(f"Proceso distribuido inicializado - rank: {dist.get_rank()}")
+
+    print(f"Rank: {torch.distributed.get_rank()}")
+    print(f"World size: {torch.distributed.get_world_size()}")
+    print(f"Backend: {torch.distributed.get_backend()}")
 
     store.wait(["architecture", "source"])
     architecture = store.get("architecture").decode()
@@ -128,6 +135,8 @@ def main():
 
     device = args.device if args.device else 0
 
+    print("device:", device)
+
     model = make_causal_lm(
         architecture,
         source,
@@ -136,6 +145,7 @@ def main():
         tp=tp,
     )
 
+    print(f"Modelo creado: {architecture}, device: {device}")
     store.wait(["hyperparameters"])
     hyperparameters: Hyperparameters = Hyperparameters(
         **json.loads(store.get("hyperparameters").decode())
@@ -159,9 +169,12 @@ def main():
     while True:
         store.wait([str(iteration)])
         operation = json.loads(store.get(str(iteration)).decode())
+        print(f"Iteración {iteration}: operación {operation['operation']}")
 
         if operation["operation"] == "train":
+
             train = TrainOperation(**operation)
+            print(f"Ejecutando {operation['operation']} - step: {train.step}")
 
             prev_self_distro_results = []
             if train.results_len > 0 and train.results_metadata:
@@ -172,20 +185,30 @@ def main():
                 )
 
             input_ids = torch.empty(train.batch_shape, dtype=torch.long, device=device)
+            print(f"input_ids: {input_ids}")
             labels = (
                 torch.empty(train.batch_shape, dtype=torch.long, device=device)
                 if train.batch_has_labels
                 else None
             )
+            print(f"labels: {labels}")
             position_ids = (
                 torch.empty(train.batch_shape, dtype=torch.long, device=device)
                 if train.batch_has_position_ids
                 else None
             )
+            print(f"position_ids: {position_ids}")
+            print(
+                f"About to broadcast input_ids, rank={dist.get_rank()}, world_size={dist.get_world_size()}"
+            )
+            print(f"input_ids shape: {input_ids.shape}")
             dist.broadcast(input_ids, 0)
+            print("Done dist.broadcast(input_ids, 0)")
             if train.batch_has_labels:
+                print("broadcast labels")
                 dist.broadcast(labels, 0)
             if train.batch_has_position_ids:
+                print("broadcast position_ids")
                 dist.broadcast(position_ids, 0)
 
             # world_size = dist.get_world_size()
@@ -194,6 +217,7 @@ def main():
             # start_row = rank * shard_size
             # local_batch = batch.narrow(0, start_row, shard_size).contiguous()
 
+            print("Start _, loss = trainer.train(")
             _, loss = trainer.train(
                 train.step,
                 train.zero_optim,
@@ -211,6 +235,7 @@ def main():
             )
 
             loss = torch.Tensor([loss]).to(device=device, dtype=torch.float32)
+            print(f"loss1: {loss}")
             dist.all_reduce(loss)
         elif operation["operation"] == "optimize":
             with torch.no_grad():

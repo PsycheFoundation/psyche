@@ -121,8 +121,8 @@ class HfTransformersAuto(CausalLM):
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
                 config,
-                attn_implementation="flash_attention_2",
-                torch_dtype=torch.bfloat16,
+                # attn_implementation="flash_attention_2",
+                # torch_dtype=torch.bfloat16,
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)

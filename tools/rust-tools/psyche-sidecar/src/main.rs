@@ -83,6 +83,7 @@ async fn main() -> Result<()> {
                 tasks.push(tokio::spawn(async move {
                     info!("Starting Python sidecars for rank {}", rank);
                     let device = rank - start_rank;
+                    println!("device: {}", device);
                     run_python_sidecar(
                         main_host, port, world_size, rank, device, backend, parent_pid,
                     )
