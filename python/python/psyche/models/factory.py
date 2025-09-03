@@ -8,6 +8,7 @@ def make_causal_lm(
     architecture: str,
     source: PretrainedSourceRepoFiles | PretrainedSourceStateDict,
     device: torch.device | str | int,
+    attn_implementation: str,
     dp: int = 1,
     tp: int = 1,
     override_max_position_embeddings: Optional[int] = None,
@@ -23,6 +24,7 @@ def make_causal_lm(
         return HfTransformersAuto.from_pretrained(
             source=source,
             device=device,
+            attn_implementation=attn_implementation,
             dp=dp,
             tp=tp,
             override_max_position_embeddings=override_max_position_embeddings,

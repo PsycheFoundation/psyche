@@ -135,6 +135,7 @@ def main():
         architecture,
         source,
         device,
+        attn_implementation="flash_attention_2",
         dp=dp,
         tp=tp,
     )

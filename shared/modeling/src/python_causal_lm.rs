@@ -1,6 +1,7 @@
 use crate::{
-    AutoConfig, CausalLM, Communicator, EosToks, ModelConfig, ModelLoadError, ParallelismConfig,
-    PretrainedSource, StableVariableIterator, Variable,
+    AttentionImplementation, AutoConfig, CausalLM, Communicator, EosToks, ModelConfig,
+    ModelLoadError, ParallelismConfig, PretrainedSource, StableVariableIterator, Variable,
+    device_utils::DevicePytorchStr,
 };
 
 use pyo3::{
@@ -132,6 +133,7 @@ impl PythonCausalLM {
         architecture: &str,
         source: &PretrainedSource<PythonModelConfig>,
         device: Device,
+        attn_implementation: AttentionImplementation,
         parallelism: Option<ParallelismConfig>,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<PythonCausalLM, PythonCausalLMError> {
@@ -171,7 +173,8 @@ impl PythonCausalLM {
             let args = (
                 architecture,
                 source,
-                device.c_int(),
+                device.to_pytorch_device_string(),
+                attn_implementation.to_pytorch_attn_impl_str().to_owned(),
                 parallelism.as_ref().map(|x| x.dp).unwrap_or(1),
                 parallelism.as_ref().map(|x| x.tp).unwrap_or(1),
                 override_max_position_embeddings,
