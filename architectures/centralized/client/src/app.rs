@@ -97,6 +97,7 @@ pub struct App {
     pub router: Option<Arc<Router>>,
     pub gossip_metrics: Option<Arc<GossipMetrics>>,
     pub blob_metrics: Option<Arc<BlobsMetrics>>,
+    pub endpoint: Option<Endpoint>,
 
     // checks
     backend: Option<Backend>,
@@ -142,6 +143,7 @@ impl App {
         let tx_tui_state = params.tx_tui_state.clone();
         let run_id = params.run_id.clone();
         let metrics = Arc::new(ClientMetrics::new(params.metrics_local_port));
+        let allowlist = allowlist::AllowDynamic::new();
 
         // let server_conn =
         //     TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
@@ -170,6 +172,7 @@ impl App {
             state_options: None,
             allowlist: None,
             p2p: None,
+            endpoint: None,
         };
 
         let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
@@ -178,8 +181,19 @@ impl App {
         // Perform sanity checks immediately
         app.validate_configuration(&params).await?;
 
-        let allowlist = allowlist::AllowDynamic::new();
+        let backend = Backend {
+            allowlist: allowlist.clone(),
+            rx: rx_from_server_message,
+            tx: tx_to_server_message,
+        };
 
+        // // Join the server
+        // app.join_server().await?;
+
+        // Initialize the client (this consumes params)
+        // app.initialize_client(params, rx_from_server_message, tx_to_server_message)
+        //     .await?;
+        //
         let p2p = NC::init(
             &params.run_id,
             params.p2p_port,
@@ -195,28 +209,17 @@ impl App {
         )
         .await?;
 
-        let backend = Backend {
-            allowlist: allowlist.clone(),
-            rx: rx_from_server_message,
-            tx: tx_to_server_message,
-        };
-
-        // // Join the server
-        // app.join_server().await?;
-
-        // Initialize the client (this consumes params)
-        // app.initialize_client(params, rx_from_server_message, tx_to_server_message)
-        //     .await?;
-
         // Store channels in the struct so `run()` can use them later
         app.tx_from_server_message = Some(tx_from_server_message);
         app.rx_to_server_message = Some(rx_to_server_message);
         app.gossip_metrics = Some(p2p.gossip.metrics().clone());
         app.blob_metrics = Some(p2p.blobs.metrics().clone());
-        app.router = Some(p2p.router().clone());
 
+        app.router = Some(p2p.router().clone());
         app.backend = Some(backend);
+        app.endpoint = Some(p2p.endpoint.clone());
         app.p2p = Some(p2p);
+        app.allowlist = Some(allowlist);
         Ok(app)
     }
 
@@ -232,6 +235,11 @@ impl App {
             )
             .await?;
         self.server_conn = Some(server_conn);
+        self.p2p
+            .as_mut()
+            .unwrap()
+            .run(self.allowlist.clone().unwrap(), params.run_id.clone())
+            .await?;
 
         self.join_server().await?;
 
@@ -246,6 +254,11 @@ impl App {
         let tx_from_server_message = self.tx_from_server_message.clone().unwrap();
         self.run_main_loop(tx_from_server_message, &mut rx_to_server_message)
             .await
+    }
+
+    pub fn endpoint(&self) -> Option<Endpoint> {
+        let endpoint = self.p2p.as_ref().unwrap().endpoint.clone();
+        Some(endpoint)
     }
 
     async fn validate_configuration(&self, params: &AppParams) -> Result<()> {

@@ -50,8 +50,8 @@ const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
-const MAX_ERRORS_PER_PEER: u8 = 5;
-const MAX_CONCURRENT_DOWNLOADS: u8 = 4;
+const MAX_ERRORS_PER_PEER: u8 = 2;
+const MAX_CONCURRENT_DOWNLOADS: u8 = 2;
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
     Client<T, A, B>

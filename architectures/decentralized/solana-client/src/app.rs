@@ -170,6 +170,9 @@ impl App {
             self.state_options.private_key.0.clone(),
             CommitmentConfig::confirmed(),
         )?;
+        self.p2p
+            .run(self.allowlist.clone(), self.run_id.clone())
+            .await?;
         let coordinator_instance =
             psyche_solana_coordinator::find_coordinator_instance(&self.run_id);
         let coordinator_instance_state = backend

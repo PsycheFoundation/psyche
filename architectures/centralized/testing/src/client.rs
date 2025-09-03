@@ -83,7 +83,7 @@ impl ClientHandle {
         tokio::time::sleep(Duration::from_millis(50)).await;
         Self {
             client: Some(client),
-            router,
+            router: router,
         }
     }
 
@@ -104,14 +104,13 @@ impl ClientHandle {
         let blob_metrics = client.inner.blob_metrics.clone().unwrap();
 
         if let Some(registry) = registry {
-            registry.register_all_prefixed(router.endpoint().metrics());
             registry.register(blob_metrics);
             registry.register(gossip_metrics);
         }
 
         Self {
             client: Some(client),
-            router,
+            router: router,
         }
     }
 
@@ -124,7 +123,15 @@ impl ClientHandle {
 
 impl Node for ClientHandle {
     fn endpoint(&self) -> Option<&Endpoint> {
-        Some(self.router.endpoint())
+        Some(
+            self.client
+                .as_ref()
+                .unwrap()
+                .inner
+                .endpoint
+                .as_ref()
+                .unwrap(),
+        )
     }
 
     async fn shutdown(&mut self) -> Result<()> {

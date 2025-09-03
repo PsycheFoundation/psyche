@@ -9,7 +9,7 @@ pub const ROUND_WITNESS_TIME: u64 = 2;
 pub const COOLDOWN_TIME: u64 = 3;
 
 // Model Parameters for simulations
-pub const SIM_WARMUP_TIME: u64 = 1200;
-pub const SIM_MAX_ROUND_TRAIN_TIME: u64 = 500;
+pub const SIM_WARMUP_TIME: u64 = 1000;
+pub const SIM_MAX_ROUND_TRAIN_TIME: u64 = 200;
 pub const SIM_ROUND_WITNESS_TIME: u64 = 3;
 pub const SIM_COOLDOWN_TIME: u64 = 5;

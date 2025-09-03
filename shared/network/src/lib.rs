@@ -113,12 +113,13 @@ where
     BroadcastMessage: Networkable,
     Download: Networkable,
 {
-    router: Arc<Router>,
+    pub endpoint: Endpoint,
     pub blobs: Blobs<Store>,
+    router: Arc<Router>,
     state: State,
     pub gossip: Gossip,
-    gossip_tx: GossipSender,
-    gossip_rx: GossipReceiver,
+    gossip_tx: Option<GossipSender>,
+    gossip_rx: Option<GossipReceiver>,
     rx_model_parameter_req: UnboundedReceiver<ParameterSharingMessage>,
     rx_model_config_req: UnboundedReceiver<ModelConfigSharingMessage>,
     download_manager: DownloadManager<Download>,
@@ -136,7 +137,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NetworkConnection")
-            .field("router", &self.router)
+            .field("endpoint", &self.endpoint)
             .field("blobs", &self.blobs)
             .field("gossip_tx", &self.gossip_tx)
             .field("gossip_rx", &self.gossip_rx)
@@ -293,7 +294,7 @@ where
         trace!("creating router...");
         let router = Arc::new(
             Router::spawn(
-                endpoint,
+                endpoint.clone(),
                 gossip.clone(),
                 blobs.clone(),
                 model_parameter_sharing.clone(),
@@ -302,7 +303,6 @@ where
             .await?,
         );
         trace!("router created!");
-
         // add any bootstrap peers
         {
             if bootstrap_peers.is_empty() {
@@ -316,13 +316,13 @@ where
             };
         }
 
-        let (gossip_tx, gossip_rx) = gossip
-            .subscribe(
-                gossip_topic(run_id),
-                bootstrap_peers.iter().map(|p| p.node_id).collect(),
-            )?
-            .split();
-        info!("Connected!");
+        // let (gossip_tx, gossip_rx) = gossip
+        //     .subscribe(
+        //         gossip_topic(run_id),
+        //         bootstrap_peers.iter().map(|p| p.node_id).collect(),
+        //     )?
+        //     .split();
+        // info!("Connected!");
 
         // if this is not 1s, the bandwidth chart will be wrong.
         let update_stats_interval = interval(Duration::from_secs(1));
@@ -330,12 +330,13 @@ where
         Ok(Self {
             blobs,
             gossip,
-            gossip_rx,
-            gossip_tx,
+            router,
+            gossip_rx: None,
+            gossip_tx: None,
             rx_model_parameter_req,
             rx_model_config_req,
 
-            router,
+            endpoint,
             metrics,
             _iroh_metrics: None,
 
@@ -347,12 +348,38 @@ where
         })
     }
 
+    pub async fn run<A>(&mut self, allowlist: A, run_id: String) -> Result<()>
+    where
+        A: Allowlist + 'static + Send,
+    {
+        trace!("creating router...");
+        // let router = Arc::new(
+        //     Router::spawn(
+        //         self.endpoint.clone(),
+        //         self.gossip.clone(),
+        //         self.blobs.clone(),
+        //         model_parameter_sharing.clone(),
+        //         allowlist,
+        //     )
+        //     .await?,
+        // );
+        let (gossip_tx, gossip_rx) = self
+            .gossip
+            .subscribe(gossip_topic(&run_id), vec![])?
+            .split();
+        info!("Connected!");
+        trace!("router created!");
+        self.gossip_rx = Some(gossip_rx);
+        self.gossip_tx = Some(gossip_tx);
+        Ok(())
+    }
+
     pub async fn shutdown(&self) -> Result<()> {
         self.router.shutdown().await
     }
 
     pub fn node_id(&self) -> NodeId {
-        self.router.endpoint().node_id()
+        self.endpoint.node_id()
     }
 
     /// Don't call this often / with many peers!
@@ -364,8 +391,8 @@ where
             .collect::<Vec<_>>()
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
-        let gossip_tx = self.gossip_tx.clone();
-        let node_id = self.router.endpoint().node_id();
+        let gossip_tx = self.gossip_tx.clone().unwrap();
+        let node_id = self.endpoint.node_id();
         tokio::task::spawn(
             async move {
                 if let Err(err) = gossip_tx
@@ -381,8 +408,7 @@ where
 
     pub fn broadcast(&self, message: &BroadcastMessage) -> Result<()> {
         let gossip_tx = self.gossip_tx.clone();
-        let encoded_message =
-            SignedMessage::sign_and_encode(self.router.endpoint().secret_key(), message)?;
+        let encoded_message = SignedMessage::sign_and_encode(self.endpoint.secret_key(), message)?;
         let message_hash = hash_bytes(&encoded_message);
         debug!(
             name: "gossip_broadcast",
@@ -390,7 +416,7 @@ where
             "broadcasted gossip message with hash {message_hash}: {:?}",
             message
         );
-        tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
+        tokio::spawn(async move { gossip_tx.as_ref().unwrap().broadcast(encoded_message).await });
         Ok(())
     }
 
@@ -446,7 +472,7 @@ where
             .client()
             .add_bytes(postcard::to_allocvec(&data)?)
             .await?;
-        let addr = self.router.endpoint().node_addr().await?;
+        let addr = self.endpoint.node_addr().await?;
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format)?;
 
         debug!(
@@ -498,18 +524,17 @@ where
     }
 
     pub async fn node_addr(&self) -> Result<NodeAddr> {
-        self.router.endpoint().node_addr().await
+        self.endpoint.node_addr().await
     }
 
     pub async fn join_ticket(&self) -> Result<String> {
-        let me = self.router.endpoint().node_addr().await?;
+        let me = self.endpoint.node_addr().await?;
         Ok(PeerList(vec![me]).to_string())
     }
 
     /// RemoteInfo and bandwidth in bytes/s for a node
     pub fn remote_infos(&self) -> Vec<(RemoteInfo, f64)> {
-        self.router
-            .endpoint()
+        self.endpoint
             .remote_info_iter()
             .map(|node_info| {
                 let bandwidth = self
@@ -525,12 +550,17 @@ where
     pub async fn poll_next(&mut self) -> Result<Option<NetworkEvent<BroadcastMessage, Download>>> {
         // these are factored out to separate fns so rustfmt works on their contents :)
         select! {
-            Some(event) = self.gossip_rx.next() => {
-                match parse_gossip_event(event.map_err(|ee| ee.into()), &self.gossip_rx, &self.metrics) {
-                    Some(result) => Ok(Some(NetworkEvent::MessageReceived(result))),
-                    None => Ok(None),
+            Some(event) = async {
+                    match self.gossip_rx.as_mut() {
+                        Some(rx) => rx.next().await,
+                        None => None,
+                    }
+                } => {
+                    match parse_gossip_event(event.map_err(|ee| ee.into()), &self.gossip_rx.as_ref().unwrap(), &self.metrics) {
+                        Some(result) => Ok(Some(NetworkEvent::MessageReceived(result))),
+                        None => Ok(None),
+                    }
                 }
-            }
             update = self.download_manager.poll_next() => {
                 match update {
                     Some(DownloadManagerEvent::Complete(result)) => {
@@ -554,7 +584,7 @@ where
                 Ok(Some(NetworkEvent::ModelConfigRequest(protocol_req_tx)))
             }
             _ = self.update_stats_interval.tick() => {
-                on_update_stats(self.router.endpoint(), &mut self.state).await?;
+                on_update_stats(&self.endpoint, &mut self.state).await?;
                 Ok(None)
             }
             else => { Ok(None) }
@@ -604,14 +634,10 @@ where
 
     pub async fn get_all_peers(&self) -> Vec<(NodeAddr, ConnectionType)> {
         std::iter::once((
-            self.router
-                .endpoint()
-                .node_addr()
-                .await
-                .expect("node addr exists"),
+            self.endpoint.node_addr().await.expect("node addr exists"),
             ConnectionType::None,
         ))
-        .chain(self.router.endpoint().remote_info_iter().map(|i| {
+        .chain(self.endpoint.remote_info_iter().map(|i| {
             let c = i.conn_type.clone();
             (i.into(), c)
         }))
@@ -623,7 +649,12 @@ where
     }
 
     pub fn neighbors(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.gossip_rx.neighbors()
+        let nodes: Vec<NodeId> = if let Some(gossip_rx) = &self.gossip_rx {
+            gossip_rx.neighbors().collect()
+        } else {
+            vec![]
+        };
+        nodes.into_iter()
     }
 }
 
