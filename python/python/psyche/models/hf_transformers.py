@@ -136,7 +136,7 @@ class HfTransformersAuto(CausalLM):
             # world_mesh = build_mesh("cuda", dp_shard=dp)
             world_mesh = DeviceMesh(
                 device_type="cuda",
-                mesh=[[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11]],
+                mesh=[[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]],
                 mesh_dim_names=("dp_shard",),
             )
 
