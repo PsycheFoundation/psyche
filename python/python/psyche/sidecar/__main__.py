@@ -91,6 +91,10 @@ def main():
     parser.add_argument("--init-method", type=str)
     parser.add_argument("--world-size", type=int)
     parser.add_argument("--rank", type=int, required=True)
+    parser.add_argument(
+        "--device",
+        type=int,
+    )
 
     args = parser.parse_args()
 
@@ -120,8 +124,10 @@ def main():
     store.wait(["dp", "tp"])
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
+    print(f"dp: {dp}, tp: {tp}")
 
-    device = torch.device(args.rank)
+    device = args.device if args.device else 0
+
     model = make_causal_lm(
         architecture,
         source,

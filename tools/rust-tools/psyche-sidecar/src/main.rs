@@ -82,8 +82,11 @@ async fn main() -> Result<()> {
 
                 tasks.push(tokio::spawn(async move {
                     info!("Starting Python sidecars for rank {}", rank);
-
-                    run_python_sidecar(main_host, port, world_size, rank, backend, parent_pid).await
+                    let device = rank - start_rank;
+                    run_python_sidecar(
+                        main_host, port, world_size, rank, device, backend, parent_pid,
+                    )
+                    .await
                 }));
             }
 
@@ -138,6 +141,7 @@ async fn run_python_sidecar(
     port: u16,
     world_size: usize,
     rank: usize,
+    device: usize,
     backend: String,
     parent_pid: Option<u32>,
 ) -> Result<()> {
@@ -157,8 +161,10 @@ async fn run_python_sidecar(
         .arg(&init_method)
         .arg("--world-size")
         .arg(world_size.to_string())
-        .arg("--start-rank")
-        .arg(rank.to_string());
+        .arg("--rank")
+        .arg(rank.to_string())
+        .arg("--device")
+        .arg(device.to_string());
 
     if let Some(pid) = parent_pid {
         cmd.arg("--parent-pid").arg(pid.to_string());
