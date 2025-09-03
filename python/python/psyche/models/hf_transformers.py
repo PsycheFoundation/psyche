@@ -133,12 +133,12 @@ class HfTransformersAuto(CausalLM):
         print("device", device)
         if tp != 1 or dp != 1:
             # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
-            # world_mesh = build_mesh("cuda", dp_shard=dp)
-            world_mesh = DeviceMesh(
-                device_type="cuda",
-                mesh=[[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]],
-                mesh_dim_names=("dp_replicate", "dp_shard"),
-            )
+            world_mesh = build_mesh("cuda", dp_shard=8, dp_replicate=2)
+            # world_mesh = DeviceMesh(
+            #     device_type="cuda",
+            #     mesh=[[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]],
+            #     mesh_dim_names=("dp_replicate", "dp_shard"),
+            # )
 
             if tp != 1:
                 raise RuntimeError("TP not supported in HfTransformers yet")
