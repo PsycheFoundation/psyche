@@ -61,40 +61,40 @@ echo "
 RESET_TIME=120  # Reset retries if the client runs for 2 minutes
 num_restarts=0
 
-while true; do
-    echo -e "\n[+] Starting to train in run ${RUN_ID}..."
+# while true; do
+echo -e "\n[+] Starting to train in run ${RUN_ID}..."
 
-    start_time=$SECONDS  # Record start time
+start_time=$SECONDS  # Record start time
 
-    /bin/psyche-solana-client-wrapped train \
-        --rpc ${RPC} \
-        --ws-rpc ${WS_RPC} \
-        --run-id ${RUN_ID} \
-        --logs "console" &
+nixglhost compute-sanitizer --target-processes all --require-cuda-init=no --max-connections=1000 --launch-timeout 0 --tool racecheck /bin/psyche-solana-client-wrapped train \
+    --rpc ${RPC} \
+    --ws-rpc ${WS_RPC} \
+    --run-id ${RUN_ID} \
+    --logs "console" &
 
-    PSYCHE_CLIENT_PID=$!
-    wait "$PSYCHE_CLIENT_PID" || true  # Wait for the app to exit; continue on signal interrupt
+PSYCHE_CLIENT_PID=$!
+wait "$PSYCHE_CLIENT_PID" || true  # Wait for the app to exit; continue on signal interrupt
 
-    duration=$((SECONDS - start_time))  # Calculate runtime duration
-    EXIT_STATUS=$?
-    echo -e "\n[!] Psyche client exited with status '$EXIT_STATUS'."
+#     duration=$((SECONDS - start_time))  # Calculate runtime duration
+#     EXIT_STATUS=$?
+#     echo -e "\n[!] Psyche client exited with status '$EXIT_STATUS'."
 
-    # Reset PID after client exits
-    PSYCHE_CLIENT_PID=0
+#     # Reset PID after client exits
+#     PSYCHE_CLIENT_PID=0
 
-    # Reset restart counter if client ran longer than RESET_TIME
-    if [ $duration -ge $RESET_TIME ]; then
-        num_restarts=0
-        echo "Client ran successfully for ${RESET_TIME}+ seconds - resetting restart counter"
-    else
-        ((num_restarts += 1))
-    fi
+#     # Reset restart counter if client ran longer than RESET_TIME
+#     if [ $duration -ge $RESET_TIME ]; then
+#         num_restarts=0
+#         echo "Client ran successfully for ${RESET_TIME}+ seconds - resetting restart counter"
+#     else
+#         ((num_restarts += 1))
+#     fi
 
-    if [[ $num_restarts -ge 5 ]]; then
-        echo -e "[!] Maximum restarts reached. Exiting..."
-        exit 1;
-    fi
+#     if [[ $num_restarts -ge 5 ]]; then
+#         echo -e "[!] Maximum restarts reached. Exiting..."
+#         exit 1;
+#     fi
 
-    echo "Waiting 5 seconds before restart..."
-    sleep 5
-done
+#     echo "Waiting 5 seconds before restart..."
+#     sleep 5
+# done

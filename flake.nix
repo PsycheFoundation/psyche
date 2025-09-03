@@ -67,7 +67,8 @@
 
       agenix-shell = {
         secrets = {
-          devnet-keypair-wallet.file = ./secrets/devnet/wallet.age;
+          # devnet-keypair-wallet.file = ./secrets/devnet/wallet.age;
+          devnet-master-keypair-wallet.file = ./secrets/devnet/master-wallet.age;
           devnet-rpc.file = ./secrets/devnet/rpc.age;
           mainnet-rpc.file = ./secrets/mainnet/rpc.age;
         };

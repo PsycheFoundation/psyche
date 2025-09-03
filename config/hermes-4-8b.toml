@@ -1,0 +1,41 @@
+[config]
+warmup_time = 600
+cooldown_time = 30
+rounds_per_epoch = 3122
+max_round_train_time = 60
+round_witness_time = 5
+min_clients = 24
+init_min_clients = 24
+verification_percent = 0
+witness_nodes = 0
+global_batch_size_end = 384
+global_batch_size_start = 384
+global_batch_size_warmup_tokens = 0
+total_steps = 12228
+
+[model.LLM]
+architecture = "HfAuto"
+data_type = "Finetuning"
+max_seq_len = 16384
+cold_start_warmup_steps = 600
+
+[model.LLM.data_location]
+Preprocessed = "/scratch/Hermes-4-Preprocessed-Llama3/data"
+
+[model.LLM.checkpoint.Hub]
+repo_id = "NousResearch/Meta-Llama-3.1-8B"
+
+[model.LLM.lr_schedule.Cosine]
+base_lr = 3.0e-5
+warmup_steps = 600
+warmup_init_lr = 0.0
+total_steps = 12228
+final_lr = 0.0
+
+[model.LLM.optimizer.Distro]
+# clip_grad_norm = 1.0
+compression_decay = 0.999
+compression_chunk = 64
+compression_topk = 16
+quantize_1bit = true
+weight_decay = 0.01

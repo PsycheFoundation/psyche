@@ -29,12 +29,15 @@ in
       bashInteractive
       cacert
       coreutils
+      cudaPackages.cuda_sanitizer_api
+      strace
+      nix-gl-host
       nixglhostRustPackages."psyche-solana-client-nixglhost"
       nixglhostRustPackages."psyche-centralized-client-nixglhost"
       nixglhostRustPackages."inference-nixglhost"
       nixglhostRustPackages."train-nixglhost"
       nixglhostRustPackages."bandwidth_test-nixglhost"
-      (pkgs.runCommand "entrypoint" { } ''
+      (runCommand "entrypoint" { } ''
         mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
         cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
         chmod +x $out/bin/train_entrypoint.sh

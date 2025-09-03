@@ -6,7 +6,10 @@ in
 {
   ## Local Development
   # a shared devnet wallet
-  "secrets/devnet/wallet.age".publicKeys = keys.allDevKeys;
+  # "secrets/devnet/wallet.age".publicKeys = keys.allDevKeys;
+
+  # the master devnet wallet
+  "secrets/devnet/master-wallet.age".publicKeys = keys.allDevKeys;
 
   # RPC url for devnet
   "secrets/devnet/rpc.age".publicKeys = keys.allDevKeys;
