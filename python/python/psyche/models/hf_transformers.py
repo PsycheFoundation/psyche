@@ -236,24 +236,38 @@ class HfTransformersAuto(CausalLM):
         loss_scale: Optional[float] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if self.world_mesh:
+            print("FORWARD 1")
             if self.world_mesh.mesh_dim_names:
+                print("FORWARD 2")
                 if "dp_shard" in self.world_mesh.mesh_dim_names:
+                    print("FORWARD 3")
                     dp_shard = self.world_mesh[tuple(("dp_shard",))]
+                    print("FORWARD 4")
                     size = dp_shard.size()
+                    print("FORWARD 5")
                     rank = dp_shard.get_local_rank()
+                    print("FORWARD 6")
 
                     # do FSDP data sharding
                     shard_size = input_ids.shape[0] // size
+                    print("FORWARD 7")
                     start_row = rank * shard_size
+                    print("FORWARD 8")
                     input_ids = input_ids.narrow(0, start_row, shard_size).contiguous()
+                    print("FORWARD 9")
                     if labels is not None:
+                        print("FORWARD 10")
                         labels = labels.narrow(0, start_row, shard_size).contiguous()
+                        print("FORWARD 11")
                     if position_ids is not None:
+                        print("FORWARD 12")
                         position_ids = position_ids.narrow(
                             0, start_row, shard_size
                         ).contiguous()
+                        print("FORWARD 13")
 
         num_logits_to_keep = 0 if num_logits_to_keep is None else num_logits_to_keep
+        print("FORWARD 14")
         ret = self.model(
             input_ids,
             labels=labels,
@@ -261,6 +275,7 @@ class HfTransformersAuto(CausalLM):
             num_logits_to_keep=num_logits_to_keep,
             return_dict=True,
         )
+        print("FORWARD 15")
         if ret.loss and loss_scale:
             ret.loss /= loss_scale
         return (ret.logits, ret.loss)
