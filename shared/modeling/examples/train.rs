@@ -465,6 +465,7 @@ async fn main() -> Result<()> {
                 let distro_quantization = args.distro_quantization;
                 let prev_distro_results = prev_distro_results.clone();
                 std::thread::spawn(move || {
+                    info!("TRAINNNN 1");
                     #[allow(irrefutable_let_patterns)]
                     if let Trainer::Local(trainer) = &trainer {
                         trainer.data_parallel_barrier();
@@ -484,6 +485,7 @@ async fn main() -> Result<()> {
                             cancel.clone(),
                         )
                         .unwrap();
+                    info!("TRAINNNN 2");
                     if !distro || step > 1 {
                         output.trainer = output
                             .trainer
@@ -502,16 +504,21 @@ async fn main() -> Result<()> {
                             )
                             .unwrap()
                     }
+                    info!("TRAINNNN 3");
                     output
                 })
             })
             .collect::<Vec<_>>();
+
+        info!("TRAINNNN 4");
 
         let mut loss = 0.;
         let joined_trainers = trainings
             .into_iter()
             .map(|x| x.join().unwrap())
             .collect::<Vec<_>>();
+        info!("TRAINNNN 5");
+
         trainers = joined_trainers
             .into_iter()
             .enumerate()
@@ -524,6 +531,8 @@ async fn main() -> Result<()> {
                 output.trainer
             })
             .collect();
+
+        info!("TRAINNNN 6");
 
         let duration = SystemTime::now()
             .duration_since(start_time)
