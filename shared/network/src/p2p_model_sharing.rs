@@ -470,13 +470,14 @@ impl SharableModel {
         }
     }
 
-    pub async fn get_model_name_and_hash<B: Networkable>(&self, p2p: &NetworkConnection<B, TransmittableDownload>,) -> Result<(NodeAddr, Hash), SharableModelError> {
-        if let Some((name, hash)) = self.model_name_and_hash.clone() {
+    //todo: i have no idea why we need to borrow as mut here, but if we don't rust complains that SharableModel needs to be Send T_T
+    pub async fn get_model_name_and_hash<B: Networkable>(&mut self, p2p: &NetworkConnection<B, TransmittableDownload>,) -> Result<(NodeAddr, Hash), SharableModelError> {
+        if let Some((name, hash)) = self.model_name_and_hash.as_ref() {
             /*if desired_name != name {
                 return Err(SharableModelError::MismatchedModelNameError(desired_name, name));
             }*/
             let addr = p2p.get_addr().await.map_err(|err| SharableModelError::P2PGetNodeAddrError(err.to_string()))?;
-            Ok((addr, hash))
+            Ok((addr, hash.clone()))
         } else {
             Err(SharableModelError::NameAndHashNotLoaded)
         }
