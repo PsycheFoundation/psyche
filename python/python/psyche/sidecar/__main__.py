@@ -155,7 +155,7 @@ def main():
         raise RuntimeError("FP32 reduce not supported in Python Hf yet")
 
     trainer = Trainer(
-        args.rank,
+        device,
         model,
         json.dumps(hyperparameters.lr_scheduler),
         json.dumps(hyperparameters.optimizer),
@@ -237,6 +237,7 @@ def main():
             loss = torch.Tensor([loss]).to(device=device, dtype=torch.float32)
             print(f"loss1: {loss}")
             dist.all_reduce(loss)
+            print(f"loss2: {loss}")
         elif operation["operation"] == "optimize":
             with torch.no_grad():
                 optimize = OptimizeOperation(**operation)

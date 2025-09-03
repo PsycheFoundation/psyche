@@ -33,6 +33,7 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
             names.append(name)
 
     names = tuple(names)
+    print("build_mesh dims, names", dims, names)
     mesh = init_device_mesh(device_type, dims, mesh_dim_names=names)
 
     # Create all the submesh here to ensure all required process groups are
@@ -126,6 +127,9 @@ class HfTransformersAuto(CausalLM):
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
+
+        print("tp", tp)
+        print("dp", dp)
 
         world_mesh = None
         if tp != 1 or dp != 1:
