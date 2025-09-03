@@ -77,18 +77,18 @@ impl PythonDistributedTrainer {
         };
 
         // FIX(marian): THIS IS JUST A HARDCODED CODE FOR TESTING
-        // if model.parallelism.dp > 1 {
-        debug!(
-            "Increasing micro batch size from {} to {} to account for FSDP sharding size of {}",
-            micro_batch_size,
-            micro_batch_size * model.parallelism.dp,
-            model.parallelism.dp
-        );
+        if model.parallelism.dp > 1 {
+            debug!(
+                "Increasing micro batch size from {} to {} to account for FSDP sharding size of {}",
+                micro_batch_size,
+                micro_batch_size * model.parallelism.dp,
+                model.parallelism.dp
+            );
 
-        // FIX(marian): THIS IS JUST A HARDCODED CODE FOR TESTING
-        // micro_batch_size *= model.parallelism.dp;
-        micro_batch_size *= 2;
-        // }
+            // FIX(marian): THIS IS JUST A HARDCODED CODE FOR TESTING
+            micro_batch_size *= model.parallelism.dp;
+            // micro_batch_size *= 2;
+        }
 
         let hyperparameters = serde_json::json!({
             "lr_scheduler": lr_scheduler,
