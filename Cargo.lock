@@ -7212,6 +7212,7 @@ dependencies = [
  "futures",
  "hex",
  "hf-hub",
+ "iroh-blobs",
  "lazy_static",
  "postcard",
  "psyche-coordinator",

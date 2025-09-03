@@ -1,5 +1,5 @@
 use allowlist::Allowlist;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
@@ -16,8 +16,8 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
-    PeerManagerHandle,
+    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
+    MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 use router::Router;
@@ -38,15 +38,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{Interval, interval},
+    time::{interval, Interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
-pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
+pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
+pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -68,29 +68,31 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
 pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
-    RetriedDownloadsHandle, TransmittableDownload,
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
+    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
 };
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
 pub use p2p_model_sharing::{
-    ALPN, ModelRequestType, ModelSharing, SharableModel, SharableModelError,
-    TransmittableModelConfig,
+    ModelRequestType, ModelSharing, SharableModel, SharableModelError, TransmittableModelConfig,
+    ALPN,
 };
 pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
-    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
-    distro_results_from_reader, distro_results_to_bytes,
+    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
+    SerializedDistroResult, TransmittableDistroResult,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
 pub use tui::{NetworkTUIState, NetworkTui};
 use url::Url;
 pub use util::fmt_bytes;
+
+use crate::p2p_model_sharing::{ModelInfoSharingMessage, ModelMetadataNetworkMessage};
 
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
@@ -106,6 +108,13 @@ pub enum DiscoveryMode {
     N0,
 }
 
+#[derive(Debug, Clone)]
+pub enum GetMetaData {
+    Blob(BlobTicket, ModelRequestType),
+    HashAddr((NodeAddr, Hash))
+}
+
+
 pub struct NetworkConnection<BroadcastMessage, Download>
 where
     BroadcastMessage: Networkable,
@@ -117,6 +126,7 @@ where
     gossip_tx: GossipSender,
     gossip_rx: GossipReceiver,
     rx_model_parameter_req: UnboundedReceiver<ParameterSharingMessage>,
+    rx_model_info_req: UnboundedReceiver<ModelInfoSharingMessage>,
     rx_model_config_req: UnboundedReceiver<ModelConfigSharingMessage>,
     download_manager: DownloadManager<Download>,
     _broadcast_message: PhantomData<BroadcastMessage>,
@@ -262,8 +272,12 @@ where
         trace!("creating model parameter sharing...");
         let (tx_model_parameter_req, rx_model_parameter_req) = mpsc::unbounded_channel();
         let (tx_model_config_req, rx_model_config_req) = mpsc::unbounded_channel();
-        let model_parameter_sharing =
-            ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
+        let (tx_model_info_req, rx_model_info_req) = mpsc::unbounded_channel();
+        let model_parameter_sharing = ModelSharing::new(
+            tx_model_parameter_req,
+            tx_model_config_req,
+            tx_model_info_req,
+        );
         trace!("model parameter sharing created!");
 
         // init metrics
@@ -323,7 +337,7 @@ where
             gossip_tx,
             rx_model_parameter_req,
             rx_model_config_req,
-
+            rx_model_info_req,
             router,
             metrics,
             _iroh_metrics: iroh_metrics,
@@ -382,6 +396,8 @@ where
         tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
         Ok(())
     }
+
+    pub fn start_download_big_blob(&mut self, tickets: Vec<(NodeAddr, Hash)>) {}
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
         let provider_node_id = ticket.node_addr().clone();
@@ -452,6 +468,11 @@ where
         self.state.blob_tags.insert((tag, hash));
 
         Ok(blob_ticket)
+    }
+
+    pub async fn get_addr(&self) -> Result<NodeAddr> {
+        let addr = self.router.endpoint().node_addr().await?;
+        Ok(addr)
     }
 
     // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
@@ -539,6 +560,9 @@ where
             Some(ParameterSharingMessage::Get(parameter_name, protocol_req_tx)) = self.rx_model_parameter_req.recv() => {
                 Ok(Some(NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx)))
             }
+            Some(ModelInfoSharingMessage::Get(tx)) = self.rx_model_info_req.recv() => {
+                Ok(Some(NetworkEvent::ModelNameHashRequest(tx)))
+            }
             Some(ModelConfigSharingMessage::Get(protocol_req_tx)) = self.rx_model_config_req.recv() => {
                 Ok(Some(NetworkEvent::ModelConfigRequest(protocol_req_tx)))
             }
@@ -620,7 +644,7 @@ pub async fn request_model_blob_ticket(
     router: Arc<Router>,
     node_addr: NodeId,
     request_type: &ModelRequestType,
-) -> Result<BlobTicket> {
+) -> Result<ModelMetadataNetworkMessage> {
     let conn = router
         .endpoint()
         .connect(node_addr, p2p_model_sharing::ALPN)
@@ -634,12 +658,12 @@ pub async fn request_model_blob_ticket(
 
     // Receive parameter value blob ticket
     let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
-    let parameter_blob_ticket: Result<Result<BlobTicket, SharableModelError>, postcard::Error> =
+    let parameter_blob_ticket: Result<ModelMetadataNetworkMessage, postcard::Error> =
         postcard::from_bytes(&parameter_blob_ticket_bytes);
     let result = parameter_blob_ticket
         .with_context(|| "Error parsing model parameter blob ticket".to_string())?;
 
-    result.map_err(|e| anyhow!("Error received from peer: {e}"))
+    Ok(result)
 }
 
 fn parse_gossip_event<BroadcastMessage: Networkable>(
@@ -707,6 +731,7 @@ where
         oneshot::Sender<Result<BlobTicket, SharableModelError>>,
     ),
     ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
+    ModelNameHashRequest(oneshot::Sender<Result<(NodeAddr, Hash), SharableModelError>>),
 }
 
 async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
@@ -800,7 +825,7 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
+    model_blob_tickets: Arc<std::sync::Mutex<Vec<GetMetaData>>>,
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
 ) {
@@ -824,14 +849,34 @@ pub async fn blob_ticket_param_request_task(
         .await;
 
         match result {
-            Ok(Ok(blob_ticket)) => {
+            Ok(Ok(ModelMetadataNetworkMessage::Ticket(Ok(blob_ticket)))) => {
                 model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push((blob_ticket, model_request_type));
+                    .push(GetMetaData::Blob(blob_ticket, model_request_type));
 
                 peer_manager.report_success(peer_id);
                 return;
+            }
+            Ok(Ok(ModelMetadataNetworkMessage::ModelInfo(info))) => {
+                match info {
+                    Err(err) => {
+                        warn!("Request failed for peer {peer_id}: {err}. Trying next peer");
+                    } Ok (info) => {
+                        model_blob_tickets.lock().unwrap().push(GetMetaData::HashAddr(info));
+                    }
+                }
+            }
+            Ok(Ok(ModelMetadataNetworkMessage::Ticket(Err(err))))
+            | Ok(Ok(ModelMetadataNetworkMessage::ModelInfo(Err(err)))) => {
+                // Failed - report error and potentially try next peer
+                peer_manager.report_blob_ticket_request_error(peer_id, None);
+
+                warn!("Request failed for peer {peer_id}: {err}. Trying next peer");
+                attempts += 1;
+
+                // Small delay before retry
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer

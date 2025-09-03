@@ -166,6 +166,7 @@ impl App {
             NetworkEvent::MessageReceived((from, Message::DistroResult { step, blob_ticket })) => {
                 info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
+                //self.network.start_download_big_blob(vec![(blob_ticket.node_addr(), blob_ticket.hash())]);
                 self.network.start_download(
                     blob_ticket,
                     step,

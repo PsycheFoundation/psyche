@@ -1,10 +1,10 @@
 use anyhow::Result;
-use iroh::NodeId;
+use iroh::{NodeAddr, NodeId};
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
-use iroh_blobs::ticket::BlobTicket;
+use iroh_blobs::{ticket::BlobTicket, Hash};
 use psyche_core::BoxedFuture;
 use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
@@ -234,6 +234,18 @@ pub enum SharableModelError {
     LoadThreadCrashed,
     #[error("P2P add download error: {0}")]
     P2PAddDownloadError(String),
+    #[error("We don't have the model name and hash")]
+    NameAndHashNotLoaded,
+    #[error("P2P get own NodeAddr error: {0}")]
+    P2PGetNodeAddrError(String),
+    #[error("Requested model name: {0} does not match own model name: {1}")]
+    MismatchedModelNameError(String, String),
+}
+
+#[derive(serde::Deserialize, serde::Serialize,)]
+pub enum ModelMetadataNetworkMessage {
+    Ticket(Result<BlobTicket, SharableModelError>),
+    ModelInfo(Result<(NodeAddr, Hash), SharableModelError>),
 }
 
 // This convertions are done manually since the original errors does not implement serialize and deserialize
@@ -269,6 +281,8 @@ pub enum ModelRequestType {
     Config,
     /// Parameter request containing the parameter name
     Parameter(String),
+    // temporary, we eventually want to move to just using this instead of Parameter
+    ModelHash(String),
 }
 
 pub enum ParameterSharingMessage {
@@ -276,6 +290,10 @@ pub enum ParameterSharingMessage {
         String,
         oneshot::Sender<Result<BlobTicket, SharableModelError>>,
     ),
+}
+
+pub enum ModelInfoSharingMessage {
+    Get(oneshot::Sender<Result<(NodeAddr, Hash), SharableModelError>>),
 }
 
 pub enum ModelConfigSharingMessage {
@@ -328,6 +346,7 @@ pub struct SharableModel {
     config_and_tokenizer_ticket: Option<BlobTicket>,
     pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
+    model_name_and_hash: Option<(String, Hash)>,
 }
 
 // These impls are methods called by both the sharing model peers and the ones
@@ -343,6 +362,7 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
+            model_name_and_hash: None,
         }
     }
 }
@@ -447,6 +467,18 @@ impl SharableModel {
                 }
                 None => Err(SharableModelError::ParameterUnknown(param_name.to_string())),
             },
+        }
+    }
+
+    pub async fn get_model_name_and_hash<B: Networkable>(&self, p2p: &NetworkConnection<B, TransmittableDownload>,) -> Result<(NodeAddr, Hash), SharableModelError> {
+        if let Some((name, hash)) = self.model_name_and_hash.clone() {
+            /*if desired_name != name {
+                return Err(SharableModelError::MismatchedModelNameError(desired_name, name));
+            }*/
+            let addr = p2p.get_addr().await.map_err(|err| SharableModelError::P2PGetNodeAddrError(err.to_string()))?;
+            Ok((addr, hash))
+        } else {
+            Err(SharableModelError::NameAndHashNotLoaded)
         }
     }
 
@@ -618,28 +650,35 @@ impl SharableModel {
 pub struct ModelSharing {
     tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
     tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
+    tx_model_info_req: UnboundedSender<ModelInfoSharingMessage>,
 }
 
 impl ModelSharing {
     pub fn new(
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
+        tx_model_info_req: UnboundedSender<ModelInfoSharingMessage>,
     ) -> Self {
         Self {
             tx_model_parameter_req,
             tx_model_config_req,
+            tx_model_info_req,
         }
     }
     pub(crate) fn _accept_connection(
         connection: Connection,
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
+        tx_model_info_req: UnboundedSender<ModelInfoSharingMessage>,
     ) -> BoxedFuture<Result<()>> {
         Box::pin(async move {
             let (mut send, mut recv) = connection.accept_bi().await?;
             let model_request_type_bytes = recv.read_to_end(1000).await?;
             let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes)?;
-            let blob_ticket = match model_request_type {
+            // todo: this is so bad, fix this T_T
+            // we should be
+
+            let response = match model_request_type {
                 ModelRequestType::Parameter(parameter_request) => {
                     // Create channel for requesting the model parameter to the client backend
                     // and add a new blob for it
@@ -649,7 +688,15 @@ impl ModelSharing {
                     tx_model_parameter_req.send(request)?;
 
                     // Receive the blob ticket and forward it to the requesting client
-                    rx_req.await?
+                    ModelMetadataNetworkMessage::Ticket(rx_req.await?)
+                }
+                ModelRequestType::ModelHash(name) => {
+                    let (tx_req, rx_req) = oneshot::channel();
+                    let request = ModelInfoSharingMessage::Get(tx_req);
+                    tx_model_info_req.send(request)?;
+
+                    // Receive the blob ticket and forward it to the requesting client
+                    ModelMetadataNetworkMessage::ModelInfo(rx_req.await?)
                 }
                 ModelRequestType::Config => {
                     // Create channel for requesting the model config to the client backend and add a new blob for it
@@ -659,13 +706,22 @@ impl ModelSharing {
                     tx_model_config_req.send(request)?;
 
                     // Receive the blob ticket and forward it to the requesting client
-                    rx_req.await?
+                    ModelMetadataNetworkMessage::Ticket(rx_req.await?)
                 }
             };
 
-            let data = postcard::to_stdvec(&blob_ticket)?;
-            send.write_all(&data).await?;
-            send.finish()?;
+            match response {
+                ModelMetadataNetworkMessage::Ticket(blob_ticket) => {
+                    let data = postcard::to_stdvec(&blob_ticket)?;
+                    send.write_all(&data).await?;
+                    send.finish()?;
+                }
+                ModelMetadataNetworkMessage::ModelInfo(info) => {
+                    let data = postcard::to_stdvec(&info)?;
+                    send.write_all(&data).await?;
+                    send.finish()?;
+                }
+            }
 
             // Wait until the remote closes the connection, which it does once it
             // received the response.
@@ -678,18 +734,33 @@ impl ModelSharing {
     pub fn accept_connection(&self, connection: Connection) -> BoxedFuture<Result<()>> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
+        let tx_model_info_req = self.tx_model_info_req.clone();
         Box::pin(async move {
-            Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
+            Self::_accept_connection(
+                connection,
+                tx_model_parameter_req,
+                tx_model_config_req,
+                tx_model_info_req,
+            )
+            .await
         })
     }
 }
 
 impl ProtocolHandler for ModelSharing {
+    //todo: why not just call Self::accept_connection ?
     fn accept(&self, connection: Connection) -> BoxedFuture<Result<()>> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
+        let tx_model_info_req = self.tx_model_info_req.clone();
         Box::pin(async move {
-            Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
+            Self::_accept_connection(
+                connection,
+                tx_model_parameter_req,
+                tx_model_config_req,
+                tx_model_info_req,
+            )
+            .await
         })
     }
 }
