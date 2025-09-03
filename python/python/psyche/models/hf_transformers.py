@@ -128,6 +128,9 @@ class HfTransformersAuto(CausalLM):
             torch.cuda.set_device(device)
 
         world_mesh = None
+        print("dp", dp)
+        print("tp", tp)
+        print("device", device)
         if tp != 1 or dp != 1:
             # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
             # world_mesh = build_mesh("cuda", dp_shard=dp)
