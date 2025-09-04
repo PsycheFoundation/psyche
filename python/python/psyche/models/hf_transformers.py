@@ -134,7 +134,7 @@ class HfTransformersAuto(CausalLM):
         world_mesh = None
         if tp != 1 or dp != 1:
             # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
-            world_mesh = build_mesh("cuda", dp_shard=dp)
+            world_mesh = build_mesh("cuda", dp_shard=8, dp_replicate=1)
             if tp != 1:
                 raise RuntimeError("TP not supported in HfTransformers yet")
                 # model.tensor_parallel(world_mesh[("tp",)])
