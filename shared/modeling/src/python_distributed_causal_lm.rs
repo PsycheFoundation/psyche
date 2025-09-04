@@ -197,7 +197,11 @@ impl PythonDistributedCausalLM {
                         comm.set("source", "files")?;
                         let files = path_bufs
                             .iter()
-                            .map(|x| x.to_str().unwrap())
+                            .map(|x| {
+                                let x = contract_home_path(x);
+                                println!("PATH: {x}");
+                                x
+                            })
                             .collect::<Vec<_>>();
                         let files = serde_json::to_string(&files).unwrap();
                         comm.set("files", &files)?;
@@ -232,6 +236,8 @@ impl PythonDistributedCausalLM {
                     .arg("--world-size")
                     .arg(format!("{world_size}"))
                     .arg("--rank")
+                    .arg(format!("{rank}"))
+                    .arg("--device")
                     .arg(format!("{rank}"))
                     .spawn();
                 match res.as_ref() {
@@ -306,4 +312,20 @@ impl CausalLM for PythonDistributedCausalLM {
     fn max_context_length(&self) -> usize {
         self.local.max_context_length()
     }
+}
+
+use std::path::Path;
+
+fn contract_home_path(path: &Path) -> String {
+    if let Ok(home_dir) = std::env::var("HOME") {
+        if let Some(path_str) = path.to_str() {
+            let home_str = home_dir.to_string();
+            if path_str.starts_with(&home_str) {
+                // Replace the home directory part with ~/
+                return format!("~{}", &path_str[home_str.len()..]);
+            }
+        }
+    }
+    // If we can't contract it, return as is
+    path.to_str().unwrap_or_default().to_string()
 }
