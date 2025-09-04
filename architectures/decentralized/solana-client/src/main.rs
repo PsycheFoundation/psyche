@@ -1,51 +1,52 @@
-use crate::command::checkpoint::command_checkpoint_execute;
 use crate::command::checkpoint::CommandCheckpointParams;
-use crate::command::close_run::command_close_run_execute;
+use crate::command::checkpoint::command_checkpoint_execute;
 use crate::command::close_run::CommandCloseRunParams;
-use crate::command::create_run::command_create_run_execute;
+use crate::command::close_run::command_close_run_execute;
 use crate::command::create_run::CommandCreateRunParams;
-use crate::command::json_dump_run::command_json_dump_run_execute;
+use crate::command::create_run::command_create_run_execute;
 use crate::command::json_dump_run::CommandJsonDumpRunParams;
-use crate::command::json_dump_user::command_json_dump_user_execute;
+use crate::command::json_dump_run::command_json_dump_run_execute;
 use crate::command::json_dump_user::CommandJsonDumpUserParams;
-use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
+use crate::command::json_dump_user::command_json_dump_user_execute;
 use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
-use crate::command::set_paused::command_set_paused_execute;
+use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
 use crate::command::set_paused::CommandSetPausedParams;
-use crate::command::tick::command_tick_execute;
+use crate::command::set_paused::command_set_paused_execute;
 use crate::command::tick::CommandTickParams;
-use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
+use crate::command::tick::command_tick_execute;
 use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
-use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
+use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
 use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
-use crate::command::update_config::command_update_config_execute;
+use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
 use crate::command::update_config::CommandUpdateConfigParams;
+use crate::command::update_config::command_update_config_execute;
 use crate::{
-    app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
+    app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
 };
 
 use anchor_client::{
+    Cluster,
     solana_sdk::{
         commitment_config::{CommitmentConfig, CommitmentLevel},
         pubkey::Pubkey,
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
-    Cluster,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
-use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
+use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
 use psyche_coordinator::{
-    model::{Checkpoint, Model},
     RunState,
+    model::{Checkpoint, Model},
 };
 use psyche_core::sha256;
 use psyche_network::SecretKey;
 use psyche_tui::{
+    LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop, LogOutput, ServiceInfo,
+    maybe_start_render_loop,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -633,8 +634,7 @@ async fn async_main() -> Result<()> {
                 }
 
                 #[allow(irrefutable_let_patterns)]
-                let Model::LLM(model) = coordinator_account_state.model
-                else {
+                let Model::LLM(model) = coordinator_account_state.model else {
                     bail!("model is not an LLM, unsure how to predownload.");
                 };
 

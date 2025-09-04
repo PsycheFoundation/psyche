@@ -5,12 +5,12 @@ use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_client::solana_sdk::signature::Keypair;
 use anchor_client::solana_sdk::signer::Signer;
 use anchor_client::solana_sdk::system_instruction;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use clap::Args;
 
-use crate::instructions;
 use crate::SolanaBackend;
+use crate::instructions;
 
 #[derive(Debug, Clone, Args)]
 #[command()]

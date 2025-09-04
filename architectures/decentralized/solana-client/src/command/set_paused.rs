@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Args;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 
-use crate::{instructions, SolanaBackend};
+use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
 #[command()]

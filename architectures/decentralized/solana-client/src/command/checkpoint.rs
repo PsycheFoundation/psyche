@@ -3,8 +3,8 @@ use clap::Args;
 use psyche_coordinator::model::HubRepo;
 use psyche_core::FixedString;
 
-use crate::instructions;
 use crate::SolanaBackend;
+use crate::instructions;
 
 #[derive(Debug, Clone, Args)]
 #[command()]

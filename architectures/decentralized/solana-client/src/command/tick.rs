@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::Args;
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::time::{MissedTickBehavior, interval};
 
-use crate::{instructions, SolanaBackend};
+use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
 #[command()]
