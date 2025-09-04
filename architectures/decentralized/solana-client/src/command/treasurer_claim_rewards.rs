@@ -54,15 +54,16 @@ pub async fn command_treasurer_claim_rewards_execute(
     let user_collateral_address =
         associated_token::get_associated_token_address(&user, &collateral_mint);
     if backend.get_balance(&user_collateral_address).await? == 0 {
-        let user_ata_create_instruction = associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+        let instruction = associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
             &backend.get_payer(),
             &user,
             &collateral_mint,
             &token::ID,
         );
-        let user_ata_create_signature =
-            backend.process(&[user_ata_create_instruction], &[]).await?;
-        println!("Created associated token account for user during transaction: {user_ata_create_signature}");
+        let signature = backend
+            .send_and_retry("Create user ATA", &[instruction], &[])
+            .await?;
+        println!("Created associated token account for user during transaction: {signature}");
     }
 
     let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
@@ -71,13 +72,13 @@ pub async fn command_treasurer_claim_rewards_execute(
     let treasurer_participant_address =
         psyche_solana_treasurer::find_participant(&treasurer_run_address, &user);
     if backend.get_balance(&treasurer_participant_address).await? == 0 {
-        let participant_create_instruction = instructions::treasurer_participant_create(
+        let instruction = instructions::treasurer_participant_create(
             &backend.get_payer(),
             treasurer_index,
             &user,
         );
         let participant_create_signature = backend
-            .process(&[participant_create_instruction], &[])
+            .send_and_retry("Create participant PDA", &[instruction], &[])
             .await?;
         println!(
             "Created the participant claim during transaction: {participant_create_signature}"
@@ -121,14 +122,16 @@ pub async fn command_treasurer_claim_rewards_execute(
         );
     }
 
-    let claim_instruction = instructions::treasurer_participant_claim(
+    let instruction = instructions::treasurer_participant_claim(
         treasurer_index,
         &collateral_mint,
         &coordinator_account,
         &user,
         claim_earned_points,
     );
-    let claim_signature = backend.process(&[claim_instruction], &[]).await?;
+    let claim_signature = backend
+        .send_and_retry("Claim rewards", &[instruction], &[])
+        .await?;
     println!("Claimed {claim_earned_points} earned points in transaction: {claim_signature}");
 
     Ok(())

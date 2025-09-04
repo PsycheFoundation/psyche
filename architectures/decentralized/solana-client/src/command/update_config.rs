@@ -165,7 +165,9 @@ pub async fn command_update_config_execute(
             progress,
         )
     };
-    let signature = backend.process(&[instruction], &[]).await?;
+    let signature = backend
+        .send_and_retry("Update config", &[instruction], &[])
+        .await?;
     println!("Updated config of {run_id} with transaction {signature}");
 
     println!(" - Metadata: {metadata:#?}");

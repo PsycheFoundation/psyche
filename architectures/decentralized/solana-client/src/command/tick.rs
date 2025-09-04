@@ -37,7 +37,7 @@ pub async fn command_tick_execute(backend: SolanaBackend, params: CommandTickPar
     for _ in 0..count.unwrap_or(u64::MAX) {
         let instruction =
             instructions::coordinator_tick(&coordinator_instance, &coordinator_account, &ticker);
-        let signature = backend.process(&[instruction], &[]).await?;
+        let signature = backend.send_and_retry("Tick", &[instruction], &[]).await?;
         println!("Ticked run {run_id} with transaction {signature}");
 
         println!("\n===== Logs =====");

@@ -47,7 +47,9 @@ pub async fn command_checkpoint_execute(
         &user,
         repo,
     );
-    let signature = backend.process(&[instruction], &[]).await?;
+    let signature = backend
+        .send_and_retry("Checkpoint", &[instruction], &[])
+        .await?;
     println!("Checkpointed to repo {repo:?} on run {run_id} with transaction {signature}");
 
     Ok(())

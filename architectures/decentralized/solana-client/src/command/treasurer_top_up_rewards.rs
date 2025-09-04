@@ -63,7 +63,9 @@ pub async fn command_treasurer_top_up_rewards_execute(
         &[],
         collateral_amount,
     )?;
-    let signature = backend.process(&[instruction], &[]).await?;
+    let signature = backend
+        .send_and_retry("Top-up rewards", &[instruction], &[])
+        .await?;
     println!("Transfered {collateral_amount} collateral to treasurer in transaction: {signature}");
 
     Ok(())

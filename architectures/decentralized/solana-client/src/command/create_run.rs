@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::sync::Arc;
 
 use anchor_client::solana_sdk::native_token::lamports_to_sol;
 use anchor_client::solana_sdk::pubkey::Pubkey;
@@ -20,9 +20,9 @@ pub struct CommandCreateRunParams {
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
-    treasurer_collateral_mint: Option<String>,
+    treasurer_collateral_mint: Option<Pubkey>,
     #[clap(long)]
-    join_authority: Option<String>,
+    join_authority: Option<Pubkey>,
 }
 
 pub async fn command_create_run_execute(
@@ -38,12 +38,10 @@ pub async fn command_create_run_execute(
 
     let payer = backend.get_payer();
     let main_authority = payer;
-    let join_authority = join_authority
-        .map(|address| Pubkey::from_str(&address).unwrap())
-        .unwrap_or(payer);
+    let join_authority = join_authority.unwrap_or(payer);
 
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
-    let coordinator_account_signer = Keypair::new();
+    let coordinator_account_signer = Arc::new(Keypair::new());
     let coordinator_account = coordinator_account_signer.pubkey();
 
     let space = psyche_solana_coordinator::CoordinatorAccount::space_with_discriminator();
@@ -65,40 +63,34 @@ pub async fn command_create_run_execute(
             Please provide a collateral mint address if you want to create a run with a treasurer."
         );
     }
-    let treasurer_index_and_collateral_mint =
-        treasurer_collateral_mint.map(|treasurer_collateral_mint| {
-            let treasurer_index =
-                SolanaBackend::compute_deterministic_treasurer_index(&run_id, treasurer_index);
-            let treasurer_collateral_mint = Pubkey::from_str(&treasurer_collateral_mint)
-                .expect("Invalid collateral mint address");
-            (treasurer_index, treasurer_collateral_mint)
-        });
 
-    let instruction_init =
-        if let Some(treasurer_index_and_collateral_mint) = treasurer_index_and_collateral_mint {
-            instructions::treasurer_run_create(
-                &payer,
-                &run_id,
-                treasurer_index_and_collateral_mint.0,
-                &treasurer_index_and_collateral_mint.1,
-                &coordinator_account,
-                &main_authority,
-                &join_authority,
-            )
-        } else {
-            instructions::coordinator_init_coordinator(
-                &payer,
-                &run_id,
-                &coordinator_account,
-                &main_authority,
-                &join_authority,
-            )
-        };
+    let instruction_init = if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
+        let treasurer_index =
+            SolanaBackend::compute_deterministic_treasurer_index(&run_id, treasurer_index);
+        instructions::treasurer_run_create(
+            &payer,
+            &run_id,
+            treasurer_index,
+            &treasurer_collateral_mint,
+            &coordinator_account,
+            &main_authority,
+            &join_authority,
+        )
+    } else {
+        instructions::coordinator_init_coordinator(
+            &payer,
+            &run_id,
+            &coordinator_account,
+            &main_authority,
+            &join_authority,
+        )
+    };
 
     let signature = backend
-        .process(
+        .send_and_retry(
+            "Create and init run",
             &[instruction_create, instruction_init],
-            &[&coordinator_account_signer],
+            &[coordinator_account_signer],
         )
         .await?;
 

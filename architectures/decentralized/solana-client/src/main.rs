@@ -26,14 +26,13 @@ use crate::{
 };
 
 use anchor_client::{
-    anchor_lang::system_program,
     solana_sdk::{
         commitment_config::{CommitmentConfig, CommitmentLevel},
         pubkey::Pubkey,
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
-    Client, Cluster,
+    Cluster,
 };
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
@@ -44,15 +43,12 @@ use psyche_coordinator::{
 };
 use psyche_core::sha256;
 use psyche_network::SecretKey;
-use psyche_solana_authorizer::state::Authorization;
-use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     maybe_start_render_loop, LogOutput, ServiceInfo,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
@@ -197,7 +193,7 @@ enum Commands {
         wallet: WalletArgs,
 
         #[clap(short, long)]
-        pubkey: Option<String>,
+        pubkey: Option<Pubkey>,
 
         #[clap(short, long, env)]
         run_id: String,
@@ -573,7 +569,6 @@ async fn async_main() -> Result<()> {
             let commitment = CommitmentConfig {
                 commitment: CommitmentLevel::Confirmed,
             };
-            let client = Client::new_with_options(cluster.clone(), fake_payer.clone(), commitment);
             let backend = SolanaBackend::new(cluster.clone(), vec![], fake_payer, commitment)
                 .context("Failed to create backend on cluster")?;
 
@@ -584,33 +579,23 @@ async fn async_main() -> Result<()> {
                 .await
                 .context("failed to get coordinator instance")?;
 
-            let authorization = psyche_solana_authorizer::find_authorization(
+            let authorization = SolanaBackend::find_join_authorization(
                 &coordinator_instance_state.join_authority,
-                &authorizer.unwrap_or(system_program::ID),
-                psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
+                authorizer,
             );
-
-            let authorization_state: Authorization = client
-                .program(psyche_solana_authorizer::ID)?
-                .account(authorization)
-                .await
-                .with_context(|| {
-                    format!(
-                        "failed to get authorization at addr {authorization} on cluster {cluster}"
-                    )
-                })?;
+            let authorization_state = backend.get_authorization(&authorization).await?;
 
             let maybe_wallet: Result<Keypair, _> = wallet.try_into();
             let solana_pubkey: Pubkey = match (maybe_wallet, pubkey) {
                 (Ok(_), Some(_)) => bail!("passed both private key and pubkey args. pick one."),
                 (Ok(wallet), None) => wallet.pubkey(),
-                (Err(_), Some(pk)) => Pubkey::from_str(&pk)?,
+                (Err(_), Some(pk)) => pk,
                 (Err(e), None) => return Err(e),
             };
             if !authorization_state.is_valid_for(
                 &coordinator_instance_state.join_authority,
                 &solana_pubkey,
-                JOIN_RUN_AUTHORIZATION_SCOPE,
+                psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
             ) {
                 bail!("Authorization invalid for run id {run_id} using pubkey {solana_pubkey}");
             }
