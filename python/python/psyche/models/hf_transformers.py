@@ -32,8 +32,8 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
             dims.append(d)
             names.append(name)
 
-    dims.append(dp_shard)
-    names.append("dp_shard")
+    # dims.append(dp_shard)
+    # names.append("dp_shard")
 
     names = tuple(names)
     print("build_mesh dims, names", dims, names)
@@ -52,10 +52,9 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
         dp_mesh_dim_names.append("dp_replicate")
         dp_cp_mesh_dim_names.append("dp_replicate")
 
-    # FIX(marian): HARDCODED!
-    # if dp_shard > 1:
-    dp_mesh_dim_names.append("dp_shard")
-    dp_shard_cp_mesh_dim_names.append("dp_shard")
+    if dp_shard > 1:
+        dp_mesh_dim_names.append("dp_shard")
+        dp_shard_cp_mesh_dim_names.append("dp_shard")
     dp_cp_mesh_dim_names.append("dp_shard")
     if cp > 1:
         dp_shard_cp_mesh_dim_names.append("cp")
@@ -139,7 +138,7 @@ class HfTransformersAuto(CausalLM):
         world_mesh = None
         if tp != 1 or dp != 1:
             # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
-            world_mesh = build_mesh("cuda", dp_shard=1, dp_replicate=2)
+            world_mesh = build_mesh("cuda", dp_shard=8, dp_replicate=2)
             print("WORLD MESH: ", world_mesh)
             if tp != 1:
                 raise RuntimeError("TP not supported in HfTransformers yet")
