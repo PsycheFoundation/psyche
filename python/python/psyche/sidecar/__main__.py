@@ -1,6 +1,7 @@
 import argparse
 import torch
 import json
+import os
 import torch.distributed as dist
 
 from datetime import timedelta
@@ -124,7 +125,12 @@ def main():
     if source == "files":
         store.wait(["files"])
         files = store.get("files").decode()
-        source = PretrainedSourceRepoFiles(files=json.loads(files))
+        files_list = json.loads(files)
+
+        # Expand ~/ to the actual home directory on this machine
+        expanded_files = [os.path.expanduser(file_path) for file_path in files_list]
+
+        source = PretrainedSourceRepoFiles(files=expanded_files)
     else:
         raise ValueError(f"Unsupported source type {source}")
 
