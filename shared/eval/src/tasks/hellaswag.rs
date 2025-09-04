@@ -14,7 +14,7 @@ use crate::{
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
 use regex::Regex;
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 fn preprocess(text: &str) -> String {
     let mut processed = text.trim().to_string();
@@ -80,7 +80,7 @@ impl Hellaswag {
             text,
             choices,
             answer,
-            category: None,
+            category: Some(activity_label),
             cot_content: None,
         }
     }
@@ -94,11 +94,18 @@ impl LogLikelihoodTask for Hellaswag {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.train_dataset
-            .iter()
-            .map(|row| Hellaswag::row_to_document(&self.train_dataset, row))
-            .collect()
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        self.train_dataset.iter().for_each(|row| {
+            let doc = Hellaswag::row_to_document(&self.train_dataset, row);
+            if let Some(category) = &doc.category {
+                fewshot_documents
+                    .entry(category.clone())
+                    .or_insert_with(Vec::new)
+                    .push(doc);
+            }
+        });
+        fewshot_documents
     }
 }
 

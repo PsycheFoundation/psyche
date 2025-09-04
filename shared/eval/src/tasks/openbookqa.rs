@@ -16,7 +16,7 @@ use crate::{
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 pub struct OpenbookQA {
     test_dataset: Dataset,
@@ -92,11 +92,15 @@ impl LogLikelihoodTask for OpenbookQA {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.validation_dataset
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        let docs: Vec<Document> = self
+            .validation_dataset
             .iter()
             .map(|row| OpenbookQA::row_to_document(&self.validation_dataset, row))
-            .collect()
+            .collect();
+        fewshot_documents.insert("default".to_string(), docs);
+        fewshot_documents
     }
 }
 
