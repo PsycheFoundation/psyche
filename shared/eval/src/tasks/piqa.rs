@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Row, RowAccessor, Split};
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 pub struct PIQA {
     train_dataset: Dataset,
@@ -51,6 +51,8 @@ impl PIQA {
             text,
             choices,
             answer,
+            category: None,
+            cot_content: None,
         }
     }
 }
@@ -63,11 +65,15 @@ impl LogLikelihoodTask for PIQA {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.train_dataset
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        let docs: Vec<Document> = self
+            .train_dataset
             .iter()
             .map(|row| PIQA::row_to_document(&self.train_dataset, row))
-            .collect()
+            .collect();
+        fewshot_documents.insert("default".to_string(), docs);
+        fewshot_documents
     }
 }
 

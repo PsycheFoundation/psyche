@@ -2,7 +2,7 @@ use crate::{
     ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator, EosToks, LocalTrainer,
     ParallelModels, PythonDistributedCausalLM, ReduceType, StableVariableIterator,
     TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
-    trainer::DistroResults,
+    trainer::{BatchDataCPU, DistroResults},
 };
 
 use psyche_core::{Barrier, CancelledBarrier, LearningRateSchedule, OptimizerDefinition};
@@ -122,14 +122,36 @@ impl PythonDistributedTrainer {
     pub fn train(
         self,
         step: u32,
-        data: Batch,
+        mut data: Batch,
         warmup_lr_between: Option<(u32, u32)>,
         zero_optim: bool,
         rollback: Vec<(u32, Vec<DistroResults>)>,
         prev_self_distro_results: Option<Vec<DistroResults>>,
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
+        let world_size = self.comm.size();
+        let original_batch_size = data.data.size();
+
+        // Pad the batch if necessary for FSDP
+        if world_size > 1 {
+            debug!(
+                "Checking batch padding: original batch size = {}, world_size = {}",
+                original_batch_size, world_size
+            );
+
+            data = self.pad_batch_for_fsdp(data, world_size)?;
+
+            let new_size = data.data.size();
+            if new_size != original_batch_size {
+                debug!(
+                    "FSDP: Padded batch from {} to {} samples (world_size={})",
+                    original_batch_size, new_size, world_size
+                );
+            }
+        }
+
         let data = data.gpu(self.device);
+        debug!("Training on device: {:?}", self.device);
         let batch_data = match &data.data {
             BatchData::GPU(batch_data) => batch_data,
             _ => unreachable!(),
@@ -159,6 +181,11 @@ impl PythonDistributedTrainer {
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device));
+        self.comm.all_reduce(&dummy, ReduceType::Sum)?;
+
         if results_len > 0 {
             self.broadcast_distro_results(prev_self_distro_results.as_ref().unwrap())?;
         }
@@ -186,8 +213,12 @@ impl PythonDistributedTrainer {
             .to_kind(Kind::Float)
             .to_device(self.device);
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
+
         let loss: f32 = loss.try_into().unwrap();
-        let loss = loss / self.comm.size() as f32;
+
+        let loss = loss / std::cmp::min(original_batch_size, self.comm.size()) as f32;
+
+        trace!("Train operation complete on all Python clients");
 
         Ok(TrainOutput {
             trainer: Self {
@@ -203,6 +234,58 @@ impl PythonDistributedTrainer {
             loss,
             ..ret
         })
+    }
+
+    fn pad_batch_for_fsdp(
+        &self,
+        mut batch: Batch,
+        world_size: usize,
+    ) -> Result<Batch, TrainerThreadCommunicationError> {
+        match &mut batch.data {
+            BatchData::CPU(cpu_data) => {
+                let current_batch_size = cpu_data.len();
+                let remainder = current_batch_size % world_size;
+
+                if remainder != 0 {
+                    let padding_needed = world_size - remainder;
+                    debug!(
+                        "FSDP Padding: Batch size {} not divisible by world_size {}. Adding {} padding samples.",
+                        current_batch_size, world_size, padding_needed
+                    );
+
+                    // Get sequence length from the first sample
+                    let seq_len = if !cpu_data.is_empty() {
+                        cpu_data[0].input_ids.len()
+                    } else {
+                        return Ok(batch);
+                    };
+
+                    // Create padding samples with labels set to -100
+                    for _ in 0..padding_needed {
+                        let padding_sample = BatchDataCPU {
+                            // Use 0 as padding token ID
+                            input_ids: vec![0; seq_len],
+                            // Set labels to -100 so they're ignored in loss computation
+                            labels: Some(vec![-100; seq_len]),
+                            position_ids: cpu_data[0]
+                                .position_ids
+                                .as_ref()
+                                .map(|_| vec![0; seq_len]),
+                            sequence_lengths: cpu_data[0]
+                                .sequence_lengths
+                                .as_ref()
+                                .map(|sl| vec![0; sl.len()]),
+                        };
+                        cpu_data.push(padding_sample);
+                    }
+                }
+            }
+            BatchData::GPU(_) => {
+                return Err(TrainerThreadCommunicationError::PaddingBatch);
+            }
+        }
+
+        Ok(batch)
     }
 
     pub fn optimize(
@@ -227,22 +310,35 @@ impl PythonDistributedTrainer {
             "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
-        trace!("Sending operation to Python clients: {:#}", operation);
+        trace!(
+            "Sending optimize operation to Python clients: {}",
+            operation
+        );
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device));
+        self.comm.all_reduce(&dummy, ReduceType::Sum)?;
+
         if results_len > 0 {
             self.broadcast_distro_results(distro_results.as_ref().unwrap())?;
         }
 
-        self.local
+        let result = self
+            .local
             .optimize(step, warmup_lr_between, distro_results)
             .map(|x| Self {
                 local: Box::new(x),
                 comm: self.comm,
                 iteration: self.iteration + 1,
                 device: self.device,
-            })
+            });
+
+        trace!("Optimize operation complete on all Python clients");
+
+        result
     }
 
     pub fn extract(&mut self) -> Result<HashMap<String, Tensor>, TrainerThreadCommunicationError> {
@@ -250,12 +346,19 @@ impl PythonDistributedTrainer {
             "operation": "extract",
         });
 
-        trace!("Sending operation to Python clients: {:#}", operation);
+        trace!("Sending extract operation to Python clients: {}", operation);
 
         self.comm
             .set(&self.iteration.to_string(), &operation.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device));
+        self.comm.all_reduce(&dummy, ReduceType::Sum)?;
+
         self.iteration += 1;
-        self.local.extract()
+        let result = self.local.extract();
+        trace!("Extract operation complete on all Python clients");
+        result
     }
 
     fn broadcast_distro_results(&self, distro_results: &[DistroResults]) -> PyResult<()> {

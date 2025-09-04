@@ -19,6 +19,14 @@ let
   };
 
   solana = inputs.solana-pkgs.packages.${pkgs.system}.default;
+
+  layeringPipeline = pkgs.writeText "reverse-popularity-layering.json" ''
+    [
+      ["popularity_contest"],
+      ["reverse"],
+      ["limit_layers", 99]
+    ]
+  '';
 in
 {
   docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
@@ -50,6 +58,8 @@ in
       ];
       Entrypoint = [ "/bin/train_entrypoint.sh" ];
     };
+
+    inherit layeringPipeline;
   };
 
   docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {

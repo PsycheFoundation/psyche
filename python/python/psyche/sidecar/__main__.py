@@ -171,6 +171,10 @@ def main():
         operation = json.loads(store.get(str(iteration)).decode())
         print(f"Iteración {iteration}: operación {operation['operation']}")
 
+        # dummy barrier
+        dummy = torch.zeros((), dtype=torch.float, device=device)
+        dist.all_reduce(dummy)
+
         if operation["operation"] == "train":
 
             train = TrainOperation(**operation)
