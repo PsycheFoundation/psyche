@@ -564,7 +564,7 @@ impl LocalTrainer {
                     );
                 }
                 o => {
-                    return Err(ApplyDistroResultError::RecievedWrongResultType(format!(
+                    return Err(ApplyDistroResultError::ReceivedWrongResultType(format!(
                         "{o:?}"
                     )));
                 }
@@ -1032,8 +1032,8 @@ pub enum ApplyDistroResultError {
     #[error("failed to recv optimization result from trainer thread: {0}")]
     ReceiveResult(#[from] flume::RecvError),
 
-    #[error("recieved wrong result type from trainer thread. expected Optimize, got {0:?}")]
-    RecievedWrongResultType(String),
+    #[error("received wrong result type from trainer thread. expected Optimize, got {0:?}")]
+    ReceivedWrongResultType(String),
 
     #[error("apply thread crashed")]
     ThreadCrashed,
