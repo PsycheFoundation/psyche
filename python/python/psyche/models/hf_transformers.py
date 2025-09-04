@@ -59,7 +59,6 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
         dp_mesh_dim_names.append("dp_replicate")
         dp_cp_mesh_dim_names.append("dp_replicate")
 
-    # FIX(marian): HARDCODED!
     if dp_shard > 1:
         dp_mesh_dim_names.append("dp_shard")
         dp_shard_cp_mesh_dim_names.append("dp_shard")
@@ -153,7 +152,7 @@ class HfTransformersAuto(CausalLM):
             #     mesh_dim_names=("dp_replicate", "dp_shard"),
             # )
             # world_mesh = build_mesh("cuda", dp_shard=dp)
-            print("world_mesh", world_mesh)
+            print("WORLD MESH:", world_mesh)
             if tp != 1:
                 raise RuntimeError("TP not supported in HfTransformers yet")
                 # model.tensor_parallel(world_mesh[("tp",)])
