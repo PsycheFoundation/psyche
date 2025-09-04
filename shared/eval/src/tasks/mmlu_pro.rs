@@ -94,7 +94,7 @@ impl GenerateUntilTask for MMLUPro {
         fewshot_documents
     }
 
-    fn get_stop_tokens(&self) -> Vec<String> {
+    fn get_stop_string(&self) -> Vec<String> {
         vec!["Question:".to_string()]
     }
 

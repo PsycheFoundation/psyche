@@ -14,7 +14,7 @@ use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
-const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
+const GENERATE_UNTIL_MAX_TOKENS: usize = 1024;
 
 const TASKS_WITH_ACC_NORM: [&str; 5] = [
     ArcChallenge::name(),
@@ -293,7 +293,7 @@ impl Task {
                     requests.push(tokenized_doc);
                 }
 
-                let stop_tokens = gu_docs.get_stop_tokens();
+                let stop_tokens = gu_docs.get_stop_string();
                 let answer_extraction_regex =
                     Regex::new(&gu_docs.get_answer_extraction_regex()).unwrap();
 
@@ -678,10 +678,14 @@ impl PreparedTask {
                 cache.write().unwrap().remove(&doc_index);
 
                 // Extract answer from the complete generated text using regex
+                // Use captures_iter to find all matches and take the last one (final answer)
                 if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
-                    if let Some(captures) = answer_extraction_regex.captures(&generated_text) {
-                        // captures.get(1) returns just the letter (A, B, C, ...)
-                        if let Some(answer_char) = captures.get(1) {
+                    if let Some(last_capture) = answer_extraction_regex
+                        .captures_iter(&generated_text)
+                        .last()
+                    {
+                        // last_capture.get(1) returns just the letter (A, B, C, ...)
+                        if let Some(answer_char) = last_capture.get(1) {
                             // Gets the index of the letter (A=0, B=1, C=2, ...)
                             generated_answer = Some(
                                 crate::ASCII_UPPERCASE
