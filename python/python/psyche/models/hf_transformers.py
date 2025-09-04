@@ -32,6 +32,9 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
             dims.append(d)
             names.append(name)
 
+    dims.append(dp_shard)
+    names.append("dp_shard")
+
     names = tuple(names)
     print("build_mesh dims, names", dims, names)
     mesh = init_device_mesh(device_type, dims, mesh_dim_names=names)
@@ -48,6 +51,8 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
     if dp_replicate > 1:
         dp_mesh_dim_names.append("dp_replicate")
         dp_cp_mesh_dim_names.append("dp_replicate")
+
+    # FIX(marian): HARDCODED!
     # if dp_shard > 1:
     dp_mesh_dim_names.append("dp_shard")
     dp_shard_cp_mesh_dim_names.append("dp_shard")
