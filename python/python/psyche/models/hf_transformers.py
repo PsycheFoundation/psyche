@@ -22,6 +22,13 @@ torch.backends.cudnn.allow_tf32 = True
 
 # adapted from https://github.com/pytorch/torchtitan/blob/49c6d6fc15ef644e5c3b1003ad4e0d9ea5fcb9a9/torchtitan/parallelisms/parallel_dims.py#L48
 def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> DeviceMesh:
+
+    print("device_type", device_type)
+    print("pp", pp)
+    print("dp_replicate", dp_replicate)
+    print("dp_shard", dp_shard)
+    print("cp", cp)
+    print("tp", tp)
     dims = []
     names = []
     for d, name in zip(
@@ -55,7 +62,7 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
     if dp_shard > 1:
         dp_mesh_dim_names.append("dp_shard")
         dp_shard_cp_mesh_dim_names.append("dp_shard")
-    dp_cp_mesh_dim_names.append("dp_shard")
+        dp_cp_mesh_dim_names.append("dp_shard")
     if cp > 1:
         dp_shard_cp_mesh_dim_names.append("cp")
         dp_cp_mesh_dim_names.append("cp")
@@ -134,12 +141,18 @@ class HfTransformersAuto(CausalLM):
 
         print("tp", tp)
         print("dp", dp)
+        print("device", device)
 
         world_mesh = None
         if tp != 1 or dp != 1:
-            # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
-            world_mesh = build_mesh("cuda", dp_shard=8, dp_replicate=2)
-            print("WORLD MESH: ", world_mesh)
+            world_mesh = build_mesh("cuda", dp_replicate=2, dp_shard=4)
+            # world_mesh = DeviceMesh(
+            #     device_type="cuda",
+            #     mesh=[[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]],
+            #     mesh_dim_names=("dp_replicate", "dp_shard"),
+            # )
+            # world_mesh = build_mesh("cuda", dp_shard=dp)
+            print("WORLD MESH:", world_mesh)
             if tp != 1:
                 raise RuntimeError("TP not supported in HfTransformers yet")
                 # model.tensor_parallel(world_mesh[("tp",)])
