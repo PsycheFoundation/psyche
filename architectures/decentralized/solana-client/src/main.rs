@@ -1,3 +1,5 @@
+use crate::command::can_join::CommandCanJoinParams;
+use crate::command::can_join::command_can_join_execute;
 use crate::command::checkpoint::CommandCheckpointParams;
 use crate::command::checkpoint::command_checkpoint_execute;
 use crate::command::close_run::CommandCloseRunParams;
@@ -28,19 +30,15 @@ use crate::{
 use anchor_client::{
     Cluster,
     solana_sdk::{
-        commitment_config::{CommitmentConfig, CommitmentLevel},
+        commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
-use psyche_coordinator::{
-    RunState,
-    model::{Checkpoint, Model},
-};
 use psyche_core::sha256;
 use psyche_network::SecretKey;
 use psyche_tui::{
@@ -189,27 +187,8 @@ enum Commands {
     CanJoin {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
-        wallet: WalletArgs,
-
-        #[clap(short, long)]
-        pubkey: Option<Pubkey>,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        authorizer: Option<Pubkey>,
-
-        #[clap(long, env, action)]
-        predownload_model: bool,
-
-        #[clap(long, env, action)]
-        predownload_eval_tasks: Option<String>,
-
-        #[clap(long, env, default_value_t = 3)]
-        hub_max_concurrent_downloads: usize,
+        params: CommandCanJoinParams,
     },
     JsonDumpRun {
         #[clap(flatten)]
@@ -548,131 +527,15 @@ async fn async_main() -> Result<()> {
 
             Ok(())
         }
-        Commands::CanJoin {
-            cluster,
-            wallet,
-            run_id,
-            authorizer,
-            pubkey,
-            predownload_model,
-            predownload_eval_tasks,
-            hub_max_concurrent_downloads,
-        } => {
-            // when we call join_run, we check
-            //  constraint = authorization.is_valid_for(
-            //     &coordinator_instance.join_authority,
-            //     user.key,
-            //     JOIN_RUN_AUTHORIZATION_SCOPE,
-            // )
-            // so replicate that check here.
-            let cluster: Cluster = cluster.into();
-            let fake_payer = Arc::new(Keypair::new());
-            let commitment = CommitmentConfig {
-                commitment: CommitmentLevel::Confirmed,
-            };
-            let backend = SolanaBackend::new(cluster.clone(), vec![], fake_payer, commitment)
-                .context("Failed to create backend on cluster")?;
-
-            let coordinator_instance =
-                psyche_solana_coordinator::find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await
-                .context("failed to get coordinator instance")?;
-
-            let authorization = SolanaBackend::find_join_authorization(
-                &coordinator_instance_state.join_authority,
-                authorizer,
-            );
-            let authorization_state = backend.get_authorization(&authorization).await?;
-
-            let maybe_wallet: Result<Keypair, _> = wallet.try_into();
-            let solana_pubkey: Pubkey = match (maybe_wallet, pubkey) {
-                (Ok(_), Some(_)) => bail!("passed both private key and pubkey args. pick one."),
-                (Ok(wallet), None) => wallet.pubkey(),
-                (Err(_), Some(pk)) => pk,
-                (Err(e), None) => return Err(e),
-            };
-            if !authorization_state.is_valid_for(
-                &coordinator_instance_state.join_authority,
-                &solana_pubkey,
-                psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
-            ) {
-                bail!("Authorization invalid for run id {run_id} using pubkey {solana_pubkey}");
-            }
-            println!("authorization valid for run id {run_id} using pubkey {solana_pubkey}");
-
-            let coordinator_account_state = backend
-                .get_coordinator_account(&coordinator_instance_state.coordinator_account)
-                .await?
-                .state
-                .coordinator;
-
-            let is_paused = matches!(
-                coordinator_account_state.run_state,
-                RunState::Paused | RunState::Uninitialized
-            );
-
-            if !is_paused {
-                let client_with_our_key = coordinator_account_state
-                    .epoch_state
-                    .clients
-                    .iter()
-                    .find(|c| c.id.signer == solana_pubkey);
-                if client_with_our_key.is_some() {
-                    bail!(
-                        "A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!"
-                    );
-                }
-            }
-            if predownload_model {
-                // it would also be reasonable to download the model if we're in WaitingForClients and the checkpoint is not P2P,
-                // but that could cause you to miss the transition to Warmup, so we won't do that for now.
-                if !is_paused {
-                    println!("run is in progress, skipping model predownload.");
-                    return Ok(());
-                }
-
-                #[allow(irrefutable_let_patterns)]
-                let Model::LLM(model) = coordinator_account_state.model else {
-                    bail!("model is not an LLM, unsure how to predownload.");
-                };
-
-                let checkpoint = match model.checkpoint {
-                    Checkpoint::Ephemeral => {
-                        bail!("Can't predownload model with ephemeral checkpoint.")
-                    }
-                    Checkpoint::Dummy(hub_repo)
-                    | Checkpoint::Hub(hub_repo)
-                    | Checkpoint::P2P(hub_repo) => hub_repo,
-                };
-                let repo_id = checkpoint.repo_id.to_string();
-                let revision = checkpoint.revision.map(|s| s.to_string());
-                println!(
-                    "Predownloading model {repo_id} revision {}",
-                    revision.as_ref().unwrap_or(&"main".to_string())
-                );
-                let hub_read_token = std::env::var("HF_TOKEN").ok();
-
-                // If you pass None as a cache folder, it'll use the env var `HF_HOME`.
-                let cache_folder = None;
-
-                psyche_data_provider::download_model_repo_async(
-                    &repo_id,
-                    revision,
-                    cache_folder,
-                    hub_read_token,
-                    Some(hub_max_concurrent_downloads),
-                    true,
-                )
-                .await?;
-                println!("Model predownloaded successfully.")
-            }
-            if let Some(predownload_eval_tasks) = predownload_eval_tasks {
-                let _ = TrainArgs::eval_tasks_from_args(&predownload_eval_tasks, 0)?;
-                println!("Eval tasks `{predownload_eval_tasks}` predownloaded successfully.");
-            }
-            Ok(())
+        Commands::CanJoin { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_can_join_execute(backend, params).await
         }
         Commands::JsonDumpRun { cluster, params } => {
             let backend = SolanaBackend::new(

@@ -1,3 +1,4 @@
+pub mod can_join;
 pub mod checkpoint;
 pub mod close_run;
 pub mod create_run;
