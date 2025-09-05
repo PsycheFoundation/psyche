@@ -87,16 +87,16 @@ impl CMMLU {
         // Load all subjects
         for (subject_en, _) in SUBJECT_MAPPING {
             let test_dataset = load_dataset(
-                "haonan-li/cmmlu",
-                Some("refs/convert/parquet".to_owned()),
+                "lmlmcat/cmmlu",
+                Some("refs/pr/6".to_owned()),
                 Split::Test,
                 Some(subject_en.to_string()),
             )?;
 
             // cmmlu does not have a "validation" split, so we use "dev" split as few-shot examples
             let dev_dataset = load_dataset(
-                "haonan-li/cmmlu",
-                Some("refs/convert/parquet".to_owned()),
+                "lmlmcat/cmmlu",
+                Some("refs/pr/6".to_owned()),
                 Split::Dev,
                 Some(subject_en.to_string()),
             )?;
