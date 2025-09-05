@@ -317,6 +317,7 @@ pub async fn run() {
                 broadcast_bloom: Default::default(),
                 broadcast_merkle: Default::default(),
                 metadata: Default::default(),
+                training_times: Default::default(),
             },
         )
         .await

@@ -13,7 +13,7 @@ use std::{
     collections::HashMap,
     fmt,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 use tch::TchError;
 use thiserror::Error;
@@ -236,6 +236,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     }
 
                     if let Some(witness) = WitnessStep::get_witness_to_send(
+                        &self.coordinator_state,
                         &mut self.previous_round,
                         &mut self.current_round,
                     ) {
@@ -323,6 +324,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         participant_bloom: Default::default(),
                         broadcast_bloom: Default::default(),
                         broadcast_merkle: merkle,
+                        training_times: Default::default(),
                     };
                     self.tx_opportunistic_data
                         .send(OpportunisticData::WarmupStep(witness))
@@ -406,6 +408,55 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
         match broadcast.data {
             BroadcastType::TrainingResult(training_result) => {
+                // Save the timestamp of when we received the training result in the client times hashmap
+                let current_timestamp = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("BroadcastType::TrainingResult: Error getting current timestamp")
+                    .as_millis();
+
+                let training_started_at = round_state
+                    .training_started_at
+                    .expect("BroadcastType::TrainingResult: training_started_at was None");
+                let time_since_training_started = current_timestamp - (training_started_at as u128);
+
+                let client_index = self
+                    .coordinator_state
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .position(|x| x.id == from_client_id);
+
+                if let Some(index) = client_index {
+                    // We do NOT want to measure our own time since that'll just screw things up
+                    // So we set to 0 which is an invalid time measurement value just in case.
+                    if from_client_id == self.identity {
+                        round_state.client_times[index] = 0u16;
+                    } else if round_state.client_times[index] == 0 {
+                        // Avoid writing more than one time for the same client
+                        let time_per_batch =
+                            time_since_training_started / training_result.batch_id.len() as u128;
+
+                        let time_per_batch_seconds: u16 = if time_per_batch < 1000 {
+                            1 // Minimum 1 second if less than 1000ms
+                        } else {
+                            // Round to the nearest second: (value_ms + 500) / 1000
+                            ((time_per_batch + 500) / 1000) as u16
+                        };
+                        round_state.client_times[index] = time_per_batch_seconds;
+
+                        trace!(
+                            "Received batch {} from client {} (idx: {}) at {} , total time: {}ms (per batch: {}ms {}s)",
+                            training_result.batch_id,
+                            from_client_id,
+                            index,
+                            current_timestamp,
+                            time_since_training_started,
+                            time_per_batch,
+                            time_per_batch_seconds,
+                        );
+                    }
+                }
+
                 if !round_state
                     .data_assignments
                     .contains_key(&training_result.batch_id)
@@ -425,6 +476,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     );
                     return Ok(ApplyMessageOutcome::Ignored);
                 }
+
+                debug!(
+                    "Round data assignments: {:?}",
+                    &round_state.data_assignments
+                );
 
                 let correct_assignee =
                     match round_state.data_assignments.get(&training_result.batch_id) {
