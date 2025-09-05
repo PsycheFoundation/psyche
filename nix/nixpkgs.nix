@@ -6,6 +6,7 @@
 
 let
   cudaSupported = builtins.elem system [ "x86_64-linux" ];
+  metalSupported = builtins.elem system [ "aarch64-darwin" ];
   cudaVersion = "12.8";
 in
 (
@@ -67,10 +68,14 @@ in
 
     config = {
       allowUnfree = true;
+      metalSupport = lib.mkDefault false;
     }
     // lib.optionalAttrs cudaSupported {
       cudaSupport = true;
       inherit cudaVersion;
+    }
+    // lib.optionalAttrs metalSupported {
+      metalSupport = true;
     };
   }
 )

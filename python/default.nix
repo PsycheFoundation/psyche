@@ -4,6 +4,8 @@
   config,
   python312,
   system,
+  lib,
+  stdenv,
 }:
 let
   inherit (psycheLib)
@@ -19,7 +21,9 @@ let
       inherit cargoArtifacts;
       pname = "psyche-python-extension";
 
-      cargoExtraArgs = " --package psyche-python-extension --features parallelism";
+      cargoExtraArgs =
+        " --package psyche-python-extension"
+        + lib.optionalString (config.cudaSupport) " --features parallelism";
 
       nativeBuildInputs = rustWorkspaceArgs.nativeBuildInputs ++ [
         python312
@@ -28,6 +32,7 @@ let
     }
   );
 
+  ext = if stdenv.isDarwin then "dylib" else "so";
 in
 python312Packages.buildPythonPackage rec {
   pname = "psyche";
@@ -39,7 +44,7 @@ python312Packages.buildPythonPackage rec {
   propagatedBuildInputs =
     with python312Packages;
     [
-      torch-bin
+      torch
       transformers
     ]
     ++ (lib.optionals config.cudaSupport [
@@ -55,8 +60,8 @@ python312Packages.buildPythonPackage rec {
     # copy all python files
     cp -r * $out/${python312.sitePackages}/psyche/
 
-    # copy the extension .so file
-    cp ${rustExtension}/lib/lib${builtins.replaceStrings [ "-" ] [ "_" ] rustExtension.pname}.so \
+    # copy the extension binary file
+    cp ${rustExtension}/lib/lib${builtins.replaceStrings [ "-" ] [ "_" ] rustExtension.pname}.${ext} \
        $out/${python312.sitePackages}/psyche/_psyche_ext.so
 
     runHook postInstall

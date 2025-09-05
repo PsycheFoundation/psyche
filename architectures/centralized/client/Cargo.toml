@@ -11,6 +11,7 @@ psyche-eval.workspace = true
 psyche-network.workspace = true
 psyche-tui.workspace = true
 psyche-watcher.workspace = true
+psyche-modeling.workspace = true
 psyche-metrics.workspace = true
 rand.workspace = true
 anyhow.workspace = true

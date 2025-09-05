@@ -12,13 +12,14 @@ use psyche_data_provider::{
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
-    DataParallel, DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer,
-    ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
+    DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
+    LocalTrainer, ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer,
+    auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use tch::{Device, Kind, Tensor};
+use tch::{Kind, Tensor};
 use thiserror::Error;
 use tokenizers::{ModelWrapper, Tokenizer, models::wordlevel::WordLevel};
 use tokio::{
@@ -44,6 +45,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub max_concurrent_parameter_requests: usize,
 
     // model & dataload
+    pub device: Devices,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
     pub data_parallelism: usize,
@@ -432,11 +434,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 let tp = init_config.tensor_parallelism;
 
                                 tokio::task::spawn_blocking(move || {
+                                    let device =
+                                        init_config.device.device_for_rank(0).ok_or_else(|| {
+                                            ModelLoadError::NoDeviceForRank(0, init_config.device)
+                                        })?;
                                     if tp != 1 || dp != 1 {
                                         psyche_modeling::PythonDistributedCausalLM::new(
                                             "hf-auto".to_string(),
                                             source.try_into()?,
-                                            Device::cuda_if_available(),
+                                            device,
                                             psyche_modeling::ParallelismConfig { dp, tp },
                                             Some(llm.max_seq_len as usize),
                                         )
@@ -446,7 +452,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                         psyche_modeling::PythonCausalLM::new(
                                             "hf-auto",
                                             &source.try_into()?,
-                                            Device::cuda_if_available(),
+                                            device,
                                             None,
                                             Some(llm.max_seq_len as usize),
                                         )
@@ -470,6 +476,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             > = Vec::with_capacity(
                                 init_config.data_parallelism * init_config.tensor_parallelism,
                             );
+                            let devices = init_config.device.clone();
 
                             let attn_implementation: Option<AttentionImplementation> =
                                 match llm.data_type {
@@ -505,17 +512,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             )
                                         });
                                     let source = source.clone();
+                                    let rank = dp * init_config.tensor_parallelism + tp;
+                                    let devices = devices.clone();
+                                    let device = devices.device_for_rank(rank);
                                     futures.push(tokio::task::spawn_blocking(move || {
-                                        // let this run on CPU if tp is 1 and no cuda is available
-                                        let device = if init_config.tensor_parallelism == 1 {
-                                            if dp == 0 {
-                                                Device::cuda_if_available()
-                                            } else {
-                                                Device::Cuda(dp)
-                                            }
-                                        } else {
-                                            Device::Cuda(dp * init_config.tensor_parallelism + tp)
-                                        };
+                                        let device = device.ok_or_else(|| {
+                                            ModelLoadError::NoDeviceForRank(rank, devices)
+                                        })?;
                                         match llm.architecture {
                                             model::LLMArchitecture::HfLlama => {
                                                 LlamaForCausalLM::from_pretrained(

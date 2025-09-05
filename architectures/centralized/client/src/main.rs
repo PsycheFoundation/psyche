@@ -139,6 +139,7 @@ async fn async_main() -> Result<()> {
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 max_concurrent_downloads: args.max_concurrent_downloads,
                 metrics_local_port: args.metrics_local_port,
+                device: args.device,
             })
             .build()
             .await

@@ -140,6 +140,7 @@ pub fn dummy_client_app_params_with_training_delay(
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
         metrics_local_port: None,
+        device: Default::default(),
     }
 }
 
@@ -170,5 +171,6 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
         metrics_local_port: None,
+        device: Default::default(),
     }
 }
