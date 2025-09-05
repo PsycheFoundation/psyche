@@ -29,7 +29,9 @@ import { existsSync, renameSync } from 'fs'
 
 // any run ID outside this list will not be returned to the frontend in the summary list,
 const ALLOWLISTED_RUN_IDS =
-	process.env.NODE_ENV === 'development' ? null : ['consilience-40b-1']
+	process.env.NODE_ENV === 'development'
+		? null
+		: ['consilience-40b-1', 'hermes-3-8b', 'hermes-3-8b-2', 'hermes-4-8b']
 type Witness = Omit<
 	WitnessMetadata,
 	'evals' | 'prompt_results' | 'prompt_index'
