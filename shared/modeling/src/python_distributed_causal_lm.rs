@@ -14,6 +14,7 @@ use std::{
 };
 use tch::{Device, Tensor};
 use thiserror::Error;
+use tracing::trace;
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -51,13 +52,38 @@ impl TorchDistributedCommunicator {
     ) -> PyResult<Self> {
         let result: PyResult<PyObject> = Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
-            let init_process_group = distributed.getattr("init_process_group")?;
             let timeout = Duration::from_secs(60 * 60 * 2); // use a large timeout for warmup
+
+            let store = match &init_method {
+                Some(init_method) => {
+                    if let Some(init_method) = init_method.strip_prefix("tcp://") {
+                        let (host_name, port) = init_method.split_once(":").unwrap();
+                        let tcp_store = distributed.getattr("TCPStore")?;
+                        let kwargs = PyDict::new(py);
+                        kwargs.set_item("host_name", host_name).unwrap();
+                        kwargs
+                            .set_item("port", port.parse::<usize>().unwrap())
+                            .unwrap();
+                        kwargs.set_item("world_size", world_size.unwrap()).unwrap();
+                        kwargs.set_item("is_master", true).unwrap();
+                        kwargs.set_item("timeout", timeout).unwrap();
+                        kwargs.set_item("use_libuv", false).unwrap();
+                        Some(tcp_store.call((), Some(&kwargs))?)
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            };
+
+            let init_process_group = distributed.getattr("init_process_group")?;
             let kwargs = PyDict::new(py);
             if let Some(backend) = backend {
                 kwargs.set_item("backend", backend).unwrap();
             }
-            if let Some(init_method) = init_method {
+            if let Some(store) = store.clone() {
+                kwargs.set_item("store", store).unwrap();
+            } else if let Some(init_method) = init_method {
                 kwargs.set_item("init_method", init_method).unwrap();
             }
             if let Some(world_size) = world_size {
@@ -68,9 +94,17 @@ impl TorchDistributedCommunicator {
             }
             kwargs.set_item("timeout", timeout).unwrap();
             init_process_group.call((), Some(&kwargs))?;
-            let distributed_c10d = Python::import(py, "torch.distributed.distributed_c10d")?;
-            let get_default_store = distributed_c10d.getattr("_get_default_store")?;
-            let store = get_default_store.call0()?;
+
+            let store = match store {
+                Some(store) => store,
+                None => {
+                    let distributed_c10d =
+                        Python::import(py, "torch.distributed.distributed_c10d")?;
+                    let get_default_store = distributed_c10d.getattr("_get_default_store")?;
+                    get_default_store.call0()?
+                }
+            };
+
             Ok(store.unbind())
         });
         Ok(Self {
@@ -81,12 +115,14 @@ impl TorchDistributedCommunicator {
     }
 
     pub fn set(&self, key: &str, value: &str) -> PyResult<()> {
-        Python::with_gil(|py| {
+        let ret = Python::with_gil(|py| {
             let store = self.store.bind(py);
             let set = store.getattr("set")?;
             let _res = set.call1((key, value))?;
             Ok(())
-        })
+        });
+        trace!("Set key {} (length {}) in store", key, value.len());
+        ret
     }
 
     pub fn size(&self) -> usize {
