@@ -38,7 +38,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -141,6 +141,19 @@ pub async fn run() {
         RunState::Uninitialized
     );
 
+    // Can't tick yet because paused/uninitialized
+    assert!(
+        process_coordinator_tick(
+            &mut endpoint,
+            &payer,
+            &ticker,
+            &coordinator_instance,
+            &coordinator_account,
+        )
+        .await
+        .is_err()
+    );
+
     // Generate the client key
     let client_id = ClientId::new(client.pubkey(), Default::default());
 
@@ -224,7 +237,8 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Rejoin run, should be a no-op
+    // Rejoin run after waiting a while, should be a no-op
+    endpoint.forward_clock_slot(1).await.unwrap();
     process_coordinator_join_run(
         &mut endpoint,
         &payer,

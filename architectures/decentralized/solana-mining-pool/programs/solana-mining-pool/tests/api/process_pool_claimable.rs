@@ -1,3 +1,4 @@
+use anyhow::Result;
 use psyche_solana_mining_pool::accounts::PoolClaimableAccounts;
 use psyche_solana_mining_pool::find_pool;
 use psyche_solana_mining_pool::instruction::PoolClaimable;
@@ -6,7 +7,6 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use solana_toolbox_anchor::ToolboxAnchor;
-use solana_toolbox_anchor::ToolboxAnchorError;
 use solana_toolbox_endpoint::ToolboxEndpoint;
 
 pub async fn process_pool_claimable(
@@ -15,7 +15,7 @@ pub async fn process_pool_claimable(
     pool_index: u64,
     pool_authority: &Keypair,
     redeemable_mint: &Pubkey,
-) -> Result<(), ToolboxAnchorError> {
+) -> Result<()> {
     let pool = find_pool(pool_index);
 
     ToolboxAnchor::process_instruction_with_signers(

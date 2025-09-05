@@ -39,7 +39,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 5_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -47,7 +47,7 @@ pub async fn run() {
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
     let mut clients = vec![];
-    for _ in 0..40 {
+    for _ in 0..240 {
         clients.push(Keypair::new());
     }
     let ticker = Keypair::new();
