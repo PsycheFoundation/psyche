@@ -1,8 +1,8 @@
-use anchor_spl::associated_token;
+use anchor_spl::{associated_token, token};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use crate::SolanaBackend;
+use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -38,10 +38,11 @@ pub async fn command_treasurer_claim_rewards_execute(
         treasurer_run_state.collateral_mint
     );
 
-    let treasurer_run_collateral_address = associated_token::get_associated_token_address(
-        &treasurer_run_address,
-        &treasurer_run_state.collateral_mint,
-    );
+    let collateral_mint = treasurer_run_state.collateral_mint;
+    let coordinator_account = treasurer_run_state.coordinator_account;
+
+    let treasurer_run_collateral_address =
+        associated_token::get_associated_token_address(&treasurer_run_address, &collateral_mint);
     let treasurer_run_collateral_amount = backend
         .get_token_amount(&treasurer_run_collateral_address)
         .await?;
@@ -51,10 +52,16 @@ pub async fn command_treasurer_claim_rewards_execute(
     println!("User: {user}");
 
     let user_collateral_address =
-        associated_token::get_associated_token_address(&user, &treasurer_run_state.collateral_mint);
+        associated_token::get_associated_token_address(&user, &collateral_mint);
     if backend.get_balance(&user_collateral_address).await? == 0 {
+        let instruction = associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+            &backend.get_payer(),
+            &user,
+            &collateral_mint,
+            &token::ID,
+        );
         let signature = backend
-            .spl_associated_token_create(&treasurer_run_state.collateral_mint, &user)
+            .send_and_retry("Create user ATA", &[instruction], &[])
             .await?;
         println!("Created associated token account for user during transaction: {signature}");
     }
@@ -65,15 +72,22 @@ pub async fn command_treasurer_claim_rewards_execute(
     let treasurer_participant_address =
         psyche_solana_treasurer::find_participant(&treasurer_run_address, &user);
     if backend.get_balance(&treasurer_participant_address).await? == 0 {
-        let signature = backend
-            .treasurer_participant_create(treasurer_index)
+        let instruction = instructions::treasurer_participant_create(
+            &backend.get_payer(),
+            treasurer_index,
+            &user,
+        );
+        let participant_create_signature = backend
+            .send_and_retry("Create participant PDA", &[instruction], &[])
             .await?;
-        println!("Created the participant claim during transaction: {signature}");
+        println!(
+            "Created the participant claim during transaction: {participant_create_signature}"
+        );
     }
 
     let mut client_earned_points = 0;
     let coordinator_account_state = backend
-        .get_coordinator_account(&treasurer_run_state.coordinator_account)
+        .get_coordinator_account(&coordinator_account)
         .await?;
     for client in coordinator_account_state.state.clients_state.clients {
         if user == client.id.signer {
@@ -108,15 +122,17 @@ pub async fn command_treasurer_claim_rewards_execute(
         );
     }
 
-    let signature = backend
-        .treasurer_participant_claim(
-            treasurer_index,
-            &treasurer_run_state.collateral_mint,
-            &treasurer_run_state.coordinator_account,
-            claim_earned_points,
-        )
+    let instruction = instructions::treasurer_participant_claim(
+        treasurer_index,
+        &collateral_mint,
+        &coordinator_account,
+        &user,
+        claim_earned_points,
+    );
+    let claim_signature = backend
+        .send_and_retry("Claim rewards", &[instruction], &[])
         .await?;
-    println!("Claimed {claim_earned_points} earned points in transaction: {signature}");
+    println!("Claimed {claim_earned_points} earned points in transaction: {claim_signature}");
 
     Ok(())
 }

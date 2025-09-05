@@ -177,6 +177,7 @@ impl RetryError<String> {
     }
 }
 
+#[allow(dead_code)] // TODO (vbrunet) - shall we re-use this for the generic retry mechanism
 pub async fn retry_function<FutureFn, Fut, T, E>(
     log_str: &str,
     function: FutureFn,

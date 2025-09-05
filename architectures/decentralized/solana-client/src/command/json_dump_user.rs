@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anyhow::Result;
@@ -16,8 +14,8 @@ pub struct CommandJsonDumpUserParams {
     run_id: String,
     #[clap(long, env)]
     treasurer_index: Option<u64>,
-    #[clap(long, env, alias = "wallet", value_name = "PUBKEY")]
-    address: String,
+    #[clap(long, env, alias = "wallet", alias = "user", value_name = "PUBKEY")]
+    address: Pubkey,
 }
 
 pub async fn command_json_dump_user_execute(
@@ -30,7 +28,6 @@ pub async fn command_json_dump_user_execute(
         address,
     } = params;
 
-    let address = Pubkey::from_str(&address).expect("Invalid user address");
     let balance = backend.get_balance(&address).await?;
 
     let coordinator_instance_address =
