@@ -270,11 +270,17 @@ impl ModelTaskRunner {
                                                 eval_task.task.name(),
                                                 next_index
                                             );
+                                            // mmlu_pro takes a very long time so let's use limit=1 for that one
+                                            let limit = if eval_task.task.name() == "mmlu_pro" {
+                                                Some(1)
+                                            } else {
+                                                Some(10)
+                                            };
                                             eval_task.run(
                                                 &mut trainer,
                                                 cancel.clone(),
                                                 Some((next_index, data_parallelism)),
-                                                Some(10),
+                                                limit,
                                             );
                                             trace!("Done eval task {}", eval_task.task.name());
                                         }
