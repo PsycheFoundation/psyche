@@ -1,4 +1,4 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata, TRAINING_TIMES_SLICE_SIZE};
+use psyche_coordinator::{Coordinator, TRAINING_TIMES_SLICE_SIZE, Witness, WitnessMetadata};
 use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;

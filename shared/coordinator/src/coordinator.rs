@@ -1,14 +1,14 @@
 use crate::{
-    model::{Checkpoint, HubRepo, Model},
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
+    model::{Checkpoint, HubRepo, Model},
 };
 
 use anchor_lang::{
-    prelude::{borsh, msg},
     AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, msg},
 };
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
+use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, f32, hash::Hash};
 use ts_rs::TS;

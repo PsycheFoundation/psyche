@@ -1,8 +1,8 @@
-use crate::{fetch_data::BatchIdSet, Finished, TrainingResult};
+use crate::{Finished, TrainingResult, fetch_data::BatchIdSet};
 
 use psyche_coordinator::{
-    Commitment, CommitteeProof, CommitteeSelection, WitnessBloom, WitnessProof,
-    SOLANA_MAX_NUM_CLIENTS,
+    Commitment, CommitteeProof, CommitteeSelection, SOLANA_MAX_NUM_CLIENTS, WitnessBloom,
+    WitnessProof,
 };
 use psyche_core::{BatchId, FixedVec, NodeIdentity};
 use psyche_modeling::DistroResult;
