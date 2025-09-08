@@ -113,11 +113,11 @@ def main():
 
     print("init_process_group")
     store = dist.distributed_c10d._get_default_store()
-    print(f"Proceso distribuido inicializado - rank: {dist.get_rank()}")
+    # print(f"Proceso distribuido inicializado - rank: {dist.get_rank()}")
 
-    print(f"Rank: {torch.distributed.get_rank()}")
-    print(f"World size: {torch.distributed.get_world_size()}")
-    print(f"Backend: {torch.distributed.get_backend()}")
+    # print(f"Rank: {torch.distributed.get_rank()}")
+    # print(f"World size: {torch.distributed.get_world_size()}")
+    # print(f"Backend: {torch.distributed.get_backend()}")
 
     store.wait(["architecture", "source"])
     architecture = store.get("architecture").decode()
@@ -137,7 +137,7 @@ def main():
     store.wait(["dp", "tp"])
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
-    print(f"dp: {dp}, tp: {tp}")
+    # print(f"dp: {dp}, tp: {tp}")
 
     device = args.device if args.device else 0
 
@@ -151,7 +151,7 @@ def main():
         tp=tp,
     )
 
-    print(f"Modelo creado: {architecture}, device: {device}")
+    # print(f"Modelo creado: {architecture}, device: {device}")
     store.wait(["hyperparameters"])
     hyperparameters: Hyperparameters = Hyperparameters(
         **json.loads(store.get("hyperparameters").decode())
@@ -195,7 +195,7 @@ def main():
                 )
 
             input_ids = torch.empty(train.batch_shape, dtype=torch.long, device=device)
-            print(f"input_ids: {input_ids}")
+            # print(f"input_ids: {input_ids}")
             labels = (
                 torch.empty(train.batch_shape, dtype=torch.long, device=device)
                 if train.batch_has_labels
@@ -207,13 +207,13 @@ def main():
                 if train.batch_has_position_ids
                 else None
             )
-            print(f"position_ids: {position_ids}")
-            print(
-                f"About to broadcast input_ids, rank={dist.get_rank()}, world_size={dist.get_world_size()}"
-            )
-            print(f"input_ids shape: {input_ids.shape}")
+            # print(f"position_ids: {position_ids}")
+            # print(
+            #     f"About to broadcast input_ids, rank={dist.get_rank()}, world_size={dist.get_world_size()}"
+            # )
+            # print(f"input_ids shape: {input_ids.shape}")
             dist.broadcast(input_ids, 0)
-            print("Done dist.broadcast(input_ids, 0)")
+            # print("Done dist.broadcast(input_ids, 0)")
             if train.batch_has_labels:
                 print("broadcast labels")
                 dist.broadcast(labels, 0)

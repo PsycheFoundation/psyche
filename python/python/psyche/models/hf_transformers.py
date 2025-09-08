@@ -23,12 +23,12 @@ torch.backends.cudnn.allow_tf32 = True
 # adapted from https://github.com/pytorch/torchtitan/blob/49c6d6fc15ef644e5c3b1003ad4e0d9ea5fcb9a9/torchtitan/parallelisms/parallel_dims.py#L48
 def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> DeviceMesh:
 
-    print("device_type", device_type)
-    print("pp", pp)
-    print("dp_replicate", dp_replicate)
-    print("dp_shard", dp_shard)
-    print("cp", cp)
-    print("tp", tp)
+    # print("device_type", device_type)
+    # print("pp", pp)
+    # print("dp_replicate", dp_replicate)
+    # print("dp_shard", dp_shard)
+    # print("cp", cp)
+    # print("tp", tp)
     dims = []
     names = []
     for d, name in zip(
@@ -133,19 +133,20 @@ class HfTransformersAuto(CausalLM):
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
                 config,
-                # attn_implementation="flash_attention_2",
-                # torch_dtype=torch.bfloat16,
+                attn_implementation="flash_attention_2",
+                torch_dtype=torch.bfloat16,
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
 
-        print("tp", tp)
-        print("dp", dp)
-        print("device", device)
+        # print("tp", tp)
+        # print("dp", dp)
+        # print("device", device)
 
         world_mesh = None
         if tp != 1 or dp != 1:
-            world_mesh = build_mesh("cuda", dp_replicate=2, dp_shard=4)
+            # world_mesh = build_mesh("cuda", dp_replicate=2, dp_shard=4)
+            world_mesh = build_mesh("cuda", dp_shard=dp)
             # world_mesh = DeviceMesh(
             #     device_type="cuda",
             #     mesh=[[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]],
