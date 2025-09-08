@@ -98,7 +98,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				this.#lastUpdateInfo = lastUpdateInfo
 				this.#runs = runs
 				console.log(
-					`loaded DB from disk at slot ${this.#lastUpdateInfo.highestSignature?.slot ?? 0}`
+					`loaded DB from disk at slot ${
+						this.#lastUpdateInfo.highestSignature?.slot ?? 0
+					}`
 				)
 			} else {
 				console.warn(

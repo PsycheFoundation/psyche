@@ -54,7 +54,7 @@ export function startWatchChainLoop<D>(): <
 		while (!cancelled.cancelled) {
 			try {
 				let lastUpdate = dataStore.lastUpdate()
-				console.error(`[${name}] chain loop starting up`)
+				console.info(`[${name}] chain loop starting up`)
 
 				wsListener = new ProgramEventListener(
 					websocketRpcUrl,
@@ -98,7 +98,9 @@ export function startWatchChainLoop<D>(): <
 						const index = catchupTxs.indexOf(data)
 						if (index % 1000 === 1) {
 							console.log(
-								`[${name}] processing changes from tx ${index} / ${catchupTxs.length} (${((index / catchupTxs.length) * 100).toFixed(2)}%)`
+								`[${name}] processing changes from tx ${index} / ${
+									catchupTxs.length
+								} (${((index / catchupTxs.length) * 100).toFixed(2)}%)`
 							)
 						}
 						if (cancelled.cancelled) {
@@ -180,7 +182,9 @@ async function catchupOnTxsToAddress(
 	const allSignatures = []
 	while (true) {
 		console.log(
-			`[${name}] fetching sigs from slot ${lastIndexedSlot} to ${oldestSeenSignature?.slot ?? 'the latest block'}: total ${allSignatures.length}`
+			`[${name}] fetching sigs from slot ${lastIndexedSlot} to ${
+				oldestSeenSignature?.slot ?? 'the latest block'
+			}: total ${allSignatures.length}`
 		)
 		const signatures = await provider.connection.getSignaturesForAddress(
 			address,
@@ -220,7 +224,11 @@ async function catchupOnTxsToAddress(
 	}
 
 	console.log(
-		`[${name}] fetching ${allSignatures.length} transactions catching up from slot ${lastIndexedSlot} to ${oldestSeenSignature?.slot ?? 'the latest block'}`
+		`[${name}] fetching ${
+			allSignatures.length
+		} transactions catching up from slot ${lastIndexedSlot} to ${
+			oldestSeenSignature?.slot ?? 'the latest block'
+		}`
 	)
 
 	let completedCount = 0
@@ -235,7 +243,10 @@ async function catchupOnTxsToAddress(
 			.then((tx) => {
 				completedCount++
 				console.log(
-					`[${name}] fetched sig ${completedCount}/${allSignatures.length}, ${((completedCount / allSignatures.length) * 100).toFixed(2)}% ...`
+					`[${name}] fetched sig ${completedCount}/${allSignatures.length}, ${(
+						(completedCount / allSignatures.length) *
+						100
+					).toFixed(2)}% ...`
 				)
 
 				if (cancelled.cancelled) {
