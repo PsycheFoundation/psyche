@@ -311,6 +311,7 @@ pub struct LocalTrainer {
         flume::Receiver<ParallelResult>,
     )>,
     first_model_device: Device,
+    first_model_max_context_length: usize,
     barrier: Arc<dyn Barrier>,
     data_parallel: Option<Vec<DataParallel>>,
 }
@@ -325,6 +326,9 @@ pub enum TrainerThreadCommunicationError {
 
     #[error("Got unexpected result from trainer thread: {0}")]
     UnexpectedResult(String),
+
+    #[error("Attempting to pad batch that's already on GPU")]
+    PaddingBatch,
 
     #[cfg(feature = "python")]
     #[error("Python error: {0}")]
@@ -349,6 +353,7 @@ impl LocalTrainer {
 
         assert!(!models.is_empty());
         let first_model_device = models[0].device();
+        let first_model_max_context_length = models[0].max_context_length();
 
         let mut ret = Vec::with_capacity(models.len());
 
@@ -393,6 +398,7 @@ impl LocalTrainer {
         Self {
             models: ret,
             first_model_device,
+            first_model_max_context_length,
             barrier,
             data_parallel,
         }
@@ -558,7 +564,7 @@ impl LocalTrainer {
                     );
                 }
                 o => {
-                    return Err(ApplyDistroResultError::RecievedWrongResultType(format!(
+                    return Err(ApplyDistroResultError::ReceivedWrongResultType(format!(
                         "{o:?}"
                     )));
                 }
@@ -803,12 +809,16 @@ impl LocalTrainer {
                             &barrier,
                             Some(grad_accum_divisor),
                         ) {
-                            Ok(Some(batch_loss)) => match loss.as_mut() {
-                                Some(loss) => *loss += batch_loss,
-                                None => {
-                                    loss = Some(batch_loss);
+                            Ok(Some(batch_loss)) => {
+                                if batch_loss.double_value(&[]).is_finite() {
+                                    match loss.as_mut() {
+                                        Some(loss) => *loss += batch_loss,
+                                        None => {
+                                            loss = Some(batch_loss);
+                                        }
+                                    }
                                 }
-                            },
+                            }
                             Ok(None) => {
                                 // cancelled barrier catching race to on run_state
                                 cancelled = true;
@@ -1022,8 +1032,8 @@ pub enum ApplyDistroResultError {
     #[error("failed to recv optimization result from trainer thread: {0}")]
     ReceiveResult(#[from] flume::RecvError),
 
-    #[error("recieved wrong result type from trainer thread. expected Optimize, got {0:?}")]
-    RecievedWrongResultType(String),
+    #[error("received wrong result type from trainer thread. expected Optimize, got {0:?}")]
+    ReceivedWrongResultType(String),
 
     #[error("apply thread crashed")]
     ThreadCrashed,
@@ -1079,6 +1089,10 @@ impl CausalLM for LocalTrainer {
 
     fn device(&self) -> tch::Device {
         self.first_model_device
+    }
+
+    fn max_context_length(&self) -> usize {
+        self.first_model_max_context_length
     }
 
     fn variables(&self) -> StableVariableIterator {
@@ -1202,6 +1216,16 @@ impl CausalLM for Trainer {
             #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.device()
+            }
+        }
+    }
+
+    fn max_context_length(&self) -> usize {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.max_context_length(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.max_context_length()
             }
         }
     }

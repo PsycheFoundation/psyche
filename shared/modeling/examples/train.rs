@@ -150,6 +150,9 @@ struct Args {
     #[arg(long)]
     attn_implementation: Option<AttnImpl>,
 
+    #[arg(long, default_value_t = 1)]
+    start_step: u32,
+
     #[arg(long, default_value_t = 0)]
     device: usize,
 
@@ -241,9 +244,6 @@ async fn main() -> Result<()> {
     };
 
     let dp_world_size = args.data_parallelism.unwrap_or(1);
-    if args.total_batch % dp_world_size != 0 {
-        anyhow::bail!("DP world size doesn't divide global batch size");
-    }
     let tp_world_size = args.tensor_parallelism.unwrap_or(1);
 
     #[cfg(feature = "python")]
@@ -431,13 +431,14 @@ async fn main() -> Result<()> {
     info!("Done loading, starting training.");
 
     let mut prev_distro_results = if args.distro { Some(vec![]) } else { None };
-    for step in 1..=args.total_steps {
+    for step in args.start_step..=args.total_steps {
         let start_time = SystemTime::now();
+        let batch_id = BatchId(ClosedInterval::new(
+            (step as u64 - 1) * args.total_batch as u64,
+            (step as u64 * args.total_batch as u64) - 1,
+        ));
         let data: Vec<BatchDataCPU> = dataset
-            .get_samples(BatchId(ClosedInterval::new(
-                (step as u64 - 1) * args.total_batch as u64,
-                (step as u64 * args.total_batch as u64) - 1,
-            )))
+            .get_samples(batch_id)
             .await?
             .into_iter()
             .map(|x| BatchDataCPU {
@@ -477,7 +478,7 @@ async fn main() -> Result<()> {
                             cancel.clone(),
                         )
                         .unwrap();
-                    if !distro || step > 1 {
+                    if !distro || step > args.start_step {
                         output.trainer = output
                             .trainer
                             .optimize(
@@ -524,8 +525,8 @@ async fn main() -> Result<()> {
             .as_secs_f32();
 
         info!(
-            "step: {}, duration: {:.2}, loss: {:.4}",
-            step, duration, loss
+            "step: {}, duration: {:.2}, batch: {}, loss: {:.4}",
+            step, duration, batch_id, loss
         );
         if cancel.is_cancelled() {
             break;

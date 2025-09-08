@@ -94,6 +94,10 @@ impl CausalLM for DummyModel {
         Device::cuda_if_available()
     }
 
+    fn max_context_length(&self) -> usize {
+        2048
+    }
+
     fn variables(&self) -> StableVariableIterator {
         Box::new(StableVarStoreIterator::new(&self.var_store, None))
     }

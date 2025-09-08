@@ -2,6 +2,7 @@
   pkgs,
   nixglhostRustPackages,
   inputs,
+  externalRustPackages,
 }:
 let
   # We need this because the solana validator require the compiled .so files of the Solana programs,
@@ -18,6 +19,14 @@ let
   };
 
   solana = inputs.solana-pkgs.packages.${pkgs.system}.default;
+
+  layeringPipeline = pkgs.writeText "reverse-popularity-layering.json" ''
+    [
+      ["popularity_contest"],
+      ["reverse"],
+      ["limit_layers", 99]
+    ]
+  '';
 in
 {
   docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
@@ -46,6 +55,8 @@ in
       ];
       Entrypoint = [ "/bin/train_entrypoint.sh" ];
     };
+
+    inherit layeringPipeline;
   };
 
   docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {
@@ -58,6 +69,8 @@ in
       busybox
       cacert
       nixglhostRustPackages."psyche-solana-client-nixglhost"
+      externalRustPackages.solana_toolbox_cli
+      jq
 
       # Create proper system structure including /tmp
       (pkgs.runCommand "system-setup" { } ''
@@ -84,8 +97,10 @@ in
         mkdir -p $out/bin
         cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
         cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
+        cp ${../scripts/join-authorization-create.sh} $out/bin/join-authorization-create.sh
         chmod +x $out/bin/client_test_entrypoint.sh
         chmod +x $out/bin/run_owner_entrypoint.sh
+        chmod +x $out/bin/join-authorization-create.sh
       '')
     ];
 

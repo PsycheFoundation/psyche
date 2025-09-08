@@ -36,6 +36,7 @@ pub trait CausalLM: Send {
     fn bos_token_id(&self) -> Option<i64>;
     fn eos_token_ids(&self) -> Option<EosToks>;
     fn device(&self) -> Device;
+    fn max_context_length(&self) -> usize;
     fn variables(&self) -> StableVariableIterator;
     fn communicator(&self) -> Option<Arc<Communicator>>;
     fn prepare_for_training(&mut self);
@@ -224,6 +225,10 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
 
     fn device(&self) -> Device {
         self.device
+    }
+
+    fn max_context_length(&self) -> usize {
+        self.config.max_position_embeddings()
     }
 
     fn variables(&self) -> StableVariableIterator {

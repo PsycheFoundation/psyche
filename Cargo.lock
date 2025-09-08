@@ -7466,6 +7466,7 @@ dependencies = [
  "tch",
  "tokio-util 0.7.15",
  "torch-sys",
+ "tracing",
 ]
 
 [[package]]
@@ -7509,8 +7510,6 @@ dependencies = [
  "serde_json",
  "solana-account-decoder-client-types",
  "solana-transaction-status-client-types",
- "spl-associated-token-account 6.0.0",
- "spl-token 4.0.2",
  "time",
  "tokio",
  "tokio-util 0.7.15",
@@ -7669,8 +7668,8 @@ dependencies = [
 
 [[package]]
 name = "pyo3-tch"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=8600b2c90a443e5ac1edf6981455c26d4c5388e2#8600b2c90a443e5ac1edf6981455c26d4c5388e2"
 dependencies = [
  "pyo3",
  "tch",
@@ -12071,8 +12070,8 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=8600b2c90a443e5ac1edf6981455c26d4c5388e2#8600b2c90a443e5ac1edf6981455c26d4c5388e2"
 dependencies = [
  "half",
  "lazy_static",
@@ -12554,8 +12553,8 @@ dependencies = [
 
 [[package]]
 name = "torch-sys"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=8600b2c90a443e5ac1edf6981455c26d4c5388e2#8600b2c90a443e5ac1edf6981455c26d4c5388e2"
 dependencies = [
  "anyhow",
  "cc",
