@@ -1,6 +1,7 @@
-use futures_util::{Stream, stream};
-use iroh::NodeId;
+use futures_util::{stream, Stream};
+use iroh::discovery::{DiscoveryError, DiscoveryItem};
 use iroh::node_info::{NodeData, NodeInfo};
+use iroh::NodeId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
@@ -52,9 +53,8 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
 
     fn resolve(
         &self,
-        _endpoint: iroh::Endpoint,
         node_id: iroh::NodeId,
-    ) -> Option<BoxStream<anyhow::Result<iroh::discovery::DiscoveryItem>>> {
+    ) -> Option<BoxStream<anyhow::Result<DiscoveryItem, DiscoveryError>>> {
         let file_path = Self::get_node_file_path(&node_id);
 
         if !file_path.exists() {

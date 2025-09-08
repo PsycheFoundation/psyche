@@ -1,24 +1,25 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
-    RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
+    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
+    RunInitConfigAndIO, TrainingResult, NC,
 };
-use anyhow::{Error, Result, bail};
+use anyhow::anyhow;
+use anyhow::{bail, Error, Result};
 use futures::future::join_all;
+use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
-    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
-    router::Router,
+    allowlist, blob_ticket_param_request_task, raw_p2p_verify, AuthenticatableIdentity, BlobTicket,
+    DownloadComplete, DownloadRetryInfo, DownloadType, ModelRequestType, NetworkConnection,
+    NetworkEvent, NetworkTUIState, Networkable, NodeAddr, NodeId, PeerManagerHandle,
+    RetriedDownloadsHandle, SharableModel, TransmittableDownload, MAX_DOWNLOAD_RETRIES,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
-use rand::{RngCore, seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, RngCore};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
@@ -27,7 +28,7 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{Notify, mpsc, watch},
+    sync::{mpsc, watch, Notify},
     task::JoinHandle,
     time::interval,
 };
@@ -181,7 +182,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
+                                // p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
                                 let p2p_info = get_p2p_info(&p2p).await?;
                                 metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
                                 if let Err(e) = run.set_node_info(p2p_info) {
@@ -676,7 +677,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     info!("Checkpoint finished, exiting main client loop");
                 }
 
-                p2p_shutdown.await
+                p2p_shutdown
+                    .await
+                    .map_err(|e| anyhow!("Error shutting down p2p: {}", e))
             }
         });
 
@@ -782,7 +785,7 @@ where
     D: Networkable,
 {
     let remotes = p2p.remote_infos();
-    let node_addr = p2p.node_addr().await?;
+    let node_addr = p2p.node_addr().await;
     Ok(remotes
         .into_iter()
         .map(|(x, bandwidth)| {

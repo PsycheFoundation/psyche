@@ -1,10 +1,11 @@
 use anyhow::Result;
+use iroh::protocol::AcceptError;
 use iroh::NodeId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_core::BoxedFuture;
 use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
@@ -630,66 +631,58 @@ impl ModelSharing {
             tx_model_config_req,
         }
     }
-    pub(crate) fn _accept_connection(
+    pub(crate) async fn _accept_connection(
         connection: Connection,
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
-    ) -> BoxedFuture<Result<()>> {
-        Box::pin(async move {
-            let (mut send, mut recv) = connection.accept_bi().await?;
-            let model_request_type_bytes = recv.read_to_end(1000).await?;
-            let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes)?;
-            let blob_ticket = match model_request_type {
-                ModelRequestType::Parameter(parameter_request) => {
-                    // Create channel for requesting the model parameter to the client backend
-                    // and add a new blob for it
-                    let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
-                    let request = ParameterSharingMessage::Get(parameter_request, tx_req);
-                    tx_model_parameter_req.send(request)?;
+    ) -> Result<(), AcceptError> {
+        let (mut send, mut recv) = connection.accept_bi().await?;
+        let model_request_type_bytes = recv.read_to_end(1000).await.unwrap();
+        let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes).unwrap();
+        let blob_ticket = match model_request_type {
+            ModelRequestType::Parameter(parameter_request) => {
+                // Create channel for requesting the model parameter to the client backend
+                // and add a new blob for it
+                let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                let request = ParameterSharingMessage::Get(parameter_request, tx_req);
+                tx_model_parameter_req.send(request).unwrap();
 
-                    // Receive the blob ticket and forward it to the requesting client
-                    rx_req.await?
-                }
-                ModelRequestType::Config => {
-                    // Create channel for requesting the model config to the client backend and add a new blob for it
-                    let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
-                    let request = ModelConfigSharingMessage::Get(tx_req);
-                    tx_model_config_req.send(request)?;
+                // Receive the blob ticket and forward it to the requesting client
+                rx_req.await.unwrap()
+            }
+            ModelRequestType::Config => {
+                // Create channel for requesting the model config to the client backend and add a new blob for it
+                let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                let request = ModelConfigSharingMessage::Get(tx_req);
+                tx_model_config_req.send(request).unwrap();
 
-                    // Receive the blob ticket and forward it to the requesting client
-                    rx_req.await?
-                }
-            };
+                // Receive the blob ticket and forward it to the requesting client
+                rx_req.await.unwrap()
+            }
+        };
 
-            let data = postcard::to_stdvec(&blob_ticket)?;
-            send.write_all(&data).await?;
-            send.finish()?;
+        let data = postcard::to_stdvec(&blob_ticket).unwrap();
+        send.write_all(&data).await.unwrap();
+        send.finish()?;
 
-            // Wait until the remote closes the connection, which it does once it
-            // received the response.
-            connection.closed().await;
+        // Wait until the remote closes the connection, which it does once it
+        // received the response.
+        connection.closed().await;
 
-            Ok(())
-        })
+        Ok(())
     }
 
-    pub fn accept_connection(&self, connection: Connection) -> BoxedFuture<Result<()>> {
+    pub async fn accept_connection(&self, connection: Connection) -> Result<(), AcceptError> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
-        Box::pin(async move {
-            Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
-        })
+        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
     }
 }
 
 impl ProtocolHandler for ModelSharing {
-    fn accept(&self, connection: Connection) -> BoxedFuture<Result<()>> {
+    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
-        Box::pin(async move {
-            Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
-        })
+        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
     }
 }

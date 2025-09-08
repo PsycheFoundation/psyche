@@ -1,21 +1,21 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMode, RelayUrl};
 use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
-    BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    NetworkTui, PeerList, allowlist, fmt_bytes,
+    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
+    NetworkTUIState, NetworkTui, PeerList,
 };
 use psyche_tui::{
-    CustomWidget, LogOutput,
     logging::LoggerWidget,
     maybe_start_render_loop,
     ratatui::{
         layout::{Constraint, Direction, Layout},
         widgets::{Block, Borders, Paragraph, Widget},
     },
+    CustomWidget, LogOutput,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{Interval, interval, interval_at},
+    time::{interval, interval_at, Interval},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -164,7 +164,7 @@ impl App {
                 info!(name:"message_recv_text", from=from.fmt_short(), text=text)
             }
             NetworkEvent::MessageReceived((from, Message::DistroResult { step, blob_ticket })) => {
-                info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
+                info!(name:"message_recv_distro", from=%from.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network.start_download(
                     blob_ticket,
@@ -184,7 +184,7 @@ impl App {
                     fmt_bytes(file.data.len() as f64),
                     fmt_bytes(speed),
                 );
-                info!(name:"download_blob", from=result.from.fmt_short(), step=file.step, blob=hash.fmt_short());
+                info!(name:"download_blob", from=%result.from.fmt_short(), step=file.step, blob=%hash.fmt_short());
             }
             NetworkEvent::DownloadFailed(result) => {
                 info!(
@@ -222,7 +222,7 @@ impl App {
             .await
         {
             Ok(v) => {
-                info!(name:"upload_blob", from=node_id.fmt_short(), step=step, blob=v.hash().fmt_short());
+                info!(name:"upload_blob", from=%node_id.fmt_short(), step=step, blob=%v.hash().fmt_short());
                 v
             }
             Err(err) => {
@@ -240,7 +240,7 @@ impl App {
             error!("Error sending message: {err}");
         } else {
             info!("broadcasted message for step {step}: {}", blob_ticket);
-            info!(name:"message_send_distro", from=node_id.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
+            info!(name:"message_send_distro", from=%node_id.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
         }
     }
 }
