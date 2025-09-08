@@ -38,7 +38,7 @@ pub fn load_dataset(
         None,
         true,
     )?;
-    Dataset::load_dataset(&repo_files, Some(split), subset, repo_id)
+    Dataset::load_dataset(&repo_files, Some(split), subset)
 }
 
 pub fn tasktype_from_name(name: &str) -> Result<TaskType> {

@@ -79,7 +79,7 @@ impl PreprocessedDataProvider {
             bail!("No training data files in directory {:?}", dir);
         }
 
-        let dataset = Dataset::load_dataset(&files, split, subset, "local")?;
+        let dataset = Dataset::load_dataset(&files, split, subset)?;
         let inputs_column = match dataset.get_column_id("inputs") {
             Some(x) => x,
             None => bail!("Dataset does not have `inputs` column"),

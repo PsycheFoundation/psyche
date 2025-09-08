@@ -65,7 +65,6 @@ impl Dataset {
         repo_files: &[PathBuf],
         split: Option<Split>,
         subset: Option<String>,
-        repo_id: &str,
     ) -> Result<Self> {
         let mut split = split;
         let mut to_load: Vec<PathBuf> = Vec::new();
@@ -79,67 +78,25 @@ impl Dataset {
                 match (parent, grandparent) {
                     (Some(split_name), Some(subset_name)) => {
                         let split_str = split_name.to_string_lossy();
-                        let subset_str = subset_name.to_string_lossy();
-
-                        // Check if we're dealing with lmlmcat/cmmlu repository structure
-                        // where subset_name is actually a HuggingFace snapshot ID
-                        // In that case, split_name is actually the subset and we need to parse split from filename
-                        if repo_id == "lmlmcat/cmmlu"
-                            && subset_str.len() > 20
-                            && subset_str.chars().all(|c| c.is_ascii_hexdigit())
-                        {
-                            // In this case, split_name is actually the subset
-                            if let Some(subset_filter) = &subset {
-                                if split_str != subset_filter.as_str() {
-                                    continue;
-                                }
+                        if let Some(subset_filter) = &subset {
+                            if subset_name.to_str().unwrap_or_default() != subset_filter {
+                                continue;
                             }
+                        }
 
-                            // Extract split from filename (e.g., "dev-00000-of-00001.parquet" -> "dev")
-                            if let Some(filename) = file.file_name() {
-                                let filename_str = filename.to_string_lossy();
-                                if let Some(actual_split) = filename_str.split('-').next() {
-                                    if split.as_ref().is_some() {
-                                        let expected_split = split.as_ref().unwrap().to_string();
-                                        if actual_split.eq_ignore_ascii_case(&expected_split) {
-                                            to_load.push(file.clone());
-                                        }
-                                    } else {
-                                        for maybe_split in SPLITS {
-                                            if actual_split
-                                                .eq_ignore_ascii_case(&maybe_split.to_string())
-                                            {
-                                                to_load.push(file.clone());
-                                                split = Some(maybe_split);
-                                                break;
-                                            }
-                                        }
-                                    }
+                        if let Some(actual_split) = split_str.split('-').next() {
+                            if split.as_ref().is_some() {
+                                if actual_split
+                                    .eq_ignore_ascii_case(&split.as_ref().unwrap().to_string())
+                                {
+                                    to_load.push(file.clone());
                                 }
-                            }
-                        } else {
-                            // Original logic for standard structure
-                            if let Some(subset_filter) = &subset {
-                                if subset_str != subset_filter.as_str() {
-                                    continue;
-                                }
-                            }
-
-                            if let Some(actual_split) = split_str.split('-').next() {
-                                if split.as_ref().is_some() {
-                                    let expected_split = split.as_ref().unwrap().to_string();
-                                    if actual_split.eq_ignore_ascii_case(&expected_split) {
+                            } else {
+                                for maybe_split in SPLITS {
+                                    if actual_split.eq_ignore_ascii_case(&maybe_split.to_string()) {
                                         to_load.push(file.clone());
-                                    }
-                                } else {
-                                    for maybe_split in SPLITS {
-                                        if actual_split
-                                            .eq_ignore_ascii_case(&maybe_split.to_string())
-                                        {
-                                            to_load.push(file.clone());
-                                            split = Some(maybe_split);
-                                            break;
-                                        }
+                                        split = Some(maybe_split);
+                                        break;
                                     }
                                 }
                             }
@@ -152,8 +109,8 @@ impl Dataset {
                         }
 
                         if split.as_ref().is_some() {
-                            let expected_split = split.as_ref().unwrap().to_string();
-                            if split_name.eq_ignore_ascii_case(&expected_split) {
+                            if split_name.eq_ignore_ascii_case(split.as_ref().unwrap().to_string())
+                            {
                                 to_load.push(file.clone());
                             }
                         } else {
@@ -170,16 +127,18 @@ impl Dataset {
                 }
             }
         }
-
         if to_load.is_empty() {
             // ad-hoc structure
             for file in repo_files {
                 if looks_like_parquet_file(file) {
                     match split {
                         Some(split) => {
-                            let filename = file.file_name().unwrap().to_string_lossy();
-                            let split_str = split.to_string();
-                            if filename.starts_with(&split_str) {
+                            if file
+                                .file_name()
+                                .unwrap()
+                                .to_string_lossy()
+                                .starts_with(&split.to_string())
+                            {
                                 to_load.push(file.clone());
                             }
                         }
