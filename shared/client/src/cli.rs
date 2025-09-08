@@ -238,7 +238,11 @@ impl TrainArgs {
         let result: Result<Vec<psyche_eval::Task>> = eval_tasks
             .split(",")
             .map(|eval_task| {
-                let fewshot = { if eval_task == "mmlu_pro" { 5 } else { 0 } };
+                let fewshot = match eval_task {
+                    "mmlu_pro" => 5,
+                    "ceval" => 4,
+                    _ => 0,
+                };
                 tasktype_from_name(eval_task)
                     .map(|task_type| psyche_eval::Task::new(task_type, fewshot, eval_seed))
             })

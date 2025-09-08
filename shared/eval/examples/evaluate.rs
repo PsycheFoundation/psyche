@@ -19,14 +19,17 @@ struct Args {
     #[arg(long, default_value_t = ALL_TASK_NAMES.join(","))]
     tasks: String,
 
-    #[arg(long, default_value_t = 0)]
-    num_fewshot: usize,
+    #[arg(long)]
+    num_fewshot: Option<usize>,
 
     #[arg(long, default_value_t = 42)]
     seed: u64,
 
     #[arg(long, default_value_t = false)]
     quiet: bool,
+
+    #[arg(long)]
+    limit: Option<usize>,
 }
 
 fn main() -> Result<()> {
@@ -34,7 +37,16 @@ fn main() -> Result<()> {
     let tasks: Result<Vec<Task>> = args
         .tasks
         .split(",")
-        .map(|x| tasktype_from_name(x).map(|y| Task::new(y, args.num_fewshot, args.seed)))
+        .map(|x| {
+            tasktype_from_name(x).map(|y| {
+                let num_fewshot = args.num_fewshot.unwrap_or_else(|| match x {
+                    "mmlu_pro" => 5,
+                    "ceval" => 4,
+                    _ => 0,
+                });
+                Task::new(y, num_fewshot, args.seed)
+            })
+        })
         .collect();
     let tasks = tasks?;
     let repo = download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?;
@@ -55,7 +67,7 @@ fn main() -> Result<()> {
                 skip_and_step_by: None,
                 live_results: None,
                 cancel: None,
-                limit: None,
+                limit: args.limit,
             },
             !args.quiet,
         );
