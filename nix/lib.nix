@@ -51,6 +51,9 @@ let
         cuda_cudart
         nccl
       ]
+      ++ (with pkgs; [
+        rdma-core
+      ])
     );
   };
 
