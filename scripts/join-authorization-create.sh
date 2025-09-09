@@ -1,5 +1,9 @@
 #!/bin/bash
 
+set -o errexit
+set -e
+set -m
+
 _usage() {
     echo "Usage: $0 <SOLANA_RPC> <GRANTOR_KEYPAIR_FILE> <GRANTEE_PUBKEY>"
     echo "  SOLANA_RPC: The solana RPC url or moniker to use"
@@ -41,7 +45,7 @@ echo "PSYCHE_AUTH_SCOPE: $PSYCHE_AUTH_SCOPE"
 # Create a new authorization and save the created PDA's address
 echo "----"
 echo "Creating a new authorization..."
-AUTHORIZATION_CREATE_JSON=$(\
+AUTHORIZATION_CREATE_JSON=$( \
         solana-toolbox --rpc=$SOLANA_RPC instruction \
         $PSYCHE_AUTHORIZER_ID authorization_create \
         payer:keypair \
@@ -60,7 +64,7 @@ echo "AUTHORIZATION_PUBKEY: $AUTHORIZATION_PUBKEY"
 # Activate the new authorization we just created
 echo "----"
 echo "Activation of the newly created authorization..."
-AUTHORIZATION_ACTIVATE_JSON=$(\
+AUTHORIZATION_ACTIVATE_JSON=$( \
         solana-toolbox --rpc=$SOLANA_RPC instruction \
         $PSYCHE_AUTHORIZER_ID authorization_grantor_update \
         --args=params.active:true \

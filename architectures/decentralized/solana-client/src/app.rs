@@ -1,28 +1,29 @@
 use crate::{
     backend::SolanaBackend,
     network_identity::NetworkIdentity,
-    retry::{retry_function, RetryError},
+    retry::{RetryError, retry_function},
 };
 
 use anchor_client::{
+    Cluster,
     solana_sdk::{
         commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{Keypair, Signer},
     },
-    Cluster,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
+use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    allowlist, psyche_relay_map, DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey,
+    DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey, allowlist, psyche_relay_map,
 };
-use psyche_tui::{logging::LoggerWidget, CustomWidget, TabbedWidget};
+use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
-use rand::{thread_rng, Rng, RngCore};
+use rand::{Rng, RngCore, thread_rng};
 use std::{path::PathBuf, time::Duration};
 use std::{
     sync::Arc,
@@ -31,7 +32,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{interval, Interval, MissedTickBehavior},
+    time::{Interval, MissedTickBehavior, interval},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
@@ -49,6 +50,10 @@ pub struct App {
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
     authorizer: Option<Pubkey>,
+    metrics: Arc<ClientMetrics>,
+    allowlist: allowlist::AllowDynamic,
+    p2p: NC,
+    state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
 }
 
 pub struct AppBuilder(AppParams);
@@ -69,6 +74,7 @@ pub struct AppParams {
     pub p2p_interface: Option<String>,
     pub eval_tasks: Vec<psyche_eval::Task>,
     pub eval_task_max_docs: Option<usize>,
+    pub prompt_task: bool,
     pub checkpoint_upload_info: Option<CheckpointConfig>,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
@@ -79,6 +85,7 @@ pub struct AppParams {
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,
+    pub metrics_local_port: Option<u16>,
 }
 
 impl AppBuilder {
@@ -86,15 +93,14 @@ impl AppBuilder {
         Self(params)
     }
 
-    pub async fn build(
-        self,
-    ) -> Result<(
-        App,
-        allowlist::AllowDynamic,
-        NC,
-        RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
-    )> {
+    pub async fn build(self) -> Result<App> {
         let p = self.0;
+        let identity = psyche_solana_coordinator::ClientId::new(
+            p.wallet_keypair.pubkey(),
+            *p.identity_secret_key.public().as_bytes(),
+        );
+
+        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
 
         let allowlist = allowlist::AllowDynamic::new();
 
@@ -108,9 +114,31 @@ impl AppBuilder {
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
             p.max_concurrent_downloads,
+            metrics.clone(),
         )
         .await?;
 
+        let state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity> =
+            RunInitConfig {
+                data_parallelism: p.data_parallelism,
+                tensor_parallelism: p.tensor_parallelism,
+                micro_batch_size: p.micro_batch_size,
+                write_gradients_dir: p.write_gradients_dir,
+                eval_tasks: p.eval_tasks,
+                eval_task_max_docs: p.eval_task_max_docs,
+                prompt_task: p.prompt_task,
+                checkpoint_config: p.checkpoint_upload_info,
+                hub_read_token: p.hub_read_token,
+                hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
+                wandb_info: p.wandb_info,
+                identity,
+                network_identity: identity.into(),
+                private_key: (p.wallet_keypair.clone(), p.identity_secret_key),
+                optim_stats_every_n_steps: p.optim_stats,
+                grad_accum_in_fp32: p.grad_accum_in_fp32,
+                dummy_training_delay_secs: p.dummy_training_delay_secs,
+                max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+            };
         let app = App {
             run_id: p.run_id.clone(),
             cluster: p.cluster,
@@ -124,47 +152,21 @@ impl AppBuilder {
             tx_tui_state: p.tx_tui_state,
             update_tui_interval: interval(Duration::from_millis(150)),
             authorizer: p.authorizer,
+            allowlist,
+            metrics,
+            p2p,
+            state_options,
         };
-        let identity = psyche_solana_coordinator::ClientId::new(
-            p.wallet_keypair.pubkey(),
-            *p.identity_secret_key.public().as_bytes(),
-        );
-        let state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity> =
-            RunInitConfig {
-                data_parallelism: p.data_parallelism,
-                tensor_parallelism: p.tensor_parallelism,
-                micro_batch_size: p.micro_batch_size,
-                write_gradients_dir: p.write_gradients_dir,
-                eval_tasks: p.eval_tasks,
-                eval_task_max_docs: p.eval_task_max_docs,
-                checkpoint_config: p.checkpoint_upload_info,
-                hub_read_token: p.hub_read_token,
-                hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
-                wandb_info: p.wandb_info,
-                identity,
-                network_identity: identity.into(),
-                private_key: (p.wallet_keypair.clone(), p.identity_secret_key),
-                optim_stats_every_n_steps: p.optim_stats,
-                grad_accum_in_fp32: p.grad_accum_in_fp32,
-                dummy_training_delay_secs: p.dummy_training_delay_secs,
-                max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
-            };
-
-        Ok((app, allowlist, p2p, state_options))
+        Ok(app)
     }
 }
 
 impl App {
-    pub async fn run(
-        &mut self,
-        allowlist: allowlist::AllowDynamic,
-        p2p: NC,
-        state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
-    ) -> Result<()> {
+    pub async fn run(mut self) -> Result<()> {
         let backend = SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            state_options.private_key.0.clone(),
+            self.state_options.private_key.0.clone(),
             CommitmentConfig::confirmed(),
         )?;
         let coordinator_instance =
@@ -182,11 +184,11 @@ impl App {
         let backend = Arc::new(SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            state_options.private_key.0.clone(),
+            self.state_options.private_key.0.clone(),
             CommitmentConfig::confirmed(),
         )?);
-        let signer = state_options.private_key.0.pubkey();
-        let p2p_identity = state_options.private_key.1.public();
+        let signer = self.state_options.private_key.0.pubkey();
+        let p2p_identity = self.state_options.private_key.1.public();
 
         let start_coordinator_state = backend
             .get_coordinator_account(&coordinator_account)
@@ -234,7 +236,13 @@ impl App {
 
         let mut latest_update = coordinator_state.coordinator;
         let mut updates = backend_runner.updates();
-        let mut client = Client::new(backend_runner, allowlist, p2p, state_options);
+        let mut client = Client::new(
+            backend_runner,
+            self.allowlist,
+            self.p2p,
+            self.state_options,
+            self.metrics,
+        );
 
         let id = psyche_solana_coordinator::ClientId {
             signer,
@@ -248,7 +256,7 @@ impl App {
                 }
                 _ = self.update_tui_interval.tick() => {
                     let (client_tui_state, network_tui_state) = client.tui_states().await;
-                    self.update_tui(client_tui_state, &latest_update, network_tui_state).await?;
+                    Self::update_tui(&self.tx_tui_state, client_tui_state, &latest_update, network_tui_state).await?;
                 }
                 _ = self.tick_check_interval.tick() => {
                     let mut ticked = latest_update;
@@ -274,10 +282,10 @@ impl App {
                         Ok(_) => {
                             if ticked.run_state != latest_update.run_state {
                                 // to avoid *everyone* sending a tick, we probabilisticly send it
-                                // targetting having two clients send it per interval
+                                // targeting having two clients send it per interval
                                 let send_tick = match ticked.epoch_state.clients.len() {
                                     0..=2 => true,
-                                    len => { let rand: f32 = thread_rng().gen();
+                                    len => { let rand: f32 = thread_rng().r#gen();
                                         rand <= 2.0 / len as f32
                                     }
                                 };
@@ -353,12 +361,12 @@ impl App {
     }
 
     async fn update_tui(
-        &mut self,
+        tx_tui_state: &Option<Sender<<Tabs as CustomWidget>::Data>>,
         client_tui_state: ClientTUIState,
         coordinator_state: &Coordinator<psyche_solana_coordinator::ClientId>,
         network_tui_state: NetworkTUIState,
     ) -> Result<()> {
-        if let Some(tx_tui_state) = &self.tx_tui_state {
+        if let Some(tx_tui_state) = &tx_tui_state {
             let states = (
                 client_tui_state,
                 coordinator_state.into(),

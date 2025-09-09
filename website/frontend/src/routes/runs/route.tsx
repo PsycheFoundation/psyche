@@ -38,10 +38,16 @@ const MainContents = styled.div`
 	padding: 36px;
 	@container (width < calc(1024px + (36px * 2))) {
 		grid-template-columns: 1fr;
+		& > fieldset:nth-child(2) {
+			grid-row: 1;
+		}
 		padding: 16px;
 	}
 	@container (width < 400px) {
 		padding: 4px;
+	}
+	@container (width < 350px) {
+		padding: 0;
 	}
 	& > * {
 		background: var(--color-bg);

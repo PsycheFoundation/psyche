@@ -1,5 +1,5 @@
 use anyhow::Result;
-use psyche_coordinator::{model, Coordinator, HealthChecks, Witness, WitnessMetadata};
+use psyche_coordinator::{Coordinator, HealthChecks, Witness, WitnessMetadata, model};
 use psyche_core::NodeIdentity;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +8,15 @@ use serde::{Deserialize, Serialize};
 pub enum OpportunisticData {
     WitnessStep(Witness, WitnessMetadata),
     WarmupStep(Witness),
+}
+
+impl OpportunisticData {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            OpportunisticData::WitnessStep(..) => "witness",
+            OpportunisticData::WarmupStep(..) => "warmup",
+        }
+    }
 }
 
 #[async_trait::async_trait]

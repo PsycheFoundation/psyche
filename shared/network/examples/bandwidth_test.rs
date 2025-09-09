@@ -1,23 +1,25 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMode, RelayUrl};
+use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
-    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
-    NetworkTUIState, NetworkTui, PeerList,
+    BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, NetworkTUIState,
+    NetworkTui, PeerList, allowlist, fmt_bytes,
 };
 use psyche_tui::{
+    CustomWidget, LogOutput,
     logging::LoggerWidget,
     maybe_start_render_loop,
     ratatui::{
         layout::{Constraint, Direction, Layout},
         widgets::{Block, Borders, Paragraph, Widget},
     },
-    CustomWidget, LogOutput,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     str::FromStr,
@@ -26,10 +28,10 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{interval, interval_at, Interval},
+    time::{Interval, interval, interval_at},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn, Level};
+use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -197,7 +199,7 @@ impl App {
     async fn on_tick(&mut self) {
         let unix_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("time went forwads :)");
+            .expect("time went forward :)");
         let step = ((unix_time.as_secs() + 2) / 15) as u32;
         info!("new step {step}");
         if step != self.current_step + 1 {
@@ -247,17 +249,13 @@ impl App {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let logger = psyche_tui::init_logging(
-        if args.tui {
+    let logger = psyche_tui::logging()
+        .with_output(if args.tui {
             LogOutput::TUI
         } else {
             LogOutput::Console
-        },
-        Level::INFO,
-        None,
-        false,
-        None,
-    )?;
+        })
+        .init()?;
 
     let PeerList(peers) = args
         .peer_list
@@ -295,6 +293,7 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         4,
+        Arc::new(ClientMetrics::new(None)),
     )
     .await?;
 

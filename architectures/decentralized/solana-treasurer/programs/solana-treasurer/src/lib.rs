@@ -4,7 +4,7 @@ pub mod state;
 use anchor_lang::prelude::*;
 use logic::*;
 
-declare_id!("77mYTtUnEzSYVoG1JtWCjKAdakSvYDkdPPy8DoGqr5RP");
+declare_id!("vVeH6Xd43HAScbxjVtvfwDGqBMaMvNDLsAxwM5WK1pG");
 
 pub fn find_run(index: u64) -> Pubkey {
     Pubkey::find_program_address(
@@ -35,13 +35,6 @@ pub mod psyche_solana_treasurer {
         params: RunCreateParams,
     ) -> Result<()> {
         run_create_processor(context, params)
-    }
-
-    pub fn run_top_up(
-        context: Context<RunTopUpAccounts>,
-        params: RunTopUpParams,
-    ) -> Result<()> {
-        run_top_up_processor(context, params)
     }
 
     pub fn run_update(

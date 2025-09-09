@@ -1,12 +1,10 @@
-import { readFileSync } from 'fs'
-
 import path from 'path'
-import { psycheJsonReviver, psycheJsonReplacer, ContributionInfo } from 'shared'
+import { ContributionInfo } from 'shared'
 import { LastUpdateInfo, MiningPoolDataStore } from '../dataStore.js'
 import { PsycheMiningPoolAccount } from '../idlTypes.js'
 import { PublicKey } from '@solana/web3.js'
 import EventEmitter from 'events'
-import { writeFileAtomic } from '../writeFileAtomic.js'
+import { readVersionedFile, writeVersionedFile } from './versioned.js'
 
 export class FlatFileMiningPoolDataStore implements MiningPoolDataStore {
 	#lastUpdateInfo: LastUpdateInfo = {
@@ -38,10 +36,8 @@ export class FlatFileMiningPoolDataStore implements MiningPoolDataStore {
 
 		console.log(`loading mining pool db from disk at path ${this.#db}...`)
 		try {
-			const { lastUpdateInfo, data, programId } = JSON.parse(
-				readFileSync(this.#db, 'utf-8'),
-				psycheJsonReviver
-			)
+			const { data: fileContents } = readVersionedFile(this.#db)
+			const { lastUpdateInfo, data, programId } = fileContents
 			if (this.#programId.equals(programId)) {
 				this.#lastUpdateInfo = lastUpdateInfo
 				this.#data = data
@@ -84,32 +80,31 @@ export class FlatFileMiningPoolDataStore implements MiningPoolDataStore {
 
 	async sync(lastUpdateInfo: LastUpdateInfo): Promise<void> {
 		this.#lastUpdateInfo = lastUpdateInfo
-		await writeFileAtomic(
-			this.#db,
-			JSON.stringify(
-				{
-					lastUpdateInfo: this.#lastUpdateInfo,
-					data: this.#data,
-					programId: this.#programId,
-				},
-				psycheJsonReplacer
-			)
-		)
+		await writeVersionedFile(this.#db, {
+			lastUpdateInfo: this.#lastUpdateInfo,
+			data: this.#data,
+			programId: this.#programId,
+		})
 		this.eventEmitter.emit('update')
 	}
 
-	getContributionInfo(): Omit<ContributionInfo, 'miningPoolProgramId'> {
+	getContributionInfo(
+		filterAddress?: string
+	): Omit<ContributionInfo, 'miningPoolProgramId'> {
 		const usersSortedByAmount = [...this.#data.userDeposits.entries()].sort(
 			(a, b) => (a[1] > b[1] ? -1 : a[1] < b[1] ? 1 : 0)
 		)
+		const fa = filterAddress ? new PublicKey(filterAddress) : undefined
 		return {
 			totalDepositedCollateralAmount: this.#data.totalDepositedCollateralAmount,
 			maxDepositCollateralAmount: this.#data.maxDepositCollateralAmount,
-			users: usersSortedByAmount.map(([address, funding], i) => ({
-				address,
-				funding,
-				rank: i + 1,
-			})),
+			users: usersSortedByAmount
+				.map(([address, funding], i) => ({
+					address,
+					funding,
+					rank: i + 1,
+				}))
+				.filter(({ address }) => !fa || new PublicKey(address).equals(fa)),
 			collateralMintDecimals: this.#data.collateral?.decimals ?? 0,
 			collateralMintAddress: this.#data.collateral?.mintAddress ?? 'UNKNOWN',
 		}

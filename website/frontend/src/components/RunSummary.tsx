@@ -2,13 +2,12 @@ import { styled } from '@linaria/react'
 import { StatusChip } from './StatusChip.js'
 import { text } from '../fonts.js'
 import { InfoChit } from './InfoChit.js'
-import { Runtime } from './Runtime.js'
 import { formatNumber } from '../utils.js'
 import { RunSummary } from 'shared'
 import { ShadowCard } from './ShadowCard.jsx'
 import { forest, slate } from '../colors.js'
-import { useMemo } from 'react'
 import { Progress } from './ProgressWrapper.js'
+import AnimatedTokensCounter from './AnimatedTokensCounter.js'
 
 const RunTitleRow = styled.div`
 	display: flex;
@@ -56,25 +55,19 @@ export function RunSummaryCard({
 	info: {
 		id,
 		arch,
-		completedTokens,
 		description,
 		name,
 		size,
-		startTime,
 		totalTokens,
+		trainingStep: currentTrainingStep,
 		status,
 		type,
-		pauseHistory,
 		index,
 		isOnlyRunAtThisIndex,
 	},
 }: {
 	info: RunSummary
 }) {
-	const pauses = useMemo(
-		() => pauseHistory.map((p) => [p[0], p[1].time] as const),
-		[pauseHistory]
-	)
 	return (
 		<ShadowCard
 			to="/runs/$run/$index"
@@ -110,16 +103,28 @@ export function RunSummaryCard({
 				label="tokens"
 				chunkHeight={12}
 				chunkWidth={16}
-				current={Number(completedTokens)}
+				current={Number(
+					currentTrainingStep?.tokensCompletedAtStartOfStep ?? 0n
+				)}
 				total={Number(totalTokens)}
 			/>
-			<div className={text['aux/xs/regular']}>
-				runtime{' '}
-				<Runtime
-					start={startTime.time}
-					pauses={pauses}
-					end={status.type === 'completed' ? status.at.time : undefined}
-				/>
+			<div className={text['aux/sm/medium']}>
+				{currentTrainingStep ? (
+					<AnimatedTokensCounter
+						lastValue={currentTrainingStep.tokensCompletedAtStartOfStep}
+						lastTimestamp={currentTrainingStep.startedAt.time}
+						perSecondRate={currentTrainingStep.lastTokensPerSecond}
+						pausedAt={currentTrainingStep.endedAt?.time}
+					/>
+				) : (
+					<AnimatedTokensCounter
+						lastValue={0n}
+						lastTimestamp={new Date(0)}
+						perSecondRate={0n}
+						pausedAt={new Date(0)}
+					/>
+				)}
+				<span>tokens trained</span>
 			</div>
 		</ShadowCard>
 	)

@@ -1,7 +1,7 @@
-use psyche_coordinator::{get_batch_ids_for_node, Coordinator};
+use psyche_coordinator::{Coordinator, get_batch_ids_for_node};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{DataProvider, TokenizedDataProvider};
-use psyche_modeling::{Batch, BatchData};
+use psyche_modeling::{Batch, BatchData, BatchDataCPU};
 use psyche_network::AuthenticatableIdentity;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -10,11 +10,11 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     task::JoinHandle,
     time::sleep,
 };
-use tracing::{debug, error, trace, trace_span, warn, Instrument};
+use tracing::{Instrument, debug, error, trace, trace_span, warn};
 
 pub type BatchStep = u32;
 pub type BatchIdSet = HashSet<BatchId>;
@@ -107,7 +107,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                         if tx_next_sample
                             .send(Batch {
                                 id: batch_id,
-                                data: BatchData::CPU(batch),
+                                data: BatchData::CPU(batch.into_iter().map(|batch| {
+                                    BatchDataCPU {
+                                        input_ids: batch.input_ids,
+                                        labels: batch.labels,
+                                        position_ids: batch.position_ids,
+                                        sequence_lengths: batch.sequence_lengths,
+                                    }
+                                }).collect()),
                             })
                             .await
                             .is_err()

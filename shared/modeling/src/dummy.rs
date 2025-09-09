@@ -1,12 +1,12 @@
-use crate::{CausalLM, EosToks};
+use crate::{CausalLM, EosToks, StableVarStoreIterator, StableVariableIterator};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
 use tch::{
-    nn::{VarStore, Variables},
     Device, Kind, Tensor,
+    nn::{VarStore, Variables},
 };
 
 #[derive(Debug)]
@@ -63,12 +63,19 @@ impl CausalLM for DummyModel {
         &mut self,
         x: &tch::Tensor,
         _labels: Option<&tch::Tensor>,
+        _position_ids: Option<&tch::Tensor>,
+        _sequence_lengths: Option<&Vec<Vec<i32>>>,
         _num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
     ) -> (tch::Tensor, Option<tch::Tensor>) {
         let result = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = loss.set_requires_grad(true);
         let loss = loss.g_add_scalar(1.0);
+        let loss = match loss_scale {
+            Some(loss_scale) => loss / loss_scale,
+            None => loss,
+        };
 
         // sleep some time just to simulate training
         std::thread::sleep(self.training_delay_secs);
@@ -87,8 +94,12 @@ impl CausalLM for DummyModel {
         Device::cuda_if_available()
     }
 
-    fn variables(&self) -> &tch::nn::VarStore {
-        &self.var_store
+    fn max_context_length(&self) -> usize {
+        2048
+    }
+
+    fn variables(&self) -> StableVariableIterator {
+        Box::new(StableVarStoreIterator::new(&self.var_store, None))
     }
 
     fn communicator(&self) -> Option<std::sync::Arc<crate::Communicator>> {

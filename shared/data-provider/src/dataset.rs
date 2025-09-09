@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use parquet::{
     errors::ParquetError,
     file::reader::{FileReader, SerializedFileReader},
@@ -28,15 +28,6 @@ fn looks_like_parquet_file(x: &Path) -> bool {
         return ext.eq_ignore_ascii_case("parquet");
     };
     false
-}
-
-fn order(x: &Path) -> usize {
-    x.file_stem()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .parse::<usize>()
-        .unwrap()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -163,7 +154,7 @@ impl Dataset {
                 bail!("Could not determine split");
             }
         };
-        to_load.sort_by_key(|x| order(x));
+        to_load.sort_by(|a, b| a.file_stem().unwrap().cmp(b.file_stem().unwrap()));
         let files: std::io::Result<Vec<File>> = to_load.into_iter().map(File::open).collect();
         let files: Result<Vec<SerializedFileReader<File>>, ParquetError> =
             files?.into_iter().map(SerializedFileReader::new).collect();
@@ -202,11 +193,15 @@ impl Dataset {
             .fold(0, |acc, x| acc + x.metadata().file_metadata().num_rows()) as usize
     }
 
+    pub fn files(&self) -> &Vec<SerializedFileReader<File>> {
+        &self.files
+    }
+
     pub fn split(&self) -> Split {
         self.split
     }
 
-    pub fn iter(&self) -> DatasetIter {
+    pub fn iter(&self) -> DatasetIter<'_> {
         let mut files_iter = self.files.iter();
         let row_iter = files_iter.next().unwrap().get_row_iter(None).unwrap();
         DatasetIter {

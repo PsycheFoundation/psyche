@@ -53,7 +53,6 @@ We also support loading data from GCP as a subsection of the HTTP data provider.
 The required configuration depends on the data provider implementation being used:
 
 1. **TCP Server**:
-
    - If the data provider is configured as a TCP server, and an additional file named `data.toml` is required.
    - This file contains the configuration required for the TCP server, including:
      - Data location
@@ -63,7 +62,6 @@ The required configuration depends on the data provider implementation being use
    - Example `data.toml` files can be found in `psyche/config` within the various initial state examples.
 
 2. **HTTP Provider**:
-
    - For the HTTP data provider, no additional configuration file is needed.
    - The required fields for this setup include:
      - The URL (or a set of URLs) from which the data will be fetched - or, if you're loading data from GCP, a GCP bucket and an optional subdirectory.
@@ -71,5 +69,4 @@ The required configuration depends on the data provider implementation being use
      - A shuffle seed, if data shuffling is desired.
 
 3. **Local Provider**:
-
    - Simply point to the folder where the data should be loaded from.

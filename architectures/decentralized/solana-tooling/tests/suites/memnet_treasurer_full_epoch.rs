@@ -1,21 +1,22 @@
+use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
+use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
-use psyche_coordinator::model::LLM;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::WitnessProof;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::instruction::Witness;
-use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::instruction::Witness;
+use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantee_update;
@@ -26,7 +27,6 @@ use psyche_solana_tooling::process_coordinator_instructions::process_coordinator
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_participant_claim;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_participant_create;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_create;
-use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_top_up;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_update;
 use psyche_solana_treasurer::logic::RunCreateParams;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -50,6 +50,9 @@ pub async fn run() {
     let participant = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
+    let warmup_time = 77;
+    let round_witness_time = 33;
+    let cooldown_time = 42;
     let rounds_per_epoch = 4;
     let earned_point_per_epoch = 33;
 
@@ -65,7 +68,7 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // create the empty pre-allocated coordinator_account
+    // Create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
         .process_system_new_exempt(
             &payer,
@@ -91,6 +94,16 @@ pub async fn run() {
     .await
     .unwrap();
 
+    // Get the run's collateral vault
+    let run_collateral = endpoint
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &run,
+            &collateral_mint,
+        )
+        .await
+        .unwrap();
+
     // Give the authority some collateral
     let main_authority_collateral = endpoint
         .process_spl_associated_token_account_get_or_init(
@@ -112,17 +125,16 @@ pub async fn run() {
         .unwrap();
 
     // Fund the run with some newly minted collateral
-    process_treasurer_run_top_up(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &main_authority_collateral,
-        &collateral_mint,
-        &run,
-        5_000_000,
-    )
-    .await
-    .unwrap();
+    endpoint
+        .process_spl_token_transfer(
+            &payer,
+            &main_authority,
+            &main_authority_collateral,
+            &run_collateral,
+            1,
+        )
+        .await
+        .unwrap();
 
     // Create the client ATA
     let client_collateral = endpoint
@@ -153,33 +165,6 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Claiming something while we havent earned anything should fail
-    process_treasurer_participant_claim(
-        &mut endpoint,
-        &payer,
-        &client,
-        &client_collateral,
-        &collateral_mint,
-        &run,
-        &coordinator_account,
-        1,
-    )
-    .await
-    .unwrap_err();
-
-    // We should be able to top-up run treasury at any time
-    process_treasurer_run_top_up(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &main_authority_collateral,
-        &collateral_mint,
-        &run,
-        5_000_000,
-    )
-    .await
-    .unwrap();
-
     // Prepare the coordinator's config
     process_treasurer_run_update(
         &mut endpoint,
@@ -191,10 +176,10 @@ pub async fn run() {
         RunUpdateParams {
             metadata: None,
             config: Some(CoordinatorConfig {
-                warmup_time: 1,
-                cooldown_time: 1,
-                max_round_train_time: 3,
-                round_witness_time: 1,
+                warmup_time,
+                cooldown_time,
+                max_round_train_time: 888,
+                round_witness_time,
                 min_clients: 1,
                 init_min_clients: 1,
                 global_batch_size_start: 1,
@@ -284,10 +269,11 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Pretend 3second passed
-    endpoint.forward_clock_unix_timestamp(3).await.unwrap();
-
     // Tick to transition from waiting for members to warmup
+    endpoint
+        .forward_clock_unix_timestamp(WAITING_FOR_MEMBERS_EXTRA_SECONDS)
+        .await
+        .unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -298,8 +284,11 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Tick to witness
-    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
+    // Tick from warmup to train
+    endpoint
+        .forward_clock_unix_timestamp(warmup_time)
+        .await
+        .unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -333,9 +322,11 @@ pub async fn run() {
         )
         .await
         .unwrap();
-
-        // Tick from witness to train (or cooldown on the last one)
-        endpoint.forward_clock_unix_timestamp(2).await.unwrap();
+        // Tick from witness back next round train (or epoch cooldown after the last round)
+        endpoint
+            .forward_clock_unix_timestamp(round_witness_time)
+            .await
+            .unwrap();
         process_coordinator_tick(
             &mut endpoint,
             &payer,
@@ -361,8 +352,11 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Tick from cooldown to new epoch (should increment the earned)
-    endpoint.forward_clock_unix_timestamp(10).await.unwrap();
+    // Tick from cooldown to new epoch (should increment the earned points)
+    endpoint
+        .forward_clock_unix_timestamp(cooldown_time)
+        .await
+        .unwrap();
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -372,6 +366,32 @@ pub async fn run() {
     )
     .await
     .unwrap();
+
+    // We can claim earned points now, but it should fail because run isnt funded
+    process_treasurer_participant_claim(
+        &mut endpoint,
+        &payer,
+        &client,
+        &client_collateral,
+        &collateral_mint,
+        &run,
+        &coordinator_account,
+        earned_point_per_epoch,
+    )
+    .await
+    .unwrap_err();
+
+    // We should be able to top-up run treasury at any time
+    endpoint
+        .process_spl_token_transfer(
+            &payer,
+            &main_authority,
+            &main_authority_collateral,
+            &run_collateral,
+            5_000_000,
+        )
+        .await
+        .unwrap();
 
     // Now that a new epoch has started, we can claim our earned point
     process_treasurer_participant_claim(
@@ -400,4 +420,24 @@ pub async fn run() {
     )
     .await
     .unwrap_err();
+
+    // Check that we could claim only exactly the right amount
+    assert_eq!(
+        endpoint
+            .get_spl_token_account(&client_collateral)
+            .await
+            .unwrap()
+            .unwrap()
+            .amount,
+        earned_point_per_epoch,
+    );
+    assert_eq!(
+        endpoint
+            .get_spl_token_account(&run_collateral)
+            .await
+            .unwrap()
+            .unwrap()
+            .amount,
+        5_000_001 - earned_point_per_epoch,
+    );
 }

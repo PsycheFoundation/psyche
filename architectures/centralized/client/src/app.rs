@@ -3,16 +3,18 @@ use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
-use psyche_coordinator::{model, Coordinator, HealthChecks};
+use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    allowlist, psyche_relay_map, AuthenticatableIdentity, DiscoveryMode, NetworkTUIState,
-    NetworkTui, NodeId, RelayMode, SecretKey, TcpClient,
+    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
+    SecretKey, TcpClient, allowlist, psyche_relay_map,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
 use psyche_watcher::{Backend as WatcherBackend, CoordinatorTui, OpportunisticData};
+use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
@@ -78,6 +80,8 @@ pub struct App {
     tx_tui_state: Option<Sender<TabsData>>,
     coordinator_state: Coordinator<ClientId>,
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
+
+    metrics: Arc<ClientMetrics>,
 }
 
 pub struct AppBuilder(AppParams);
@@ -96,6 +100,7 @@ pub struct AppParams {
     pub p2p_interface: Option<String>,
     pub eval_tasks: Vec<psyche_eval::Task>,
     pub eval_task_max_docs: Option<usize>,
+    pub prompt_task: bool,
     pub checkpoint_upload_info: Option<CheckpointConfig>,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
@@ -106,6 +111,7 @@ pub struct AppParams {
     pub discovery_mode: DiscoveryMode,
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
+    pub metrics_local_port: Option<u16>,
 }
 
 impl AppBuilder {
@@ -123,6 +129,7 @@ impl AppBuilder {
     )> {
         let p = self.0;
 
+        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
         let server_conn =
             TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
                 &p.server_addr,
@@ -143,17 +150,10 @@ impl AppBuilder {
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
             p.max_concurrent_downloads,
+            metrics.clone(),
         )
         .await?;
 
-        let app = App {
-            cancel: p.cancel,
-            tx_tui_state: p.tx_tui_state,
-            update_tui_interval: interval(Duration::from_millis(150)),
-            coordinator_state: Coordinator::zeroed(),
-            server_conn,
-            run_id: p.run_id,
-        };
         let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
             data_parallelism: p.data_parallelism,
             tensor_parallelism: p.tensor_parallelism,
@@ -161,6 +161,7 @@ impl AppBuilder {
             write_gradients_dir: p.write_gradients_dir,
             eval_tasks: p.eval_tasks,
             eval_task_max_docs: p.eval_task_max_docs,
+            prompt_task: p.prompt_task,
             checkpoint_config: p.checkpoint_upload_info,
             hub_read_token: p.hub_read_token,
             hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
@@ -173,7 +174,15 @@ impl AppBuilder {
             dummy_training_delay_secs: p.dummy_training_delay_secs,
             max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
         };
-
+        let app = App {
+            cancel: p.cancel,
+            tx_tui_state: p.tx_tui_state,
+            update_tui_interval: interval(Duration::from_millis(150)),
+            coordinator_state: Coordinator::zeroed(),
+            server_conn,
+            run_id: p.run_id,
+            metrics,
+        };
         Ok((app, allowlist, p2p, state_options))
     }
 }
@@ -221,6 +230,7 @@ impl App {
             allowlist,
             p2p,
             state_options,
+            self.metrics.clone(),
         );
 
         debug!("Starting app loop");

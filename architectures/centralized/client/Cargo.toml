@@ -11,6 +11,7 @@ psyche-eval.workspace = true
 psyche-network.workspace = true
 psyche-tui.workspace = true
 psyche-watcher.workspace = true
+psyche-metrics.workspace = true
 rand.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
@@ -23,6 +24,8 @@ time.workspace = true
 bytemuck.workspace = true
 clap-markdown.workspace = true
 hex = "0.4.3"
+psyche-python-extension-impl = { workspace = true, optional = true }
 
 [features]
 parallelism = ["psyche-client/parallelism"]
+python = ["psyche-python-extension-impl"]

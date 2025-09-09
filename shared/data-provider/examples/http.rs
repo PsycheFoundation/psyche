@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use psyche_data_provider::{
-    http::{FileURLs, HttpDataProvider},
     TokenizedDataProvider,
+    http::{FileURLs, HttpDataProvider},
 };
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
@@ -109,15 +109,22 @@ async fn main() -> Result<()> {
             for (i, sample) in samples.iter().enumerate() {
                 println!("=== Batch {} Sample {} ===", batch.0.start, i);
                 let decoded = tokenizer
-                    .decode(&sample.iter().map(|&x| x as u32).collect::<Vec<_>>(), false)
+                    .decode(
+                        &sample
+                            .input_ids
+                            .iter()
+                            .map(|&x| x as u32)
+                            .collect::<Vec<_>>(),
+                        false,
+                    )
                     .expect("tokenizer decode worked");
-                println!("{}", decoded);
+                println!("{decoded}");
                 println!();
             }
         } else {
             for (i, sample) in samples.iter().enumerate() {
                 println!("=== Batch {} Sample {} ===", batch.0.start, i);
-                println!("{:?}", sample);
+                println!("{sample:?}");
                 println!();
             }
         }

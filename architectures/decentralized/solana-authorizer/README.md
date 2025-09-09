@@ -6,7 +6,11 @@ This smart contract is a piece of the Psyche's onchain logic dedicated to giving
 
 The Authorizer smart contract manages `Authorization` PDAs.
 
-Each `Authorization` conceptually represents a single role (the `scope`) assigned to a single user (the `grantee`) by a specific authority (the `grantor`). The `grantee` is then able to select a list of other keys that can act on its behalf (the `delegates`).
+Each `Authorization` PDA represents:
+
+A single role (the `scope`), assigned to a single user (the `grantee`), by a specific authority (the `grantor`).
+
+The `grantee` is then able to select a list of other keys that can act on its behalf (the `delegates`).
 
 Conceptually an `Authorization` is made of:
 

@@ -1,36 +1,37 @@
-use crate::{fetch_data::DataFetcher, IntegrationTestLogMarker, WandBInfo};
+use crate::{IntegrationTestLogMarker, WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
-    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
     Coordinator, HealthChecks,
+    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
-use psyche_core::{CancellableBarrier, NodeIdentity, TokenSize};
+use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
 use psyche_data_provider::{
-    download_model_repo_async,
+    DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
+    WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
-    DataProvider, DataProviderTcpClient, DummyDataProvider, WeightedDataProvider,
 };
+use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
-    auto_tokenizer, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId, DataParallel,
-    DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, ModelConfig, ModelLoadError,
-    ParallelModels, PretrainedSource, Trainer,
+    AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
+    DataParallel, DeepseekForCausalLM, DummyModel, LlamaConfig, LlamaForCausalLM, LocalTrainer,
+    ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tokenizers::{models::wordlevel::WordLevel, ModelWrapper, Tokenizer};
+use tokenizers::{ModelWrapper, Tokenizer, models::wordlevel::WordLevel};
 use tokio::{
     io,
     sync::{mpsc::UnboundedSender, oneshot},
     task::{JoinError, JoinHandle},
 };
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use super::{
-    cooldown::CooldownStepMetadata, evals::EvalRunner, stats::StatsLogger, steps::StepStateMachine,
-    train::TrainingStepMetadata, types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata,
-    witness::WitnessStepMetadata, CheckpointConfig, FinishedBroadcast,
+    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::ModelTaskRunner,
+    stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
+    types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
 
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
@@ -54,6 +55,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     // evaluation
     pub eval_task_max_docs: Option<usize>,
     pub eval_tasks: Vec<psyche_eval::Task>,
+    pub prompt_task: bool,
 
     // logging
     pub wandb_info: Option<WandBInfo>,
@@ -103,12 +105,35 @@ pub enum InitRunError {
 
     #[error("could not parse config: {0}")]
     FailedToParseConfig(#[from] serde_json::Error),
+
+    #[error("Unsupported architecture: {0}")]
+    UnsupportedArchitecture(String),
+
+    #[cfg(feature = "python")]
+    #[error("Python distributed error: {0}")]
+    PythonDistributedError(#[from] psyche_modeling::PythonDistributedCausalLMError),
+
+    #[cfg(feature = "python")]
+    #[error("Python model error: {0}")]
+    PythonModelError(#[from] psyche_modeling::PythonCausalLMError),
+
+    #[cfg(feature = "python")]
+    #[error("Python distributed trainer error: {0}")]
+    PythonDistributedTrainerError(#[from] psyche_modeling::PythonDistributedTrainerError),
+}
+
+enum RawLoadedModelType {
+    ParallelNativeModels(Vec<Box<dyn CausalLM>>),
+    #[cfg(feature = "python")]
+    Python(psyche_modeling::PythonCausalLM),
+    #[cfg(feature = "python")]
+    PythonDistributed(psyche_modeling::PythonDistributedCausalLM),
 }
 
 struct RawLoadedModel {
-    models: Vec<Box<dyn CausalLM>>,
+    models: RawLoadedModelType,
     tokenizer: Arc<Tokenizer>,
-    eval_runner: EvalRunner,
+    model_task_runner: ModelTaskRunner,
     checkpoint_extra_files: Vec<PathBuf>,
 }
 
@@ -128,10 +153,12 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
+
+    pub metrics: Arc<ClientMetrics>,
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
-    /// Call this on first warmup - when we need to enter the run, we have to load the model, conenct to the data server, etc
+    /// Call this on first warmup - when we need to enter the run, we have to load the model, connect to the data server, etc
     pub async fn init_run(
         self,
         state: Coordinator<T>,
@@ -148,10 +175,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_request_download,
             tx_request_model_config,
             tx_broadcast_finished,
+            metrics,
         } = self;
 
         let model::Model::LLM(llm) = state.model;
 
+        let hub_read_token = init_config.hub_read_token.clone();
+        let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
         let data_future = async {
             debug!("Setting up data provider from {:?}", llm.data_location);
             let data_provider = match llm.data_location {
@@ -187,35 +217,72 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     )
                     .await?,
                 ),
+                LLMTrainingDataLocation::Preprocessed(url) => {
+                    let url: String = (&url).into();
+                    let dir = if std::fs::exists(&url).unwrap_or_default() {
+                        PathBuf::from(url)
+                    } else {
+                        download_dataset_repo_async(
+                            url.clone(),
+                            None,
+                            None,
+                            hub_read_token,
+                            Some(hub_max_concurrent_downloads),
+                            false,
+                        )
+                        .await?
+                        .first()
+                        .ok_or(anyhow::anyhow!("No files downloaded for {url}"))?
+                        .parent()
+                        .unwrap()
+                        .into()
+                    };
+                    DataProvider::Preprocessed(PreprocessedDataProvider::new_from_directory(
+                        dir,
+                        llm.max_seq_len as usize,
+                        Shuffle::DontShuffle,
+                        Some(Split::Train),
+                        None,
+                    )?)
+                }
             };
             Ok(data_provider)
         };
 
         let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &llm.architecture
         {
-            model::LLMArchitecture::HfLlama | model::LLMArchitecture::HfDeepseek => match &llm
-                .checkpoint
-            {
+            model::LLMArchitecture::HfLlama
+            | model::LLMArchitecture::HfDeepseek
+            | model::LLMArchitecture::HfAuto => match &llm.checkpoint {
                 model::Checkpoint::Dummy(_) => tokio::spawn(async move {
                     let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
                         WordLevel::builder().build().unwrap(),
                     )));
 
                     let model = RawLoadedModel {
-                        models: (0..(init_config.data_parallelism
-                            * init_config.tensor_parallelism))
-                            .map(|_| {
-                                if let Some(training_delay) = init_config.dummy_training_delay_secs
-                                {
-                                    Box::new(DummyModel::new(training_delay)) as Box<dyn CausalLM>
-                                } else {
-                                    Box::new(DummyModel::default()) as Box<dyn CausalLM>
-                                }
-                            })
-                            .collect(),
+                        models: RawLoadedModelType::ParallelNativeModels(
+                            (0..(init_config.data_parallelism * init_config.tensor_parallelism))
+                                .map(|_| {
+                                    if let Some(training_delay) =
+                                        init_config.dummy_training_delay_secs
+                                    {
+                                        Box::new(DummyModel::new(training_delay))
+                                            as Box<dyn CausalLM>
+                                    } else {
+                                        Box::new(DummyModel::default()) as Box<dyn CausalLM>
+                                    }
+                                })
+                                .collect(),
+                        ),
                         tokenizer: tokenizer.clone(),
                         checkpoint_extra_files: vec![],
-                        eval_runner: EvalRunner::new(vec![], tokenizer.clone(), None, 0),
+                        model_task_runner: ModelTaskRunner::new(
+                            vec![],
+                            false,
+                            tokenizer.clone(),
+                            None,
+                            0,
+                        ),
                     };
                     #[allow(clippy::arc_with_non_send_sync)]
                     let config = &PretrainedSource::ConfigAndTensors(
@@ -301,6 +368,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     model::LLMArchitecture::HfDeepseek => {
                                         AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
                                     }
+                                    model::LLMArchitecture::HfAuto => {
+                                        #[cfg(feature = "python")]
+                                        {
+                                            AutoConfig::Auto(serde_json::from_str::<
+                                                psyche_modeling::PythonModelConfig,
+                                            >(
+                                                &model_config
+                                            )?)
+                                        }
+
+                                        #[cfg(not(feature = "python"))]
+                                        {
+                                            return Err(InitRunError::UnsupportedArchitecture(
+                                                "HfAuto".to_string(),
+                                            ));
+                                        }
+                                    }
                                 };
                                 let parameter_names = model_config.get_parameter_names();
                                 info!(
@@ -328,82 +412,156 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         };
 
                         info!("Loading model...");
-                        let mut futures: Vec<
-                            JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>,
-                        > = Vec::with_capacity(
-                            init_config.data_parallelism * init_config.tensor_parallelism,
-                        );
-                        for dp in 0..init_config.data_parallelism {
-                            let communicator_id = match init_config.tensor_parallelism {
-                                1 => None,
-                                _ => Some(Arc::new(CommunicatorId::new())),
-                            };
-                            for tp in 0..init_config.tensor_parallelism {
-                                let tensor_parallelism_world =
-                                    communicator_id.as_ref().map(|communicator_id| {
-                                        (
-                                            communicator_id.clone(),
-                                            tp,
-                                            init_config.tensor_parallelism,
-                                        )
-                                    });
-                                let source = source.clone();
-                                futures.push(tokio::task::spawn_blocking(move || {
-                                    // let this run on CPU if tp is 1 and no cuda is available
-                                    let device = if init_config.tensor_parallelism == 1 {
-                                        if dp == 0 {
-                                            Device::cuda_if_available()
-                                        } else {
-                                            Device::Cuda(dp)
-                                        }
-                                    } else {
-                                        Device::Cuda(dp * init_config.tensor_parallelism + tp)
-                                    };
-                                    match llm.architecture {
-                                        model::LLMArchitecture::HfLlama => {
-                                            LlamaForCausalLM::from_pretrained(
-                                                &source.try_into()?,
-                                                Some(Kind::BFloat16),
-                                                None,
-                                                Some(device),
-                                                tensor_parallelism_world,
-                                                Some(llm.max_seq_len as usize),
-                                            )
-                                            .map(|x| Box::new(x) as Box<dyn CausalLM>)
-                                        }
-                                        model::LLMArchitecture::HfDeepseek => {
-                                            DeepseekForCausalLM::from_pretrained(
-                                                &source.try_into()?,
-                                                Some(Kind::BFloat16),
-                                                None,
-                                                Some(device),
-                                                tensor_parallelism_world,
-                                                Some(llm.max_seq_len as usize),
-                                            )
-                                            .map(|x| Box::new(x) as Box<dyn CausalLM>)
-                                        }
-                                    }
-                                }));
-                            }
-                        }
 
-                        let eval_runner = EvalRunner::new(
+                        let serialized_config = source.serialize_config()?;
+
+                        let model_task_runner = ModelTaskRunner::new(
                             init_config.eval_tasks,
+                            init_config.prompt_task,
                             tokenizer.clone(),
                             init_config.eval_task_max_docs,
                             init_config.data_parallelism,
                         );
-                        let mut models: Vec<Box<dyn CausalLM>> = Vec::new();
-                        for future in futures {
-                            let model = future
+
+                        let raw_loaded_model_type: RawLoadedModelType = if llm.architecture
+                            == model::LLMArchitecture::HfAuto
+                        {
+                            #[cfg(feature = "python")]
+                            {
+                                let dp = init_config.data_parallelism;
+                                let tp = init_config.tensor_parallelism;
+
+                                tokio::task::spawn_blocking(move || {
+                                    if tp != 1 || dp != 1 {
+                                        psyche_modeling::PythonDistributedCausalLM::new(
+                                            "hf-auto".to_string(),
+                                            source.try_into()?,
+                                            Device::cuda_if_available(),
+                                            psyche_modeling::ParallelismConfig { dp, tp },
+                                            Some(llm.max_seq_len as usize),
+                                        )
+                                        .map(RawLoadedModelType::PythonDistributed)
+                                        .map_err(InitRunError::PythonDistributedError)
+                                    } else {
+                                        psyche_modeling::PythonCausalLM::new(
+                                            "hf-auto",
+                                            &source.try_into()?,
+                                            Device::cuda_if_available(),
+                                            None,
+                                            Some(llm.max_seq_len as usize),
+                                        )
+                                        .map(RawLoadedModelType::Python)
+                                        .map_err(InitRunError::PythonModelError)
+                                    }
+                                })
                                 .await
-                                .map_err(InitRunError::ModelLoadingThreadCrashed)??;
-                            let config = source.serialize_config()?;
-                            debug!("Config uploaded: {}", config);
-                            let tokenizer = tokenizer.to_string(false).unwrap();
-                            tx_config.send((config, tokenizer)).unwrap();
-                            models.push(model);
-                        }
+                                .map_err(InitRunError::ModelLoadingThreadCrashed)??
+                            }
+
+                            #[cfg(not(feature = "python"))]
+                            {
+                                return Err(InitRunError::UnsupportedArchitecture(
+                                    "HfAuto".to_string(),
+                                ));
+                            }
+                        } else {
+                            let mut futures: Vec<
+                                JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>,
+                            > = Vec::with_capacity(
+                                init_config.data_parallelism * init_config.tensor_parallelism,
+                            );
+
+                            let attn_implementation: Option<AttentionImplementation> =
+                                match llm.data_type {
+                                    model::LLMTrainingDataType::Finetuning => {
+                                        #[cfg(feature = "parallelism")]
+                                        {
+                                            // use varlen backend if available
+                                            Some(AttentionImplementation::FlashAttention2)
+                                        }
+
+                                        #[cfg(not(feature = "parallelism"))]
+                                        None
+                                    }
+                                    model::LLMTrainingDataType::Pretraining => None,
+                                };
+
+                            for dp in 0..init_config.data_parallelism {
+                                let communicator_id: Option<CommunicatorId> =
+                                    match init_config.tensor_parallelism {
+                                        0 | 1 => None,
+                                        #[cfg(feature = "parallelism")]
+                                        _ => Some(tch::CStore::new().into()),
+                                        #[cfg(not(feature = "parallelism"))]
+                                        _ => unimplemented!(),
+                                    };
+                                for tp in 0..init_config.tensor_parallelism {
+                                    let tensor_parallelism_world =
+                                        communicator_id.as_ref().map(|communicator_id| {
+                                            (
+                                                communicator_id.clone(),
+                                                tp,
+                                                init_config.tensor_parallelism,
+                                            )
+                                        });
+                                    let source = source.clone();
+                                    futures.push(tokio::task::spawn_blocking(move || {
+                                        // let this run on CPU if tp is 1 and no cuda is available
+                                        let device = if init_config.tensor_parallelism == 1 {
+                                            if dp == 0 {
+                                                Device::cuda_if_available()
+                                            } else {
+                                                Device::Cuda(dp)
+                                            }
+                                        } else {
+                                            Device::Cuda(dp * init_config.tensor_parallelism + tp)
+                                        };
+                                        match llm.architecture {
+                                            model::LLMArchitecture::HfLlama => {
+                                                LlamaForCausalLM::from_pretrained(
+                                                    &source.try_into()?,
+                                                    Some(Kind::BFloat16),
+                                                    attn_implementation,
+                                                    Some(device),
+                                                    tensor_parallelism_world,
+                                                    Some(llm.max_seq_len as usize),
+                                                )
+                                                .map(|x| Box::new(x) as Box<dyn CausalLM>)
+                                            }
+                                            model::LLMArchitecture::HfDeepseek => {
+                                                DeepseekForCausalLM::from_pretrained(
+                                                    &source.try_into()?,
+                                                    Some(Kind::BFloat16),
+                                                    attn_implementation,
+                                                    Some(device),
+                                                    tensor_parallelism_world,
+                                                    Some(llm.max_seq_len as usize),
+                                                )
+                                                .map(|x| Box::new(x) as Box<dyn CausalLM>)
+                                            }
+                                            model::LLMArchitecture::HfAuto => unreachable!(),
+                                        }
+                                    }));
+                                }
+                            }
+
+                            let mut models: Vec<Box<dyn CausalLM>> = Vec::new();
+                            for future in futures {
+                                let model = future
+                                    .await
+                                    .map_err(InitRunError::ModelLoadingThreadCrashed)??;
+                                models.push(model);
+                            }
+
+                            RawLoadedModelType::ParallelNativeModels(models)
+                        };
+
+                        debug!("Config uploaded: {}", serialized_config);
+                        let serialized_tokenizer = tokenizer.to_string(false).unwrap();
+                        tx_config
+                            .send((serialized_config.clone(), serialized_tokenizer))
+                            .unwrap();
+
                         info!(
                             integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
                             checkpoint = %llm.checkpoint,
@@ -414,9 +572,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         );
 
                         Ok(RawLoadedModel {
-                            models,
+                            models: raw_loaded_model_type,
                             tokenizer,
-                            eval_runner,
+                            model_task_runner,
                             checkpoint_extra_files,
                         })
                     })
@@ -454,9 +612,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         if let Some(group) = wandb_info.group {
                             run_info = run_info.group(group);
                         }
-                        Ok(Some(wandb.new_run(run_info.build()?).await?))
+                        match wandb.new_run(run_info.build()?).await {
+                            Ok(run) => Ok(Some(run)),
+                            Err(e) => {
+                                error!(
+                                    "[init_run] Could not connect to wandb. Will continue training without it."
+                                );
+                                debug!("[init_run] wandb error: {:?}", e);
+                                Ok(None)
+                            }
+                        }
                     }
-                    None => Ok(None),
+                    None => {
+                        info!(
+                            "[init_run] No wandb info provided. Will continue training without it."
+                        );
+                        Ok(None)
+                    }
                 }
             }
         });
@@ -466,77 +638,135 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             models,
             tokenizer,
             checkpoint_extra_files,
-            eval_runner,
+            model_task_runner,
         } = models.map_err(InitRunError::ModelLoadingThreadCrashed)??;
-
-        let mut tp_models: Vec<Vec<Box<dyn CausalLM>>> = Vec::new();
-        for model in models {
-            if tp_models
-                .last()
-                .map(|x: &ParallelModels| x.len() == init_config.tensor_parallelism)
-                .unwrap_or(true)
-            {
-                tp_models.push(Vec::with_capacity(init_config.tensor_parallelism));
-            }
-            tp_models.last_mut().unwrap().push(model);
-        }
 
         // TODO add data fetching for verifying, too..
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
-
         let data_fetcher =
             DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
 
-        let data_parallel: Option<Vec<(Arc<CommunicatorId>, Arc<CancellableBarrier>)>> =
-            if init_config.data_parallelism > 1 {
-                Some(
-                    (0..init_config.tensor_parallelism)
-                        .map(|_| {
-                            (
-                                CommunicatorId::new().into(),
-                                CancellableBarrier::new(init_config.tensor_parallelism),
-                            )
-                        })
-                        .collect(),
-                )
-            } else {
-                None
-            };
+        let trainers: Vec<Trainer> = match models {
+            RawLoadedModelType::ParallelNativeModels(models) => {
+                let mut tp_models: Vec<Vec<Box<dyn CausalLM>>> = Vec::new();
+                for model in models {
+                    if tp_models
+                        .last()
+                        .map(|x| x.len() == init_config.tensor_parallelism)
+                        .unwrap_or(true)
+                    {
+                        tp_models.push(Vec::with_capacity(init_config.tensor_parallelism));
+                    }
+                    tp_models.last_mut().unwrap().push(model);
+                }
 
-        let trainers = tp_models
-            .into_iter()
-            .enumerate()
-            .map(|(dp, models)| {
-                let data_parallel = data_parallel.as_ref().map(|data_parallel| {
-                    data_parallel
-                        .iter()
-                        .map(|(id, barrier)| DataParallel {
-                            id: id.clone(),
-                            barrier: barrier.clone(),
-                            rank: dp,
-                            world_size: init_config.data_parallelism,
-                        })
-                        .collect()
-                });
-                Trainer::new(
-                    models,
-                    llm.lr_schedule,
-                    llm.optimizer,
-                    init_config.micro_batch_size,
-                    init_config.optim_stats_every_n_steps,
-                    init_config.grad_accum_in_fp32,
-                    data_parallel,
-                )
-            })
-            .collect();
+                let data_parallel: Option<Vec<(CommunicatorId, Arc<dyn Barrier>)>> =
+                    if init_config.data_parallelism > 1 {
+                        #[cfg(feature = "parallelism")]
+                        {
+                            Some(
+                                (0..init_config.tensor_parallelism)
+                                    .map(|_| {
+                                        (
+                                            tch::CStore::new().into(),
+                                            Arc::new(CancellableBarrier::new(
+                                                init_config.tensor_parallelism,
+                                            ))
+                                                as Arc<dyn Barrier>,
+                                        )
+                                    })
+                                    .collect(),
+                            )
+                        }
+
+                        #[cfg(not(feature = "parallelism"))]
+                        {
+                            unimplemented!()
+                        }
+                    } else {
+                        None
+                    };
+
+                tp_models
+                    .into_iter()
+                    .enumerate()
+                    .map(|(dp, models)| {
+                        let data_parallel = data_parallel.as_ref().map(|data_parallel| {
+                            data_parallel
+                                .iter()
+                                .map(|(id, barrier)| DataParallel {
+                                    id: id.clone(),
+                                    barrier: barrier.clone(),
+                                    rank: dp,
+                                    world_size: init_config.data_parallelism,
+                                })
+                                .collect()
+                        });
+                        let barrier =
+                            Arc::new(CancellableBarrier::new(init_config.tensor_parallelism))
+                                as Arc<dyn Barrier>;
+                        LocalTrainer::new(
+                            ParallelModels {
+                                models,
+                                barrier,
+                                data_parallel,
+                            },
+                            llm.lr_schedule,
+                            llm.optimizer,
+                            init_config.micro_batch_size,
+                            init_config.optim_stats_every_n_steps,
+                            init_config.grad_accum_in_fp32,
+                        )
+                        .into()
+                    })
+                    .collect()
+            }
+            #[cfg(feature = "python")]
+            RawLoadedModelType::Python(model) => {
+                vec![
+                    psyche_modeling::LocalTrainer::new(
+                        ParallelModels {
+                            models: vec![Box::new(model) as Box<dyn CausalLM>],
+                            barrier: Arc::new(psyche_modeling::NopBarrier) as Arc<dyn Barrier>,
+                            data_parallel: None,
+                        },
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )
+                    .into(),
+                ]
+            }
+            #[cfg(feature = "python")]
+            RawLoadedModelType::PythonDistributed(model) => {
+                vec![
+                    psyche_modeling::PythonDistributedTrainer::new(
+                        model,
+                        llm.lr_schedule,
+                        llm.optimizer,
+                        init_config.micro_batch_size,
+                        init_config.optim_stats_every_n_steps,
+                        init_config.grad_accum_in_fp32,
+                    )?
+                    .into(),
+                ]
+            }
+        };
 
         let wandb_run = wandb_run.map_err(InitRunError::WandbThreadCrashed)??;
 
-        let stats_logger =
-            StatsLogger::new(tokenizer, eval_runner.clone(), llm.lr_schedule, wandb_run);
+        let stats_logger = StatsLogger::new(
+            tokenizer,
+            model_task_runner.clone(),
+            llm.lr_schedule,
+            wandb_run,
+            metrics,
+        );
 
         let warmup = WarmupStepMetadata {
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
         };
 
         let training = TrainingStepMetadata {
@@ -546,11 +776,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_health_check,
             tx_distro_result,
 
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
         };
 
         let witness = WitnessStepMetadata {
-            eval_runner: eval_runner.clone(),
+            model_task_runner: model_task_runner.clone(),
             identity: init_config.identity,
             tx_witness: tx_witness.clone(),
         };
@@ -560,7 +790,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_model,
             init_config.checkpoint_config,
             checkpoint_extra_files,
-            eval_runner,
+            model_task_runner,
         );
 
         Ok(StepStateMachine::new(

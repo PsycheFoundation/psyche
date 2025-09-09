@@ -1,4 +1,4 @@
-use crate::{fetch_data::BatchIdSet, Finished, TrainingResult};
+use crate::{Finished, TrainingResult, fetch_data::BatchIdSet};
 
 use psyche_coordinator::{
     Commitment, CommitteeProof, CommitteeSelection, WitnessBloom, WitnessProof,

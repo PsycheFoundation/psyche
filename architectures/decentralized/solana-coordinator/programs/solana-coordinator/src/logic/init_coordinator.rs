@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
 use psyche_core::FixedString;
 
-use crate::bytes_from_string;
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
 use crate::ProgramError;
+use crate::bytes_from_string;
 
 #[derive(Accounts)]
 #[instruction(params: InitCoordinatorParams)]
@@ -22,7 +22,7 @@ pub struct InitCoordinatorAccounts<'info> {
         ],
         bump
     )]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
+    pub coordinator_instance: Box<Account<'info, CoordinatorInstance>>,
 
     /// CHECK: TODO TODO UNSAFE UNSAFE
     #[account(

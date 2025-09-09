@@ -11,17 +11,17 @@ pub use client::ClientId;
 pub use instance_state::CoordinatorInstanceState;
 use logic::*;
 pub use program_error::ProgramError;
-use psyche_coordinator::model::{HubRepo, Model};
 use psyche_coordinator::Committee;
 use psyche_coordinator::CommitteeProof;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
+use psyche_coordinator::model::{HubRepo, Model};
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
@@ -52,16 +52,18 @@ pub enum DeserializeCoordinatorFromBytes {
     )]
     IncorrectSize { expected: usize, actual: usize },
 
-    #[error("Coordinator has an invalid discriminator. Expected {expected:?}, got {actual:?}.")]
+    #[error(
+        "Coordinator has an invalid discriminator. Expected {expected:?}, got {actual:?}."
+    )]
     InvalidDiscriminator { expected: Vec<u8>, actual: Vec<u8> },
 
     #[error("Failed to cast bytes into CoordinatorAccount: {0}")]
     CastError(#[from] bytemuck::PodCastError),
 }
 
-pub fn coordinator_account_from_bytes(
+fn validate_coordinator_account_bytes(
     bytes: &[u8],
-) -> std::result::Result<&CoordinatorAccount, DeserializeCoordinatorFromBytes> {
+) -> std::result::Result<(), DeserializeCoordinatorFromBytes> {
     if bytes.len() != CoordinatorAccount::space_with_discriminator() {
         return Err(DeserializeCoordinatorFromBytes::IncorrectSize {
             expected: CoordinatorAccount::space_with_discriminator(),
@@ -76,8 +78,28 @@ pub fn coordinator_account_from_bytes(
             actual: bytes[..CoordinatorAccount::DISCRIMINATOR.len()].to_vec(),
         });
     }
+    Ok(())
+}
+
+pub fn coordinator_account_from_bytes(
+    bytes: &[u8],
+) -> std::result::Result<&CoordinatorAccount, DeserializeCoordinatorFromBytes> {
+    validate_coordinator_account_bytes(bytes)?;
+
     Ok(bytemuck::try_from_bytes(
         &bytes[CoordinatorAccount::DISCRIMINATOR.len()
+            ..CoordinatorAccount::space_with_discriminator()],
+    )?)
+}
+
+pub fn coordinator_account_from_bytes_mut(
+    bytes: &mut [u8],
+) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes>
+{
+    validate_coordinator_account_bytes(bytes)?;
+
+    Ok(bytemuck::try_from_bytes_mut(
+        &mut bytes[CoordinatorAccount::DISCRIMINATOR.len()
             ..CoordinatorAccount::space_with_discriminator()],
     )?)
 }
@@ -270,7 +292,7 @@ pub struct OwnerCoordinatorAccounts<'info> {
         bump = coordinator_instance.bump,
         constraint = coordinator_instance.main_authority == authority.key()
     )]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
+    pub coordinator_instance: Box<Account<'info, CoordinatorInstance>>,
 
     #[account(
         mut,
@@ -291,7 +313,7 @@ pub struct PermissionlessCoordinatorAccounts<'info> {
         ],
         bump = coordinator_instance.bump
     )]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
+    pub coordinator_instance: Box<Account<'info, CoordinatorInstance>>,
 
     #[account(
         mut,

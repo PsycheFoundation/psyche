@@ -1,21 +1,223 @@
 use crate::{
+    ModelRequestType, Networkable,
     p2p_model_sharing::{TransmittableModelConfig, TransmittableModelParameter},
     serialized_distro::TransmittableDistroResult,
-    ModelRequestType, Networkable,
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use futures_util::future::select_all;
 use iroh::{NodeAddr, PublicKey};
+use iroh_blobs::Hash;
 use iroh_blobs::{get::db::DownloadProgress, ticket::BlobTicket};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc};
+use std::{
+    collections::HashMap, fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc,
+    time::Instant,
+};
 use tokio::{
-    sync::{mpsc, oneshot, Mutex},
+    sync::{Mutex, mpsc, oneshot},
     task::JoinHandle,
 };
 use tracing::{error, info, trace, warn};
+
+pub const MAX_DOWNLOAD_RETRIES: usize = 3;
+
+#[derive(Debug, Clone)]
+pub struct DownloadRetryInfo {
+    pub retries: usize,
+    pub retry_time: Option<Instant>,
+    pub ticket: BlobTicket,
+    pub tag: u32,
+    pub r#type: DownloadType,
+}
+
+#[derive(Debug)]
+pub enum RetriedDownloadsMessage {
+    Insert {
+        info: DownloadRetryInfo,
+    },
+    Remove {
+        hash: Hash,
+        response: oneshot::Sender<Option<DownloadRetryInfo>>,
+    },
+    Get {
+        hash: Hash,
+        response: oneshot::Sender<Option<DownloadRetryInfo>>,
+    },
+    PendingRetries {
+        response: oneshot::Sender<Vec<(Hash, BlobTicket, u32, DownloadType)>>,
+    },
+    UpdateTime {
+        hash: Hash,
+        response: oneshot::Sender<usize>,
+    },
+}
+
+/// Handler to interact with the retried downloads actor
+#[derive(Clone)]
+pub struct RetriedDownloadsHandle {
+    tx: mpsc::UnboundedSender<RetriedDownloadsMessage>,
+}
+
+impl Default for RetriedDownloadsHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RetriedDownloadsHandle {
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        // Spawn the actor
+        tokio::spawn(retried_downloads_actor(rx));
+
+        Self { tx }
+    }
+
+    /// Insert a new download to retry
+    pub fn insert(&self, info: DownloadRetryInfo) {
+        let _ = self.tx.send(RetriedDownloadsMessage::Insert { info });
+    }
+
+    /// Remove a download from the retry list
+    pub async fn remove(&self, hash: Hash) -> Option<DownloadRetryInfo> {
+        let (response_tx, response_rx) = oneshot::channel();
+
+        if self
+            .tx
+            .send(RetriedDownloadsMessage::Remove {
+                hash,
+                response: response_tx,
+            })
+            .is_err()
+        {
+            return None;
+        }
+
+        response_rx.await.unwrap_or(None)
+    }
+
+    /// Get a download from the retry list
+    pub async fn get(&self, hash: Hash) -> Option<DownloadRetryInfo> {
+        let (response_tx, response_rx) = oneshot::channel();
+
+        if self
+            .tx
+            .send(RetriedDownloadsMessage::Get {
+                hash,
+                response: response_tx,
+            })
+            .is_err()
+        {
+            return None;
+        }
+
+        response_rx.await.unwrap_or(None)
+    }
+
+    /// Get the retries that are considered pending and have not been retried yet
+    pub async fn pending_retries(&self) -> Vec<(Hash, BlobTicket, u32, DownloadType)> {
+        let (response_tx, response_rx) = oneshot::channel();
+
+        if self
+            .tx
+            .send(RetriedDownloadsMessage::PendingRetries {
+                response: response_tx,
+            })
+            .is_err()
+        {
+            return Vec::new();
+        }
+
+        response_rx.await.unwrap_or_else(|_| Vec::new())
+    }
+
+    /// Mark the retry as already being retried marking updating the retry time
+    pub async fn update_time(&self, hash: Hash) -> usize {
+        let (response_tx, response_rx) = oneshot::channel();
+
+        if self
+            .tx
+            .send(RetriedDownloadsMessage::UpdateTime {
+                hash,
+                response: response_tx,
+            })
+            .is_err()
+        {
+            return 0;
+        }
+
+        response_rx.await.unwrap_or(0)
+    }
+}
+
+struct RetriedDownloadsActor {
+    downloads: HashMap<Hash, DownloadRetryInfo>,
+}
+
+impl RetriedDownloadsActor {
+    fn new() -> Self {
+        Self {
+            downloads: HashMap::new(),
+        }
+    }
+
+    fn handle_message(&mut self, message: RetriedDownloadsMessage) {
+        match message {
+            RetriedDownloadsMessage::Insert { info } => {
+                let hash = info.ticket.hash();
+                self.downloads.insert(hash, info);
+            }
+
+            RetriedDownloadsMessage::Remove { hash, response } => {
+                let removed = self.downloads.remove(&hash);
+                let _ = response.send(removed);
+            }
+
+            RetriedDownloadsMessage::Get { hash, response } => {
+                let info = self.downloads.get(&hash).cloned();
+                let _ = response.send(info);
+            }
+
+            RetriedDownloadsMessage::PendingRetries { response } => {
+                let now = Instant::now();
+                let pending: Vec<_> = self
+                    .downloads
+                    .iter()
+                    .filter(|(_, info)| {
+                        info.retry_time
+                            .map(|retry_time| now >= retry_time)
+                            .unwrap_or(false)
+                    })
+                    .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.r#type.clone()))
+                    .collect();
+
+                let _ = response.send(pending);
+            }
+
+            RetriedDownloadsMessage::UpdateTime { hash, response } => {
+                let retries = if let Some(info) = self.downloads.get_mut(&hash) {
+                    info.retry_time = None; // Mark as being retried now
+                    info.retries
+                } else {
+                    0
+                };
+
+                let _ = response.send(retries);
+            }
+        }
+    }
+}
+
+async fn retried_downloads_actor(mut rx: mpsc::UnboundedReceiver<RetriedDownloadsMessage>) {
+    let mut actor = RetriedDownloadsActor::new();
+
+    while let Some(message) = rx.recv().await {
+        actor.handle_message(message);
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TransmittableDownload {
@@ -30,6 +232,15 @@ pub enum DownloadType {
     DistroResult(Vec<NodeAddr>),
     // Model sharing variant containing the specific type wether be the model config or a paramter
     ModelSharing(ModelRequestType),
+}
+
+impl DownloadType {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::DistroResult(..) => "distro_result",
+            Self::ModelSharing(..) => "model_sharing",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -376,8 +587,9 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             })) => {
                 downloads.swap_remove(index);
                 warn!(
-                    "Download error, removing it. idx {index}, hash {}: {:?}",
+                    "Download error, removing it. idx {index}, hash {}, node provider {}: {}",
                     blob_ticket.hash(),
+                    blob_ticket.node_addr().node_id,
                     error
                 );
             }

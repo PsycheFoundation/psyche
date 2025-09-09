@@ -8,7 +8,7 @@ use psyche_tui::ratatui::{
 };
 use psyche_watcher::Backend;
 
-use crate::{traits::LengthKnownDataProvider, TokenizedDataProvider};
+use crate::{TokenizedDataProvider, traits::LengthKnownDataProvider};
 
 use super::DataProviderTcpServer;
 
@@ -114,7 +114,7 @@ where
             clients: v
                 .provided_sequences
                 .iter()
-                .map(|(k, v)| (format!("{}", k), *v))
+                .map(|(k, v)| (format!("{k}"), *v))
                 .collect(),
             total_samples: v.local_data_provider.num_sequences(),
             given_samples: v.provided_sequences.values().fold(0, |acc, ele| acc + *ele),

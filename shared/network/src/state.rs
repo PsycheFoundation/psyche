@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iroh::{endpoint::ConnectionType, NodeId, PublicKey};
+use iroh::{NodeId, PublicKey, endpoint::ConnectionType};
 
 use crate::{download_manager::DownloadUpdate, peer_list::PeerList};
 

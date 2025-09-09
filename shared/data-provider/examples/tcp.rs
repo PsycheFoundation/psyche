@@ -1,21 +1,22 @@
 use anchor_lang::prelude::*;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bytemuck::Zeroable;
 use futures::future::try_join_all;
 use parquet::data_type::AsBytes;
-use psyche_coordinator::{model, Coordinator, HealthChecks};
+use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{
-    DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedDataProvider,
+    DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedData,
+    TokenizedDataProvider,
 };
 use psyche_network::{AuthenticatableIdentity, FromSignedBytesError, Networkable};
-use psyche_tui::init_logging;
+use psyche_tui::logging;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use tracing::{info, Level};
+use tracing::info;
 use ts_rs::TS;
 
 // Simulated backend for demonstration
@@ -114,10 +115,10 @@ impl anchor_lang::Space for DummyNodeIdentity {
 
 struct DummyDataProvider;
 impl TokenizedDataProvider for DummyDataProvider {
-    async fn get_samples(&mut self, _data_ids: BatchId) -> anyhow::Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, _data_ids: BatchId) -> anyhow::Result<Vec<TokenizedData>> {
         let mut data: [i32; 1024] = [0; 1024];
         rand::thread_rng().fill(&mut data);
-        Ok(vec![data.to_vec()])
+        Ok(vec![TokenizedData::from_input_ids(data.to_vec())])
     }
 }
 
@@ -129,13 +130,7 @@ impl LengthKnownDataProvider for DummyDataProvider {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = init_logging(
-        psyche_tui::LogOutput::Console,
-        Level::INFO,
-        None,
-        false,
-        None,
-    )?;
+    let _ = logging().init()?;
 
     let clients: Vec<_> = (0..4).map(DummyNodeIdentity).collect();
     let backend = DummyBackend(clients.clone());

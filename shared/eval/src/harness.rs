@@ -1,17 +1,32 @@
-use crate::traits::{Document, LogLikelihoodTask};
+use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
+use crate::{
+    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA,
+};
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
-use psyche_modeling::CausalLM;
-use rand::{seq::SliceRandom, SeedableRng};
+use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
+use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
+use regex::Regex;
+use std::sync::RwLock;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
+const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
+
+const TASKS_WITH_ACC_NORM: [&str; 5] = [
+    ArcChallenge::name(),
+    ArcEasy::name(),
+    Hellaswag::name(),
+    OpenbookQA::name(),
+    PIQA::name(),
+];
 
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
+    GenerateUntil(Box<dyn GenerateUntilTask>),
 }
 
 pub struct Task {
@@ -36,15 +51,23 @@ impl Display for Task {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.task_type {
             TaskType::LogLikelihood(x) => write!(f, "{x}"),
+            TaskType::GenerateUntil(x) => write!(f, "{x}"),
         }
     }
 }
-
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 enum PreparedTaskType {
     LogLikelihood {
         docs: Vec<TokenizedLLHDocument>,
-        tokenized_fewshot: Vec<i64>,
+    },
+    GenerateUntil {
+        requests: Vec<TokenizedGenerateUntilDocument>,
+        tokenizer: Tokenizer,
+        // Since a single GenerateUntil request can take a long time to generate a answer, we cache the generated tokens
+        // in case the task gets interrupted, so next time we can resume from where we left off.
+        cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
+        answer_regex: Regex,
     },
 }
 
@@ -63,50 +86,85 @@ pub struct PreparedTaskResult {
 
 #[derive(Debug)]
 struct TokenizedLLHDocument {
-    text: Vec<i64>,
-    choices: Vec<Vec<i64>>,
+    choices_str: Vec<String>,
+    answer: usize,
+    choices_token_len: Vec<usize>,
+    requests: Vec<Vec<i64>>,
+}
+
+#[derive(Debug)]
+pub struct TokenizedGenerateUntilDocument {
+    _request_str: String,
+    request: Vec<i64>,
     answer: usize,
 }
 
 impl TokenizedLLHDocument {
-    pub fn from_document(doc: Document, tokenizer: &Tokenizer) -> Self {
-        let text = tokenizer
-            .encode(doc.text, false)
+    pub fn from_document(doc: Document, tokenizer: &Tokenizer, fewshot_prefix: &str) -> Self {
+        // e.g.
+        // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
+        // text: 'Which statement best explains why photosynthesis is the foundation of most food webs?'
+        // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
+        let mut requests: Vec<Vec<i64>> = Vec::new();
+        let mut choices_str = Vec::new();
+        let mut choices_token_len = Vec::new();
+        let mut choices: Vec<Vec<i64>> = Vec::new();
+
+        // Tokenize fewshot prefix once
+        let fewshot_tokens: Vec<i64> = tokenizer
+            .encode(fewshot_prefix, false)
             .unwrap()
             .get_ids()
             .iter()
             .map(|x| *x as i64)
-            .collect::<Vec<_>>();
-        let choices = doc
-            .choices
-            .into_iter()
-            .map(|x| {
-                let choice_with_space = format!(" {}", x);
-                let choice = tokenizer
-                    .encode(choice_with_space, false)
-                    .unwrap()
-                    .get_ids()
-                    .iter()
-                    .map(|x| *x as i64)
-                    .collect::<Vec<_>>();
-                choice
-            })
             .collect();
+
+        for choice in doc.choices.iter() {
+            choices_str.push(choice.clone());
+
+            // [fewshot_prefix] + [document_text + choice]
+            let text_and_choice = format!("{} {}", doc.text, choice);
+            let text_choice_tokens: Vec<i64> = tokenizer
+                .encode(text_and_choice, false)
+                .unwrap()
+                .get_ids()
+                .iter()
+                .map(|x| *x as i64)
+                .collect();
+
+            let mut full_request = fewshot_tokens.clone();
+            full_request.extend_from_slice(&text_choice_tokens);
+            requests.push(full_request.clone());
+
+            // Extract choice tokens from the text_choice_tokens part
+            // Tokenizing "choice" alone produces different tokens than tokenizing "text + choice" together.
+            // So, we extract choice tokens iterating the full request backwards to ensure exact matching.
+            for idx in 1..text_choice_tokens.len() {
+                let choice_tokens = &text_choice_tokens[text_choice_tokens.len() - idx..]
+                    .iter()
+                    .map(|x| *x as u32)
+                    .collect::<Vec<_>>();
+                let choice_str = tokenizer.decode(choice_tokens, false).unwrap();
+                if choice_str.contains(choice) {
+                    let choice_tokens = choice_tokens.iter().map(|x| *x as i64).collect::<Vec<_>>();
+                    choices.push(choice_tokens.clone());
+                    choices_token_len.push(choice_tokens.len());
+                    break;
+                }
+            }
+        }
+
         Self {
-            text,
-            choices,
+            choices_str,
             answer: doc.answer,
+            requests,
+            choices_token_len,
         }
     }
 }
 
 impl Task {
-    pub fn prepare(
-        mut self,
-        tokenizer: &Tokenizer,
-        bos_token_id: Option<i64>,
-        limit: Option<usize>,
-    ) -> PreparedTask {
+    pub fn prepare(mut self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
         let name = format!("{}", &self);
         info!("Preparing {name}");
         match self.task_type {
@@ -116,42 +174,138 @@ impl Task {
                 if let Some(limit) = limit {
                     docs.truncate(limit);
                 }
-                let fewshot = if self.num_fewshot > 0 {
-                    let mut fewshot_docs = llh.get_fewshot_documents();
-                    fewshot_docs.shuffle(&mut self.rand);
-                    fewshot_docs
-                        .into_iter()
-                        .take(self.num_fewshot)
-                        .map(|x| format!("{}{}", x.text, x.choices[x.answer]))
-                        .collect::<Vec<_>>()
-                        .join("\n\n")
-                        + "\n\n"
-                } else {
-                    String::new()
-                };
-                let mut tokenized_fewshot = match bos_token_id {
-                    Some(bos_token_id) => vec![bos_token_id],
-                    None => Vec::new(),
-                };
-                tokenized_fewshot.append(
-                    &mut tokenizer
-                        .encode(fewshot, false)
-                        .unwrap()
-                        .get_ids()
-                        .iter()
-                        .map(|x| *x as i64)
-                        .collect::<Vec<_>>(),
-                );
+                let fewshot_by_category = llh.get_fewshot_documents();
+
+                // Build individual requests with category-specific fewshot for each document
                 let docs = docs
                     .into_iter()
-                    .map(|x| TokenizedLLHDocument::from_document(x, tokenizer))
+                    .map(|doc| {
+                        // Build fewshot prefix for this document
+                        let fewshot_prefix = if self.num_fewshot > 0 {
+                            // Get fewshot examples for this document's category
+                            let category = doc.category.as_deref().unwrap_or("default");
+                            let mut fewshot_examples = fewshot_by_category
+                                .get(category)
+                                .cloned()
+                                .unwrap_or_else(|| {
+                                    // Fallback: use first available category if document's category is not found
+                                    fewshot_by_category
+                                        .values()
+                                        .next()
+                                        .cloned()
+                                        .unwrap_or_else(Vec::new)
+                                });
+                            fewshot_examples.shuffle(&mut self.rand);
+                            fewshot_examples
+                                .into_iter()
+                                .take(self.num_fewshot)
+                                .map(|x| format!("{}{}", x.text, x.choices[x.answer]))
+                                .collect::<Vec<_>>()
+                                .join("\n\n")
+                                + "\n\n"
+                        } else {
+                            String::new()
+                        };
+
+                        TokenizedLLHDocument::from_document(doc, tokenizer, &fewshot_prefix)
+                    })
                     .collect::<Vec<_>>();
                 PreparedTask {
                     name,
                     num: docs.len(),
-                    prepared_task_type: PreparedTaskType::LogLikelihood {
-                        docs,
-                        tokenized_fewshot,
+                    prepared_task_type: PreparedTaskType::LogLikelihood { docs },
+                }
+            }
+            TaskType::GenerateUntil(gu_docs) => {
+                let mut docs = gu_docs.get_documents();
+                docs.shuffle(&mut self.rand);
+                if let Some(limit) = limit {
+                    docs.truncate(limit);
+                }
+
+                let fewshot = gu_docs.get_fewshot_documents();
+
+                let mut requests = Vec::new();
+
+                // Prepare prompts for each document
+                for doc in &docs {
+                    // Get the category for this document
+                    let category = doc.category.as_deref().unwrap();
+
+                    // Get fewshot examples for this category
+                    let fewshot_examples = fewshot.get(category).map(|v| v.as_slice()).unwrap();
+
+                    // Build the prompt string
+
+                    let mut request_str = format!(
+                        "The following are multiple choice questions (with answers) about {category}. Think step by step and then finish your answer with \"the answer is (X)\" where X is the correct letter choice.\n"
+                    );
+
+                    // Add fewshot examples with their answers
+                    for example in fewshot_examples.iter().take(self.num_fewshot) {
+                        request_str.push_str("Question:\n");
+
+                        request_str.push_str(&example.text);
+                        request_str.push_str("\nOptions:\n");
+
+                        // Format choices with letter labels
+                        for (i, choice) in example.choices.iter().enumerate() {
+                            let letter = ASCII_UPPERCASE[i];
+                            request_str.push_str(&format!("{letter}. {choice}\n"));
+                        }
+
+                        // Replace "A:" with "Answer:" in cot_content
+                        let mut cot_content = example.cot_content.as_ref().unwrap().clone();
+                        if cot_content.starts_with("A:") {
+                            cot_content = format!("Answer:{}", &cot_content[2..]);
+                        }
+                        request_str.push_str(&cot_content);
+                        request_str.push_str("\n\n");
+                    }
+
+                    // Add the current question without answer
+                    request_str.push_str("Question:\n");
+                    request_str.push_str(&doc.text);
+                    request_str.push_str("\nOptions:\n");
+
+                    // Format choices with letter labels
+                    for (i, choice) in doc.choices.iter().enumerate() {
+                        let letter = ASCII_UPPERCASE[i];
+                        request_str.push_str(&format!("{letter}. {choice}\n"));
+                    }
+
+                    request_str.push_str("Answer: Let's think step by step.");
+
+                    // Tokenize the request
+                    let request = tokenizer
+                        .encode(request_str.clone(), false)
+                        .unwrap()
+                        .get_ids()
+                        .iter()
+                        .map(|x| *x as i64)
+                        .collect::<Vec<_>>();
+
+                    // Create the tokenized document
+                    let tokenized_doc = TokenizedGenerateUntilDocument {
+                        _request_str: request_str,
+                        request,
+                        answer: doc.answer,
+                    };
+
+                    requests.push(tokenized_doc);
+                }
+
+                // Regex to match "The answer is (X)." where X is a single uppercase letter;
+                let answer_regex = Regex::new(r"The answer is \(([A-Z])\)\.").unwrap();
+
+                PreparedTask {
+                    name,
+                    num: docs.len(),
+                    prepared_task_type: PreparedTaskType::GenerateUntil {
+                        requests,
+                        tokenizer: tokenizer.clone(),
+                        cache: Arc::new(RwLock::new(HashMap::new())),
+                        answer_regex,
                     },
                 }
             }
@@ -165,7 +319,6 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
-    pub loop_if_empty: bool,
 }
 
 impl PreparedTask {
@@ -184,24 +337,47 @@ impl PreparedTask {
         };
 
         match &self.prepared_task_type {
-            PreparedTaskType::LogLikelihood {
-                docs,
-                tokenized_fewshot,
-            } => Self::run_log_likelihood(options, docs, tokenized_fewshot, pbar),
+            PreparedTaskType::LogLikelihood { docs } => {
+                Self::run_log_likelihood(&self.name, options, docs, pbar)
+            }
+            PreparedTaskType::GenerateUntil {
+                requests,
+                tokenizer,
+                cache,
+                answer_regex,
+            } => Self::run_generate_until(
+                &self.name,
+                options,
+                cache.clone(),
+                requests,
+                tokenizer,
+                answer_regex,
+                pbar,
+            ),
         }
     }
 
     fn run_log_likelihood(
+        eval_name: &String,
         options: EvalTaskOptions,
         docs: &[TokenizedLLHDocument],
-        tokenized_fewshot: &[i64],
         pbar: Option<ProgressBar>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
-        results.add_entry_if_needed("acc", docs.len());
-        results.add_entry_if_needed("acc_norm", docs.len());
+        // if pbar is some we are running examples evaluate crate
+        let min_samples = if pbar.is_some() {
+            None
+        } else {
+            min_reporting_ratio(eval_name).map(|x| (x * docs.len() as f32) as usize)
+        };
+
+        results.add_entry_if_needed("acc", docs.len(), min_samples);
+        if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
+            results.add_entry_if_needed("acc_norm", docs.len(), min_samples);
+        }
         let mut next_index = skip;
+
         let fast_forward = (skip / docs.len()) * docs.len();
         skip -= fast_forward;
         let mut cancelled = false;
@@ -221,7 +397,7 @@ impl PreparedTask {
                     break;
                 }
             }
-            if !options.loop_if_empty && doc_index >= docs.len() {
+            if doc_index >= docs.len() {
                 break;
             }
             if let Some(limit) = options.limit {
@@ -229,55 +405,59 @@ impl PreparedTask {
                     break;
                 }
             }
-            let mut context = tokenized_fewshot.to_vec();
-            context.extend_from_slice(&doc.text);
             let mut scores: Vec<(f32, bool)> = Vec::new();
-            if doc.choices.iter().all(|x| x.len() == 1) {
-                let ids = Tensor::from_slice(&context)
+
+            for idx in 0..doc.requests.len() {
+                // e.g:
+                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
+                let mut request = doc.requests[idx].clone();
+                // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
+                let choice = &doc.requests[idx][request.len() - doc.choices_token_len[idx]..];
+
+                // Remove the last token since we dont want to pass it to the model
+                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
+                request.pop();
+
+                // The request already contains [fewshot_tokens] + [question + choice_without_last_token]
+                let full_request = request;
+                let input_length = &full_request.len();
+
+                let request_tensor = Tensor::from_slice(&full_request)
                     .to(options.model.device())
                     .unsqueeze(0);
-                let (logits, _) = options.model.forward(&ids, None, Some(1));
-                let logits = logits.squeeze().log_softmax(-1, None);
-                let greedy: i64 = logits.argmax(-1, false).try_into().unwrap();
-                let index =
-                    Tensor::from_slice(&doc.choices.iter().map(|x| x[0]).collect::<Vec<_>>())
-                        .to(logits.device());
-                let logits = logits.gather(-1, &index, false);
-                let logits: Vec<f32> = logits.try_into().unwrap();
-                scores.extend(
-                    logits
-                        .into_iter()
-                        .zip(doc.choices.iter())
-                        .map(|(score, choice)| (score, choice[0] == greedy)),
+
+                let (logits, _) = {
+                    let _no_grad = tch::no_grad_guard();
+                    options
+                        .model
+                        .forward(&request_tensor, None, None, None, None, None)
+                };
+
+                let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
+
+                // Get tensor of shape `[choice.len(), vocab_size]` containing the
+                // model's logits for each token of the `choice` text.
+                // This should skip the fewshot tokens and get the tokens from the end.
+                let logits = logits.slice(
+                    0,
+                    *input_length as i64 - choice.len() as i64,
+                    *input_length as i64,
+                    1,
                 );
-            } else {
-                for choice in &doc.choices {
-                    let mut ids = context.clone();
-                    ids.extend_from_slice(choice);
-                    let ids = Tensor::from_slice(&ids)
-                        .to(options.model.device())
-                        .unsqueeze(0);
-                    // if the continuation is N tokens, we need the the last N + 1 logits, since we are getting the
-                    // probs at the last token of the prompt (so prediction of the first continuation)
-                    let (logits, _) =
-                        options
-                            .model
-                            .forward(&ids, None, Some((choice.len() + 1) as i64));
-                    // drop the last logit, since we don't want to score what comes after the continuation
-                    let logits = logits.log_softmax(-1, None).squeeze_dim(0).slice(
-                        0,
-                        0,
-                        choice.len() as i64,
-                        1,
-                    );
-                    let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
-                    let exact_match = greedy_tokens.eq(choice);
-                    let index = Tensor::from_slice(choice).to(logits.device()).unsqueeze(-1);
-                    let logits = logits.gather(-1, &index, false);
-                    let loglikelihood: f32 = logits.sum(Kind::Float).try_into().unwrap();
-                    scores.push((loglikelihood, exact_match));
-                }
+
+                let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
+                let exact_match = greedy_tokens.eq(&choice);
+
+                let choice_log_prob = logits.log_softmax(-1, None).gather(
+                    -1,
+                    &Tensor::from_slice(choice).to(logits.device()).unsqueeze(-1),
+                    false,
+                );
+
+                let loglikelihood: f32 = choice_log_prob.sum(Kind::Float).try_into().unwrap();
+                scores.push((loglikelihood, exact_match));
             }
+
             let selected: i64 = Tensor::from_slice(&scores.iter().map(|x| x.0).collect::<Vec<_>>())
                 .argmax(-1, false)
                 .try_into()
@@ -286,7 +466,7 @@ impl PreparedTask {
                 &scores
                     .iter()
                     .enumerate()
-                    .map(|(idx, x)| x.0 / doc.choices[idx].len() as f32)
+                    .map(|(idx, score)| score.0 / (doc.choices_str[idx].len() as f32))
                     .collect::<Vec<_>>(),
             )
             .argmax(-1, false)
@@ -300,22 +480,23 @@ impl PreparedTask {
                     false => 0.,
                 },
             );
-            results.push(
-                "acc_norm",
-                match selected_norm as usize == doc.answer {
-                    true => 1.,
-                    false => 0.,
-                },
-            );
+
+            if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
+                results.push(
+                    "acc_norm",
+                    match selected_norm as usize == doc.answer {
+                        true => 1.,
+                        false => 0.,
+                    },
+                );
+            }
 
             if let Some(pbar) = &pbar {
-                pbar.set_message(format!(
-                    "acc_norm: {:.3}",
-                    results.sample("acc_norm").unwrap()
-                ));
+                pbar.set_message(format!("acc: {:.3}", results.sample("acc").unwrap()));
                 pbar.inc(1);
             };
         }
+
         PreparedTaskResult {
             scores: results
                 .get_all_averages()
@@ -327,16 +508,228 @@ impl PreparedTask {
         }
     }
 
+    fn run_generate_until(
+        eval_name: &String,
+        options: EvalTaskOptions,
+        cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
+        requests: &[TokenizedGenerateUntilDocument],
+        tokenizer: &Tokenizer,
+        answer_regex: &Regex,
+        pbar: Option<ProgressBar>,
+    ) -> PreparedTaskResult {
+        let results = options.live_results.unwrap_or_default();
+        let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
+        // if pbar is some we are running examples evaluate crate
+        let min_samples = if pbar.is_some() {
+            None
+        } else {
+            min_reporting_ratio(eval_name).map(|x| (x * requests.len() as f32) as usize)
+        };
+        results.add_entry_if_needed("acc", requests.len(), min_samples);
+
+        let fast_forward = (skip / requests.len()) * requests.len();
+        skip -= fast_forward;
+        let mut cancelled = false;
+        let mut documents_processed = 0;
+
+        // Simple sampling setup
+        let mut logits_processor = LogitsProcessor::from_sampling(
+            0,
+            Sampling::ArgMax, // Greedy decoding for deterministic results
+        );
+
+        // Get EOS token IDs from model
+        let eos_token_ids = options.model.eos_token_ids();
+
+        for (
+            num_iterations,
+            (
+                doc_index,
+                &TokenizedGenerateUntilDocument {
+                    ref _request_str,
+                    ref request,
+                    answer,
+                },
+            ),
+        ) in requests
+            .iter()
+            .cycle()
+            .enumerate()
+            .skip(skip)
+            .step_by(step_by)
+            .enumerate()
+        {
+            if let Some(cancel) = options.cancel.as_ref() {
+                if cancel.is_cancelled() {
+                    cancelled = true;
+                    break;
+                }
+            }
+            if doc_index >= requests.len() {
+                break;
+            }
+            if let Some(limit) = options.limit {
+                if num_iterations >= limit {
+                    break;
+                }
+            }
+
+            let mut generated_answer = None;
+            let mut generation_complete = false;
+
+            // Start with the tokenized prompt
+            let mut full_sequence = request.clone();
+
+            // Check if we have cached generated tokens for this document
+            let mut generated_tokens = {
+                cache
+                    .read()
+                    .unwrap()
+                    .get(&doc_index)
+                    .cloned()
+                    .unwrap_or_else(Vec::new)
+            };
+
+            if !generated_tokens.is_empty() {
+                tracing::trace!(
+                    "Resuming generation for document {} from checkpoint with {} tokens",
+                    doc_index,
+                    generated_tokens.len()
+                );
+            }
+
+            // If we have cached tokens, append them to the prompt
+            if !generated_tokens.is_empty() {
+                full_sequence.extend(generated_tokens.iter().map(|&t| t as i64));
+            }
+
+            // Generate tokens until we find "The answer is" pattern or reach limit
+            let mut tokens_generated_count = generated_tokens.len();
+            while !generation_complete {
+                if let Some(cancel) = options.cancel.as_ref() {
+                    if cancel.is_cancelled() {
+                        // Save progress before cancelling
+                        cache
+                            .write()
+                            .unwrap()
+                            .insert(doc_index, generated_tokens.clone());
+                        tracing::trace!(
+                            "Cancellation requested: saving {} tokens for document {}",
+                            generated_tokens.len(),
+                            doc_index,
+                        );
+                        cancelled = true;
+                        break;
+                    }
+                }
+                if full_sequence.len() > options.model.max_context_length() {
+                    full_sequence
+                        .drain(0..(full_sequence.len() - options.model.max_context_length()));
+                }
+                let model_input = Tensor::from_slice(&full_sequence)
+                    .to(options.model.device())
+                    .unsqueeze(0);
+
+                let (logits, _) =
+                    options
+                        .model
+                        .forward(&model_input, None, None, None, Some(1), None);
+                let logits = logits.squeeze();
+
+                let next_token = logits_processor.sample(&logits).unwrap();
+                full_sequence.push(next_token as i64);
+                generated_tokens.push(next_token);
+                tokens_generated_count += 1;
+
+                // Check if we hit an EOS token
+                if let Some(eos_ids) = &eos_token_ids {
+                    if eos_ids.contains(next_token as i64) {
+                        generation_complete = true;
+                        break;
+                    }
+                }
+
+                // Decode all generated tokens together
+                if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
+                    // Check if we've generated "The answer is (X)" pattern using regex
+                    if let Some(captures) = answer_regex.captures(&generated_text) {
+                        if let Some(answer_char) = captures.get(1) {
+                            generated_answer = Some(
+                                crate::ASCII_UPPERCASE
+                                    .iter()
+                                    .position(|&c| c == answer_char.as_str())
+                                    .unwrap_or(usize::MAX),
+                            );
+                            generation_complete = true;
+
+                            break;
+                        }
+                    }
+                }
+
+                if tokens_generated_count >= GENERATE_UNTIL_MAX_TOKENS {
+                    generation_complete = true;
+                    break;
+                }
+            }
+
+            // Clear the cache for this document after successful completion
+            if generation_complete {
+                cache.write().unwrap().remove(&doc_index);
+
+                let score = if generated_answer == Some(answer) {
+                    1.
+                } else {
+                    0.
+                };
+                results.push("acc", score);
+                documents_processed += 1;
+
+                if let Some(pbar) = &pbar {
+                    pbar.set_message(format!("acc: {:.3}", results.sample("acc").unwrap()));
+                    pbar.inc(1);
+                };
+            }
+        }
+
+        PreparedTaskResult {
+            scores: results
+                .get_all_averages()
+                .into_iter()
+                .map(|(key, value)| (key, value.unwrap_or_default()))
+                .collect(),
+            next_index: fast_forward + skip + (documents_processed * step_by),
+            cancelled,
+        }
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
 
     pub fn main_metric_name(&self) -> &str {
-        match &self.prepared_task_type {
-            PreparedTaskType::LogLikelihood {
-                docs: _,
-                tokenized_fewshot: _,
-            } => "acc_norm",
+        if TASKS_WITH_ACC_NORM.contains(&self.name()) {
+            "acc_norm"
+        } else {
+            "acc"
         }
+    }
+}
+
+fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
+    if eval_name == MMLUPro::name() {
+        Some(0.1)
+    } else if eval_name == ArcChallenge::name()
+        || eval_name == BoolQ::name()
+        || eval_name == ArcEasy::name()
+        || eval_name == Hellaswag::name()
+        || eval_name == OpenbookQA::name()
+        || eval_name == MMLU::name()
+        || eval_name == PIQA::name()
+    {
+        Some(0.5)
+    } else {
+        tracing::warn!("eval name min_reporting_ratio not defined");
+        None
     }
 }

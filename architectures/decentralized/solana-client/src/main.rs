@@ -1,9 +1,22 @@
+use crate::command::create_run::CommandCreateRunParams;
+use crate::command::create_run::command_create_run_execute;
+use crate::command::json_dump_run::CommandJsonDumpRunParams;
+use crate::command::json_dump_run::command_json_dump_run_execute;
+use crate::command::json_dump_user::CommandJsonDumpUserParams;
+use crate::command::json_dump_user::command_json_dump_user_execute;
+use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
+use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
+use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
+use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
+use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
+use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
 use crate::{
-    app::{AppBuilder, AppParams, Tabs, TAB_NAMES},
+    app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
 };
 
 use anchor_client::{
+    Client, Cluster,
     anchor_lang::system_program,
     solana_sdk::{
         commitment_config::{CommitmentConfig, CommitmentLevel},
@@ -12,22 +25,24 @@ use anchor_client::{
         signature::{EncodableKey, Keypair},
         signer::Signer,
     },
-    Client, Cluster,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use bytemuck::Zeroable;
 use clap::{Args, Parser, Subcommand};
-use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
+use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
 use psyche_coordinator::{
-    get_data_index_for_step,
+    CoordinatorConfig, CoordinatorProgress, RunState, get_data_index_for_step,
     model::{Checkpoint, HubRepo, Model},
-    CoordinatorConfig, CoordinatorProgress, RunState,
 };
-use psyche_core::{sha256, FixedString};
+use psyche_core::{FixedString, sha256};
 use psyche_network::SecretKey;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{find_coordinator_instance, logic::JOIN_RUN_AUTHORIZATION_SCOPE};
-use psyche_tui::{maybe_start_render_loop, LogOutput};
+use psyche_tui::{
+    LogOutput, ServiceInfo,
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
+    maybe_start_render_loop,
+};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
@@ -37,12 +52,14 @@ use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::{
     runtime::Builder,
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
-use tracing::{info, Level};
+use tracing::info;
 
 mod app;
 mod backend;
+mod command;
+mod instructions;
 mod network_identity;
 mod retry;
 
@@ -93,15 +110,10 @@ enum Commands {
     CreateRun {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long)]
-        join_authority: Option<String>,
+        #[clap(flatten)]
+        params: CommandCreateRunParams,
     },
     CloseRun {
         #[clap(flatten)]
@@ -123,6 +135,9 @@ enum Commands {
         #[clap(long, env)]
         run_id: String,
 
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
+
         #[clap(short, long, env)]
         resume: bool,
     },
@@ -135,6 +150,9 @@ enum Commands {
 
         #[clap(short, long, env)]
         run_id: String,
+
+        #[clap(long, env)]
+        treasurer_index: Option<u64>,
 
         #[clap(long, env)]
         config_path: Option<PathBuf>,
@@ -178,18 +196,26 @@ enum Commands {
     SetFutureEpochRates {
         #[clap(flatten)]
         cluster: ClusterArgs,
-
         #[clap(flatten)]
         wallet: WalletArgs,
-
-        #[clap(short, long, env)]
-        run_id: String,
-
-        #[clap(long, env)]
-        earning_rate: Option<u64>,
-
-        #[clap(long, env)]
-        slashing_rate: Option<u64>,
+        #[clap(flatten)]
+        params: CommandSetFutureEpochRatesParams,
+    },
+    TreasurerClaimRewards {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandTreasurerClaimRewardsParams,
+    },
+    TreasurerTopUpRewards {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandTreasurerTopUpRewardsParams,
     },
     Show {
         #[clap(flatten)]
@@ -256,10 +282,24 @@ enum Commands {
         #[clap(long, env, action)]
         predownload_model: bool,
 
+        #[clap(long, env, action)]
+        predownload_eval_tasks: Option<String>,
+
         #[clap(long, env, default_value_t = 3)]
         hub_max_concurrent_downloads: usize,
     },
-
+    JsonDumpRun {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandJsonDumpRunParams,
+    },
+    JsonDumpUser {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandJsonDumpUserParams,
+    },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
     PrintAllHelp {
@@ -291,14 +331,18 @@ impl TryInto<Keypair> for WalletArgs {
                 } else {
                     Keypair::from_base58_string(&raw_wallet_private_key)
                 }
-            },
-            None => match self.wallet_private_key_path {
-                Some(wallet_private_key_path) => match Keypair::read_from_file(wallet_private_key_path) {
-                    Ok(wallet_keypair) => wallet_keypair,
-                    Err(err) => bail!("{}", err),
-                },
-                None => bail!("No wallet private key! Must pass --wallet-private-key-path or set RAW_WALLET_PRIVATE_KEY")
             }
+            None => match self.wallet_private_key_path {
+                Some(wallet_private_key_path) => {
+                    match Keypair::read_from_file(wallet_private_key_path) {
+                        Ok(wallet_keypair) => wallet_keypair,
+                        Err(err) => bail!("{}", err),
+                    }
+                }
+                None => bail!(
+                    "No wallet private key! Must pass --wallet-private-key-path or set RAW_WALLET_PRIVATE_KEY"
+                ),
+            },
         };
 
         Ok(wallet_keypair)
@@ -322,10 +366,8 @@ async fn async_main() -> Result<()> {
         Commands::CreateRun {
             cluster,
             wallet,
-            run_id,
-            join_authority,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -334,21 +376,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let created = backend
-                .create_run(
-                    run_id.clone(),
-                    join_authority.map(|address| Pubkey::from_str(&address).unwrap()),
-                )
-                .await?;
-            let locked = backend.get_balance(&created.account).await?;
-            println!(
-                "Created run {} with transactions signatures: {:?}",
-                run_id, created.create_signatures,
-            );
-            println!("Instance account: {}", created.instance);
-            println!("Coordinator account: {}", created.account);
-            println!("Locked for storage: {:.9} SOL", lamports_to_sol(locked));
-            Ok(())
+            command_create_run_execute(backend, params).await
         }
         Commands::CloseRun {
             cluster,
@@ -373,7 +401,7 @@ async fn async_main() -> Result<()> {
             let closed = backend
                 .close_run(coordinator_instance, coordinator_account)
                 .await?;
-            println!("Closed run {} with transaction {}", run_id, closed);
+            println!("Closed run {run_id} with transaction {closed}");
             let recovered = backend.get_balance(&key_pair.pubkey()).await? - balance;
             println!("Recovered {:.9} SOL", lamports_to_sol(recovered));
             println!("\n===== Logs =====");
@@ -386,6 +414,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             config_path,
             restart_from_step,
             switch_to_hub,
@@ -475,15 +504,16 @@ async fn async_main() -> Result<()> {
 
             let set: anchor_client::solana_sdk::signature::Signature = backend
                 .update(
-                    coordinator_instance,
-                    coordinator_account,
+                    &run_id,
+                    treasurer_index,
+                    &coordinator_account,
                     metadata,
                     config,
                     model,
                     progress,
                 )
                 .await?;
-            println!("Updated config of {} with transaction {}", run_id, set);
+            println!("Updated config of {run_id} with transaction {set}");
             println!("\n===== Logs =====");
             for log in backend.get_logs(&set).await? {
                 println!("{log}");
@@ -494,6 +524,7 @@ async fn async_main() -> Result<()> {
             cluster,
             wallet,
             run_id,
+            treasurer_index,
             resume,
         } => {
             let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
@@ -512,12 +543,9 @@ async fn async_main() -> Result<()> {
                 .await?;
             let coordinator_account = coordinator_instance_state.coordinator_account;
             let set = backend
-                .set_paused(coordinator_instance, coordinator_account, paused)
+                .set_paused(&run_id, treasurer_index, &coordinator_account, paused)
                 .await?;
-            println!(
-                "Set pause state to {} on run {} with transaction {}",
-                paused, run_id, set
-            );
+            println!("Set pause state to {paused} on run {run_id} with transaction {set}");
             println!("\n===== Logs =====");
             for log in backend.get_logs(&set).await? {
                 println!("{log}");
@@ -551,7 +579,7 @@ async fn async_main() -> Result<()> {
                 let ticked = backend
                     .tick(coordinator_instance, coordinator_account)
                     .await?;
-                println!("Ticked run {} with transaction {}", run_id, ticked);
+                println!("Ticked run {run_id} with transaction {ticked}");
                 println!("\n===== Logs =====");
                 for log in backend.get_logs(&ticked).await? {
                     println!("{log}");
@@ -565,11 +593,8 @@ async fn async_main() -> Result<()> {
         Commands::SetFutureEpochRates {
             cluster,
             wallet,
-            run_id,
-            earning_rate,
-            slashing_rate,
+            params,
         } => {
-            let run_id = run_id.trim_matches('"').to_string(); // Trim quotes, if any
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -578,28 +603,37 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            let coordinator_instance = find_coordinator_instance(&run_id);
-            let coordinator_instance_state = backend
-                .get_coordinator_instance(&coordinator_instance)
-                .await?;
-            let coordinator_account = coordinator_instance_state.coordinator_account;
-            let set = backend
-                .set_future_epoch_rates(
-                    coordinator_instance,
-                    coordinator_account,
-                    earning_rate,
-                    slashing_rate,
-                )
-                .await?;
-            println!(
-                "Set earning rate to {:?} and slashing rate to {:?} on run {} with transaction {}",
-                earning_rate, slashing_rate, run_id, set
-            );
-            println!("\n===== Logs =====");
-            for log in backend.get_logs(&set).await? {
-                println!("{log}");
-            }
-            Ok(())
+            command_set_future_epoch_rates_execute(backend, params).await
+        }
+        Commands::TreasurerClaimRewards {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_treasurer_claim_rewards_execute(backend, params).await
+        }
+        Commands::TreasurerTopUpRewards {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_treasurer_top_up_rewards_execute(backend, params).await
         }
         Commands::Checkpoint {
             cluster,
@@ -714,7 +748,7 @@ async fn async_main() -> Result<()> {
             let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
 
             let solana_pubkey = wallet_keypair.pubkey();
-            let wandb_info = args.wandb_info(format!("{}-{}", run_id, solana_pubkey))?;
+            let wandb_info = args.wandb_info(format!("{run_id}-{solana_pubkey}"))?;
 
             let identity_secret_key: SecretKey =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
@@ -725,13 +759,38 @@ async fn async_main() -> Result<()> {
                         SecretKey::generate(&mut rng)
                     });
 
-            let logger = psyche_tui::init_logging(
-                args.logs,
-                Level::INFO,
-                args.write_log.clone(),
-                true,
-                Some(identity_secret_key.public().fmt_short()),
-            )?;
+            let logger = psyche_tui::logging()
+                .with_output(args.logs)
+                .with_log_file(args.write_log.clone())
+                .with_metrics_destination(args.oltp_metrics_url.clone().map(|endpoint| {
+                    MetricsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_trace_destination(args.oltp_tracing_url.clone().map(|endpoint| {
+                    TraceDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_remote_logs(args.oltp_logs_url.clone().map(|endpoint| {
+                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(4),
+                    })
+                }))
+                .with_service_info(ServiceInfo {
+                    name: "psyche-solana-client".to_string(),
+                    instance_id: identity_secret_key.public().to_string(),
+                    namespace: "psyche".to_string(),
+                    deployment_environment: std::env::var("DEPLOYMENT_ENV")
+                        .unwrap_or("development".to_string()),
+                })
+                .init()?;
 
             let (cancel, tx_tui_state) = maybe_start_render_loop(
                 (args.logs == LogOutput::TUI).then(|| Tabs::new(Default::default(), &TAB_NAMES)),
@@ -752,7 +811,7 @@ async fn async_main() -> Result<()> {
                 backup_clusters.push(Cluster::Custom(rpc, ws))
             }
 
-            let (mut app, allowlist, p2p, state_options) = AppBuilder::new(AppParams {
+            let app = AppBuilder::new(AppParams {
                 cancel,
                 tx_tui_state,
                 identity_secret_key,
@@ -768,6 +827,7 @@ async fn async_main() -> Result<()> {
                 write_gradients_dir: args.write_gradients_dir,
                 eval_task_max_docs: args.eval_task_max_docs,
                 eval_tasks,
+                prompt_task: args.prompt_task,
                 checkpoint_upload_info,
                 hub_read_token,
                 hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
@@ -778,12 +838,13 @@ async fn async_main() -> Result<()> {
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 max_concurrent_downloads: args.max_concurrent_downloads,
                 authorizer,
+                metrics_local_port: args.metrics_local_port,
             })
             .build()
             .await
             .unwrap();
 
-            app.run(allowlist, p2p, state_options).await?;
+            app.run().await?;
             logger.shutdown()?;
 
             Ok(())
@@ -804,6 +865,7 @@ async fn async_main() -> Result<()> {
             authorizer,
             pubkey,
             predownload_model,
+            predownload_eval_tasks,
             hub_max_concurrent_downloads,
         } => {
             // when we call join_run, we check
@@ -867,7 +929,10 @@ async fn async_main() -> Result<()> {
                 .state
                 .coordinator;
 
-            let is_paused = matches!(coordinator_account_state.run_state, RunState::Paused);
+            let is_paused = matches!(
+                coordinator_account_state.run_state,
+                RunState::Paused | RunState::Uninitialized
+            );
 
             if !is_paused {
                 let client_with_our_key = coordinator_account_state
@@ -876,7 +941,9 @@ async fn async_main() -> Result<()> {
                     .iter()
                     .find(|c| c.id.signer == solana_pubkey);
                 if client_with_our_key.is_some() {
-                    bail!("A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!");
+                    bail!(
+                        "A client with our pubkey {solana_pubkey} is in the current epoch, you can't join with this key!"
+                    );
                 }
             }
             if predownload_model {
@@ -888,8 +955,7 @@ async fn async_main() -> Result<()> {
                 }
 
                 #[allow(irrefutable_let_patterns)]
-                let Model::LLM(model) = coordinator_account_state.model
-                else {
+                let Model::LLM(model) = coordinator_account_state.model else {
                     bail!("model is not an LLM, unsure how to predownload.");
                 };
 
@@ -904,8 +970,7 @@ async fn async_main() -> Result<()> {
                 let repo_id = checkpoint.repo_id.to_string();
                 let revision = checkpoint.revision.map(|s| s.to_string());
                 println!(
-                    "Predownloading model {} revision {}",
-                    repo_id,
+                    "Predownloading model {repo_id} revision {}",
                     revision.as_ref().unwrap_or(&"main".to_string())
                 );
                 let hub_read_token = std::env::var("HF_TOKEN").ok();
@@ -924,12 +989,39 @@ async fn async_main() -> Result<()> {
                 .await?;
                 println!("Model predownloaded successfully.")
             }
+            if let Some(predownload_eval_tasks) = predownload_eval_tasks {
+                let _ = TrainArgs::eval_tasks_from_args(&predownload_eval_tasks, 0)?;
+                println!("Eval tasks `{predownload_eval_tasks}` predownloaded successfully.");
+            }
             Ok(())
+        }
+        Commands::JsonDumpRun { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_json_dump_run_execute(backend, params).await
+        }
+        Commands::JsonDumpUser { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_json_dump_user_execute(backend, params).await
         }
     }
 }
 
 fn main() -> Result<()> {
+    #[cfg(feature = "python")]
+    psyche_python_extension_impl::init_embedded_python();
+
     let runtime = Builder::new_multi_thread()
         .enable_io()
         .enable_time()
