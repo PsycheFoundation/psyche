@@ -15,9 +15,6 @@ def make_causal_lm(
     reduce_dtype: torch.dtype = torch.float32,
     fsdp_modules: Optional[Iterable[str]] = None,
 ) -> CausalLM:
-    print("make_causal_lm")
-    print("dp", dp)
-    print("tp", tp)
     if not isinstance(device, torch.device):
         device = torch.device(device if isinstance(device, str) else f"cuda:{device}")
     if architecture == "hf-auto":

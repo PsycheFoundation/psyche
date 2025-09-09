@@ -116,13 +116,6 @@ async fn main() -> Result<()> {
 
             Ok(())
         }
-        // {
-        //     info!("Starting Python sidecar for rank {}/{}", rank, world_size);
-        //     run_python_sidecar(
-        //         main_host, port, world_size, rank, start_rank, backend, parent_pid,
-        //     )
-        //     .await
-        // }
         Commands::Rust => {
             unimplemented!("Rust sidecar not yet implemented");
         }
