@@ -364,7 +364,7 @@ export async function startWatchCoordinatorChainLoop(
 							RunUpdates & {
 								state?: [PsycheCoordinator, ChainTimestamp]
 							}
-						>
+						>,
 					]
 				> = await Promise.all(
 					allRuns.map(([addr, runsAtThisAddr]) => {

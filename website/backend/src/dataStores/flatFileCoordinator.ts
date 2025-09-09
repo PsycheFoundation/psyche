@@ -237,7 +237,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 							batchSizeEnd,
 							warmupTokens
 						)
-				  })()
+					})()
 				: 0n
 
 			lastRun.trainingStep = {
@@ -592,7 +592,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 function goodNumber([_, value]: readonly [
 	step: number,
-	value: number
+	value: number,
 ]): boolean {
 	return Number.isFinite(value) && !Number.isNaN(value)
 }
@@ -637,7 +637,7 @@ function makeRunSummary(
 				endedAt: run.trainingStep.endedAt,
 				tokensCompletedAtStartOfStep:
 					run.trainingStep.tokensCompletedAtStartOfStep,
-		  }
+			}
 		: undefined
 
 	const summary: RunSummary = {
@@ -651,21 +651,21 @@ function makeRunSummary(
 			? {
 					type: 'completed',
 					at: run.destroyedAt,
-			  }
+				}
 			: c.run_state === 'Finished'
-			? {
-					type: 'completed',
-					at: run.lastUpdated,
-			  }
-			: run.lastState.coordinator.run_state === 'Paused'
-			? {
-					type: 'paused',
-			  }
-			: c.run_state === 'WaitingForMembers'
-			? { type: 'waitingForMembers' }
-			: {
-					type: 'active',
-			  },
+				? {
+						type: 'completed',
+						at: run.lastUpdated,
+					}
+				: run.lastState.coordinator.run_state === 'Paused'
+					? {
+							type: 'paused',
+						}
+					: c.run_state === 'WaitingForMembers'
+						? { type: 'waitingForMembers' }
+						: {
+								type: 'active',
+							},
 		pauseHistory: run.pauseTimestamps,
 		totalTokens,
 		lastUpdate: run.lastUpdated,
@@ -805,9 +805,8 @@ function averageSameStepValues(
 	})
 }
 
-type ValueInMapRecord<MapRecord> = MapRecord extends Map<any, infer I>
-	? I
-	: never
+type ValueInMapRecord<MapRecord> =
+	MapRecord extends Map<any, infer I> ? I : never
 
 type CurrentFormat = V2
 
