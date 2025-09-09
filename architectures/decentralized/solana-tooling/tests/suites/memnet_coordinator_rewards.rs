@@ -102,6 +102,8 @@ pub async fn run() {
             verification_percent: 0,
             witness_nodes: 0,
             rounds_per_epoch,
+            waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
+                as u8,
             total_steps: 100,
         }),
         Some(Model::LLM(LLM {

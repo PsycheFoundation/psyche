@@ -1,4 +1,5 @@
 use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
@@ -50,6 +51,8 @@ pub async fn run() {
             witness_nodes: 1,
             rounds_per_epoch: 44,
             total_steps: 100,
+            waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
+                as u8,
         }),
         model: Some(Model::LLM(LLM {
             architecture: LLMArchitecture::HfLlama,
