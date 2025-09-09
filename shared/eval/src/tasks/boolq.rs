@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Row, RowAccessor, Split};
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 pub struct BoolQ {
     test_dataset: Dataset,
@@ -65,6 +65,8 @@ impl BoolQ {
             text,
             choices,
             answer,
+            category: None,
+            cot_content: None,
         }
     }
 }
@@ -77,11 +79,15 @@ impl LogLikelihoodTask for BoolQ {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.test_dataset
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        let docs: Vec<Document> = self
+            .test_dataset
             .iter()
             .map(|row| BoolQ::row_to_document(&self.test_dataset, row))
-            .collect()
+            .collect();
+        fewshot_documents.insert("default".to_string(), docs);
+        fewshot_documents
     }
 }
 

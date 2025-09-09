@@ -14,6 +14,7 @@ pyo3.workspace = true
 pyo3-tch.workspace = true
 sysinfo = "0.30"
 take_mut = "0.2.2"
+tracing.workspace = true
 
 [features]
 parallelism = ["psyche-modeling/parallelism"]
