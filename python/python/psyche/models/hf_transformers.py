@@ -14,6 +14,7 @@ from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
 from torch.distributed.tensor import DTensor, distribute_tensor
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
+    _CHECKPOINT_PREFIX,
 )
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -255,7 +256,9 @@ class HfTransformersAuto(CausalLM):
         return (ret.logits, ret.loss)
 
     def named_parameters(self) -> dict[str, torch.Tensor]:
-        return dict(self.model.named_parameters())
+        params = dict(self.model.named_parameters())
+        # undo activation checkpoint wrapping
+        return {k.replace(_CHECKPOINT_PREFIX, ""): v for k, v in params.items()}
 
     def train(self):
         self.model.train()

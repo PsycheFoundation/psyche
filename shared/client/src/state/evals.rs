@@ -203,7 +203,7 @@ impl ModelTaskRunner {
                                 return None;
                             }
                             _ = tasks.loaded_notify.notified() => {
-                                // Loop around to see if we failed or suceeded to load
+                                // Loop around to see if we failed or succeeded to load
                                 continue;
                             }
                         }
