@@ -157,18 +157,17 @@ impl PythonDistributedCausalLM {
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
         init_method: Option<String>,
-        num_local_processes: Option<i64>,
+        num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
         if !tch::Cuda::is_available() {
             return Err(PythonDistributedCausalLMError::NonCUDADevice);
         }
-
-        let num_local_processes = num_local_processes.unwrap_or_else(|| tch::Cuda::device_count());
+        let num_local_ranks = num_local_ranks.unwrap_or_else(|| tch::Cuda::device_count());
         let world_size = parallelism.dp * parallelism.tp;
-        if world_size < (num_local_processes as usize) {
+        if world_size < (num_local_ranks as usize) {
             return Err(PythonDistributedCausalLMError::IncompatibleWorldSize(
                 world_size,
-                num_local_processes as usize,
+                num_local_ranks as usize,
             ));
         }
 
@@ -197,11 +196,7 @@ impl PythonDistributedCausalLM {
                         comm.set("source", "files")?;
                         let files = path_bufs
                             .iter()
-                            .map(|x| {
-                                let x = contract_home_path(x);
-                                println!("PATH: {x}");
-                                x
-                            })
+                            .map(|x| contract_home_path(x))
                             .collect::<Vec<_>>();
                         let files = serde_json::to_string(&files).unwrap();
                         comm.set("files", &files)?;
@@ -222,7 +217,7 @@ impl PythonDistributedCausalLM {
         };
         let pid = format!("{}", std::process::id());
         tracing::debug!("Spawned local model load, pid is {pid}");
-        let children: Result<Vec<Child>, _> = (1..num_local_processes)
+        let children: Result<Vec<Child>, _> = (1..num_local_ranks)
             .map(|rank| {
                 let res = Command::new("python")
                     .arg("-m")

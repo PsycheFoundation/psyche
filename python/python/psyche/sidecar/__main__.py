@@ -192,10 +192,8 @@ def main():
             )
             dist.broadcast(input_ids, 0)
             if train.batch_has_labels:
-                print("broadcast labels")
                 dist.broadcast(labels, 0)
             if train.batch_has_position_ids:
-                print("broadcast position_ids")
                 dist.broadcast(position_ids, 0)
 
             # world_size = dist.get_world_size()
@@ -204,7 +202,6 @@ def main():
             # start_row = rank * shard_size
             # local_batch = batch.narrow(0, start_row, shard_size).contiguous()
 
-            print("Start _, loss = trainer.train(")
             _, loss = trainer.train(
                 train.step,
                 train.zero_optim,
@@ -222,9 +219,7 @@ def main():
             )
 
             loss = torch.Tensor([loss]).to(device=device, dtype=torch.float32)
-            print(f"loss1: {loss}")
             dist.all_reduce(loss)
-            print(f"loss2: {loss}")
         elif operation["operation"] == "optimize":
             with torch.no_grad():
                 optimize = OptimizeOperation(**operation)

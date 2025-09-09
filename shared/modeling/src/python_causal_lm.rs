@@ -296,7 +296,6 @@ impl CausalLM for PythonCausalLM {
                     false => Ok(x.python.clone_ref(py)),
                 })
                 .collect();
-            // println!("pid={}, clip_grad_norm", std::process::id());
             clip_grad_norm.call1((tensors.unwrap(), max_grad_norm))?;
             Ok(())
         });
