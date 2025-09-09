@@ -1,5 +1,5 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata};
-use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity};
+use psyche_coordinator::{Coordinator, TRAINING_TIMES_SLICE_SIZE, Witness, WitnessMetadata};
+use psyche_core::{FixedVec, MerkleRoot, MerkleTree, NodeIdentity};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
@@ -44,7 +44,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
     pub fn start(
         &self,
         _client_index: u64,
-        _state: &Coordinator<T>,
+        state: &Coordinator<T>,
         trainers: MaybeRunningEvals,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
@@ -57,7 +57,7 @@ impl<T: NodeIdentity> WitnessStepMetadata<T> {
         let evals = self.model_task_runner.start_if_not_running(trainers);
 
         let sending_witness = if let Some(witness) =
-            WitnessStep::get_witness_to_send(previous_round, current_round)
+            WitnessStep::get_witness_to_send(state, previous_round, current_round)
         {
             let tx_witness = self.tx_witness.clone();
             Some(tokio::task::spawn(async move {
@@ -86,6 +86,7 @@ impl WitnessStep {
     }
 
     pub fn get_witness_to_send<T: NodeIdentity>(
+        state: &Coordinator<T>,
         previous_round: &mut RoundState<T>,
         current_round: &mut RoundState<T>,
     ) -> Option<Witness> {
@@ -111,11 +112,45 @@ impl WitnessStep {
         trace!("Broadcast bloom: {:?}", broadcast_bloom);
         trace!("Merkle root: 0x{}", hex::encode(broadcast_merkle.inner));
 
+        // Calculate the window bounds
+        let clients_len = state.epoch_state.clients.len();
+        let client_index_start = state.epoch_state.time_witnessing_window_start as usize;
+        let client_index_end = client_index_start + TRAINING_TIMES_SLICE_SIZE - 1;
+
+        let mut training_times: FixedVec<u16, TRAINING_TIMES_SLICE_SIZE> = FixedVec::new();
+        for i in 0..TRAINING_TIMES_SLICE_SIZE {
+            let source_idx = client_index_start + i;
+
+            if source_idx >= clients_len {
+                // If we've exceeded the number of clients, we can stop early, the rest will be 0
+                break;
+            }
+
+            let _ = training_times.push(
+                current_round
+                    .client_times
+                    .get(source_idx)
+                    .copied()
+                    .unwrap_or(0),
+            );
+        }
+
+        trace!(
+            "[get_witness_to_send] Submitting training times for step={}, witnessing times for window [{}:{}] (window start {}) times: {:?}, client_times: {:?}",
+            state.progress.step,
+            client_index_start,
+            client_index_end,
+            state.epoch_state.time_witnessing_window_start,
+            training_times,
+            current_round.client_times
+        );
+
         Some(Witness {
             proof: *proof,
             participant_bloom,
             broadcast_bloom,
             broadcast_merkle,
+            training_times,
         })
     }
 }

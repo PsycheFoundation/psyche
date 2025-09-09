@@ -81,16 +81,21 @@ impl Client {
 #[derive(Debug)]
 pub struct ClientHandle {
     pub client_handle: JoinHandle<Result<(), Error>>,
+    pub client_id: ClientId,
 }
 
 impl ClientHandle {
     pub async fn default(server_port: u16, run_id: &str) -> Self {
         let (mut client, allowlist, p2p, state_options) =
             Client::default(server_port, run_id).await;
+        let client_id = state_options.identity;
         let client_handle =
             tokio::spawn(async move { client.run(allowlist, p2p, state_options).await });
         tokio::time::sleep(Duration::from_millis(50)).await;
-        Self { client_handle }
+        Self {
+            client_handle,
+            client_id,
+        }
     }
 
     pub async fn new_with_training_delay(
@@ -101,10 +106,14 @@ impl ClientHandle {
         debug!("spawning new client...");
         let (mut client, allowlist, p2p, state_options) =
             Client::new_with_training_delay(server_port, run_id, training_delay_secs).await;
+        let client_id = state_options.identity;
         let client_handle =
             tokio::spawn(async move { client.run(allowlist, p2p, state_options).await });
         tokio::time::sleep(Duration::from_millis(100)).await;
         debug!("new client spawned!");
-        Self { client_handle }
+        Self {
+            client_handle,
+            client_id,
+        }
     }
 }
