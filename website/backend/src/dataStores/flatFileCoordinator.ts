@@ -32,6 +32,7 @@ const ALLOWLISTED_RUN_IDS =
 	process.env.NODE_ENV === 'development'
 		? null
 		: ['consilience-40b-1', 'hermes-3-8b', 'hermes-3-8b-2', 'hermes-4-8b']
+
 type Witness = Omit<WitnessMetadata, 'evals'> & {
 	evals: Array<[string, number]>
 }
@@ -58,7 +59,11 @@ interface RunHistory {
 	}
 
 	pauseTimestamps: Array<['paused' | 'unpaused', ChainTimestamp]>
-	witnessUpdates: Array<[Witness, ChainTimestamp]>
+
+	lastFewWitnessUpdates: Array<[Witness, ChainTimestamp]>
+	sampledWitnessUpdates: Array<[Witness, ChainTimestamp]>
+	sampledWitnessStep?: number
+
 	observedLrByStep: Array<[number, number]>
 
 	recentTxs: Array<TxSummary>
@@ -188,7 +193,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			destroyedAt: null,
 			pauseTimestamps: [],
 			lastUpdated: eventTime,
-			witnessUpdates: [],
+			lastFewWitnessUpdates: [],
+			sampledWitnessUpdates: [],
 			lastState: newState ?? null,
 			observedLrByStep: [],
 			configChanges: [],
@@ -231,7 +237,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 							batchSizeEnd,
 							warmupTokens
 						)
-					})()
+				  })()
 				: 0n
 
 			lastRun.trainingStep = {
@@ -285,10 +291,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, index))
 	}
 
-	witnessRun(
+	appendRunWitnesses(
 		pubkey: string,
-		witness: WitnessMetadata,
-		timestamp: ChainTimestamp
+		witnesses: [WitnessMetadata, ChainTimestamp][]
 	) {
 		const runs = this.#runs.get(pubkey)
 		const lastRun = runs?.at(-1)
@@ -297,30 +302,40 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				`Tried to get run ${pubkey}, but we have no runs recorded for that pubkey.`
 			)
 		}
-		// we don't reallllllly care if it's shut down.
-		lastRun.lastUpdated = timestamp
 
-		// format evals to nice strings to save tons of space
-		const { evals, ...restWitness } = witness
+		for (const [witness, timestamp] of witnesses) {
+			// we don't reallllllly care if it's shut down.
+			lastRun.lastUpdated = timestamp
 
-		// could be a bigint, could be a BN, kind of annoying. TODO fix somewhere else.
-		const l =
-			typeof evals.len === 'object' && evals.len && 'toNumber' in evals.len
-				? evals.len.toNumber()
-				: Number(evals.len)
-		const fixedEvals: Array<[string, number]> = []
-		for (const { name, value } of evals.data.slice(
-			0,
-			l
-		) as WitnessEvalResult[]) {
-			const firstZero = name[0].findIndex((v) => v === 0)
-			const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString('utf-8')
-			fixedEvals.push([nameStr, value])
+			// format evals to nice strings to save tons of space
+			const { evals, ...restWitness } = witness
+
+			// could be a bigint, could be a BN, kind of annoying. TODO fix somewhere else.
+			const l =
+				typeof evals.len === 'object' && evals.len && 'toNumber' in evals.len
+					? evals.len.toNumber()
+					: Number(evals.len)
+			const fixedEvals: Array<[string, number]> = []
+			for (const { name, value } of evals.data.slice(
+				0,
+				l
+			) as WitnessEvalResult[]) {
+				const firstZero = name[0].findIndex((v) => v === 0)
+				const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString(
+					'utf-8'
+				)
+				fixedEvals.push([nameStr, value])
+			}
+
+			let witnessUpdate: [Witness, ChainTimestamp] = [
+				{ ...restWitness, evals: fixedEvals } as Witness,
+				timestamp,
+			]
+			lastRun.lastFewWitnessUpdates.push(witnessUpdate)
+			lastRun.sampledWitnessUpdates.push(witnessUpdate)
 		}
-		lastRun.witnessUpdates.push([
-			{ ...restWitness, evals: fixedEvals },
-			timestamp,
-		])
+
+		cleanupWitnessUpdates(lastRun)
 
 		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
 	}
@@ -453,17 +468,15 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			return null
 		}
 
-		const numSamples = 1000
-
-		const linearWitnessHistory = chopOffDivergentHistory(
-			run.witnessUpdates.map((w) => [w[0].step, w[0]] as const)
+		const sampledWitnessUpdates = run.sampledWitnessUpdates.map(
+			(w) => [w[0].step, w[0]] as const
 		)
 
 		const evals: Record<
 			string,
 			Array<readonly [step: number, value: number]>
 		> = {}
-		for (const [step, r] of linearWitnessHistory) {
+		for (const [step, r] of sampledWitnessUpdates) {
 			for (const [name, value] of r.evals) {
 				if (!(name in evals)) {
 					evals[name] = []
@@ -472,35 +485,23 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			}
 		}
 		for (const evalName in evals) {
-			evals[evalName] = fairSample(
-				averageSameStepValues(evals[evalName]),
-				numSamples
-			)
+			evals[evalName] = averageSameStepValues(evals[evalName])
 		}
 		const history: OverTime<Metrics> = {
-			bandwidth: fairSample(
-				averageSameStepValues(
-					linearWitnessHistory
-						.map(([step, h]) => [step, h.bandwidth_per_sec] as const)
-						.filter(goodNumber)
-				),
-				numSamples
+			bandwidth: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.bandwidth_per_sec] as const)
+					.filter(goodNumber)
 			),
-			loss: fairSample(
-				averageSameStepValues(
-					linearWitnessHistory
-						.map(([step, h]) => [step, h.loss] as const)
-						.filter(goodNumber)
-				),
-				numSamples
+			loss: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.loss] as const)
+					.filter(goodNumber)
 			),
-			tokensPerSecond: fairSample(
-				averageSameStepValues(
-					linearWitnessHistory
-						.map(([step, h]) => [step, h.tokens_per_sec] as const)
-						.filter(goodNumber)
-				),
-				numSamples
+			tokensPerSecond: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.tokens_per_sec] as const)
+					.filter(goodNumber)
 			),
 			lr: run.observedLrByStep.filter(goodNumber),
 			evals,
@@ -591,7 +592,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 function goodNumber([_, value]: readonly [
 	step: number,
-	value: number,
+	value: number
 ]): boolean {
 	return Number.isFinite(value) && !Number.isNaN(value)
 }
@@ -620,7 +621,7 @@ function makeRunSummary(
 		warmupTokens
 	)
 
-	const lastFewWitnesses = run.witnessUpdates.slice(-50)
+	const lastFewWitnesses = run.lastFewWitnessUpdates.slice(-50)
 	const lastStep = lastFewWitnesses.at(-1)?.[0].step ?? -1
 	const witnessesForLastStep = lastFewWitnesses.filter(
 		(w) => w[0].step === lastStep
@@ -636,7 +637,7 @@ function makeRunSummary(
 				endedAt: run.trainingStep.endedAt,
 				tokensCompletedAtStartOfStep:
 					run.trainingStep.tokensCompletedAtStartOfStep,
-			}
+		  }
 		: undefined
 
 	const summary: RunSummary = {
@@ -650,21 +651,21 @@ function makeRunSummary(
 			? {
 					type: 'completed',
 					at: run.destroyedAt,
-				}
+			  }
 			: c.run_state === 'Finished'
-				? {
-						type: 'completed',
-						at: run.lastUpdated,
-					}
-				: run.lastState.coordinator.run_state === 'Paused'
-					? {
-							type: 'paused',
-						}
-					: c.run_state === 'WaitingForMembers'
-						? { type: 'waitingForMembers' }
-						: {
-								type: 'active',
-							},
+			? {
+					type: 'completed',
+					at: run.lastUpdated,
+			  }
+			: run.lastState.coordinator.run_state === 'Paused'
+			? {
+					type: 'paused',
+			  }
+			: c.run_state === 'WaitingForMembers'
+			? { type: 'waitingForMembers' }
+			: {
+					type: 'active',
+			  },
 		pauseHistory: run.pauseTimestamps,
 		totalTokens,
 		lastUpdate: run.lastUpdated,
@@ -673,6 +674,64 @@ function makeRunSummary(
 		type: 'text', // TODO add type / tags? :)
 	}
 	return summary
+}
+
+function cleanupWitnessUpdates(run: RunHistory) {
+	console.log('cleaning up witness updates for run', run.runId)
+	console.log(
+		'before cleanup: lastFewWitnessUpdates length',
+		run.lastFewWitnessUpdates.length,
+		'sampledWitnessUpdates length',
+		run.sampledWitnessUpdates.length,
+		'sampledWitnessStep',
+		run.sampledWitnessStep
+	)
+	cleanupOverriddenSteps(run.lastFewWitnessUpdates)
+	if (run.sampledWitnessUpdates.length > 200) {
+		run.sampledWitnessUpdates = run.sampledWitnessUpdates.slice(-100)
+	}
+	cleanupOverriddenSteps(run.sampledWitnessUpdates)
+	removeUnsampledSteps(run.sampledWitnessUpdates, run.sampledWitnessStep)
+	while (run.sampledWitnessUpdates.length > 1000) {
+		run.sampledWitnessStep = (run.sampledWitnessStep ?? 1) * 2
+		removeUnsampledSteps(run.sampledWitnessUpdates, run.sampledWitnessStep)
+	}
+	console.log(
+		'after cleanup: lastFewWitnessUpdates length',
+		run.lastFewWitnessUpdates.length,
+		'sampledWitnessUpdates length',
+		run.sampledWitnessUpdates.length,
+		'sampledWitnessStep',
+		run.sampledWitnessStep
+	)
+}
+
+function cleanupOverriddenSteps(witnesses: [Witness, ChainTimestamp][]) {
+	let minValidStep = Infinity
+	for (let i = witnesses.length - 1; i >= 0; i--) {
+		let witness = witnesses[i]
+		let currentStep = witness[0].step
+		if (currentStep >= minValidStep) {
+			witnesses.splice(0, i)
+			break
+		} else {
+			minValidStep = currentStep
+		}
+	}
+}
+
+function removeUnsampledSteps(
+	witnesses: [Witness, ChainTimestamp][],
+	sampledStep?: number
+) {
+	if (!sampledStep || sampledStep <= 1) {
+		return
+	}
+	for (let i = witnesses.length - 1; i >= 0; i--) {
+		if (witnesses[i][0].step % sampledStep !== 0) {
+			witnesses.splice(i, 1)
+		}
+	}
 }
 
 /**
@@ -730,71 +789,21 @@ function averageSameStepValues(
 	})
 }
 
-// sample n items, always including the first and last items.
-function fairSample<T>(array: T[], sampleSize: number) {
-	const length = array.length
+type ValueInMapRecord<MapRecord> = MapRecord extends Map<any, infer I>
+	? I
+	: never
 
-	if (length === 0) return []
-
-	if (sampleSize >= length || sampleSize <= 2) {
-		return [...array]
-	}
-
-	const result = [array[0]]
-
-	const step = (length - 1) / (sampleSize - 1)
-
-	for (let i = 1; i < sampleSize - 1; i++) {
-		const index = Math.round(i * step)
-		result.push(array[index])
-	}
-
-	result.push(array[length - 1])
-
-	return result
-}
-
-/**
- * Given an array of
- * `const values: Array<[x: number, y: number]>`
- * Detects if x ever goes backwards, and then chops off that branch,
- * so with a bunch of divergent branches linearly flattened,
- * we only keep one linear branch.
- */
-function chopOffDivergentHistory<T>(
-	values: Array<readonly [x: number, y: T]>
-): Array<readonly [x: number, y: T]> {
-	const result: Array<readonly [x: number, y: T]> = []
-	let maxX = -1
-	for (const [step, value] of values) {
-		if (step < maxX) {
-			// find the divergent point - the last entry that has x < step
-			const divergentIndex = result.findLastIndex(([x]) => x < step)
-
-			// slice off all results after the divergent point
-			result.length = divergentIndex + 1
-		}
-
-		result.push([step, value])
-		maxX = step
-	}
-	return result
-}
-
-type ValueInMapRecord<MapRecord> =
-	MapRecord extends Map<any, infer I> ? I : never
-
-type CurrentFormat = V1
+type CurrentFormat = V2
 
 const migrations: Record<
 	`${Exclude<Version, CurrentVersion>}`,
 	(data: any) => CurrentFormat
 > = {
 	unversioned: (data: V0) => {
-		for (const [_runId, run] of data.runs) {
-			for (const history of run) {
-				for (const witness of history.witnessUpdates) {
-					const evals = witness[0].evals
+		for (const [_runId, runV0] of data.runs) {
+			for (const historyV0 of runV0) {
+				for (const witnessV0 of historyV0.witnessUpdates) {
+					const evals = witnessV0[0].evals
 					for (let i = 0; i < evals.length; i++) {
 						evals[i] = [
 							evals[i].name,
@@ -806,7 +815,7 @@ const migrations: Record<
 				}
 			}
 		}
-		return data as unknown as V1
+		return data as unknown as V2
 	},
 }
 
@@ -820,12 +829,44 @@ interface WitnessV0 {
 interface RunHistoryV0 {
 	witnessUpdates: Array<[WitnessV0, any]>
 }
-
 interface V0 {
 	runs: Map<string, RunHistoryV0[]>
 }
 
+interface RunHistoryV1 {
+	runId: string
+	createdAt: ChainTimestamp
+	destroyedAt: ChainTimestamp | null
+	lastUpdated: ChainTimestamp
+
+	lastState: PsycheCoordinator | null
+
+	configChanges: Array<{
+		timestamp: ChainTimestamp
+		model: Model
+		config: CoordinatorConfig
+		metadata: RunMetadata
+	}>
+
+	trainingStep?: {
+		startedAt: ChainTimestamp
+		endedAt?: ChainTimestamp
+		tokensCompletedAtStartOfStep: bigint
+	}
+
+	pauseTimestamps: Array<['paused' | 'unpaused', ChainTimestamp]>
+	witnessUpdates: Array<[Witness, ChainTimestamp]>
+	observedLrByStep: Array<[number, number]>
+
+	recentTxs: Array<TxSummary>
+}
 interface V1 {
+	lastUpdateInfo: LastUpdateInfo
+	runs: Map<string, RunHistoryV1[]>
+	programId: PublicKey
+}
+
+interface V2 {
 	lastUpdateInfo: LastUpdateInfo
 	runs: Map<string, RunHistory[]>
 	programId: PublicKey
