@@ -1,3 +1,4 @@
+use anyhow::Result;
 use psyche_solana_mining_pool::accounts::LenderCreateAccounts;
 use psyche_solana_mining_pool::find_lender;
 use psyche_solana_mining_pool::find_pool;
@@ -7,7 +8,6 @@ use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use solana_sdk::system_program;
 use solana_toolbox_anchor::ToolboxAnchor;
-use solana_toolbox_anchor::ToolboxAnchorError;
 use solana_toolbox_endpoint::ToolboxEndpoint;
 
 pub async fn process_lender_create(
@@ -15,7 +15,7 @@ pub async fn process_lender_create(
     payer: &Keypair,
     user: &Keypair,
     pool_index: u64,
-) -> Result<(), ToolboxAnchorError> {
+) -> Result<()> {
     let pool = find_pool(pool_index);
     let lender = find_lender(&pool, &user.pubkey());
 

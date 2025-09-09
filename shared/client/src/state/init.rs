@@ -106,7 +106,7 @@ pub enum InitRunError {
     #[error("could not parse config: {0}")]
     FailedToParseConfig(#[from] serde_json::Error),
 
-    #[error("Unsupported architeture: {0}")]
+    #[error("Unsupported architecture: {0}")]
     UnsupportedArchitecture(String),
 
     #[cfg(feature = "python")]
@@ -158,7 +158,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
 }
 
 impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
-    /// Call this on first warmup - when we need to enter the run, we have to load the model, conenct to the data server, etc
+    /// Call this on first warmup - when we need to enter the run, we have to load the model, connect to the data server, etc
     pub async fn init_run(
         self,
         state: Coordinator<T>,

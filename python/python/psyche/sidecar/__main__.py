@@ -97,27 +97,36 @@ def main():
     if args.parent_pid:
         start_process_watcher(args.parent_pid, timedelta(seconds=1))
 
+    # parse init_method to manually create TCP store
+    store = None
+    if args.init_method.startswith("tcp://"):
+        host_name, port = args.init_method[6:].split(":")
+        store = dist.TCPStore(
+            host_name=host_name,
+            port=int(port),
+            world_size=args.world_size,
+            is_master=False,
+            timeout=timedelta(hours=2),
+            use_libuv=False,
+        )
+
     dist.init_process_group(
         backend=args.backend,
-        init_method=args.init_method,
+        init_method=args.init_method if store is None else None,
+        timeout=timedelta(hours=2),
         world_size=args.world_size,
         rank=args.rank if args.world_size else None,
-        timeout=timedelta(hours=2),
+        store=store,
     )
 
-    store = dist.distributed_c10d._get_default_store()
-
-    store.wait(["architecture", "source"])
     architecture = store.get("architecture").decode()
     source = store.get("source").decode()
     if source == "files":
-        store.wait(["files"])
         files = store.get("files").decode()
         source = PretrainedSourceRepoFiles(files=json.loads(files))
     else:
         raise ValueError(f"Unsupported source type {source}")
 
-    store.wait(["dp", "tp"])
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
 
@@ -130,7 +139,6 @@ def main():
         tp=tp,
     )
 
-    store.wait(["hyperparameters"])
     hyperparameters: Hyperparameters = Hyperparameters(
         **json.loads(store.get("hyperparameters").decode())
     )
@@ -151,8 +159,8 @@ def main():
     iteration = 0
 
     while True:
-        store.wait([str(iteration)])
-        operation = json.loads(store.get(str(iteration)).decode())
+        operation = store.get(str(iteration)).decode()
+        operation = json.loads(operation)
 
         # dummy barrier
         dummy = torch.zeros((), dtype=torch.float, device=device)
@@ -185,12 +193,6 @@ def main():
                 dist.broadcast(labels, 0)
             if train.batch_has_position_ids:
                 dist.broadcast(position_ids, 0)
-
-            # world_size = dist.get_world_size()
-            # rank = dist.get_rank()
-            # shard_size = batch.shape[0] // world_size
-            # start_row = rank * shard_size
-            # local_batch = batch.narrow(0, start_row, shard_size).contiguous()
 
             _, loss = trainer.train(
                 train.step,

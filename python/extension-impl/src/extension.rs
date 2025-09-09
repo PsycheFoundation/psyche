@@ -12,6 +12,7 @@ use std::{
 };
 use sysinfo::{Pid, System};
 use tokio_util::sync::CancellationToken;
+use tracing::trace;
 
 #[pyfunction]
 fn add_one(tensor: PyTensor) -> PyResult<PyTensor> {
@@ -156,6 +157,7 @@ impl Trainer {
         warmup_lr_between: Option<(u32, u32)>,
         prev_self_distro_results: Option<Vec<Vec<Py<DistroResult>>>>,
     ) -> PyResult<(Option<Vec<DistroResult>>, f32)> {
+        trace!("Python extension train() for step {step}");
         let trainer = self_.trainer.write().unwrap().take().unwrap();
         let id = BatchId(ClosedInterval::new(batch_id.0, batch_id.1));
         let cancel = self_.cancel.clone();
@@ -215,6 +217,7 @@ impl Trainer {
         warmup_lr_between: Option<(u32, u32)>,
         distro_results: Option<Vec<Vec<Py<DistroResult>>>>,
     ) -> PyResult<()> {
+        trace!("Python extension optimize() for step {step}");
         let trainer = self_.trainer.write().unwrap().take().unwrap();
         let distro_results = DistroResult::to_native(self_.py(), distro_results)?;
         let output = self_

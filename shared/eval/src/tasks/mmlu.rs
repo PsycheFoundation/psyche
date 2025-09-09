@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 pub struct MMLU {
     test_dataset: Dataset,
@@ -64,7 +64,7 @@ impl MMLU {
             text,
             choices,
             answer,
-            category: None,
+            category: Some(subject),
             cot_content: None,
         }
     }
@@ -78,11 +78,18 @@ impl LogLikelihoodTask for MMLU {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.validation_dataset
-            .iter()
-            .map(|row| MMLU::row_to_document(&self.validation_dataset, row))
-            .collect()
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        self.validation_dataset.iter().for_each(|row| {
+            let doc = MMLU::row_to_document(&self.validation_dataset, row);
+            if let Some(category) = &doc.category {
+                fewshot_documents
+                    .entry(category.clone())
+                    .or_insert_with(Vec::new)
+                    .push(doc);
+            }
+        });
+        fewshot_documents
     }
 }
 
