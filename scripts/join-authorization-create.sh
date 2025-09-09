@@ -54,7 +54,7 @@ AUTHORIZATION_CREATE_JSON=$( \
         --args=params.scope:$PSYCHE_AUTH_SCOPE \
         --execute
 )
-echo $AUTHORIZATION_CREATE_JSON | jq -r .outcome.explorer
+echo $AUTHORIZATION_CREATE_JSON | jq -r .outcome.explorer_url
 echo "----"
 
 # Extract the authorization PDA from the JSON response
@@ -72,5 +72,5 @@ AUTHORIZATION_ACTIVATE_JSON=$( \
         authorization:$AUTHORIZATION_PUBKEY \
         --execute
 )
-echo $AUTHORIZATION_ACTIVATE_JSON | jq -r .outcome.explorer
+echo $AUTHORIZATION_ACTIVATE_JSON | jq -r .outcome.explorer_url
 echo "----"

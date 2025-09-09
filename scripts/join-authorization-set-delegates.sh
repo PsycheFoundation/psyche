@@ -94,5 +94,5 @@ AUTHORIZATION_DELEGATES_JSON=$( \
         --args=params.delegates_added:$DELEGATES_JSON_VALUES \
         --execute
 )
-echo $AUTHORIZATION_DELEGATES_JSON | jq -r .outcome.explorer
+echo $AUTHORIZATION_DELEGATES_JSON | jq -r .outcome.explorer_url
 echo "----"
