@@ -180,7 +180,8 @@ impl StatsLogger {
             evals
         };
 
-        let prompt_results = self.get_prompt_results();
+        // See issue https://github.com/PsycheFoundation/psyche/issues/213
+        // let prompt_results = self.get_prompt_results();
 
         // NOTE: no NaNs allowed in borsh serialized data.
         let tokens_per_sec = self.global_tokens_per_second(state);
@@ -194,7 +195,7 @@ impl StatsLogger {
             ),
             efficency: no_nan(self.efficency(), 0.0),
             evals,
-            prompt_results,
+            // prompt_results,
         }
     }
 
