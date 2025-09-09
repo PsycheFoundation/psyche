@@ -677,29 +677,43 @@ function makeRunSummary(
 }
 
 function cleanupWitnessUpdates(run: RunHistory) {
-	console.log('cleaning up witness updates for run', run.runId)
 	console.log(
-		'before cleanup: lastFewWitnessUpdates length',
+		'before cleanup witness:',
+		run.runId,
+		'lastFewWitnessUpdates',
 		run.lastFewWitnessUpdates.length,
-		'sampledWitnessUpdates length',
+		'sampledWitnessUpdates',
 		run.sampledWitnessUpdates.length,
 		'sampledWitnessStep',
 		run.sampledWitnessStep
 	)
-	cleanupOverriddenSteps(run.lastFewWitnessUpdates)
-	if (run.sampledWitnessUpdates.length > 200) {
-		run.sampledWitnessUpdates = run.sampledWitnessUpdates.slice(-100)
+
+	// Trim witness updates to the last few
+	run.lastFewWitnessUpdates = cleanupOverriddenSteps(run.lastFewWitnessUpdates)
+	if (run.lastFewWitnessUpdates.length > 200) {
+		run.lastFewWitnessUpdates = run.lastFewWitnessUpdates.slice(-100)
 	}
-	cleanupOverriddenSteps(run.sampledWitnessUpdates)
-	removeUnsampledSteps(run.sampledWitnessUpdates, run.sampledWitnessStep)
-	while (run.sampledWitnessUpdates.length > 1000) {
+
+	// Sparsify sampled witness updates when needed
+	run.sampledWitnessUpdates = cleanupOverriddenSteps(run.sampledWitnessUpdates)
+	run.sampledWitnessUpdates = removeUnsampledSteps(
+		run.sampledWitnessUpdates,
+		run.sampledWitnessStep
+	)
+	while (run.sampledWitnessUpdates.length > 2000) {
 		run.sampledWitnessStep = (run.sampledWitnessStep ?? 1) * 2
-		removeUnsampledSteps(run.sampledWitnessUpdates, run.sampledWitnessStep)
+		run.sampledWitnessUpdates = removeUnsampledSteps(
+			run.sampledWitnessUpdates,
+			run.sampledWitnessStep
+		)
 	}
+
 	console.log(
-		'after cleanup: lastFewWitnessUpdates length',
+		'after cleanup witness:',
+		run.runId,
+		'lastFewWitnessUpdates',
 		run.lastFewWitnessUpdates.length,
-		'sampledWitnessUpdates length',
+		'sampledWitnessUpdates',
 		run.sampledWitnessUpdates.length,
 		'sampledWitnessStep',
 		run.sampledWitnessStep
@@ -707,17 +721,17 @@ function cleanupWitnessUpdates(run: RunHistory) {
 }
 
 function cleanupOverriddenSteps(witnesses: [Witness, ChainTimestamp][]) {
+	let newWitnesses = []
 	let minValidStep = Infinity
 	for (let i = witnesses.length - 1; i >= 0; i--) {
 		let witness = witnesses[i]
 		let currentStep = witness[0].step
-		if (currentStep >= minValidStep) {
-			witnesses.splice(0, i)
-			break
-		} else {
+		if (minValidStep >= currentStep) {
 			minValidStep = currentStep
+			newWitnesses.push(witness)
 		}
 	}
+	return newWitnesses.reverse()
 }
 
 function removeUnsampledSteps(
@@ -725,13 +739,15 @@ function removeUnsampledSteps(
 	sampledStep?: number
 ) {
 	if (!sampledStep || sampledStep <= 1) {
-		return
+		return witnesses
 	}
-	for (let i = witnesses.length - 1; i >= 0; i--) {
-		if (witnesses[i][0].step % sampledStep !== 0) {
-			witnesses.splice(i, 1)
+	let newWitnesses = []
+	for (let witness of witnesses) {
+		if (witness[0].step % sampledStep === 0) {
+			newWitnesses.push(witness)
 		}
 	}
+	return newWitnesses
 }
 
 /**
@@ -813,6 +829,30 @@ const migrations: Record<
 						>[number]['witnessUpdates'][number][0]['evals'][number] as any
 					}
 				}
+				let historyV1 = historyV0 as unknown as RunHistoryV1
+				let lastFewWitnessUpdates = historyV1.witnessUpdates.slice()
+				let sampledWitnessUpdates = historyV1.witnessUpdates.slice()
+				historyV1.witnessUpdates = []
+				let historyV2 = historyV1 as unknown as RunHistory
+				historyV2.lastFewWitnessUpdates = lastFewWitnessUpdates
+				historyV2.sampledWitnessUpdates = sampledWitnessUpdates
+				historyV2.sampledWitnessStep = undefined
+				cleanupWitnessUpdates(historyV2)
+			}
+		}
+		return data as unknown as V2
+	},
+	1: (data: V1) => {
+		for (const [_runId, runV1] of data.runs) {
+			for (const historyV1 of runV1) {
+				let lastFewWitnessUpdates = historyV1.witnessUpdates.slice()
+				let sampledWitnessUpdates = historyV1.witnessUpdates.slice()
+				historyV1.witnessUpdates = []
+				let historyV2 = historyV1 as unknown as RunHistory
+				historyV2.lastFewWitnessUpdates = lastFewWitnessUpdates
+				historyV2.sampledWitnessUpdates = sampledWitnessUpdates
+				historyV2.sampledWitnessStep = undefined
+				cleanupWitnessUpdates(historyV2)
 			}
 		}
 		return data as unknown as V2
