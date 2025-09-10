@@ -1,17 +1,22 @@
-// Simple LLama2 tokenizer implementation
-let tokenizer: { vocab_reverse: Record<number, string> } | null = null
+// Kept some of the logic for llama2, in case we want to switch back, although we use llama3 by default
 
-export async function loadTokenizer() {
-	if (tokenizer) return tokenizer
+let tokenizer: {
+	vocab_reverse: Record<number, string>
+	model_type: 'llama2' | 'llama3'
+} | null = null
+
+async function loadTokenizerForModel(modelType: 'llama2' | 'llama3') {
+	const tokenizerFile =
+		modelType === 'llama3' ? '/llama3_tokenizer.json' : '/llama2_tokenizer.json'
 
 	try {
-		const response = await fetch('/llama2_tokenizer.json')
+		const response = await fetch(tokenizerFile)
 		const tokenizerData = await response.json()
 
 		// Extract vocabulary from tokenizer.json
 		const vocabReverse: Record<number, string> = {}
 
-		// Process added_tokens (special tokens like <unk>, <s>, </s>)
+		// Process added_tokens (special tokens)
 		if (tokenizerData.added_tokens) {
 			for (const token of tokenizerData.added_tokens) {
 				vocabReverse[token.id] = token.content
@@ -25,15 +30,27 @@ export async function loadTokenizer() {
 			}
 		}
 
-		tokenizer = { vocab_reverse: vocabReverse }
-		console.log(
-			`Loaded tokenizer with ${Object.keys(vocabReverse).length} tokens`
-		)
-		return tokenizer
+		return { vocab_reverse: vocabReverse, model_type: modelType }
 	} catch (error) {
-		console.error('Failed to load tokenizer:', error)
+		console.error(`Failed to load ${modelType} tokenizer:`, error)
 		return null
 	}
+}
+
+export async function loadTokenizer() {
+	if (tokenizer) return tokenizer
+
+	const modelType = 'llama3'
+	let result = await loadTokenizerForModel(modelType)
+
+	if (result) {
+		tokenizer = result
+		console.log(
+			`Loaded ${result.model_type} tokenizer with ${Object.keys(result.vocab_reverse).length} tokens`
+		)
+	}
+
+	return tokenizer
 }
 
 export async function detokenize(tokenIds: number[]): Promise<string> {
@@ -43,9 +60,14 @@ export async function detokenize(tokenIds: number[]): Promise<string> {
 		return tokenIds.map((id) => `<${id}>`).join('')
 	}
 
+	// Filter out padding and problematic tokens before processing
+	const cleanedTokenIds = tokenIds.filter(
+		(id) => id !== 0 && id !== null && id !== undefined && !Number.isNaN(id)
+	)
+
 	// Convert token IDs to raw pieces
 	const pieces: string[] = []
-	for (const tokenId of tokenIds) {
+	for (const tokenId of cleanedTokenIds) {
 		const tokenText = tok.vocab_reverse[tokenId]
 		if (tokenText !== undefined) {
 			pieces.push(tokenText)
@@ -57,8 +79,16 @@ export async function detokenize(tokenIds: number[]): Promise<string> {
 	// Join pieces and process SentencePiece markers
 	let text = pieces.join('')
 
-	// Handle SentencePiece ▁ markers (these represent word boundaries/spaces)
-	text = text.replace(/▁/g, ' ')
+	// Handle SentencePiece markers
+	text = text
+		.replace(/▁/g, ' ') // standard SentencePiece space marker
+		.replace(/Ġ/g, ' ') // LLaMA 3 space marker
+		.replace(/Ċ/g, '\n') // LLaMA 3 newline marker
+		.replace(/âĢĺ/g, '"') // Left quote marker
+		.replace(/âĢĻ/g, '"') // Right quote marker
+		.replace(/âĢĵ/g, "'") // Apostrophe marker
+		.replace(/âĢĶ/g, '-') // Dash marker
+		.replace(/âĢī/g, '...') // Ellipsis marker
 
 	// Handle hex byte tokens (like <0x0A> for newline)
 	text = text.replace(/<0x([0-9A-Fa-f]{2})>/g, (match, hex) => {
@@ -70,8 +100,15 @@ export async function detokenize(tokenIds: number[]): Promise<string> {
 		return match
 	})
 
-	// Handle special tokens as to not show them in final text
+	// Handle more special tokens
 	text = text
+		.replace(/<\|begin_of_text\|>/g, '')
+		.replace(/<\|end_of_text\|>/g, '')
+		.replace(/<\|start_header_id\|>/g, '')
+		.replace(/<\|end_header_id\|>/g, '')
+		.replace(/<\|eot_id\|>/g, '')
+		.replace(/<\|reserved_special_token_\d+\|>/g, '')
+		.replace(/<unk>/g, '[UNK]')
 		.replace(/<s>/g, '')
 		.replace(/<\/s>/g, '')
 		.replace(/<unk>/g, '[UNK]')
