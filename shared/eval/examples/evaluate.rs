@@ -6,7 +6,7 @@ use psyche_eval::{ALL_TASK_NAMES, EvalTaskOptions, Task, tasktype_from_name};
 use psyche_modeling::{CommunicatorId, CausalLM, auto_model_for_causal_lm_from_pretrained, auto_tokenizer};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Barrier};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use tch::{Device, Kind};
 use tokenizers::Tokenizer;
@@ -318,6 +318,7 @@ fn run_with_tensor_parallelism(
                                 comm_store.map(|id| (id, tp_rank, tp_world_size)),
                                 None,
                             )
+                            .map_err(|e| anyhow::anyhow!(e))
                         })
                     })
                     .collect();
