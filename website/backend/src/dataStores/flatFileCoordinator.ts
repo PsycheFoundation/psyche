@@ -48,8 +48,13 @@ const ALLOWLISTED_RUN_IDS =
 				'hermes-4.1-36b',
 				'hermes-4.3-36b',
 			]
-type Witness = Omit<WitnessMetadata, 'evals'> & {
+type Witness = Omit<
+	WitnessMetadata,
+	'evals' | 'prompt_results' | 'prompt_index'
+> & {
 	evals: Array<[string, number]>
+	prompt_results: number[]
+	prompt_index: number
 }
 
 interface RunHistory {
@@ -315,7 +320,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = timestamp
 
 		// format evals to nice strings to save tons of space
-		const { evals, ...restWitness } = witness
+		const { evals, prompt_results, prompt_index, ...restWitness } = witness
 
 		// could be a bigint, could be a BN, kind of annoying. TODO fix somewhere else.
 		const l =
@@ -331,8 +336,28 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString('utf-8')
 			fixedEvals.push([nameStr, value])
 		}
+
+		// convert FixedVec to regular array
+		const promptTokens: number[] = []
+		if (prompt_results && prompt_results.data) {
+			const promptLen =
+				typeof prompt_results.len === 'object' &&
+				prompt_results.len &&
+				'toNumber' in prompt_results.len
+					? prompt_results.len.toNumber()
+					: Number(prompt_results.len)
+			for (let i = 0; i < promptLen && i < prompt_results.data.length; i++) {
+				promptTokens.push(Number(prompt_results.data[i]))
+			}
+		}
+
 		lastRun.witnessUpdates.push([
-			{ ...restWitness, evals: fixedEvals },
+			{
+				...restWitness,
+				evals: fixedEvals,
+				prompt_results: promptTokens,
+				prompt_index: prompt_index || 0, // Default to 0 if undefined
+			},
 			timestamp,
 		])
 
@@ -491,6 +516,41 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				numSamples
 			)
 		}
+
+		// collect prompt results by step
+		const promptResults: Array<readonly [number, number[]]> = []
+		const promptIndices: Array<readonly [number, number]> = []
+		const cumulativePromptResults: Array<readonly [number, number[]]> = []
+
+		let cumulativeTokens: number[] = []
+		let currentPromptIndex: number | null = null
+
+		for (const [step, r] of linearWitnessHistory) {
+			// Check if prompt index changed: if so, reset cumulative tokens
+			if (r.prompt_index !== undefined && typeof r.prompt_index === 'number') {
+				if (
+					currentPromptIndex !== null &&
+					r.prompt_index !== currentPromptIndex
+				) {
+					// Prompt changed, reset cumulative tokens
+					cumulativeTokens = []
+				}
+				currentPromptIndex = r.prompt_index
+				promptIndices.push([step, r.prompt_index] as const)
+			}
+
+			if (
+				r.prompt_results &&
+				Array.isArray(r.prompt_results) &&
+				r.prompt_results.length > 0
+			) {
+				promptResults.push([step, r.prompt_results] as const)
+				// Accumulate tokens for cumulative results (within current prompt)
+				cumulativeTokens = [...cumulativeTokens, ...r.prompt_results]
+				cumulativePromptResults.push([step, [...cumulativeTokens]] as const)
+			}
+		}
+
 		const history: OverTime<Metrics> = {
 			bandwidth: fairSample(
 				averageSameStepValues(
@@ -518,6 +578,11 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			),
 			lr: run.observedLrByStep.filter(goodNumber),
 			evals,
+			promptResults:
+				promptResults as unknown as OverTime<Metrics>['promptResults'],
+			promptIndex: promptIndices,
+			cumulativePromptResults:
+				cumulativePromptResults as unknown as OverTime<Metrics>['cumulativePromptResults'],
 		}
 
 		const summary: Metrics = {
@@ -530,6 +595,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					.map(([k, v]) => [k, v.at(-1)?.[1]] as const)
 					.filter((x): x is [string, number] => x[1] !== undefined)
 			),
+			promptResults: (history.promptResults.at(-1)?.[1] ?? []) as number[],
+			promptIndex: history.promptIndex.at(-1)?.[1] ?? 0,
+			cumulativePromptResults: (history.cumulativePromptResults.at(-1)?.[1] ??
+				[]) as number[],
 		}
 
 		let state: RunData['state']
@@ -597,6 +666,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				summary,
 				history,
 			},
+			promptResults: promptResults.at(-1)?.[1] ?? [],
+			promptIndex: promptIndices.at(-1)?.[1] ?? 0,
+			cumulativePromptResults: cumulativePromptResults.at(-1)?.[1] ?? [],
 		}
 		this.#runCache.set(runKey(runId, index), runData)
 		return runData
