@@ -1,5 +1,6 @@
 use anchor_spl::associated_token;
 use anchor_spl::token;
+use anyhow::Result;
 use psyche_solana_mining_pool::accounts::LenderClaimAccounts;
 use psyche_solana_mining_pool::find_lender;
 use psyche_solana_mining_pool::find_pool;
@@ -9,7 +10,6 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use solana_toolbox_anchor::ToolboxAnchor;
-use solana_toolbox_anchor::ToolboxAnchorError;
 use solana_toolbox_endpoint::ToolboxEndpoint;
 
 pub async fn process_lender_claim(
@@ -20,7 +20,7 @@ pub async fn process_lender_claim(
     pool_index: u64,
     redeemable_mint: &Pubkey,
     redeemable_amount: u64,
-) -> Result<(), ToolboxAnchorError> {
+) -> Result<()> {
     let pool = find_pool(pool_index);
     let pool_redeemable =
         associated_token::get_associated_token_address(&pool, redeemable_mint);
