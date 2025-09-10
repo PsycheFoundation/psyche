@@ -1,12 +1,16 @@
 use anyhow::Result;
 use iroh::{NodeAddr, NodeId};
 use iroh::protocol::AcceptError;
+use ed25519::pkcs8::spki::der::pem::decode_label;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
+use iroh::{NodeAddr, NodeId};
 use iroh_blobs::{ticket::BlobTicket, Hash};
 use psyche_core::BoxedFuture;
-use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use serde::{de, ser, Deserialize, Serialize};
+use std::collections::{BTreeMap, VecDeque};
+use std::collections::{btree_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
+use std::ops::{Deref, DerefMut};
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
@@ -241,9 +245,13 @@ pub enum SharableModelError {
     P2PGetNodeAddrError(String),
     #[error("Requested model name: {0} does not match own model name: {1}")]
     MismatchedModelNameError(String, String),
+    #[error("Error deserializing model: {0}")]
+    DeserializeModelError(String),
+    #[error("Model already initialized")]
+    ModelAlreadyInitialized,
 }
 
-#[derive(serde::Deserialize, serde::Serialize,)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub enum ModelMetadataNetworkMessage {
     Ticket(Result<BlobTicket, SharableModelError>),
     ModelInfo(Result<(NodeAddr, Hash), SharableModelError>),
@@ -337,7 +345,9 @@ impl TransmittableModelConfig {
 /// storing them while parameters are downloaded from other peers.
 #[derive(Debug)]
 pub struct SharableModel {
-    parameters: Option<HashMap<String, Option<Tensor>>>,
+    // use a BTreeMap so different systems have the elements in the same order
+    // so we can (hopefully) mix and match serialized bytes from them
+    parameters: Option<BTreeMap<String, Option<TensorWrapper>>>,
     serializing_parameters: Option<
         HashMap<String, JoinHandle<Result<TransmittableModelParameter, SharableModelError>>>,
     >,
@@ -348,6 +358,50 @@ pub struct SharableModel {
     pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
     model_name_and_hash: Option<(String, Hash)>,
+}
+#[derive(Debug)]
+struct TensorWrapper(Tensor);
+
+impl Serialize for TensorWrapper {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut bytes = Vec::new();
+        if let Err(err) = self.save_to_stream(&mut bytes) {
+            return Err(ser::Error::custom(err.to_string()));
+        }
+
+        serializer.serialize_bytes(&bytes)
+    }
+}
+
+impl<'de> Deserialize<'de> for TensorWrapper {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+        let buf_reader = Cursor::new(bytes);
+        match Tensor::load_from_stream(buf_reader) {
+            Err(err) => Err(de::Error::custom(err.to_string())),
+            Ok(tensor) => Ok(Self(tensor)),
+        }
+    }
+}
+
+impl Deref for TensorWrapper {
+    type Target = Tensor;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for TensorWrapper {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 // These impls are methods called by both the sharing model peers and the ones
@@ -389,10 +443,13 @@ impl SharableModel {
             }
         };
 
-        let mut parameters = HashMap::new();
+        let mut parameters = BTreeMap::new();
         let new_parameters = new_parameters;
         for (param_name, tensor) in &new_parameters {
-            parameters.insert(param_name.clone(), Some(tensor.shallow_clone()));
+            parameters.insert(
+                param_name.clone(),
+                Some(TensorWrapper(tensor.shallow_clone())),
+            );
         }
         self.parameters = Some(parameters);
 
@@ -429,6 +486,19 @@ impl SharableModel {
         self.tokenizer_config = Some(tokenizer_config);
         self.config_and_tokenizer_ticket = None;
         Ok(())
+    }
+
+    //todo: figure out a way of offloading this to another thread T_T
+    pub async fn get_serialized_model(
+        &mut self,
+    ) -> Result<Vec<u8>, SharableModelError> {
+        if let Some(map) = &self.parameters {
+            //todo: check that every param is initialized
+            let bytes = postcard::to_allocvec(map)
+                .map_err(|err| SharableModelError::SerializationError(err.to_string()))?;
+            return Ok(bytes);
+        }
+        Err(SharableModelError::ParametersNotInitialized)
     }
 
     pub async fn get_transmittable_parameter<B: Networkable>(
@@ -472,12 +542,18 @@ impl SharableModel {
     }
 
     //todo: i have no idea why we need to borrow as mut here, but if we don't rust complains that SharableModel needs to be Send T_T
-    pub async fn get_model_name_and_hash<B: Networkable>(&mut self, p2p: &NetworkConnection<B, TransmittableDownload>,) -> Result<(NodeAddr, Hash), SharableModelError> {
+    pub async fn get_model_name_and_hash<B: Networkable>(
+        &mut self,
+        p2p: &NetworkConnection<B, TransmittableDownload>,
+    ) -> Result<(NodeAddr, Hash), SharableModelError> {
         if let Some((name, hash)) = self.model_name_and_hash.as_ref() {
             /*if desired_name != name {
                 return Err(SharableModelError::MismatchedModelNameError(desired_name, name));
             }*/
-            let addr = p2p.get_addr().await.map_err(|err| SharableModelError::P2PGetNodeAddrError(err.to_string()))?;
+            let addr = p2p
+                .get_addr()
+                .await
+                .map_err(|err| SharableModelError::P2PGetNodeAddrError(err.to_string()))?;
             Ok((addr, hash.clone()))
         } else {
             Err(SharableModelError::NameAndHashNotLoaded)
@@ -538,12 +614,30 @@ impl SharableModel {
         tx_params_response: oneshot::Sender<HashMap<String, Tensor>>,
     ) {
         // Initialize the model parameter names with None.
-        let mut parameters = HashMap::new();
+        let mut parameters = BTreeMap::new();
         for param_name in param_names {
             parameters.insert(param_name.clone(), None);
         }
         self.parameters = Some(parameters);
         self.tx_params_response = Some(tx_params_response);
+    }
+
+    pub async fn deserialize_params(&mut self, data: Vec<u8>) -> Result<(), SharableModelError> {
+        if let Some(_) = &self.parameters {
+            //return Err(SharableModelError::ModelAlreadyInitialized);
+        }
+
+        let handle = tokio::task::spawn_blocking(move || {
+            postcard::from_bytes::<BTreeMap<String, Option<TensorWrapper>>>(&data)
+        });
+
+        let params = handle
+            .await
+            .map_err(|_err| SharableModelError::LoadThreadCrashed)?
+            .map_err(|err| SharableModelError::DeserializeModelError(err.to_string()))?;
+        self.parameters = Some(params);
+
+        Ok(())
     }
 
     // Add new parameter downloaded from another peer
@@ -575,7 +669,7 @@ impl SharableModel {
                         param_name
                     );
                 }
-                *param = Some(param_value);
+                *param = Some(TensorWrapper(param_value));
                 Ok(())
             }
             Entry::Vacant(_) => Err(SharableModelError::ParameterUnknown(param_name.to_string())),
@@ -622,7 +716,7 @@ impl SharableModel {
                     // something goes really wrong
                     return Err(SharableModelError::ParameterNotInitialized(param_name));
                 };
-                parameters_to_send.insert(param_name, tensor);
+                parameters_to_send.insert(param_name, tensor.0);
             }
             tx_params_response
                 .send(parameters_to_send)

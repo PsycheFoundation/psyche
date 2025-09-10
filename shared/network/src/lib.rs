@@ -1,5 +1,6 @@
 use allowlist::Allowlist;
 use anyhow::{anyhow, Context, Result};
+use big_block_sync::{sync, Config, PerNodeStats};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
@@ -29,6 +30,8 @@ use std::{
     ops::Sub,
     sync::Arc,
     time::{Duration, Instant},
+
+    collections::HashMap, fmt::Debug, hash::{DefaultHasher, Hash as _, Hasher}, marker::PhantomData, net::{IpAddr, Ipv4Addr, SocketAddrV4}, ops::Sub, sync::{Arc, RwLock}, time::{Duration, Instant}
 };
 use tokio::{
     io::AsyncReadExt,
@@ -379,7 +382,17 @@ where
         Ok(())
     }
 
-    pub fn start_download_big_blob(&mut self, tickets: Vec<(NodeAddr, Hash)>) {}
+    pub async fn start_download_big_blob(&mut self, tickets: Vec<(NodeAddr, Hash)>) -> Result<(Vec<u8>, HashMap<NodeId, PerNodeStats>)>{
+         let config = Config {
+                parallelism: 8,
+                block_size: 1024,
+            };
+
+            //sync(tickets, config, 0).await
+
+            Ok((vec![], HashMap::new()))
+            
+    }
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
         let provider_node_id = ticket.node_addr().clone();
