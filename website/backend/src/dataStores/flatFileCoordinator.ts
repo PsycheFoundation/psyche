@@ -31,7 +31,23 @@ import { existsSync, renameSync } from 'fs'
 const ALLOWLISTED_RUN_IDS =
 	process.env.NODE_ENV === 'development'
 		? null
-		: ['consilience-40b-1', 'hermes-3-8b', 'hermes-3-8b-2', 'hermes-4-8b']
+		: [
+				'consilience-40b-1',
+				'hermes-3-8b',
+				'hermes-3-8b-2',
+				'hermes-4-8b',
+				'hermes-4-8b-2',
+				'consilience-dm-fwedu-baseline',
+				'consilience-dm-dclm-baseline',
+				'consilience-dm-fwedu-dclm',
+				'consilience-dm-fwedu-dclm-fw2hq',
+				'consilience-dm-fwedu-dclm-stackedu',
+				'consilience-dm-fwedu-dclm-stackedu-nemomath',
+				'consilience-dm-fwedu-dclm-stackedu-neomath-wiki-pes2o',
+				'consilience-dm-fwedu-dclm-wiki-pes2o',
+				'hermes-4.1-36b',
+				'hermes-4.3-36b',
+			]
 type Witness = Omit<WitnessMetadata, 'evals'> & {
 	evals: Array<[string, number]>
 }
