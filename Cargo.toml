@@ -50,7 +50,7 @@ tokio = { version = "1", features = [
 ] }
 tokio-stream = "0.1"
 tokio-util = "0.7.12"
-anyhow = "1.0.86"
+anyhow = "1.0.99"
 clap = { version = "4.5.16", features = ["derive", "env"] }
 serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0.28"
@@ -106,6 +106,7 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
   "psyche-impl",
 ] }
 rayon = "1.10.0"
+big-block-sync = {git = "https://github.com/n0-computer/big-block-sync.git", rev = "fae6f5b1c55e722f703adafa3049eaecea26aa9e"}
 
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }

@@ -92,10 +92,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let (tx_distro_result, mut rx_distro_result) = mpsc::unbounded_channel();
                 let (tx_request_download, mut rx_request_download) = mpsc::unbounded_channel();
                 let (tx_parameters_req, mut rx_parameters_req) = mpsc::unbounded_channel();
+                let (tx_model_name, mut rx_model_name) = mpsc::unbounded_channel();
                 let (tx_config, mut rx_config) = mpsc::unbounded_channel();
                 let (tx_params_download, mut rx_params_download) = mpsc::unbounded_channel();
                 let (tx_config_download, mut rx_config_download) = mpsc::unbounded_channel();
-                //let (tx_model_download, mut rx_model_download) = mpsc::unbounded_channel();
+                let (tx_model_download, mut rx_model_download) =
+                    mpsc::unbounded_channel::<Vec<(NodeAddr, Hash)>>();
                 let (tx_request_model_config, mut rx_request_model_config) =
                     mpsc::unbounded_channel();
                 let (tx_broadcast_finished, mut rx_broadcast_finished) = mpsc::unbounded_channel();
@@ -559,6 +561,37 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let tokenizer: Tokenizer = serde_json::from_str(&tokenizer_string)?;
                             sharable_model.update_config(config_string, tokenizer)?;
                         }
+                        Some(model_name) = rx_model_name.recv() => {
+                            let router = p2p.router();
+
+                            let peer_manager = peer_manager.clone();
+                            let param_requests_cancel_token = param_requests_cancel_token.clone();
+                            let hashes = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+                            //todo: maybe just await this?
+                                    let request_handle = tokio::spawn(
+                                        blob_ticket_param_request_task(
+                                            ModelRequestType::ModelHash(model_name),
+                                            router,
+                                            hashes.clone(),
+                                            peer_manager.clone(),
+                                            param_requests_cancel_token.clone()
+                                        )
+                                    );
+                            let res = request_handle.await;
+
+                            if let Ok(()) = res {
+                                let mut hashes_guard = hashes.lock().unwrap();
+                                let model_download_info = hashes_guard.drain(..).filter_map(|item| match item {
+                                                GetMetaData::HashAddr(info) => {
+                                                    Some(info)
+                                                }
+                                                _ => {None}
+                                            }).collect();
+
+                            tx_model_download.send(model_download_info).unwrap();
+                            }
+                        }
                         Some((param_names, tx_params_response)) = rx_parameters_req.recv() => {
                             metrics.initialize_model_parameters_gauge(param_names.len().try_into().unwrap());
                             total_parameters = Some(param_names.len());
@@ -602,7 +635,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             parameter_blob_tickets_lock.drain(..).filter_map(|item| match item {
                                                 GetMetaData::Blob(blob_ticket, request_type) => {
                                                     Some((blob_ticket, request_type))
-                                                } 
+                                                }
                                                 _ => {None}
                                             }).collect()
                                         };
@@ -620,7 +653,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     parameter_blob_tickets_lock.drain(..).filter_map(|item| match item {
                                                 GetMetaData::Blob(blob_ticket, request_type) => {
                                                     Some((blob_ticket, request_type))
-                                                } 
+                                                }
                                                 _ => {None}
                                             }).collect()
                                 };
@@ -664,7 +697,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let kind = DownloadType::ModelSharing(request_type);
                                 metrics.record_download_started(ticket.hash(), kind.kind());
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download_big_blob(vec![(ticket.node_addr().clone(), ticket.hash())]);
+                                p2p.start_download_big_blob(vec![(ticket.node_addr().clone(), ticket.hash())]).await;
                                 p2p.start_download(ticket, 0, kind);
                             }
                         }
@@ -672,8 +705,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let kind = DownloadType::ModelSharing(ModelRequestType::Config);
                             metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
                             // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download_big_blob(vec![(config_blob_ticket.node_addr().clone(), config_blob_ticket.hash())]);
+                            p2p.start_download_big_blob(vec![(config_blob_ticket.node_addr().clone(), config_blob_ticket.hash())]).await;
                             p2p.start_download(config_blob_ticket, 0, kind);
+                        }
+                        Some(model_addrs_and_hashes) = rx_model_download.recv() => {
+                            match p2p.start_download_big_blob(model_addrs_and_hashes).await {
+                                Ok((data, _)) => {
+                                    if let Err(err) = sharable_model.deserialize_params(data).await {
+                                        error!("Error deserializing the model: {:?}, we'll not proceed", err);
+                                    } else {
+                                        if let Err(err) = sharable_model.send_init_parameters() {
+                                            error!("Error sending the model: {:?}, we'll not proceed", err);
+                                        }
+                                    }
+                                } Err(err) => {
+                                    error!("Error downloading the model: {:?}, we'll not proceed with the download", err);
+                                }
+                            }
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
                         _ = check_connection_interval.tick() => {
