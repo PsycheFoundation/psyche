@@ -74,7 +74,7 @@
             + lib.optionalString pkgs.config.cudaSupport ''
               # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
               # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
-              export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
+              export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p):${pkgs.rdma-core}/lib
             ''
             + ''
               echo "Welcome to the Psyche development shell.";
