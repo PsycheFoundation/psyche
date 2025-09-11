@@ -77,6 +77,7 @@ class HfTransformersAuto(CausalLM):
     def from_pretrained(
         source: Union[PretrainedSourceRepoFiles, PretrainedSourceStateDict],
         device: torch.device,
+        attn_implementation: str,
         dp: int = 1,
         tp: int = 1,
         override_max_position_embeddings: Optional[int] = None,
@@ -121,7 +122,7 @@ class HfTransformersAuto(CausalLM):
 
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
-                config, attn_implementation="flash_attention_2"
+                config, attn_implementation=attn_implementation
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
