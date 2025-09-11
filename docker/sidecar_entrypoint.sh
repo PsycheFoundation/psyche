@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# set -o errexit
-# set -euo pipefail
+set -o errexit
+set -euo pipefail
 
 # Sanity checks
 if [[ "$PSYCHE_MAIN_HOST" == "" ]]; then
@@ -14,8 +14,18 @@ if [[ "$PSYCHE_WORLD_SIZE" == "" ]]; then
     exit 1
 fi
 
-if [[ "$PSYCHE_RANK" == "" ]]; then
-    echo -e "\n[!] The PSYCHE_RANK env variable was not set."
+if [[ "$PSYCHE_START_RANK" == "" ]]; then
+    echo -e "\n[!] The PSYCHE_START_RANK env variable was not set."
+    exit 1
+fi
+
+if [[ "${PSYCHE_START_DEVICE:-}" == "" ]]; then
+    echo -e "\n[!] The PSYCHE_START_RANK env variable was not set."
+    PSYCHE_START_DEVICE=0
+fi
+
+if [[ "$HF_MODEL_REPO" == "" ]]; then
+    echo -e "\n[!] The HF_MODEL_REPO env variable was not set."
     exit 1
 fi
 
@@ -23,10 +33,10 @@ IMPL=${PSYCHE_IMPL:-python}
 
 echo "
 Multi-Node Psyche Sidecar
-========================
+=========================
 Main Host:      $PSYCHE_MAIN_HOST
 World Size:     $PSYCHE_WORLD_SIZE
-Rank:           $PSYCHE_RANK
+Starting rank:  $PSYCHE_START_RANK
 Implementation: $IMPL
 "
 
@@ -49,15 +59,20 @@ RESET_TIME=60
 MAX_RESTARTS=5
 num_restarts=0
 
+# Pre-download the model
+echo "Pre-downloading model ${HF_MODEL_REPO}..."
+hf download ${HF_MODEL_REPO}
+
 while true; do
-    echo -e "\n[+] Starting $IMPL sidecar (rank $PSYCHE_RANK)..."
+    echo -e "\n[+] Starting $IMPL sidecars..."
 
     start_time=$SECONDS
 
     /bin/psyche-sidecar $IMPL \
-        --main-host $PSYCHE_MAIN_HOST \
-        --world-size $PSYCHE_WORLD_SIZE \
-        --rank $PSYCHE_RANK &
+        --main-host ${PSYCHE_MAIN_HOST} \
+        --world-size ${PSYCHE_WORLD_SIZE} \
+        --start-device ${PSYCHE_START_DEVICE} \
+        --start-rank ${PSYCHE_START_RANK} &
 
     PID=$!
     wait "$PID" || true

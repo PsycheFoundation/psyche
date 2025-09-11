@@ -122,7 +122,6 @@ def main():
 
         # Expand ~/ to the actual home directory on this machine
         expanded_files = [os.path.expanduser(file_path) for file_path in files_list]
-
         source = PretrainedSourceRepoFiles(files=expanded_files)
     else:
         raise ValueError(f"Unsupported source type {source}")

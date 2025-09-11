@@ -317,7 +317,7 @@ fn contract_home_path(path: &Path) -> String {
             let home_str = home_dir.to_string();
             if path_str.starts_with(&home_str) {
                 // Replace the home directory part with ~/
-                return format!("~{}", &path_str[home_str.len()..]);
+                return format!("~/{}", &path_str[home_str.len()..]);
             }
         }
     }

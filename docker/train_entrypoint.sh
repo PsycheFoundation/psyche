@@ -1,39 +1,34 @@
 #!/bin/bash
 
-# set -o errexit
-# set -euo pipefail
+set -o errexit
+set -euo pipefail
 
 # check if this should run as a sidecar instead of main training
-if [[ "${PSYCHE_MAIN_HOST}" != "" ]]; then
+if [[ "${PSYCHE_MAIN_HOST:-}" != "" ]]; then
     echo "PSYCHE_MAIN_HOST detected - switching to sidecar mode"
     exec /bin/sidecar_entrypoint.sh
 fi
 
 # Some sanity checks before starting
 
-if [[ "$NVIDIA_DRIVER_CAPABILITIES" == "" ]]; then
+if [[ "${NVIDIA_DRIVER_CAPABILITIES:-}" == "" ]]; then
     echo -e "\n[!] The NVIDIA_DRIVER_CAPABILITIES env variable was not set."
     exit 1
 fi
 
-if [[ "$RPC" == "" ]]; then
+if [[ "${RPC:-}" == "" ]]; then
     echo -e "\n[!] The RPC env variable was not set."
     exit 1
 fi
 
-if [[ "$WS_RPC" == "" ]]; then
+if [[ "${WS_RPC:-}" == "" ]]; then
     echo -e "\n[!] The WS_RPC env variable was not set."
     exit 1
 fi
 
-if [[ "$RUN_ID" == "" ]]; then
+if [[ "${RUN_ID:-}" == "" ]]; then
     echo -e "\n[!] The RUN_ID env variable was not set."
     exit 1
-fi
-
-if [[ "$DP" == "" ]]; then
-    echo -e "\n[!] DP env variable was not set, defaulting to DP=8"
-    DP=8
 fi
 
 PSYCHE_CLIENT_PID=0
@@ -77,20 +72,11 @@ while true; do
 
     start_time=$SECONDS  # Record start time
 
-    # Support custom init method for multi-node training
-    # INIT_METHOD_ARG=""
-    # if [[ "${PSYCHE_INIT_METHOD:-}" != "" ]]; then
-    #     INIT_METHOD_ARG="--init-method ${PSYCHE_INIT_METHOD}"
-    # fi
-
     psyche-solana-client train \
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
-        --data-parallelism ${DP} \
-        --wallet-private-key-path "/keys/id.json" \
         --logs "console" &
-    # ${INIT_METHOD_ARG} &
 
     PSYCHE_CLIENT_PID=$!
     wait "$PSYCHE_CLIENT_PID" || true  # Wait for the app to exit; continue on signal interrupt
