@@ -7,8 +7,8 @@ use iroh::{NodeAddr, NodeId};
 use iroh_blobs::{ticket::BlobTicket, Hash};
 use psyche_core::BoxedFuture;
 use serde::{de, ser, Deserialize, Serialize};
-use std::collections::{BTreeMap, VecDeque};
 use std::collections::{btree_map::Entry, HashMap, HashSet};
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{Cursor, Write};
 use std::ops::{Deref, DerefMut};
 use tch::Tensor;
@@ -357,7 +357,8 @@ pub struct SharableModel {
     config_and_tokenizer_ticket: Option<BlobTicket>,
     pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
-    model_name_and_hash: Option<(String, Hash)>,
+    model_name: Option<String>,
+    serialized_model: Option<BlobTicket>,
 }
 #[derive(Debug)]
 struct TensorWrapper(Tensor);
@@ -417,7 +418,8 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
-            model_name_and_hash: None,
+            model_name: None,
+            serialized_model: None,
         }
     }
 }
@@ -489,14 +491,23 @@ impl SharableModel {
     }
 
     //todo: figure out a way of offloading this to another thread T_T
-    pub async fn get_serialized_model(
+    pub async fn get_serialized_model<B: Networkable>(
         &mut self,
-    ) -> Result<Vec<u8>, SharableModelError> {
+        p2p: &mut NetworkConnection<B, TransmittableDownload>,
+    ) -> Result<BlobTicket, SharableModelError> {
         if let Some(map) = &self.parameters {
             //todo: check that every param is initialized
             let bytes = postcard::to_allocvec(map)
                 .map_err(|err| SharableModelError::SerializationError(err.to_string()))?;
-            return Ok(bytes);
+
+            let ticket = p2p
+                .add_downloadable(TransmittableDownload::SerializedModel(bytes), 0)
+                .await
+                .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
+
+            // todo: check that this is not already set
+            self.serialized_model = Some(ticket.clone());
+            return Ok(ticket);
         }
         Err(SharableModelError::ParametersNotInitialized)
     }
@@ -544,17 +555,18 @@ impl SharableModel {
     //todo: i have no idea why we need to borrow as mut here, but if we don't rust complains that SharableModel needs to be Send T_T
     pub async fn get_model_name_and_hash<B: Networkable>(
         &mut self,
-        p2p: &NetworkConnection<B, TransmittableDownload>,
+        p2p: &mut NetworkConnection<B, TransmittableDownload>,
     ) -> Result<(NodeAddr, Hash), SharableModelError> {
-        if let Some((name, hash)) = self.model_name_and_hash.as_ref() {
+        if let Some(ticket) = self.serialized_model.as_ref() {
             /*if desired_name != name {
                 return Err(SharableModelError::MismatchedModelNameError(desired_name, name));
             }*/
-            let addr = p2p
-                .get_addr()
-                .await
-                .map_err(|err| SharableModelError::P2PGetNodeAddrError(err.to_string()))?;
-            Ok((addr, hash.clone()))
+
+            Ok((ticket.node_addr().clone(), ticket.hash()))
+        } else if let Some(_) = self.parameters.as_ref() {
+            self.get_serialized_model(p2p).await?;
+            let ticket = self.serialized_model.as_ref().unwrap();
+            Ok((ticket.node_addr().clone(), ticket.hash()))
         } else {
             Err(SharableModelError::NameAndHashNotLoaded)
         }
