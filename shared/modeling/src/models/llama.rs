@@ -26,6 +26,8 @@ pub struct LlamaConfig {
     pub rope_scaling: Option<RoPEConfig>,
     pub max_position_embeddings: usize,
     pub tie_word_embeddings: bool,
+    #[serde(default)]
+    pub is_dummy: bool,
 }
 
 impl LlamaConfig {
@@ -48,6 +50,7 @@ impl LlamaConfig {
             rope_scaling: None,
             max_position_embeddings: 2048,
             tie_word_embeddings: false,
+            is_dummy: true,
         }
     }
 }

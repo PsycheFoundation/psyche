@@ -314,6 +314,7 @@ pub struct LocalTrainer {
     first_model_max_context_length: usize,
     barrier: Arc<dyn Barrier>,
     data_parallel: Option<Vec<DataParallel>>,
+    is_dummy_model: bool,
 }
 
 #[derive(Debug, Error)]
@@ -354,6 +355,7 @@ impl LocalTrainer {
         assert!(!models.is_empty());
         let first_model_device = models[0].device();
         let first_model_max_context_length = models[0].max_context_length();
+        let is_dummy_model = models[0].is_dummy_model();
 
         let mut ret = Vec::with_capacity(models.len());
 
@@ -401,6 +403,7 @@ impl LocalTrainer {
             first_model_max_context_length,
             barrier,
             data_parallel,
+            is_dummy_model,
         }
     }
 
@@ -1106,6 +1109,10 @@ impl CausalLM for LocalTrainer {
     fn prepare_for_training(&mut self) {}
 
     fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+
+    fn is_dummy_model(&self) -> bool {
+        self.is_dummy_model
+    }
 }
 
 fn optimize_step(
@@ -1267,6 +1274,14 @@ impl CausalLM for Trainer {
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.clip_grad_norm(max_grad_norm)
             }
+        }
+    }
+
+    fn is_dummy_model(&self) -> bool {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.is_dummy_model(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(_) => false,
         }
     }
 }

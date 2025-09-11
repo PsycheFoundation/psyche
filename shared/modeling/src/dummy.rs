@@ -16,28 +16,34 @@ pub struct DummyModel {
 }
 
 pub fn get_dummy_parameters() -> HashMap<String, Tensor> {
+    // You may tweak these numbers if you want less/more dummy training and p2p blob size
     [
-        "model.norm.weight",
-        "model.layers.0.mlp.up_proj.weight",
-        "model.layers.0.post_attention_layernorm.weight",
-        "model.layers.0.self_attn.q_proj.weight",
-        "model.embed_tokens.weight",
-        "model.layers.0.self_attn.o_proj.weight",
-        "model.layers.0.self_attn.v_proj.weight",
-        "model.layers.0.self_attn.k_proj.weight",
-        "model.layers.0.mlp.gate_proj.weight",
-        "model.layers.0.mlp.down_proj.weight",
-        "lm_head.weight",
-        "model.layers.0.input_layernorm.weight",
+        ("model.norm.weight", vec![512]),
+        ("model.layers.0.mlp.up_proj.weight", vec![512, 512]),
+        ("model.layers.0.post_attention_layernorm.weight", vec![512]),
+        ("model.layers.0.self_attn.q_proj.weight", vec![512, 512]),
+        ("model.embed_tokens.weight", vec![512, 512]),
+        ("model.layers.0.self_attn.o_proj.weight", vec![512, 512]),
+        ("model.layers.0.self_attn.v_proj.weight", vec![512, 512]),
+        ("model.layers.0.self_attn.k_proj.weight", vec![512, 512]),
+        ("model.layers.0.mlp.gate_proj.weight", vec![512, 512]),
+        ("model.layers.0.mlp.down_proj.weight", vec![512, 512]),
+        ("lm_head.weight", vec![512, 512]),
+        ("model.layers.0.input_layernorm.weight", vec![512]),
     ]
     .into_iter()
-    .map(|p| (p.to_string(), Tensor::zeros([1], tch::kind::FLOAT_CPU)))
+    .map(|(name, shape)| {
+        (
+            name.to_string(),
+            Tensor::zeros(shape, (tch::Kind::Float, tch::Device::Cpu)),
+        )
+    })
     .collect()
 }
 
 impl Default for DummyModel {
     fn default() -> Self {
-        Self::new(2)
+        Self::new(500)
     }
 }
 
@@ -49,11 +55,11 @@ impl DummyModel {
             shards: HashMap::new(),
             trainable_variables: Vec::new(),
         };
-        let mut var_store = VarStore::new(Device::cuda_if_available());
+        let mut var_store = VarStore::new(Device::Cpu);
         var_store.variables_ = Arc::new(Mutex::new(variables));
         Self {
             var_store,
-            training_delay_secs: Duration::from_secs(training_delay),
+            training_delay_secs: Duration::from_millis(training_delay),
         }
     }
 }
@@ -61,15 +67,18 @@ impl DummyModel {
 impl CausalLM for DummyModel {
     fn forward(
         &mut self,
-        x: &tch::Tensor,
+        _x: &tch::Tensor,
         _labels: Option<&tch::Tensor>,
         _position_ids: Option<&tch::Tensor>,
         _sequence_lengths: Option<&Vec<Vec<i32>>>,
         _num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (tch::Tensor, Option<tch::Tensor>) {
-        let result = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
-        let loss = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
+        let shape = vec![1, 1, 1];
+        let cpu_device = tch::Device::Cpu;
+
+        let result = tch::Tensor::zeros(&shape, (Kind::BFloat16, cpu_device));
+        let loss = tch::Tensor::zeros([1], (Kind::BFloat16, cpu_device));
         let loss = loss.set_requires_grad(true);
         let loss = loss.g_add_scalar(1.0);
         let loss = match loss_scale {
@@ -77,7 +86,6 @@ impl CausalLM for DummyModel {
             None => loss,
         };
 
-        // sleep some time just to simulate training
         std::thread::sleep(self.training_delay_secs);
         (result, Some(loss))
     }
@@ -91,7 +99,7 @@ impl CausalLM for DummyModel {
     }
 
     fn device(&self) -> tch::Device {
-        Device::cuda_if_available()
+        Device::Cpu
     }
 
     fn max_context_length(&self) -> usize {
@@ -109,4 +117,8 @@ impl CausalLM for DummyModel {
     fn prepare_for_training(&mut self) {}
 
     fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+
+    fn is_dummy_model(&self) -> bool {
+        true
+    }
 }
