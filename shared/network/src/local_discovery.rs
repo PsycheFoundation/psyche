@@ -1,7 +1,7 @@
-use futures_util::{stream, Stream};
+use futures_util::{Stream, stream};
+use iroh::NodeId;
 use iroh::discovery::{DiscoveryError, DiscoveryItem};
 use iroh::node_info::{NodeData, NodeInfo};
-use iroh::NodeId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;

@@ -287,7 +287,6 @@ async fn main() -> Result<()> {
         "123",
         args.bind_port,
         args.bind_interface,
-        relay_mode,
         DiscoveryMode::N0,
         peers,
         secret_key,

@@ -3,13 +3,13 @@ use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, RunInitConfig, WandBInfo, NC,
 };
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::{model, Coordinator, HealthChecks};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
-    SecretKey, TcpClient, allowlist, psyche_relay_map,
+    allowlist, psyche_relay_map, AuthenticatableIdentity, DiscoveryMode, NetworkTUIState,
+    NetworkTui, NodeId, RelayMode, SecretKey, TcpClient,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
@@ -144,7 +144,6 @@ impl AppBuilder {
             &p.run_id,
             p.p2p_port,
             p.p2p_interface,
-            RelayMode::Custom(psyche_relay_map()),
             p.discovery_mode,
             vec![],
             Some(p.identity_secret_key.clone()),

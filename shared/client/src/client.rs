@@ -510,7 +510,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
+                            let self_node_id = p2p.node_addr().await.node_id.clone();
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
+                            let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| addr.node_id != self_node_id).collect();
                             let kind = DownloadType::DistroResult(other_possible_nodes);
                             metrics.record_download_started(download_ticket.hash(), kind.kind());
                             p2p.start_download(download_ticket, tag, kind);

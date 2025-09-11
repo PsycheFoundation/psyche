@@ -1,17 +1,17 @@
 use std::time::Duration;
 
 use psyche_centralized_testing::{
-    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
     client::ClientHandle,
     server::CoordinatorServerHandle,
     test_utils::{
         assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
         spawn_clients_with_training_delay,
     },
+    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
 };
 use psyche_coordinator::{
-    RunState,
     model::{Checkpoint, HubRepo},
+    RunState,
 };
 use tracing::info;
 

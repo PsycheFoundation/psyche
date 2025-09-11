@@ -556,10 +556,13 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     }))
                 }
                 DownloadProgessItem::ProviderFailed { id, request } => {
-                    Some(DownloadManagerEvent::Failed(DownloadFailed {
+                    Some(DownloadManagerEvent::Update(DownloadUpdate {
                         blob_ticket: download.blob_ticket.clone(),
-                        error: anyhow!("Provider failed"),
                         tag: download.tag,
+                        downloaded_size_delta: 0,
+                        downloaded_size: download.last_offset,
+                        total_size: download.total_size,
+                        all_done: false,
                         download_type: download.r#type.clone(),
                     }))
                 }

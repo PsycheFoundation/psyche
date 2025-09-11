@@ -1,13 +1,23 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use iroh_blobs::api::{blobs::Blobs, Store};
+use iroh_blobs::{
+    api::{blobs::Blobs, Store},
+    provider::EventSender,
+    BlobsProtocol,
+};
 use iroh_gossip::net::Gossip;
-use tokio::{sync::Mutex, task::JoinSet};
+use tokio::{
+    sync::{mpsc, Mutex},
+    task::JoinSet,
+};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 use tracing::{error, info_span, trace, warn, Instrument};
 
-use iroh::{protocol::ProtocolHandler, Endpoint};
+use iroh::{
+    protocol::{DynProtocolHandler, ProtocolHandler},
+    Endpoint,
+};
 
 use crate::{p2p_model_sharing, Allowlist, ModelSharing};
 
@@ -75,7 +85,7 @@ use crate::{p2p_model_sharing, Allowlist, ModelSharing};
 //     pub async fn spawn<A: Allowlist + 'static + Send>(
 //         endpoint: Endpoint,
 //         gossip: Gossip,
-//         blobs_store: Store,
+//         blobs_store: &Store,
 //         p2p_model_sharing: ModelSharing,
 //         allowlist: A,
 //     ) -> Result<Self> {
@@ -174,13 +184,14 @@ use crate::{p2p_model_sharing, Allowlist, ModelSharing};
 //     p2p_model_sharing: ModelSharing,
 // ) {
 //     // We ignore all errors during shutdown.
+//     let blobs_protocol = BlobsProtocol::new(&blobs, endpoint.clone(), None);
 //     let _ = tokio::join!(
 //         // Close the endpoint.
 //         endpoint.close(),
 //         // Shutdown protocol handlers, using the ProtocolHandler shutdown impl.
-//         (&gossip as &dyn ProtocolHandler).shutdown(),
-//         (&blobs as &dyn ProtocolHandler).shutdown(),
-//         (&p2p_model_sharing as &dyn ProtocolHandler).shutdown(),
+//         (&gossip as &dyn DynProtocolHandler).shutdown(),
+//         (&blobs_protocol as &dyn DynProtocolHandler).shutdown(),
+//         (&p2p_model_sharing as &dyn DynProtocolHandler).shutdown(),
 //     );
 // }
 
@@ -231,14 +242,18 @@ use crate::{p2p_model_sharing, Allowlist, ModelSharing};
 //         return;
 //     }
 
+//     let (tx, rx) = mpsc::channel(1000);
 //     if alpn == iroh_gossip::ALPN {
+//         println!("NEW CONNECTION GOSSIP");
 //         if let Err(err) = gossip.handle_connection(connection).await {
 //             warn!("Handling incoming gossip connection ended with error: {err}");
 //         };
 //     } else if alpn == iroh_blobs::ALPN {
-//         let events = blobs_store.blobs().events().clone();
-//         iroh_blobs::provider::handle_connection(connection, blobs_store, events).await;
+//         println!("NEW CONNECTION BLOBS");
+//         let event_sender = EventSender::new(Some(tx));
+//         iroh_blobs::provider::handle_connection(connection, blobs_store, event_sender).await;
 //     } else if alpn == p2p_model_sharing::ALPN {
+//         println!("NEW CONNECTION MODEL");
 //         if let Err(err) = p2p_model_sharing.accept_connection(connection).await {
 //             warn!("Handling incoming p2p model sharing connection ended with error: {err}")
 //         }

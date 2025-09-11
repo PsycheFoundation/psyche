@@ -164,7 +164,6 @@ where
         run_id: &str,
         port: Option<u16>,
         interface: Option<String>,
-        relay_mode: RelayMode,
         discovery_mode: DiscoveryMode,
         bootstrap_peers: Vec<NodeAddr>,
         secret_key: Option<SecretKey>,
@@ -178,8 +177,6 @@ where
         };
 
         let public_key = secret_key.public();
-
-        debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
         let ipv4 = if let Some(if_name) = interface {
             let (wildcard, if_name) = if if_name.ends_with("*") {
@@ -211,18 +208,22 @@ where
         let endpoint = {
             let mut transport_config = TransportConfig::default();
             transport_config
-                .max_idle_timeout(Some(Duration::from_secs(5).try_into()?))
+                .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Some(Duration::from_secs(1)));
+
+            let relay_mode = RelayMode::Default;
+            debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
             let endpoint = Endpoint::builder()
                 .secret_key(secret_key)
-                .relay_mode(RelayMode::Custom(psyche_relay_map()))
+                .relay_mode(relay_mode)
                 .transport_config(transport_config)
                 .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)));
 
             let e = match discovery_mode {
                 DiscoveryMode::Local => {
                     endpoint.discovery(local_discovery::LocalTestDiscovery::new(public_key))
+                    // endpoint.discovery_n0()
                 }
                 DiscoveryMode::N0 => endpoint.discovery_n0(),
             };
@@ -292,27 +293,52 @@ where
             IrohMetricsCollector::new(registry.clone())
         };
 
+        // THIS SHOULD BE THE EXACT SAME AS OUR ROUTER + ALLOWLIST
+        // let (tx, mut rx) = mpsc::channel(1000);
+        // tokio::spawn(async move {
+        //     loop {
+        //         let a = rx.recv().await;
+        //         println!("Received message in blobs: {:?}", a);
+        //     }
+        // });
         trace!("creating router...");
         let blobs_protocol = BlobsProtocol::new(&store.clone(), endpoint.clone(), None);
-        let allowlist_clone = allowlist.clone();
-        let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |node_id| {
-            allowlist_clone.allowed(node_id)
-        });
-        let allowlist_clone_2 = allowlist.clone();
-        let allowlisted_gossip = AccessLimit::new(gossip.clone(), move |node_id| {
-            allowlist_clone_2.allowed(node_id)
-        });
-        let allowlist_clone_3 = allowlist.clone();
-        let allowlisted_model_sharing = AccessLimit::new(model_parameter_sharing, move |node_id| {
-            allowlist_clone_3.allowed(node_id)
-        });
+        // let allowlist_clone = allowlist.clone();
+        // let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |node_id| {
+        //     allowlist_clone.allowed(node_id)
+        // });
+        // let allowlist_clone_2 = allowlist.clone();
+        // let allowlisted_gossip = AccessLimit::new(gossip.clone(), move |node_id| {
+        //     allowlist_clone_2.allowed(node_id)
+        // });
+        // let allowlist_clone_3 = allowlist.clone();
+        // let allowlisted_model_sharing = AccessLimit::new(model_parameter_sharing, move |node_id| {
+        //     allowlist_clone_3.allowed(node_id)
+        // });
+        // let router = Arc::new(
+        //     Router::builder(endpoint.clone())
+        //         .accept(iroh_blobs::ALPN, allowlisted_blobs)
+        //         .accept(iroh_gossip::ALPN, allowlisted_gossip)
+        //         .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing)
+        //         .spawn(),
+        // );
         let router = Arc::new(
             Router::builder(endpoint.clone())
-                .accept(iroh_blobs::ALPN, allowlisted_blobs)
-                .accept(iroh_gossip::ALPN, allowlisted_gossip)
-                .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing)
+                .accept(iroh_blobs::ALPN, blobs_protocol)
+                .accept(iroh_gossip::ALPN, gossip.clone())
+                .accept(p2p_model_sharing::ALPN, model_parameter_sharing)
                 .spawn(),
         );
+        // let router = Arc::new(
+        //     Router::spawn(
+        //         endpoint.clone(),
+        //         gossip.clone(),
+        //         store.as_ref(),
+        //         model_parameter_sharing.clone(),
+        //         allowlist,
+        //     )
+        //     .await?,
+        // );
         trace!("router created!");
 
         // add any bootstrap peers
@@ -429,7 +455,8 @@ where
 
         info!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
-        let downloader = Downloader::new(&self.blobs_store, &self.endpoint);
+        let downloader = self.blobs_store.downloader(&self.endpoint);
+        println!("ADDITIONAL PEERS TO TRY: {:?}", additional_peers_to_try);
         tokio::spawn(async move {
             // let download_request = DownloadRequest::new(
             //     ticket_hash.into(),
@@ -457,6 +484,7 @@ where
             match progress {
                 Ok(mut progress) => {
                     while let Some(val) = progress.next().await {
+                        println!("Download progress: {:?}", val);
                         if let Err(err) = tx.send(Ok(val)) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }

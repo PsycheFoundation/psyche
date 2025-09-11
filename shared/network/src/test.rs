@@ -196,7 +196,6 @@ async fn spawn_new_node(
         "test",
         None,
         None,
-        RelayMode::Custom(psyche_relay_map()),
         DiscoveryMode::Local,
         peers,
         None,
