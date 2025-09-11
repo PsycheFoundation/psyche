@@ -59,6 +59,8 @@
                 cargo-watch
 
                 self'.packages.solana_toolbox_cli
+
+                inputs'.garnix-cli.packages.default
               ]
               ++ (with inputs'.solana-pkgs.packages; [
                 solana
