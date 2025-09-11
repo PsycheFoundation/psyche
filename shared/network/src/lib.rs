@@ -431,7 +431,6 @@ where
             match progress {
                 Ok(mut progress) => {
                     while let Some(val) = progress.next().await {
-                        println!("Download progress: {:?}", val);
                         if let Err(err) = tx.send(Ok(val)) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
