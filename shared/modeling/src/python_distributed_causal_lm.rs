@@ -138,25 +138,6 @@ impl PythonDistributedCausalLM {
         device: Device,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
-    ) -> Result<Self, PythonDistributedCausalLMError> {
-        Self::new_with_init_method(
-            architecture,
-            source,
-            device,
-            parallelism,
-            override_max_position_embeddings,
-            None,
-            None,
-        )
-    }
-
-    pub fn new_with_init_method(
-        architecture: String,
-        source: PretrainedSource<PythonModelConfig>,
-        device: Device,
-        parallelism: ParallelismConfig,
-        override_max_position_embeddings: Option<usize>,
-        init_method: Option<String>,
         num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
         if !tch::Cuda::is_available() {
@@ -179,7 +160,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = init_method.unwrap_or_else(|| "tcp://0.0.0.0:34567".to_string());
+        let init_method = "tcp://0.0.0.0:34567".to_string();
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();

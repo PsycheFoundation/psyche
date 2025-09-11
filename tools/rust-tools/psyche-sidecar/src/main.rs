@@ -92,49 +92,10 @@ async fn main() -> Result<()> {
 
             match try_join_all(sidecar_tasks).await {
                 Ok(_) => info!("Sidecar processes completed successfully"),
-                Err(e) => bail!("One or more sidecar processes failed"),
+                Err(e) => bail!("One or more sidecar processes failed with error: {e}"),
             }
 
             Ok(())
-
-            // let mut sidecar_tasks: Vec<_> = sidecar_tasks
-            //     .into_iter()
-            //     .map(|handle| Box::pin(async move { handle.await }))
-            //     .collect();
-
-            // while !sidecar_tasks.is_empty() {
-            //     let (sidecar_result, idx, remaining_sidecar_tasks) = select_all(sidecar_tasks);
-            //     let rank = start_rank + idx;
-            //     match sidecar_result {
-            //         Ok(_) => info!("Rank {} completed successfully", rank),
-            //         Err(e) => error!("Rank {} failed: {}", rank, e),
-            //     }
-            //     sidecar_tasks = remaining_sidecar_tasks;
-            // }
-
-            // Wait for all tasks
-            // let mut all_success = true;
-            // for (i, task) in tasks.into_iter().enumerate() {
-            //     match task.await {
-            //         Ok(Ok(())) => info!("Rank {} completed successfully", rank),
-            //         Ok(Err(e)) => {
-            //             error!("Rank {} failed: {}", rank, e);
-            //             all_success = false;
-            //         }
-            //         Err(e) => {
-            //             error!("Task for rank {} panicked: {}", rank, e);
-            //             all_success = false;
-            //         }
-            //     }k
-            // }
-
-            // if !all_success {
-            //     bail!("One or more sidecar processes failed");
-            // } else {
-            //     tracing::info!("All sidecar processes completed successfully");
-            // }
-
-            // Ok(())
         }
         Commands::Rust => {
             unimplemented!("Rust sidecar not yet implemented");
