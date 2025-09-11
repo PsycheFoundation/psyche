@@ -1,7 +1,7 @@
 #!/bin/bash
 
-set -o errexit
-set -euo pipefail
+# set -o errexit
+# set -euo pipefail
 
 # Sanity checks
 if [[ "$PSYCHE_MAIN_HOST" == "" ]]; then
@@ -55,7 +55,7 @@ while true; do
     start_time=$SECONDS
 
     /bin/psyche-sidecar $IMPL \
-        --MAIN-host $PSYCHE_MAIN_HOST \
+        --main-host $PSYCHE_MAIN_HOST \
         --world-size $PSYCHE_WORLD_SIZE \
         --rank $PSYCHE_RANK &
 

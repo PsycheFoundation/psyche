@@ -7475,6 +7475,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap-markdown",
+ "futures",
  "tokio",
  "tracing",
  "tracing-subscriber",

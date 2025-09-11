@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
+use futures::future::try_join_all;
 use std::process::{Command, Stdio};
 use tracing::{error, info};
 
@@ -26,20 +27,16 @@ enum Commands {
         #[arg(long, env = "PSYCHE_WORLD_SIZE")]
         world_size: usize,
 
-        // /// Rank of this process
-        // #[arg(long, env = "PSYCHE_RANK")]
-        // rank: usize,
         /// Start rank for distributed training
         #[arg(long, env = "PSYCHE_START_RANK")]
         start_rank: usize,
 
+        #[arg(long)]
+        start_device: Option<usize>,
+
         /// Backend for torch.distributed (default: nccl)
         #[arg(long, default_value = "nccl")]
         backend: String,
-
-        /// Parent process ID for monitoring
-        #[arg(long, env = "PSYCHE_PARENT_PID")]
-        parent_pid: Option<u32>,
     },
 
     /// Run Rust sidecar process (TODO: implement)
@@ -65,8 +62,8 @@ async fn main() -> Result<()> {
             port,
             world_size,
             start_rank,
+            start_device,
             backend,
-            parent_pid,
         } => {
             info!(
                 "Starting Python sidecars for ranks {} to {}",
@@ -75,15 +72,17 @@ async fn main() -> Result<()> {
             );
 
             // Spawn all tasks
-            let mut tasks = Vec::new();
+            let mut sidecar_tasks = Vec::new();
             for rank in start_rank..world_size {
                 let main_host = main_host.clone();
                 let backend = backend.clone();
+                let parent_pid = std::process::id();
 
-                tasks.push(tokio::spawn(async move {
+                sidecar_tasks.push(tokio::spawn(async move {
                     info!("Starting Python sidecars for rank {}", rank);
-                    let device = rank - start_rank;
-                    println!("device: {}", device);
+                    let start_device = start_device.unwrap_or_default();
+                    let device = rank - start_rank + start_device;
+
                     run_python_sidecar(
                         main_host, port, world_size, rank, device, backend, parent_pid,
                     )
@@ -91,30 +90,51 @@ async fn main() -> Result<()> {
                 }));
             }
 
-            // Wait for all tasks
-            let mut all_success = true;
-            for (i, task) in tasks.into_iter().enumerate() {
-                let rank = start_rank + i;
-                match task.await {
-                    Ok(Ok(())) => info!("Rank {} completed successfully", rank),
-                    Ok(Err(e)) => {
-                        error!("Rank {} failed: {}", rank, e);
-                        all_success = false;
-                    }
-                    Err(e) => {
-                        error!("Task for rank {} panicked: {}", rank, e);
-                        all_success = false;
-                    }
-                }
-            }
-
-            if !all_success {
-                bail!("One or more sidecar processes failed");
-            } else {
-                tracing::info!("All sidecar processes completed successfully");
+            match try_join_all(sidecar_tasks).await {
+                Ok(_) => info!("Sidecar processes completed successfully"),
+                Err(e) => bail!("One or more sidecar processes failed"),
             }
 
             Ok(())
+
+            // let mut sidecar_tasks: Vec<_> = sidecar_tasks
+            //     .into_iter()
+            //     .map(|handle| Box::pin(async move { handle.await }))
+            //     .collect();
+
+            // while !sidecar_tasks.is_empty() {
+            //     let (sidecar_result, idx, remaining_sidecar_tasks) = select_all(sidecar_tasks);
+            //     let rank = start_rank + idx;
+            //     match sidecar_result {
+            //         Ok(_) => info!("Rank {} completed successfully", rank),
+            //         Err(e) => error!("Rank {} failed: {}", rank, e),
+            //     }
+            //     sidecar_tasks = remaining_sidecar_tasks;
+            // }
+
+            // Wait for all tasks
+            // let mut all_success = true;
+            // for (i, task) in tasks.into_iter().enumerate() {
+            //     match task.await {
+            //         Ok(Ok(())) => info!("Rank {} completed successfully", rank),
+            //         Ok(Err(e)) => {
+            //             error!("Rank {} failed: {}", rank, e);
+            //             all_success = false;
+            //         }
+            //         Err(e) => {
+            //             error!("Task for rank {} panicked: {}", rank, e);
+            //             all_success = false;
+            //         }
+            //     }k
+            // }
+
+            // if !all_success {
+            //     bail!("One or more sidecar processes failed");
+            // } else {
+            //     tracing::info!("All sidecar processes completed successfully");
+            // }
+
+            // Ok(())
         }
         Commands::Rust => {
             unimplemented!("Rust sidecar not yet implemented");
@@ -137,7 +157,7 @@ async fn run_python_sidecar(
     rank: usize,
     device: usize,
     backend: String,
-    parent_pid: Option<u32>,
+    parent_pid: u32,
 ) -> Result<()> {
     let init_method = format!("tcp://{main_host}:{port}");
 
@@ -158,11 +178,9 @@ async fn run_python_sidecar(
         .arg("--rank")
         .arg(rank.to_string())
         .arg("--device")
-        .arg(device.to_string());
-
-    if let Some(pid) = parent_pid {
-        cmd.arg("--parent-pid").arg(pid.to_string());
-    }
+        .arg(device.to_string())
+        .arg("--parent-pid")
+        .arg(parent_pid.to_string());
 
     // forward IO for logging
     cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());
