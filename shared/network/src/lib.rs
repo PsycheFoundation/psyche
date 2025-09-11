@@ -27,7 +27,7 @@ pub use p2p_model_sharing::{
     PeerManagerHandle,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
-// use router::Router;
+use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::{
     fmt::Debug,
@@ -293,52 +293,13 @@ where
             IrohMetricsCollector::new(registry.clone())
         };
 
-        // THIS SHOULD BE THE EXACT SAME AS OUR ROUTER + ALLOWLIST
-        // let (tx, mut rx) = mpsc::channel(1000);
-        // tokio::spawn(async move {
-        //     loop {
-        //         let a = rx.recv().await;
-        //         println!("Received message in blobs: {:?}", a);
-        //     }
-        // });
         trace!("creating router...");
         let blobs_protocol = BlobsProtocol::new(&store.clone(), endpoint.clone(), None);
-        // let allowlist_clone = allowlist.clone();
-        // let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |node_id| {
-        //     allowlist_clone.allowed(node_id)
-        // });
-        // let allowlist_clone_2 = allowlist.clone();
-        // let allowlisted_gossip = AccessLimit::new(gossip.clone(), move |node_id| {
-        //     allowlist_clone_2.allowed(node_id)
-        // });
-        // let allowlist_clone_3 = allowlist.clone();
-        // let allowlisted_model_sharing = AccessLimit::new(model_parameter_sharing, move |node_id| {
-        //     allowlist_clone_3.allowed(node_id)
-        // });
-        // let router = Arc::new(
-        //     Router::builder(endpoint.clone())
-        //         .accept(iroh_blobs::ALPN, allowlisted_blobs)
-        //         .accept(iroh_gossip::ALPN, allowlisted_gossip)
-        //         .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing)
-        //         .spawn(),
-        // );
-        let router = Arc::new(
-            Router::builder(endpoint.clone())
-                .accept(iroh_blobs::ALPN, blobs_protocol)
-                .accept(iroh_gossip::ALPN, gossip.clone())
-                .accept(p2p_model_sharing::ALPN, model_parameter_sharing)
-                .spawn(),
-        );
-        // let router = Arc::new(
-        //     Router::spawn(
-        //         endpoint.clone(),
-        //         gossip.clone(),
-        //         store.as_ref(),
-        //         model_parameter_sharing.clone(),
-        //         allowlist,
-        //     )
-        //     .await?,
-        // );
+        let router = spawn_router_with_allowlist(
+            allowlist.clone(),
+            endpoint.clone(),
+            SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
+        )?;
         trace!("router created!");
 
         // add any bootstrap peers
@@ -456,30 +417,16 @@ where
         info!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let downloader = self.blobs_store.downloader(&self.endpoint);
-        println!("ADDITIONAL PEERS TO TRY: {:?}", additional_peers_to_try);
         tokio::spawn(async move {
-            // let download_request = DownloadRequest::new(
-            //     ticket_hash.into(),
-            //     std::iter::once(provider_node_id)
-            //         .chain(additional_peers_to_try.iter().cloned())
-            //         .collect(),
-            //     SplitStrategy::None,
-            // );
-            // let download_opts = DownloadOptions {
-            //     format: BlobFormat::Raw,
-            //     nodes: std::iter::once(provider_node_id)
-            //         .chain(additional_peers_to_try.iter().cloned())
-            //         .collect(),
-            //     tag: SetTagOption::Auto,
-            //     mode: DownloadMode::Queued,
-            // };
-
-            let shuffled = Shuffled::new(
+            let providers_tactic = Shuffled::new(
                 std::iter::once(provider_node_id.node_id)
-                    // .chain(additional_peers_to_try.iter().cloned())
+                    .chain(additional_peers_to_try.iter().cloned())
                     .collect(),
             );
-            let progress = downloader.download(ticket_hash, shuffled).stream().await;
+            let progress = downloader
+                .download(ticket_hash, providers_tactic)
+                .stream()
+                .await;
 
             match progress {
                 Ok(mut progress) => {

@@ -4470,6 +4470,7 @@ dependencies = [
 [[package]]
 name = "iroh-blobs"
 version = "0.93.0"
+source = "git+https://github.com/NousResearch/iroh-blobs?rev=f68fe087b85894a6e4a89a10993c3bd8f71594e6#f68fe087b85894a6e4a89a10993c3bd8f71594e6"
 dependencies = [
  "anyhow",
  "arrayvec",
