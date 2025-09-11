@@ -115,7 +115,7 @@ impl App {
             }
             NetworkEvent::DownloadFailed(result) => {
                 if let Some(tx) = self.tx_retrying_download.take() {
-                    let _ = tx.send("donwload failed".to_string());
+                    let _ = tx.send("download failed".to_string());
                 }
                 println!(
                     "Download failed: {}! Reason: {}",

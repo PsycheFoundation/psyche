@@ -6,6 +6,7 @@
 
 let
   cudaSupported = builtins.elem system [ "x86_64-linux" ];
+  metalSupported = builtins.elem system [ "aarch64-darwin" ];
   cudaVersion = "12.8";
 in
 (
@@ -18,17 +19,23 @@ in
           overrides = pyfinal: pyprev: rec {
             torch-bin =
               let
+                libnvshmem = final.callPackage ./nvshmem.nix { };
                 # 12.8 -> 128, etc.
                 pyCudaVer = builtins.replaceStrings [ "." ] [ "" ] cudaVersion;
-                version = "2.7.0";
+                version = "2.9.0.dev20250827";
+                nightly = true;
                 srcs = {
                   "x86_64-linux-312" = prev.fetchurl {
-                    url = "https://download.pytorch.org/whl/cu${pyCudaVer}/torch-${version}%2Bcu${pyCudaVer}-cp312-cp312-manylinux_2_28_x86_64.whl";
-                    hash = "sha256-fA8I0cRKAqutOJNz3d/OdZBLlppBC+L05RCUg909wM4=";
+                    url = "https://download.pytorch.org/whl/${
+                      if nightly then "nightly/" else ""
+                    }cu${pyCudaVer}/torch-${version}%2Bcu${pyCudaVer}-cp312-cp312-manylinux_2_28_x86_64.whl";
+                    hash = "sha256-q8cQYRFQjef0vY7gaJZLGcIAMOmcCyx9BzMMVwKujdc=";
                   };
                   "aarch64-darwin-312" = prev.fetchurl {
-                    url = "https://download.pytorch.org/whl/cpu/torch-${version}-cp312-none-macosx_11_0_arm64.whl";
-                    hash = "sha256-MLdoiocjmn3oPyaTM2Udjlgq//zm9ZH/8IwEb3eHKW4=";
+                    url = "https://download.pytorch.org/whl/${
+                      if nightly then "nightly/" else ""
+                    }cpu/torch-${version}-cp312-none-macosx_11_0_arm64.whl";
+                    hash = "sha256-7Kaa4oH6vDDlktQ/WijN20MdYsJOzsEsANHggzzqIBU=";
                   };
                 };
                 pyVerNoDot = builtins.replaceStrings [ "." ] [ "" ] pyfinal.python.pythonVersion;
@@ -38,6 +45,12 @@ in
                 inherit version;
                 src =
                   srcs."${prev.stdenv.system}-${pyVerNoDot}" or (unsupported "${prev.stdenv.system}-${pyVerNoDot}");
+
+                buildInputs =
+                  oldAttrs.buildInputs
+                  ++ lib.optionals final.stdenv.hostPlatform.isLinux [
+                    libnvshmem
+                  ];
               });
 
             torch = torch-bin;
@@ -55,10 +68,14 @@ in
 
     config = {
       allowUnfree = true;
+      metalSupport = lib.mkDefault false;
     }
     // lib.optionalAttrs cudaSupported {
       cudaSupport = true;
       inherit cudaVersion;
+    }
+    // lib.optionalAttrs metalSupported {
+      metalSupport = true;
     };
   }
 )

@@ -60,3 +60,6 @@ book
 
 ### Env files ###
 **/.env
+
+### Website ###
+website/frontend/public/llama2_tokenizer.json

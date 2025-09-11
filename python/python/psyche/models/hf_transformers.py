@@ -14,6 +14,7 @@ from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
 from torch.distributed.tensor import DTensor, distribute_tensor
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
+    _CHECKPOINT_PREFIX,
 )
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -77,6 +78,7 @@ class HfTransformersAuto(CausalLM):
     def from_pretrained(
         source: Union[PretrainedSourceRepoFiles, PretrainedSourceStateDict],
         device: torch.device,
+        attn_implementation: str,
         dp: int = 1,
         tp: int = 1,
         override_max_position_embeddings: Optional[int] = None,
@@ -122,8 +124,8 @@ class HfTransformersAuto(CausalLM):
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
                 config,
-                attn_implementation="flash_attention_2",
-                torch_dtype=torch.bfloat16,
+                attn_implementation=attn_implementation,
+                # torch_dtype=torch.bfloat16,
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
@@ -257,7 +259,9 @@ class HfTransformersAuto(CausalLM):
         return (ret.logits, ret.loss)
 
     def named_parameters(self) -> dict[str, torch.Tensor]:
-        return dict(self.model.named_parameters())
+        params = dict(self.model.named_parameters())
+        # undo activation checkpoint wrapping
+        return {k.replace(_CHECKPOINT_PREFIX, ""): v for k, v in params.items()}
 
     def train(self):
         self.model.train()

@@ -147,7 +147,7 @@ export function Header() {
 						</a>
 						<a
 							href="https://nousresearch.com/nous-psyche/"
-							title="read the psyche annoucement"
+							title="read the psyche announcement"
 						>
 							about psyche
 						</a>

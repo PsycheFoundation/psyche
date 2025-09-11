@@ -40,7 +40,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -50,6 +50,7 @@ pub async fn run() {
     let participant = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
+    let distributed_collateral_amount = 10_000_000;
     let warmup_time = 77;
     let round_witness_time = 33;
     let cooldown_time = 42;
@@ -119,7 +120,7 @@ pub async fn run() {
             &collateral_mint,
             &collateral_mint_authority,
             &main_authority_collateral,
-            10_000_000,
+            distributed_collateral_amount,
         )
         .await
         .unwrap();

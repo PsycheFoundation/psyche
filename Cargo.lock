@@ -7107,6 +7107,7 @@ dependencies = [
  "psyche-coordinator",
  "psyche-eval",
  "psyche-metrics",
+ "psyche-modeling",
  "psyche-network",
  "psyche-python-extension-impl",
  "psyche-tui",
@@ -7466,6 +7467,7 @@ dependencies = [
  "tch",
  "tokio-util 0.7.15",
  "torch-sys",
+ "tracing",
 ]
 
 [[package]]
@@ -7509,6 +7511,7 @@ dependencies = [
  "psyche-data-provider",
  "psyche-eval",
  "psyche-metrics",
+ "psyche-modeling",
  "psyche-network",
  "psyche-python-extension-impl",
  "psyche-solana-authorizer",
@@ -7539,9 +7542,6 @@ dependencies = [
  "psyche-core",
  "psyche-solana-authorizer",
  "serde",
- "solana-sdk",
- "solana_toolbox_endpoint",
- "tokio",
  "ts-rs",
 ]
 
@@ -7551,6 +7551,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "anyhow",
  "bytemuck",
  "psyche-coordinator",
  "psyche-core",
@@ -7680,8 +7681,8 @@ dependencies = [
 
 [[package]]
 name = "pyo3-tch"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1#a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1"
 dependencies = [
  "pyo3",
  "tch",
@@ -11095,21 +11096,27 @@ dependencies = [
 
 [[package]]
 name = "solana_toolbox_endpoint"
-version = "0.1.38-solana-2.1.4"
+version = "0.4.4-solana-2.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "967eafa2981e3fc19a1da74e81c86d2d77eab6309a975068366af01441025e5b"
+checksum = "62189aeb27e98382284aef10048e8c67356f143bccf4e3b20d03ad4a72fa4c11"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "bincode",
  "borsh 1.5.7",
  "bytemuck",
  "serde",
+ "serde_json",
+ "solana-account-decoder",
  "solana-client",
  "solana-program-runtime",
  "solana-program-test",
  "solana-sdk",
+ "solana-transaction-status",
  "spl-associated-token-account 6.0.0",
  "spl-token 4.0.2",
+ "urlencoding",
 ]
 
 [[package]]
@@ -12082,8 +12089,8 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1#a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1"
 dependencies = [
  "half",
  "lazy_static",
@@ -12565,8 +12572,8 @@ dependencies = [
 
 [[package]]
 name = "torch-sys"
-version = "0.20.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=93d2130502f4be082cbaf0929cf12d7e4ded2471#93d2130502f4be082cbaf0929cf12d7e4ded2471"
+version = "0.21.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1#a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1"
 dependencies = [
  "anyhow",
  "cc",

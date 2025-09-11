@@ -60,14 +60,14 @@ let
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    cargoExtraArgs = "--features parallelism,python";
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = "--features python" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
       pythonWithPsycheExtension
     ];
-    cargoExtraArgs = rustWorkspaceArgs.cargoExtraArgs;
     NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
   };
 
