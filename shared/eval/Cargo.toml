@@ -3,6 +3,9 @@ name = "psyche-eval"
 version.workspace = true
 edition = "2021"
 
+[features]
+parallelism = []
+
 [dependencies]
 psyche-core.workspace = true
 psyche-data-provider.workspace = true

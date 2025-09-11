@@ -93,6 +93,15 @@ impl GenerateUntilTask for MMLUPro {
         });
         fewshot_documents
     }
+
+    fn get_stop_string(&self) -> Vec<String> {
+        vec!["Question:".to_string()]
+    }
+
+    fn get_answer_extraction_regex(&self) -> String {
+        // Matches "answer is A", "answer is B", "answer is (F)" etc.
+        r"answer is \(?([ABCDEFGHIJ])\)?".to_string()
+    }
 }
 
 impl Display for MMLUPro {

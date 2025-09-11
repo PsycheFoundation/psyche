@@ -33,8 +33,3 @@ psyche-solana-authorizer = { path = "../../../solana-authorizer/programs/solana-
 ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9bb868ad8f25b26f110a795099", features = [
   "psyche-impl",
 ] }
-
-[dev-dependencies]
-solana-sdk = "=2.1.4"
-solana_toolbox_endpoint = "=0.1.38-solana-2.1.4"
-tokio = "1.42.0"

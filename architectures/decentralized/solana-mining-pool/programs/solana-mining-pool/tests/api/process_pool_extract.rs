@@ -1,5 +1,6 @@
 use anchor_spl::associated_token;
 use anchor_spl::token;
+use anyhow::Result;
 use psyche_solana_mining_pool::accounts::PoolExtractAccounts;
 use psyche_solana_mining_pool::find_pool;
 use psyche_solana_mining_pool::instruction::PoolExtract;
@@ -8,7 +9,6 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use solana_toolbox_anchor::ToolboxAnchor;
-use solana_toolbox_anchor::ToolboxAnchorError;
 use solana_toolbox_endpoint::ToolboxEndpoint;
 
 pub async fn process_pool_extract(
@@ -19,7 +19,7 @@ pub async fn process_pool_extract(
     pool_authority_collateral: &Pubkey,
     collateral_mint: &Pubkey,
     collateral_amount: u64,
-) -> Result<(), ToolboxAnchorError> {
+) -> Result<()> {
     let pool = find_pool(pool_index);
     let pool_collateral =
         associated_token::get_associated_token_address(&pool, collateral_mint);
