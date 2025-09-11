@@ -55,6 +55,10 @@
         flake-compat.follows = "";
       };
     };
+    garnix-cli = {
+      url = "github:arilotter/garnix-cli";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
