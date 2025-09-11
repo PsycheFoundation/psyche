@@ -1,14 +1,14 @@
 use crate::{
+    ModelRequestType, Networkable,
     p2p_model_sharing::{TransmittableModelConfig, TransmittableModelParameter},
     serialized_distro::TransmittableDistroResult,
-    ModelRequestType, Networkable,
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use futures_util::future::select_all;
 use iroh::{NodeAddr, PublicKey};
-use iroh_blobs::{api::downloader::DownloadProgessItem, Hash};
+use iroh_blobs::{Hash, api::downloader::DownloadProgessItem};
 use iroh_blobs::{api::downloader::DownloadProgress, ticket::BlobTicket};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,7 +16,7 @@ use std::{
     time::Instant,
 };
 use tokio::{
-    sync::{mpsc, oneshot, Mutex},
+    sync::{Mutex, mpsc, oneshot},
     task::JoinHandle,
 };
 use tracing::{error, info, trace, warn};

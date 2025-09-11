@@ -2,24 +2,24 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use iroh_blobs::{
-    api::{blobs::Blobs, Store},
-    provider::EventSender,
     BlobsProtocol,
+    api::{Store, blobs::Blobs},
+    provider::EventSender,
 };
 use iroh_gossip::net::Gossip;
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     task::JoinSet,
 };
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
-use tracing::{error, info_span, trace, warn, Instrument};
+use tracing::{Instrument, error, info_span, trace, warn};
 
 use iroh::{
-    protocol::{DynProtocolHandler, ProtocolHandler},
     Endpoint,
+    protocol::{DynProtocolHandler, ProtocolHandler},
 };
 
-use crate::{p2p_model_sharing, Allowlist, ModelSharing};
+use crate::{Allowlist, ModelSharing, p2p_model_sharing};
 
 // /// TODO: This entire struct can be replaced with the builtin Router using the new connection
 // /// limiting functionality in Iroh:
@@ -269,10 +269,10 @@ mod tests {
 
     use futures_util::future::join_all;
     use iroh::{
-        protocol::{AccessLimit, Router},
         SecretKey, Watcher,
+        protocol::{AccessLimit, Router},
     };
-    use iroh_blobs::{store::mem::MemStore, BlobsProtocol};
+    use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
     use iroh_gossip::{
         api::{Event, Message},
         proto::TopicId,
@@ -280,8 +280,8 @@ mod tests {
     use tokio_stream::StreamExt;
 
     use crate::{
-        allowlist::{AllowAll, AllowDynamic},
         ModelSharing,
+        allowlist::{AllowAll, AllowDynamic},
     };
 
     use super::*;

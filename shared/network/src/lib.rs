@@ -1,21 +1,21 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{
+    Watcher,
     endpoint::{RemoteInfo, TransportConfig},
     protocol::{AccessLimit, DynProtocolHandler, ProtocolHandler, Router, RouterBuilder},
-    Watcher,
 };
 use iroh_blobs::{
+    BlobsProtocol,
     api::{
+        Store,
         blobs::Blobs,
         downloader::{DownloadOptions, DownloadRequest, Downloader, Shuffled, SplitStrategy},
-        Store,
     },
     store::mem::MemStore,
-    BlobsProtocol,
 };
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
@@ -23,8 +23,8 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
-    MODEL_REQUEST_TIMEOUT_SECS,
+    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
+    PeerManagerHandle,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
 // use router::Router;
@@ -47,15 +47,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{interval, Interval},
+    time::{Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
+use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
-pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
+pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
+pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -77,21 +77,21 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
+pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
 pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
-    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
+    RetriedDownloadsHandle, TransmittableDownload,
 };
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
 pub use p2p_model_sharing::{
-    ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig, ALPN,
+    ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
 };
 pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
-    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
-    SerializedDistroResult, TransmittableDistroResult,
+    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_from_reader, distro_results_to_bytes,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -476,7 +476,7 @@ where
 
             let shuffled = Shuffled::new(
                 std::iter::once(provider_node_id.node_id)
-                    .chain(additional_peers_to_try.iter().cloned())
+                    // .chain(additional_peers_to_try.iter().cloned())
                     .collect(),
             );
             let progress = downloader.download(ticket_hash, shuffled).stream().await;

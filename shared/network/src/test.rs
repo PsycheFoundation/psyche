@@ -7,8 +7,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::{join, select, time::timeout};
 use tokio::{
     sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
         Mutex,
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
     },
     task::JoinHandle,
 };
@@ -16,8 +16,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 use crate::{
-    allowlist, psyche_relay_map, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
-    PeerList,
+    DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, PeerList, allowlist,
+    psyche_relay_map,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
