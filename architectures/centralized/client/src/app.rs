@@ -146,7 +146,6 @@ impl AppBuilder {
             &p.run_id,
             p.p2p_port,
             p.p2p_interface,
-            RelayMode::Custom(psyche_relay_map()),
             p.discovery_mode,
             vec![],
             Some(p.identity_secret_key.clone()),

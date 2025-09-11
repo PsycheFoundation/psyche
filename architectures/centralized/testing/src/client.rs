@@ -4,8 +4,8 @@ use anyhow::{Error, Result};
 use psyche_centralized_client::app::App as ClientApp;
 use psyche_centralized_client::app::AppBuilder as ClientAppBuilder;
 use psyche_centralized_shared::ClientId;
-use psyche_client::NC;
 use psyche_client::RunInitConfig;
+use psyche_client::NC;
 use psyche_network::allowlist;
 use tokio::select;
 use tokio::task::JoinHandle;
@@ -63,10 +63,7 @@ impl Client {
         p2p: NC,
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
-        debug!(
-            "spawned new client: {}",
-            p2p.node_addr().await.unwrap().node_id
-        );
+        debug!("spawned new client: {:?}", p2p.node_addr().await);
         let client_run = self.inner.run(allowlist, p2p, state_options);
         tokio::pin!(client_run);
         loop {

@@ -1,4 +1,8 @@
-use crate::{backend::SolanaBackend, network_identity::NetworkIdentity};
+use crate::{
+    backend::SolanaBackend,
+    network_identity::NetworkIdentity,
+    retry::{RetryError, retry_function},
+};
 
 use anchor_client::{
     Cluster,
@@ -106,7 +110,6 @@ impl AppBuilder {
             &p.run_id,
             p.p2p_port,
             p.p2p_interface,
-            RelayMode::Custom(psyche_relay_map()),
             DiscoveryMode::N0,
             vec![],
             Some(p.identity_secret_key.clone()),

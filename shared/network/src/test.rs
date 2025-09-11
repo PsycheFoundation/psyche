@@ -1,5 +1,5 @@
 use anyhow::Result;
-use iroh::{NodeAddr, RelayMode};
+use iroh::{NodeAddr, RelayMode, Watcher};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_metrics::ClientMetrics;
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,20 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
+
+use futures_util::future::join_all;
+use iroh::{
+    SecretKey,
+    protocol::{AccessLimit, Router},
+};
+use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
+use iroh_gossip::{api::Event, proto::TopicId};
+use tokio_stream::StreamExt;
+
+use crate::{
+    ModelSharing,
+    allowlist::{AllowAll, AllowDynamic},
+};
 
 use crate::{
     DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, PeerList, allowlist,
@@ -196,7 +210,6 @@ async fn spawn_new_node(
         "test",
         None,
         None,
-        RelayMode::Custom(psyche_relay_map()),
         DiscoveryMode::Local,
         peers,
         None,
@@ -206,7 +219,7 @@ async fn spawn_new_node(
     )
     .await?;
 
-    let node_addr = network.router().endpoint().node_addr().await.unwrap();
+    let node_addr = network.router().endpoint().node_addr().initialized().await;
     let join_id = PeerList(vec![node_addr]);
 
     let our_id = network

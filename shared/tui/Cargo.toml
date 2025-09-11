@@ -21,7 +21,7 @@ opentelemetry_sdk = "0.28.0"
 console-subscriber = "0.4.1"
 opentelemetry = "0.28.0"
 opentelemetry-otlp = "0.28.0"
-iroh-metrics = "0.34.0"
+iroh-metrics = "0.35.0"
 opentelemetry-appender-tracing = { version = "0.28.0", default-features = false }
 
 
