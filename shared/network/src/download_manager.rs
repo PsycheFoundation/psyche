@@ -224,6 +224,7 @@ pub enum TransmittableDownload {
     DistroResult(TransmittableDistroResult),
     ModelParameter(TransmittableModelParameter),
     ModelConfig(TransmittableModelConfig),
+    SerializedModel(Vec<u8>)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

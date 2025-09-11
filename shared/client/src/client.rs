@@ -394,7 +394,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     },
                                     NetworkEvent::ModelNameHashRequest(tx) => {
                                         trace!("NetworkEvent::ModelNameHashRequest");
-                                        match sharable_model.get_model_name_and_hash(&p2p).await {
+                                        match sharable_model.get_model_name_and_hash(&mut p2p).await {
                                             Err(e) => {
                                                 if let Err(e) = tx.send(Err(e)) {
                                                     warn!("Could not send model name and hash, Error: {e:?}");

@@ -737,6 +737,7 @@ where
     ),
     ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
     ModelNameHashRequest(oneshot::Sender<Result<(NodeAddr, Hash), SharableModelError>>),
+    ModelRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>)
 }
 
 async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
