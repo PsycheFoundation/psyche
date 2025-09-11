@@ -218,8 +218,7 @@ impl PythonDistributedTrainer {
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
 
         let loss: f32 = loss.try_into().unwrap();
-
-        let loss = loss / std::cmp::min(original_batch_size, self.comm.size()) as f32;
+        let loss = loss / self.comm.size() as f32; // average from all reduced sums of loss above
 
         trace!("Train operation complete on all Python clients");
 
@@ -273,11 +272,11 @@ impl PythonDistributedTrainer {
                             position_ids: cpu_data[0]
                                 .position_ids
                                 .as_ref()
-                                .map(|_| vec![0; seq_len]),
+                                .map(|_| (0..seq_len as i32).collect()),
                             sequence_lengths: cpu_data[0]
                                 .sequence_lengths
                                 .as_ref()
-                                .map(|sl| vec![0; sl.len()]),
+                                .map(|_| vec![seq_len as i32; 1]),
                         };
                         cpu_data.push(padding_sample);
                     }

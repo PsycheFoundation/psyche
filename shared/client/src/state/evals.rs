@@ -13,7 +13,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, info, span, trace};
 
-use crate::state::{prompt::PromptTask, prompt_texts::PROMPT_TEXTS};
+use crate::state::{prompt::PromptTask, prompt_texts::get_prompt_texts};
 pub const PROMPT_TASK_NAME: &str = "Prompt";
 
 #[derive(Debug)]
@@ -137,8 +137,9 @@ impl ModelTaskRunner {
 
                 if prompt_task {
                     let mut rng = rand::thread_rng();
+                    let prompt_texts = get_prompt_texts();
 
-                    let prompt_index = rng.gen_range(0..PROMPT_TEXTS.len());
+                    let prompt_index = rng.gen_range(0..prompt_texts.len());
                     tracing::info!(
                         "Loading prompt task, selected prompt index {}",
                         prompt_index
@@ -146,7 +147,7 @@ impl ModelTaskRunner {
 
                     let prompt_task = Arc::new(ModelTask::new_prompt_task(PromptTask::new(
                         prompt_index,
-                        PROMPT_TEXTS[prompt_index].to_string(),
+                        prompt_texts[prompt_index].clone(),
                         &tokenizer,
                     )));
                     model_tasks.push(prompt_task);
@@ -270,11 +271,17 @@ impl ModelTaskRunner {
                                                 eval_task.task.name(),
                                                 next_index
                                             );
+                                            // mmlu_pro takes a very long time so let's use limit=1 for that one
+                                            let limit = if eval_task.task.name() == "mmlu_pro" {
+                                                Some(1)
+                                            } else {
+                                                Some(10)
+                                            };
                                             eval_task.run(
                                                 &mut trainer,
                                                 cancel.clone(),
                                                 Some((next_index, data_parallelism)),
-                                                Some(10),
+                                                limit,
                                             );
                                             trace!("Done eval task {}", eval_task.task.name());
                                         }
@@ -289,7 +296,7 @@ impl ModelTaskRunner {
                                             trace!(
                                                 "Running {} task on prompt index: {}",
                                                 model_task.name(),
-                                                prompt.selected_prompt
+                                                *prompt.selected_prompt.read().unwrap()
                                             );
 
                                             prompt.run(&mut trainer, cancel.clone());

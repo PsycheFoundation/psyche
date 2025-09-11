@@ -14,7 +14,7 @@ use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
-const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
+const GENERATE_UNTIL_MAX_TOKENS: usize = 1024;
 
 const TASKS_WITH_ACC_NORM: [&str; 5] = [
     ArcChallenge::name(),
@@ -31,7 +31,7 @@ pub enum TaskType {
 
 pub struct Task {
     task_type: TaskType,
-    num_fewshot: usize,
+    pub num_fewshot: usize,
     rand: ChaCha8Rng,
 }
 
@@ -67,7 +67,8 @@ enum PreparedTaskType {
         // Since a single GenerateUntil request can take a long time to generate a answer, we cache the generated tokens
         // in case the task gets interrupted, so next time we can resume from where we left off.
         cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
-        answer_regex: Regex,
+        stop_tokens: Vec<String>,
+        answer_extraction_regex: Regex,
     },
 }
 
@@ -295,8 +296,9 @@ impl Task {
                     requests.push(tokenized_doc);
                 }
 
-                // Regex to match "The answer is (X)." where X is a single uppercase letter;
-                let answer_regex = Regex::new(r"The answer is \(([A-Z])\)\.").unwrap();
+                let stop_tokens = gu_docs.get_stop_string();
+                let answer_extraction_regex =
+                    Regex::new(&gu_docs.get_answer_extraction_regex()).unwrap();
 
                 PreparedTask {
                     name,
@@ -305,7 +307,8 @@ impl Task {
                         requests,
                         tokenizer: tokenizer.clone(),
                         cache: Arc::new(RwLock::new(HashMap::new())),
-                        answer_regex,
+                        stop_tokens,
+                        answer_extraction_regex,
                     },
                 }
             }
@@ -344,14 +347,16 @@ impl PreparedTask {
                 requests,
                 tokenizer,
                 cache,
-                answer_regex,
+                stop_tokens,
+                answer_extraction_regex,
             } => Self::run_generate_until(
                 &self.name,
                 options,
                 cache.clone(),
                 requests,
                 tokenizer,
-                answer_regex,
+                stop_tokens,
+                answer_extraction_regex,
                 pbar,
             ),
         }
@@ -508,13 +513,15 @@ impl PreparedTask {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_generate_until(
         eval_name: &String,
         options: EvalTaskOptions,
         cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
         requests: &[TokenizedGenerateUntilDocument],
         tokenizer: &Tokenizer,
-        answer_regex: &Regex,
+        stop_tokens: &[String],
+        answer_extraction_regex: &Regex,
         pbar: Option<ProgressBar>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
@@ -649,21 +656,17 @@ impl PreparedTask {
                     }
                 }
 
-                // Decode all generated tokens together
+                // Decode all generated tokens together to check for stop tokens
                 if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
-                    // Check if we've generated "The answer is (X)" pattern using regex
-                    if let Some(captures) = answer_regex.captures(&generated_text) {
-                        if let Some(answer_char) = captures.get(1) {
-                            generated_answer = Some(
-                                crate::ASCII_UPPERCASE
-                                    .iter()
-                                    .position(|&c| c == answer_char.as_str())
-                                    .unwrap_or(usize::MAX),
-                            );
+                    // Check if we've hit any stop tokens
+                    for stop_token in stop_tokens {
+                        if generated_text.contains(stop_token) {
                             generation_complete = true;
-
                             break;
                         }
+                    }
+                    if generation_complete {
+                        break;
                     }
                 }
 
@@ -676,6 +679,26 @@ impl PreparedTask {
             // Clear the cache for this document after successful completion
             if generation_complete {
                 cache.write().unwrap().remove(&doc_index);
+
+                // Extract answer from the complete generated text using regex
+                // Use captures_iter to find all matches and take the last one (final answer)
+                if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
+                    if let Some(last_capture) = answer_extraction_regex
+                        .captures_iter(&generated_text)
+                        .last()
+                    {
+                        // last_capture.get(1) returns just the letter (A, B, C, ...)
+                        if let Some(answer_char) = last_capture.get(1) {
+                            // Gets the index of the letter (A=0, B=1, C=2, ...)
+                            generated_answer = Some(
+                                crate::ASCII_UPPERCASE
+                                    .iter()
+                                    .position(|&c| c == answer_char.as_str())
+                                    .unwrap_or(usize::MAX),
+                            );
+                        }
+                    }
+                }
 
                 let score = if generated_answer == Some(answer) {
                     1.

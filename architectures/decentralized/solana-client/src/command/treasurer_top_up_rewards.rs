@@ -1,4 +1,4 @@
-use anchor_spl::associated_token;
+use anchor_spl::{associated_token, token};
 use anyhow::{Context, Result};
 use clap::Args;
 
@@ -55,12 +55,16 @@ pub async fn command_treasurer_top_up_rewards_execute(
     let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
     println!("User collateral amount: {user_collateral_amount}");
 
+    let instruction = token::spl_token::instruction::transfer(
+        &token::ID,
+        &user_collateral_address,
+        &treasurer_run_collateral_address,
+        &user,
+        &[],
+        collateral_amount,
+    )?;
     let signature = backend
-        .spl_token_transfer(
-            &user_collateral_address,
-            &treasurer_run_collateral_address,
-            collateral_amount,
-        )
+        .send_and_retry("Top-up rewards", &[instruction], &[])
         .await?;
     println!("Transfered {collateral_amount} collateral to treasurer in transaction: {signature}");
 
