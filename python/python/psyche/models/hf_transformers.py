@@ -248,7 +248,7 @@ class HfTransformersAuto(CausalLM):
             input_ids,
             labels=labels,
             position_ids=position_ids,
-            num_logits_to_keep=num_logits_to_keep,
+            logits_to_keep=num_logits_to_keep,  # name changed in 4.50
             return_dict=True,
         )
         if ret.loss and loss_scale:

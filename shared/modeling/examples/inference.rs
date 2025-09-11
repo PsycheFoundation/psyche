@@ -141,16 +141,25 @@ fn inference(
     let mut model: Box<dyn CausalLM> = if python {
         #[cfg(feature = "python")]
         {
-            if args.tensor_parallelism.is_some() {
-                anyhow::bail!("Parallelism not supported for inference in python yet");
-            }
+            let tp = args.tensor_parallelism.unwrap_or(1);
 
             psyche_python_extension_impl::init_embedded_python();
 
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
-            Box::new(psyche_modeling::PythonCausalLM::new(
-                "hf-auto", &source, device, None, None,
-            )?) as Box<dyn CausalLM>
+            if tp == 1 {
+                Box::new(psyche_modeling::PythonCausalLM::new(
+                    "hf-auto", &source, device, None, None,
+                )?) as Box<dyn CausalLM>
+            } else {
+                tracing::info!("Faking TP with FSDP");
+                Box::new(psyche_modeling::PythonDistributedCausalLM::new(
+                    "hf-auto".to_string(),
+                    source,
+                    device,
+                    psyche_modeling::ParallelismConfig { dp: tp, tp: 1 },
+                    None,
+                )?) as Box<dyn CausalLM>
+            }
         }
         #[cfg(not(feature = "python"))]
         unreachable!();

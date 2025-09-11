@@ -211,6 +211,7 @@ impl Task {
                         TokenizedLLHDocument::from_document(doc, tokenizer, &fewshot_prefix)
                     })
                     .collect::<Vec<_>>();
+
                 PreparedTask {
                     name,
                     num: docs.len(),
@@ -322,6 +323,7 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
+    pub batch_size: usize,
 }
 
 impl PreparedTask {
@@ -410,57 +412,90 @@ impl PreparedTask {
                     break;
                 }
             }
-            let mut scores: Vec<(f32, bool)> = Vec::new();
 
-            for idx in 0..doc.requests.len() {
-                // e.g:
-                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
-                let mut request = doc.requests[idx].clone();
-                // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
-                let choice = &doc.requests[idx][request.len() - doc.choices_token_len[idx]..];
+            let num_choices = doc.requests.len();
+            let bs = options.batch_size;
 
-                // Remove the last token since we dont want to pass it to the model
-                // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems'
-                request.pop();
+            let mut scores: Vec<(f32, bool)> = Vec::with_capacity(num_choices);
 
-                // The request already contains [fewshot_tokens] + [question + choice_without_last_token]
-                let full_request = request;
-                let input_length = &full_request.len();
+            for batch_start in (0..num_choices).step_by(bs) {
+                let batch_end = (batch_start + bs).min(num_choices);
+                let batch_size = batch_end - batch_start;
 
-                let request_tensor = Tensor::from_slice(&full_request)
-                    .to(options.model.device())
-                    .unsqueeze(0);
+                let mut inputs: Vec<Vec<i64>> = Vec::with_capacity(batch_size);
+                let mut lens: Vec<usize> = Vec::with_capacity(batch_size);
+                let mut choices_tokens: Vec<Vec<i64>> = Vec::with_capacity(batch_size);
+
+                for idx in batch_start..batch_end {
+                    let mut request = doc.requests[idx].clone();
+                    request.pop();
+                    lens.push(request.len());
+
+                    let choice_start = doc.requests[idx].len() - doc.choices_token_len[idx];
+                    let choice_toks = doc.requests[idx][choice_start..].to_vec();
+                    choices_tokens.push(choice_toks);
+
+                    inputs.push(request);
+                }
+
+                let mut current_bs = inputs.len();
+                while current_bs < bs {
+                    inputs.push(inputs[0].clone());
+                    lens.push(lens[0]);
+                    choices_tokens.push(choices_tokens[0].clone());
+                    current_bs += 1;
+                }
+
+                let max_len = *lens.iter().max().unwrap_or(&0);
+
+                let mut input_vec: Vec<i64> = Vec::new();
+                for input in &inputs {
+                    input_vec.extend_from_slice(input);
+                    let pad_num = max_len - input.len();
+                    for _ in 0..pad_num {
+                        input_vec.push(0); // pad with anything
+                    }
+                }
+
+                let input_tensor = Tensor::from_slice(&input_vec)
+                    .view([bs as i64, max_len as i64])
+                    .to(options.model.device());
 
                 let (logits, _) = {
                     let _no_grad = tch::no_grad_guard();
                     options
                         .model
-                        .forward(&request_tensor, None, None, None, None, None)
+                        .forward(&input_tensor, None, None, None, None, None)
                 };
 
-                let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
+                for batch_idx in 0..batch_size {
+                    let idx = batch_start + batch_idx;
+                    let true_len = lens[batch_idx];
+                    let choice_len = doc.choices_token_len[idx];
+                    let start = (true_len - choice_len) as i64;
 
-                // Get tensor of shape `[choice.len(), vocab_size]` containing the
-                // model's logits for each token of the `choice` text.
-                // This should skip the fewshot tokens and get the tokens from the end.
-                let logits = logits.slice(
-                    0,
-                    *input_length as i64 - choice.len() as i64,
-                    *input_length as i64,
-                    1,
-                );
+                    let choice_logits =
+                        logits
+                            .get(batch_idx as i64)
+                            .slice(0, start, true_len as i64, 1);
 
-                let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
-                let exact_match = greedy_tokens.eq(&choice);
+                    let choice_toks_tensor = Tensor::from_slice(&choices_tokens[batch_idx])
+                        .to(options.model.device())
+                        .unsqueeze(-1);
 
-                let choice_log_prob = logits.log_softmax(-1, None).gather(
-                    -1,
-                    &Tensor::from_slice(choice).to(logits.device()).unsqueeze(-1),
-                    false,
-                );
+                    let choice_log_prob =
+                        choice_logits
+                            .log_softmax(-1, None)
+                            .gather(-1, &choice_toks_tensor, false);
 
-                let loglikelihood: f32 = choice_log_prob.sum(Kind::Float).try_into().unwrap();
-                scores.push((loglikelihood, exact_match));
+                    let loglikelihood: f32 = choice_log_prob.sum(Kind::Float).try_into().unwrap();
+
+                    let greedy_tokens: Vec<i64> =
+                        choice_logits.argmax(-1, false).try_into().unwrap();
+                    let exact_match = greedy_tokens.eq(&choices_tokens[batch_idx]);
+
+                    scores.push((loglikelihood, exact_match));
+                }
             }
 
             let selected: i64 = Tensor::from_slice(&scores.iter().map(|x| x.0).collect::<Vec<_>>())
@@ -497,7 +532,11 @@ impl PreparedTask {
             }
 
             if let Some(pbar) = &pbar {
-                pbar.set_message(format!("acc: {:.3}", results.sample("acc").unwrap()));
+                pbar.set_message(format!(
+                    "{} acc: {:.3}",
+                    eval_name,
+                    results.sample("acc").unwrap()
+                ));
                 pbar.inc(1);
             };
         }

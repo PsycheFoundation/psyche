@@ -130,6 +130,50 @@ impl Batch {
             data: BatchData::GPU(self.data.gpu(device)),
         }
     }
+
+    pub fn pad(&mut self, world_size: usize) {
+        match &mut self.data {
+            BatchData::CPU(cpu_data) => {
+                let current_batch_size = cpu_data.len();
+                let remainder = current_batch_size % world_size;
+
+                if remainder != 0 {
+                    let padding_needed = world_size - remainder;
+                    trace!(
+                        "Batch size {} not divisible by world_size {}. Adding {} padding samples",
+                        current_batch_size, world_size, padding_needed
+                    );
+
+                    // Get sequence length from the first sample
+                    if !cpu_data.is_empty() {
+                        let seq_len = cpu_data[0].input_ids.len();
+
+                        // Create padding samples with labels set to -100
+                        for _ in 0..padding_needed {
+                            let padding_sample = BatchDataCPU {
+                                // Use 0 as padding token ID
+                                input_ids: vec![0; seq_len],
+                                // Set labels to -100 so they're ignored in loss computation
+                                labels: Some(vec![-100; seq_len]),
+                                position_ids: cpu_data[0]
+                                    .position_ids
+                                    .as_ref()
+                                    .map(|_| (0..seq_len as i32).collect()),
+                                sequence_lengths: cpu_data[0]
+                                    .sequence_lengths
+                                    .as_ref()
+                                    .map(|_| vec![seq_len as i32; 1]),
+                            };
+                            cpu_data.push(padding_sample);
+                        }
+                    }
+                }
+            }
+            BatchData::GPU(_) => {
+                unimplemented!("GPU batch padding not implemented");
+            }
+        }
+    }
 }
 
 pub struct TrainOutput {
@@ -287,14 +331,6 @@ impl Trainer {
                 stats: x.stats.clone(),
             })
             .collect()
-    }
-
-    pub fn causal_lm(&self) -> &dyn CausalLM {
-        match self {
-            Trainer::Local(local_trainer) => local_trainer,
-            #[cfg(feature = "python")]
-            Trainer::PythonDistributed(python_distributed_trainer) => python_distributed_trainer,
-        }
     }
 }
 

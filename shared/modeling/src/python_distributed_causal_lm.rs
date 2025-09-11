@@ -1,6 +1,6 @@
 use crate::{
-    CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType,
-    StableVariableIterator,
+    Batch, CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType,
+    StableVariableIterator, TrainerThreadCommunicationError,
     python_causal_lm::{PythonCausalLMError, PythonModelConfig},
 };
 
@@ -8,7 +8,7 @@ use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
     process::{Child, Command},
-    sync::Arc,
+    sync::{Arc, atomic::AtomicUsize},
     thread::JoinHandle,
     time::Duration,
 };
@@ -157,6 +157,8 @@ impl TorchDistributedCommunicator {
 pub struct PythonDistributedCausalLM {
     comm: TorchDistributedCommunicator,
     local: PythonCausalLM,
+    // synchronizes access to underlying model
+    iteration: Arc<AtomicUsize>,
     pub(crate) parallelism: ParallelismConfig,
     #[allow(unused)]
     children: Vec<Child>,
@@ -250,7 +252,12 @@ impl PythonDistributedCausalLM {
             local,
             parallelism,
             children,
+            iteration: Arc::new(AtomicUsize::new(0)),
         })
+    }
+
+    pub fn iteration(&self) -> Arc<AtomicUsize> {
+        self.iteration.clone()
     }
 }
 
@@ -264,14 +271,7 @@ impl CausalLM for PythonDistributedCausalLM {
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local.forward(
-            x,
-            labels,
-            position_ids,
-            sequence_lengths,
-            num_logits_to_keep,
-            loss_scale,
-        )
+        unimplemented!();
     }
 
     fn device(&self) -> Device {
@@ -306,5 +306,11 @@ impl CausalLM for PythonDistributedCausalLM {
 
     fn max_context_length(&self) -> usize {
         self.local.max_context_length()
+    }
+}
+
+impl Into<PythonCausalLM> for PythonDistributedCausalLM {
+    fn into(self) -> PythonCausalLM {
+        self.local
     }
 }
