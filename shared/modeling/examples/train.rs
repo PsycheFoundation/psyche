@@ -9,13 +9,13 @@ use psyche_data_provider::{
 };
 use psyche_modeling::{
     AttentionImplementation, Batch, BatchData, BatchDataCPU, CausalLM, CommunicatorId,
-    DataParallel, LocalTrainer, ModelLoadError, ParallelModels, Trainer,
+    DataParallel, Devices, LocalTrainer, ModelLoadError, ParallelModels, Trainer,
     auto_model_for_causal_lm_from_pretrained,
 };
 use psyche_network::AuthenticatableIdentity;
 use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
-use tch::{Device, Kind};
+use tch::Kind;
 use tracing::info;
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -126,8 +126,12 @@ struct Args {
     #[arg(long, default_value_t = false)]
     optim_stats: bool,
 
-    #[arg(long, default_value_t = false)]
-    cpu: bool,
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    device: Devices,
 
     #[arg(long, default_value_t = false)]
     grad_accum_in_fp32: bool,
@@ -153,9 +157,6 @@ struct Args {
     #[arg(long, default_value_t = 1)]
     start_step: u32,
 
-    #[arg(long, default_value_t = 0)]
-    device: usize,
-
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
@@ -170,6 +171,9 @@ async fn main() -> Result<()> {
     let cancel = setup_ctrl_c();
 
     let args = Args::parse();
+
+    let target_device = args.device.device_for_rank(0).unwrap();
+
     let repo_files = if std::fs::exists(args.model.clone()).is_ok_and(|x| x) {
         std::fs::read_dir(args.model.clone())?
             .map(|x| x.unwrap().path())
@@ -288,7 +292,6 @@ async fn main() -> Result<()> {
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);
             let tp = args.tensor_parallelism.unwrap_or(1);
-            let device = args.device;
 
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
@@ -296,7 +299,8 @@ async fn main() -> Result<()> {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
                             "hf-auto".to_string(),
                             source,
-                            Device::Cuda(device),
+                            target_device,
+                            args.attn_implementation.map(Into::into).unwrap_or_default(),
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
                         )?;
@@ -314,11 +318,8 @@ async fn main() -> Result<()> {
                         let models = vec![Box::new(psyche_modeling::PythonCausalLM::new(
                             "hf-auto",
                             &source,
-                            if args.cpu {
-                                Device::Cpu
-                            } else {
-                                Device::Cuda(device)
-                            },
+                            target_device,
+                            args.attn_implementation.map(Into::into).unwrap_or_default(),
                             None,
                             Some(args.sequence_length),
                         )?) as Box<dyn CausalLM>];
@@ -346,7 +347,7 @@ async fn main() -> Result<()> {
             let repo_files = repo_files.clone();
             let data_parallel = data_parallel.clone();
             let barrier = barrier.clone();
-            let device = args.device;
+            let device = args.device.clone();
             let trainer_load_handle: JoinHandle<std::result::Result<Trainer, anyhow::Error>> =
                 std::thread::spawn(move || {
                     let id = if tp_world_size > 1 {
@@ -366,24 +367,23 @@ async fn main() -> Result<()> {
                     let results = (0..tp_world_size)
                         .map(|tp| {
                             let rank = (dp * tp_world_size) + tp;
-                            let device = if args.cpu && tp_world_size <= 1 {
-                                Device::Cpu
-                            } else {
-                                Device::Cuda(rank + device)
-                            };
+                            let device = device
+                                .device_for_rank(rank)
+                                .unwrap_or_else(|| panic!("no device for rank {rank}"));
                             let id = id.clone();
                             let repo_files = repo_files.clone();
                             let attn_implemention = args.attn_implementation.map(|x| x.into());
 
                             std::thread::spawn(move || {
-                                let mut model = auto_model_for_causal_lm_from_pretrained(
-                                    repo_files,
-                                    Some(Kind::BFloat16),
-                                    attn_implemention,
-                                    Some(device),
-                                    id.map(|id| (id, tp, tp_world_size)),
-                                    Some(args.sequence_length),
-                                )?;
+                                let mut model: Box<dyn CausalLM> =
+                                    auto_model_for_causal_lm_from_pretrained(
+                                        repo_files,
+                                        Some(Kind::BFloat16),
+                                        attn_implemention,
+                                        Some(device),
+                                        id.map(|id| (id, tp, tp_world_size)),
+                                        Some(args.sequence_length),
+                                    )?;
                                 model.prepare_for_training();
                                 Ok(model)
                             })
