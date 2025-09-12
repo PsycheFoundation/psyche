@@ -43,7 +43,7 @@ async fn test_two_clients_three_epochs_run() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "/tmp/psyche-config/light-two-min-clients.toml",
         )),
     )
     .await;
@@ -425,7 +425,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "/tmp/psyche-config/light-two-min-clients.toml",
         )),
     )
     .await;
@@ -522,7 +522,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "/tmp/psyche-config/light-two-min-clients.toml",
         )),
     )
     .await;
@@ -634,7 +634,7 @@ async fn test_solana_subscriptions() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "/tmp/psyche-config/light-two-min-clients.toml",
         )),
     )
     .await;
