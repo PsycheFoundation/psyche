@@ -6,17 +6,9 @@ use futures_util::{StreamExt, TryFutureExt};
 use iroh::{
     Watcher,
     endpoint::{RemoteInfo, TransportConfig},
-    protocol::{AccessLimit, DynProtocolHandler, ProtocolHandler, Router, RouterBuilder},
+    protocol::Router,
 };
-use iroh_blobs::{
-    BlobsProtocol,
-    api::{
-        Store,
-        blobs::Blobs,
-        downloader::{DownloadOptions, DownloadRequest, Downloader, Shuffled, SplitStrategy},
-    },
-    store::mem::MemStore,
-};
+use iroh_blobs::{BlobsProtocol, api::downloader::Shuffled, store::mem::MemStore};
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
     net::Gossip,
@@ -26,7 +18,7 @@ pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
-use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
+use psyche_metrics::ClientMetrics;
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::{
@@ -35,7 +27,7 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
@@ -132,7 +124,6 @@ where
     _download: PhantomData<Download>,
     update_stats_interval: Interval,
     metrics: Arc<ClientMetrics>,
-    _iroh_metrics: IrohMetricsCollector,
     endpoint: Endpoint,
 }
 
@@ -168,7 +159,6 @@ where
         bootstrap_peers: Vec<NodeAddr>,
         secret_key: Option<SecretKey>,
         allowlist: A,
-        max_concurrent_downloads: usize,
         metrics: Arc<ClientMetrics>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
@@ -279,20 +269,6 @@ where
             ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
         trace!("model parameter sharing created!");
 
-        // init metrics
-        let iroh_metrics = {
-            let registry = Arc::new(RwLock::new(IrohMetricsRegistry::default()));
-            {
-                let mut locked_registry = registry
-                    .write()
-                    .map_err(|_| anyhow!("failed to lock metrics registry"))?;
-                // locked_registry.register_all_prefixed(endpoint.metrics());
-                // locked_registry.register(gossip.metrics().clone());
-                // locked_registry.register(blobs_store.blobs().metrics().clone());
-            }
-            IrohMetricsCollector::new(registry.clone())
-        };
-
         trace!("creating router...");
         let blobs_protocol = BlobsProtocol::new(&store.clone(), endpoint.clone(), None);
         let router = spawn_router_with_allowlist(
@@ -336,14 +312,13 @@ where
 
             router,
             metrics,
-            _iroh_metrics: iroh_metrics,
 
             update_stats_interval,
             state: State::new(15),
             download_manager: DownloadManager::new()?,
             _broadcast_message: Default::default(),
             _download: Default::default(),
-            endpoint: endpoint,
+            endpoint,
         })
     }
 
@@ -356,7 +331,7 @@ where
     }
 
     pub fn is_allowlisted<A: Allowlist>(node_id: &NodeId, allowlist: &A) -> bool {
-        allowlist.allowed(node_id.clone())
+        allowlist.allowed(*node_id)
     }
 
     /// Don't call this often / with many peers!
@@ -409,8 +384,6 @@ where
         };
         let (tx, rx) = mpsc::unbounded_channel();
 
-        self.state.currently_sharing_blobs.insert(ticket_hash);
-        self.state.blob_tags.insert((tag, ticket_hash));
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
 
@@ -442,10 +415,12 @@ where
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
+        let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
             .blobs()
-            .add_bytes(postcard::to_allocvec(&data)?)
+            .add_bytes(blob_data.clone())
+            .with_named_tag(tag.to_string())
             .await?;
         let addr = self.router.endpoint().node_addr().initialized().await;
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
@@ -453,50 +428,33 @@ where
         debug!(
             name: "blob_upload",
             hash = %blob_res.hash.fmt_short(),
-            // size = blob_res.size,
-            "blob added for upload with hash {:?}",
+            size = blob_data.len(),
+            "blob added for upload with hash {:?} with size {:?}",
             blob_res.hash.fmt_short(),
-            // blob_res.size
+            blob_data.len()
         );
-
-        let hash = blob_ticket.hash();
-        self.state.currently_sharing_blobs.insert(hash);
-        self.state.blob_tags.insert((tag, hash));
 
         Ok(blob_ticket)
     }
 
-    // // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
-    // pub fn remove_blobs_with_tag_less_than(&mut self, tag: u32) {
-    //     self.state.blob_tags.retain(|(t, _)| *t >= tag);
-    //     self.cleanup_untagged_blogs();
-    // }
-    // pub fn cleanup_untagged_blogs(&mut self) {
-    //     let expired_blobs: Vec<_> = self
-    //         .state
-    //         .currently_sharing_blobs
-    //         .iter()
-    //         .filter(|a| !self.state.blob_tags.iter().any(|(_, b)| *a == b))
-    //         .copied()
-    //         .collect();
-    //     for hash in expired_blobs.iter() {
-    //         self.state.currently_sharing_blobs.remove(hash);
-    //     }
-    //     let client = self.blobs_store.blobs().clone();
-    //     tokio::task::spawn(async move {
-    //         for hash in expired_blobs {
-    //             if let Err(err) = client.delete_blob(hash).await {
-    //                 warn!("error deleting blob {hash}: {err}")
-    //             }
-    //         }
-    //     });
-    // }
-
-    // // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
-    // pub fn remove_blobs_with_tag_equal_to(&mut self, tag: u32) {
-    //     self.state.blob_tags.retain(|(t, _)| *t != tag);
-    //     self.cleanup_untagged_blogs();
-    // }
+    pub async fn remove_blobs_with_tag_less_than(&mut self, target_tag: u32) {
+        let store = self.blobs_store.as_ref().clone();
+        let mut tags = store.tags().list().await.unwrap();
+        let mut to_delete = Vec::new();
+        tokio::task::spawn(async move {
+            while let Some(tag) = tags.next().await {
+                let tag: u32 = u32::from_bytes(tag.unwrap().name.0.iter().as_slice()).unwrap();
+                if tag < target_tag {
+                    to_delete.push(tag);
+                }
+            }
+            for tag in to_delete {
+                if let Err(err) = store.tags().delete(tag.to_string()).await {
+                    warn!("error deleting tag {tag}: {err}")
+                }
+            }
+        });
+    }
 
     pub async fn node_addr(&self) -> NodeAddr {
         self.router.endpoint().node_addr().initialized().await

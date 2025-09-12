@@ -149,7 +149,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                          _ = req_tui_state.notified() => {
-                            let network_tui_state = (&p2p).into();
+                            let network_tui_state = NetworkTUIState::from_network_connection(&p2p).await?;
                             let client_tui_state = (&run).into();
                             tx_tui.send((client_tui_state, network_tui_state))?;
                         },
@@ -182,7 +182,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                // p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
+                                p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs).await;
                                 let p2p_info = get_p2p_info(&p2p).await?;
                                 metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
                                 if let Err(e) = run.set_node_info(p2p_info) {
@@ -510,7 +510,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
-                            let self_node_id = p2p.node_addr().await.node_id.clone();
+                            let self_node_id = p2p.node_addr().await.node_id;
                             let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
                             let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| addr.node_id != self_node_id).collect();
                             let kind = DownloadType::DistroResult(other_possible_nodes);

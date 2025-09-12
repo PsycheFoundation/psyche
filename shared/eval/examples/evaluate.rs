@@ -135,7 +135,7 @@ fn run_data_parallel(
                 let task_type = tasktype_from_name(&task_name)?;
                 let task = Task::new(task_type, num_fewshot, seed + task_idx as u64);
 
-                let result = task.prepare(&tokenizer, None).run(
+                let _result = task.prepare(&tokenizer, None).run(
                     EvalTaskOptions {
                         model: model.as_mut(),
                         skip_and_step_by: Some((gpu_id, data_parallelism)),

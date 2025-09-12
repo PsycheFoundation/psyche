@@ -1,22 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use iroh_blobs::{
-    BlobsProtocol,
-    api::{Store, blobs::Blobs},
-    provider::EventSender,
-};
+use iroh_blobs::BlobsProtocol;
 use iroh_gossip::net::Gossip;
-use tokio::{
-    sync::{Mutex, mpsc},
-    task::JoinSet,
-};
-use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
-use tracing::{Instrument, error, info_span, trace, warn};
 
 use iroh::{
     Endpoint,
-    protocol::{AccessLimit, DynProtocolHandler, ProtocolHandler, Router},
+    protocol::{AccessLimit, Router},
 };
 
 use crate::{Allowlist, ModelSharing, p2p_model_sharing};
