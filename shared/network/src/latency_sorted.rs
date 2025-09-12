@@ -3,6 +3,7 @@ use futures_util::stream::{self, BoxStream};
 use iroh::{Endpoint, NodeId};
 use iroh_blobs::HashAndFormat;
 use iroh_blobs::api::downloader::ContentDiscovery;
+use n0_future::stream::Boxed;
 use std::time::Duration;
 use tracing::{debug, trace};
 
@@ -30,7 +31,7 @@ impl LatencySorted {
 
 impl ContentDiscovery for LatencySorted {
     /// Finds providers for the given hash, sorted by ascending latency, without duplicates.
-    fn find_providers(&self, _hash: HashAndFormat) -> BoxStream<'static, NodeId> {
+    fn find_providers(&self, _hash: HashAndFormat) -> Boxed<NodeId> {
         // Collect latency information for each node (duplicates already removed in constructor)
         let mut nodes_with_latency: Vec<_> = self
             .nodes
