@@ -306,7 +306,7 @@ impl ModelConfig for LlamaConfig {
     // TODO: This is just a hacky solution to get the parameter names from the config
     // but it is probably overkill. We should think about a better way to get them
     // to make the p2p requests.
-    fn get_parameter_names(&self) -> Vec<String> {
+    fn get_parameter_names(&self) -> (Vec<String>, String) {
         let mut variables: nn::VarStore = nn::VarStore::new(Device::Cpu);
         variables.set_kind(Kind::BFloat16);
         let _model = Llama::new(variables.root(), self, Default::default(), None);
@@ -323,9 +323,11 @@ impl ModelConfig for LlamaConfig {
         );
 
         let variables_lock = variables.variables_.lock().unwrap();
-        let combined_str = variables_lock.named_variables.keys().join("");
+        let names_vec = variables_lock.named_variables.keys().cloned().collect::<Vec<_>>();
 
-        vec![digest(combined_str)]
+        let combined_str = names_vec.iter().join("");
+
+        (names_vec, digest(combined_str))
     }
 }
 

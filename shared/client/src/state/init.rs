@@ -150,7 +150,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_witness: UnboundedSender<OpportunisticData>,
     pub tx_checkpoint: UnboundedSender<model::HubRepo>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
-    pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
+    pub tx_parameters_req: UnboundedSender<((Vec<String>, String), OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
     pub tx_distro_result: UnboundedSender<DistroBroadcastAndPayload>,
     pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
@@ -408,7 +408,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 let parameter_names = model_config.get_parameter_names();
                                 info!(
                                     "Requesting {} parameters over p2p network",
-                                    parameter_names.len()
+                                    parameter_names.0.len()
                                 );
 
                                 let (tx_params_response, rx_params_response) = oneshot::channel();

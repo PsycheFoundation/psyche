@@ -623,6 +623,7 @@ impl SharableModel {
     pub fn initialize_parameters(
         &mut self,
         param_names: &[String],
+        model_name: String,
         tx_params_response: oneshot::Sender<HashMap<String, Tensor>>,
     ) {
         // Initialize the model parameter names with None.
@@ -632,6 +633,7 @@ impl SharableModel {
         }
         self.parameters = Some(parameters);
         self.tx_params_response = Some(tx_params_response);
+        self.model_name = Some(model_name);
     }
 
     pub async fn deserialize_params(&mut self, data: Vec<u8>) -> Result<(), SharableModelError> {

@@ -19,7 +19,7 @@ pub struct PythonModelConfig {
 }
 
 impl ModelConfig for PythonModelConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
+    fn get_parameter_names(&self) -> (Vec<String>, String) {
         todo!()
     }
 }

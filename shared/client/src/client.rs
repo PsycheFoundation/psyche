@@ -254,287 +254,613 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         trace!("Got finished gossip message from {from}: step {}", broadcast.step);
                                                     }
                                                 }
-                                                let apply_result = run.apply_message(client.id, broadcast)?;
-                                                match apply_result {
-                                                    ApplyMessageOutcome::Ignored => {
-                                                        metrics.record_apply_message_ignored(broadcast_kind);
-                                                    },
-                                                    ApplyMessageOutcome::Applied => {
-                                                        metrics.record_apply_message_success(broadcast_step, from, broadcast_kind);
-                                                    },
-                                                    ApplyMessageOutcome::Invalid => {
-                                                        metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
-                                                    }
-                                                }
-                                            } else {
-                                                warn!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
-                                                metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
+                                                break;
                                             }
-                                        } else {
-                                            trace!("Got broadcast from unknown client {}", from);
-                                            metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
-                                        }
-                                    }
-                                    NetworkEvent::DownloadComplete(DownloadComplete {
-                                        data: download_data, hash, from
-                                    }) => {
-                                        let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
-                                        metrics.record_download_completed(hash, from);
-                                        if retried_downloads.remove(hash).await.is_some() {
-                                            info!("Successfully downloaded previously failed blob {}", hex::encode(hash));
-                                        }
-                                        match download_data {
-                                            TransmittableDownload::DistroResult(distro_result) => {
-                                                debug!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
-                                                run.apply_distro_result(hash, distro_result, None);
-                                            },
-                                            TransmittableDownload::ModelParameter(parameter) => {
-                                                current_downloaded_parameters += 1;
-                                                info!("Download complete: parameter {}", parameter.name()?);
-                                                if let Some(total_parameters) = total_parameters {
-                                                    info!("Downloaded parameters total: {}/{}", current_downloaded_parameters, total_parameters);
-                                                    metrics.update_model_sharing_total_params_downloaded(current_downloaded_parameters);
-                                                } else {
-                                                    error!("Total parameters not set");
-                                                }
-                                                sharable_model.add_parameter(parameter).await?;
-                                                if sharable_model.is_download_complete() {
-                                                    sharable_model.send_init_parameters()?;
-                                                }
-                                            },
-                                            TransmittableDownload::ModelConfig(config) => {
-                                                info!("Download complete: model config");
-                                                sharable_model.add_config(config)?;
-                                                sharable_model.send_config()?;
-                                            },
-                                        }
-                                    }
-                                    NetworkEvent::DownloadFailed(dl) => {
-                                        let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
-                                        let hash = dl.blob_ticket.hash();
-                                        let retries = retried_downloads.get(hash).await.map(|i| i.retries).unwrap_or(0);
-                                        let download_type_clone = dl.download_type.clone();
 
-                                        match dl.download_type {
-                                            DownloadType::ModelSharing(request_type) => {
-                                                metrics.record_p2p_model_parameter_download_failed();
-                                                // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
-                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
-                                                let retry_time = Some(std::time::Instant::now() + backoff_duration);
-                                                peer_manager.report_blob_ticket_request_error(dl.blob_ticket.node_addr().node_id, Some(dl.blob_ticket.clone()));
+                                             _ = req_tui_state.notified() => {
+                                                let network_tui_state = (&p2p).into();
+                                                let client_tui_state = (&run).into();
+                                                tx_tui.send((client_tui_state, network_tui_state))?;
+                                            },
+
+                                            state = watcher.poll_next() => {
+                                                let (old_state, new_state) = state?;
+                                                let old_run_state = old_state
+                                                    .map(|s| s.run_state.to_string())
+                                                    .unwrap_or_else(|| String::from(" - "));
 
                                                 info!(
-                                                    "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
-                                                    retries + 1,
-                                                    dl.blob_ticket.node_addr().node_id,
-                                                    backoff_duration,
-                                                    dl.error
+                                                    integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
+                                                    client_id = %identity,
+                                                    old_state = old_run_state,
+                                                    new_state = %new_state.run_state,
+                                                    epoch = new_state.progress.epoch,
+                                                    step = new_state.progress.step,
+                                                    "applying state epoch {} step {} ({} -> {})",
+                                                    new_state.progress.epoch,
+                                                    new_state.progress.step,
+                                                    old_run_state,
+                                                    new_state.run_state
                                                 );
-                                                let router = p2p.router().clone();
-                                                let peer_manager = peer_manager.clone();
-                                                let retried_downloads = retried_downloads.clone();
-                                                let param_requests_cancel_token = param_requests_cancel_token.clone();
-                                                tokio::spawn(async move {
-                                                    let blob_ticket_to_retry = if let Ok(new_blob_ticket) = get_blob_ticket_to_download(router.clone(), request_type, peer_manager.clone(), param_requests_cancel_token).await {
-                                                        // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
-                                                        retried_downloads.remove(hash).await;
-                                                        new_blob_ticket
-                                                    } else {
-                                                        vec![GetMetaData::Blob(dl.blob_ticket, ModelRequestType::Config)]
-                                                    };
 
-                                                    //todo: fix T_T
-                                                    match blob_ticket_to_retry[0].clone() {
-                                                        GetMetaData::Blob(blob_ticket_to_retry, _)=> {
-                                                    retried_downloads.insert(DownloadRetryInfo {
-                                                        retries: retries + 1,
-                                                        retry_time,
-                                                        ticket: blob_ticket_to_retry,
-                                                        tag: dl.tag,
-                                                        r#type: download_type_clone,
-                                                    });
+                                                let run_participating_node_ids = participating_node_ids(new_state);
+                                                allowlist.set(run_participating_node_ids);
+                                                ensure_gossip_connected(new_state, &mut p2p, &mut last_gossip_connection_time);
+
+                                                if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
+
+                                                    trace!("Updating p2p");
+                                                    let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
+                                                    p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
+                                                    let p2p_info = get_p2p_info(&p2p).await?;
+                                                    metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
+                                                    if let Err(e) = run.set_node_info(p2p_info) {
+                                                        warn!("failed to set p2p info: {e}");
+                                                    }
+                                                    broadcasts.retain(|(_, step)| *step >= last_needed_step_blobs);
+                                                    sharable_model.clear_cache(); // IMPORTANT -- any cached blobs are now invalid
+                                                }
+
+                                                run.apply_state(*new_state).await?;
+                                                {
+                                                    let current_step = run.coordinator_state().map(|s| s.progress.step).unwrap_or(0);
+                                                    let role = {
+                                                        let client_index = new_state
+                                                            .epoch_state
+                                                            .clients
+                                                            .iter()
+                                                            .position(|x| x.id == identity);
+                                                        let round = new_state.current_round();
+                                                        let committee_selection = round.and_then(|round|
+                                                            CommitteeSelection::new(
+                                                                round.tie_breaker_tasks as usize,
+                                                                new_state.config.witness_nodes as usize,
+                                                                new_state.config.verification_percent,
+                                                                new_state.epoch_state.clients.len(),
+                                                                round.random_seed,
+                                                            ).ok()
+                                                        );
+                                                        match (client_index, committee_selection) {
+                                                            (Some(i), Some(s)) => if s.get_witness(i as u64).witness.into() {
+                                                                ClientRoleInRound::Witness
+                                                            } else {
+                                                                ClientRoleInRound::Trainer
+                                                            }
+                                                            _ => ClientRoleInRound::NotInRound,
                                                         }
-                                                        _ => {}
+                                                    };
+                                                    metrics.update_round_state(current_step, role);
+                                                }
+                                            }
+
+                                            res = p2p.poll_next() => {
+                                                if let Some(message) = res? {
+                                                    match message {
+                                                        NetworkEvent::MessageReceived((from, broadcast)) => {
+                                                            let _ = trace_span!("NetworkEvent::MessageReceived", from=%from).entered();
+                                                            metrics.record_broadcast_seen();
+                                                            let broadcast_step = broadcast.step;
+                                                            let broadcast_kind = broadcast.data.kind();
+                                                            if let Some(client) = watcher.get_client_for_p2p_public_key(from.as_bytes()) {
+                                                                if raw_p2p_verify(from.as_bytes(), &broadcast.commitment.data_hash, &broadcast.commitment.signature) {
+                                                                    match &broadcast.data {
+                                                                        BroadcastType::TrainingResult(training_result) => {
+                                                                            trace!("Got training result gossip message from {from}: step {} batch id {}", broadcast.step, training_result.batch_id);
+                                                                        }
+                                                                        BroadcastType::Finished(_) => {
+                                                                            trace!("Got finished gossip message from {from}: step {}", broadcast.step);
+                                                                        }
+                                                                    }
+                                                                    let apply_result = run.apply_message(client.id, broadcast)?;
+                                                                    match apply_result {
+                                                                        ApplyMessageOutcome::Ignored => {
+                                                                            metrics.record_apply_message_ignored(broadcast_kind);
+                                                                        },
+                                                                        ApplyMessageOutcome::Applied => {
+                                                                            metrics.record_apply_message_success(broadcast_step, from, broadcast_kind);
+                                                                        },
+                                                                        ApplyMessageOutcome::Invalid => {
+                                                                            metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
+                                                                        }
+                                                                    }
+                                                                } else {
+                                                                    warn!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
+                                                                    metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
+                                                                }
+                                                            } else {
+                                                                trace!("Got broadcast from unknown client {}", from);
+                                                                metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
+                                                            }
+                                                        }
+                                                        NetworkEvent::DownloadComplete(DownloadComplete {
+                                                            data: download_data, hash, from
+                                                        }) => {
+                                                            let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
+                                                            metrics.record_download_completed(hash, from);
+                                                            if retried_downloads.remove(hash).await.is_some() {
+                                                                info!("Successfully downloaded previously failed blob {}", hex::encode(hash));
+                                                            }
+                                                            match download_data {
+                                                                TransmittableDownload::DistroResult(distro_result) => {
+                                                                    debug!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
+                                                                    run.apply_distro_result(hash, distro_result, None);
+                                                                },
+                                                                TransmittableDownload::ModelParameter(parameter) => {
+                                                                    current_downloaded_parameters += 1;
+                                                                    info!("Download complete: parameter {}", parameter.name()?);
+                                                                    if let Some(total_parameters) = total_parameters {
+                                                                        info!("Downloaded parameters total: {}/{}", current_downloaded_parameters, total_parameters);
+                                                                        metrics.update_model_sharing_total_params_downloaded(current_downloaded_parameters);
+                                                                    } else {
+                                                                        error!("Total parameters not set");
+                                                                    }
+                                                                    sharable_model.add_parameter(parameter).await?;
+                                                                    if sharable_model.is_download_complete() {
+                                                                        sharable_model.send_init_parameters()?;
+                                                                    }
+                                                                },
+                                                                TransmittableDownload::ModelConfig(config) => {
+                                                                    info!("Download complete: model config");
+                                                                    sharable_model.add_config(config)?;
+                                                                    sharable_model.send_config()?;
+                                                                },
+                                                            }
+                                                        }
+                                                        NetworkEvent::DownloadFailed(dl) => {
+                                                            let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
+                                                            let hash = dl.blob_ticket.hash();
+                                                            let retries = retried_downloads.get(hash).await.map(|i| i.retries).unwrap_or(0);
+                                                            let download_type_clone = dl.download_type.clone();
+
+                                                            match dl.download_type {
+                                                                DownloadType::ModelSharing(request_type) => {
+                                                                    metrics.record_p2p_model_parameter_download_failed();
+                                                                    // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
+                                                                    let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
+                                                                    let retry_time = Some(std::time::Instant::now() + backoff_duration);
+                                                                    peer_manager.report_blob_ticket_request_error(dl.blob_ticket.node_addr().node_id, Some(dl.blob_ticket.clone()));
+
+                                                                    info!(
+                                                                        "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
+                                                                        retries + 1,
+                                                                        dl.blob_ticket.node_addr().node_id,
+                                                                        backoff_duration,
+                                                                        dl.error
+                                                                    );
+                                                                    let router = p2p.router().clone();
+                                                                    let peer_manager = peer_manager.clone();
+                                                                    let retried_downloads = retried_downloads.clone();
+                                                                    let param_requests_cancel_token = param_requests_cancel_token.clone();
+                                                                    tokio::spawn(async move {
+                                                                        let blob_ticket_to_retry = if let Ok(new_blob_ticket) = get_blob_ticket_to_download(router.clone(), request_type, peer_manager.clone(), param_requests_cancel_token).await {
+                                                                            // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
+                                                                            retried_downloads.remove(hash).await;
+                                                                            new_blob_ticket
+                                                                        } else {
+                                                                            vec![GetMetaData::Blob(dl.blob_ticket, ModelRequestType::Config)]
+                                                                        };
+
+                                                                        //todo: fix T_T
+                                                                        match blob_ticket_to_retry[0].clone() {
+                                                                            GetMetaData::Blob(blob_ticket_to_retry, _)=> {
+                                                                        retried_downloads.insert(DownloadRetryInfo {
+                                                                            retries: retries + 1,
+                                                                            retry_time,
+                                                                            ticket: blob_ticket_to_retry,
+                                                                            tag: dl.tag,
+                                                                            r#type: download_type_clone,
+                                                                        });
+                                                                            }
+                                                                            _ => {}
+                                                                        }
+
+                                                                });
+                                                            }
+                                                                DownloadType::DistroResult(_) => {
+                                                                    if retries >= MAX_DOWNLOAD_RETRIES {
+                                                                        metrics.record_download_perma_failed();
+                                                                        warn!("Distro result download failed (not retrying): {}", dl.error);
+                                                                        retried_downloads.remove(hash).await;
+                                                                    } else {
+                                                                        metrics.record_download_failed();
+                                                                        let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
+                                                                        let retry_time = Some(std::time::Instant::now() + backoff_duration);
+
+                                                                        info!(
+                                                                            "Distro result download failed (will retry in {:?}): {}",
+                                                                            backoff_duration,
+                                                                            dl.error
+                                                                        );
+                                                                        retried_downloads.insert(DownloadRetryInfo {
+                                                                            retries: retries + 1,
+                                                                            retry_time,
+                                                                            ticket: dl.blob_ticket,
+                                                                            tag: dl.tag,
+                                                                            r#type: dl.download_type,
+                                                                        });
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
+                                                            // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
+                                                            trace!("NetworkEvent::ParameterRequest({parameter_name})");
+                                                            match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, 0).await {
+                                                                Err(e) => {
+                                                                    if let Err(e) = protocol_req_tx.send(Err(e)) {
+                                                                        warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
+                                                                    }
+                                                                },
+                                                                Ok(ticket) => {
+                                                                    info!(parameter = parameter_name, hash = %ticket.hash(), "Sending requested model parameter blob ticket");
+                                                                    if let Err(e) = protocol_req_tx.send(Ok(ticket)) {
+                                                                        warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
+                                                                    };
+                                                                }
+                                                            }
+                                                        },
+                                                        NetworkEvent::ModelNameHashRequest(tx) => {
+                                                            trace!("NetworkEvent::ModelNameHashRequest");
+                                                            match sharable_model.get_model_name_and_hash(&mut p2p).await {
+                                                                Err(e) => {
+                                                                    if let Err(e) = tx.send(Err(e)) {
+                                                                        warn!("Could not send model name and hash, Error: {e:?}");
+                                                                    }
+                                                                },
+                                                                Ok(info) => {
+                                                                    if let Err(e) = tx.send(Ok(info.clone())) {
+                                                                        warn!("Could not send model info {info:?}. Error: {e:?}");
+                                                                    };
+                                                                }
+                                                            }
+                                                        },
+                                                        NetworkEvent::ModelConfigRequest(protocol_req_tx) => {
+                                                            trace!("NetworkEvent::ModelConfigRequest");
+                                                            match sharable_model.get_transmittable_config(&mut p2p, 0).await {
+                                                                Err(e) => {
+                                                                    if let Err(e) = protocol_req_tx.send(Err(e)) {
+                                                                        warn!("Could not send model config blob ticket. Error: {e:?}");
+                                                                    }
+                                                                },
+                                                                Ok(config_ticket) => {
+                                                                    info!(hash = %config_ticket.hash(), "Sending requested model config blob ticket");
+                                                                    if let Err(e) = protocol_req_tx.send(Ok(config_ticket)) {
+                                                                        warn!("Could not send model config blob ticket. Error: {e:?}");
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Some(FinishedBroadcast { step, merkle, commitment_data_hash, proof, warmup }) = rx_broadcast_finished.recv() => {
+                                                trace!(
+                                                    client_id = %identity, step = step,
+                                                    "Broadcasting finished step merkle 0x{}",
+                                                    hex::encode(merkle.inner),
+                                                );
+
+                                                let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
+                                                let commitment = Commitment { data_hash: commitment_data_hash, signature};
+                                                let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::Finished(Finished {
+                                                    broadcast_merkle: merkle, warmup
+                                                })};
+
+                                                p2p.broadcast(&training_result)?;
+                                                broadcasts.push((training_result.clone(), step));
+
+                                                // simulate us recving it & apply like anyone else's
+                                                run.apply_message(identity,  training_result)?;
+                                            }
+
+                                            Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
+
+                                                let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
+                                                let ticket = p2p.add_downloadable(transmittable_distro_result, step).await?;
+                                                let hash = ticket.hash();
+                                                info!(
+                                                    client_id = %identity, step = step,
+                                                    "Broadcasting payload batch id {batch_id} hash 0x{}",
+                                                    hex::encode(hash),
+                                                );
+
+                                                let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
+                                                let commitment = Commitment { data_hash: commitment_data_hash, signature};
+                                                let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
+
+                                                p2p.broadcast(&training_result)?;
+                                                broadcasts.push((training_result.clone(), step));
+
+                                                // simulate us recving it & apply like anyone else's
+                                                run.apply_message(identity, training_result)?;
+
+                                                // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
+                                                // even if quantization is turned on (distro_result is quantized).
+                                                // this is because distro needs the unquantized version for lookahead
+                                                run.apply_distro_result(hash, distro_result, Some(original_distro_result));
+                                            }
+
+                                            _ = sharing_downloadable_interval.tick() => {
+                                                match broadcasts.len() {
+                                                    0 => {},
+                                                    len => {
+                                                        // it's possible we've disconnected from a gossip peer, but we don't know until we try and send to them.
+                                                        // in general, iroh-gossip doesn't guarantee delivery past 99.9%. so, we rebroadcast our live results (-2 rounds)
+                                                        // periodically
+                                                        broadcasts_rebroadcast_index = (broadcasts_rebroadcast_index + 1) % len;
+                                                        let (broadcast, _step) = &mut broadcasts[broadcasts_rebroadcast_index];
+                                                        broadcast.nonce = broadcast.nonce.wrapping_add(1);
+                                                        match &broadcast.data {
+                                                            BroadcastType::TrainingResult(training_result) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, batch_id = %training_result.batch_id, "Rebroadcasting training result"),
+                                                            BroadcastType::Finished(finished) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, warmup = finished.warmup, "Rebroadcasting finished"),
+                                                        }
+                                                        p2p.broadcast(broadcast)?;
+                                                    }
+                                                }
+                                            }
+
+                                            _ = retry_check_interval.tick() => {
+                                                let tx_request_download = tx_request_download.clone();
+                                                let tx_params_download = tx_params_download.clone();
+                                                let tx_config_download = tx_config_download.clone();
+                                                //let tx_model_download = tx_model_download.clone();
+                                                let metrics = metrics.clone();
+                                                let retried_downloads = retried_downloads.clone();
+                                                tokio::spawn(async move {
+                                                    let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.pending_retries().await;
+
+                                                for (hash, ticket, tag, download_type) in pending_retries {
+                                                        let retries = retried_downloads.update_time(hash).await;
+
+                                                        metrics.record_download_retry(hash);
+                                                        // We check the type of the failed download and send it to the appropriate channel to retry it
+                                                        match download_type {
+                                                            DownloadType::DistroResult(_) => {
+                                                                info!("Retrying download for distro result, (attempt {})", retries);
+                                                                let _ = tx_request_download.send((ticket, tag));
+                                                            },
+                                                            DownloadType::ModelSharing(inner) => {
+                                                                match inner {
+                                                                    ModelRequestType::Parameter(parameter) => {
+                                                                        info!("Retrying download for model parameter: {parameter}, (attempt {})", retries);
+                                                                        let _ = tx_params_download.send(vec![(ticket, ModelRequestType::Parameter(parameter.clone()))]);
+                                                                    },
+                                                                    ModelRequestType::Config => {
+                                                                        info!("Retrying download for model config, (attempt {})", retries);
+                                                                        let _ = tx_config_download.send(ticket);
+                                                                    }
+                                                                    ModelRequestType::ModelHash(name) => {
+                                                                        //tx_model_download.send(name);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                }
+                                            });
+                                            }
+
+                                            _ = opportunistic_witness_interval.tick() => {
+                                                run.try_send_opportunistic_witness().await?;
+                                            }
+
+                                            Some((download_ticket, tag)) = rx_request_download.recv() => {
+                                                let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
+                                                let kind = DownloadType::DistroResult(other_possible_nodes);
+                                                metrics.record_download_started(download_ticket.hash(), kind.kind());
+                                                //p2p.start_download_big_blob(vec![(download_ticket.node_addr(), download_ticket.hash())]);
+                                                p2p.start_download(download_ticket, tag, kind);
+                                            }
+                                            Some(opportunistic_data) = rx_witness.recv() => {
+                                                metrics.record_witness_send(opportunistic_data.kind());
+                                                watcher.backend_mut().send_witness(opportunistic_data).await?;
+                                            }
+                                            Some(health_check) = rx_health_check.recv() => {
+                                                watcher.backend_mut().send_health_check(health_check).await?;
+                                            }
+                                            Some(checkpoint) = rx_checkpoint.recv() => {
+                                                watcher.backend_mut().send_checkpoint(checkpoint).await?;
+                                            }
+                                            Some(model) = rx_model.recv() => {
+                                                sharable_model.update_parameters(model)?;
+                                            },
+                                            Some((config_string, tokenizer_string)) = rx_config.recv() => {
+                                                let tokenizer: Tokenizer = serde_json::from_str(&tokenizer_string)?;
+                                                sharable_model.update_config(config_string, tokenizer)?;
+                                            }
+                                            Some(model_name) = rx_model_name.recv() => {
+                                                let router = p2p.router();
+
+                                                let peer_manager = peer_manager.clone();
+                                                let param_requests_cancel_token = param_requests_cancel_token.clone();
+                                                let hashes = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+                                                //todo: maybe just await this?
+                                                        let request_handle = tokio::spawn(
+                                                            blob_ticket_param_request_task(
+                                                                ModelRequestType::ModelHash(model_name),
+                                                                router,
+                                                                hashes.clone(),
+                                                                peer_manager.clone(),
+                                                                param_requests_cancel_token.clone()
+                                                            )
+                                                        );
+                                                let res = request_handle.await;
+
+                                                if let Ok(()) = res {
+                                                    let mut hashes_guard = hashes.lock().unwrap();
+                                                    let model_download_info = hashes_guard.drain(..).filter_map(|item| match item {
+                                                                    GetMetaData::HashAddr(info) => {
+                                                                        Some(info)
+                                                                    }
+                                                                    _ => {None}
+                                                                }).collect();
+
+                                                tx_model_download.send(model_download_info).unwrap();
+                                                }
+                                            }
+                                            Some((param_names, tx_params_response)) = rx_parameters_req.recv() => {
+                                                metrics.initialize_model_parameters_gauge(param_names.0.len().try_into().unwrap());
+                                                total_parameters = Some(param_names.0.len());
+                                                sharable_model.initialize_parameters(&param_names.0, param_names.1.clone(), tx_params_response);
+
+                                                let tx_params_download = tx_params_download.clone();
+                                                let router = p2p.router();
+
+                                                let peer_manager = peer_manager.clone();
+                                                let param_requests_cancel_token = param_requests_cancel_token.clone();
+
+                                                                            let router = p2p.router();
+
+                                                let peer_manager = peer_manager.clone();
+                                                let param_requests_cancel_token = param_requests_cancel_token.clone();
+                                                let hashes = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+                                                //todo: maybe just await this?
+                                                        let request_handle = tokio::spawn(
+                                                            blob_ticket_param_request_task(
+                                                                ModelRequestType::ModelHash(param_names.1),
+                                                                router,
+                                                                hashes.clone(),
+                                                                peer_manager.clone(),
+                                                                param_requests_cancel_token.clone()
+                                                            )
+                                                        );
+                                                let res = request_handle.await;
+
+                                                if let Ok(()) = res {
+                                                    let mut hashes_guard = hashes.lock().unwrap();
+                                                    let model_download_info = hashes_guard.drain(..).filter_map(|item| match item {
+                                                                    GetMetaData::HashAddr(info) => {
+                                                                        Some(info)
+                                                                    }
+                                                                    _ => {None}
+                                                                }).collect();
+
+                                                tx_model_download.send(model_download_info).unwrap();
+                                                }
+
+                    /*
+                                                let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+                                                    // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
+                                                    // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
+                                                    // and dropped immediately
+                                                    let parameter_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::new()));
+                                                    let mut request_handles = Vec::new();
+                                                    let peer_manager = peer_manager.clone();
+
+                                                    for param_name in param_names {
+                                                        let router = router.clone();
+
+                                                        let request_handle = tokio::spawn(
+                                                            blob_ticket_param_request_task(
+                                                                ModelRequestType::Parameter(param_name),
+                                                                router,
+                                                                parameter_blob_tickets.clone(),
+                                                                peer_manager.clone(),
+                                                                param_requests_cancel_token.clone()
+                                                            )
+                                                        );
+
+                                                        // Check if we reached the max number of concurrent requests, and if that is the case,
+                                                        // await for all of them to complete and start downloading the blobs
+                                                        if request_handles.len() == max_concurrent_parameter_requests - 1 {
+                                                            let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
+                                                            max_concurrent_request_futures.push(request_handle);
+                                                            // We don't care about the errors because we are already handling them inside the task
+                                                            join_all(max_concurrent_request_futures).await;
+                                                            let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
+                                                                let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
+                                                                parameter_blob_tickets_lock.drain(..).filter_map(|item| match item {
+                                                                    GetMetaData::Blob(blob_ticket, request_type) => {
+                                                                        Some((blob_ticket, request_type))
+                                                                    }
+                                                                    _ => {None}
+                                                                }).collect()
+                                                            };
+                                                            tx_params_download.send(current_parameter_blob_tickets)?;
+                                                            continue;
+                                                        }
+                                                        request_handles.push(request_handle);
                                                     }
 
-                                            });
-                                        }
-                                            DownloadType::DistroResult(_) => {
-                                                if retries >= MAX_DOWNLOAD_RETRIES {
-                                                    metrics.record_download_perma_failed();
-                                                    warn!("Distro result download failed (not retrying): {}", dl.error);
-                                                    retried_downloads.remove(hash).await;
-                                                } else {
-                                                    metrics.record_download_failed();
-                                                    let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
-                                                    let retry_time = Some(std::time::Instant::now() + backoff_duration);
-
-                                                    info!(
-                                                        "Distro result download failed (will retry in {:?}): {}",
-                                                        backoff_duration,
-                                                        dl.error
-                                                    );
-                                                    retried_downloads.insert(DownloadRetryInfo {
-                                                        retries: retries + 1,
-                                                        retry_time,
-                                                        ticket: dl.blob_ticket,
-                                                        tag: dl.tag,
-                                                        r#type: dl.download_type,
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    }
-                                    NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
-                                        // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
-                                        trace!("NetworkEvent::ParameterRequest({parameter_name})");
-                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, 0).await {
-                                            Err(e) => {
-                                                if let Err(e) = protocol_req_tx.send(Err(e)) {
-                                                    warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
-                                                }
+                                                    // All parameters have been requested, wait all the remaining request futures to complete
+                                                    // and download the blobs
+                                                    join_all(request_handles).await;
+                                                    let parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
+                                                        let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
+                                                        parameter_blob_tickets_lock.drain(..).filter_map(|item| match item {
+                                                                    GetMetaData::Blob(blob_ticket, request_type) => {
+                                                                        Some((blob_ticket, request_type))
+                                                                    }
+                                                                    _ => {None}
+                                                                }).collect()
+                                                    };
+                                                    tx_params_download.send(parameter_blob_tickets)?;
+                                                    Ok(())
+                                                });
+                                                drop(handle);*/
                                             },
-                                            Ok(ticket) => {
-                                                info!(parameter = parameter_name, hash = %ticket.hash(), "Sending requested model parameter blob ticket");
-                                                if let Err(e) = protocol_req_tx.send(Ok(ticket)) {
-                                                    warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
+                                            Some(tx_model_config_response) = rx_request_model_config.recv() => {
+                                                sharable_model.tx_model_config_response = Some(tx_model_config_response);
+                                                let Some(coordinator_state) = watcher.coordinator_state() else {
+                                                    warn!("Coordinator state not yet registered, nothing to do");
+                                                    return Ok(());
                                                 };
+
+                                                let me = NodeId::from_bytes(identity.get_p2p_public_key())?;
+                                                let peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state)
+                                                    .into_iter()
+                                                    .filter(|peer_id| peer_id != &me)
+                                                    .collect();
+
+                                                let peer_manager = peer_manager.clone();
+                                                peer_manager.set_peers(peer_ids);
+                                                let router = p2p.router().clone();
+                                                let tx_config_download = tx_config_download.clone();
+                                                let param_requests_cancel_token = param_requests_cancel_token.clone();
+                                                tokio::spawn(async move {
+                                                    if let Ok(config_blob_ticket) = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager, param_requests_cancel_token).await {
+                                                        if let GetMetaData::Blob(blob_ticket, _) = config_blob_ticket[0].clone() {
+                                                        tx_config_download.send(blob_ticket).expect("Failed to send config blob ticket");
+                                                        } else {
+                                                            unreachable!("We should not get GetMetaData::ModelData in config requests")
+                                                        }
+                                                    } else {
+                                                        error!("Error getting the config blob ticket, we'll not proceed with the download");
+                                                    }
+                                                });
                                             }
-                                        }
-                                    },
-                                    NetworkEvent::ModelNameHashRequest(tx) => {
-                                        trace!("NetworkEvent::ModelNameHashRequest");
-                                        match sharable_model.get_model_name_and_hash(&mut p2p).await {
-                                            Err(e) => {
-                                                if let Err(e) = tx.send(Err(e)) {
-                                                    warn!("Could not send model name and hash, Error: {e:?}");
-                                                }
-                                            },
-                                            Ok(info) => {
-                                                if let Err(e) = tx.send(Ok(info.clone())) {
-                                                    warn!("Could not send model info {info:?}. Error: {e:?}");
-                                                };
-                                            }
-                                        }
-                                    },
-                                    NetworkEvent::ModelConfigRequest(protocol_req_tx) => {
-                                        trace!("NetworkEvent::ModelConfigRequest");
-                                        match sharable_model.get_transmittable_config(&mut p2p, 0).await {
-                                            Err(e) => {
-                                                if let Err(e) = protocol_req_tx.send(Err(e)) {
-                                                    warn!("Could not send model config blob ticket. Error: {e:?}");
-                                                }
-                                            },
-                                            Ok(config_ticket) => {
-                                                info!(hash = %config_ticket.hash(), "Sending requested model config blob ticket");
-                                                if let Err(e) = protocol_req_tx.send(Ok(config_ticket)) {
-                                                    warn!("Could not send model config blob ticket. Error: {e:?}");
+                                            Some(param_blob_tickets) = rx_params_download.recv() => {
+                                                for (ticket, request_type) in param_blob_tickets {
+                                                    let kind = DownloadType::ModelSharing(request_type);
+                                                    metrics.record_download_started(ticket.hash(), kind.kind());
+                                                    // tag 0 means when we enter a train step, it'll get wiped.
+                                                    //p2p.start_download_big_blob(vec![(ticket.node_addr().clone(), ticket.hash())]).await;
+                                                    p2p.start_download(ticket, 0, kind);
                                                 }
                                             }
-                                        }
-                                    }
-                                }
-                            }
-                        }
 
-                        Some(FinishedBroadcast { step, merkle, commitment_data_hash, proof, warmup }) = rx_broadcast_finished.recv() => {
-                            trace!(
-                                client_id = %identity, step = step,
-                                "Broadcasting finished step merkle 0x{}",
-                                hex::encode(merkle.inner),
-                            );
-
-                            let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
-                            let commitment = Commitment { data_hash: commitment_data_hash, signature};
-                            let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::Finished(Finished {
-                                broadcast_merkle: merkle, warmup
-                            })};
-
-                            p2p.broadcast(&training_result)?;
-                            broadcasts.push((training_result.clone(), step));
-
-                            // simulate us recving it & apply like anyone else's
-                            run.apply_message(identity,  training_result)?;
-                        }
-
-                        Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
-
-                            let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, step).await?;
-                            let hash = ticket.hash();
-                            info!(
-                                client_id = %identity, step = step,
-                                "Broadcasting payload batch id {batch_id} hash 0x{}",
-                                hex::encode(hash),
-                            );
-
-                            let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
-                            let commitment = Commitment { data_hash: commitment_data_hash, signature};
-                            let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
-
-                            p2p.broadcast(&training_result)?;
-                            broadcasts.push((training_result.clone(), step));
-
-                            // simulate us recving it & apply like anyone else's
-                            run.apply_message(identity, training_result)?;
-
-                            // VERY IMPORTANT -- we pass the "original" distro result, which is unquantized
-                            // even if quantization is turned on (distro_result is quantized).
-                            // this is because distro needs the unquantized version for lookahead
-                            run.apply_distro_result(hash, distro_result, Some(original_distro_result));
-                        }
-
-                        _ = sharing_downloadable_interval.tick() => {
-                            match broadcasts.len() {
-                                0 => {},
-                                len => {
-                                    // it's possible we've disconnected from a gossip peer, but we don't know until we try and send to them.
-                                    // in general, iroh-gossip doesn't guarantee delivery past 99.9%. so, we rebroadcast our live results (-2 rounds)
-                                    // periodically
-                                    broadcasts_rebroadcast_index = (broadcasts_rebroadcast_index + 1) % len;
-                                    let (broadcast, _step) = &mut broadcasts[broadcasts_rebroadcast_index];
-                                    broadcast.nonce = broadcast.nonce.wrapping_add(1);
-                                    match &broadcast.data {
-                                        BroadcastType::TrainingResult(training_result) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, batch_id = %training_result.batch_id, "Rebroadcasting training result"),
-                                        BroadcastType::Finished(finished) => trace!(client_id = %identity, step = broadcast.step, nonce = broadcast.nonce, warmup = finished.warmup, "Rebroadcasting finished"),
-                                    }
-                                    p2p.broadcast(broadcast)?;
-                                }
-                            }
-                        }
-
-                        _ = retry_check_interval.tick() => {
-                            let tx_request_download = tx_request_download.clone();
-                            let tx_params_download = tx_params_download.clone();
-                            let tx_config_download = tx_config_download.clone();
-                            //let tx_model_download = tx_model_download.clone();
-                            let metrics = metrics.clone();
-                            let retried_downloads = retried_downloads.clone();
-                            tokio::spawn(async move {
-                                let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.pending_retries().await;
-
-                            for (hash, ticket, tag, download_type) in pending_retries {
-                                    let retries = retried_downloads.update_time(hash).await;
-
-                                    metrics.record_download_retry(hash);
-                                    // We check the type of the failed download and send it to the appropriate channel to retry it
-                                    match download_type {
-                                        DownloadType::DistroResult(_) => {
-                                            info!("Retrying download for distro result, (attempt {})", retries);
-                                            let _ = tx_request_download.send((ticket, tag));
-                                        },
-                                        DownloadType::ModelSharing(inner) => {
-                                            match inner {
-                                                ModelRequestType::Parameter(parameter) => {
-                                                    info!("Retrying download for model parameter: {parameter}, (attempt {})", retries);
-                                                    let _ = tx_params_download.send(vec![(ticket, ModelRequestType::Parameter(parameter.clone()))]);
-                                                },
-                                                ModelRequestType::Config => {
-                                                    info!("Retrying download for model config, (attempt {})", retries);
-                                                    let _ = tx_config_download.send(ticket);
-                                                }
-                                                ModelRequestType::ModelHash(name) => {
-                                                    //tx_model_download.send(name);
+                                            Some(config_blob_ticket) = rx_config_download.recv() => {
+                                                let kind = DownloadType::ModelSharing(ModelRequestType::Config);
+                                                metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
+                                                // tag 0 means when we enter a train step, it'll get wiped.
+                                               // p2p.start_download_big_blob(vec![(config_blob_ticket.node_addr().clone(), config_blob_ticket.hash())]).await;
+                                                p2p.start_download(config_blob_ticket, 0, kind);
+                                            }
+                                            Some(model_addrs_and_hashes) = rx_model_download.recv() => {
+                                                match p2p.start_download_big_blob(model_addrs_and_hashes).await {
+                                                    Ok((data, _)) => {
+                                                        if let Err(err) = sharable_model.deserialize_params(data).await {
+                                                            error!("Error deserializing the model: {:?}, we'll not proceed", err);
+                                                        } else {
+                                                            if let Err(err) = sharable_model.send_init_parameters() {
+                                                                error!("Error sending the model: {:?}, we'll not proceed", err);
+                                                            }
+                                                        }
+                                                    } Err(err) => {
+                                                        error!("Error downloading the model: {:?}, we'll not proceed with the download", err);
+                                                    }
                                                 }
                                             }
                                         }
@@ -598,174 +924,38 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 GetMetaData::HashAddr(info) => {
                                                     Some(info)
                                                 }
-                                                _ => {None}
-                                            }).collect();
-
-                            tx_model_download.send(model_download_info).unwrap();
-                            }
-                        }
-                        Some((param_names, tx_params_response)) = rx_parameters_req.recv() => {
-                            metrics.initialize_model_parameters_gauge(param_names.len().try_into().unwrap());
-                            total_parameters = Some(param_names.len());
-                            sharable_model.initialize_parameters(&param_names, tx_params_response);
-
-                            let tx_params_download = tx_params_download.clone();
-                            let router = p2p.router();
-
-                            let peer_manager = peer_manager.clone();
-                            let param_requests_cancel_token = param_requests_cancel_token.clone();
-                            let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
-                                // We use std mutex implementation here and call `.unwrap()` when acquiring the lock since there
-                                // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
-                                // and dropped immediately
-                                let parameter_blob_tickets = Arc::new(std::sync::Mutex::new(Vec::new()));
-                                let mut request_handles = Vec::new();
-                                let peer_manager = peer_manager.clone();
-
-                                for param_name in param_names {
-                                    let router = router.clone();
-
-                                    let request_handle = tokio::spawn(
-                                        blob_ticket_param_request_task(
-                                            ModelRequestType::Parameter(param_name),
-                                            router,
-                                            parameter_blob_tickets.clone(),
-                                            peer_manager.clone(),
-                                            param_requests_cancel_token.clone()
-                                        )
-                                    );
-
-                                    // Check if we reached the max number of concurrent requests, and if that is the case,
-                                    // await for all of them to complete and start downloading the blobs
-                                    if request_handles.len() == max_concurrent_parameter_requests - 1 {
-                                        let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
-                                        max_concurrent_request_futures.push(request_handle);
-                                        // We don't care about the errors because we are already handling them inside the task
-                                        join_all(max_concurrent_request_futures).await;
-                                        let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
-                                            let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
-                                            parameter_blob_tickets_lock.drain(..).filter_map(|item| match item {
-                                                GetMetaData::Blob(blob_ticket, request_type) => {
-                                                    Some((blob_ticket, request_type))
+                                            }
+                                            _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
+                                            _ = check_connection_interval.tick() => {
+                                                let Some(run_state) = run.coordinator_state() else {continue;};
+                                                if run_state.halted() {
+                                                    continue;
                                                 }
-                                                _ => {None}
-                                            }).collect()
-                                        };
-                                        tx_params_download.send(current_parameter_blob_tickets)?;
-                                        continue;
-                                    }
-                                    request_handles.push(request_handle);
-                                }
 
-                                // All parameters have been requested, wait all the remaining request futures to complete
-                                // and download the blobs
-                                join_all(request_handles).await;
-                                let parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
-                                    let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
-                                    parameter_blob_tickets_lock.drain(..).filter_map(|item| match item {
-                                                GetMetaData::Blob(blob_ticket, request_type) => {
-                                                    Some((blob_ticket, request_type))
+                                                {
+                                                    let remote_infos: Vec<_> = p2p
+                                                        .remote_infos()
+                                                        .into_iter()
+                                                        .filter(|info| !matches!(info.0.conn_type, psyche_network::ConnectionType::None))
+                                                        .map(|info| {
+                                                            PeerConnection {
+                                                                node_id: info.0.node_id.to_string(),
+                                                                connection_type: match info.0.conn_type {
+                                                                    psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
+                                                                    psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
+                                                                    psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
+                                                                    psyche_network::ConnectionType::None => unreachable!(),
+                                                                },
+                                                                latency: info.0.latency.map(|l| l.as_secs_f32()).unwrap_or(0.0)
+                                                            }
+                                                        })
+                                                        .collect();
+                                                    metrics.update_peer_connections(&remote_infos);
                                                 }
-                                                _ => {None}
-                                            }).collect()
-                                };
-                                tx_params_download.send(parameter_blob_tickets)?;
-                                Ok(())
-                            });
-                            drop(handle);
-                        },
-                        Some(tx_model_config_response) = rx_request_model_config.recv() => {
-                            sharable_model.tx_model_config_response = Some(tx_model_config_response);
-                            let Some(coordinator_state) = watcher.coordinator_state() else {
-                                warn!("Coordinator state not yet registered, nothing to do");
-                                return Ok(());
-                            };
-
-                            let me = NodeId::from_bytes(identity.get_p2p_public_key())?;
-                            let peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state)
-                                .into_iter()
-                                .filter(|peer_id| peer_id != &me)
-                                .collect();
-
-                            let peer_manager = peer_manager.clone();
-                            peer_manager.set_peers(peer_ids);
-                            let router = p2p.router().clone();
-                            let tx_config_download = tx_config_download.clone();
-                            let param_requests_cancel_token = param_requests_cancel_token.clone();
-                            tokio::spawn(async move {
-                                if let Ok(config_blob_ticket) = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager, param_requests_cancel_token).await {
-                                    if let GetMetaData::Blob(blob_ticket, _) = config_blob_ticket[0].clone() {
-                                    tx_config_download.send(blob_ticket).expect("Failed to send config blob ticket");
-                                    } else {
-                                        unreachable!("We should not get GetMetaData::ModelData in config requests")
-                                    }
-                                } else {
-                                    error!("Error getting the config blob ticket, we'll not proceed with the download");
-                                }
-                            });
-                        }
-                        Some(param_blob_tickets) = rx_params_download.recv() => {
-                            for (ticket, request_type) in param_blob_tickets {
-                                let kind = DownloadType::ModelSharing(request_type);
-                                metrics.record_download_started(ticket.hash(), kind.kind());
-                                // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download_big_blob(vec![(ticket.node_addr().clone(), ticket.hash())]).await;
-                                p2p.start_download(ticket, 0, kind);
-                            }
-                        }
-                        Some(config_blob_ticket) = rx_config_download.recv() => {
-                            let kind = DownloadType::ModelSharing(ModelRequestType::Config);
-                            metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
-                            // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download_big_blob(vec![(config_blob_ticket.node_addr().clone(), config_blob_ticket.hash())]).await;
-                            p2p.start_download(config_blob_ticket, 0, kind);
-                        }
-                        Some(model_addrs_and_hashes) = rx_model_download.recv() => {
-                            match p2p.start_download_big_blob(model_addrs_and_hashes).await {
-                                Ok((data, _)) => {
-                                    if let Err(err) = sharable_model.deserialize_params(data).await {
-                                        error!("Error deserializing the model: {:?}, we'll not proceed", err);
-                                    } else {
-                                        if let Err(err) = sharable_model.send_init_parameters() {
-                                            error!("Error sending the model: {:?}, we'll not proceed", err);
+                                                ensure_gossip_connected(run_state, &mut p2p, &mut last_gossip_connection_time);
+                                            }
+                                            else => break
                                         }
-                                    }
-                                } Err(err) => {
-                                    error!("Error downloading the model: {:?}, we'll not proceed with the download", err);
-                                }
-                            }
-                        }
-                        _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
-                        _ = check_connection_interval.tick() => {
-                            let Some(run_state) = run.coordinator_state() else {continue;};
-                            if run_state.halted() {
-                                continue;
-                            }
-
-                            {
-                                let remote_infos: Vec<_> = p2p
-                                    .remote_infos()
-                                    .into_iter()
-                                    .filter(|info| !matches!(info.0.conn_type, psyche_network::ConnectionType::None))
-                                    .map(|info| {
-                                        PeerConnection {
-                                            node_id: info.0.node_id.to_string(),
-                                            connection_type: match info.0.conn_type {
-                                                psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
-                                                psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
-                                                psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
-                                                psyche_network::ConnectionType::None => unreachable!(),
-                                            },
-                                            latency: info.0.latency.map(|l| l.as_secs_f32()).unwrap_or(0.0)
-                                        }
-                                    })
-                                    .collect();
-                                metrics.update_peer_connections(&remote_infos);
-                            }
-                            ensure_gossip_connected(run_state, &mut p2p, &mut last_gossip_connection_time);
-                        }
-                        else => break
-                    }
                 }
 
                 info!("Main client loop ended");
