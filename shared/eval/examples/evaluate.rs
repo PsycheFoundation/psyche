@@ -59,6 +59,21 @@ fn main() -> Result<()> {
         .collect();
     let tasks = tasks?;
 
+    if !args.quiet {
+        let limit_str = if let Some(limit) = args.limit {
+            format!(", limit={limit}")
+        } else {
+            "".to_string()
+        };
+        println!(
+            "Running tasks with model {}, seed: {}, DP={}{}",
+            args.model, args.seed, args.data_parallelism, limit_str
+        );
+        for task in &tasks {
+            println!("  - {}: {} few-shot examples", task, task.num_fewshot);
+        }
+    }
+
     if args.data_parallelism > 1 {
         #[cfg(feature = "parallelism")]
         {
@@ -93,6 +108,7 @@ fn main() -> Result<()> {
         args.data_parallelism,
         args.quiet,
         args.seed,
+        args.limit,
     )?;
     Ok(())
 }
@@ -104,6 +120,7 @@ fn run_data_parallel(
     data_parallelism: usize,
     quiet: bool,
     seed: u64,
+    limit: Option<usize>,
 ) -> Result<()> {
     let task_info: Vec<(String, usize, u64)> = tasks
         .iter()
@@ -151,7 +168,7 @@ fn run_data_parallel(
                         skip_and_step_by: Some((gpu_id, data_parallelism)),
                         live_results: Some(shared_results[task_idx].clone()),
                         cancel: None,
-                        limit: None,
+                        limit: limit,
                     },
                     !quiet,
                 );

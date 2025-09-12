@@ -1,6 +1,7 @@
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use crate::{
-    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA,
+    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, CEval, Hellaswag, MMLU, MMLUPro, OpenbookQA,
+    PIQA,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
@@ -16,12 +17,13 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 1024;
 
-const TASKS_WITH_ACC_NORM: [&str; 5] = [
+const TASKS_WITH_ACC_NORM: [&str; 6] = [
     ArcChallenge::name(),
     ArcEasy::name(),
     Hellaswag::name(),
     OpenbookQA::name(),
     PIQA::name(),
+    CEval::name(),
 ];
 
 pub enum TaskType {
