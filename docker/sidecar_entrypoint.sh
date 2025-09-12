@@ -20,7 +20,7 @@ if [[ "$PSYCHE_START_RANK" == "" ]]; then
 fi
 
 if [[ "${PSYCHE_START_DEVICE:-}" == "" ]]; then
-    echo -e "\n[!] The PSYCHE_START_RANK env variable was not set."
+    echo -e "\n[!] The PSYCHE_START_DEVICE env variable was not set, defaulting to device 0"
     PSYCHE_START_DEVICE=0
 fi
 

@@ -309,6 +309,7 @@ async fn main() -> Result<()> {
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
+                            None,
                         )?;
 
                         Ok(psyche_modeling::PythonDistributedTrainer::new(
