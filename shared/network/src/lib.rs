@@ -437,23 +437,41 @@ where
         Ok(blob_ticket)
     }
 
-    pub async fn remove_blobs_with_tag_less_than(&mut self, target_tag: u32) {
+    pub async fn remove_blobs_with_tag_less_than(&mut self, target_tag: u32) -> anyhow::Result<()> {
         let store = self.blobs_store.as_ref().clone();
-        let mut tags = store.tags().list().await.unwrap();
+        let mut tags = store.tags().list().await?;
         let mut to_delete = Vec::new();
+
         tokio::task::spawn(async move {
-            while let Some(tag) = tags.next().await {
-                let tag: u32 = u32::from_bytes(tag.unwrap().name.0.iter().as_slice()).unwrap();
-                if tag < target_tag {
-                    to_delete.push(tag);
+            while let Some(tag_result) = tags.next().await {
+                let tag = match tag_result {
+                    Ok(tag) => tag,
+                    Err(e) => {
+                        warn!("Failed getting blob tag to delete: {}", e);
+                        continue;
+                    }
+                };
+
+                let tag_value = match u32::from_bytes(tag.name.0.iter().as_slice()) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        warn!("Failed parsing tag value: {}", e);
+                        continue;
+                    }
+                };
+
+                if tag_value < target_tag {
+                    to_delete.push(tag_value);
                 }
             }
+
             for tag in to_delete {
                 if let Err(err) = store.tags().delete(tag.to_string()).await {
-                    warn!("error deleting tag {tag}: {err}")
+                    warn!("Error deleting blob tag {tag}: {err}")
                 }
             }
         });
+        Ok(())
     }
 
     pub async fn node_addr(&self) -> NodeAddr {

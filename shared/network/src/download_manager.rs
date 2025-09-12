@@ -524,7 +524,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         tag: download.tag,
                         downloaded_size_delta: bytes_amount,
                         downloaded_size: bytes_amount,
-                        total_size: bytes_amount,
+                        total_size: 0,
                         all_done: false,
                         download_type: download.r#type.clone(),
                     }))

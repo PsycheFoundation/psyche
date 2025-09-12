@@ -634,29 +634,29 @@ impl ModelSharing {
         connection: Connection,
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
-    ) -> Result<(), AcceptError> {
+    ) -> Result<()> {
         let (mut send, mut recv) = connection.accept_bi().await?;
-        let model_request_type_bytes = recv.read_to_end(1000).await.unwrap();
-        let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes).unwrap();
+        let model_request_type_bytes = recv.read_to_end(1000).await?;
+        let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes)?;
         let blob_ticket = match model_request_type {
             ModelRequestType::Parameter(parameter_request) => {
                 // Create channel for requesting the model parameter to the client backend
                 // and add a new blob for it
                 let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
                 let request = ParameterSharingMessage::Get(parameter_request, tx_req);
-                tx_model_parameter_req.send(request).unwrap();
+                tx_model_parameter_req.send(request)?;
 
                 // Receive the blob ticket and forward it to the requesting client
-                rx_req.await.unwrap()
+                rx_req.await?
             }
             ModelRequestType::Config => {
                 // Create channel for requesting the model config to the client backend and add a new blob for it
                 let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
                 let request = ModelConfigSharingMessage::Get(tx_req);
-                tx_model_config_req.send(request).unwrap();
+                tx_model_config_req.send(request)?;
 
                 // Receive the blob ticket and forward it to the requesting client
-                rx_req.await.unwrap()
+                rx_req.await?
             }
         };
 
@@ -671,7 +671,7 @@ impl ModelSharing {
         Ok(())
     }
 
-    pub async fn accept_connection(&self, connection: Connection) -> Result<(), AcceptError> {
+    pub async fn accept_connection(&self, connection: Connection) -> Result<()> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
         Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
@@ -682,6 +682,11 @@ impl ProtocolHandler for ModelSharing {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
-        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
+        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req)
+            .await
+            .map_err(|e| {
+                let io_error = std::io::Error::other(e.to_string());
+                AcceptError::from_err(io_error)
+            })
     }
 }
