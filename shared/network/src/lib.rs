@@ -60,6 +60,7 @@ pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 pub mod allowlist;
 mod authenticable_identity;
 mod download_manager;
+mod latency_sorted;
 mod local_discovery;
 mod p2p_model_sharing;
 mod peer_list;
@@ -84,6 +85,7 @@ pub use download_manager::{
 };
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
+pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
     ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
 };
@@ -456,7 +458,8 @@ where
         info!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let downloader = self.blobs_store.downloader(&self.endpoint);
-        println!("ADDITIONAL PEERS TO TRY: {:?}", additional_peers_to_try);
+        let endpoint = self.endpoint.clone();
+        println!("ADDITIONAL PEERS TO TRY: {additional_peers_to_try:?}");
         tokio::spawn(async move {
             // let download_request = DownloadRequest::new(
             //     ticket_hash.into(),
@@ -474,17 +477,21 @@ where
             //     mode: DownloadMode::Queued,
             // };
 
-            let shuffled = Shuffled::new(
+            let latency_sorted = LatencySorted::new(
                 std::iter::once(provider_node_id.node_id)
-                    // .chain(additional_peers_to_try.iter().cloned())
+                    .chain(additional_peers_to_try.iter().cloned())
                     .collect(),
+                endpoint,
             );
-            let progress = downloader.download(ticket_hash, shuffled).stream().await;
+            let progress = downloader
+                .download(ticket_hash, latency_sorted)
+                .stream()
+                .await;
 
             match progress {
                 Ok(mut progress) => {
                     while let Some(val) = progress.next().await {
-                        println!("Download progress: {:?}", val);
+                        println!("Download progress: {val:?}");
                         if let Err(err) = tx.send(Ok(val)) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
