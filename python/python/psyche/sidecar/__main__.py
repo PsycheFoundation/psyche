@@ -1,6 +1,7 @@
 import argparse
 import torch
 import json
+import os
 import torch.distributed as dist
 
 from datetime import timedelta
@@ -91,6 +92,10 @@ def main():
     parser.add_argument("--init-method", type=str)
     parser.add_argument("--world-size", type=int)
     parser.add_argument("--rank", type=int, required=True)
+    parser.add_argument(
+        "--device",
+        type=int,
+    )
 
     args = parser.parse_args()
 
@@ -123,14 +128,19 @@ def main():
     source = store.get("source").decode()
     if source == "files":
         files = store.get("files").decode()
-        source = PretrainedSourceRepoFiles(files=json.loads(files))
+        files_list = json.loads(files)
+
+        # Expand ~/ to the actual home directory on this machine
+        expanded_files = [os.path.expanduser(file_path) for file_path in files_list]
+        source = PretrainedSourceRepoFiles(files=expanded_files)
     else:
         raise ValueError(f"Unsupported source type {source}")
 
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
 
-    device = torch.device(args.rank)
+    device = args.device if args.device else 0
+
     model = make_causal_lm(
         architecture,
         source,
@@ -148,7 +158,7 @@ def main():
         raise RuntimeError("FP32 reduce not supported in Python Hf yet")
 
     trainer = Trainer(
-        args.rank,
+        device,
         model,
         json.dumps(hyperparameters.lr_scheduler),
         json.dumps(hyperparameters.optimizer),
@@ -169,7 +179,6 @@ def main():
 
         if operation["operation"] == "train":
             train = TrainOperation(**operation)
-
             prev_self_distro_results = []
             if train.results_len > 0 and train.results_metadata:
                 prev_self_distro_results = receive_distro_results(
