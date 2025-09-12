@@ -180,7 +180,7 @@ impl PythonDistributedCausalLM {
         if !tch::Cuda::is_available() {
             return Err(PythonDistributedCausalLMError::NonCUDADevice);
         }
-        let num_local_ranks = num_local_ranks.unwrap_or_else(|| tch::Cuda::device_count());
+        let num_local_ranks = num_local_ranks.unwrap_or_else(tch::Cuda::device_count);
         let world_size = parallelism.dp * parallelism.tp;
         if world_size < (num_local_ranks as usize) {
             return Err(PythonDistributedCausalLMError::IncompatibleWorldSize(
