@@ -59,7 +59,7 @@ pub enum ModelLoadError {
 }
 
 pub trait ModelConfig: serde::Serialize + Clone {
-    fn get_parameter_names(&self) -> Vec<String>;
+    fn get_parameter_names(&self) -> (Vec<String>, String);
 }
 
 #[derive(Clone)]
@@ -175,7 +175,7 @@ impl serde::Serialize for AutoConfig {
 }
 
 impl ModelConfig for AutoConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
+    fn get_parameter_names(&self) -> (Vec<String>, String) {
         match self {
             AutoConfig::Llama(config) => config.get_parameter_names(),
             AutoConfig::Deepseek(config) => config.get_parameter_names(),
