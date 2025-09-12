@@ -15,13 +15,23 @@ pub struct LatencySorted {
 
 impl LatencySorted {
     pub fn new(nodes: Vec<NodeId>, endpoint: Endpoint) -> Self {
-        Self { nodes, endpoint }
+        let mut seen = std::collections::HashSet::new();
+        let unique_nodes: Vec<NodeId> = nodes
+            .into_iter()
+            .filter(|node| seen.insert(*node))
+            .collect();
+
+        Self {
+            nodes: unique_nodes,
+            endpoint,
+        }
     }
 }
 
 impl ContentDiscovery for LatencySorted {
+    /// Finds providers for the given hash, sorted by ascending latency, without duplicates.
     fn find_providers(&self, _hash: HashAndFormat) -> BoxStream<'static, NodeId> {
-        // Collect latency information for each node
+        // Collect latency information for each node (duplicates already removed in constructor)
         let mut nodes_with_latency: Vec<_> = self
             .nodes
             .iter()
