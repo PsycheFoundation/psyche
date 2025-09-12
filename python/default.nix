@@ -32,8 +32,37 @@ let
     }
   );
 
+  # expected lib file ext for the python extension
   ext = if stdenv.isDarwin then "dylib" else "so";
+
+  # parse pyproject.toml to get expected dep versions
+  pyprojectToml = builtins.fromTOML (builtins.readFile ./pyproject.toml);
+  expectedVersions = lib.listToAttrs (
+    map (
+      dep:
+      let
+        parts = lib.splitString "==" dep;
+        name = lib.head parts;
+        version = if lib.length parts > 1 then lib.elemAt parts 1 else null;
+      in
+      {
+        name = name;
+        value = version;
+      }
+    ) pyprojectToml.project.dependencies
+  );
+
+  # verify versions match nixpkgs
+  versionAssertions = lib.mapAttrsToList (
+    depName: expectedVersion:
+    let
+      nixpkgsVersion = python312Packages.${depName}.version or null;
+    in
+    lib.assertMsg (expectedVersion == null || nixpkgsVersion == expectedVersion)
+      "Version mismatch for ${depName}: expected ${toString expectedVersion} from pyproject.toml, got ${toString nixpkgsVersion} in nixpkgs."
+  ) expectedVersions;
 in
+assert lib.all (x: x) versionAssertions;
 python312Packages.buildPythonPackage rec {
   pname = "psyche";
   version = "0.1.0";
