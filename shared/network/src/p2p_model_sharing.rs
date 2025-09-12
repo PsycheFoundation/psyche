@@ -501,7 +501,7 @@ impl SharableModel {
                 .map_err(|err| SharableModelError::SerializationError(err.to_string()))?;
 
             let ticket = p2p
-                .add_downloadable(TransmittableDownload::SerializedModel(bytes), 0)
+                .add_downloadable_raw(bytes, 0)
                 .await
                 .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
 

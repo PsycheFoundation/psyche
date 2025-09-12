@@ -28,10 +28,9 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
-
-    collections::HashMap, fmt::Debug, hash::{DefaultHasher, Hash as _, Hasher}, marker::PhantomData, net::{IpAddr, Ipv4Addr, SocketAddrV4}, ops::Sub, sync::{Arc, RwLock}, time::{Duration, Instant}
+    collections::HashMap,
 };
 use tokio::{
     io::AsyncReadExt,
@@ -121,9 +120,8 @@ pub enum DiscoveryMode {
 #[derive(Debug, Clone)]
 pub enum GetMetaData {
     Blob(BlobTicket, ModelRequestType),
-    HashAddr((NodeAddr, Hash))
+    HashAddr((NodeAddr, Hash)),
 }
-
 
 pub struct NetworkConnection<BroadcastMessage, Download>
 where
@@ -382,16 +380,18 @@ where
         Ok(())
     }
 
-    pub async fn start_download_big_blob(&mut self, tickets: Vec<(NodeAddr, Hash)>) -> Result<(Vec<u8>, HashMap<NodeId, PerNodeStats>)>{
-         let config = Config {
-                parallelism: 8,
-                block_size: 1024,
-            };
+    pub async fn start_download_big_blob(
+        &mut self,
+        tickets: Vec<(NodeAddr, Hash)>,
+    ) -> Result<(Vec<u8>, HashMap<NodeId, PerNodeStats>)> {
+        let config = Config {
+            parallelism: 8,
+            block_size: 1024,
+        };
 
-            //sync(tickets, config, 0).await
+        //sync(tickets, config, 0).await
 
-            Ok((vec![], HashMap::new()))
-            
+        Ok((vec![], HashMap::new()))
     }
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
@@ -435,6 +435,32 @@ where
                 Err(e) => panic!("Failed to start download: {e}"),
             }
         });
+    }
+
+    //todo: this is so bad T_T
+    pub async fn add_downloadable_raw(&mut self, data: Vec<u8>, tag: u32)-> Result<BlobTicket> {
+        let blob_res = self
+            .blobs
+            .client()
+            .add_bytes(data)
+            .await?;
+        let addr = self.router.endpoint().node_addr().await?;
+        let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format)?;
+
+        debug!(
+            name: "blob_upload",
+            hash = blob_res.hash.fmt_short(),
+            size = blob_res.size,
+            "blob added for upload with hash {} and size {}",
+            blob_res.hash.fmt_short(),
+            blob_res.size
+        );
+
+        let hash = blob_ticket.hash();
+        self.state.currently_sharing_blobs.insert(hash);
+        self.state.blob_tags.insert((tag, hash));
+
+        Ok(blob_ticket)
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
@@ -717,7 +743,6 @@ where
     ),
     ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
     ModelNameHashRequest(oneshot::Sender<Result<(NodeAddr, Hash), SharableModelError>>),
-    ModelRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>)
 }
 
 async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
@@ -823,15 +848,17 @@ pub async fn blob_ticket_param_request_task(
                 peer_manager.report_success(peer_id);
                 return;
             }
-            Ok(Ok(ModelMetadataNetworkMessage::ModelInfo(info))) => {
-                match info {
-                    Err(err) => {
-                        warn!("Request failed for peer {peer_id}: {err}. Trying next peer");
-                    } Ok (info) => {
-                        model_blob_tickets.lock().unwrap().push(GetMetaData::HashAddr(info));
-                    }
+            Ok(Ok(ModelMetadataNetworkMessage::ModelInfo(info))) => match info {
+                Err(err) => {
+                    warn!("Request failed for peer {peer_id}: {err}. Trying next peer");
                 }
-            }
+                Ok(info) => {
+                    model_blob_tickets
+                        .lock()
+                        .unwrap()
+                        .push(GetMetaData::HashAddr(info));
+                }
+            },
             Ok(Ok(ModelMetadataNetworkMessage::Ticket(Err(err))))
             | Ok(Ok(ModelMetadataNetworkMessage::ModelInfo(Err(err)))) => {
                 // Failed - report error and potentially try next peer
