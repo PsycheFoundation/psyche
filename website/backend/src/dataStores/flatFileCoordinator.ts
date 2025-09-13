@@ -224,10 +224,13 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			const tokensCompletedAtStartOfStep = lastState
 				? (() => {
 						const c = lastState.coordinator
+						console.log('LULU', c.config)
 						const tokensPerSequence = BigInt(c.model.LLM.max_seq_len)
 						const batchSizeStart = BigInt(c.config.global_batch_size_start)
 						const batchSizeEnd = BigInt(c.config.global_batch_size_end)
-						const warmupTokens = c.config.global_batch_size_warmup_tokens
+						const warmupTokens = BigInt(
+							c.config.global_batch_size_warmup_tokens
+						)
 						const currentStep = BigInt(c.progress.step - 1)
 
 						return calculateTokens(
@@ -237,7 +240,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 							batchSizeEnd,
 							warmupTokens
 						)
-					})()
+				  })()
 				: 0n
 
 			lastRun.trainingStep = {
@@ -405,12 +408,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					] as const
 			)
 		)
+		console.log(`there are ${rawRuns} total runs in the DB`)
 		const runs = rawRuns
 			.map((r) => r[0])
 			.filter(
 				(r): r is RunSummary =>
 					!!r && (!ALLOWLISTED_RUN_IDS || ALLOWLISTED_RUN_IDS.includes(r.id))
 			)
+		console.log(`there are ${runs} runs after filtering`)
 		const summaries = {
 			runs,
 			totalTokens: runs.reduce(
@@ -592,7 +597,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 function goodNumber([_, value]: readonly [
 	step: number,
-	value: number,
+	value: number
 ]): boolean {
 	return Number.isFinite(value) && !Number.isNaN(value)
 }
@@ -602,15 +607,18 @@ function makeRunSummary(
 	index: number,
 	isOnlyRunAtThisIndex: boolean
 ): RunSummary | null {
+	console.log('making summary for run', run.runId, 'at index', index, run)
 	if (!run.lastState) {
 		return null
 	}
 	const c = run.lastState.coordinator
 
+	console.log('dudu c.config:', c.config)
+
 	const tokensPerSequence = BigInt(c.model.LLM.max_seq_len)
 	const batchSizeStart = BigInt(c.config.global_batch_size_start)
 	const batchSizeEnd = BigInt(c.config.global_batch_size_end)
-	const warmupTokens = c.config.global_batch_size_warmup_tokens
+	const warmupTokens = BigInt(c.config.global_batch_size_warmup_tokens)
 	const totalSteps = BigInt(c.config.total_steps)
 
 	const totalTokens = calculateTokens(
@@ -637,7 +645,7 @@ function makeRunSummary(
 				endedAt: run.trainingStep.endedAt,
 				tokensCompletedAtStartOfStep:
 					run.trainingStep.tokensCompletedAtStartOfStep,
-			}
+		  }
 		: undefined
 
 	const summary: RunSummary = {
@@ -651,21 +659,21 @@ function makeRunSummary(
 			? {
 					type: 'completed',
 					at: run.destroyedAt,
-				}
+			  }
 			: c.run_state === 'Finished'
-				? {
-						type: 'completed',
-						at: run.lastUpdated,
-					}
-				: run.lastState.coordinator.run_state === 'Paused'
-					? {
-							type: 'paused',
-						}
-					: c.run_state === 'WaitingForMembers'
-						? { type: 'waitingForMembers' }
-						: {
-								type: 'active',
-							},
+			? {
+					type: 'completed',
+					at: run.lastUpdated,
+			  }
+			: run.lastState.coordinator.run_state === 'Paused'
+			? {
+					type: 'paused',
+			  }
+			: c.run_state === 'WaitingForMembers'
+			? { type: 'waitingForMembers' }
+			: {
+					type: 'active',
+			  },
 		pauseHistory: run.pauseTimestamps,
 		totalTokens,
 		lastUpdate: run.lastUpdated,
@@ -763,6 +771,14 @@ function calculateTokens(
 	batchSizeEnd: bigint,
 	warmupTokens: bigint
 ): bigint {
+	console.log(
+		'calculating tokens for step',
+		step,
+		tokensPerSequence,
+		batchSizeStart,
+		batchSizeEnd,
+		warmupTokens
+	)
 	let currentDataIndex = 0n
 
 	for (let i = 0n; i < step; i++) {
@@ -805,8 +821,9 @@ function averageSameStepValues(
 	})
 }
 
-type ValueInMapRecord<MapRecord> =
-	MapRecord extends Map<any, infer I> ? I : never
+type ValueInMapRecord<MapRecord> = MapRecord extends Map<any, infer I>
+	? I
+	: never
 
 type CurrentFormat = V2
 

@@ -1,5 +1,5 @@
 export function createRateLimitedPromise<
-	T extends (...args: any[]) => Promise<any>,
+	T extends (...args: any[]) => Promise<any>
 >(promiseFn: T, maxCalls: number, timeWindowMs: number): T {
 	interface QueuedRequest {
 		args: Parameters<typeof promiseFn>
@@ -131,10 +131,12 @@ export function makeRateLimitedFetch(): typeof fetch {
 			maxRetries: MAX_RETRIES,
 			retryInitTimeMs: RETRY_INIT_TIME_MS,
 			retryMult: RETRY_MULT,
-			onRetry: (attempt, delay) =>
+			onRetry: (attempt, delay) => {
+				/*
 				console.warn(
 					`fetch failed on attempt ${attempt}. retrying after ${delay}...`
-				),
+				),*/
+			},
 		}
 	)
 }

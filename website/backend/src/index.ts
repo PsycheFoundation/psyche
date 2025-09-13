@@ -60,7 +60,7 @@ async function main() {
 			? coordinatorRpc
 			: new Connection(process.env.MINING_POOL_RPC!, {
 					fetch: makeRateLimitedFetch(),
-				})
+			  })
 
 	const { coordinator, miningPool, cancel } =
 		await startIndexingChainToDataStores(
@@ -220,6 +220,8 @@ async function main() {
 			error: coordinatorCrashed,
 		}
 
+		console.log('SENDING DATA:', coordinator.dataStore.getRunSummaries())
+
 		res
 			.header('content-type', 'application/json')
 			.send(JSON.stringify(runs, replacer))
@@ -250,6 +252,8 @@ async function main() {
 				error: coordinatorCrashed,
 				isOnlyRun: coordinator.dataStore.getNumRuns() === 1,
 			}
+			console.log('SENDING DATA:', runId)
+			console.log('data:', data)
 
 			// set header for streaming/non
 			res.header(
