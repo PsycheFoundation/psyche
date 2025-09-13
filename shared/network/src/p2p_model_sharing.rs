@@ -345,6 +345,7 @@ impl TransmittableModelConfig {
 pub struct SharableModel {
     // use a BTreeMap so different systems have the elements in the same order
     // so we can (hopefully) mix and match serialized bytes from them
+    //todo: maybe have a Cow<String> for the names, we're cloning them everwhere
     parameters: Option<BTreeMap<String, Option<TensorWrapper>>>,
     serializing_parameters: Option<
         HashMap<String, JoinHandle<Result<TransmittableModelParameter, SharableModelError>>>,
@@ -493,9 +494,26 @@ impl SharableModel {
         &mut self,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
     ) -> Result<BlobTicket, SharableModelError> {
+        if let Some(ticket) = &self.serialized_model {
+            return Ok(ticket.clone());
+        }
         if let Some(map) = &self.parameters {
-            //todo: check that every param is initialized
-            let bytes = postcard::to_allocvec(map)
+            //todo: check if every item is Some and return some kind of nice error, or better yet, just
+            // get rid of the Option entirely
+            let map_copy = map
+                .iter()
+                .map(|item| {
+                    (
+                        item.0.clone(),
+                        Some(TensorWrapper(item.1.as_ref().unwrap().shallow_clone())),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            let handle = tokio::task::spawn_blocking(move || postcard::to_allocvec(&map_copy));
+
+            let bytes = handle
+                .await
+                .map_err(|_err| SharableModelError::LoadThreadCrashed)?
                 .map_err(|err| SharableModelError::SerializationError(err.to_string()))?;
 
             let ticket = p2p
@@ -503,7 +521,6 @@ impl SharableModel {
                 .await
                 .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
 
-            // todo: check that this is not already set
             self.serialized_model = Some(ticket.clone());
             return Ok(ticket);
         }
