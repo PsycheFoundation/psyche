@@ -491,7 +491,6 @@ impl SharableModel {
         Ok(())
     }
 
-    //todo: figure out a way of offloading this to another thread T_T
     pub async fn get_serialized_model<B: Networkable>(
         &mut self,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
