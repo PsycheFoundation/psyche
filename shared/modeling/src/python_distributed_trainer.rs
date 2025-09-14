@@ -94,15 +94,26 @@ impl PythonDistributedTrainer {
         }
 
         let hyperparameters = serde_json::json!({
+            "operation": "hyperparameters",
             "lr_scheduler": lr_scheduler,
             "optimizer": optimizer,
             "micro_batch_size": micro_batch_size,
             "grad_accum_in_fp32": grad_accum_in_fp32
         });
 
-        comm.set("hyperparameters", &hyperparameters.to_string())?;
-
+        let iteration = model.iteration().fetch_add(1, Ordering::Relaxed);
         let device = model.device();
+
+        trace!(
+            "Sending hyperparameters operation to Python clients, iteration = {}",
+            iteration
+        );
+        comm.set(&iteration.to_string(), &hyperparameters.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, device));
+        comm.all_reduce(&dummy, ReduceType::Sum)?;
+
         let iteration = model.iteration();
         let model: PythonCausalLM = model.into();
         let local = Box::new(LocalTrainer::new(
@@ -142,7 +153,7 @@ impl PythonDistributedTrainer {
 
         // Pad the batch if necessary for FSDP
         if world_size > 1 {
-            debug!(
+            trace!(
                 "Checking batch padding: original batch size = {}, world_size = {}",
                 original_batch_size, world_size
             );
@@ -164,6 +175,8 @@ impl PythonDistributedTrainer {
             BatchData::GPU(batch_data) => batch_data,
             _ => unreachable!(),
         };
+
+        let padded_bs = batch_data.input_ids.size()[0] as f64;
 
         let results_len = match &prev_self_distro_results {
             // we assume (as we do else where) that each result is identically shaped
@@ -226,8 +239,9 @@ impl PythonDistributedTrainer {
             .to_device(self.device);
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
 
-        let loss: f32 = loss.try_into().unwrap();
-        let loss = loss / self.comm.size() as f32; // average from all reduced sums of loss above
+        let mut loss: f32 = loss.try_into().unwrap();
+        loss /= self.comm.size() as f32; // average from all reduced sums of loss above
+        loss *= padded_bs as f32 / original_batch_size as f32; // undilute for padding
 
         trace!("Train operation complete on all Python clients");
 
@@ -410,5 +424,9 @@ impl CausalLM for PythonDistributedTrainer {
 
     fn max_context_length(&self) -> usize {
         self.local.max_context_length()
+    }
+
+    fn shutdown(&self) {
+        self.local.shutdown();
     }
 }

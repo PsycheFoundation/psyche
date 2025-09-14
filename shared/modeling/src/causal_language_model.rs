@@ -41,6 +41,7 @@ pub trait CausalLM: Send {
     fn communicator(&self) -> Option<Arc<Communicator>>;
     fn prepare_for_training(&mut self);
     fn clip_grad_norm(&mut self, max_grad_norm: f64);
+    fn shutdown(&self) {}
 }
 
 pub trait LanguageModelForward: Send + Debug {

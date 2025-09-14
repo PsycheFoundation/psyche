@@ -532,6 +532,9 @@ async fn main() -> Result<()> {
             break;
         }
     }
+    for trainer in trainers {
+        trainer.shutdown();
+    }
     logger.shutdown()?;
     Ok(())
 }

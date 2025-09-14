@@ -154,7 +154,7 @@ impl Batch {
                                 // Use 0 as padding token ID
                                 input_ids: vec![0; seq_len],
                                 // Set labels to -100 so they're ignored in loss computation
-                                labels: Some(vec![-100; seq_len]),
+                                labels: cpu_data[0].labels.as_ref().map(|_| vec![-100; seq_len]),
                                 position_ids: cpu_data[0]
                                     .position_ids
                                     .as_ref()
@@ -169,8 +169,52 @@ impl Batch {
                     }
                 }
             }
-            BatchData::GPU(_) => {
-                unimplemented!("GPU batch padding not implemented");
+            BatchData::GPU(gpu_data) => {
+                let current_batch_size = gpu_data.input_ids.size()[0] as usize;
+                let remainder = current_batch_size % world_size;
+
+                if remainder != 0 {
+                    let padding_needed = world_size - remainder;
+                    trace!(
+                        "Batch size {} not divisible by world_size {}. Adding {} padding samples",
+                        current_batch_size, world_size, padding_needed
+                    );
+
+                    if current_batch_size == 0 {
+                        return;
+                    }
+
+                    let seq_len = gpu_data.input_ids.size()[1];
+                    let device = gpu_data.input_ids.device();
+
+                    let padding_input_ids =
+                        Tensor::zeros([padding_needed as i64, seq_len], (Kind::Int64, device));
+                    gpu_data.input_ids = Tensor::cat(&[&gpu_data.input_ids, &padding_input_ids], 0);
+
+                    if let Some(labels) = gpu_data.labels.take() {
+                        let padding_labels = Tensor::full(
+                            [padding_needed as i64, seq_len],
+                            -100i64,
+                            (Kind::Int64, device),
+                        );
+                        gpu_data.labels = Some(Tensor::cat(&[&labels, &padding_labels], 0));
+                    }
+
+                    if gpu_data.position_ids.is_some() {
+                        let pos_row = Tensor::arange(seq_len, (Kind::Int64, device));
+                        let padding_pos = pos_row.unsqueeze(0).repeat([padding_needed as i64, 1]);
+                        if let Some(pos) = gpu_data.position_ids.take() {
+                            gpu_data.position_ids = Some(Tensor::cat(&[&pos, &padding_pos], 0));
+                        }
+                    }
+
+                    if let Some(seq_lens) = &mut gpu_data.sequence_lengths {
+                        let pad_seq = vec![seq_len as i32; 1];
+                        for _ in 0..padding_needed {
+                            seq_lens.push(pad_seq.clone());
+                        }
+                    }
+                }
             }
         }
     }

@@ -36,7 +36,9 @@ class CausalLM(ABC):
         self,
         input_ids: torch.Tensor,
         labels: Optional[torch.Tensor],
-        num_logits_to_keep: Optional[int] = 0,
+        position_ids: Optional[torch.Tensor] = None,
+        sequence_lengths: Optional[list[list[int]]] = None,
+        num_logits_to_keep: Optional[int] = None,
         loss_scale: Optional[float] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         pass

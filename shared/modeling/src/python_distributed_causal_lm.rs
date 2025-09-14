@@ -1,20 +1,24 @@
 use crate::{
-    Batch, CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType,
-    StableVariableIterator, TrainerThreadCommunicationError,
+    Batch, BatchData, BatchDataGPU, CausalLM, Communicator, ParallelismConfig, PretrainedSource,
+    PythonCausalLM, ReduceType, StableVariableIterator,
     python_causal_lm::{PythonCausalLMError, PythonModelConfig},
 };
 
+use psyche_core::BatchId;
 use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
     process::{Child, Command},
-    sync::{Arc, atomic::AtomicUsize},
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     thread::JoinHandle,
     time::Duration,
 };
-use tch::{Device, Tensor};
+use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tracing::trace;
+use tracing::{debug, trace};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -151,6 +155,21 @@ impl TorchDistributedCommunicator {
             Ok(())
         })
     }
+
+    pub fn all_gather(&self, output_tensors: &[Tensor], input_tensor: &Tensor) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let distributed = Python::import(py, "torch.distributed")?;
+            let all_gather = distributed.getattr("all_gather")?;
+            all_gather.call1((
+                output_tensors
+                    .iter()
+                    .map(|x| PyTensor(x.shallow_clone()))
+                    .collect::<Vec<_>>(),
+                PyTensor(input_tensor.shallow_clone()),
+            ))?;
+            Ok(())
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -271,7 +290,85 @@ impl CausalLM for PythonDistributedCausalLM {
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        unimplemented!();
+        let world_size = self.comm.size();
+        let original_batch_size = x.size()[0] as usize;
+
+        let mut batch = Batch {
+            id: BatchId((0, 0).into()),
+            data: BatchData::GPU(BatchDataGPU {
+                input_ids: x.shallow_clone(),
+                labels: labels.map(|y| y.shallow_clone()),
+                position_ids: position_ids.map(|y| y.shallow_clone()),
+                sequence_lengths: sequence_lengths.cloned(),
+            }),
+        };
+
+        // Pad the batch if necessary for FSDP
+        if world_size > 1 {
+            trace!(
+                "Checking batch padding: original batch size = {}, world_size = {}",
+                original_batch_size, world_size
+            );
+
+            batch.pad(world_size);
+
+            let new_size = batch.data.size();
+            if new_size != original_batch_size {
+                debug!(
+                    "FSDP: Padded batch from {} to {} samples (world_size={})",
+                    original_batch_size, new_size, world_size
+                );
+            }
+        }
+
+        let batch = batch.gpu(self.device());
+        let batch_data = match &batch.data {
+            BatchData::GPU(batch_data) => batch_data,
+            _ => unreachable!(),
+        };
+
+        let operation = serde_json::json!({
+            "operation": "forward",
+            "batch_shape": batch_data.input_ids.size(),
+            "batch_has_labels": batch_data.labels.is_some(),
+            "batch_has_position_ids": batch_data.position_ids.is_some(),
+            "batch_sequence_lengths": batch_data.sequence_lengths,
+            "num_logits_to_keep": num_logits_to_keep,
+            "loss_scale": loss_scale,
+        });
+
+        let iteration = self.iteration.fetch_add(1, Ordering::Relaxed);
+        trace!(
+            "Sending forward operation to Python clients, iteration = {}",
+            iteration
+        );
+
+        self.comm
+            .set(&iteration.to_string(), &operation.to_string())
+            .unwrap();
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
+        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
+
+        self.comm.broadcast(&batch_data.input_ids).unwrap();
+        if let Some(labels) = &batch_data.labels {
+            self.comm.broadcast(labels).unwrap();
+        }
+        if let Some(position_ids) = &batch_data.position_ids {
+            self.comm.broadcast(position_ids).unwrap();
+        }
+
+        let (logits, loss) = self.local.forward(
+            &batch_data.input_ids,
+            batch_data.labels.as_ref(),
+            batch_data.position_ids.as_ref(),
+            batch_data.sequence_lengths.as_ref(),
+            num_logits_to_keep,
+            loss_scale,
+        );
+
+        (logits, loss)
     }
 
     fn device(&self) -> Device {
@@ -307,10 +404,30 @@ impl CausalLM for PythonDistributedCausalLM {
     fn max_context_length(&self) -> usize {
         self.local.max_context_length()
     }
+
+    fn shutdown(&self) {
+        let operation = serde_json::json!({
+            "operation": "exit",
+        });
+
+        let iteration = self.iteration.fetch_add(1, Ordering::Relaxed);
+        trace!(
+            "Sending exit operation to Python clients, iteration = {}",
+            iteration
+        );
+
+        self.comm
+            .set(&iteration.to_string(), &operation.to_string())
+            .unwrap();
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
+        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
+    }
 }
 
-impl Into<PythonCausalLM> for PythonDistributedCausalLM {
-    fn into(self) -> PythonCausalLM {
-        self.local
+impl From<PythonDistributedCausalLM> for PythonCausalLM {
+    fn from(val: PythonDistributedCausalLM) -> Self {
+        val.local
     }
 }

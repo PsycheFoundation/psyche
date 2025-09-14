@@ -62,7 +62,6 @@ impl EvalTask {
         cancel: CancellationToken,
         skip_and_step_by: Option<(usize, usize)>,
         limit: Option<usize>,
-        batch_size: usize,
     ) {
         let result = self.task.run(
             EvalTaskOptions {
@@ -71,7 +70,6 @@ impl EvalTask {
                 live_results: Some(self.results.clone()),
                 cancel: Some(cancel),
                 limit,
-                batch_size,
             },
             false,
         );

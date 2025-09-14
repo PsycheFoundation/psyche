@@ -103,11 +103,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_data_parallel(
     tasks: Vec<Task>,
     repo: Vec<PathBuf>,
     tokenizer: Tokenizer,
-    mut data_parallelism: usize,
+    data_parallelism: usize,
     quiet: bool,
     num_fewshot: usize,
     seed: u64,
@@ -115,8 +116,7 @@ fn run_data_parallel(
 ) -> Result<()> {
     let task_info: Vec<(String, usize, u64)> = tasks
         .iter()
-        .enumerate()
-        .map(|(_i, task)| {
+        .map(|task| {
             (format!("{task}"), num_fewshot, seed) // task_name, num_fewshot, seed
         })
         .collect();
@@ -126,14 +126,14 @@ fn run_data_parallel(
         .map(|_| Arc::new(RunningAverage::new()))
         .collect();
 
-    let mut batch_size = 1;
-    if python && data_parallelism > 1 {
-        batch_size = data_parallelism;
-        data_parallelism = 1;
-    }
+    let threads = if python && data_parallelism > 1 {
+        1
+    } else {
+        data_parallelism
+    };
 
     let mut gpu_handles: Vec<JoinHandle<Result<()>>> = vec![];
-    for gpu_id in 0..data_parallelism {
+    for gpu_id in 0..threads {
         let repo = repo.clone();
         let tokenizer = tokenizer.clone();
         let shared_results = shared_results.clone();
@@ -156,7 +156,7 @@ fn run_data_parallel(
                         psyche_modeling::PretrainedSource::RepoFiles(repo),
                         device,
                         psyche_modeling::ParallelismConfig {
-                            dp: batch_size,
+                            dp: data_parallelism,
                             tp: 1,
                         },
                         None,
@@ -189,7 +189,6 @@ fn run_data_parallel(
                         live_results: Some(shared_results[task_idx].clone()),
                         cancel: None,
                         limit: None,
-                        batch_size,
                     },
                     !quiet,
                 );
@@ -214,7 +213,7 @@ fn run_data_parallel(
             .into_iter()
             .map(|(key, value)| (key, value.unwrap_or(0.0)))
             .collect::<HashMap<String, f64>>();
-        println!("{}: {:?}", task_name, final_scores);
+        println!("{task_name}: {final_scores:?}");
     }
 
     Ok(())

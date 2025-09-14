@@ -232,6 +232,7 @@ fn inference(
             }
         }
     }
+    model.shutdown();
     Ok(())
 }
 
@@ -269,15 +270,14 @@ fn main() -> Result<()> {
         Some(0) | Some(1) | None => inference(repo_files, None, args, seed, tokens, tokenizer)?,
         Some(world_size) => {
             #[cfg(feature = "python")]
-            let id = match args.python {
-                true => CommunicatorId::torch_distributed("nccl", "tcp://127.0.0.1:23456"),
-                #[cfg(feature = "parallelism")]
-                false => tch::CStore::new().into(),
-                #[cfg(not(feature = "parallelism"))]
-                false => CommunicatorId::none(),
-            };
+            {
+                if args.python {
+                    tracing::info!("Faking TP with FSDP");
+                    inference(repo_files, None, args, seed, tokens, tokenizer)?;
+                    return Ok(());
+                }
+            }
 
-            #[cfg(not(feature = "python"))]
             let id: CommunicatorId = {
                 #[cfg(feature = "parallelism")]
                 {
