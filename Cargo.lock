@@ -7292,6 +7292,7 @@ dependencies = [
  "iroh-blobs",
  "iroh-gossip",
  "iroh-relay",
+ "n0-future 0.2.0",
  "postcard",
  "psyche-core",
  "psyche-metrics",

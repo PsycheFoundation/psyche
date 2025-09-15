@@ -52,6 +52,7 @@ pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 pub mod allowlist;
 mod authenticable_identity;
 mod download_manager;
+mod latency_sorted;
 mod local_discovery;
 mod p2p_model_sharing;
 mod peer_list;
@@ -76,6 +77,7 @@ pub use download_manager::{
 };
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
+pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
     ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
 };
@@ -390,14 +392,16 @@ where
         info!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let downloader = self.blobs_store.downloader(&self.endpoint);
+        let endpoint = self.endpoint.clone();
         tokio::spawn(async move {
-            let providers_tactic = Shuffled::new(
+            let latency_sorted = LatencySorted::new(
                 std::iter::once(provider_node_id.node_id)
                     .chain(additional_peers_to_try.iter().cloned())
                     .collect(),
+                endpoint,
             );
             let progress = downloader
-                .download(ticket_hash, providers_tactic)
+                .download(ticket_hash, latency_sorted)
                 .stream()
                 .await;
 
