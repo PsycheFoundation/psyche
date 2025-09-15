@@ -97,26 +97,36 @@ def main():
     if args.parent_pid:
         start_process_watcher(args.parent_pid, timedelta(seconds=1))
 
+    # parse init_method to manually create TCP store
+    store = None
+    if args.init_method.startswith("tcp://"):
+        host_name, port = args.init_method[6:].split(":")
+        store = dist.TCPStore(
+            host_name=host_name,
+            port=int(port),
+            world_size=args.world_size,
+            is_master=False,
+            timeout=timedelta(hours=2),
+            use_libuv=False,
+        )
+
     dist.init_process_group(
         backend=args.backend,
-        init_method=args.init_method,
+        init_method=args.init_method if store is None else None,
+        timeout=timedelta(hours=2),
         world_size=args.world_size,
         rank=args.rank if args.world_size else None,
+        store=store,
     )
 
-    store = dist.distributed_c10d._get_default_store()
-
-    store.wait(["architecture", "source"])
     architecture = store.get("architecture").decode()
     source = store.get("source").decode()
     if source == "files":
-        store.wait(["files"])
         files = store.get("files").decode()
         source = PretrainedSourceRepoFiles(files=json.loads(files))
     else:
         raise ValueError(f"Unsupported source type {source}")
 
-    store.wait(["dp", "tp"])
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
 
@@ -125,11 +135,11 @@ def main():
         architecture,
         source,
         device,
+        attn_implementation="flash_attention_2",
         dp=dp,
         tp=tp,
     )
 
-    store.wait(["hyperparameters"])
     hyperparameters: Hyperparameters = Hyperparameters(
         **json.loads(store.get("hyperparameters").decode())
     )
@@ -150,8 +160,12 @@ def main():
     iteration = 0
 
     while True:
-        store.wait([str(iteration)])
-        operation = json.loads(store.get(str(iteration)).decode())
+        operation = store.get(str(iteration)).decode()
+        operation = json.loads(operation)
+
+        # dummy barrier
+        dummy = torch.zeros((), dtype=torch.float, device=device)
+        dist.all_reduce(dummy)
 
         if operation["operation"] == "train":
             train = TrainOperation(**operation)
@@ -164,20 +178,31 @@ def main():
                     device=device,
                 )
 
-            batch = torch.empty(train.batch_shape, dtype=torch.long, device=device)
-            dist.broadcast(batch, 0)
+            input_ids = torch.empty(train.batch_shape, dtype=torch.long, device=device)
+            labels = (
+                torch.empty(train.batch_shape, dtype=torch.long, device=device)
+                if train.batch_has_labels
+                else None
+            )
+            position_ids = (
+                torch.empty(train.batch_shape, dtype=torch.long, device=device)
+                if train.batch_has_position_ids
+                else None
+            )
+            dist.broadcast(input_ids, 0)
+            if train.batch_has_labels:
+                dist.broadcast(labels, 0)
+            if train.batch_has_position_ids:
+                dist.broadcast(position_ids, 0)
 
-            # world_size = dist.get_world_size()
-            # rank = dist.get_rank()
-            # shard_size = batch.shape[0] // world_size
-            # start_row = rank * shard_size
-            # local_batch = batch.narrow(0, start_row, shard_size).contiguous()
-
-            trainer.train(
+            _, loss = trainer.train(
                 train.step,
-                (train.batch_id[0], train.batch_id[1]),
-                batch,
                 train.zero_optim,
+                (train.batch_id[0], train.batch_id[1]),
+                input_ids,
+                labels,
+                position_ids,
+                train.batch_sequence_lengths,
                 (
                     (train.warmup_lr_between[0], train.warmup_lr_between[1])
                     if train.warmup_lr_between is not None
@@ -185,6 +210,9 @@ def main():
                 ),
                 prev_self_distro_results,
             )
+
+            loss = torch.Tensor([loss]).to(device=device, dtype=torch.float32)
+            dist.all_reduce(loss)
         elif operation["operation"] == "optimize":
             with torch.no_grad():
                 optimize = OptimizeOperation(**operation)

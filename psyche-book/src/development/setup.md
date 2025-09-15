@@ -7,11 +7,17 @@ This is the preferred way of working on Psyche, as it guarantees a consistent de
 
 If you can't / don't want to use Nix, it's also possible to manually install all the required deps for Psyche.
 
-### Any Linux, via Nix
+### Linux & macOS via Nix
 
 #### Installing Nix
 
 To install `nix`, simply run `curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install` or find it at your local package manager.
+
+You may need to add the following line to `~/.config/nix/nix.conf` or `/etc/nix/nix.conf`
+
+```
+experimental-features = nix-command flakes
+```
 
 #### Binary cache
 
@@ -36,6 +42,11 @@ After running `direnv allow` in the Psyche directory once, your terminal will au
 #### Setup Without `direnv`
 
 Each time you open a new shell in the Psyche directory, run `nix develop` to enter a development shell.
+
+#### Platform Differences
+
+- **Linux**: Uses CUDA for NVIDIA GPUs. Full distributed training support with NCCL.
+- **macOS**: Uses Metal Performance Shaders for Apple Silicon GPUs. Single-GPU only (parallelism features disabled).
 
 ### Ubuntu
 
@@ -127,11 +138,6 @@ LIBTORCH = <path_to_libtorch>
 OPENSSL_LIB_DIR = <path_to_openssl>/lib/VC/x64/MT
 OPENSSL_INCLUDE_DIR = <path_to_openssl>/include
 ```
-
-### MacOS / aarch64
-
-These platforms aren't supported right now :(
-PRs welcome!
 
 ### Docker
 

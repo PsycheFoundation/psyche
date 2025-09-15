@@ -3,6 +3,7 @@ use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
+use psyche_modeling::Devices;
 use psyche_network::SecretKey;
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
@@ -87,7 +88,7 @@ pub struct TrainArgs {
 
     /// how often to report metrics thru opentelemetry
     #[clap(long, env,
-    default_value = "10.0",
+    default_value = "60.0",
     value_parser = parse_duration_from_seconds)]
     pub oltp_report_interval: Duration,
 
@@ -115,14 +116,15 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub eval_tasks: Option<String>,
 
-    #[clap(long, default_value_t = 0, env)]
-    pub eval_fewshot: usize,
-
     #[clap(long, default_value_t = 42, env)]
     pub eval_seed: u64,
 
     #[clap(long, env)]
     pub eval_task_max_docs: Option<usize>,
+
+    // enable the execution of the model prompting task
+    #[clap(long, env)]
+    pub prompt_task: bool,
 
     /// If provided, every model parameters update will be save in this directory after each epoch.
     #[clap(long, env)]
@@ -164,6 +166,13 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 4, env)]
     pub max_concurrent_downloads: usize,
+
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    pub device: Devices,
 }
 
 impl TrainArgs {
@@ -224,20 +233,25 @@ impl TrainArgs {
 
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {
         let eval_tasks = match &self.eval_tasks {
-            Some(eval_tasks) => {
-                let result: Result<Vec<psyche_eval::Task>> = eval_tasks
-                    .split(",")
-                    .map(|eval_task| {
-                        tasktype_from_name(eval_task).map(|task_type| {
-                            psyche_eval::Task::new(task_type, self.eval_fewshot, self.eval_seed)
-                        })
-                    })
-                    .collect();
-                result?
-            }
+            Some(eval_tasks) => Self::eval_tasks_from_args(eval_tasks, self.eval_seed)?,
             None => Vec::new(),
         };
         Ok(eval_tasks)
+    }
+
+    pub fn eval_tasks_from_args(
+        eval_tasks: &str,
+        eval_seed: u64,
+    ) -> Result<Vec<psyche_eval::Task>> {
+        let result: Result<Vec<psyche_eval::Task>> = eval_tasks
+            .split(",")
+            .map(|eval_task| {
+                let fewshot = { if eval_task == "mmlu_pro" { 5 } else { 0 } };
+                tasktype_from_name(eval_task)
+                    .map(|task_type| psyche_eval::Task::new(task_type, fewshot, eval_seed))
+            })
+            .collect();
+        result
     }
 }
 

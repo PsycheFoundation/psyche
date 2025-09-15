@@ -1,16 +1,16 @@
-use anyhow::{Error, Result};
-use clap::Parser;
+use anyhow::{Error, Result, anyhow};
+use clap::{Parser, ValueEnum};
 use psyche_data_provider::download_model_repo_sync;
 use psyche_modeling::{
-    CausalLM, CommunicatorId, LogitsProcessor, Sampling, TokenOutputStream,
-    auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
+    AttentionImplementation, CausalLM, CommunicatorId, Devices, LogitsProcessor, Sampling,
+    TokenOutputStream, auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
 };
 use std::{
     io::Write,
     path::PathBuf,
     sync::{Arc, Barrier},
 };
-use tch::{Device, Kind, Tensor};
+use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 
 const DEFAULT_PROMPT: &str = r"
@@ -65,6 +65,25 @@ Whate'er it bodes, henceforward will I bear
 Upon my target three fair-shining suns.
 ";
 
+#[derive(ValueEnum, Clone, Debug)]
+enum AttnImpl {
+    Eager,
+    Sdpa,
+    #[cfg(feature = "parallelism")]
+    FlashAttention2,
+}
+
+impl From<AttnImpl> for AttentionImplementation {
+    fn from(val: AttnImpl) -> Self {
+        match val {
+            AttnImpl::Eager => AttentionImplementation::Eager,
+            AttnImpl::Sdpa => AttentionImplementation::Sdpa,
+            #[cfg(feature = "parallelism")]
+            AttnImpl::FlashAttention2 => AttentionImplementation::FlashAttention2,
+        }
+    }
+}
+
 #[derive(Parser, Debug, Clone)]
 struct Args {
     #[arg(long, default_value = "NousResearch/Llama-2-7b-hf")]
@@ -91,6 +110,16 @@ struct Args {
     #[arg(long)]
     tensor_parallelism: Option<usize>,
 
+    #[arg(long)]
+    attn_implementation: Option<AttnImpl>,
+
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    device: Devices,
+
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
@@ -110,7 +139,12 @@ fn inference(
         .as_ref()
         .map(|(_, rank, _, _)| *rank)
         .unwrap_or(0);
-    let device = Device::Cuda(rank);
+    let device = args.device.device_for_rank(rank).ok_or_else(|| {
+        anyhow!(
+            "device not available for rank {rank} with devices {}",
+            args.device
+        )
+    })?;
 
     #[cfg(feature = "python")]
     let python = args.python;
@@ -127,7 +161,14 @@ fn inference(
 
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             Box::new(psyche_modeling::PythonCausalLM::new(
-                "hf-auto", &source, device, None, None,
+                "hf-auto",
+                &source,
+                device,
+                args.attn_implementation
+                    .map(|x| x.into())
+                    .unwrap_or_default(),
+                None,
+                None,
             )?) as Box<dyn CausalLM>
         }
         #[cfg(not(feature = "python"))]
@@ -136,7 +177,7 @@ fn inference(
         auto_model_for_causal_lm_from_pretrained(
             repo_files,
             Some(Kind::BFloat16),
-            None,
+            args.attn_implementation.map(|x| x.into()),
             tensor_parallelism.as_ref().map(|_| device),
             tensor_parallelism
                 .as_ref()
@@ -173,7 +214,7 @@ fn inference(
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
-        let (logits, _) = model.forward(&input, None, Some(1), None);
+        let (logits, _) = model.forward(&input, None, None, None, Some(1), None);
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
@@ -215,7 +256,13 @@ fn main() -> Result<()> {
             .map(|x| x.unwrap().path())
             .collect::<Vec<_>>()
     } else {
-        download_model_repo_sync(&args.model.clone(), args.revision.clone(), None, None, true)?
+        download_model_repo_sync(
+            &args.model.clone(),
+            args.revision.clone(),
+            None,
+            std::env::var("HF_TOKEN").ok(),
+            true,
+        )?
     };
     let tokenizer = auto_tokenizer(&repo_files)?;
 

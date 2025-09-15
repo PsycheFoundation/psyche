@@ -1,6 +1,7 @@
 use crate::{
-    AutoConfig, CausalLM, Communicator, EosToks, ModelConfig, ModelLoadError, ParallelismConfig,
-    PretrainedSource, StableVariableIterator, Variable,
+    AttentionImplementation, AutoConfig, CausalLM, Communicator, EosToks, ModelConfig,
+    ModelLoadError, ParallelismConfig, PretrainedSource, StableVariableIterator, Variable,
+    device_utils::DevicePytorchStr,
 };
 
 use pyo3::{
@@ -96,6 +97,14 @@ impl PythonModelConfig {
                 _ => None,
             })
     }
+
+    pub fn max_position_embeddings(&self) -> Option<usize> {
+        self.config
+            .as_object()
+            .and_then(|x| x.get("max_position_embeddings"))
+            .and_then(|x| x.as_u64())
+            .map(|x| x as usize)
+    }
 }
 
 #[derive(Debug, Error)]
@@ -114,6 +123,7 @@ pub struct PythonCausalLM {
     order: StablePythonParametersIterator,
     bos_token_id: Option<i64>,
     eos_token_id: Option<EosToks>,
+    max_context_length: usize,
 }
 
 unsafe impl Send for PythonCausalLM {}
@@ -123,6 +133,7 @@ impl PythonCausalLM {
         architecture: &str,
         source: &PretrainedSource<PythonModelConfig>,
         device: Device,
+        attn_implementation: AttentionImplementation,
         parallelism: Option<ParallelismConfig>,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<PythonCausalLM, PythonCausalLMError> {
@@ -162,7 +173,8 @@ impl PythonCausalLM {
             let args = (
                 architecture,
                 source,
-                device.c_int(),
+                device.to_pytorch_device_string(),
+                attn_implementation.to_pytorch_attn_impl_str().to_owned(),
                 parallelism.as_ref().map(|x| x.dp).unwrap_or(1),
                 parallelism.as_ref().map(|x| x.tp).unwrap_or(1),
                 override_max_position_embeddings,
@@ -172,12 +184,16 @@ impl PythonCausalLM {
         });
         let causal_lm = result?;
         let order = StablePythonParametersIterator::new(&causal_lm);
+        let max_context_length = override_max_position_embeddings
+            .or(config.max_position_embeddings())
+            .unwrap_or(2048); // Default fallback
         Ok(Self {
             causal_lm,
             device,
             order,
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
+            max_context_length,
         })
     }
 
@@ -189,6 +205,7 @@ impl PythonCausalLM {
             device,
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
+            max_context_length: config.max_position_embeddings().unwrap_or(2048),
         }
     }
 
@@ -202,6 +219,8 @@ impl CausalLM for PythonCausalLM {
         &mut self,
         input_ids: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
@@ -210,7 +229,15 @@ impl CausalLM for PythonCausalLM {
             let forward = causal_lm.getattr("forward")?;
             let input_ids = PyTensor(input_ids.shallow_clone());
             let labels = labels.map(|x| PyTensor(x.shallow_clone()));
-            let args = (input_ids, labels, num_logits_to_keep, loss_scale);
+            let position_ids = position_ids.map(|x| PyTensor(x.shallow_clone()));
+            let args = (
+                input_ids,
+                labels,
+                position_ids,
+                sequence_lengths,
+                num_logits_to_keep,
+                loss_scale,
+            );
             let result: Bound<PyTuple> = forward.call1(args)?.downcast_into()?;
             let logits = result.get_item(0)?;
             let logits: PyTensor = logits.extract()?;
@@ -286,6 +313,10 @@ impl CausalLM for PythonCausalLM {
     fn eos_token_ids(&self) -> Option<EosToks> {
         self.eos_token_id.clone()
     }
+
+    fn max_context_length(&self) -> usize {
+        self.max_context_length
+    }
 }
 
 #[derive(Debug)]
@@ -295,6 +326,7 @@ struct DTensorReferences {
     zeros_like: PyObject,
     local_tensor: PyObject,
     set_grad: PyObject,
+    zero_grad: PyObject,
 }
 
 #[derive(Debug)]
@@ -338,12 +370,14 @@ impl StablePythonParametersIterator {
             let zeros_like = psyche.getattr("zeros_like")?.unbind();
             let local_tensor = psyche.getattr("local_tensor")?;
             let set_grad = psyche.getattr("set_grad")?.unbind();
+            let zero_grad = psyche.getattr("zero_grad")?.unbind();
             let dtensor_references = Arc::new(DTensorReferences {
                 gather_full_tensor,
                 calculate_local_tensor_from_full,
                 zeros_like,
                 local_tensor: local_tensor.clone().unbind(),
                 set_grad,
+                zero_grad,
             });
             let causal_lm = causal_lm.bind(py);
             let named_parameters = causal_lm.getattr("named_parameters")?;
@@ -502,11 +536,19 @@ impl Variable for PythonCausalLMVariable {
     }
 
     fn set_grad(&self, tensor: Tensor) {
-        // let tensor = self.calculate_local_tensor_from_full(tensor);
         Python::with_gil(|py| {
             let set_grad = self.dtensor_references.set_grad.bind(py);
             set_grad
                 .call1((PyTensor(self.tensor.shallow_clone()), PyTensor(tensor)))
+                .unwrap();
+        });
+    }
+
+    fn zero_grad(&self) {
+        Python::with_gil(|py| {
+            let zero_grad = self.dtensor_references.zero_grad.bind(py);
+            zero_grad
+                .call1((PyTensor(self.tensor.shallow_clone()),))
                 .unwrap();
         });
     }

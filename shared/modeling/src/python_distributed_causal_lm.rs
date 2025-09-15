@@ -1,6 +1,6 @@
 use crate::{
-    CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType,
-    StableVariableIterator,
+    AttentionImplementation, CausalLM, Communicator, ParallelismConfig, PretrainedSource,
+    PythonCausalLM, ReduceType, StableVariableIterator,
     python_causal_lm::{PythonCausalLMError, PythonModelConfig},
 };
 
@@ -10,13 +10,15 @@ use std::{
     process::{Child, Command},
     sync::Arc,
     thread::JoinHandle,
+    time::Duration,
 };
 use tch::{Device, Tensor};
 use thiserror::Error;
+use tracing::trace;
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
-    #[error("Local deivce must be rank 0, instead got {0}")]
+    #[error("Local device must be rank 0, instead got {0}")]
     LocalNotRankZero(usize),
 
     #[error("Local device not a CUDA device")]
@@ -34,7 +36,7 @@ pub enum PythonDistributedCausalLMError {
 
 #[derive(Debug, Clone)]
 pub struct TorchDistributedCommunicator {
-    store: PyObject,
+    store: Arc<PyObject>,
     rank: Option<usize>,
     world_size: Option<usize>,
 }
@@ -50,12 +52,38 @@ impl TorchDistributedCommunicator {
     ) -> PyResult<Self> {
         let result: PyResult<PyObject> = Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
+            let timeout = Duration::from_secs(60 * 60 * 2); // use a large timeout for warmup
+
+            let store = match &init_method {
+                Some(init_method) => {
+                    if let Some(init_method) = init_method.strip_prefix("tcp://") {
+                        let (host_name, port) = init_method.split_once(":").unwrap();
+                        let tcp_store = distributed.getattr("TCPStore")?;
+                        let kwargs = PyDict::new(py);
+                        kwargs.set_item("host_name", host_name).unwrap();
+                        kwargs
+                            .set_item("port", port.parse::<usize>().unwrap())
+                            .unwrap();
+                        kwargs.set_item("world_size", world_size.unwrap()).unwrap();
+                        kwargs.set_item("is_master", true).unwrap();
+                        kwargs.set_item("timeout", timeout).unwrap();
+                        kwargs.set_item("use_libuv", false).unwrap();
+                        Some(tcp_store.call((), Some(&kwargs))?)
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            };
+
             let init_process_group = distributed.getattr("init_process_group")?;
             let kwargs = PyDict::new(py);
             if let Some(backend) = backend {
                 kwargs.set_item("backend", backend).unwrap();
             }
-            if let Some(init_method) = init_method {
+            if let Some(store) = store.clone() {
+                kwargs.set_item("store", store).unwrap();
+            } else if let Some(init_method) = init_method {
                 kwargs.set_item("init_method", init_method).unwrap();
             }
             if let Some(world_size) = world_size {
@@ -64,26 +92,37 @@ impl TorchDistributedCommunicator {
             if let Some(rank) = rank {
                 kwargs.set_item("rank", rank).unwrap();
             }
+            kwargs.set_item("timeout", timeout).unwrap();
             init_process_group.call((), Some(&kwargs))?;
-            let distributed_c10d = Python::import(py, "torch.distributed.distributed_c10d")?;
-            let get_default_store = distributed_c10d.getattr("_get_default_store")?;
-            let store = get_default_store.call0()?;
+
+            let store = match store {
+                Some(store) => store,
+                None => {
+                    let distributed_c10d =
+                        Python::import(py, "torch.distributed.distributed_c10d")?;
+                    let get_default_store = distributed_c10d.getattr("_get_default_store")?;
+                    get_default_store.call0()?
+                }
+            };
+
             Ok(store.unbind())
         });
         Ok(Self {
-            store: result?,
+            store: Arc::new(result?),
             rank,
             world_size,
         })
     }
 
     pub fn set(&self, key: &str, value: &str) -> PyResult<()> {
-        Python::with_gil(|py| {
+        let ret = Python::with_gil(|py| {
             let store = self.store.bind(py);
             let set = store.getattr("set")?;
             let _res = set.call1((key, value))?;
             Ok(())
-        })
+        });
+        trace!("Set key {} (length {}) in store", key, value.len());
+        ret
     }
 
     pub fn size(&self) -> usize {
@@ -108,7 +147,7 @@ impl TorchDistributedCommunicator {
         Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
             let all_reduce = distributed.getattr("all_reduce")?;
-            all_reduce.call1((PyTensor(tensor.shallow_clone()), 0))?;
+            all_reduce.call1((PyTensor(tensor.shallow_clone()),))?;
             Ok(())
         })
     }
@@ -130,6 +169,7 @@ impl PythonDistributedCausalLM {
         architecture: String,
         source: PretrainedSource<PythonModelConfig>,
         device: Device,
+        attn_implementation: AttentionImplementation,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
@@ -137,6 +177,8 @@ impl PythonDistributedCausalLM {
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
+                // TODO: is this actually a bug?
+                // Does the 0th cuda device *have* to be rank 0?
                 return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank));
             }
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
@@ -172,6 +214,7 @@ impl PythonDistributedCausalLM {
                     &architecture,
                     &source,
                     device,
+                    attn_implementation,
                     Some(parallelism),
                     override_max_position_embeddings,
                 )?;
@@ -220,11 +263,19 @@ impl CausalLM for PythonDistributedCausalLM {
         &mut self,
         x: &Tensor,
         labels: Option<&tch::Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local
-            .forward(x, labels, num_logits_to_keep, loss_scale)
+        self.local.forward(
+            x,
+            labels,
+            position_ids,
+            sequence_lengths,
+            num_logits_to_keep,
+            loss_scale,
+        )
     }
 
     fn device(&self) -> Device {
@@ -255,5 +306,9 @@ impl CausalLM for PythonDistributedCausalLM {
 
     fn eos_token_ids(&self) -> Option<crate::EosToks> {
         self.local.eos_token_ids()
+    }
+
+    fn max_context_length(&self) -> usize {
+        self.local.max_context_length()
     }
 }

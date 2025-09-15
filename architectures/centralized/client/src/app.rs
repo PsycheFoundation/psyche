@@ -7,6 +7,7 @@ use psyche_client::{
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
+use psyche_modeling::Devices;
 use psyche_network::{
     AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
     SecretKey, TcpClient, allowlist, psyche_relay_map,
@@ -100,6 +101,7 @@ pub struct AppParams {
     pub p2p_interface: Option<String>,
     pub eval_tasks: Vec<psyche_eval::Task>,
     pub eval_task_max_docs: Option<usize>,
+    pub prompt_task: bool,
     pub checkpoint_upload_info: Option<CheckpointConfig>,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
@@ -111,6 +113,7 @@ pub struct AppParams {
     pub max_concurrent_parameter_requests: usize,
     pub max_concurrent_downloads: usize,
     pub metrics_local_port: Option<u16>,
+    pub device: Devices,
 }
 
 impl AppBuilder {
@@ -160,6 +163,7 @@ impl AppBuilder {
             write_gradients_dir: p.write_gradients_dir,
             eval_tasks: p.eval_tasks,
             eval_task_max_docs: p.eval_task_max_docs,
+            prompt_task: p.prompt_task,
             checkpoint_config: p.checkpoint_upload_info,
             hub_read_token: p.hub_read_token,
             hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
@@ -171,6 +175,7 @@ impl AppBuilder {
             grad_accum_in_fp32: p.grad_accum_in_fp32,
             dummy_training_delay_secs: p.dummy_training_delay_secs,
             max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+            device: p.device,
         };
         let app = App {
             cancel: p.cancel,

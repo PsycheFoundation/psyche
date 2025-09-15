@@ -127,6 +127,7 @@ pub fn dummy_client_app_params_with_training_delay(
         p2p_port: None,
         p2p_interface: None,
         eval_tasks: Vec::new(),
+        prompt_task: false,
         eval_task_max_docs: None,
         checkpoint_upload_info: None,
         hub_read_token: None,
@@ -139,6 +140,7 @@ pub fn dummy_client_app_params_with_training_delay(
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
         metrics_local_port: None,
+        device: Default::default(),
     }
 }
 
@@ -157,6 +159,7 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         p2p_interface: None,
         eval_tasks: Vec::new(),
         eval_task_max_docs: None,
+        prompt_task: false,
         checkpoint_upload_info: None,
         hub_read_token: None,
         hub_max_concurrent_downloads: 1,
@@ -168,5 +171,6 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         max_concurrent_parameter_requests: 10,
         max_concurrent_downloads: 10,
         metrics_local_port: None,
+        device: Default::default(),
     }
 }

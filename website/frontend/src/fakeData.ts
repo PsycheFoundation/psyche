@@ -146,6 +146,9 @@ export const makeFakeRunData: Record<
 					info: fakeRunSummaries[0],
 					programId: FAKE_COORD_PROGRAM_ID,
 					recentTxs: [],
+					promptResults: [],
+					promptIndex: 0,
+					cumulativePromptResults: [],
 					metrics: {
 						summary: {
 							loss: 0.0,
@@ -153,6 +156,9 @@ export const makeFakeRunData: Record<
 							tokensPerSecond: 0.0,
 							evals: {},
 							lr: 0.004,
+							promptResults: [],
+							promptIndex: 0,
+							cumulativePromptResults: [],
 						},
 						history: {
 							loss: [],
@@ -160,6 +166,9 @@ export const makeFakeRunData: Record<
 							tokensPerSecond: [],
 							evals: {},
 							lr: [],
+							promptResults: [],
+							promptIndex: [],
+							cumulativePromptResults: [],
 						},
 					},
 				},
@@ -167,6 +176,9 @@ export const makeFakeRunData: Record<
 		info: fakeRunSummaries[1],
 		programId: FAKE_COORD_PROGRAM_ID,
 		recentTxs: [],
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.0,
@@ -174,6 +186,9 @@ export const makeFakeRunData: Record<
 				tokensPerSecond: 0.0,
 				evals: {},
 				lr: 0.004,
+				promptResults: [],
+				promptIndex: 0,
+				cumulativePromptResults: [],
 			},
 			history: {
 				loss: [],
@@ -181,6 +196,9 @@ export const makeFakeRunData: Record<
 				tokensPerSecond: [],
 				evals: {},
 				lr: [],
+				promptResults: [],
+				promptIndex: [],
+				cumulativePromptResults: [],
 			},
 		},
 	}),
@@ -188,6 +206,9 @@ export const makeFakeRunData: Record<
 		info: fakeRunSummaries[2],
 		programId: FAKE_COORD_PROGRAM_ID,
 		recentTxs: [],
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.18,
@@ -199,6 +220,9 @@ export const makeFakeRunData: Record<
 					recall: 0.9,
 				},
 				lr: 0.0005,
+				promptResults: [],
+				promptIndex: 0,
+				cumulativePromptResults: [],
 			},
 			history: {
 				loss: randomWalk(1, 1, 1, 1.1),
@@ -210,6 +234,9 @@ export const makeFakeRunData: Record<
 					precision: randomWalk(1, 1),
 					recall: randomWalk(1, 1),
 				},
+				promptResults: [],
+				promptIndex: [],
+				cumulativePromptResults: [],
 			},
 		},
 	}),
@@ -324,6 +351,9 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 				time: new Date(Date.now() - step * 3_000),
 			},
 		})),
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.32 + seededRandom() * 0.3,
@@ -337,6 +367,9 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 					bananas: 0.85,
 					sphereEval: 0.85,
 				},
+				promptResults: [],
+				promptIndex: 0,
+				cumulativePromptResults: [],
 			},
 			history: {
 				loss: randomWalk(seed, 1, undefined, undefined, step),
@@ -348,6 +381,9 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 					precision: randomWalk(seed, 1, undefined, undefined, step),
 					recall: randomWalk(seed, 1, undefined, undefined, step),
 				},
+				promptResults: [],
+				promptIndex: [],
+				cumulativePromptResults: [],
 			},
 		},
 		state: {

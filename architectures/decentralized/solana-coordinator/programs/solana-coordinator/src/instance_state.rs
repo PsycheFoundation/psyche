@@ -323,7 +323,7 @@ impl CoordinatorInstanceState {
                 }
                 client.id = id; // IMPORTANT. Equality is on wallet key but includes ephemeral p2p key
                 client.active = self.clients_state.next_active;
-                msg!("Exisiting client {} re-joined", id.signer);
+                msg!("Existing client {} re-joined", id.signer);
                 true
             },
             None => false,

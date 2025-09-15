@@ -127,6 +127,7 @@ async fn async_main() -> Result<()> {
                 write_gradients_dir: args.write_gradients_dir,
                 eval_task_max_docs: args.eval_task_max_docs,
                 eval_tasks,
+                prompt_task: args.prompt_task,
                 checkpoint_upload_info,
                 hub_read_token,
                 hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
@@ -138,6 +139,7 @@ async fn async_main() -> Result<()> {
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 max_concurrent_downloads: args.max_concurrent_downloads,
                 metrics_local_port: args.metrics_local_port,
+                device: args.device,
             })
             .build()
             .await

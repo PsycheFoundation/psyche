@@ -13,7 +13,7 @@ fmt:
 
 # spin up a local testnet
 local-testnet *args='':
-    cargo run -p psyche-centralized-local-testnet -- start {{ args }}
+    OLTP_METRICS_URL="http://localhost:4318/v1/metrics" OLTP_TRACING_URL="http://localhost:4318/v1/traces" OLTP_LOGS_URL="http://localhost:4318/v1/logs" cargo run -p psyche-centralized-local-testnet -- start {{ args }}
 
 # run integration tests
 integration-test test_name="":
@@ -55,6 +55,13 @@ start-training-localnet-client run_id="test" *args='':
 # Start client for training on localnet without data parallelism features and using light model.
 start-training-localnet-light-client run_id="test" *args='':
     RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
+OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
+
+# The same command as above but with arguments set to export telemetry data
+start-training-localnet-light-client-telemetry run_id="test" *args='':
+    OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
 DEVNET_RPC := "https://api.devnet.solana.com"
 DEVNET_WS_RPC := "wss://api.devnet.solana.com"
@@ -118,8 +125,8 @@ docker_push_centralized_client:
 
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra:
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
+    cd architectures/decentralized/solana-coordinator && anchor build
+    cd architectures/decentralized/solana-authorizer && anchor build
     just nix build_docker_solana_test_client
     just nix build_docker_solana_test_validator
 
