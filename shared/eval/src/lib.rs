@@ -52,7 +52,7 @@ pub fn tasktype_from_name(name: &str) -> Result<TaskType> {
         "arc_challenge" => ArcChallenge::load(),
         "arc_easy" => ArcEasy::load(),
         "boolq" => BoolQ::load(),
-        "ceval" => CEval::load(),
+        "ceval_valid" => CEval::load(),
         "hellaswag" => Hellaswag::load(),
         "mmlu_pro" => MMLUPro::load(),
         "mmlu" => MMLU::load(),

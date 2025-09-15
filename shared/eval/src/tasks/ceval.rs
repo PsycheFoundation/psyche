@@ -104,7 +104,7 @@ impl CEval {
     }
 
     pub const fn name() -> &'static str {
-        "CEval"
+        "CEval-valid"
     }
 
     fn get_subject_chinese_name(subject_en: &str) -> &str {
