@@ -198,7 +198,7 @@ def main():
                 raise ValueError("FP32 reduce not supported in Python Hf yet")
 
             trainer = Trainer(
-                args.rank,
+                device,
                 model,
                 json.dumps(hyperparameters.lr_scheduler),
                 json.dumps(hyperparameters.optimizer),

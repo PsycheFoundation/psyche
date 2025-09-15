@@ -161,6 +161,7 @@ fn run_data_parallel(
                             tp: 1,
                         },
                         None,
+                        None,
                     )?) as Box<dyn CausalLM>
                 }
 
