@@ -246,7 +246,6 @@ async fn handle_connection<A: Allowlist + 'static + Send>(
         }
     } else {
         warn!("Ignoring connection: unsupported ALPN protocol");
-        return;
     }
 }
 

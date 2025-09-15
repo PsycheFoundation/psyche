@@ -192,7 +192,7 @@ fn run_data_parallel(
             .into_iter()
             .map(|(key, value)| (key, value.unwrap_or(0.0)))
             .collect::<HashMap<String, f64>>();
-        println!("{}: {:?}", task_name, final_scores);
+        println!("{task_name}: {final_scores:?}");
     }
 
     Ok(())
