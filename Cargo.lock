@@ -4470,7 +4470,8 @@ dependencies = [
 [[package]]
 name = "iroh-blobs"
 version = "0.93.0"
-source = "git+https://github.com/NousResearch/iroh-blobs?rev=f68fe087b85894a6e4a89a10993c3bd8f71594e6#f68fe087b85894a6e4a89a10993c3bd8f71594e6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d26339cddac491899d7e38d4ff24a629b893f7e7fbaa7e818742477ab7442efb"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -4488,7 +4489,7 @@ dependencies = [
  "iroh-metrics",
  "iroh-quinn",
  "irpc",
- "n0-future 0.2.0",
+ "n0-future 0.1.3",
  "n0-snafu",
  "nested_enum_utils",
  "postcard",

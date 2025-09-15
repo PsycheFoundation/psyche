@@ -8,7 +8,7 @@ use iroh::{
     endpoint::{RemoteInfo, TransportConfig},
     protocol::Router,
 };
-use iroh_blobs::{BlobsProtocol, api::downloader::Shuffled, store::mem::MemStore};
+use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
     net::Gossip,

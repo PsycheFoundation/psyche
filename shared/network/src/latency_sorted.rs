@@ -1,11 +1,11 @@
 use futures_util::StreamExt;
-use futures_util::stream::{self, BoxStream};
+use futures_util::stream::{self};
 use iroh::{Endpoint, NodeId};
 use iroh_blobs::HashAndFormat;
 use iroh_blobs::api::downloader::ContentDiscovery;
 use n0_future::stream::Boxed;
 use std::time::Duration;
-use tracing::{debug, trace};
+use tracing::debug;
 
 /// A ContentDiscovery implementation that orders providers by ascending connection latency.
 #[derive(Debug)]
