@@ -6,6 +6,7 @@
 
 let
   cudaSupported = builtins.elem system [ "x86_64-linux" ];
+  metalSupported = builtins.elem system [ "aarch64-darwin" ];
   cudaVersion = "12.8";
 in
 (
@@ -53,6 +54,15 @@ in
               });
 
             torch = torch-bin;
+            transformers = pyprev.transformers.overrideAttrs (oldAttrs: {
+              version = "4.56.1";
+              src = prev.fetchFromGitHub {
+                owner = "huggingface";
+                repo = "transformers";
+                tag = "v${oldAttrs.version}";
+                hash = "sha256-92l1eEiqd3R9TVwNDBee6HsyfnRW1ezEi5fzVqmh76c=";
+              };
+            });
           };
         };
       })
@@ -67,10 +77,14 @@ in
 
     config = {
       allowUnfree = true;
+      metalSupport = lib.mkDefault false;
     }
     // lib.optionalAttrs cudaSupported {
       cudaSupport = true;
       inherit cudaVersion;
+    }
+    // lib.optionalAttrs metalSupported {
+      metalSupport = true;
     };
   }
 )

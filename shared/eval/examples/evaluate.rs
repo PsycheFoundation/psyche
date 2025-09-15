@@ -97,8 +97,7 @@ fn run_data_parallel(
 ) -> Result<()> {
     let task_info: Vec<(String, usize, u64)> = tasks
         .iter()
-        .enumerate()
-        .map(|(_i, task)| {
+        .map(|task| {
             (format!("{task}"), num_fewshot, seed) // task_name, num_fewshot, seed
         })
         .collect();
@@ -135,7 +134,7 @@ fn run_data_parallel(
                 let task_type = tasktype_from_name(&task_name)?;
                 let task = Task::new(task_type, num_fewshot, seed + task_idx as u64);
 
-                let _result = task.prepare(&tokenizer, None).run(
+                task.prepare(&tokenizer, None).run(
                     EvalTaskOptions {
                         model: model.as_mut(),
                         skip_and_step_by: Some((gpu_id, data_parallelism)),
@@ -166,7 +165,7 @@ fn run_data_parallel(
             .into_iter()
             .map(|(key, value)| (key, value.unwrap_or(0.0)))
             .collect::<HashMap<String, f64>>();
-        println!("{}: {:?}", task_name, final_scores);
+        println!("{task_name}: {final_scores:?}");
     }
 
     Ok(())

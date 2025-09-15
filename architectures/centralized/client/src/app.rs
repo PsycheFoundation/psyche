@@ -7,6 +7,7 @@ use psyche_client::{
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
+use psyche_modeling::Devices;
 use psyche_network::{
     AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, SecretKey,
     TcpClient, allowlist,
@@ -111,6 +112,7 @@ pub struct AppParams {
     pub discovery_mode: DiscoveryMode,
     pub max_concurrent_parameter_requests: usize,
     pub metrics_local_port: Option<u16>,
+    pub device: Devices,
 }
 
 impl AppBuilder {
@@ -170,6 +172,7 @@ impl AppBuilder {
             grad_accum_in_fp32: p.grad_accum_in_fp32,
             dummy_training_delay_secs: p.dummy_training_delay_secs,
             max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+            device: p.device,
         };
         let app = App {
             cancel: p.cancel,

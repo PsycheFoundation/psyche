@@ -138,6 +138,7 @@ async fn async_main() -> Result<()> {
                 discovery_mode: DiscoveryMode::N0,
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 metrics_local_port: args.metrics_local_port,
+                device: args.device,
             })
             .build()
             .await
