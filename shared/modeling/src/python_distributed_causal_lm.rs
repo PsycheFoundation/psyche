@@ -1,7 +1,7 @@
 use crate::{
     Batch, BatchData, BatchDataGPU, CausalLM, Communicator, ParallelismConfig, PretrainedSource,
     PythonCausalLM, ReduceType, StableVariableIterator,
-    python_causal_lm::{PythonCausalLMError, PythonModelConfig},
+    python_causal_lm::{PythonCausalLMError, PythonModelConfig, WrappedPythonCausalLM},
 };
 
 use psyche_core::BatchId;
@@ -175,7 +175,7 @@ impl TorchDistributedCommunicator {
 #[derive(Debug)]
 pub struct PythonDistributedCausalLM {
     comm: TorchDistributedCommunicator,
-    local: PythonCausalLM,
+    pub(crate) local: WrappedPythonCausalLM,
     // synchronizes access to underlying model
     iteration: Arc<AtomicUsize>,
     pub(crate) parallelism: ParallelismConfig,
@@ -268,7 +268,7 @@ impl PythonDistributedCausalLM {
 
         Ok(Self {
             comm,
-            local,
+            local: local.into(),
             parallelism,
             children,
             iteration: Arc::new(AtomicUsize::new(0)),
@@ -282,7 +282,7 @@ impl PythonDistributedCausalLM {
 
 impl CausalLM for PythonDistributedCausalLM {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&tch::Tensor>,
         position_ids: Option<&Tensor>,
@@ -381,7 +381,7 @@ impl CausalLM for PythonDistributedCausalLM {
         Some(Arc::new(self.comm.clone().into()))
     }
 
-    fn prepare_for_training(&mut self) {
+    fn prepare_for_training(&self) {
         self.local.prepare_for_training();
     }
 
@@ -389,7 +389,7 @@ impl CausalLM for PythonDistributedCausalLM {
         self.local.variables()
     }
 
-    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
+    fn clip_grad_norm(&self, max_grad_norm: f64) {
         self.local.clip_grad_norm(max_grad_norm);
     }
 
@@ -423,11 +423,5 @@ impl CausalLM for PythonDistributedCausalLM {
         // barrier to ensure everyone has seen the broadcast
         let dummy = Tensor::zeros([], (Kind::Float, self.device()));
         self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
-    }
-}
-
-impl From<PythonDistributedCausalLM> for PythonCausalLM {
-    fn from(val: PythonDistributedCausalLM) -> Self {
-        val.local
     }
 }

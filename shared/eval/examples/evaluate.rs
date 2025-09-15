@@ -181,11 +181,10 @@ fn run_data_parallel(
             for (task_idx, (task_name, num_fewshot, seed)) in task_info.into_iter().enumerate() {
                 let task_type = tasktype_from_name(&task_name)?;
                 let task = Task::new(task_type, num_fewshot, seed + task_idx as u64);
-
                 let _ = task.prepare(&tokenizer, None).run(
                     EvalTaskOptions {
                         model: model.as_mut(),
-                        skip_and_step_by: Some((gpu_id, data_parallelism)),
+                        skip_and_step_by: Some((gpu_id, threads)),
                         live_results: Some(shared_results[task_idx].clone()),
                         cancel: None,
                         limit: None,

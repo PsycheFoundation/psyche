@@ -1125,7 +1125,7 @@ pub enum ApplyDistroResultError {
 
 impl CausalLM for LocalTrainer {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -1183,9 +1183,9 @@ impl CausalLM for LocalTrainer {
         unimplemented!()
     }
 
-    fn prepare_for_training(&mut self) {}
+    fn prepare_for_training(&self) {}
 
-    fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+    fn clip_grad_norm(&self, _max_grad_norm: f64) {}
 }
 
 fn optimize_step(
@@ -1240,7 +1240,7 @@ fn optimize_step(
 
 impl CausalLM for Trainer {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -1330,7 +1330,7 @@ impl CausalLM for Trainer {
         }
     }
 
-    fn prepare_for_training(&mut self) {
+    fn prepare_for_training(&self) {
         match self {
             Trainer::Local(local_trainer) => local_trainer.prepare_for_training(),
             #[cfg(feature = "python")]
@@ -1340,7 +1340,7 @@ impl CausalLM for Trainer {
         }
     }
 
-    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
+    fn clip_grad_norm(&self, max_grad_norm: f64) {
         match self {
             Trainer::Local(local_trainer) => local_trainer.clip_grad_norm(max_grad_norm),
             #[cfg(feature = "python")]

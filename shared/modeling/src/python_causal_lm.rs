@@ -126,6 +126,7 @@ pub struct PythonCausalLM {
 }
 
 unsafe impl Send for PythonCausalLM {}
+unsafe impl Sync for PythonCausalLM {}
 
 impl PythonCausalLM {
     pub fn new(
@@ -213,7 +214,7 @@ impl PythonCausalLM {
 
 impl CausalLM for PythonCausalLM {
     fn forward(
-        &mut self,
+        &self,
         input_ids: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -262,7 +263,7 @@ impl CausalLM for PythonCausalLM {
         None
     }
 
-    fn prepare_for_training(&mut self) {
+    fn prepare_for_training(&self) {
         let result: PyResult<()> = Python::with_gil(|py| {
             let causal_lm = self.causal_lm.bind(py);
 
@@ -278,7 +279,7 @@ impl CausalLM for PythonCausalLM {
         Box::new(self.order.clone())
     }
 
-    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
+    fn clip_grad_norm(&self, max_grad_norm: f64) {
         let result: PyResult<()> = Python::with_gil(|py| {
             let module = py.import("torch.nn.utils")?;
             let clip_grad_norm = module.getattr("clip_grad_norm_")?;
@@ -548,5 +549,71 @@ impl Variable for PythonCausalLMVariable {
                 .call1((PyTensor(self.tensor.shallow_clone()),))
                 .unwrap();
         });
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WrappedPythonCausalLM {
+    local: Arc<PythonCausalLM>,
+}
+
+impl CausalLM for WrappedPythonCausalLM {
+    fn forward(
+        &self,
+        x: &Tensor,
+        labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
+        num_logits_to_keep: Option<i64>,
+        loss_scale: Option<f64>,
+    ) -> (Tensor, Option<Tensor>) {
+        self.local.forward(
+            x,
+            labels,
+            position_ids,
+            sequence_lengths,
+            num_logits_to_keep,
+            loss_scale,
+        )
+    }
+
+    fn bos_token_id(&self) -> Option<i64> {
+        self.local.bos_token_id()
+    }
+
+    fn eos_token_ids(&self) -> Option<EosToks> {
+        self.local.eos_token_ids()
+    }
+
+    fn device(&self) -> Device {
+        self.local.device()
+    }
+
+    fn max_context_length(&self) -> usize {
+        self.local.max_context_length()
+    }
+
+    fn variables(&self) -> StableVariableIterator {
+        self.local.variables()
+    }
+
+    fn communicator(&self) -> Option<Arc<Communicator>> {
+        self.local.communicator()
+    }
+
+    fn prepare_for_training(&self) {
+        self.local.prepare_for_training();
+    }
+
+    fn clip_grad_norm(&self, max_grad_norm: f64) {
+        self.local.clip_grad_norm(max_grad_norm);
+    }
+}
+
+impl From<PythonCausalLM> for WrappedPythonCausalLM {
+    fn from(val: PythonCausalLM) -> Self {
+        WrappedPythonCausalLM {
+            local: Arc::new(val),
+        }
     }
 }

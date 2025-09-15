@@ -138,7 +138,7 @@ fn inference(
     let python = args.python;
     #[cfg(not(feature = "python"))]
     let python = false;
-    let mut model: Box<dyn CausalLM> = if python {
+    let model: Box<dyn CausalLM> = if python {
         #[cfg(feature = "python")]
         {
             let tp = args.tensor_parallelism.unwrap_or(1);

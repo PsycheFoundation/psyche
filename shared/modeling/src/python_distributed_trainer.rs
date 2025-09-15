@@ -1,8 +1,8 @@
 use crate::{
     ApplyDistroResultError, Batch, BatchData, CausalLM, Communicator, EosToks, LocalTrainer,
-    ParallelModels, PythonCausalLM, PythonDistributedCausalLM, ReduceType, StableVariableIterator,
+    ParallelModels, PythonDistributedCausalLM, ReduceType, StableVariableIterator,
     TorchDistributedCommunicator, TrainOutput, Trainer, TrainerThreadCommunicationError,
-    trainer::DistroResults,
+    python_causal_lm::WrappedPythonCausalLM, trainer::DistroResults,
 };
 
 use psyche_core::{Barrier, CancelledBarrier, LearningRateSchedule, OptimizerDefinition};
@@ -21,6 +21,7 @@ use tracing::{debug, trace};
 
 #[derive(Debug)]
 pub struct PythonDistributedTrainer {
+    model: PythonDistributedCausalLM,
     local: Box<LocalTrainer>,
     comm: TorchDistributedCommunicator,
     iteration: Arc<AtomicUsize>,
@@ -115,10 +116,10 @@ impl PythonDistributedTrainer {
         comm.all_reduce(&dummy, ReduceType::Sum)?;
 
         let iteration = model.iteration();
-        let model: PythonCausalLM = model.into();
+        let local: WrappedPythonCausalLM = model.local.clone();
         let local = Box::new(LocalTrainer::new(
             ParallelModels {
-                models: vec![Box::new(model) as Box<dyn CausalLM>],
+                models: vec![Box::new(local) as Box<dyn CausalLM>],
                 barrier: Arc::new(NopBarrier) as Arc<dyn Barrier>,
                 data_parallel: None,
             },
@@ -130,6 +131,7 @@ impl PythonDistributedTrainer {
         ));
 
         Ok(Self {
+            model,
             local,
             comm,
             device,
@@ -254,6 +256,7 @@ impl PythonDistributedTrainer {
                 comm: self.comm,
                 device: self.device,
                 iteration: self.iteration,
+                model: self.model,
             }
             .into(),
             loss,
@@ -309,6 +312,7 @@ impl PythonDistributedTrainer {
             comm: self.comm,
             iteration: self.iteration,
             device: self.device,
+            model: self.model,
         })
     }
 
@@ -376,7 +380,7 @@ impl From<PythonDistributedTrainer> for Trainer {
 
 impl CausalLM for PythonDistributedTrainer {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -384,7 +388,7 @@ impl CausalLM for PythonDistributedTrainer {
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local.forward(
+        self.model.forward(
             x,
             labels,
             position_ids,
@@ -395,11 +399,11 @@ impl CausalLM for PythonDistributedTrainer {
     }
 
     fn bos_token_id(&self) -> Option<i64> {
-        self.local.bos_token_id()
+        self.model.bos_token_id()
     }
 
     fn eos_token_ids(&self) -> Option<EosToks> {
-        self.local.eos_token_ids()
+        self.model.eos_token_ids()
     }
 
     fn device(&self) -> Device {
@@ -407,26 +411,26 @@ impl CausalLM for PythonDistributedTrainer {
     }
 
     fn variables(&self) -> StableVariableIterator {
-        self.local.variables()
+        self.model.variables()
     }
 
     fn communicator(&self) -> Option<Arc<Communicator>> {
-        self.local.communicator()
+        self.model.communicator()
     }
 
-    fn prepare_for_training(&mut self) {
-        self.local.prepare_for_training();
+    fn prepare_for_training(&self) {
+        self.model.prepare_for_training();
     }
 
-    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
-        self.local.clip_grad_norm(max_grad_norm);
+    fn clip_grad_norm(&self, max_grad_norm: f64) {
+        self.model.clip_grad_norm(max_grad_norm);
     }
 
     fn max_context_length(&self) -> usize {
-        self.local.max_context_length()
+        self.model.max_context_length()
     }
 
     fn shutdown(&self) {
-        self.local.shutdown();
+        self.model.shutdown();
     }
 }

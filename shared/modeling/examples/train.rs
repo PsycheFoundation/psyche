@@ -376,7 +376,7 @@ async fn main() -> Result<()> {
                             let attn_implemention = args.attn_implementation.map(|x| x.into());
 
                             std::thread::spawn(move || {
-                                let mut model = auto_model_for_causal_lm_from_pretrained(
+                                let model = auto_model_for_causal_lm_from_pretrained(
                                     repo_files,
                                     Some(Kind::BFloat16),
                                     attn_implemention,
