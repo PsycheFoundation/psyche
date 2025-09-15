@@ -375,14 +375,15 @@ async fn main() -> Result<()> {
                             let attn_implemention = args.attn_implementation.map(|x| x.into());
 
                             std::thread::spawn(move || {
-                                let model: Box<dyn CausalLM> = auto_model_for_causal_lm_from_pretrained(
-                                    repo_files,
-                                    Some(Kind::BFloat16),
-                                    attn_implemention,
-                                    Some(device),
-                                    id.map(|id| (id, tp, tp_world_size)),
-                                    Some(args.sequence_length),
-                                )?;
+                                let model: Box<dyn CausalLM> =
+                                    auto_model_for_causal_lm_from_pretrained(
+                                        repo_files,
+                                        Some(Kind::BFloat16),
+                                        attn_implemention,
+                                        Some(device),
+                                        id.map(|id| (id, tp, tp_world_size)),
+                                        Some(args.sequence_length),
+                                    )?;
                                 model.prepare_for_training();
                                 Ok(model)
                             })

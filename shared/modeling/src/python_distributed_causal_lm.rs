@@ -1,5 +1,7 @@
 use crate::{
-    python_causal_lm::{PythonCausalLMError, PythonModelConfig, WrappedPythonCausalLM}, AttentionImplementation, Batch, BatchData, BatchDataGPU, CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType, StableVariableIterator
+    AttentionImplementation, Batch, BatchData, BatchDataGPU, CausalLM, Communicator,
+    ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType, StableVariableIterator,
+    python_causal_lm::{PythonCausalLMError, PythonModelConfig, WrappedPythonCausalLM},
 };
 
 use psyche_core::BatchId;
