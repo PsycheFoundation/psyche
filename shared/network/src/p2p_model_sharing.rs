@@ -2,6 +2,7 @@ use anyhow::Result;
 use ed25519::pkcs8::spki::der::pem::decode_label;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh::{NodeAddr, NodeId};
+use iroh::protocol::AcceptError;
 use iroh_blobs::{ticket::BlobTicket, Hash};
 use psyche_core::BoxedFuture;
 use serde::{de, ser, Deserialize, Serialize};
@@ -789,13 +790,13 @@ impl ModelSharing {
             tx_model_info_req,
         }
     }
-    pub(crate) fn _accept_connection(
+    pub(crate) async fn _accept_connection(
         connection: Connection,
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
         tx_model_info_req: UnboundedSender<ModelInfoSharingMessage>,
-    ) -> BoxedFuture<Result<()>> {
-        Box::pin(async move {
+    ) -> Result<()>  {
+
             let (mut send, mut recv) = connection.accept_bi().await?;
             let model_request_type_bytes = recv.read_to_end(1000).await?;
             let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes)?;
@@ -852,39 +853,30 @@ impl ModelSharing {
             connection.closed().await;
 
             Ok(())
-        })
+
     }
 
-    pub fn accept_connection(&self, connection: Connection) -> BoxedFuture<Result<()>> {
+    pub async fn accept_connection(&self, connection: Connection) -> Result<()> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
         let tx_model_info_req = self.tx_model_info_req.clone();
-        Box::pin(async move {
-            Self::_accept_connection(
-                connection,
-                tx_model_parameter_req,
-                tx_model_config_req,
-                tx_model_info_req,
-            )
-            .await
-        })
+        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req, tx_model_info_req).await
     }
 }
 
 impl ProtocolHandler for ModelSharing {
     //todo: why not just call Self::accept_connection ?
-    fn accept(&self, connection: Connection) -> BoxedFuture<Result<()>> {
+    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
         let tx_model_info_req = self.tx_model_info_req.clone();
-        Box::pin(async move {
-            Self::_accept_connection(
-                connection,
-                tx_model_parameter_req,
-                tx_model_config_req,
-                tx_model_info_req,
-            )
-            .await
-        })
+
+
+        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req, tx_model_info_req).await
+            .map_err(|e| {
+                let io_error = std::io::Error::other(e.to_string());
+                AcceptError::from_err(io_error)
+            })
+
     }
 }

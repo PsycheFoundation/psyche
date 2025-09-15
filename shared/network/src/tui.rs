@@ -1,6 +1,7 @@
-use crate::{NetworkConnection, Networkable, peer_list::PeerList, util::fmt_bytes};
+use crate::{peer_list::PeerList, util::fmt_bytes, NetworkConnection, Networkable};
 
-use iroh::{PublicKey, endpoint::ConnectionType};
+use futures_util::StreamExt;
+use iroh::{endpoint::ConnectionType, PublicKey};
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -124,12 +125,10 @@ impl psyche_tui::CustomWidget for NetworkTui {
                         .unwrap_or(0.0)
                         .max(1024.0);
 
-                    Chart::new(vec![
-                        Dataset::default()
-                            .marker(symbols::Marker::Braille)
-                            .graph_type(GraphType::Line)
-                            .data(&bw_history),
-                    ])
+                    Chart::new(vec![Dataset::default()
+                        .marker(symbols::Marker::Braille)
+                        .graph_type(GraphType::Line)
+                        .data(&bw_history)])
                     .block(
                         Block::default()
                             .title(format!(
@@ -212,14 +211,23 @@ pub struct NetworkTUIState {
     pub inner: Option<NetworkTUIStateInner>,
 }
 
-impl<M, D> From<&NetworkConnection<M, D>> for NetworkTUIState
-where
-    M: Networkable,
-    D: Networkable,
-{
-    fn from(nc: &NetworkConnection<M, D>) -> Self {
+impl NetworkTUIState {
+    pub async fn from_network_connection<M, D>(nc: &NetworkConnection<M, D>) -> anyhow::Result<Self>
+    where
+        M: Networkable,
+        D: Networkable,
+    {
         let s = &nc.state;
-        Self {
+        let blob_hashes = nc
+            .blobs_store
+            .list()
+            .stream()
+            .await?
+            .filter_map(|hash_result| async move { hash_result.ok().map(|h| h.to_string()) })
+            .collect::<Vec<_>>()
+            .await;
+
+        Ok(Self {
             inner: Some(NetworkTUIStateInner {
                 join_ticket: s.join_ticket.clone(),
                 last_seen: s.last_seen.clone(),
@@ -238,12 +246,8 @@ where
                         )
                     })
                     .collect(),
-                blob_hashes: s
-                    .currently_sharing_blobs
-                    .iter()
-                    .map(|blob| blob.to_string())
-                    .collect(),
+                blob_hashes,
             }),
-        }
+        })
     }
 }

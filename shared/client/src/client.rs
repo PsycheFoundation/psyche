@@ -3,14 +3,16 @@ use crate::{
     Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
     RunInitConfigAndIO, TrainingResult, NC,
 };
+use anyhow::anyhow;
 use anyhow::{bail, Error, Result};
 use futures::future::join_all;
+use iroh::protocol::Router;
 use iroh_blobs::Hash;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    allowlist, blob_ticket_param_request_task, raw_p2p_verify, router::Router,
+    allowlist, blob_ticket_param_request_task, raw_p2p_verify,
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
     GetMetaData, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState, Networkable,
     NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
@@ -151,7 +153,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             }
 
                                              _ = req_tui_state.notified() => {
-                                                let network_tui_state = (&p2p).into();
+                                                let network_tui_state = NetworkTUIState::from_network_connection(&p2p).await?;
                                                 let client_tui_state = (&run).into();
                                                 tx_tui.send((client_tui_state, network_tui_state))?;
                                             },
@@ -184,7 +186,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                                     trace!("Updating p2p");
                                                     let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                                    p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
+                                                    if let Err(err) = p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs).await {
+                                                        warn!("Error deleting blob tags less than {last_needed_step_blobs}: {err}");
+                                                    }
                                                     let p2p_info = get_p2p_info(&p2p).await?;
                                                     metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
                                                     if let Err(e) = run.set_node_info(p2p_info) {
@@ -538,7 +542,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             }
 
                                             Some((download_ticket, tag)) = rx_request_download.recv() => {
+                                                let self_node_id = p2p.node_addr().await.node_id;
                                                 let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
+                                                let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| addr.node_id != self_node_id).collect();
                                                 let kind = DownloadType::DistroResult(other_possible_nodes);
                                                 metrics.record_download_started(download_ticket.hash(), kind.kind());
                                                 //p2p.start_download_big_blob(vec![(download_ticket.node_addr(), download_ticket.hash())]);
@@ -800,7 +806,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     info!("Checkpoint finished, exiting main client loop");
                 }
 
-                p2p_shutdown.await
+                p2p_shutdown
+                .await
+                .map_err(|e| anyhow!("Error shutting down p2p: {}", e))
             }
         });
 
@@ -906,7 +914,7 @@ where
     D: Networkable,
 {
     let remotes = p2p.remote_infos();
-    let node_addr = p2p.node_addr().await?;
+    let node_addr = p2p.node_addr().await;
     Ok(remotes
         .into_iter()
         .map(|(x, bandwidth)| {
