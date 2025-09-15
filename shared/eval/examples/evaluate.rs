@@ -96,8 +96,61 @@ fn main() -> Result<()> {
         }
     }
 
-    let repo = download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?;
+    let repo = download_model_repo_sync(
+        &args.model,
+        args.revision.clone(),
+        None,
+        args.hf_token,
+        true,
+    )?;
     let tokenizer = auto_tokenizer(&repo)?;
+
+    // Log tokenizer information for debugging
+    if !args.quiet {
+        println!("\n=== Tokenizer Information ===");
+
+        // Find which tokenizer file was loaded
+        if let Some(tokenizer_path) = repo.iter().find(|x| x.ends_with("tokenizer.json")) {
+            println!("Tokenizer loaded from: {}", tokenizer_path.display());
+        }
+
+        // Log vocabulary size
+        let vocab_size = tokenizer.get_vocab_size(false);
+        println!("Tokenizer vocab size: {}", vocab_size);
+
+        // Test Chinese text tokenization
+        let chinese_test = "以下是中国关于数学的单项选择题，请选出其中的正确答案。";
+        if let Ok(encoded) = tokenizer.encode(chinese_test, false) {
+            println!("Chinese test tokenization:");
+            println!("  Text: \"{}\"", chinese_test);
+            println!("  Tokens: {} tokens", encoded.get_ids().len());
+            println!(
+                "  Token IDs: {:?}",
+                &encoded.get_ids()[..std::cmp::min(10, encoded.get_ids().len())]
+            );
+        }
+
+        // Test choice tokenization
+        let choice_test = "2x+2";
+        if let Ok(encoded) = tokenizer.encode(choice_test, false) {
+            println!("Choice test tokenization:");
+            println!("  Text: \"{}\"", choice_test);
+            println!("  Tokens: {} tokens", encoded.get_ids().len());
+            println!("  Token IDs: {:?}", encoded.get_ids());
+        }
+
+        println!("=============================\n");
+    }
+
+    // Log model information for debugging
+    if !args.quiet {
+        println!("=== Model Information ===");
+        println!("Model: {}", args.model);
+        if let Some(ref revision) = args.revision {
+            println!("Revision: {}", revision);
+        }
+        println!("=========================\n");
+    }
 
     // Case with no parallelism is the same code just with DP=1
     run_data_parallel(
