@@ -152,7 +152,9 @@ impl App {
         if let Some(tx_tui_state) = &self.tx_tui_state {
             let tui_state = TUIState {
                 current_step: self.current_step,
-                network: (&self.network).into(),
+                network: NetworkTUIState::from_network_connection(&self.network)
+                    .await
+                    .unwrap(),
             };
             tx_tui_state.send(tui_state).await.unwrap();
         }
@@ -291,7 +293,6 @@ async fn main() -> Result<()> {
         peers,
         secret_key,
         allowlist::AllowAll,
-        4,
         Arc::new(ClientMetrics::new(None)),
     )
     .await?;

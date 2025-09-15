@@ -8,8 +8,8 @@ use psyche_client::{
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, RelayMode,
-    SecretKey, TcpClient, allowlist, psyche_relay_map,
+    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, SecretKey,
+    TcpClient, allowlist,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
@@ -110,7 +110,6 @@ pub struct AppParams {
     pub dummy_training_delay_secs: Option<u64>,
     pub discovery_mode: DiscoveryMode,
     pub max_concurrent_parameter_requests: usize,
-    pub max_concurrent_downloads: usize,
     pub metrics_local_port: Option<u16>,
 }
 
@@ -148,7 +147,6 @@ impl AppBuilder {
             vec![],
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
-            p.max_concurrent_downloads,
             metrics.clone(),
         )
         .await?;

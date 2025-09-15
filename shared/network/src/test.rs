@@ -1,5 +1,5 @@
 use anyhow::Result;
-use iroh::{NodeAddr, RelayMode, Watcher};
+use iroh::{NodeAddr, Watcher};
 use iroh_blobs::ticket::BlobTicket;
 use psyche_metrics::ClientMetrics;
 use serde::{Deserialize, Serialize};
@@ -15,10 +15,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-use crate::{
-    DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, PeerList, allowlist,
-    psyche_relay_map,
-};
+use crate::{DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, PeerList, allowlist};
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Message {
@@ -200,7 +197,6 @@ async fn spawn_new_node(
         peers,
         None,
         allowlist::AllowAll,
-        20,
         Arc::new(ClientMetrics::new(None)),
     )
     .await?;

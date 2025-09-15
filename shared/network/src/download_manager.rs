@@ -8,8 +8,8 @@ use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use futures_util::future::select_all;
 use iroh::{NodeAddr, PublicKey};
+use iroh_blobs::ticket::BlobTicket;
 use iroh_blobs::{Hash, api::downloader::DownloadProgessItem};
-use iroh_blobs::{api::downloader::DownloadProgress, ticket::BlobTicket};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap, fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc,
@@ -506,29 +506,31 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         let download = &mut downloads[index];
         let event = match result {
             Ok(progress) => match progress {
-                DownloadProgessItem::TryProvider { id, request } => {
-                    Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
-                        tag: download.tag,
-                        downloaded_size_delta: 0,
-                        downloaded_size: 0,
-                        total_size: 0,
-                        all_done: false,
-                        download_type: download.r#type.clone(),
-                    }))
-                }
+                DownloadProgessItem::TryProvider {
+                    id: _id,
+                    request: _request,
+                } => Some(DownloadManagerEvent::Update(DownloadUpdate {
+                    blob_ticket: download.blob_ticket.clone(),
+                    tag: download.tag,
+                    downloaded_size_delta: 0,
+                    downloaded_size: 0,
+                    total_size: 0,
+                    all_done: false,
+                    download_type: download.r#type.clone(),
+                })),
                 DownloadProgessItem::Progress(bytes_amount) => {
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
                         blob_ticket: download.blob_ticket.clone(),
                         tag: download.tag,
                         downloaded_size_delta: bytes_amount,
                         downloaded_size: bytes_amount,
-                        total_size: bytes_amount,
+                        total_size: 0,
                         all_done: false,
                         download_type: download.r#type.clone(),
                     }))
                 }
-                DownloadProgessItem::PartComplete { request } => {
+                // We're using the Blob format so there's only one part for each blob
+                DownloadProgessItem::PartComplete { request: _request } => {
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
                         blob_ticket: download.blob_ticket.clone(),
                         tag: download.tag,
@@ -555,17 +557,18 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         download_type: download.r#type.clone(),
                     }))
                 }
-                DownloadProgessItem::ProviderFailed { id, request } => {
-                    Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
-                        tag: download.tag,
-                        downloaded_size_delta: 0,
-                        downloaded_size: download.last_offset,
-                        total_size: download.total_size,
-                        all_done: false,
-                        download_type: download.r#type.clone(),
-                    }))
-                }
+                DownloadProgessItem::ProviderFailed {
+                    id: _id,
+                    request: _request,
+                } => Some(DownloadManagerEvent::Update(DownloadUpdate {
+                    blob_ticket: download.blob_ticket.clone(),
+                    tag: download.tag,
+                    downloaded_size_delta: 0,
+                    downloaded_size: download.last_offset,
+                    total_size: download.total_size,
+                    all_done: false,
+                    download_type: download.r#type.clone(),
+                })),
             },
             Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket: download.blob_ticket.clone(),

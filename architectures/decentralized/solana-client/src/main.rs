@@ -514,7 +514,6 @@ async fn async_main() -> Result<()> {
                 grad_accum_in_fp32: args.grad_accum_in_fp32,
                 dummy_training_delay_secs: args.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
-                max_concurrent_downloads: args.max_concurrent_downloads,
                 authorizer,
                 metrics_local_port: args.metrics_local_port,
             })
