@@ -5,7 +5,6 @@ members = [
   "architectures/decentralized/testing",
   "architectures/decentralized/solana-tooling",
   "python/",
-  "python/extension-impl/",
   "shared/*",
   "tools/rust-tools/*",
   "website/wasm",
@@ -27,7 +26,6 @@ psyche-eval = { path = "./shared/eval" }
 psyche-network = { path = "./shared/network" }
 psyche-modeling = { path = "./shared/modeling" }
 psyche-python-extension = { path = "./python" }
-psyche-python-extension-impl = { path = "./python/extension-impl" }
 psyche-tui = { path = "./shared/tui" }
 psyche-watcher = { path = "./shared/watcher" }
 psyche-metrics = { path = "./shared/metrics" }

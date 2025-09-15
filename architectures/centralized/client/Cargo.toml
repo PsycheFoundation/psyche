@@ -25,8 +25,8 @@ time.workspace = true
 bytemuck.workspace = true
 clap-markdown.workspace = true
 hex = "0.4.3"
-psyche-python-extension-impl = { workspace = true, optional = true }
+psyche-python-extension = { workspace = true, optional = true }
 
 [features]
 parallelism = ["psyche-client/parallelism"]
-python = ["psyche-python-extension-impl"]
+python = ["psyche-python-extension"]

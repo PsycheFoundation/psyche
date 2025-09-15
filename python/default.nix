@@ -12,6 +12,7 @@ let
     cargoArtifacts
     craneLib
     rustWorkspaceArgs
+    testResourcesFilter
     ;
 
   # build the extension .so file using Crane
@@ -19,6 +20,17 @@ let
     rustWorkspaceArgs
     // rec {
       inherit cargoArtifacts;
+      src = lib.cleanSourceWith {
+        src = ../.;
+        filter =
+          path: type:
+          (testResourcesFilter path type)
+          || (craneLib.filterCargoSources path type)
+          || (
+
+            (builtins.match ".*pyproject.toml$" path != null)
+          );
+      };
       pname = "psyche-python-extension";
 
       cargoExtraArgs =
@@ -68,33 +80,46 @@ python312Packages.buildPythonPackage rec {
   version = "0.1.0";
   format = "other"; # skip setup.py, we're assembling it ourselves
 
-  src = ./python/psyche;
+  src = ./.;
 
+  # pull runtime deps from pyproject.toml
   propagatedBuildInputs =
-    with python312Packages;
-    [
-      torch
-      transformers
-    ]
+    (lib.mapAttrsToList (depName: _: python312Packages.${depName}) expectedVersions)
     ++ (lib.optionals config.cudaSupport [
       (python312Packages.callPackage ./flash-attn.nix { })
     ]);
 
+  nativeCheckInputs = with python312Packages; [
+    mypy
+  ];
+
+  checkPhase = ''
+    runHook preCheck
+
+    mypy ./
+
+    runHook postCheck
+  '';
+
   installPhase = ''
     runHook preInstall
 
-    # create python package dir
-    mkdir -p $out/${python312.sitePackages}/psyche
+    PKG_DIR="$out/${python312.sitePackages}/psyche"
 
-    # copy all python files
-    cp -r * $out/${python312.sitePackages}/psyche/
+    # create python package dir
+    mkdir -p $PKG_DIR
+
 
     # copy the extension binary file
     cp ${rustExtension}/lib/lib${builtins.replaceStrings [ "-" ] [ "_" ] rustExtension.pname}.${ext} \
-       $out/${python312.sitePackages}/psyche/_psyche_ext.so
+       $PKG_DIR/_psyche_ext.so
+
+    # generate the pyi file
+    CARGO_MANIFEST_DIR=. RUST_BACKTRACE=full ${rustExtension}/bin/stub_gen ./pyproject.toml
+
+    # copy all python files
+    cp -r python/psyche/* $PKG_DIR/
 
     runHook postInstall
   '';
-
-  doCheck = false;
 }

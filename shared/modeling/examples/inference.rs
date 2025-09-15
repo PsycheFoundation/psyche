@@ -157,7 +157,7 @@ fn inference(
                 anyhow::bail!("Parallelism not supported for inference in python yet");
             }
 
-            psyche_python_extension_impl::init_embedded_python();
+            psyche_python_extension::init_embedded_python();
 
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             Box::new(psyche_modeling::PythonCausalLM::new(

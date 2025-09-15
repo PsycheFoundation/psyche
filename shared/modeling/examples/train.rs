@@ -287,7 +287,7 @@ async fn main() -> Result<()> {
     if python {
         #[cfg(feature = "python")]
         {
-            psyche_python_extension_impl::init_embedded_python();
+            psyche_python_extension::init_embedded_python();
 
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);

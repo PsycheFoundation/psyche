@@ -12,7 +12,7 @@ psyche-metrics.workspace = true
 psyche-modeling.workspace = true
 psyche-network.workspace = true
 psyche-tui.workspace = true
-psyche-python-extension-impl = { workspace = true, optional = true }
+psyche-python-extension = { workspace = true, optional = true }
 psyche-watcher.workspace = true
 postcard.workspace = true
 anyhow.workspace = true
@@ -37,4 +37,4 @@ sysinfo = "0.32.0"
 
 [features]
 parallelism = ["psyche-modeling/parallelism"]
-python = ["psyche-python-extension-impl"]
+python = ["psyche-python-extension"]

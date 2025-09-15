@@ -4,6 +4,7 @@ use psyche_modeling::{
 };
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyfunction};
 use pyo3_tch::{PyTensor, wrap_tch_err};
 use std::{
     ops::Deref,
@@ -14,12 +15,17 @@ use sysinfo::{Pid, System};
 use tokio_util::sync::CancellationToken;
 use tracing::trace;
 
+#[gen_stub_pyfunction]
 #[pyfunction]
-fn add_one(tensor: PyTensor) -> PyResult<PyTensor> {
+#[gen_stub(override_return_type(type_repr="torch.Tensor", imports=("torch")))]
+fn add_one(
+    #[gen_stub(override_type(type_repr="torch.Tensor", imports=("torch")))] tensor: PyTensor,
+) -> PyResult<PyTensor> {
     let tensor = tensor.f_add_scalar(1.0).map_err(wrap_tch_err)?;
     Ok(PyTensor(tensor))
 }
 
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn start_process_watcher(pid: usize, duration: Duration) -> PyResult<()> {
     std::thread::spawn(move || {
@@ -38,6 +44,7 @@ fn start_process_watcher(pid: usize, duration: Duration) -> PyResult<()> {
     Ok(())
 }
 
+#[gen_stub_pyclass]
 #[pyclass]
 
 pub struct Trainer {
@@ -45,6 +52,7 @@ pub struct Trainer {
     cancel: CancellationToken,
 }
 
+#[gen_stub_pyclass]
 #[pyclass]
 pub struct DistroResult {
     #[pyo3(get)]
@@ -254,4 +262,10 @@ pub fn psyche(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 pub fn load_module() {
     pyo3::append_to_inittab!(psyche);
+}
+
+pub fn stub_info(
+    pyproject_path: &::std::path::Path,
+) -> pyo3_stub_gen::Result<pyo3_stub_gen::StubInfo> {
+    pyo3_stub_gen::StubInfo::from_pyproject_toml(pyproject_path)
 }

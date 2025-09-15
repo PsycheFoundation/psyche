@@ -262,6 +262,7 @@ in
     src
     gitcommit
     pythonWithPsycheExtension
+    testResourcesFilter
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };
