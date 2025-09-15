@@ -228,23 +228,9 @@ where
         info!("Our node addr: {}", node_addr.node_id);
         info!("Our join ticket: {}", PeerList(vec![node_addr]));
 
-        trace!("creating blobs...");
+        trace!("creating blobs store...");
         let store = MemStore::new();
-        // let blobs = store.blobs().clone();
-        // let blobs = Blobs::builder()
-        //     .concurrency_limits(ConcurrencyLimits {
-        //         max_concurrent_requests_per_node: 1,
-        //         max_concurrent_requests: max_concurrent_downloads,
-        //         max_open_connections: 512,
-        //         max_concurrent_dials_per_hash: 2,
-        //     })
-        //     .retry_config(RetryConfig {
-        //         max_retries_per_node: 0,
-        //         ..Default::default()
-        //     })
-        //     .build(&endpoint);
-        // let blobs_store = MemStore::new();
-        trace!("blobs created!");
+        trace!("blobs store created!");
 
         trace!("creating gossip...");
         let gossip = Gossip::builder()
