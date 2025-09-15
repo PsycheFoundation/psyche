@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::Parser;
 use psyche_core::RunningAverage;
 use psyche_data_provider::download_model_repo_sync;
-use psyche_eval::{ALL_TASK_NAMES, EvalTaskOptions, Task, tasktype_from_name};
-use psyche_modeling::{CausalLM, auto_model_for_causal_lm_from_pretrained, auto_tokenizer};
+use psyche_eval::{tasktype_from_name, EvalTaskOptions, Task, ALL_TASK_NAMES};
+use psyche_modeling::{auto_model_for_causal_lm_from_pretrained, auto_tokenizer, CausalLM};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -155,6 +155,7 @@ fn run_data_parallel(
                         "hf-auto".to_string(),
                         psyche_modeling::PretrainedSource::RepoFiles(repo),
                         device,
+                        psyche_modeling::AttentionImplementation::default(),
                         psyche_modeling::ParallelismConfig {
                             dp: data_parallelism,
                             tp: 1,

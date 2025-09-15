@@ -1,7 +1,5 @@
 use crate::{
-    Batch, BatchData, BatchDataGPU, CausalLM, Communicator, ParallelismConfig, PretrainedSource,
-    PythonCausalLM, ReduceType, StableVariableIterator,
-    python_causal_lm::{PythonCausalLMError, PythonModelConfig, WrappedPythonCausalLM},
+    python_causal_lm::{PythonCausalLMError, PythonModelConfig, WrappedPythonCausalLM}, AttentionImplementation, Batch, BatchData, BatchDataGPU, CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType, StableVariableIterator
 };
 
 use psyche_core::BatchId;
@@ -190,6 +188,7 @@ impl PythonDistributedCausalLM {
         architecture: String,
         source: PretrainedSource<PythonModelConfig>,
         device: Device,
+        attn_implementation: AttentionImplementation,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
@@ -197,6 +196,8 @@ impl PythonDistributedCausalLM {
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
+                // TODO: is this actually a bug?
+                // Does the 0th cuda device *have* to be rank 0?
                 return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank));
             }
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
@@ -232,6 +233,7 @@ impl PythonDistributedCausalLM {
                     &architecture,
                     &source,
                     device,
+                    attn_implementation,
                     Some(parallelism),
                     override_max_position_embeddings,
                 )?;

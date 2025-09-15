@@ -17,10 +17,6 @@ from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     _CHECKPOINT_PREFIX,
 )
 
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
-
-
 # adapted from https://github.com/pytorch/torchtitan/blob/49c6d6fc15ef644e5c3b1003ad4e0d9ea5fcb9a9/torchtitan/parallelisms/parallel_dims.py#L48
 def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> DeviceMesh:
     dims = []
@@ -77,6 +73,7 @@ class HfTransformersAuto(CausalLM):
     def from_pretrained(
         source: Union[PretrainedSourceRepoFiles, PretrainedSourceStateDict],
         device: torch.device,
+        attn_implementation: str,
         dp: int = 1,
         tp: int = 1,
         override_max_position_embeddings: Optional[int] = None,
@@ -121,7 +118,7 @@ class HfTransformersAuto(CausalLM):
 
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
-                config, attn_implementation="flash_attention_2"
+                config, attn_implementation=attn_implementation
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
@@ -153,10 +150,11 @@ class HfTransformersAuto(CausalLM):
                 if fsdp_modules is None:
                     raise RuntimeError("Could not determine models to apply FSDP to")
 
-                apply_activation_checkpointing(
-                    model,
-                    check_fn=lambda module: module.__class__.__name__ in fsdp_modules,
-                )
+                # seems to break with latest transformers, let's fall back to their activation checkpointing
+                # apply_activation_checkpointing(
+                #     model,
+                #     check_fn=lambda module: module.__class__.__name__ in fsdp_modules,
+                # )
 
                 for module in model.modules():
                     if module.__class__.__name__ in fsdp_modules:
@@ -198,6 +196,9 @@ class HfTransformersAuto(CausalLM):
         for module in model.modules():
             reinit_rope(module)
         reinit_rope(model)
+
+        if model.supports_gradient_checkpointing:
+            model._set_gradient_checkpointing(True)
 
         # for super large models, loading the entire model in RAM nproc times can CPU OOM
         # TODO: switch to use torch.distributed.checkpoint.state_dict_loader.load()

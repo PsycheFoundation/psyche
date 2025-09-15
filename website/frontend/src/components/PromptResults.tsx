@@ -4,6 +4,7 @@ import { loadPromptTextByIndex } from '../utils/prompts.js'
 import { c } from '../utils.js'
 import { css } from '@linaria/core'
 import { text } from '../fonts.js'
+import { forest, slate } from '../colors.js'
 
 interface PromptResultsProps {
 	tokens: number[]
@@ -113,9 +114,16 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 							font-family: 'Georgia', serif;
 							font-size: 16px;
 							line-height: 1.5;
-							color: #fafafa;
 							font-weight: 500;
 							flex: 1;
+
+							.theme-light & {
+								color: ${slate[1000]};
+							}
+
+							.theme-dark & {
+								color: ${forest[300]};
+							}
 						`}
 						title={promptText}
 					>
@@ -129,9 +137,17 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 								display: flex;
 								align-items: center;
 								gap: 8px;
-								color: #4b9551;
-								background-color: #1f3320;
 								font-size: 14px;
+
+								.theme-light & {
+									color: ${forest[600]};
+									background-color: ${slate[200]};
+								}
+
+								.theme-dark & {
+									color: ${forest[400]};
+									background-color: ${forest[700]};
+								}
 							`}
 						>
 							<span>({tokens.length} tokens)</span>
@@ -140,12 +156,22 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 								className={css`
 									background: none;
 									border: none;
-									color: #4b9551;
 									cursor: pointer;
 									font-size: 14px;
 									text-decoration: underline;
-									&:hover {
-										color: #4b9551;
+
+									.theme-light & {
+										color: ${forest[600]};
+										&:hover {
+											color: ${forest[500]};
+										}
+									}
+
+									.theme-dark & {
+										color: ${forest[400]};
+										&:hover {
+											color: ${forest[300]};
+										}
 									}
 								`}
 							>
@@ -167,8 +193,15 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 					`,
 					newTokensHighlight &&
 						css`
-							border-color: #4b9551 !important;
-							background-color: #29442aff !important;
+							.theme-light & {
+								border-color: ${forest[500]} !important;
+								background-color: ${slate[100]} !important;
+							}
+
+							.theme-dark & {
+								border-color: ${forest[400]} !important;
+								background-color: #29442aff !important;
+							}
 						`
 				)}
 			>
@@ -177,12 +210,19 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 					<div
 						className={css`
 							font-style: italic;
-							color: #4b9551;
 							text-align: center;
 							height: 100%;
 							display: flex;
 							align-items: center;
 							justify-content: center;
+
+							.theme-light & {
+								color: ${slate[600]};
+							}
+
+							.theme-dark & {
+								color: ${forest[400]};
+							}
 						`}
 					>
 						(generating response...)
@@ -201,10 +241,21 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 							className={css`
 								width: 12px;
 								height: 12px;
-								border: 2px solid #4b9551;
+								border: 2px solid;
 								border-top: 2px solid transparent;
 								border-radius: 50%;
 								animation: spin 1s linear infinite;
+
+								.theme-light & {
+									border-color: ${slate[600]};
+									border-top-color: transparent;
+								}
+
+								.theme-dark & {
+									border-color: ${forest[400]};
+									border-top-color: transparent;
+								}
+
 								@keyframes spin {
 									0% {
 										transform: rotate(0deg);
@@ -218,7 +269,14 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 						<span
 							className={css`
 								font-style: italic;
-								color: #4b9551;
+
+								.theme-light & {
+									color: ${slate[600]};
+								}
+
+								.theme-dark & {
+									color: ${forest[400]};
+								}
 							`}
 						>
 							Detokenizing...
@@ -231,9 +289,16 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 							font-size: 12px;
 							word-break: break-all;
 							line-height: 1.4;
-							color: #4b9551;
 							height: 100%;
 							overflow-y: auto;
+
+							.theme-light & {
+								color: ${slate[700]};
+							}
+
+							.theme-dark & {
+								color: ${forest[400]};
+							}
 						`}
 					>
 						[{tokens.join(', ')}]
@@ -245,9 +310,16 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 							font-size: 15px;
 							line-height: 1.6;
 							white-space: pre-wrap;
-							color: #4b9551;
 							height: 100%;
 							overflow-y: auto;
+
+							.theme-light & {
+								color: ${slate[600]};
+							}
+
+							.theme-dark & {
+								color: ${forest[400]};
+							}
 						`}
 					>
 						{detokenizedText}

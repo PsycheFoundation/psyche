@@ -10,7 +10,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
 ]
 dynamic = ["version"]
-dependencies = ["torch==2.7.0", "transformers==4.51.3"]
+dependencies = ["torch==2.9.0.dev20250827", "transformers==4.56.1"]
 
 [project.optional-dependencies]
 tests = ["pytest"]
