@@ -7355,12 +7355,16 @@ dependencies = [
  "psyche-core",
  "psyche-data-provider",
  "psyche-modeling",
+ "psyche-python-extension-impl",
+ "pyo3",
+ "pyo3-tch",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "regex",
  "tch",
  "tokenizers",
  "tokio-util 0.7.15",
+ "torch-sys",
  "tracing",
 ]
 
