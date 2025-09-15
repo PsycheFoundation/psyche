@@ -50,7 +50,6 @@ fn main() -> Result<()> {
             tasktype_from_name(x).map(|y| {
                 let num_fewshot = args.num_fewshot.unwrap_or_else(|| match x {
                     "mmlu_pro" => 5,
-                    "ceval" => 4,
                     _ => 0,
                 });
                 Task::new(y, num_fewshot, args.seed)

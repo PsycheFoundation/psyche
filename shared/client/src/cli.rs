@@ -248,7 +248,6 @@ impl TrainArgs {
             .map(|eval_task| {
                 let fewshot = match eval_task {
                     "mmlu_pro" => 5,
-                    "ceval" => 4,
                     _ => 0,
                 };
                 tasktype_from_name(eval_task)
