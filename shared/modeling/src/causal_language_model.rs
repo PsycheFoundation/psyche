@@ -2,8 +2,9 @@ use crate::{
     AllReduce, AttentionImplementation, Communicator, CommunicatorId, ModelConfig, ModelLoadError,
     PretrainedSource, ReduceType, RoPEConfig, StableVarStoreIterator, StableVariableIterator,
 };
-use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::{fmt::Debug, sync::atomic::AtomicBool};
 use tch::{
     Device, Kind, Tensor,
     nn::{self, Module},
@@ -25,7 +26,7 @@ pub enum EosToks {
 /// for a wrapper struct that does something like data parallelism.
 pub trait CausalLM: Send {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -39,8 +40,9 @@ pub trait CausalLM: Send {
     fn max_context_length(&self) -> usize;
     fn variables(&self) -> StableVariableIterator;
     fn communicator(&self) -> Option<Arc<Communicator>>;
-    fn prepare_for_training(&mut self);
-    fn clip_grad_norm(&mut self, max_grad_norm: f64);
+    fn prepare_for_training(&self);
+    fn clip_grad_norm(&self, max_grad_norm: f64);
+    fn shutdown(&self) {}
 }
 
 pub trait LanguageModelForward: Send + Debug {
@@ -75,7 +77,7 @@ pub struct CausalLanguageModel<M: LanguageModelForward, C: LanguageModelConfig> 
     pub device: Device,
     pub lm_head: nn::Linear,
     pub comm: Option<Arc<Communicator>>,
-    pub training: bool,
+    pub training: AtomicBool,
 }
 
 // this is absolutely unsafe, if you use it across threads with NCCL you will have a bad day
@@ -165,14 +167,14 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
             device,
             lm_head,
             comm,
-            training: false,
+            training: AtomicBool::new(false),
         })
     }
 }
 
 impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguageModel<M, C> {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -181,9 +183,12 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
         let (_, t) = x.size2().unwrap();
-        let mut x = self
-            .model
-            .forward(x, position_ids, sequence_lengths, self.training);
+        let mut x = self.model.forward(
+            x,
+            position_ids,
+            sequence_lengths,
+            self.training.load(Ordering::Relaxed),
+        );
         if let Some(num_logits_to_keep) = num_logits_to_keep {
             // Only compute necessary logits, and do not upcast them to float if we are not computing the loss
             x = x.slice(1, t - num_logits_to_keep, t, 1);
@@ -239,8 +244,8 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
         self.comm.clone()
     }
 
-    fn prepare_for_training(&mut self) {
-        self.training = true;
+    fn prepare_for_training(&self) {
+        self.training.store(true, Ordering::Relaxed);
     }
 
     /// Clips gradient norm, properly handling tensor-parallel parameters.
@@ -260,7 +265,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
     /// The orthogonality of sharded parameters across ranks ensures that:
     /// total_norm = sqrt(all_reduce(||w_shared_local||^2) + ||w_replicated||^2)
     /// gives us the correct global L2 norm as if all parameters were on a single device.
-    fn clip_grad_norm(&mut self, max_norm: f64) {
+    fn clip_grad_norm(&self, max_norm: f64) {
         let mut sharded_norm_sq = Tensor::zeros([], (Kind::Float, self.device));
         let mut replicated_norm_sq = Tensor::zeros([], (Kind::Float, self.device));
 

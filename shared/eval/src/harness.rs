@@ -411,7 +411,6 @@ impl PreparedTask {
                 }
             }
             let mut scores: Vec<(f32, bool)> = Vec::new();
-
             for idx in 0..doc.requests.len() {
                 // e.g:
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
@@ -430,7 +429,6 @@ impl PreparedTask {
                 let request_tensor = Tensor::from_slice(&full_request)
                     .to(options.model.device())
                     .unsqueeze(0);
-
                 let (logits, _) = {
                     let _no_grad = tch::no_grad_guard();
                     options
