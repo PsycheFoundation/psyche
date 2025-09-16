@@ -318,7 +318,7 @@ impl CausalLM for PythonDistributedCausalLM {
 
             let new_size = batch.data.size();
             if new_size != original_batch_size {
-                debug!(
+                trace!(
                     "FSDP: Padded batch from {} to {} samples (world_size={})",
                     original_batch_size, new_size, world_size
                 );
