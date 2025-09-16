@@ -83,6 +83,10 @@ interface RunHistory {
 	observedLrByStep: Array<[number, number]>
 
 	recentTxs: Array<TxSummary>
+
+	currentPromptIndex: number | null
+	currentCumulativeTokens: number[]
+	lastPromptResults: number[]
 }
 
 interface RunSummaries {
@@ -212,6 +216,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			observedLrByStep: [],
 			configChanges: [],
 			recentTxs: [],
+			currentPromptIndex: null,
+			currentCumulativeTokens: [],
+			lastPromptResults: [],
 		})
 
 		this.#runsMutatedSinceLastSync.add(
@@ -351,15 +358,29 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			}
 		}
 
-		lastRun.witnessUpdates.push([
-			{
-				...restWitness,
-				evals: fixedEvals,
-				prompt_results: promptTokens,
-				prompt_index: prompt_index || 0, // Default to 0 if undefined
-			},
-			timestamp,
-		])
+		const processedWitness = {
+			...restWitness,
+			evals: fixedEvals,
+			prompt_results: promptTokens,
+			prompt_index: prompt_index || 0, // Default to 0 if undefined
+		}
+
+		lastRun.witnessUpdates.push([processedWitness, timestamp])
+
+		const newPromptIndex = processedWitness.prompt_index
+		if (lastRun.currentPromptIndex !== newPromptIndex) {
+			// Prompt index changed, reset cumulative tokens and start results from scratch
+			lastRun.currentPromptIndex = newPromptIndex
+			lastRun.currentCumulativeTokens = []
+		}
+		if (promptTokens.length > 0) {
+			// Append to current cumulative prompt state tokens
+			lastRun.lastPromptResults = promptTokens
+			lastRun.currentCumulativeTokens = [
+				...lastRun.currentCumulativeTokens,
+				...promptTokens,
+			]
+		}
 
 		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
 	}
@@ -517,39 +538,44 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			)
 		}
 
-		// collect prompt results by step
-		const promptResults: Array<readonly [number, number[]]> = []
-		const promptIndices: Array<readonly [number, number]> = []
-		const cumulativePromptResults: Array<readonly [number, number[]]> = []
-
-		let cumulativeTokens: number[] = []
-		let currentPromptIndex: number | null = null
-
-		for (const [step, r] of linearWitnessHistory) {
-			// Check if prompt index changed: if so, reset cumulative tokens
-			if (r.prompt_index !== undefined && typeof r.prompt_index === 'number') {
-				if (
-					currentPromptIndex !== null &&
-					r.prompt_index !== currentPromptIndex
-				) {
-					// Prompt changed, reset cumulative tokens
-					cumulativeTokens = []
-				}
-				currentPromptIndex = r.prompt_index
-				promptIndices.push([step, r.prompt_index] as const)
-			}
-
-			if (
-				r.prompt_results &&
-				Array.isArray(r.prompt_results) &&
-				r.prompt_results.length > 0
-			) {
-				promptResults.push([step, r.prompt_results] as const)
-				// Accumulate tokens for cumulative results (within current prompt)
-				cumulativeTokens = [...cumulativeTokens, ...r.prompt_results]
-				cumulativePromptResults.push([step, [...cumulativeTokens]] as const)
-			}
+		if (run.currentPromptIndex === undefined) {
+			run.currentPromptIndex = null
+			run.currentCumulativeTokens = []
+			run.lastPromptResults = []
 		}
+		// If we have recent prompt results (tokens), create an array with one entry: [latest_step_number, most_recent_tokens]
+		// If we don't have any recent prompt results, just return an empty array
+		const promptResults: Array<readonly [number, number[]]> =
+			run.lastPromptResults.length > 0
+				? [
+						[
+							linearWitnessHistory.at(-1)?.[0] ?? 0,
+							run.lastPromptResults,
+						] as const,
+					]
+				: []
+		// If we have a current prompt index, create an array with one entry: [latest_step_number, current_prompt_index]
+		// If we don't have a current prompt index, just return an empty array
+		const promptIndices: Array<readonly [number, number]> =
+			run.currentPromptIndex !== null
+				? [
+						[
+							linearWitnessHistory.at(-1)?.[0] ?? 0,
+							run.currentPromptIndex,
+						] as const,
+					]
+				: []
+		// If we have accumulated tokens, create an array with one entry: [latest_step_number, all_accumulated_tokens]
+		// If we don't have any accumulated tokens, just return an empty array
+		const cumulativePromptResults: Array<readonly [number, number[]]> =
+			run.currentCumulativeTokens.length > 0
+				? [
+						[
+							linearWitnessHistory.at(-1)?.[0] ?? 0,
+							run.currentCumulativeTokens,
+						] as const,
+					]
+				: []
 
 		const history: OverTime<Metrics> = {
 			bandwidth: fairSample(
@@ -595,10 +621,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					.map(([k, v]) => [k, v.at(-1)?.[1]] as const)
 					.filter((x): x is [string, number] => x[1] !== undefined)
 			),
-			promptResults: (history.promptResults.at(-1)?.[1] ?? []) as number[],
-			promptIndex: history.promptIndex.at(-1)?.[1] ?? 0,
-			cumulativePromptResults: (history.cumulativePromptResults.at(-1)?.[1] ??
-				[]) as number[],
+			promptResults: run.lastPromptResults,
+			promptIndex: run.currentPromptIndex ?? 0,
+			cumulativePromptResults: run.currentCumulativeTokens,
 		}
 
 		let state: RunData['state']
@@ -666,9 +691,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				summary,
 				history,
 			},
-			promptResults: promptResults.at(-1)?.[1] ?? [],
-			promptIndex: promptIndices.at(-1)?.[1] ?? 0,
-			cumulativePromptResults: cumulativePromptResults.at(-1)?.[1] ?? [],
+			promptResults: run.lastPromptResults,
+			promptIndex: run.currentPromptIndex ?? 0,
+			cumulativePromptResults: run.currentCumulativeTokens,
 		}
 		this.#runCache.set(runKey(runId, index), runData)
 		return runData
