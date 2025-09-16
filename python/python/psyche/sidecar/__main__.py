@@ -1,4 +1,5 @@
 import argparse
+from typing import Optional
 import torch
 import json
 import os
@@ -14,6 +15,7 @@ from .. import (
 )
 from .api import (
     DistroResultsMetadata,
+    ForwardOperation,
     Hyperparameters,
     OptimizeOperation,
     TrainOperation,
@@ -84,6 +86,31 @@ def receive_distro_results(
     return results
 
 
+def receive_batch(
+    device: torch.device,
+    batch_shape: list[int],
+    batch_has_labels: bool,
+    batch_has_position_ids: bool,
+) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    input_ids = torch.empty(batch_shape, dtype=torch.long, device=device)
+    labels = (
+        torch.empty(batch_shape, dtype=torch.long, device=device)
+        if batch_has_labels
+        else None
+    )
+    position_ids = (
+        torch.empty(batch_shape, dtype=torch.long, device=device)
+        if batch_has_position_ids
+        else None
+    )
+    dist.broadcast(input_ids, 0)
+    if batch_has_labels:
+        dist.broadcast(labels, 0)
+    if batch_has_position_ids:
+        dist.broadcast(position_ids, 0)
+    return (input_ids, labels, position_ids)
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -150,34 +177,41 @@ def main():
         tp=tp,
     )
 
-    hyperparameters: Hyperparameters = Hyperparameters(
-        **json.loads(store.get("hyperparameters").decode())
-    )
-
-    if hyperparameters.grad_accum_in_fp32:
-        raise RuntimeError("FP32 reduce not supported in Python Hf yet")
-
-    trainer = Trainer(
-        device,
-        model,
-        json.dumps(hyperparameters.lr_scheduler),
-        json.dumps(hyperparameters.optimizer),
-        json.dumps(model.get_config()),
-        hyperparameters.micro_batch_size,
-        hyperparameters.grad_accum_in_fp32,
-    )
-
+    trainer: Optional[Trainer] = None
     iteration = 0
 
     while True:
-        operation = store.get(str(iteration)).decode()
-        operation = json.loads(operation)
+        try:
+            operation = store.get(str(iteration))
+        except:
+            return
+        operation = json.loads(operation.decode())
 
         # dummy barrier
         dummy = torch.zeros((), dtype=torch.float, device=device)
         dist.all_reduce(dummy)
 
-        if operation["operation"] == "train":
+        if operation["operation"] == "hyperparameters":
+            hyperparameters: Hyperparameters = Hyperparameters(**operation)
+
+            if hyperparameters.grad_accum_in_fp32:
+                raise ValueError("FP32 reduce not supported in Python Hf yet")
+
+            trainer = Trainer(
+                device,
+                model,
+                json.dumps(hyperparameters.lr_scheduler),
+                json.dumps(hyperparameters.optimizer),
+                json.dumps(model.get_config()),
+                hyperparameters.micro_batch_size,
+                hyperparameters.grad_accum_in_fp32,
+            )
+        elif operation["operation"] == "train":
+            if trainer is None:
+                raise RuntimeError(
+                    "Got train operation without having created a trainer"
+                )
+
             train = TrainOperation(**operation)
             prev_self_distro_results = []
             if train.results_len > 0 and train.results_metadata:
@@ -187,22 +221,12 @@ def main():
                     device=device,
                 )
 
-            input_ids = torch.empty(train.batch_shape, dtype=torch.long, device=device)
-            labels = (
-                torch.empty(train.batch_shape, dtype=torch.long, device=device)
-                if train.batch_has_labels
-                else None
+            input_ids, labels, position_ids = receive_batch(
+                device,
+                train.batch_shape,
+                train.batch_has_labels,
+                train.batch_has_position_ids,
             )
-            position_ids = (
-                torch.empty(train.batch_shape, dtype=torch.long, device=device)
-                if train.batch_has_position_ids
-                else None
-            )
-            dist.broadcast(input_ids, 0)
-            if train.batch_has_labels:
-                dist.broadcast(labels, 0)
-            if train.batch_has_position_ids:
-                dist.broadcast(position_ids, 0)
 
             _, loss = trainer.train(
                 train.step,
@@ -223,6 +247,11 @@ def main():
             loss = torch.Tensor([loss]).to(device=device, dtype=torch.float32)
             dist.all_reduce(loss)
         elif operation["operation"] == "optimize":
+            if trainer is None:
+                raise RuntimeError(
+                    "Got train operation without having created a trainer"
+                )
+
             with torch.no_grad():
                 optimize = OptimizeOperation(**operation)
 
@@ -244,8 +273,34 @@ def main():
                     results,
                 )
         elif operation["operation"] == "extract":
+            if trainer is None:
+                raise RuntimeError(
+                    "Got train operation without having created a trainer"
+                )
+
             with torch.no_grad():
                 trainer.extract()
+        elif operation["operation"] == "forward":
+            with torch.no_grad():
+                forward = ForwardOperation(**operation)
+
+                input_ids, labels, position_ids = receive_batch(
+                    device,
+                    forward.batch_shape,
+                    forward.batch_has_labels,
+                    forward.batch_has_position_ids,
+                )
+
+                model.forward(
+                    input_ids=input_ids,
+                    labels=labels,
+                    position_ids=position_ids,
+                    sequence_lengths=forward.batch_sequence_lengths,
+                    num_logits_to_keep=forward.num_logits_to_keep,
+                    loss_scale=forward.loss_scale,
+                )
+        elif operation["operation"] == "exit":
+            return
 
         iteration += 1
 

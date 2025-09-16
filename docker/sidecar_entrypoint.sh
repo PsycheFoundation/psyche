@@ -4,17 +4,17 @@ set -o errexit
 set -euo pipefail
 
 # Sanity checks
-if [[ "$PSYCHE_MAIN_HOST" == "" ]]; then
+if [[ "${PSYCHE_MAIN_HOST:-}" == "" ]]; then
     echo -e "\n[!] The PSYCHE_MAIN_HOST env variable was not set."
     exit 1
 fi
 
-if [[ "$PSYCHE_WORLD_SIZE" == "" ]]; then
+if [[ "${PSYCHE_WORLD_SIZE:-}" == "" ]]; then
     echo -e "\n[!] The PSYCHE_WORLD_SIZE env variable was not set."
     exit 1
 fi
 
-if [[ "$PSYCHE_START_RANK" == "" ]]; then
+if [[ "${PSYCHE_START_RANK:-}" == "" ]]; then
     echo -e "\n[!] The PSYCHE_START_RANK env variable was not set."
     exit 1
 fi
@@ -24,7 +24,7 @@ if [[ "${PSYCHE_START_DEVICE:-}" == "" ]]; then
     PSYCHE_START_DEVICE=0
 fi
 
-if [[ "$HF_MODEL_REPO" == "" ]]; then
+if [[ "${HF_MODEL_REPO:-}" == "" ]]; then
     echo -e "\n[!] The HF_MODEL_REPO env variable was not set."
     exit 1
 fi
