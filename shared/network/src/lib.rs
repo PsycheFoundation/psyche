@@ -389,9 +389,7 @@ where
             block_size: 1024,
         };
 
-        //sync(tickets, config, 0).await
-
-        Ok((vec![], HashMap::new()))
+        sync(tickets, config, 0).await
     }
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {

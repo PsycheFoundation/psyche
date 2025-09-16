@@ -928,7 +928,7 @@ dependencies = [
 [[package]]
 name = "big-block-sync"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/big-block-sync.git?rev=fae6f5b1c55e722f703adafa3049eaecea26aa9e#fae6f5b1c55e722f703adafa3049eaecea26aa9e"
+source = "git+https://github.com/ryleung-solana/big-block-sync.git?rev=1d295d9868cca24b62e5183ceebd3b28efc09fae#1d295d9868cca24b62e5183ceebd3b28efc09fae"
 dependencies = [
  "anyhow",
  "bao-tree",
@@ -4565,6 +4565,7 @@ dependencies = [
 ]
 
 [[package]]
+==== BASE ====
 name = "iroh-blobs"
 version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4580,15 +4581,15 @@ dependencies = [
  "futures-lite",
  "genawaiter",
  "hex",
- "iroh 0.35.0",
- "iroh-base 0.35.0",
+ "iroh",
+ "iroh-base",
  "iroh-io",
  "iroh-metrics",
  "iroh-quinn",
  "irpc",
  "n0-future 0.2.0",
  "n0-snafu",
- "nested_enum_utils 0.2.2",
+ "nested_enum_utils",
  "postcard",
  "rand 0.8.5",
  "range-collections",
@@ -4605,6 +4606,7 @@ dependencies = [
 ]
 
 [[package]]
+==== BASE ====
 name = "iroh-gossip"
 version = "0.92.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -102,7 +102,7 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
   "psyche-impl",
 ] }
 rayon = "1.10.0"
-big-block-sync = {git = "https://github.com/n0-computer/big-block-sync.git", rev = "fae6f5b1c55e722f703adafa3049eaecea26aa9e"}
+big-block-sync = {git = "https://github.com/ryleung-solana/big-block-sync.git", rev = "1d295d9868cca24b62e5183ceebd3b28efc09fae"}
 
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }
