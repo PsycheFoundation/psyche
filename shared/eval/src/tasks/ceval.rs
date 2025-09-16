@@ -1,3 +1,7 @@
+// TODO: The evaluations differ from those in lm_evals when using Deepseek-like models
+// We believe this to be because of a mismatch in which tokenizer we use, we should investigate this further.
+// Evals should be very close or the same as those in lm_evals with Llama-like models.
+
 use crate::{
     TaskType, load_dataset,
     traits::{Document, LogLikelihoodTask},
