@@ -462,6 +462,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 attn_implementation.unwrap_or_default(),
                                                 psyche_modeling::ParallelismConfig { dp, tp },
                                                 Some(llm.max_seq_len as usize),
+                                                None,
                                             )
                                             .map(RawLoadedModelType::PythonDistributed)
                                             .map_err(InitRunError::PythonDistributedError)
