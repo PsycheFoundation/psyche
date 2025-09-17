@@ -66,7 +66,7 @@ impl DummyModel {
 
 impl CausalLM for DummyModel {
     fn forward(
-        &mut self,
+        &self,
         _x: &tch::Tensor,
         _labels: Option<&tch::Tensor>,
         _position_ids: Option<&tch::Tensor>,
@@ -114,11 +114,10 @@ impl CausalLM for DummyModel {
         None
     }
 
-    fn prepare_for_training(&mut self) {}
-
-    fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+    fn prepare_for_training(&self) {}
 
     fn is_dummy_model(&self) -> bool {
         true
     }
+    fn clip_grad_norm(&self, _max_grad_norm: f64) {}
 }

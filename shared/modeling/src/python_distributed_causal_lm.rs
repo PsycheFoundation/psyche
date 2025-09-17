@@ -1,23 +1,28 @@
 use crate::{
-    CausalLM, Communicator, ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType,
-    StableVariableIterator,
-    python_causal_lm::{PythonCausalLMError, PythonModelConfig},
+    AttentionImplementation, Batch, BatchData, BatchDataGPU, CausalLM, Communicator,
+    ParallelismConfig, PretrainedSource, PythonCausalLM, ReduceType, StableVariableIterator,
+    python_causal_lm::{PythonCausalLMError, PythonModelConfig, WrappedPythonCausalLM},
 };
 
+use psyche_core::BatchId;
 use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
     process::{Child, Command},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     thread::JoinHandle,
     time::Duration,
 };
-use tch::{Device, Tensor};
+use tch::{Device, Kind, Tensor};
 use thiserror::Error;
+use tracing::{debug, trace};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
-    #[error("Local deivce must be rank 0, instead got {0}")]
+    #[error("Local device must be rank 0, instead got {0}")]
     LocalNotRankZero(usize),
 
     #[error("Local device not a CUDA device")]
@@ -51,13 +56,38 @@ impl TorchDistributedCommunicator {
     ) -> PyResult<Self> {
         let result: PyResult<PyObject> = Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
-            let init_process_group = distributed.getattr("init_process_group")?;
             let timeout = Duration::from_secs(60 * 60 * 2); // use a large timeout for warmup
+
+            let store = match &init_method {
+                Some(init_method) => {
+                    if let Some(init_method) = init_method.strip_prefix("tcp://") {
+                        let (host_name, port) = init_method.split_once(":").unwrap();
+                        let tcp_store = distributed.getattr("TCPStore")?;
+                        let kwargs = PyDict::new(py);
+                        kwargs.set_item("host_name", host_name).unwrap();
+                        kwargs
+                            .set_item("port", port.parse::<usize>().unwrap())
+                            .unwrap();
+                        kwargs.set_item("world_size", world_size.unwrap()).unwrap();
+                        kwargs.set_item("is_master", true).unwrap();
+                        kwargs.set_item("timeout", timeout).unwrap();
+                        kwargs.set_item("use_libuv", false).unwrap();
+                        Some(tcp_store.call((), Some(&kwargs))?)
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            };
+
+            let init_process_group = distributed.getattr("init_process_group")?;
             let kwargs = PyDict::new(py);
             if let Some(backend) = backend {
                 kwargs.set_item("backend", backend).unwrap();
             }
-            if let Some(init_method) = init_method {
+            if let Some(store) = store.clone() {
+                kwargs.set_item("store", store).unwrap();
+            } else if let Some(init_method) = init_method {
                 kwargs.set_item("init_method", init_method).unwrap();
             }
             if let Some(world_size) = world_size {
@@ -68,9 +98,17 @@ impl TorchDistributedCommunicator {
             }
             kwargs.set_item("timeout", timeout).unwrap();
             init_process_group.call((), Some(&kwargs))?;
-            let distributed_c10d = Python::import(py, "torch.distributed.distributed_c10d")?;
-            let get_default_store = distributed_c10d.getattr("_get_default_store")?;
-            let store = get_default_store.call0()?;
+
+            let store = match store {
+                Some(store) => store,
+                None => {
+                    let distributed_c10d =
+                        Python::import(py, "torch.distributed.distributed_c10d")?;
+                    let get_default_store = distributed_c10d.getattr("_get_default_store")?;
+                    get_default_store.call0()?
+                }
+            };
+
             Ok(store.unbind())
         });
         Ok(Self {
@@ -81,12 +119,14 @@ impl TorchDistributedCommunicator {
     }
 
     pub fn set(&self, key: &str, value: &str) -> PyResult<()> {
-        Python::with_gil(|py| {
+        let ret = Python::with_gil(|py| {
             let store = self.store.bind(py);
             let set = store.getattr("set")?;
             let _res = set.call1((key, value))?;
             Ok(())
-        })
+        });
+        trace!("Set key {} (length {}) in store", key, value.len());
+        ret
     }
 
     pub fn size(&self) -> usize {
@@ -115,12 +155,29 @@ impl TorchDistributedCommunicator {
             Ok(())
         })
     }
+
+    pub fn all_gather(&self, output_tensors: &[Tensor], input_tensor: &Tensor) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let distributed = Python::import(py, "torch.distributed")?;
+            let all_gather = distributed.getattr("all_gather")?;
+            all_gather.call1((
+                output_tensors
+                    .iter()
+                    .map(|x| PyTensor(x.shallow_clone()))
+                    .collect::<Vec<_>>(),
+                PyTensor(input_tensor.shallow_clone()),
+            ))?;
+            Ok(())
+        })
+    }
 }
 
 #[derive(Debug)]
 pub struct PythonDistributedCausalLM {
     comm: TorchDistributedCommunicator,
-    local: PythonCausalLM,
+    pub(crate) local: WrappedPythonCausalLM,
+    // synchronizes access to underlying model
+    iteration: Arc<AtomicUsize>,
     pub(crate) parallelism: ParallelismConfig,
     #[allow(unused)]
     children: Vec<Child>,
@@ -133,6 +190,7 @@ impl PythonDistributedCausalLM {
         architecture: String,
         source: PretrainedSource<PythonModelConfig>,
         device: Device,
+        attn_implementation: AttentionImplementation,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
@@ -140,6 +198,8 @@ impl PythonDistributedCausalLM {
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
+                // TODO: is this actually a bug?
+                // Does the 0th cuda device *have* to be rank 0?
                 return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank));
             }
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
@@ -175,6 +235,7 @@ impl PythonDistributedCausalLM {
                     &architecture,
                     &source,
                     device,
+                    attn_implementation,
                     Some(parallelism),
                     override_max_position_embeddings,
                 )?;
@@ -211,16 +272,21 @@ impl PythonDistributedCausalLM {
 
         Ok(Self {
             comm,
-            local,
+            local: local.into(),
             parallelism,
             children,
+            iteration: Arc::new(AtomicUsize::new(0)),
         })
+    }
+
+    pub fn iteration(&self) -> Arc<AtomicUsize> {
+        self.iteration.clone()
     }
 }
 
 impl CausalLM for PythonDistributedCausalLM {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&tch::Tensor>,
         position_ids: Option<&Tensor>,
@@ -228,14 +294,85 @@ impl CausalLM for PythonDistributedCausalLM {
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
     ) -> (Tensor, Option<Tensor>) {
-        self.local.forward(
-            x,
-            labels,
-            position_ids,
-            sequence_lengths,
+        let world_size = self.comm.size();
+        let original_batch_size = x.size()[0] as usize;
+
+        let mut batch = Batch {
+            id: BatchId((0, 0).into()),
+            data: BatchData::GPU(BatchDataGPU {
+                input_ids: x.shallow_clone(),
+                labels: labels.map(|y| y.shallow_clone()),
+                position_ids: position_ids.map(|y| y.shallow_clone()),
+                sequence_lengths: sequence_lengths.cloned(),
+            }),
+        };
+
+        // Pad the batch if necessary for FSDP
+        if world_size > 1 {
+            trace!(
+                "Checking batch padding: original batch size = {}, world_size = {}",
+                original_batch_size, world_size
+            );
+
+            batch.pad(world_size);
+
+            let new_size = batch.data.size();
+            if new_size != original_batch_size {
+                debug!(
+                    "FSDP: Padded batch from {} to {} samples (world_size={})",
+                    original_batch_size, new_size, world_size
+                );
+            }
+        }
+
+        let batch = batch.gpu(self.device());
+        let batch_data = match &batch.data {
+            BatchData::GPU(batch_data) => batch_data,
+            _ => unreachable!(),
+        };
+
+        let operation = serde_json::json!({
+            "operation": "forward",
+            "batch_shape": batch_data.input_ids.size(),
+            "batch_has_labels": batch_data.labels.is_some(),
+            "batch_has_position_ids": batch_data.position_ids.is_some(),
+            "batch_sequence_lengths": batch_data.sequence_lengths,
+            "num_logits_to_keep": num_logits_to_keep,
+            "loss_scale": loss_scale,
+        });
+
+        let iteration = self.iteration.fetch_add(1, Ordering::Relaxed);
+        trace!(
+            "Sending forward operation to Python clients, iteration = {}",
+            iteration
+        );
+
+        self.comm
+            .set(&iteration.to_string(), &operation.to_string())
+            .unwrap();
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
+        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
+
+        self.comm.broadcast(&batch_data.input_ids).unwrap();
+        if let Some(labels) = &batch_data.labels {
+            self.comm.broadcast(labels).unwrap();
+        }
+        if let Some(position_ids) = &batch_data.position_ids {
+            self.comm.broadcast(position_ids).unwrap();
+        }
+
+        let (logits, loss) = self.local.forward(
+            &batch_data.input_ids,
+            batch_data.labels.as_ref(),
+            batch_data.position_ids.as_ref(),
+            batch_data.sequence_lengths.as_ref(),
             num_logits_to_keep,
             loss_scale,
-        )
+        );
+
+        (logits, loss)
     }
 
     fn device(&self) -> Device {
@@ -248,7 +385,7 @@ impl CausalLM for PythonDistributedCausalLM {
         Some(Arc::new(self.comm.clone().into()))
     }
 
-    fn prepare_for_training(&mut self) {
+    fn prepare_for_training(&self) {
         self.local.prepare_for_training();
     }
 
@@ -256,7 +393,7 @@ impl CausalLM for PythonDistributedCausalLM {
         self.local.variables()
     }
 
-    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
+    fn clip_grad_norm(&self, max_grad_norm: f64) {
         self.local.clip_grad_norm(max_grad_norm);
     }
 
@@ -270,5 +407,25 @@ impl CausalLM for PythonDistributedCausalLM {
 
     fn max_context_length(&self) -> usize {
         self.local.max_context_length()
+    }
+
+    fn shutdown(&self) {
+        let operation = serde_json::json!({
+            "operation": "exit",
+        });
+
+        let iteration = self.iteration.fetch_add(1, Ordering::Relaxed);
+        trace!(
+            "Sending exit operation to Python clients, iteration = {}",
+            iteration
+        );
+
+        self.comm
+            .set(&iteration.to_string(), &operation.to_string())
+            .unwrap();
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
+        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
     }
 }

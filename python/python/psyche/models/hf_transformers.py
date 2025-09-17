@@ -14,10 +14,8 @@ from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
 from torch.distributed.tensor import DTensor, distribute_tensor
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
+    _CHECKPOINT_PREFIX,
 )
-
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
 
 
 # adapted from https://github.com/pytorch/torchtitan/blob/49c6d6fc15ef644e5c3b1003ad4e0d9ea5fcb9a9/torchtitan/parallelisms/parallel_dims.py#L48
@@ -76,6 +74,7 @@ class HfTransformersAuto(CausalLM):
     def from_pretrained(
         source: Union[PretrainedSourceRepoFiles, PretrainedSourceStateDict],
         device: torch.device,
+        attn_implementation: str,
         dp: int = 1,
         tp: int = 1,
         override_max_position_embeddings: Optional[int] = None,
@@ -120,7 +119,7 @@ class HfTransformersAuto(CausalLM):
 
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
-                config, attn_implementation="flash_attention_2"
+                config, attn_implementation=attn_implementation
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
@@ -152,10 +151,11 @@ class HfTransformersAuto(CausalLM):
                 if fsdp_modules is None:
                     raise RuntimeError("Could not determine models to apply FSDP to")
 
-                apply_activation_checkpointing(
-                    model,
-                    check_fn=lambda module: module.__class__.__name__ in fsdp_modules,
-                )
+                # seems to break with latest transformers, let's fall back to their activation checkpointing
+                # apply_activation_checkpointing(
+                #     model,
+                #     check_fn=lambda module: module.__class__.__name__ in fsdp_modules,
+                # )
 
                 for module in model.modules():
                     if module.__class__.__name__ in fsdp_modules:
@@ -197,6 +197,9 @@ class HfTransformersAuto(CausalLM):
         for module in model.modules():
             reinit_rope(module)
         reinit_rope(model)
+
+        if model.supports_gradient_checkpointing:
+            model._set_gradient_checkpointing(True)
 
         # for super large models, loading the entire model in RAM nproc times can CPU OOM
         # TODO: switch to use torch.distributed.checkpoint.state_dict_loader.load()
@@ -247,7 +250,7 @@ class HfTransformersAuto(CausalLM):
             input_ids,
             labels=labels,
             position_ids=position_ids,
-            num_logits_to_keep=num_logits_to_keep,
+            logits_to_keep=num_logits_to_keep,  # name changed in 4.50
             return_dict=True,
         )
         if ret.loss and loss_scale:
@@ -255,7 +258,9 @@ class HfTransformersAuto(CausalLM):
         return (ret.logits, ret.loss)
 
     def named_parameters(self) -> dict[str, torch.Tensor]:
-        return dict(self.model.named_parameters())
+        params = dict(self.model.named_parameters())
+        # undo activation checkpoint wrapping
+        return {k.replace(_CHECKPOINT_PREFIX, ""): v for k, v in params.items()}
 
     def train(self):
         self.model.train()

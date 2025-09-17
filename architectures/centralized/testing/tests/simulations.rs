@@ -3,17 +3,17 @@ use iroh::NodeAddr;
 use iroh_blobs::net_protocol::Blobs;
 use iroh_n0des::simulation::{Builder, DynNode, RoundContext, Spawn};
 use psyche_centralized_testing::{
+    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
     client::{Client, ClientHandle},
     server::CoordinatorServerHandle,
     test_utils::{
-        assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
-        spawn_clients_with_training_delay, Setup,
+        Setup, assert_with_retries, assert_witnesses_healthy_score, spawn_clients,
+        spawn_clients_with_training_delay,
     },
-    COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,
 };
 use psyche_coordinator::{
-    model::{Checkpoint, HubRepo},
     RunState,
+    model::{Checkpoint, HubRepo},
 };
 use rand::seq::IteratorRandom;
 use std::time::Duration;

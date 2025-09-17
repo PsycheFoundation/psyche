@@ -1,8 +1,4 @@
-use crate::{
-    backend::SolanaBackend,
-    network_identity::NetworkIdentity,
-    retry::{RetryError, retry_function},
-};
+use crate::{backend::SolanaBackend, network_identity::NetworkIdentity};
 
 use anchor_client::{
     Cluster,
@@ -18,6 +14,7 @@ use psyche_client::{
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_metrics::ClientMetrics;
+use psyche_modeling::Devices;
 use psyche_network::{
     DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey, allowlist, psyche_relay_map,
 };
@@ -86,6 +83,7 @@ pub struct AppParams {
     pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,
     pub metrics_local_port: Option<u16>,
+    pub device: Devices,
 }
 
 impl AppBuilder {
@@ -139,6 +137,7 @@ impl AppBuilder {
                 grad_accum_in_fp32: p.grad_accum_in_fp32,
                 dummy_training_delay_secs: p.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+                device: p.device,
             };
         let app = App {
             run_id: p.run_id.clone(),
@@ -204,8 +203,8 @@ impl App {
         // (subscription is on change), so check if it's in that state right at boot
         // and join the run if so
         if start_coordinator_state.run_state == RunState::WaitingForMembers {
-            let joined = retry_function("join_run", || {
-                backend.join_run_retryable(
+            let join_signature = backend
+                .join_run(
                     coordinator_instance,
                     coordinator_account,
                     psyche_solana_coordinator::ClientId {
@@ -214,16 +213,14 @@ impl App {
                     },
                     self.authorizer,
                 )
-            })
-            .await
-            .map_err(|e: RetryError<String>| anyhow!("join_run error: {}", e))?;
+                .await?;
             info!(
                 run_id = self.run_id,
                 from = %signer,
-                tx = %joined,
+                tx = %join_signature,
                 "Joined run",
             );
-            joined_run_this_epoch = Some(joined);
+            joined_run_this_epoch = Some(join_signature);
             ever_joined_run = true;
         } else {
             info!("Waiting for the current epoch to end before joining");
@@ -304,21 +301,21 @@ impl App {
                     match latest_update.run_state {
                         RunState::WaitingForMembers => {
                             if joined_run_this_epoch.is_none() {
-                                let joined = retry_function("join_run", || backend
-                                    .join_run_retryable(
+                                let join_signature = backend
+                                    .join_run(
                                         coordinator_instance,
                                         coordinator_account,
                                         id,
                                         self.authorizer,
-                                    ))
-                                    .await.map_err(|e: RetryError<String>| anyhow!("join_run error: {}", e))?;
+                                    )
+                                    .await?;
                                 info!(
                                     run_id = self.run_id,
                                     from = %signer,
-                                    tx = %joined,
+                                    tx = %join_signature,
                                     "Joined run",
                                 );
-                                joined_run_this_epoch = Some(joined);
+                                joined_run_this_epoch = Some(join_signature);
                                 ever_joined_run = true;
                             }
                         }

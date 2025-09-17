@@ -7,6 +7,7 @@ use psyche_client::{
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::{BlobsMetrics, ClientMetrics, GossipMetrics, IrohMetricsRegistry};
+use psyche_modeling::Devices;
 use psyche_network::router::Router;
 use psyche_network::{
     AuthenticatableIdentity, DiscoveryMode, Endpoint, NetworkTUIState, NetworkTui, NodeId,
@@ -133,6 +134,7 @@ pub struct AppParams {
     pub max_concurrent_downloads: usize,
     pub metrics_local_port: Option<u16>,
     pub sim_endpoint: Option<Endpoint>,
+    pub device: Devices,
 }
 
 impl App {
@@ -321,6 +323,7 @@ impl App {
             grad_accum_in_fp32: params.grad_accum_in_fp32,
             dummy_training_delay_secs: params.dummy_training_delay_secs,
             max_concurrent_parameter_requests: params.max_concurrent_parameter_requests,
+            device: params.device,
         };
 
         // let backend = Backend {

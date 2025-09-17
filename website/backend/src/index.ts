@@ -126,9 +126,28 @@ async function main() {
 	const shutdown = async () => {
 		console.log('got shutdown signal, shutting down!')
 		cancel()
-		await fastify.close()
-		await Promise.all([coordinator.stopped, miningPool.stopped])
-		process.exit(0)
+
+		try {
+			await fastify.close()
+		} catch (err) {
+			console.error('Error closing fastify:', err)
+		}
+
+		const shutdownTimeout = setTimeout(() => {
+			console.error('Shutdown timeout reached, forcing exit!')
+			process.exit(1)
+		}, 10000)
+
+		try {
+			await Promise.all([coordinator.stopped, miningPool.stopped])
+			clearTimeout(shutdownTimeout)
+			console.log('Clean shutdown completed')
+			process.exit(0)
+		} catch (err) {
+			console.error('Error during shutdown:', err)
+			clearTimeout(shutdownTimeout)
+			process.exit(1)
+		}
 	}
 
 	let coordinatorCrashed: Error | null = null
@@ -333,6 +352,6 @@ async function main() {
 			.send(JSON.stringify(data, replacer))
 	})
 
-	await fastify.listen({ port: 3000 })
+	await fastify.listen({ host: '0.0.0.0', port: 3000 })
 }
 main()

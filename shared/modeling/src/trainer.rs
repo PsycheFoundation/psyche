@@ -130,6 +130,94 @@ impl Batch {
             data: BatchData::GPU(self.data.gpu(device)),
         }
     }
+
+    pub fn pad(&mut self, world_size: usize) {
+        match &mut self.data {
+            BatchData::CPU(cpu_data) => {
+                let current_batch_size = cpu_data.len();
+                let remainder = current_batch_size % world_size;
+
+                if remainder != 0 {
+                    let padding_needed = world_size - remainder;
+                    trace!(
+                        "Batch size {} not divisible by world_size {}. Adding {} padding samples",
+                        current_batch_size, world_size, padding_needed
+                    );
+
+                    // Get sequence length from the first sample
+                    if !cpu_data.is_empty() {
+                        let seq_len = cpu_data[0].input_ids.len();
+
+                        // Create padding samples with labels set to -100
+                        for _ in 0..padding_needed {
+                            let padding_sample = BatchDataCPU {
+                                // Use 0 as padding token ID
+                                input_ids: vec![0; seq_len],
+                                // Set labels to -100 so they're ignored in loss computation
+                                labels: cpu_data[0].labels.as_ref().map(|_| vec![-100; seq_len]),
+                                position_ids: cpu_data[0]
+                                    .position_ids
+                                    .as_ref()
+                                    .map(|_| (0..seq_len as i32).collect()),
+                                sequence_lengths: cpu_data[0]
+                                    .sequence_lengths
+                                    .as_ref()
+                                    .map(|_| vec![seq_len as i32; 1]),
+                            };
+                            cpu_data.push(padding_sample);
+                        }
+                    }
+                }
+            }
+            BatchData::GPU(gpu_data) => {
+                let current_batch_size = gpu_data.input_ids.size()[0] as usize;
+                let remainder = current_batch_size % world_size;
+
+                if remainder != 0 {
+                    let padding_needed = world_size - remainder;
+                    trace!(
+                        "Batch size {} not divisible by world_size {}. Adding {} padding samples",
+                        current_batch_size, world_size, padding_needed
+                    );
+
+                    if current_batch_size == 0 {
+                        return;
+                    }
+
+                    let seq_len = gpu_data.input_ids.size()[1];
+                    let device = gpu_data.input_ids.device();
+
+                    let padding_input_ids =
+                        Tensor::zeros([padding_needed as i64, seq_len], (Kind::Int64, device));
+                    gpu_data.input_ids = Tensor::cat(&[&gpu_data.input_ids, &padding_input_ids], 0);
+
+                    if let Some(labels) = gpu_data.labels.take() {
+                        let padding_labels = Tensor::full(
+                            [padding_needed as i64, seq_len],
+                            -100i64,
+                            (Kind::Int64, device),
+                        );
+                        gpu_data.labels = Some(Tensor::cat(&[&labels, &padding_labels], 0));
+                    }
+
+                    if gpu_data.position_ids.is_some() {
+                        let pos_row = Tensor::arange(seq_len, (Kind::Int64, device));
+                        let padding_pos = pos_row.unsqueeze(0).repeat([padding_needed as i64, 1]);
+                        if let Some(pos) = gpu_data.position_ids.take() {
+                            gpu_data.position_ids = Some(Tensor::cat(&[&pos, &padding_pos], 0));
+                        }
+                    }
+
+                    if let Some(seq_lens) = &mut gpu_data.sequence_lengths {
+                        let pad_seq = vec![seq_len as i32; 1];
+                        for _ in 0..padding_needed {
+                            seq_lens.push(pad_seq.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub struct TrainOutput {
@@ -327,6 +415,9 @@ pub enum TrainerThreadCommunicationError {
 
     #[error("Got unexpected result from trainer thread: {0}")]
     UnexpectedResult(String),
+
+    #[error("Attempting to pad batch that's already on GPU")]
+    PaddingBatch,
 
     #[cfg(feature = "python")]
     #[error("Python error: {0}")]
@@ -564,7 +655,7 @@ impl LocalTrainer {
                     );
                 }
                 o => {
-                    return Err(ApplyDistroResultError::RecievedWrongResultType(format!(
+                    return Err(ApplyDistroResultError::ReceivedWrongResultType(format!(
                         "{o:?}"
                     )));
                 }
@@ -809,12 +900,16 @@ impl LocalTrainer {
                             &barrier,
                             Some(grad_accum_divisor),
                         ) {
-                            Ok(Some(batch_loss)) => match loss.as_mut() {
-                                Some(loss) => *loss += batch_loss,
-                                None => {
-                                    loss = Some(batch_loss);
+                            Ok(Some(batch_loss)) => {
+                                if batch_loss.double_value(&[]).is_finite() {
+                                    match loss.as_mut() {
+                                        Some(loss) => *loss += batch_loss,
+                                        None => {
+                                            loss = Some(batch_loss);
+                                        }
+                                    }
                                 }
-                            },
+                            }
                             Ok(None) => {
                                 // cancelled barrier catching race to on run_state
                                 cancelled = true;
@@ -1028,8 +1123,8 @@ pub enum ApplyDistroResultError {
     #[error("failed to recv optimization result from trainer thread: {0}")]
     ReceiveResult(#[from] flume::RecvError),
 
-    #[error("recieved wrong result type from trainer thread. expected Optimize, got {0:?}")]
-    RecievedWrongResultType(String),
+    #[error("received wrong result type from trainer thread. expected Optimize, got {0:?}")]
+    ReceivedWrongResultType(String),
 
     #[error("apply thread crashed")]
     ThreadCrashed,
@@ -1041,7 +1136,7 @@ pub enum ApplyDistroResultError {
 
 impl CausalLM for LocalTrainer {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -1099,13 +1194,12 @@ impl CausalLM for LocalTrainer {
         unimplemented!()
     }
 
-    fn prepare_for_training(&mut self) {}
-
-    fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+    fn prepare_for_training(&self) {}
 
     fn is_dummy_model(&self) -> bool {
         self.is_dummy_model
     }
+    fn clip_grad_norm(&self, _max_grad_norm: f64) {}
 }
 
 fn optimize_step(
@@ -1160,7 +1254,7 @@ fn optimize_step(
 
 impl CausalLM for Trainer {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
         position_ids: Option<&Tensor>,
@@ -1250,7 +1344,7 @@ impl CausalLM for Trainer {
         }
     }
 
-    fn prepare_for_training(&mut self) {
+    fn prepare_for_training(&self) {
         match self {
             Trainer::Local(local_trainer) => local_trainer.prepare_for_training(),
             #[cfg(feature = "python")]
@@ -1260,7 +1354,7 @@ impl CausalLM for Trainer {
         }
     }
 
-    fn clip_grad_norm(&mut self, max_grad_norm: f64) {
+    fn clip_grad_norm(&self, max_grad_norm: f64) {
         match self {
             Trainer::Local(local_trainer) => local_trainer.clip_grad_norm(max_grad_norm),
             #[cfg(feature = "python")]
