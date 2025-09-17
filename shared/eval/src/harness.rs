@@ -124,7 +124,7 @@ impl TokenizedLLHDocument {
             choices_str.push(choice.clone());
 
             // [fewshot_prefix] + [document_text + choice]
-            let text_and_choice = format!("{} {}", doc.text, choice);
+            let text_and_choice = format!("{}{}", doc.text, choice);
             let text_choice_tokens: Vec<i64> = tokenizer
                 .encode(text_and_choice, false)
                 .unwrap()
