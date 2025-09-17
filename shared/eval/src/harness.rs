@@ -113,7 +113,7 @@ impl TokenizedLLHDocument {
 
         // Tokenize fewshot prefix once
         let fewshot_tokens: Vec<i64> = tokenizer
-            .encode(fewshot_prefix, false)
+            .encode(fewshot_prefix, true)
             .unwrap()
             .get_ids()
             .iter()
@@ -279,7 +279,7 @@ impl Task {
 
                     // Tokenize the request
                     let request = tokenizer
-                        .encode(request_str.clone(), false)
+                        .encode(request_str.clone(), true)
                         .unwrap()
                         .get_ids()
                         .iter()
