@@ -72,7 +72,7 @@ If clients have already been training (i.e., it is not the first round of the ep
 
 After completing the training on their assigned data, each client emits a p2p broadcast to all other clients containing their training results and a cryptographic commitment that binds them to those results.
 
-As the training results are recieved from other clients, they are downloaded to be later incorporated into the current model.
+As the training results are received from other clients, they are downloaded to be later incorporated into the current model.
 
 ## Witnessing
 

@@ -70,6 +70,7 @@ impl EvalTask {
                 live_results: Some(self.results.clone()),
                 cancel: Some(cancel),
                 limit,
+                shared_progress_bar: None,
             },
             false,
         );
