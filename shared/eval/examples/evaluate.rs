@@ -304,6 +304,7 @@ fn run_with_tensor_parallelism(
             println!("DP rank {} CStore created", dp_rank);
 
             // Load all TP models for this DP replica (following train.rs pattern)
+            println!("DP rank {} loading {} TP models", dp_rank, tp_world_size);
             let model_load_handles: Vec<JoinHandle<Result<Box<dyn psyche_modeling::CausalLM>>>> =
                 (0..tp_world_size)
                     .map(|tp_rank| {
@@ -312,8 +313,13 @@ fn run_with_tensor_parallelism(
                         let comm_store = comm_store.clone();
                         let repo = repo.clone();
 
+                        println!(
+                            "DP {} TP {} starting model load on device {}",
+                            dp_rank, tp_rank, rank
+                        );
                         std::thread::spawn(move || {
-                            auto_model_for_causal_lm_from_pretrained(
+                            println!("TP rank {} about to load model", tp_rank);
+                            let result = auto_model_for_causal_lm_from_pretrained(
                                 repo,
                                 Some(Kind::BFloat16),
                                 None,
@@ -321,10 +327,18 @@ fn run_with_tensor_parallelism(
                                 comm_store.map(|id| (id, tp_rank, tp_world_size)),
                                 None,
                             )
-                            .map_err(|e| anyhow::anyhow!(e))
+                            .map_err(|e| anyhow::anyhow!(e));
+                            println!(
+                                "TP rank {} model load result: {:?}",
+                                tp_rank,
+                                result.is_ok()
+                            );
+                            result
                         })
                     })
                     .collect();
+
+            println!("DP rank {} waiting for model loads to complete", dp_rank);
 
             // Wait for all TP models to load
             let models: Result<Vec<_>, _> = model_load_handles
