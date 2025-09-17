@@ -43,9 +43,8 @@ in
       nixglhostRustPackages."train-nixglhost"
       nixglhostRustPackages."bandwidth_test-nixglhost"
       (pkgs.runCommand "entrypoint" { } ''
-        mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run $out/prompts
+        mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
         cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
-        cp ${../website/frontend/public/prompts/index.json} $out/prompts/index.json
         chmod +x $out/bin/train_entrypoint.sh
       '')
     ];
@@ -158,10 +157,6 @@ in
     contents = [
       pkgs.bashInteractive
       nixglhostRustPackages."psyche-centralized-client-nixglhost"
-      (pkgs.runCommand "prompts" { } ''
-        mkdir -p $out/prompts
-        cp ${../website/frontend/public/prompts/index.json} $out/prompts/index.json
-      '')
     ];
 
     config = {
