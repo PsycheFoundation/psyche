@@ -3,7 +3,9 @@ use clap::Parser;
 use psyche_core::RunningAverage;
 use psyche_data_provider::download_model_repo_sync;
 use psyche_eval::{ALL_TASK_NAMES, EvalTaskOptions, Task, tasktype_from_name};
-use psyche_modeling::{CommunicatorId, CausalLM, auto_model_for_causal_lm_from_pretrained, auto_tokenizer};
+use psyche_modeling::{
+    CausalLM, CommunicatorId, auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -113,6 +115,10 @@ fn main() -> Result<()> {
         }
         _ => {
             // Tensor parallelism (with optional data parallelism)
+            println!(
+                "Starting tensor parallelism evaluation with DP={}, TP={}",
+                args.data_parallelism, tp_world_size
+            );
             run_with_tensor_parallelism(
                 tasks,
                 repo,
@@ -122,7 +128,6 @@ fn main() -> Result<()> {
                 args.quiet,
                 args.num_fewshot,
                 args.seed,
-                python,
             )?;
         }
     }
@@ -256,6 +261,7 @@ fn run_with_tensor_parallelism(
     num_fewshot: usize,
     seed: u64,
 ) -> Result<()> {
+    println!("Entering run_with_tensor_parallelism function");
     let task_info: Vec<(String, usize, u64)> = tasks
         .iter()
         .enumerate()
@@ -269,28 +275,24 @@ fn run_with_tensor_parallelism(
         .map(|_| Arc::new(RunningAverage::new()))
         .collect();
 
-    // Create communication store for tensor parallelism
-    #[cfg(feature = "parallelism")]
-    let comm_id = CommunicatorId::from(tch::CStore::new());
-    #[cfg(not(feature = "parallelism"))]
-    let comm_id = CommunicatorId::none();
-
     let mut dp_handles: Vec<JoinHandle<Result<()>>> = vec![];
 
+    println!("Starting {} data parallel replicas", data_parallelism);
     // For each data parallel replica
     for dp_rank in 0..data_parallelism {
         let repo = repo.clone();
         let tokenizer = tokenizer.clone();
         let shared_results = shared_results.clone();
         let task_info = task_info.clone();
-        let comm_id = comm_id.clone();
 
         let handle = std::thread::spawn(move || -> Result<()> {
+            println!("DP rank {} starting", dp_rank);
             // Create communication store for this DP replica if TP > 1
             let comm_store = if tp_world_size > 1 {
                 #[cfg(feature = "parallelism")]
                 {
-                    Some(comm_id)
+                    println!("DP rank {} creating CStore for TP", dp_rank);
+                    Some(CommunicatorId::from(tch::CStore::new()))
                 }
                 #[cfg(not(feature = "parallelism"))]
                 {
@@ -299,6 +301,7 @@ fn run_with_tensor_parallelism(
             } else {
                 None
             };
+            println!("DP rank {} CStore created", dp_rank);
 
             // Load all TP models for this DP replica (following train.rs pattern)
             let model_load_handles: Vec<JoinHandle<Result<Box<dyn psyche_modeling::CausalLM>>>> =
