@@ -1,80 +1,94 @@
 #!/bin/bash
 
 # Slurm Multi-Node Sidecar Launcher
-# Usage: sbatch --nodes=4 slurm_sidecar_launcher.sh
+# Usage: sbatch --nodelist=7da1cfaf-50,7da1cfaf-52,7da1cfaf-53 launch_multinode.sh
 
 #SBATCH --job-name=psyche-multinode
-#SBATCH --ntasks-per-node=1
+#SBATCH --output=multinode_run_%j.out
+#SBATCH --error=multinode_run_%j.err
+#SBATCH --gres=gpu:8
 
 set -euo pipefail
 
+source .multinode_env
+if [[ "${DATA_PARALLELISM:-}" == "" ]]; then
+    echo -e "\n[!] DATA_PARALLELISM env variable was not set."
+    exit 1
+fi
+
+if [[ "${HF_MODEL_REPO:-}" == "" ]]; then
+    echo -e "\n[!] HF_MODEL_REPO env variable was not set."
+    exit 1
+fi
+
 PSYCHE_IMPL=${PSYCHE_IMPL:-python}
+PSYCHE_WORLD_SIZE=$DATA_PARALLELISM
 
-# get the main node hostname (first node in allocation)
-MASTER_NODE=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
-export PSYCHE_MAIN_HOST=$MASTER_NODE
-
-# calculate total world size
-export PSYCHE_WORLD_SIZE=$SLURM_JOB_NUM_NODES
-
-# calculate rank based on node ID
 NODE_LIST=($(scontrol show hostnames "$SLURM_JOB_NODELIST"))
-for i in "${!NODE_LIST[@]}"; do
-    if [[ "${NODE_LIST[$i]}" == "$SLURMD_NODENAME" ]]; then
-        export PSYCHE_RANK=$i
-        break
-    fi
-done
+MASTER_NODE="${NODE_LIST[-1]}"
+
+mapfile -t sidecar_nodes < <(scontrol show hostnames "$SLURM_JOB_NODELIST")
+unset "sidecar_nodes[-1]"
 
 echo "
 Slurm Multi-Node Psyche Sidecar
 ===============================
 Job ID:         $SLURM_JOB_ID
-Main Host:      $PSYCHE_MAIN_HOST
+Main Host:      $MASTER_NODE
 Current Node:   $SLURMD_NODENAME
-Rank:           $PSYCHE_RANK
 World Size:     $PSYCHE_WORLD_SIZE
 Implementation: $PSYCHE_IMPL
 Node List:      $SLURM_JOB_NODELIST
+Model:          $HF_MODEL_REPO
 "
 
-# set resource limits based on Slurm allocation
-DOCKER_CPUS=${SLURM_CPUS_PER_TASK}
+echo -e "[+] Starting Psyche sidecars...\n"
+for i in ${!sidecar_nodes[@]}; do
+    sidecar_hostname="${sidecar_nodes[$i]}"
+    echo "Starting sidecar in node $sidecar_hostname"
+    starting_rank=$((8 + $i * 8))
 
-# GPU assignment from Slurm
-GPU_DEVICES="${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}"
-if [[ -n "$GPU_DEVICES" ]]; then
-    GPU_ARG="--gpus=\"device=${GPU_DEVICES}\""
-else
-    echo "Warning: No GPUs assigned by Slurm, using --gpus all"
-    GPU_ARG="--gpus all"
-fi
+    srun --nodes=1 --nodelist="$sidecar_hostname" \
+        --exclusive \
+        --gpus=8 \
+        sudo docker run --rm \
+        --privileged \
+        -v /dev/infiniband:/dev/infiniband \
+        -e PSYCHE_MAIN_HOST=$MASTER_NODE \
+        -e PSYCHE_WORLD_SIZE=$PSYCHE_WORLD_SIZE \
+        -e PSYCHE_START_RANK=$starting_rank \
+        -e HF_MODEL_REPO=$HF_MODEL_REPO \
+        --shm-size=1g \
+        --gpus all \
+        --network host \
+        psyche-solana-client &
 
-# node 0 runs the main training process
-if [[ $PSYCHE_RANK -eq 0 ]]; then
-    echo "Starting main training process on master node..."
-    # Use the main training container with custom init method
-    exec docker run --rm \
-        $GPU_ARG \
-        ${SLURM_CPUS_PER_TASK:+--cpus="$SLURM_CPUS_PER_TASK"} \
-        --network host \
-        -e NVIDIA_DRIVER_CAPABILITIES=all \
-        -e RPC="${RPC:-http://localhost:8899}" \
-        -e WS_RPC="${WS_RPC:-ws://localhost:8900}" \
-        -e RUN_ID="${RUN_ID:-test-multinode}" \
-        -e PSYCHE_INIT_METHOD="tcp://0.0.0.0:34567" \
-        psyche-solana-client
-else
-    echo "Starting sidecar process on worker node..."
-    # Use the sidecar container
-    exec docker run --rm \
-        $GPU_ARG \
-        ${SLURM_CPUS_PER_TASK:+--cpus="$SLURM_CPUS_PER_TASK"} \
-        --network host \
-        -e NVIDIA_DRIVER_CAPABILITIES=all \
-        -e PSYCHE_MAIN_HOST="$PSYCHE_MAIN_HOST" \
-        -e PSYCHE_WORLD_SIZE="$PSYCHE_WORLD_SIZE" \
-        -e PSYCHE_RANK="$PSYCHE_RANK" \
-        -e PSYCHE_IMPL="$PSYCHE_IMPL" \
-        psyche-solana-client
-fi
+    echo -e ""
+    echo "------------------------------------------"
+    echo -e ""
+    sleep 10
+done
+
+echo -e "[+] Starting Psyche master node...\n"
+
+srun --nodes=1 --nodelist="$MASTER_NODE" \
+    --exclusive \
+    --gpus=8 \
+    sudo docker run --rm \
+    --privileged \
+    -v /dev/infiniband:/dev/infiniband \
+    -v "/tmp/id.json":"/keys/id.json" \
+    -e DATA_PARALLELISM=$PSYCHE_WORLD_SIZE \
+    -e RPC="http://localhost:8899" \
+    -e WS_RPC="ws://localhost:8900" \
+    -e RUN_ID="test" \
+    -e NVIDIA_DRIVER_CAPABILITIES="all" \
+    --shm-size=1g \
+    --gpus all \
+    --network host \
+    psyche-solana-client &
+
+echo "Waiting for all processes..."
+
+wait
+echo "All nodes completed work"
