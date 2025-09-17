@@ -346,13 +346,26 @@ fn run_with_tensor_parallelism(
                 .map(|handle| handle.join().unwrap())
                 .collect();
             let mut models = models?;
+            println!(
+                "DP rank {} successfully loaded {} models",
+                dp_rank,
+                models.len()
+            );
 
             // Run evaluation using the first model (rank 0 of TP group)
             // Other models participate automatically through tensor parallelism
             for (task_idx, (task_name, num_fewshot, seed)) in task_info.into_iter().enumerate() {
+                println!(
+                    "DP rank {} starting task {}: {}",
+                    dp_rank, task_idx, task_name
+                );
                 let task_type = tasktype_from_name(&task_name)?;
                 let task = Task::new(task_type, num_fewshot, seed + task_idx as u64);
 
+                println!(
+                    "DP rank {} running evaluation for task {}",
+                    dp_rank, task_name
+                );
                 task.prepare(&tokenizer, None).run(
                     EvalTaskOptions {
                         model: models[0].as_mut(), // Use TP rank 0 model
@@ -363,7 +376,12 @@ fn run_with_tensor_parallelism(
                     },
                     !quiet,
                 );
+                println!(
+                    "DP rank {} completed evaluation for task {}",
+                    dp_rank, task_name
+                );
             }
+            println!("DP rank {} completed all tasks", dp_rank);
 
             Ok(())
         });
