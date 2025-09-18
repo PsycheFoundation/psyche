@@ -107,7 +107,7 @@ export function makeRateLimitedFetch(): typeof fetch {
 	const MAX_RETRIES = 10
 	const RETRY_INIT_TIME_MS = 1000
 	const RETRY_MULT = 2.5
-	const REQS_PER_SECOND = 20
+	const REQS_PER_SECOND = 200
 	const rateLimitedFetch = createRateLimitedPromise(
 		fetch,
 		REQS_PER_SECOND,
