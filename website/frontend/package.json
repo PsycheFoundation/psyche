@@ -4,13 +4,13 @@
 	"version": "0.0.0",
 	"type": "module",
 	"scripts": {
-		"_dev": "cp -n ../../shared/data-provider/tests/resources/llama2_tokenizer.json public/ || true && curl -f -s -o public/llama3_tokenizer.json https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/raw/main/tokenizer.json || true && mkdir -p public/prompts && cp ../../shared/client/src/state/prompt_texts/index.json public/prompts/ && VITE_BACKEND_PORT=3000 vite",
+		"_dev": "curl -f -s -o public/llama2_tokenizer.json https://huggingface.co/emozilla/llama2-20m-init/raw/main/tokenizer.json || true && curl -f -s -o public/llama3_tokenizer.json https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/raw/main/tokenizer.json || true && mkdir -p public/prompts && curl -f -s -o public/prompts/index.json https://raw.githubusercontent.com/PsycheFoundation/psyche/29f81ede5ee163efeafd4f1b9198c29587b1afe1/shared/client/src/state/prompt_texts/index.json && VITE_BACKEND_PORT=3000 vite",
 		"dev-localnet": "VITE_MINING_POOL_CLUSTER=localhost:8899 VITE_COORDINATOR_CLUSTER=localhost:8899 VITE_MINING_POOL_RPC=http://localhost:8899/ pnpm _dev",
 		"dev-devnet": "VITE_MINING_POOL_CLUSTER=devnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://api.devnet.solana.com pnpm _dev",
 		"dev-mainnet": "VITE_MINING_POOL_CLUSTER=mainnet VITE_COORDINATOR_CLUSTER=mainnet VITE_MINING_POOL_RPC=https://quentin-uzfsvh-fast-mainnet.helius-rpc.com pnpm _dev",
 		"dev-devnet-and-mainnet": "VITE_MINING_POOL_CLUSTER=mainnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://quentin-uzfsvh-fast-mainnet.helius-rpc.com pnpm _dev",
 		"dev-fake": "VITE_MINING_POOL_CLUSTER=devnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://api.devnet.solana.com VITE_FAKE_DATA=1 pnpm _dev",
-		"prebuild": "cp -n ../../shared/data-provider/tests/resources/llama2_tokenizer.json public/ || true && curl -f -s -o public/llama3_tokenizer.json https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/raw/main/tokenizer.json || true && mkdir -p public/prompts && cp ../../shared/client/src/state/prompt_texts/index.json public/prompts/",
+		"prebuild": "curl -f -s -o public/llama2_tokenizer.json https://huggingface.co/emozilla/llama2-20m-init/raw/main/tokenizer.json || true && curl -f -s -o public/llama3_tokenizer.json https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/raw/main/tokenizer.json || true && mkdir -p public/prompts && curl -f -s -o public/prompts/index.json https://raw.githubusercontent.com/PsycheFoundation/psyche/29f81ede5ee163efeafd4f1b9198c29587b1afe1/shared/client/src/state/prompt_texts/index.json",
 		"build": "tsc -b && vite build",
 		"build-fake": "VITE_MINING_POOL_CLUSTER=devnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://api.devnet.solana.com VITE_FAKE_DATA=1 pnpm build",
 		"preview": "vite preview"

@@ -3,6 +3,7 @@
   pnpm,
   stdenv,
   nodejs,
+  curl,
   ...
 }:
 let
@@ -37,6 +38,7 @@ lib.extendMkDerivation {
       nativeBuildInputs = [
         pnpm.configHook
         nodejs
+        curl
       ]
       ++ extraInputs;
 

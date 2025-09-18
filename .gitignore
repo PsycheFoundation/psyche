@@ -62,3 +62,5 @@ book
 **/.env
 
 ### Website ###
+website/frontend/public/*.json
+website/frontend/public/prompts/index.json
