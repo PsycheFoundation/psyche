@@ -11,6 +11,7 @@ tracing.workspace = true
 tracing-subscriber = "0.3"
 futures.workspace = true
 clap-markdown.workspace = true
+tch.workspace = true
 
 [features]
 default = []

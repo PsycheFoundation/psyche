@@ -7482,6 +7482,7 @@ dependencies = [
  "clap",
  "clap-markdown",
  "futures",
+ "tch",
  "tokio",
  "tracing",
  "tracing-subscriber",
