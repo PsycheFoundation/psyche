@@ -704,7 +704,7 @@ function makeRunSummary(
 		warmupTokens
 	)
 
-	const lastFewWitnesses = run.lastFewWitnessUpdates.slice(-50)
+	const lastFewWitnesses = run.lastFewWitnessUpdates
 	const lastStep = lastFewWitnesses.at(-1)?.[0].step ?? -1
 	const witnessesForLastStep = lastFewWitnesses.filter(
 		(w) => w[0].step === lastStep
