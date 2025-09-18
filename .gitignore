@@ -63,3 +63,4 @@ book
 
 ### Website ###
 website/frontend/public/llama2_tokenizer.json
+website/frontend/public/prompts/index.json
