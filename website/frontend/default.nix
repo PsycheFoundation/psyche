@@ -17,9 +17,7 @@ psycheLib.mkWebsitePackage {
     mkdir -p shared
     cp -r ${psyche-website-shared}/shared/* shared/
 
-    cp ${../../shared/data-provider/tests/resources/llama2_tokenizer.json} ${../../shared/data-provider/tests/resources/llama3_tokenizer.json} frontend/public/
-
-    mkdir frontend/public/prompts
+    cp ${../../shared/data-provider/tests/resources/llama2_tokenizer.json} ${../../shared/data-provider/tests/resources/llama3_tokenizer.json} frontend/public/tokenizers/
     cp ${../../shared/client/src/state/prompt_texts/index.json} frontend/public/prompts/
     export VITE_MINING_POOL_RPC=${miningPoolRpc}
     export VITE_BACKEND_PATH=${backendPath}
