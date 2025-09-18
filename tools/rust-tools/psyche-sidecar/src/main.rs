@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 use futures::future::try_join_all;
 use std::process::{Command, Stdio};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
 #[command(name = "psyche-sidecar")]
