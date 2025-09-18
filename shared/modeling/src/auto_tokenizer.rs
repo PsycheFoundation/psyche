@@ -74,7 +74,13 @@ fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
     }
 
     // Apply special tokens if they exist in the config
-    if let Some(bos_token) = config.get("bos_token").and_then(|v| v.as_str()) {
+    // Handle both string format and object format {"content": "token", ...}
+    let bos_token = config.get("bos_token").and_then(|v| {
+        v.as_str()
+            .or_else(|| v.get("content").and_then(|c| c.as_str()))
+    });
+
+    if let Some(bos_token) = bos_token {
         println!("DEBUG: Found BOS token in config: {}", bos_token);
         if let Some(bos_id) = tokenizer.token_to_id(bos_token) {
             println!(
@@ -91,7 +97,12 @@ fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
         println!("DEBUG: No bos_token found in config");
     }
 
-    if let Some(eos_token) = config.get("eos_token").and_then(|v| v.as_str()) {
+    let eos_token = config.get("eos_token").and_then(|v| {
+        v.as_str()
+            .or_else(|| v.get("content").and_then(|c| c.as_str()))
+    });
+
+    if let Some(eos_token) = eos_token {
         println!("DEBUG: Found EOS token in config: {}", eos_token);
         if let Some(eos_id) = tokenizer.token_to_id(eos_token) {
             println!(
@@ -108,7 +119,12 @@ fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
         println!("DEBUG: No eos_token found in config");
     }
 
-    if let Some(pad_token) = config.get("pad_token").and_then(|v| v.as_str()) {
+    let pad_token = config.get("pad_token").and_then(|v| {
+        v.as_str()
+            .or_else(|| v.get("content").and_then(|c| c.as_str()))
+    });
+
+    if let Some(pad_token) = pad_token {
         println!("DEBUG: Found PAD token in config: {}", pad_token);
         if let Some(pad_id) = tokenizer.token_to_id(pad_token) {
             println!(
