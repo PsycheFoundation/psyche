@@ -24,9 +24,8 @@ import { isClientWitness } from '../witness.js'
 import EventEmitter from 'events'
 import { UniqueRunKey, runKey } from '../coordinator.js'
 import { readVersionedFile, writeVersionedFile } from './versioned.js'
-import { CURRENT_VERSION, CurrentVersion } from 'shared/formats/type.js'
+import { CURRENT_VERSION } from 'shared/formats/type.js'
 import { existsSync, renameSync } from 'fs'
-import { exit } from 'process'
 
 // any run ID outside this list will not be returned to the frontend in the summary list,
 const ALLOWLISTED_RUN_IDS =
@@ -898,9 +897,6 @@ function removeUnsampledSteps(
 	}
 	return newWitnesses
 }
-
-type ValueInMapRecord<MapRecord> =
-	MapRecord extends Map<any, infer I> ? I : never
 
 type CurrentFormat = V2
 
