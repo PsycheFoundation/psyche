@@ -1034,14 +1034,14 @@ function migrateFromV1ToV2(dataV1: V1): V2 {
 
 			historyV2.sampledWitnessUpdates = allWitnessUpdates.slice()
 			historyV2.lastFewWitnessUpdates = allWitnessUpdates.slice()
+
+			// cleanup bad values in LR, if exists
 			historyV2.observedLrByStep = historyV2.observedLrByStep.filter((s) =>
 				isGoodNumber(s[1])
 			)
 
 			// cleanup witness history :)
 			cleanupWitnessUpdates(historyV2)
-
-			// cleanup bad values in LR, if exists
 		}
 	}
 	return dataV1 as unknown as V2
