@@ -33,53 +33,123 @@ pub fn auto_tokenizer(repo_files: &[PathBuf]) -> Result<Tokenizer, AutoTokenizer
         .iter()
         .find(|x| x.ends_with("tokenizer_config.json"))
     {
+        println!("DEBUG: Found tokenizer_config.json at: {:?}", config_path);
         if let Ok(config_content) = std::fs::read_to_string(config_path) {
+            println!(
+                "DEBUG: Successfully read tokenizer_config.json, size: {} bytes",
+                config_content.len()
+            );
             if let Ok(config) = serde_json::from_str::<Value>(&config_content) {
+                println!("DEBUG: Successfully parsed tokenizer_config.json");
                 apply_tokenizer_config(&mut tokenizer, &config);
+            } else {
+                println!("DEBUG: Failed to parse tokenizer_config.json as JSON");
             }
-            // Silently continue if config parsing fails - tokenizer will still work
+        } else {
+            println!("DEBUG: Failed to read tokenizer_config.json file");
         }
+    } else {
+        println!("DEBUG: No tokenizer_config.json found in repo files");
+        println!(
+            "DEBUG: Available files: {:?}",
+            repo_files.iter().map(|p| p.file_name()).collect::<Vec<_>>()
+        );
     }
 
     Ok(tokenizer)
 }
 
 fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
+    println!("DEBUG: Applying tokenizer config...");
+    println!(
+        "DEBUG: Config keys: {:?}",
+        config.as_object().map(|o| o.keys().collect::<Vec<_>>())
+    );
+
+    // Print all config for debugging
+    if let Some(obj) = config.as_object() {
+        for (key, value) in obj {
+            println!("DEBUG: Config[{}] = {:?}", key, value);
+        }
+    }
+
     // Apply special tokens if they exist in the config
     if let Some(bos_token) = config.get("bos_token").and_then(|v| v.as_str()) {
+        println!("DEBUG: Found BOS token in config: {}", bos_token);
         if let Some(bos_id) = tokenizer.token_to_id(bos_token) {
-            // Note: The tokenizers crate doesn't expose a direct way to set special tokens
-            // after creation, but the tokenizer.json should already contain them.
-            // This is mainly for logging/verification purposes.
-            tracing::debug!("Found BOS token: {} (id: {})", bos_token, bos_id);
+            println!(
+                "DEBUG: BOS token exists in tokenizer: {} (id: {})",
+                bos_token, bos_id
+            );
+        } else {
+            println!(
+                "DEBUG: BOS token not found in tokenizer vocabulary: {}",
+                bos_token
+            );
         }
+    } else {
+        println!("DEBUG: No bos_token found in config");
     }
 
     if let Some(eos_token) = config.get("eos_token").and_then(|v| v.as_str()) {
+        println!("DEBUG: Found EOS token in config: {}", eos_token);
         if let Some(eos_id) = tokenizer.token_to_id(eos_token) {
-            tracing::debug!("Found EOS token: {} (id: {})", eos_token, eos_id);
+            println!(
+                "DEBUG: EOS token exists in tokenizer: {} (id: {})",
+                eos_token, eos_id
+            );
+        } else {
+            println!(
+                "DEBUG: EOS token not found in tokenizer vocabulary: {}",
+                eos_token
+            );
         }
+    } else {
+        println!("DEBUG: No eos_token found in config");
     }
 
     if let Some(pad_token) = config.get("pad_token").and_then(|v| v.as_str()) {
+        println!("DEBUG: Found PAD token in config: {}", pad_token);
         if let Some(pad_id) = tokenizer.token_to_id(pad_token) {
-            tracing::debug!("Found PAD token: {} (id: {})", pad_token, pad_id);
+            println!(
+                "DEBUG: PAD token exists in tokenizer: {} (id: {})",
+                pad_token, pad_id
+            );
+        } else {
+            println!(
+                "DEBUG: PAD token not found in tokenizer vocabulary: {}",
+                pad_token
+            );
         }
+    } else {
+        println!("DEBUG: No pad_token found in config");
     }
 
     // Apply model_max_length if specified
     if let Some(max_len) = config.get("model_max_length").and_then(|v| v.as_u64()) {
+        println!("DEBUG: Found model_max_length in config: {}", max_len);
         // Enable truncation with the model's max length
         if let Some(mut truncation) = tokenizer.get_truncation().cloned() {
             truncation.max_length = max_len as usize;
             let _ = tokenizer.with_truncation(Some(truncation));
+            println!(
+                "DEBUG: Updated existing truncation config to max_length: {}",
+                max_len
+            );
         } else {
             // Create new truncation config if none exists
             let _ = tokenizer.with_truncation(Some(tokenizers::TruncationParams {
                 max_length: max_len as usize,
                 ..Default::default()
             }));
+            println!(
+                "DEBUG: Created new truncation config with max_length: {}",
+                max_len
+            );
         }
-        tracing::debug!("Set model max length to: {}", max_len);
+    } else {
+        println!("DEBUG: No model_max_length found in config");
     }
+
+    println!("DEBUG: Finished applying tokenizer config");
 }
