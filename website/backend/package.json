@@ -8,7 +8,7 @@
 		"get-commit": "test -z \"$(git status --porcelain)\" && echo \"$(git rev-parse --short HEAD)\" || echo \"$(git rev-parse --short HEAD)-dirty\"",
 		"build-wasm": "cd ../wasm && ./build.sh",
 		"prep": "pnpm i && pnpm -C ../shared build-idl && pnpm build-wasm",
-		"dev": "pnpm prep && NODE_ENV=development GITCOMMIT=$(pnpm --silent run get-commit) nodemon",
+		"dev": "pnpm prep && NODE_ENV=development GITCOMMIT=$(pnpm --silent run get-commit) NODE_OPTIONS='--max-old-space-size=10000' nodemon",
 		"dev-local": "COORDINATOR_WS_RPC=http://localhost:8900 COORDINATOR_RPC=http://localhost:8899 MINING_POOL_WS_RPC=http://localhost:8900 MINING_POOL_RPC=http://localhost:8899 pnpm dev",
 		"dev-local-and-devnet": "COORDINATOR_RPC=http://localhost:8899 MINING_POOL_RPC=\"${MINING_POOL_RPC:-$devnet__rpc}\" pnpm dev",
 		"dev-devnet": "COORDINATOR_MIN_SLOT=378081650 COORDINATOR_RPC=\"${COORDINATOR_RPC:-$devnet__rpc}\" MINING_POOL_RPC=\"${MINING_POOL_RPC:-$devnet__rpc}\" pnpm dev",
