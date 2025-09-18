@@ -111,9 +111,9 @@ impl TokenizedLLHDocument {
         let mut choices_token_len = Vec::new();
         let mut choices: Vec<Vec<i64>> = Vec::new();
 
-        // Tokenize fewshot prefix once
+        // Tokenize fewshot prefix once - use add_special_tokens=true for DeepSeek compatibility
         let fewshot_tokens: Vec<i64> = tokenizer
-            .encode(fewshot_prefix, false)
+            .encode(fewshot_prefix, true)
             .unwrap()
             .get_ids()
             .iter()
@@ -277,9 +277,9 @@ impl Task {
 
                     request_str.push_str("Answer: Let's think step by step.");
 
-                    // Tokenize the request
+                    // Tokenize the request - use add_special_tokens=true for DeepSeek compatibility
                     let request = tokenizer
-                        .encode(request_str.clone(), false)
+                        .encode(request_str.clone(), true)
                         .unwrap()
                         .get_ids()
                         .iter()

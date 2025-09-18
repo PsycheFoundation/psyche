@@ -167,5 +167,15 @@ fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
         println!("DEBUG: No model_max_length found in config");
     }
 
+    // Check add_bos_token setting
+    if let Some(add_bos_token) = config.get("add_bos_token").and_then(|v| v.as_bool()) {
+        println!("DEBUG: Found add_bos_token setting: {}", add_bos_token);
+        // Note: The tokenizers crate doesn't expose a way to modify the add_special_tokens behavior
+        // after tokenizer creation. The evaluation harness needs to handle this during encode() calls.
+        // For now, we just log this information.
+    } else {
+        println!("DEBUG: No add_bos_token setting found in config");
+    }
+
     println!("DEBUG: Finished applying tokenizer config");
 }
