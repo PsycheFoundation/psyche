@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Error, Result};
 use iroh::Endpoint;
+use iroh::protocol::Router;
 use iroh_n0des::Registry;
 use iroh_n0des::simulation::Node;
 use iroh_n0des::simulation::SetupData;
@@ -16,7 +17,6 @@ use psyche_client::RunInitConfig;
 use psyche_network::NetworkConnection;
 use psyche_network::allowlist;
 use psyche_network::router;
-use psyche_network::router::Router;
 use serde::{Deserialize, Serialize};
 use tokio::select;
 use tokio::task::JoinHandle;
@@ -100,14 +100,14 @@ impl ClientHandle {
                 .await;
 
         let router = client.inner.router.clone().unwrap();
-        let gossip_metrics = client.inner.gossip_metrics.clone().unwrap();
-        let blob_metrics = client.inner.blob_metrics.clone().unwrap();
+        // let gossip_metrics = client.inner.gossip_metrics.clone().unwrap();
+        // let blob_metrics = client.inner.blob_metrics.clone().unwrap();
 
-        if let Some(registry) = registry {
-            registry.register_all_prefixed(router.endpoint().metrics());
-            registry.register(blob_metrics);
-            registry.register(gossip_metrics);
-        }
+        // if let Some(registry) = registry {
+        //     registry.register_all_prefixed(router.endpoint().metrics());
+        //     registry.register(blob_metrics);
+        //     registry.register(gossip_metrics);
+        // }
 
         Self {
             client: Some(client),

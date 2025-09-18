@@ -1,6 +1,6 @@
 use anyhow::ensure;
 use iroh::NodeAddr;
-use iroh_blobs::net_protocol::Blobs;
+use iroh_blobs::api::blobs::Blobs;
 use iroh_n0des::simulation::{Builder, DynNode, RoundContext, Spawn};
 use psyche_centralized_testing::{
     COOLDOWN_TIME, MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME,

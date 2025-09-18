@@ -14,10 +14,9 @@ use psyche_client::{
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_metrics::ClientMetrics;
+
 use psyche_modeling::Devices;
-use psyche_network::{
-    DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey, allowlist, psyche_relay_map,
-};
+use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
 use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
 use rand::{Rng, RngCore, thread_rng};
@@ -80,7 +79,6 @@ pub struct AppParams {
     pub grad_accum_in_fp32: bool,
     pub dummy_training_delay_secs: Option<u64>,
     pub max_concurrent_parameter_requests: usize,
-    pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,
     pub metrics_local_port: Option<u16>,
     pub device: Devices,
@@ -106,12 +104,10 @@ impl AppBuilder {
             &p.run_id,
             p.p2p_port,
             p.p2p_interface,
-            RelayMode::Custom(psyche_relay_map()),
             DiscoveryMode::N0,
             vec![],
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
-            p.max_concurrent_downloads,
             metrics.clone(),
             None,
         )

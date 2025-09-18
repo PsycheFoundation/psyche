@@ -1,17 +1,17 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use hf_hub::Repo;
+use iroh::protocol::Router;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
     CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
-use psyche_metrics::{BlobsMetrics, ClientMetrics, GossipMetrics, IrohMetricsRegistry};
+use psyche_metrics::{ClientMetrics, IrohMetricsRegistry};
 use psyche_modeling::Devices;
-use psyche_network::router::Router;
 use psyche_network::{
     AuthenticatableIdentity, DiscoveryMode, Endpoint, NetworkTUIState, NetworkTui, NodeId,
-    RelayMode, SecretKey, TcpClient, allowlist, psyche_relay_map,
+    SecretKey, TcpClient, allowlist,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
@@ -96,8 +96,6 @@ pub struct App {
 
     // Stuff needed for simulations
     pub router: Option<Arc<Router>>,
-    pub gossip_metrics: Option<Arc<GossipMetrics>>,
-    pub blob_metrics: Option<Arc<BlobsMetrics>>,
 
     // checks
     backend: Option<Backend>,
@@ -131,7 +129,6 @@ pub struct AppParams {
     pub dummy_training_delay_secs: Option<u64>,
     pub discovery_mode: DiscoveryMode,
     pub max_concurrent_parameter_requests: usize,
-    pub max_concurrent_downloads: usize,
     pub metrics_local_port: Option<u16>,
     pub sim_endpoint: Option<Endpoint>,
     pub device: Devices,
@@ -166,8 +163,6 @@ impl App {
             tx_from_server_message: None,
             rx_to_server_message: None,
             router: None,
-            gossip_metrics: None,
-            blob_metrics: None,
             backend: None,
             state_options: None,
             allowlist: None,
@@ -186,12 +181,10 @@ impl App {
             &params.run_id,
             params.p2p_port,
             params.p2p_interface.clone(),
-            RelayMode::Custom(psyche_relay_map()),
             params.discovery_mode,
             vec![],
             Some(params.identity_secret_key.clone()),
             allowlist.clone(),
-            params.max_concurrent_downloads,
             metrics.clone(),
             params.sim_endpoint.clone(),
         )
@@ -213,8 +206,6 @@ impl App {
         // Store channels in the struct so `run()` can use them later
         app.tx_from_server_message = Some(tx_from_server_message);
         app.rx_to_server_message = Some(rx_to_server_message);
-        app.gossip_metrics = Some(p2p.gossip.metrics().clone());
-        app.blob_metrics = Some(p2p.blobs.metrics().clone());
         app.router = Some(p2p.router().clone());
 
         app.backend = Some(backend);
@@ -335,7 +326,6 @@ impl App {
         let p2p = self.p2p.take().unwrap();
         let backend = self.backend.take().unwrap();
 
-        let blob_metrics = p2p.blobs.metrics().clone();
         let gossip_metrics = p2p.gossip.metrics().clone();
         let router = p2p.router().clone();
         let client = Client::new(
