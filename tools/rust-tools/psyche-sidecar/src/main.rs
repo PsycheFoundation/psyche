@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
 
             // Spawn all tasks
             let mut sidecar_tasks = Vec::new();
-            for rank in start_rank..last_rank {
+            for rank in start_rank..=last_rank {
                 let main_host = main_host.clone();
                 let backend = backend.clone();
                 let parent_pid = std::process::id();
