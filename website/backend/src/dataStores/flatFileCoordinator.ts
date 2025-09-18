@@ -104,6 +104,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 	}
 	#db: string
 	#programId: PublicKey
+	#programIdString: string // Cache instead of calling .toString() each time
 
 	#runsMutatedSinceLastSync: Set<UniqueRunKey> = new Set()
 	eventEmitter: EventEmitter<{ update: [runKey: UniqueRunKey] }> =
@@ -116,6 +117,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 	constructor(dir: string, programId: PublicKey) {
 		this.#db = path.join(dir, `./coordinator-db-${programId}.json`)
 		this.#programId = programId
+		this.#programIdString = programId.toString()
 		console.log(`loading coordinator db from disk at path ${this.#db}...`)
 		try {
 			const { version, data } = readVersionedFile(this.#db)
@@ -220,7 +222,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		})
 
 		this.#runsMutatedSinceLastSync.add(
-			runKey(runId, runsAtThisAddress.length - 1)
+			runKey(this.#programIdString, runId, runsAtThisAddress.length - 1)
 		)
 	}
 
@@ -291,7 +293,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			})
 		}
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, index))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programIdString, lastRun.runId, index)
+		)
 	}
 
 	setRunPaused(pubkey: string, paused: boolean, timestamp: ChainTimestamp) {
@@ -306,7 +310,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = timestamp
 		lastRun.pauseTimestamps.push([newPauseState, timestamp])
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, index))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programIdString, lastRun.runId, index)
+		)
 	}
 
 	witnessRun(
@@ -366,7 +372,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			timestamp,
 		])
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programIdString, lastRun.runId, runs.length - 1)
+		)
 	}
 
 	destroyRun(pubkey: string, timestamp: ChainTimestamp) {
@@ -385,7 +393,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = timestamp
 		lastRun.destroyedAt = timestamp
 
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programIdString, lastRun.runId, runs.length - 1)
+		)
 	}
 
 	trackTx(
@@ -414,7 +424,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		if (lastRun.recentTxs.length > MAX_RECENT_TXS) {
 			lastRun.recentTxs = lastRun.recentTxs.slice(-MAX_RECENT_TXS)
 		}
-		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
+		this.#runsMutatedSinceLastSync.add(
+			runKey(this.#programIdString, lastRun.runId, runs.length - 1)
+		)
 	}
 
 	getRunSummaries(): RunSummaries {
@@ -428,7 +440,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 						makeRunSummary(
 							r,
 							i,
-							runs.filter((r) => !!r.lastState).length === 1
+							runs.filter((r) => !!r.lastState).length === 1,
+							this.#programIdString
 						),
 						r,
 					] as const
@@ -475,8 +488,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		)
 	}
 
+	get programId(): PublicKey {
+		return this.#programId
+	}
+
 	getRunDataById(runId: string, index: number): RunData | null {
-		const cachedRun = this.#runCache.get(runKey(runId, index))
+		const cachedRun = this.#runCache.get(
+			runKey(this.#programIdString, runId, index)
+		)
 		if (cachedRun) {
 			return cachedRun
 		}
@@ -491,7 +510,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		const info = makeRunSummary(
 			run,
 			realIndex,
-			runsAtThisAddress!.filter((r) => !!r.lastState).length === 1
+			runsAtThisAddress!.filter((r) => !!r.lastState).length === 1,
+			this.#programIdString
 		)
 		if (!info) {
 			return null
@@ -665,6 +685,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 		const runData = {
 			info,
+			programId: this.#programIdString,
 			state,
 			recentTxs: run.recentTxs,
 			metrics: {
@@ -675,7 +696,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			promptIndex: promptIndices.at(-1)?.[1] ?? 0,
 			cumulativePromptResults: cumulativePromptResults.at(-1)?.[1] ?? [],
 		}
-		this.#runCache.set(runKey(runId, index), runData)
+		this.#runCache.set(runKey(this.#programIdString, runId, index), runData)
 		return runData
 	}
 }
@@ -690,7 +711,8 @@ function goodNumber([_, value]: readonly [
 function makeRunSummary(
 	run: RunHistory,
 	index: number,
-	isOnlyRunAtThisIndex: boolean
+	isOnlyRunAtThisIndex: boolean,
+	programId: string
 ): RunSummary | null {
 	if (!run.lastState) {
 		return null
@@ -762,6 +784,7 @@ function makeRunSummary(
 		size: run.lastState.metadata.num_parameters,
 		trainingStep,
 		type: 'text', // TODO add type / tags? :)
+		programId: programId,
 	}
 	return summary
 }

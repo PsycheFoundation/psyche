@@ -397,6 +397,7 @@
       },
       "original": {
         "owner": "arilotter",
+        "ref": "anchor-weirdness",
         "repo": "solana-flake",
         "type": "github"
       }
