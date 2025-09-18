@@ -399,7 +399,7 @@ where
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
 
-        info!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let blobs_client = self.blobs.client().clone();
         tokio::spawn(async move {

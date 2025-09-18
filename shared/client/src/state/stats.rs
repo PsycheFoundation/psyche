@@ -6,7 +6,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use wandb::{DataValue, LogData};
 
 use crate::{
@@ -310,10 +310,16 @@ impl StatsLogger {
                     let tokens = prompt_task.tokens_to_send.read().unwrap();
                     results.extend(tokens.iter().cloned()).unwrap();
                 }
+                if let Ok(decoded) = prompt_task
+                    .tokenizer
+                    .decode(&results.iter().map(|x| *x as u32).collect::<Vec<_>>(), true)
+                {
+                    debug!("Prompt result: {}", decoded);
+                }
                 prompt_task.tokens_to_send.write().unwrap().clear();
             }
         }
-        debug!(
+        trace!(
             "Final witness prompt results: {:?}",
             results.iter().collect::<Vec<_>>()
         );

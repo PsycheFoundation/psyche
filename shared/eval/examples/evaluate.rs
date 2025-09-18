@@ -1,8 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_data_provider::download_model_repo_sync;
-use psyche_eval::{ALL_TASK_NAMES, EvalTaskOptions, Task, tasktype_from_name};
+use psyche_eval::{
+    ALL_TASK_NAMES, EvalTaskOptions, Task, progress_bar_template_with_task, tasktype_from_name,
+};
 use psyche_modeling::{CausalLM, auto_model_for_causal_lm_from_pretrained, auto_tokenizer};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -132,11 +135,36 @@ fn run_data_parallel(
         data_parallelism
     };
 
+    let shared_progress_bars: Vec<Option<Arc<ProgressBar>>> = if !quiet && threads > 1 {
+        task_info
+            .iter()
+            .map(|(task_name, _, _)| {
+                // Get the prepared task to determine total number of items
+                let task_type = tasktype_from_name(task_name).ok()?;
+                let task = Task::new(task_type, num_fewshot, seed);
+                let prepared_task = task.prepare(&tokenizer, None);
+
+                println!("Running {} with {} parallel threads", task_name, threads);
+                let pbar = ProgressBar::new(prepared_task.num as u64);
+                pbar.set_style(
+                    ProgressStyle::default_bar()
+                        .template(&progress_bar_template_with_task(task_name))
+                        .unwrap()
+                        .progress_chars("#>-"),
+                );
+                Some(Arc::new(pbar))
+            })
+            .collect()
+    } else {
+        task_info.iter().map(|_| None).collect()
+    };
+
     let mut gpu_handles: Vec<JoinHandle<Result<()>>> = vec![];
     for gpu_id in 0..threads {
         let repo = repo.clone();
         let tokenizer = tokenizer.clone();
         let shared_results = shared_results.clone();
+        let shared_progress_bars = shared_progress_bars.clone();
         let task_info = task_info.clone();
 
         let handle = std::thread::spawn(move || -> Result<()> {
@@ -190,6 +218,7 @@ fn run_data_parallel(
                         live_results: Some(shared_results[task_idx].clone()),
                         cancel: None,
                         limit: None,
+                        shared_progress_bar: shared_progress_bars[task_idx].clone(),
                     },
                     !quiet,
                 );

@@ -370,6 +370,10 @@ impl PythonDistributedTrainer {
             "totalk": distro_results.first().map(|y| y.iter().map(|z| z.totalk).collect::<Vec<_>>()),
         })
     }
+
+    pub fn can_do_inference(&self) -> bool {
+        self.local.can_do_inference()
+    }
 }
 
 impl From<PythonDistributedTrainer> for Trainer {
