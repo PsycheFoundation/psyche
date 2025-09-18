@@ -34,6 +34,9 @@ enum Commands {
         #[arg(long)]
         start_device: Option<usize>,
 
+        #[arg(long)]
+        num_local_ranks: Option<usize>,
+
         /// Backend for torch.distributed (default: nccl)
         #[arg(long, default_value = "nccl")]
         backend: String,
@@ -63,8 +66,21 @@ async fn main() -> Result<()> {
             world_size,
             start_rank,
             start_device,
+            num_local_ranks,
             backend,
         } => {
+            if !tch::Cuda::is_available() {
+                bail!("CUDA not avaiable");
+            }
+
+            let num_local_ranks =
+                num_local_ranks.unwrap_or_else(|| tch::Cuda::device_count() as usize);
+            let last_rank = start_rank + (num_local_ranks);
+            if last_rank >= world_size {
+                bail!("World size is too small: world_size <= start_rank + num_local_ranks ");
+            }
+            let last_rank = std::cmp::min(last_rank, world_size);
+
             info!(
                 "Starting Python sidecars for ranks {} to {}",
                 start_rank,
@@ -73,7 +89,7 @@ async fn main() -> Result<()> {
 
             // Spawn all tasks
             let mut sidecar_tasks = Vec::new();
-            for rank in start_rank..world_size {
+            for rank in start_rank..last_rank {
                 let main_host = main_host.clone();
                 let backend = backend.clone();
                 let parent_pid = std::process::id();
