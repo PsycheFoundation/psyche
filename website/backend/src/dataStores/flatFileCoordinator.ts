@@ -26,6 +26,7 @@ import { UniqueRunKey, runKey } from '../coordinator.js'
 import { readVersionedFile, writeVersionedFile } from './versioned.js'
 import { CURRENT_VERSION, CurrentVersion } from 'shared/formats/type.js'
 import { existsSync, renameSync } from 'fs'
+import { exit } from 'process'
 
 // any run ID outside this list will not be returned to the frontend in the summary list,
 const ALLOWLISTED_RUN_IDS =
@@ -53,7 +54,8 @@ const ALLOWLISTED_RUN_IDS =
 				'hermes-4.1-36b',
 				'hermes-4.3-36b',
 			]
-type Witness = Omit<
+
+type WitnessV2 = Omit<
 	WitnessMetadata,
 	'evals' | 'prompt_results' | 'prompt_index'
 > & {
@@ -62,7 +64,7 @@ type Witness = Omit<
 	prompt_index: number
 }
 
-interface RunHistory {
+interface RunHistoryV2 {
 	runId: string
 	createdAt: ChainTimestamp
 	destroyedAt: ChainTimestamp | null
@@ -85,8 +87,8 @@ interface RunHistory {
 
 	pauseTimestamps: Array<['paused' | 'unpaused', ChainTimestamp]>
 
-	lastFewWitnessUpdates: Array<[Witness, ChainTimestamp]>
-	sampledWitnessUpdates: Array<[Witness, ChainTimestamp]>
+	lastFewWitnessUpdates: Array<[WitnessV2, ChainTimestamp]>
+	sampledWitnessUpdates: Array<[WitnessV2, ChainTimestamp]>
 	sampledWitnessStep?: number
 
 	observedLrByStep: Array<[number, number]>
@@ -101,7 +103,7 @@ interface RunSummaries {
 }
 
 export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
-	#runs: Map<string, RunHistory[]> = new Map()
+	#runs: Map<string, RunHistoryV2[]> = new Map()
 	#lastUpdateInfo: LastUpdateInfo = {
 		time: new Date(),
 		highestSignature: undefined,
@@ -150,7 +152,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 	}
 
-	#getActiveRun(pubkey: string): [RunHistory, number] {
+	#getActiveRun(pubkey: string): [RunHistoryV2, number] {
 		const runs = this.#runs.get(pubkey)
 		const lastRun = runs?.at(-1)
 		if (!runs || !lastRun) {
@@ -687,7 +689,7 @@ function goodNumber([_, value]: readonly [
 }
 
 function makeRunSummary(
-	run: RunHistory,
+	run: RunHistoryV2,
 	index: number,
 	isOnlyRunAtThisIndex: boolean
 ): RunSummary | null {
@@ -820,7 +822,7 @@ function averageSameStepValues(
 	})
 }
 
-function cleanupWitnessUpdates(run: RunHistory) {
+function cleanupWitnessUpdates(run: RunHistoryV2) {
 	console.log(
 		'before cleanup witness:',
 		run.runId,
@@ -864,7 +866,7 @@ function cleanupWitnessUpdates(run: RunHistory) {
 	)
 }
 
-function cleanupOverriddenSteps(witnesses: [Witness, ChainTimestamp][]) {
+function cleanupOverriddenSteps(witnesses: [WitnessV2, ChainTimestamp][]) {
 	const orderedWithnesses = witnesses.sort(
 		(a, b) => a[1].time.getTime() - b[1].time.getTime()
 	)
@@ -882,7 +884,7 @@ function cleanupOverriddenSteps(witnesses: [Witness, ChainTimestamp][]) {
 }
 
 function removeUnsampledSteps(
-	witnesses: [Witness, ChainTimestamp][],
+	witnesses: [WitnessV2, ChainTimestamp][],
 	sampledStep?: number
 ) {
 	if (!sampledStep || sampledStep <= 1) {
@@ -900,30 +902,34 @@ function removeUnsampledSteps(
 type ValueInMapRecord<MapRecord> =
 	MapRecord extends Map<any, infer I> ? I : never
 
-type CurrentFormat = V1
+type CurrentFormat = V2
 
-const migrations: Record<
-	`${Exclude<Version, CurrentVersion>}`,
-	(data: any) => CurrentFormat
-> = {
-	unversioned: (data: V0) => {
-		for (const [_runId, run] of data.runs) {
-			for (const history of run) {
-				for (const witness of history.witnessUpdates) {
-					const evals = witness[0].evals
-					for (let i = 0; i < evals.length; i++) {
-						evals[i] = [
-							evals[i].name,
-							evals[i].value,
-						] satisfies ValueInMapRecord<
-							V1['runs']
-						>[number]['lastFewWitnessUpdates'][number][0]['evals'][number] as any
-					}
-				}
-			}
+function migrateFromV0ToV1(_: V0): V1 {
+	throw new Error("Not implemented, we don't have any V0 data anymore")
+}
+
+function migrateFromV1ToV2(dataV1: V1): V2 {
+	for (const [_runId, runV1] of dataV1.runs) {
+		for (const historyV1 of runV1) {
+			let allWitnessUpdates = historyV1.witnessUpdates
+			historyV1.witnessUpdates = []
+			let historyV2 = historyV1 as any as RunHistoryV2
+			historyV2.sampledWitnessUpdates = allWitnessUpdates.slice()
+			historyV2.lastFewWitnessUpdates = allWitnessUpdates.slice()
+			cleanupWitnessUpdates(historyV2)
 		}
-		return data as unknown as V1
+	}
+	return dataV1 as any as V2
+}
+
+const migrations: Record<Version, (data: any) => CurrentFormat> = {
+	unversioned: (data: V0) => {
+		return migrateFromV1ToV2(migrateFromV0ToV1(data))
 	},
+	'1': (data: V1) => {
+		return migrateFromV1ToV2(data)
+	},
+	'2': (data: V2) => data,
 }
 
 interface WitnessV0 {
@@ -932,25 +938,36 @@ interface WitnessV0 {
 		value: number
 	}>
 }
-
 interface RunHistoryV0 {
 	witnessUpdates: Array<[WitnessV0, any]>
 }
-
 interface V0 {
 	runs: Map<string, RunHistoryV0[]>
 }
 
+type WitnessV1 = WitnessV2
+type RunHistoryV1 = Omit<
+	RunHistoryV2,
+	'lastFewWitnessUpdates' | 'sampledWitnessUpdates' | 'sampledWitnessStep'
+> & {
+	witnessUpdates: Array<[WitnessV1, any]>
+}
 interface V1 {
 	lastUpdateInfo: LastUpdateInfo
-	runs: Map<string, RunHistory[]>
+	runs: Map<string, RunHistoryV1[]>
+	programId: PublicKey
+}
+
+interface V2 {
+	lastUpdateInfo: LastUpdateInfo
+	runs: Map<string, RunHistoryV2[]>
 	programId: PublicKey
 }
 
 function tryMigrate(version: Version, data: any): CurrentFormat {
-	if (version === CURRENT_VERSION) {
-		return data
-	}
+	console.log('Current coordinator DB version is', CURRENT_VERSION)
+	console.log('Loaded coordinator DB version is', version)
 	console.log(`Migrating from ${version} to ${CURRENT_VERSION}!!`)
-	return migrations[version](data)
+	const migratedData = migrations[version](data)
+	return migratedData
 }
