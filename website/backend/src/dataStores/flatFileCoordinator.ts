@@ -287,7 +287,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		const step = newState.coordinator.progress.step
 		if (step > (lastRun.observedLrByStep.at(-1)?.[0] ?? 0)) {
 			const lr = lr_at_step(newState.coordinator.model.LLM.lr_schedule, step)
-			lastRun.observedLrByStep.push([step, lr])
+			if (isGoodNumber(lr)) {
+				lastRun.observedLrByStep.push([step, lr])
+			}
 		}
 
 		if (configChanged) {
@@ -566,22 +568,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		}
 
 		const history: OverTime<Metrics> = {
-			bandwidth: averageSameStepValues(
-				sampledWitnessUpdates
-					.map(([step, h]) => [step, h.bandwidth_per_sec] as const)
-					.filter(goodNumber)
+			bandwidth: sampledWitnessUpdates.map(
+				([step, h]) => [step, h.bandwidth_per_sec] as const
 			),
-			loss: averageSameStepValues(
-				sampledWitnessUpdates
-					.map(([step, h]) => [step, h.loss] as const)
-					.filter(goodNumber)
+			loss: sampledWitnessUpdates.map(([step, h]) => [step, h.loss] as const),
+			tokensPerSecond: sampledWitnessUpdates.map(
+				([step, h]) => [step, h.tokens_per_sec] as const
 			),
-			tokensPerSecond: averageSameStepValues(
-				sampledWitnessUpdates
-					.map(([step, h]) => [step, h.tokens_per_sec] as const)
-					.filter(goodNumber)
-			),
-			lr: run.observedLrByStep.filter(goodNumber),
+			lr: run.observedLrByStep,
 			evals,
 			promptResults:
 				promptResults as unknown as OverTime<Metrics>['promptResults'],
@@ -680,11 +674,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 	}
 }
 
-function goodNumber([_, value]: readonly [
-	step: number,
-	value: number,
-]): boolean {
-	return Number.isFinite(value) && !Number.isNaN(value)
+function isGoodNumber(value: number): boolean {
+	return (
+		typeof value === 'number' && !Number.isNaN(value) && Number.isFinite(value)
+	)
 }
 
 function makeRunSummary(
@@ -834,24 +827,14 @@ function cleanupWitnessUpdates(run: RunHistoryV2) {
 	)
 
 	// Trim witness updates to the last few
-	run.lastFewWitnessUpdates = cleanupOverriddenSteps(run.lastFewWitnessUpdates)
-	if (run.lastFewWitnessUpdates.length > 200) {
-		run.lastFewWitnessUpdates = run.lastFewWitnessUpdates.slice(-100)
-	}
+	run.lastFewWitnessUpdates = cleanupLastFewUpdates(run.lastFewWitnessUpdates)
 
 	// Sparsify sampled witness updates when needed
-	run.sampledWitnessUpdates = cleanupOverriddenSteps(run.sampledWitnessUpdates)
-	run.sampledWitnessUpdates = removeUnsampledSteps(
-		run.sampledWitnessUpdates,
-		run.sampledWitnessStep
-	)
-	while (run.sampledWitnessUpdates.length > 2000) {
-		run.sampledWitnessStep = (run.sampledWitnessStep ?? 1) * 2
-		run.sampledWitnessUpdates = removeUnsampledSteps(
-			run.sampledWitnessUpdates,
-			run.sampledWitnessStep
-		)
-	}
+	const { updates: sampledWitnessUpdates, step: sampledWitnessStep } =
+		cleanupSampledUpdates(run.sampledWitnessUpdates, run.sampledWitnessStep)
+
+	run.sampledWitnessStep = sampledWitnessStep
+	run.sampledWitnessUpdates = sampledWitnessUpdates
 
 	console.log(
 		'after cleanup witness:',
@@ -865,37 +848,174 @@ function cleanupWitnessUpdates(run: RunHistoryV2) {
 	)
 }
 
-function cleanupOverriddenSteps(witnesses: [WitnessV2, ChainTimestamp][]) {
-	const orderedWithnesses = witnesses.sort(
+function cleanupLastFewUpdates(
+	witnesses: [WitnessV2, ChainTimestamp][]
+): [WitnessV2, ChainTimestamp][] {
+	const withoutOverrides = removeOverriddenSteps(witnesses)
+	return withoutOverrides.length > 200
+		? withoutOverrides.slice(-100)
+		: withoutOverrides
+}
+
+/**
+ * Remove overridden steps, average values for the same step, then downsample if needed.
+ */
+function cleanupSampledUpdates(
+	witnesses: [WitnessV2, ChainTimestamp][],
+	initialStep?: number
+): { updates: [WitnessV2, ChainTimestamp][]; step: number } {
+	const linearHistory = removeOverriddenSteps(witnesses)
+
+	const aggregated = aggregateByStep(linearHistory)
+
+	const MAX_SAMPLES = 2000
+
+	const finalSampleStep = calculateOptimalStep(
+		aggregated.length,
+		MAX_SAMPLES - 2,
+		initialStep ?? 1
+	)
+	const sampled =
+		finalSampleStep > 1
+			? [
+					aggregated[0],
+					...aggregated
+						.slice(1, -1)
+						.filter(([witness]) => witness.step % finalSampleStep === 0),
+					aggregated.at(-1)!,
+				]
+			: aggregated
+
+	return { updates: sampled, step: finalSampleStep }
+}
+
+/**
+ * Returns a single linear history of witnesses.
+ * Will sort the input argument in-place.
+ */
+function removeOverriddenSteps(
+	witnesses: [WitnessV2, ChainTimestamp][]
+): [WitnessV2, ChainTimestamp][] {
+	const orderedWitnesses = witnesses.sort(
 		(a, b) => a[1].time.getTime() - b[1].time.getTime()
 	)
-	const newWitnesses = []
+
+	// Walk backwards, keep only non-overridden steps
+	const newWitnesses: [WitnessV2, ChainTimestamp][] = []
 	let minValidStep = Infinity
-	for (let i = orderedWithnesses.length - 1; i >= 0; i--) {
-		let witness = orderedWithnesses[i]
-		let currentStep = witness[0].step
+
+	for (let i = orderedWitnesses.length - 1; i >= 0; i--) {
+		const witness = orderedWitnesses[i]
+		const currentStep = witness[0].step
+
 		if (minValidStep >= currentStep) {
 			minValidStep = currentStep
 			newWitnesses.push(witness)
 		}
 	}
+
 	return newWitnesses.reverse()
 }
 
-function removeUnsampledSteps(
-	witnesses: [WitnessV2, ChainTimestamp][],
-	sampledStep?: number
-) {
-	if (!sampledStep || sampledStep <= 1) {
-		return witnesses
+/**
+ * Given a list of witness, averages all witnesses from the same step.
+ */
+function aggregateByStep(
+	witnesses: [WitnessV2, ChainTimestamp][]
+): [WitnessV2, ChainTimestamp][] {
+	const groups = new Map<number, [WitnessV2, ChainTimestamp][]>()
+
+	for (const witness of witnesses) {
+		const step = witness[0].step
+		if (!groups.has(step)) {
+			groups.set(step, [])
+		}
+		groups.get(step)!.push(witness)
 	}
-	let newWitnesses = []
-	for (let witness of witnesses) {
-		if (witness[0].step % sampledStep === 0) {
-			newWitnesses.push(witness)
+
+	// average each group
+	const aggregated: [WitnessV2, ChainTimestamp][] = [...groups.values()].map(
+		averageWitnessesForStep
+	)
+
+	// sort by step
+	return aggregated.sort((a, b) => a[0].step - b[0].step)
+}
+
+function averageWitnessesForStep(
+	witnesses: [WitnessV2, ChainTimestamp][]
+): [WitnessV2, ChainTimestamp] {
+	const baseWitness = witnesses[0][0]
+	const latestTimestamp = witnesses.reduce(
+		(latest, [_, timestamp]) =>
+			timestamp.time.getTime() > latest.time.getTime() ? timestamp : latest,
+		witnesses[0][1]
+	)
+
+	const evalGroups = new Map<string, number[]>()
+	const propValues = new Map<string, number[]>()
+
+	for (const [witness] of witnesses) {
+		// Group evals
+		for (const [name, value] of witness.evals) {
+			if (!evalGroups.has(name)) {
+				evalGroups.set(name, [])
+			}
+			evalGroups.get(name)!.push(value)
+		}
+
+		// Auto-collect all numeric properties (excluding special ones)
+		for (const [key, value] of Object.entries(witness)) {
+			if (
+				key !== 'evals' &&
+				key !== 'prompt_results' &&
+				key !== 'step' &&
+				key !== 'prompt_index' &&
+				typeof value === 'number' &&
+				isGoodNumber(value)
+			) {
+				if (!propValues.has(key)) {
+					propValues.set(key, [])
+				}
+				propValues.get(key)!.push(value)
+			}
 		}
 	}
-	return newWitnesses
+
+	// average evals
+	const averagedEvals: [string, number][] = []
+	for (const [name, values] of evalGroups) {
+		const mean = values.reduce((sum, val) => sum + val, 0) / values.length
+		averagedEvals.push([name, mean])
+	}
+
+	const averagedWitness: any = {
+		...baseWitness,
+		evals: averagedEvals,
+	}
+
+	for (const [prop, values] of propValues) {
+		averagedWitness[prop] =
+			values.length > 0
+				? values.reduce((sum, val) => sum + val, 0) / values.length
+				: baseWitness[prop as keyof WitnessV2]
+	}
+
+	return [averagedWitness, latestTimestamp]
+}
+
+function calculateOptimalStep(
+	currentLength: number,
+	maxLength: number,
+	minStep: number
+): number {
+	if (currentLength <= maxLength) return minStep
+
+	let step = minStep
+	while (Math.ceil(currentLength / step) > maxLength) {
+		step *= 2
+	}
+	return step
 }
 
 type CurrentFormat = V2
@@ -907,24 +1027,29 @@ function migrateFromV0ToV1(_: V0): V1 {
 function migrateFromV1ToV2(dataV1: V1): V2 {
 	for (const [_runId, runV1] of dataV1.runs) {
 		for (const historyV1 of runV1) {
-			let allWitnessUpdates = historyV1.witnessUpdates
-			historyV1.witnessUpdates = []
-			let historyV2 = historyV1 as any as RunHistoryV2
+			const allWitnessUpdates = historyV1.witnessUpdates
+			const historyV2 = historyV1 as unknown as RunHistoryV2
+
+			delete (historyV2 as { witnessUpdates?: any }).witnessUpdates
+
 			historyV2.sampledWitnessUpdates = allWitnessUpdates.slice()
 			historyV2.lastFewWitnessUpdates = allWitnessUpdates.slice()
+			historyV2.observedLrByStep = historyV2.observedLrByStep.filter((s) =>
+				isGoodNumber(s[1])
+			)
+
+			// cleanup witness history :)
 			cleanupWitnessUpdates(historyV2)
+
+			// cleanup bad values in LR, if exists
 		}
 	}
-	return dataV1 as any as V2
+	return dataV1 as unknown as V2
 }
 
 const migrations: Record<Version, (data: any) => CurrentFormat> = {
-	unversioned: (data: V0) => {
-		return migrateFromV1ToV2(migrateFromV0ToV1(data))
-	},
-	'1': (data: V1) => {
-		return migrateFromV1ToV2(data)
-	},
+	unversioned: (data: V0) => migrateFromV1ToV2(migrateFromV0ToV1(data)),
+	'1': (data: V1) => migrateFromV1ToV2(data),
 	'2': (data: V2) => data,
 }
 
