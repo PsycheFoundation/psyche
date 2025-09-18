@@ -372,12 +372,13 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				prompt_results: promptTokens,
 				prompt_index: prompt_index || 0, // Default to 0 if undefined
 			}
-
-			lastRun.lastFewWitnessUpdates.push(witnessUpdate)
-			lastRun.sampledWitnessUpdates.push(witnessUpdate)
+			lastRun.lastFewWitnessUpdates.push([witnessUpdate, timestamp])
+			lastRun.sampledWitnessUpdates.push([witnessUpdate, timestamp])
 		}
 
-		cleanupWitnessUpdates(lastRun)
+		if (witnesses.length > 0) {
+			cleanupWitnessUpdates(lastRun)
+		}
 		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, runs.length - 1))
 	}
 
@@ -864,7 +865,9 @@ function cleanupWitnessUpdates(run: RunHistory) {
 }
 
 function cleanupOverriddenSteps(witnesses: [Witness, ChainTimestamp][]) {
-	const orderedWithnesses = witnesses.sort((a, b) => a[0].step - b[0].step)
+	const orderedWithnesses = witnesses.sort(
+		(a, b) => a[1].time.getTime() - b[1].time.getTime()
+	)
 	const newWitnesses = []
 	let minValidStep = Infinity
 	for (let i = orderedWithnesses.length - 1; i >= 0; i--) {
