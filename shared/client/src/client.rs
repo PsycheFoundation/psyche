@@ -159,19 +159,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 .map(|s| s.run_state.to_string())
                                 .unwrap_or_else(|| String::from(" - "));
 
-                            info!(
-                                integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
-                                client_id = %identity,
-                                old_state = old_run_state,
-                                new_state = %new_state.run_state,
-                                epoch = new_state.progress.epoch,
-                                step = new_state.progress.step,
-                                "applying state epoch {} step {} ({} -> {})",
-                                new_state.progress.epoch,
-                                new_state.progress.step,
-                                old_run_state,
-                                new_state.run_state
-                            );
+                            if old_state.map(|s| s.run_state).unwrap_or_default() != new_state.run_state {
+                                info!(
+                                    integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
+                                    client_id = %identity,
+                                    old_state = old_run_state,
+                                    new_state = %new_state.run_state,
+                                    epoch = new_state.progress.epoch,
+                                    step = new_state.progress.step,
+                                    "applying state epoch {} step {} ({} -> {})",
+                                    new_state.progress.epoch,
+                                    new_state.progress.step,
+                                    old_run_state,
+                                    new_state.run_state
+                                );
+                            }
 
                             let run_participating_node_ids = participating_node_ids(new_state);
                             allowlist.set(run_participating_node_ids);

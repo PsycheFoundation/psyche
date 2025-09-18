@@ -252,6 +252,7 @@ class HfTransformersAuto(CausalLM):
             position_ids=position_ids,
             logits_to_keep=num_logits_to_keep,  # name changed in 4.50
             return_dict=True,
+            use_cache=False,
         )
         if ret.loss and loss_scale:
             ret.loss /= loss_scale

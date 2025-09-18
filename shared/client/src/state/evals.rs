@@ -251,6 +251,9 @@ impl ModelTaskRunner {
 
                         tokio::task::spawn_blocking(move || {
                             'eval_loop: while !cancel.is_cancelled() {
+                                if !trainer.can_do_inference() {
+                                    return trainer;
+                                };
                                 model_tasks.shuffle(&mut thread_rng());
                                 let span = span!(Level::TRACE, "eval_task").entered();
                                 for model_task in &model_tasks {
