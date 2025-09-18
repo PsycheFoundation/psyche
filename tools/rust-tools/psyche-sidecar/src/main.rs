@@ -75,11 +75,14 @@ async fn main() -> Result<()> {
 
             let num_local_ranks =
                 num_local_ranks.unwrap_or_else(|| tch::Cuda::device_count() as usize);
-            let last_rank = start_rank + (num_local_ranks);
-            if last_rank >= world_size {
-                bail!("World size is too small: world_size <= start_rank + num_local_ranks ");
+            let computed_last_rank = start_rank + num_local_ranks - 1;
+            let last_rank = std::cmp::min(computed_last_rank, world_size - 1);
+            if computed_last_rank >= world_size {
+                warn!(
+                    "The computed last rank was {computed_last_rank} and world size is {world_size}. Will only spawn ranks up to {}",
+                    world_size - 1
+                );
             }
-            let last_rank = std::cmp::min(last_rank, world_size);
 
             info!(
                 "Starting Python sidecars for ranks {} to {}",
