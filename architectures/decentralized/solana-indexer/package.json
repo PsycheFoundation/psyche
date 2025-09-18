@@ -1,0 +1,16 @@
+{
+  "name": "psyche-solana-indexer",
+  "version": "0.0.1",
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "prettier-plugin-organize-imports": "^4.1.0"
+  },
+  "scripts": {
+    "fmt": "prettier --write src",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "solana_toolbox_web3": "^0.0.8"
+  }
+}
