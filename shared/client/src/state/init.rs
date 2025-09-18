@@ -180,6 +180,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             metrics,
         } = self;
 
+        tch::manual_seed(1337);
+
         let model::Model::LLM(llm) = state.model;
 
         let hub_read_token = init_config.hub_read_token.clone();

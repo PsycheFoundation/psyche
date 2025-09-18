@@ -18,7 +18,7 @@ use std::{
 };
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -258,7 +258,7 @@ impl PythonDistributedCausalLM {
             })
         };
         let pid = format!("{}", std::process::id());
-        tracing::debug!("Spawned local model load, pid is {pid}");
+        debug!("Spawned local model load, pid is {pid}");
         let children: Result<Vec<Child>, _> = (1..num_local_ranks)
             .map(|rank| {
                 let res = Command::new("python")
@@ -278,8 +278,8 @@ impl PythonDistributedCausalLM {
                     .arg(format!("{rank}"))
                     .spawn();
                 match res.as_ref() {
-                    Ok(child) => tracing::info!("Spawned sidecar process {}", child.id()),
-                    Err(err) => tracing::error!("{err}"),
+                    Ok(child) => debug!("Spawned sidecar process {}", child.id()),
+                    Err(err) => error!("{err}"),
                 };
                 res
             })
@@ -335,7 +335,7 @@ impl CausalLM for PythonDistributedCausalLM {
 
             let new_size = batch.data.size();
             if new_size != original_batch_size {
-                debug!(
+                trace!(
                     "FSDP: Padded batch from {} to {} samples (world_size={})",
                     original_batch_size, new_size, world_size
                 );

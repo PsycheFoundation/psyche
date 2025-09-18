@@ -129,6 +129,8 @@ def main():
     if args.parent_pid:
         start_process_watcher(args.parent_pid, timedelta(seconds=1))
 
+    torch.manual_seed(1337)
+
     # parse init_method to manually create TCP store
     store = None
     if args.init_method.startswith("tcp://"):
