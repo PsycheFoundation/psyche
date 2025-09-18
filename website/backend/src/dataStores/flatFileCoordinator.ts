@@ -316,7 +316,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		this.#runsMutatedSinceLastSync.add(runKey(lastRun.runId, index))
 	}
 
-	appendWitnessRun(
+	appendRunWitnesses(
 		pubkey: string,
 		witnesses: [WitnessMetadata, ChainTimestamp][]
 	) {
@@ -917,7 +917,7 @@ const migrations: Record<
 							evals[i].value,
 						] satisfies ValueInMapRecord<
 							V1['runs']
-						>[number]['witnessUpdates'][number][0]['evals'][number] as any
+						>[number]['lastFewWitnessUpdates'][number][0]['evals'][number] as any
 					}
 				}
 			}

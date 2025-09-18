@@ -37,7 +37,7 @@ export interface CoordinatorDataStore extends ChainDataStore {
 		configChanged: boolean
 	): void
 	setRunPaused(pubkey: string, paused: boolean, timestamp: ChainTimestamp): void
-	appendWitnessRun(
+	appendRunWitnesses(
 		pubkey: string,
 		witnesses: [WitnessMetadata, ChainTimestamp][]
 	): void
