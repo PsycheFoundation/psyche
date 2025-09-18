@@ -16,6 +16,15 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 1024;
 
+pub const PROGRESS_BAR_TEMPLATE: &str =
+    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}";
+
+pub fn progress_bar_template_with_task(task_name: &str) -> String {
+    format!(
+        "{{spinner:.green}} [{task_name}] [{{elapsed_precise}}] [{{bar:40.cyan/blue}}] {{pos}}/{{len}} ({{eta}}) {{msg}}"
+    )
+}
+
 const TASKS_WITH_ACC_NORM: [&str; 5] = [
     ArcChallenge::name(),
     ArcEasy::name(),
@@ -76,7 +85,7 @@ enum PreparedTaskType {
 pub struct PreparedTask {
     prepared_task_type: PreparedTaskType,
     name: String,
-    num: usize,
+    pub num: usize,
 }
 
 pub struct PreparedTaskResult {
@@ -322,20 +331,28 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
+    pub shared_progress_bar: Option<Arc<ProgressBar>>,
 }
 
 impl PreparedTask {
     pub fn run(&self, options: EvalTaskOptions, progress_bar: bool) -> PreparedTaskResult {
-        let pbar = match progress_bar {
-            false => None,
-            true => {
+        let pbar = match (progress_bar, &options.shared_progress_bar) {
+            (false, _) => None,
+            (true, Some(shared_pbar)) => {
+                // Use the existing progress bar
+                Some(shared_pbar.clone())
+            }
+            (true, None) => {
+                // No progress bar created already so create a new one
                 info!("Running {}", self.name);
                 let pbar = ProgressBar::new(self.num as u64);
-                pbar.set_style(ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
-                    .unwrap()
-                    .progress_chars("#>-"));
-                Some(pbar)
+                pbar.set_style(
+                    ProgressStyle::default_bar()
+                        .template(PROGRESS_BAR_TEMPLATE)
+                        .unwrap()
+                        .progress_chars("#>-"),
+                );
+                Some(Arc::new(pbar))
             }
         };
 
@@ -366,7 +383,7 @@ impl PreparedTask {
         eval_name: &String,
         options: EvalTaskOptions,
         docs: &[TokenizedLLHDocument],
-        pbar: Option<ProgressBar>,
+        pbar: Option<Arc<ProgressBar>>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
@@ -520,7 +537,7 @@ impl PreparedTask {
         tokenizer: &Tokenizer,
         stop_tokens: &[String],
         answer_extraction_regex: &Regex,
-        pbar: Option<ProgressBar>,
+        pbar: Option<Arc<ProgressBar>>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));

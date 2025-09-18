@@ -63,7 +63,7 @@ Once the `Warmup` time passes, the Coordinator loads all the information for the
 
 In this phase, the Coordinator provides a random seed.
 
-Each client can use this seed, alongside the current round index and epoch index to determine which indicies of the training data to use.
+Each client can use this seed, alongside the current round index and epoch index to determine which indices of the training data to use.
 
 Each client then proceeds to run the training on the selected training data.
 
@@ -73,22 +73,22 @@ This state will end when clients later exchanges `Witness` messages.
 
 As clients complete their training, they send their results to all other clients, including the Witnesses. The witnesses will each send a **witness proof** to the Coordinator, building towards a **witness quorum**.
 
-A witness proof contains a bloom filter describing which pieces of data the witness recieved training results for, and which clients did that work. Elected witnesses are responsible for creating these witness proofs and and sending them to the Coordinator.
+A witness proof contains a bloom filter describing which pieces of data the witness received training results for, and which clients did that work. Elected witnesses are responsible for creating these witness proofs and and sending them to the Coordinator.
 
-The witnesses for each round are chosen randomly from all the clients, using the same random seed as for data assignments. A witness will attempt to send an **opportunistic witness** message once it's seen a recieved a training result for every single batch in the current round.
+The witnesses for each round are chosen randomly from all the clients, using the same random seed as for data assignments. A witness will attempt to send an **opportunistic witness** message once it's seen a received a training result for every single batch in the current round.
 
 #### Witness Quorum
 
 The Coordinator advances the run from the _Training_ phase to the _Witness_ phase in one of two ways:
 
 - If enough witnesses observe all results and reach a **witness quorum** for the round, they notify the Coordinator that it is safe to advance. This process, named **opportunistic witnessing**, accelerates the transition to the _Witness_ phase, rather than having to wait a fixed time for training results.
-- If witnesses do not receive all required results from other clients before the maximum time specified for the _Training_ phase, the Coordinator will nontheless transition to the _Witness_ phase after the maximum _Training_ time elapses.
+- If witnesses do not receive all required results from other clients before the maximum time specified for the _Training_ phase, the Coordinator will nonetheless transition to the _Witness_ phase after the maximum _Training_ time elapses.
 
 ### Witness phase (state: RoundWitness)
 
 This phase exists to give the witnesses an opportunity to send their proofs to the Coordinator in the event that they have not received enough training results from other clients to have reached the quorum and send their proofs opportunistically.
 
-There is also brief slack period for non-witness nodes to catch up by downloading any remaining results they might have not recieved.
+There is also brief slack period for non-witness nodes to catch up by downloading any remaining results they might have not received.
 
 When the _Witness_ phase finishes via timeout, the Coordinator transitions from _Witness_ to the _Cooldown_ phase in three cases:
 
@@ -100,7 +100,7 @@ Any clients that have failed health checks will also be removed from the current
 
 ### Cooldown phase (state: Cooldown)
 
-The _Cooldown_ phase is the last phase of an epoch, during which the Cooordinator waits for either the _Cooldown_ period to elapse, or a checkpoint to have happened.
+The _Cooldown_ phase is the last phase of an epoch, during which the Coordinator waits for either the _Cooldown_ period to elapse, or a checkpoint to have happened.
 
 When the _Cooldown_ phase begins, the Coordinator resets the current model checkpoint state to `Checkpoint::P2P`, signifying that new joiners should download the latest copy of the model from the other participants.
 
