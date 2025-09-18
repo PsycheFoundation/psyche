@@ -20,7 +20,7 @@ pub struct PromptTask {
     pub prompt_finished: RwLock<bool>,
     pub is_running: Mutex<bool>,
     original_prompt_len: RwLock<usize>,
-    tokenizer: std::sync::Arc<Tokenizer>,
+    pub tokenizer: std::sync::Arc<Tokenizer>,
 }
 
 impl PromptTask {
