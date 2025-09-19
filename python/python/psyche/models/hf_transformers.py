@@ -45,6 +45,7 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
     if dp_replicate > 1:
         dp_mesh_dim_names.append("dp_replicate")
         dp_cp_mesh_dim_names.append("dp_replicate")
+
     if dp_shard > 1:
         dp_mesh_dim_names.append("dp_shard")
         dp_shard_cp_mesh_dim_names.append("dp_shard")
@@ -119,14 +120,14 @@ class HfTransformersAuto(CausalLM):
 
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
-                config, attn_implementation=attn_implementation
+                config,
+                attn_implementation=attn_implementation,
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
 
         world_mesh = None
         if tp != 1 or dp != 1:
-            # world_mesh = build_mesh("cuda", dp_replicate=dp, tp=tp)
             world_mesh = build_mesh("cuda", dp_shard=dp)
             if tp != 1:
                 raise RuntimeError("TP not supported in HfTransformers yet")

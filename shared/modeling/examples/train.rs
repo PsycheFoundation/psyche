@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
@@ -193,7 +193,9 @@ async fn main() -> Result<()> {
         args.token_size.try_into()?,
         args.sequence_length,
         Shuffle::DontShuffle,
-    ) {
+    )
+    .with_context(|| "Failed to load data with local data provider.")
+    {
         Ok(dataset) => {
             info!(
                 "Loaded local dataset with {} samples",
@@ -201,14 +203,18 @@ async fn main() -> Result<()> {
             );
             DataProvider::Local(dataset)
         }
-        Err(_) => {
+        Err(err) => {
+            println!(
+                "Failed to load with local data provider. {err:?} Trying preprocessed data provider instead"
+            );
             let dataset = PreprocessedDataProvider::new_from_directory(
                 &args.data_path,
                 args.sequence_length,
                 Shuffle::DontShuffle,
                 Some(Split::Train),
                 None,
-            )?;
+            )
+            .with_context(|| "Failed to load preprocessed data")?;
             info!(
                 "Loaded preprocessed dataset with {} samples",
                 dataset.num_sequences()
@@ -303,6 +309,7 @@ async fn main() -> Result<()> {
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
+                            None,
                         )?;
 
                         Ok(psyche_modeling::PythonDistributedTrainer::new(
@@ -459,6 +466,7 @@ async fn main() -> Result<()> {
                 let distro_quantization = args.distro_quantization;
                 let prev_distro_results = prev_distro_results.clone();
                 std::thread::spawn(move || {
+                    tracing::info!("Starting training thread");
                     #[allow(irrefutable_let_patterns)]
                     if let Trainer::Local(trainer) = &trainer {
                         trainer.data_parallel_barrier();
