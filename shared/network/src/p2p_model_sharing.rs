@@ -590,7 +590,9 @@ impl SharableModel {
                 };
                 parameters_to_send.insert(param_name, tensor);
             }
-            tx_params_response.send(parameters_to_send)?;
+            tx_params_response
+                .send(parameters_to_send)
+                .map_err(|_e| SharableModelError::ResponseChannelNotInitialized)?;
             return Ok(());
         }
         Err(SharableModelError::ResponseChannelNotInitialized)
