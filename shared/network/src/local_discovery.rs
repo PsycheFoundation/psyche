@@ -1,6 +1,6 @@
 use futures_util::{Stream, stream};
 use iroh::NodeId;
-use iroh::discovery::{DiscoveryError, DiscoveryItem};
+use iroh::discovery::{DiscoveryError, DiscoveryEvent, DiscoveryItem};
 use iroh::node_info::{NodeData, NodeInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -97,7 +97,9 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
         Some(Box::pin(stream::once(async move { Ok(discovery_item) })))
     }
 
-    fn subscribe(&self) -> Option<BoxStream<iroh::discovery::DiscoveryItem>> {
+    fn subscribe(
+        &self,
+    ) -> Option<Pin<Box<(dyn Stream<Item = DiscoveryEvent> + std::marker::Send + 'static)>>> {
         None
     }
 }

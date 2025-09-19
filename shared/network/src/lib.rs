@@ -95,9 +95,8 @@ pub use util::fmt_bytes;
 
 use crate::p2p_model_sharing::ModelSharing;
 
-const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
-const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
-const EUC_RELAY_HOSTNAME: &str = "euc1-1.relay.psyche.iroh.link";
+const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
+const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
 
 /// How should this node discover other nodes?
 ///
@@ -203,7 +202,7 @@ where
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Some(Duration::from_secs(1)));
 
-            let relay_mode = RelayMode::Default;
+            let relay_mode = RelayMode::Custom(psyche_relay_map());
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
             let endpoint = Endpoint::builder()
@@ -712,11 +711,7 @@ async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
 
 /// Get the Psyche [`RelayMap`].
 pub fn psyche_relay_map() -> RelayMap {
-    RelayMap::from_iter([
-        psyche_use_relay_node(),
-        psyche_usw_relay_node(),
-        psyche_euc_relay_node(),
-    ])
+    RelayMap::from_iter([psyche_use_relay_node(), psyche_usw_relay_node()])
 }
 
 /// Get the Psyche [`RelayNode`] for US East.
@@ -726,8 +721,6 @@ pub fn psyche_use_relay_node() -> RelayNode {
         .expect("default url");
     RelayNode {
         url: url.into(),
-        // stun_only: false,
-        // stun_port: DEFAULT_STUN_PORT,
         quic: Some(RelayQuicConfig::default()),
     }
 }
@@ -739,21 +732,6 @@ pub fn psyche_usw_relay_node() -> RelayNode {
         .expect("default_url");
     RelayNode {
         url: url.into(),
-        // stun_only: false,
-        // stun_port: DEFAULT_STUN_PORT,
-        quic: Some(RelayQuicConfig::default()),
-    }
-}
-
-/// Get the Psyche [`RelayNode`] for Europe
-pub fn psyche_euc_relay_node() -> RelayNode {
-    let url: Url = format!("https://{EUC_RELAY_HOSTNAME}")
-        .parse()
-        .expect("default_url");
-    RelayNode {
-        url: url.into(),
-        // stun_only: false,
-        // stun_port: DEFAULT_STUN_PORT,
         quic: Some(RelayQuicConfig::default()),
     }
 }

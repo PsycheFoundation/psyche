@@ -9,7 +9,7 @@ use bytes::Bytes;
 use futures_util::future::select_all;
 use iroh::{NodeAddr, PublicKey};
 use iroh_blobs::ticket::BlobTicket;
-use iroh_blobs::{Hash, api::downloader::DownloadProgessItem};
+use iroh_blobs::{Hash, api::downloader::DownloadProgressItem};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap, fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc,
@@ -247,7 +247,7 @@ impl DownloadType {
 struct Download {
     blob_ticket: BlobTicket,
     tag: u32,
-    download: mpsc::UnboundedReceiver<Result<DownloadProgessItem>>,
+    download: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
     last_offset: u64,
     total_size: u64,
     r#type: DownloadType,
@@ -273,7 +273,7 @@ impl Download {
     fn new(
         blob_ticket: BlobTicket,
         tag: u32,
-        download: mpsc::UnboundedReceiver<Result<DownloadProgessItem>>,
+        download: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
         download_type: DownloadType,
     ) -> Self {
         Self {
@@ -404,7 +404,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         &mut self,
         blob_ticket: BlobTicket,
         tag: u32,
-        progress: mpsc::UnboundedReceiver<Result<DownloadProgessItem>>,
+        progress: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
         download_type: DownloadType,
     ) {
         let downloads = self.downloads.clone();
@@ -456,7 +456,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         }
 
         enum FutureResult {
-            Download(usize, Result<DownloadProgessItem>),
+            Download(usize, Result<DownloadProgressItem>),
             Read(usize, Result<Bytes>),
         }
 
@@ -500,13 +500,13 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
 
     fn handle_download_progress(
         downloads: &mut Vec<Download>,
-        result: Result<DownloadProgessItem>,
+        result: Result<DownloadProgressItem>,
         index: usize,
     ) -> Option<DownloadManagerEvent<D>> {
         let download = &mut downloads[index];
         let event = match result {
             Ok(progress) => match progress {
-                DownloadProgessItem::TryProvider {
+                DownloadProgressItem::TryProvider {
                     id: _id,
                     request: _request,
                 } => Some(DownloadManagerEvent::Update(DownloadUpdate {
@@ -518,7 +518,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     all_done: false,
                     download_type: download.r#type.clone(),
                 })),
-                DownloadProgessItem::Progress(bytes_amount) => {
+                DownloadProgressItem::Progress(bytes_amount) => {
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
                         blob_ticket: download.blob_ticket.clone(),
                         tag: download.tag,
@@ -530,7 +530,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     }))
                 }
                 // We're using the Blob format so there's only one part for each blob
-                DownloadProgessItem::PartComplete { request: _request } => {
+                DownloadProgressItem::PartComplete { request: _request } => {
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
                         blob_ticket: download.blob_ticket.clone(),
                         tag: download.tag,
@@ -541,7 +541,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         download_type: download.r#type.clone(),
                     }))
                 }
-                DownloadProgessItem::DownloadError => {
+                DownloadProgressItem::DownloadError => {
                     Some(DownloadManagerEvent::Failed(DownloadFailed {
                         blob_ticket: download.blob_ticket.clone(),
                         error: anyhow!("Download error"),
@@ -549,7 +549,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         download_type: download.r#type.clone(),
                     }))
                 }
-                DownloadProgessItem::Error(e) => {
+                DownloadProgressItem::Error(e) => {
                     Some(DownloadManagerEvent::Failed(DownloadFailed {
                         blob_ticket: download.blob_ticket.clone(),
                         error: e,
@@ -557,7 +557,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         download_type: download.r#type.clone(),
                     }))
                 }
-                DownloadProgessItem::ProviderFailed {
+                DownloadProgressItem::ProviderFailed {
                     id: _id,
                     request: _request,
                 } => Some(DownloadManagerEvent::Update(DownloadUpdate {
