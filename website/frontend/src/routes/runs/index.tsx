@@ -30,5 +30,5 @@ function RouteComponent() {
 		return <div>Loading...</div>
 	}
 
-	return <Runs {...runs} />
+	return <Runs key={window.location.pathname} {...runs} />
 }
