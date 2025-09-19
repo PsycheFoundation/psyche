@@ -120,6 +120,15 @@ impl TokenizedLLHDocument {
             .map(|x| *x as i64)
             .collect();
 
+        // Debug: Show first document's prompt format
+        static FIRST_DOC_DEBUG: std::sync::Once = std::sync::Once::new();
+        FIRST_DOC_DEBUG.call_once(|| {
+            println!("\n=== PSYCHE PROMPT DEBUG ===");
+            println!("Document text: '{}'", doc.text);
+            println!("Choices: {:?}", doc.choices);
+            println!("==========================\n");
+        });
+
         for choice in doc.choices.iter() {
             choices_str.push(choice.clone());
 

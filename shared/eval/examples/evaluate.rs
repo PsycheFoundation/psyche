@@ -240,6 +240,15 @@ fn main() -> Result<()> {
             println!("  Token IDs: {:?}", encoded.get_ids());
         }
 
+        // Test choice tokens to match lm_eval format
+        println!("\n=== Choice Token Verification ===");
+        for choice in [" A", " B", " C", " D"] {
+            if let Ok(encoded) = tokenizer.encode(choice, false) {
+                println!("Choice '{}': token IDs {:?}", choice, encoded.get_ids());
+            }
+        }
+        println!("Expected: A=[338], B=[380] (from lm_eval debug)");
+
         println!("=============================\n");
     }
 

@@ -30,7 +30,9 @@ pub use auto_config::{
     AttentionImplementation, AutoConfig, ModelConfig, ModelLoadError, PretrainedSource,
 };
 pub use auto_model::auto_model_for_causal_lm_from_pretrained;
-pub use auto_tokenizer::{AutoTokenizerError, auto_tokenizer};
+pub use auto_tokenizer::{
+    AutoTokenizerError, TokenizerConfig, auto_tokenizer, auto_tokenizer_config,
+};
 pub use batcher::Batcher;
 pub use causal_language_model::{
     CausalLM, CausalLanguageModel, EosToks, LanguageModelBuilder, LanguageModelConfig,

@@ -128,10 +128,10 @@ impl CEval {
         let option_d = row.get_string(dataset.get_column_id("D").unwrap()).unwrap();
 
         let choices = vec![
-            "A".to_owned(),
-            "B".to_owned(),
-            "C".to_owned(),
-            "D".to_owned(),
+            " A".to_owned(),
+            " B".to_owned(),
+            " C".to_owned(),
+            " D".to_owned(),
         ];
 
         // In CEval the name of the subject is present in the description so we have to include it here
