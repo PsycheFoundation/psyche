@@ -24,4 +24,8 @@ dist-ssr
 *.sln
 *.sw?
 
-public/prompts
+public/prompts/*
+!public/prompts/.gitkeep
+
+public/tokenizers/*
+!public/tokenizers/.gitkeep
