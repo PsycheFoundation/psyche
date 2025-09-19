@@ -132,14 +132,7 @@ impl TokenizedLLHDocument {
             println!("==========================\n");
         }
 
-        // Debug: Show first document's prompt format
-        static FIRST_DOC_DEBUG: std::sync::Once = std::sync::Once::new();
-        FIRST_DOC_DEBUG.call_once(|| {
-            println!("\n=== PSYCHE PROMPT DEBUG ===");
-            println!("Document text: '{}'", doc.text);
-            println!("Choices: {:?}", doc.choices);
-            println!("==========================\n");
-        });
+        // Removed general debug output to focus only on target question
 
         // HARDCODED QUESTION DEBUG: Check if this is our target question
         let is_target_question = doc
