@@ -360,6 +360,7 @@ impl Trainer {
     pub fn can_do_inference(&self) -> bool {
         match self {
             Trainer::Local(local_trainer) => local_trainer.can_do_inference(),
+            #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.can_do_inference()
             }
