@@ -567,13 +567,23 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			}
 		}
 
+		const gn = ([_, v]: readonly [number, number]) => isGoodNumber(v)
+
 		const history: OverTime<Metrics> = {
-			bandwidth: sampledWitnessUpdates.map(
-				([step, h]) => [step, h.bandwidth_per_sec] as const
+			bandwidth: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.bandwidth_per_sec] as const)
+					.filter(gn)
 			),
-			loss: sampledWitnessUpdates.map(([step, h]) => [step, h.loss] as const),
-			tokensPerSecond: sampledWitnessUpdates.map(
-				([step, h]) => [step, h.tokens_per_sec] as const
+			loss: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.loss] as const)
+					.filter(gn)
+			),
+			tokensPerSecond: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.tokens_per_sec] as const)
+					.filter(gn)
 			),
 			lr: run.observedLrByStep,
 			evals,
