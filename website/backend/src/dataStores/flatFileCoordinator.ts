@@ -111,8 +111,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 	#programId: PublicKey
 
 	#runsMutatedSinceLastSync: Set<UniqueRunKey> = new Set()
-	eventEmitter: EventEmitter<{ update: [runKey: UniqueRunKey] }> =
-		new EventEmitter()
+	eventEmitter: EventEmitter<{
+		update: [runKey: UniqueRunKey]
+		updateSummaries: []
+	}> = new EventEmitter()
 
 	// try to mitigate the compute cost of requests by caching runs we've looked up
 	#summaryCache: RunSummaries | null = null
@@ -183,6 +185,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		if (this.#runsMutatedSinceLastSync.size > 0) {
 			this.#summaryCache = null
 		}
+
+		this.eventEmitter.emit('updateSummaries')
 
 		this.#runsMutatedSinceLastSync.clear()
 		await writeVersionedFile(this.#db, {

@@ -105,6 +105,32 @@ export async function fetchRunStreaming(
 	return makeStreamingNdJsonDecode(`run/${runId}/${indexStr}`)
 }
 
+export async function fetchSummariesStreaming(): Promise<
+	ReadableStream<ApiGetRuns>
+> {
+	if (import.meta.env.VITE_FAKE_DATA) {
+		return new ReadableStream<ApiGetRuns>({
+			async start(controller) {
+				let i = 0
+				while (true) {
+					controller.enqueue({
+						runs: fakeRunSummaries,
+						totalTokens: 1_000_000_000n + BigInt(i * 10000),
+						totalTokensPerSecondActive: 23_135_234n,
+					})
+					const nextFakeDataDelay = 1000 + Math.random() * 1000
+					await new Promise((r) => setTimeout(r, nextFakeDataDelay))
+					i++
+				}
+			},
+		})
+	}
+
+	console.log('opening summaries stream')
+
+	return makeStreamingNdJsonDecode(`runs`)
+}
+
 export async function fetchContributionsStreaming(): Promise<
 	ReadableStream<ApiGetContributionInfo>
 > {

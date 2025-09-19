@@ -1,5 +1,5 @@
 import { styled } from '@linaria/react'
-import { PropsWithChildren, useState } from 'react'
+import { PropsWithChildren, useState, useMemo } from 'react'
 import { RadioSelectBar } from './RadioSelectBar.js'
 import { RunSummaryCard } from './RunSummary.js'
 import { ApiGetRuns } from 'shared'
@@ -77,6 +77,12 @@ export function Runs({
 }: ApiGetRuns) {
 	const [runTypeFilter, setRunTypeFilter] = useState<RunType>('active')
 	const [sort, setSort] = useState<(typeof runSort)[number]>(runSort[0])
+
+	// Create stable sorted list that only changes when sort changes, not when data updates
+	const sortedRuns = useMemo(() => {
+		return [...runs].sort(sortFuncs[sort.value])
+	}, [runs.length, sort.value]) // Only resort when sort changes or runs count changes
+
 	return (
 		<RunsContainer>
 			<GlobalStats>
@@ -109,11 +115,10 @@ export function Runs({
 				{/* <Button style="secondary">train a new model</Button> */}
 			</RunsHeader>
 			<RunBoxesContainer>
-				{runs
+				{sortedRuns
 					.filter(
 						(r) => runTypeFilter === 'all' || runTypeFilter === r.status.type
 					)
-					.sort(sortFuncs[sort.value])
 					.map((r) => (
 						<RunSummaryCard key={`id: ${r.id} index: ${r.index}`} info={r} />
 					))}
