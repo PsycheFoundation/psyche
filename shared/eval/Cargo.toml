@@ -4,7 +4,8 @@ version.workspace = true
 edition = "2021"
 
 [features]
-parallelism = []
+parallelism = ["tch/nccl", "torch-sys/nccl"]
+python = ["pyo3", "pyo3-tch"]
 
 [dependencies]
 psyche-core.workspace = true
@@ -15,11 +16,15 @@ rand.workspace = true
 rand_chacha.workspace = true
 indicatif.workspace = true
 tokenizers.workspace = true
+pyo3 = { workspace = true, optional = true }
+pyo3-tch = { workspace = true, optional = true }
 tch.workspace = true
+torch-sys.workspace = true
 tracing.workspace = true
 regex = "1.5"
 tokio-util.workspace = true
 
 # for examples
 [dev-dependencies]
-clap = { workspace = true }
+clap.workspace = true
+psyche-python-extension-impl.workspace = true

@@ -180,6 +180,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             metrics,
         } = self;
 
+        tch::manual_seed(1337);
+
         let model::Model::LLM(llm) = state.model;
 
         let hub_read_token = init_config.hub_read_token.clone();
@@ -415,16 +417,22 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                         info!("Loading model...");
 
-                        let serialized_config = source.serialize_config()?;
-
                         let model_task_runner = ModelTaskRunner::new(
                             init_config.eval_tasks,
                             init_config.prompt_task,
                             tokenizer.clone(),
                             init_config.eval_task_max_docs,
-                            init_config.data_parallelism,
+                            // if doing python fsdp we only have one effective dp rank for inference
+                            if init_config.data_parallelism > 1
+                                && llm.architecture == model::LLMArchitecture::HfAuto
+                            {
+                                1
+                            } else {
+                                init_config.data_parallelism
+                            },
                         );
 
+                        let serialized_config = source.serialize_config()?;
                         let attn_implementation: Option<AttentionImplementation> =
                             match llm.data_type {
                                 model::LLMTrainingDataType::Finetuning => {

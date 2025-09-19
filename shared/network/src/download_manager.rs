@@ -230,7 +230,7 @@ pub enum TransmittableDownload {
 pub enum DownloadType {
     // Distro result variant with the list of possible peers that we might ask for the blob in case of failure with the original
     DistroResult(Vec<NodeAddr>),
-    // Model sharing variant containing the specific type wether be the model config or a paramter
+    // Model sharing variant containing the specific type wether be the model config or a parameter
     ModelSharing(ModelRequestType),
 }
 
