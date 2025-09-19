@@ -79,7 +79,17 @@ export function ShadowCard({
 	...props
 }: PropsWithChildren<CreateLinkProps>) {
 	return (
-		<RunLinkShadowContainer {...props}>
+		<RunLinkShadowContainer
+			{...props}
+			onClick={(e) => {
+				console.log(
+					'ShadowCard clicked, navigating to:',
+					props.to,
+					props.params
+				)
+				props.onClick?.(e)
+			}}
+		>
 			<RunContainer>{children}</RunContainer>
 			<RunShadow>
 				<RunDarkShadow />

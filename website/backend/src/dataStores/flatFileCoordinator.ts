@@ -111,8 +111,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 	#programId: PublicKey
 
 	#runsMutatedSinceLastSync: Set<UniqueRunKey> = new Set()
-	eventEmitter: EventEmitter<{ update: [runKey: UniqueRunKey] }> =
-		new EventEmitter()
+	eventEmitter: EventEmitter<{
+		update: [runKey: UniqueRunKey]
+		updateSummaries: []
+	}> = new EventEmitter()
 
 	// try to mitigate the compute cost of requests by caching runs we've looked up
 	#summaryCache: RunSummaries | null = null
@@ -183,6 +185,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		if (this.#runsMutatedSinceLastSync.size > 0) {
 			this.#summaryCache = null
 		}
+
+		this.eventEmitter.emit('updateSummaries')
 
 		this.#runsMutatedSinceLastSync.clear()
 		await writeVersionedFile(this.#db, {
@@ -471,7 +475,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				) {
 					return sum
 				}
-				return sum + (summary.trainingStep?.tokensCompletedAtStartOfStep ?? 0n)
+				return sum + (summary.trainingStep?.lastTokensPerSecond ?? 0n)
 			}, 0n),
 		}
 		this.#summaryCache = summaries
@@ -567,13 +571,23 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			}
 		}
 
+		const gn = ([_, v]: readonly [number, number]) => isGoodNumber(v)
+
 		const history: OverTime<Metrics> = {
-			bandwidth: sampledWitnessUpdates.map(
-				([step, h]) => [step, h.bandwidth_per_sec] as const
+			bandwidth: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.bandwidth_per_sec] as const)
+					.filter(gn)
 			),
-			loss: sampledWitnessUpdates.map(([step, h]) => [step, h.loss] as const),
-			tokensPerSecond: sampledWitnessUpdates.map(
-				([step, h]) => [step, h.tokens_per_sec] as const
+			loss: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.loss] as const)
+					.filter(gn)
+			),
+			tokensPerSecond: averageSameStepValues(
+				sampledWitnessUpdates
+					.map(([step, h]) => [step, h.tokens_per_sec] as const)
+					.filter(gn)
 			),
 			lr: run.observedLrByStep,
 			evals,
@@ -704,7 +718,7 @@ function makeRunSummary(
 		warmupTokens
 	)
 
-	const lastFewWitnesses = run.lastFewWitnessUpdates.slice(-50)
+	const lastFewWitnesses = run.lastFewWitnessUpdates
 	const lastStep = lastFewWitnesses.at(-1)?.[0].step ?? -1
 	const witnessesForLastStep = lastFewWitnesses.filter(
 		(w) => w[0].step === lastStep
@@ -858,7 +872,7 @@ function cleanupLastFewUpdates(
 }
 
 /**
- * Remove overridden steps, average values for the same step, then downsample if needed.
+ * Remove overridden steps, average values for the same step (except the latest one), then downsample if needed.
  */
 function cleanupSampledUpdates(
 	witnesses: [WitnessV2, ChainTimestamp][],
@@ -866,7 +880,16 @@ function cleanupSampledUpdates(
 ): { updates: [WitnessV2, ChainTimestamp][]; step: number } {
 	const linearHistory = removeOverriddenSteps(witnesses)
 
-	const aggregated = aggregateByStep(linearHistory)
+	const latestStep = linearHistory.at(-1)?.[0].step
+	const splitIndex =
+		linearHistory.findLastIndex(([witness]) => witness.step !== latestStep) + 1
+
+	const latestStepWitnesses = linearHistory.slice(splitIndex)
+	const olderWitnesses = linearHistory.slice(0, splitIndex)
+
+	// only aggregate and sample the older witnesses, not the latest step,
+	// because we don't want to over-weight new witnesses as they come in for the latest step
+	const aggregated = aggregateByStep(olderWitnesses)
 
 	const MAX_SAMPLES = 2000
 
@@ -875,6 +898,7 @@ function cleanupSampledUpdates(
 		MAX_SAMPLES - 2,
 		initialStep ?? 1
 	)
+
 	const sampled =
 		finalSampleStep > 1
 			? [
@@ -886,7 +910,10 @@ function cleanupSampledUpdates(
 				]
 			: aggregated
 
-	return { updates: sampled, step: finalSampleStep }
+	// combine the sampled older witnesses with the unprocessed latest step witnesses
+	const finalUpdates = [...sampled, ...latestStepWitnesses]
+
+	return { updates: finalUpdates, step: finalSampleStep }
 }
 
 /**
@@ -1034,14 +1061,14 @@ function migrateFromV1ToV2(dataV1: V1): V2 {
 
 			historyV2.sampledWitnessUpdates = allWitnessUpdates.slice()
 			historyV2.lastFewWitnessUpdates = allWitnessUpdates.slice()
+
+			// cleanup bad values in LR, if exists
 			historyV2.observedLrByStep = historyV2.observedLrByStep.filter((s) =>
 				isGoodNumber(s[1])
 			)
 
 			// cleanup witness history :)
 			cleanupWitnessUpdates(historyV2)
-
-			// cleanup bad values in LR, if exists
 		}
 	}
 	return dataV1 as unknown as V2

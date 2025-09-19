@@ -67,27 +67,7 @@ export function PromptResults({ tokens, promptIndex }: PromptResultsProps) {
 	}, [tokens, previousTokensLength])
 
 	if (tokens.length === 0 && promptIndex === undefined) {
-		return (
-			<div
-				className={c(
-					css`
-						padding: 16px;
-						border-radius: 8px;
-						max-width: 800px;
-					`,
-					text['body/base/regular']
-				)}
-			>
-				<span
-					className={css`
-						font-style: italic;
-						color: #666;
-					`}
-				>
-					(no prompt results yet)
-				</span>
-			</div>
-		)
+		return <></>
 	}
 
 	return (

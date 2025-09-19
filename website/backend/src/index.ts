@@ -18,6 +18,7 @@ import { makeRateLimitedFetch } from './rateLimit.js'
 import { PassThrough } from 'node:stream'
 import { getRunFromKey, runKey, UniqueRunKey } from './coordinator.js'
 import { CURRENT_VERSION } from 'shared/formats/type.js'
+import { RunSummariesData } from './dataStore.js'
 
 const requiredEnvVars = ['COORDINATOR_RPC', 'MINING_POOL_RPC'] as const
 
@@ -102,6 +103,20 @@ async function main() {
 						`Failed to send run data for run ${runId} to subscribed client...`
 					)
 				}
+			}
+		}
+	})
+
+	const liveRunSummaryListeners: Set<(runData: RunSummariesData) => void> =
+		new Set()
+
+	coordinator.dataStore.eventEmitter.addListener('updateSummaries', () => {
+		const summaries = coordinator.dataStore.getRunSummaries()
+		for (const listener of liveRunSummaryListeners) {
+			try {
+				listener(summaries)
+			} catch (err) {
+				console.error(`Failed to send run summaries to subscribed client...`)
 			}
 		}
 	})
@@ -233,15 +248,50 @@ async function main() {
 		}
 	)
 
-	fastify.get('/runs', (_req, res) => {
-		const runs: ApiGetRuns = {
+	fastify.get('/runs', (req, res) => {
+		const isStreamingRequest = req.headers.accept?.includes(
+			'application/x-ndjson'
+		)
+
+		const data: ApiGetRuns = {
 			...coordinator.dataStore.getRunSummaries(),
 			error: coordinatorCrashed,
 		}
 
-		res
-			.header('content-type', 'application/json')
-			.send(JSON.stringify(runs, replacer))
+		// set header for streaming/non
+		res.header(
+			'content-type',
+			isStreamingRequest ? 'application/x-ndjson' : 'application/json'
+		)
+
+		if (!isStreamingRequest) {
+			res.send(JSON.stringify(data, replacer))
+			return
+		}
+
+		// start streaming newline-delimited json
+		const stream = new PassThrough()
+		res.send(stream)
+
+		function sendRunSummariesData(runSummariesData: RunSummariesData) {
+			const data: ApiGetRuns = {
+				...runSummariesData,
+				error: coordinatorCrashed,
+			}
+			stream.write(JSON.stringify(data, replacer) + '\n')
+		}
+
+		// send the initial run summaries data to populate the UI
+		sendRunSummariesData(data)
+
+		// this listener will be called every time we see a state change.
+		liveRunSummaryListeners.add(sendRunSummariesData)
+
+		// when the req closes, stop sending them updates
+		req.socket.on('close', () => {
+			liveRunSummaryListeners.delete(sendRunSummariesData)
+			stream.end()
+		})
 	})
 
 	fastify.get(

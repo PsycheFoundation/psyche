@@ -8,9 +8,13 @@ export function useStreamingLoaderData<T extends object>(
 	const [data, setData] = useState<(T & { disconnected: boolean }) | null>(null)
 
 	const lastData = useRef<T | null>(null)
+	const currentReaderRef = useRef<ReadableStreamDefaultReader<T> | null>(null)
 
 	const previousReaderDone = useRef<Promise<void> | null>(null)
 	useEffect(() => {
+		// Reset state when stream changes
+		setData(null)
+		lastData.current = null
 		let signalDone!: () => void
 		const doneLoop = new Promise<void>((r) => {
 			signalDone = r
@@ -21,6 +25,7 @@ export function useStreamingLoaderData<T extends object>(
 		async function readStream() {
 			await prevReaderDonePromise
 			const reader = stream.getReader()
+			currentReaderRef.current = reader
 			try {
 				if (lastData.current) {
 					setData({ ...lastData.current, disconnected: false })
@@ -40,6 +45,7 @@ export function useStreamingLoaderData<T extends object>(
 				console.error('Error reading stream:', err)
 			} finally {
 				reader.releaseLock()
+				currentReaderRef.current = null
 				if (lastData.current) {
 					setData({ ...lastData.current, disconnected: true })
 				}
@@ -49,7 +55,12 @@ export function useStreamingLoaderData<T extends object>(
 		previousReaderDone.current = readStream()
 
 		return () => {
+			console.log('Cleaning up streaming data for', loaderData[0]?.from)
 			signalDone()
+			// Cancel the current reader if it exists
+			if (currentReaderRef.current) {
+				currentReaderRef.current.cancel('Component unmounting')
+			}
 		}
 	}, [stream])
 

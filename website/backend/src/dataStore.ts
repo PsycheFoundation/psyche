@@ -20,8 +20,14 @@ export interface ChainDataStore {
 	eventEmitter: EventEmitter
 }
 
+export interface RunSummariesData {
+	runs: RunSummary[]
+	totalTokens: bigint
+	totalTokensPerSecondActive: bigint
+}
+
 export interface CoordinatorDataStore extends ChainDataStore {
-	eventEmitter: EventEmitter<{ update: [UniqueRunKey] }>
+	eventEmitter: EventEmitter<{ update: [UniqueRunKey]; updateSummaries: [] }>
 
 	createRun(
 		pubkey: string,
@@ -53,11 +59,7 @@ export interface CoordinatorDataStore extends ChainDataStore {
 		timestamp: ChainTimestamp
 	): void
 
-	getRunSummaries(): {
-		runs: RunSummary[]
-		totalTokens: bigint
-		totalTokensPerSecondActive: bigint
-	}
+	getRunSummaries(): RunSummariesData
 	getRunDataById(runId: string, index: number): RunData | null
 
 	getNumRuns(): number
