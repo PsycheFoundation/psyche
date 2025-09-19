@@ -118,19 +118,87 @@ fn main() -> Result<()> {
         let vocab_size = tokenizer.get_vocab_size(false);
         println!("Tokenizer vocab size: {}", vocab_size);
 
-        // Test Chinese text tokenization
+        // Debug: Create a sample CEval prompt to compare tokenization strategies
+        let sample_prompt = "以下是中国关于高等数学的单项选择题，请选出其中的正确答案。\n\n设函数f(x)=x²+2x+1,则f'(x)等于\nA. 2x+2\nB. x+1\nC. 2x+1\nD. x²+1\n答案：";
+        let choice_a = "A";
+
+        println!("\n=== Tokenization Strategy Comparison ===");
+
+        // Strategy 1: add_special_tokens=false (current Psyche default)
+        if let Ok(encoded) = tokenizer.encode(sample_prompt, false) {
+            println!("Strategy 1 (add_special_tokens=false):");
+            println!("  Prompt tokens: {}", encoded.get_ids().len());
+            println!(
+                "  First 5 IDs: {:?}",
+                &encoded.get_ids()[..encoded.get_ids().len().min(5)]
+            );
+            println!(
+                "  Starts with BOS (100000): {}",
+                encoded.get_ids().first() == Some(&100000)
+            );
+
+            if let Ok(choice_encoded) = tokenizer.encode(choice_a, false) {
+                let mut full_sequence = encoded.get_ids().to_vec();
+                full_sequence.extend(choice_encoded.get_ids());
+                println!("  Full sequence length: {}", full_sequence.len());
+                println!(
+                    "  Full first 8 IDs: {:?}",
+                    &full_sequence[..full_sequence.len().min(8)]
+                );
+            }
+        }
+
+        // Strategy 2: add_special_tokens=true (what lm_eval likely uses)
+        if let Ok(encoded) = tokenizer.encode(sample_prompt, true) {
+            println!("Strategy 2 (add_special_tokens=true):");
+            println!("  Prompt tokens: {}", encoded.get_ids().len());
+            println!(
+                "  First 5 IDs: {:?}",
+                &encoded.get_ids()[..encoded.get_ids().len().min(5)]
+            );
+            println!(
+                "  Starts with BOS (100000): {}",
+                encoded.get_ids().first() == Some(&100000)
+            );
+
+            if let Ok(choice_encoded) = tokenizer.encode(choice_a, false) {
+                let mut full_sequence = encoded.get_ids().to_vec();
+                full_sequence.extend(choice_encoded.get_ids());
+                println!("  Full sequence length: {}", full_sequence.len());
+                println!(
+                    "  Full first 8 IDs: {:?}",
+                    &full_sequence[..full_sequence.len().min(8)]
+                );
+            }
+        }
+
+        // Strategy 3: Manual BOS prepending
+        let manual_bos_prompt = format!("<｜begin▁of▁sentence｜>{}", sample_prompt);
+        if let Ok(encoded) = tokenizer.encode(&manual_bos_prompt, false) {
+            println!("Strategy 3 (manual BOS prepending):");
+            println!("  Prompt tokens: {}", encoded.get_ids().len());
+            println!(
+                "  First 5 IDs: {:?}",
+                &encoded.get_ids()[..encoded.get_ids().len().min(5)]
+            );
+            println!(
+                "  Starts with BOS (100000): {}",
+                encoded.get_ids().first() == Some(&100000)
+            );
+        }
+
+        // Test original simple cases
         let chinese_test = "以下是中国关于数学的单项选择题，请选出其中的正确答案。";
         if let Ok(encoded) = tokenizer.encode(chinese_test, false) {
-            println!("Chinese test tokenization:");
+            println!("\nChinese test tokenization (add_special_tokens=false):");
             println!("  Text: \"{}\"", chinese_test);
             println!("  Tokens: {} tokens", encoded.get_ids().len());
             println!(
                 "  Token IDs: {:?}",
-                &encoded.get_ids()[..std::cmp::min(10, encoded.get_ids().len())]
+                &encoded.get_ids()[..encoded.get_ids().len().min(10)]
             );
         }
 
-        // Test choice tokenization
         let choice_test = "2x+2";
         if let Ok(encoded) = tokenizer.encode(choice_test, false) {
             println!("Choice test tokenization:");
