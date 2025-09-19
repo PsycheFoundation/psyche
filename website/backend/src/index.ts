@@ -12,7 +12,6 @@ import {
 	IndexerStatus,
 	miningPoolIdl,
 	RunData,
-	RunSummary,
 } from 'shared'
 import { Connection } from '@solana/web3.js'
 import { makeRateLimitedFetch } from './rateLimit.js'
