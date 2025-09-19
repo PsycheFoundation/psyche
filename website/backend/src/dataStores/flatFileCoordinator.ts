@@ -858,7 +858,7 @@ function cleanupLastFewUpdates(
 }
 
 /**
- * Remove overridden steps, average values for the same step, then downsample if needed.
+ * Remove overridden steps, average values for the same step (except the latest one), then downsample if needed.
  */
 function cleanupSampledUpdates(
 	witnesses: [WitnessV2, ChainTimestamp][],
@@ -866,7 +866,16 @@ function cleanupSampledUpdates(
 ): { updates: [WitnessV2, ChainTimestamp][]; step: number } {
 	const linearHistory = removeOverriddenSteps(witnesses)
 
-	const aggregated = aggregateByStep(linearHistory)
+	const latestStep = linearHistory.at(-1)?.[0].step
+	const splitIndex =
+		linearHistory.findLastIndex(([witness]) => witness.step !== latestStep) + 1
+
+	const latestStepWitnesses = linearHistory.slice(splitIndex)
+	const olderWitnesses = linearHistory.slice(0, splitIndex)
+
+	// only aggregate and sample the older witnesses, not the latest step,
+	// because we don't want to over-weight new witnesses as they come in for the latest step
+	const aggregated = aggregateByStep(olderWitnesses)
 
 	const MAX_SAMPLES = 2000
 
@@ -875,6 +884,7 @@ function cleanupSampledUpdates(
 		MAX_SAMPLES - 2,
 		initialStep ?? 1
 	)
+
 	const sampled =
 		finalSampleStep > 1
 			? [
@@ -886,7 +896,10 @@ function cleanupSampledUpdates(
 				]
 			: aggregated
 
-	return { updates: sampled, step: finalSampleStep }
+	// combine the sampled older witnesses with the unprocessed latest step witnesses
+	const finalUpdates = [...sampled, ...latestStepWitnesses]
+
+	return { updates: finalUpdates, step: finalSampleStep }
 }
 
 /**
