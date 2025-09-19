@@ -5,7 +5,15 @@ use crate::{
 };
 use anyhow::{Error, Result};
 use psyche_core::{Barrier, BatchId, LearningRateSchedule, OptimizerDefinition};
-use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    ops::ControlFlow,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -349,6 +357,15 @@ impl Trainer {
         }
     }
 
+    pub fn can_do_inference(&self) -> bool {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.can_do_inference(),
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.can_do_inference()
+            }
+        }
+    }
+
     pub fn get_lr(
         lr_scheduler: &LearningRateSchedule,
         step: u32,
@@ -403,6 +420,7 @@ pub struct LocalTrainer {
     barrier: Arc<dyn Barrier>,
     data_parallel: Option<Vec<DataParallel>>,
     is_dummy_model: bool,
+    can_do_inferences: Vec<Arc<AtomicBool>>,
 }
 
 #[derive(Debug, Error)]
@@ -458,6 +476,8 @@ impl LocalTrainer {
             None => std::iter::repeat_n(None, models.len()).collect(),
         };
 
+        let mut can_do_inferences = Vec::new();
+
         for (index, (model, data_parallel)) in models.into_iter().zip(data_parallels).enumerate() {
             let (assignment_tx, assignment_rx) = flume::unbounded();
             let (result_tx, result_rx) = flume::unbounded();
@@ -467,6 +487,8 @@ impl LocalTrainer {
 
             let barrier = barrier.clone();
             let data_parallel = data_parallel.clone();
+            let can_do_inference = Arc::new(AtomicBool::new(false));
+            can_do_inferences.push(can_do_inference.clone());
 
             std::thread::spawn(move || {
                 Self::model_thread(
@@ -481,6 +503,7 @@ impl LocalTrainer {
                     stats,
                     grad_accum_in_fp32,
                     data_parallel,
+                    can_do_inference,
                 )
             });
         }
@@ -492,6 +515,7 @@ impl LocalTrainer {
             barrier,
             data_parallel,
             is_dummy_model,
+            can_do_inferences,
         }
     }
 
@@ -705,6 +729,7 @@ impl LocalTrainer {
         optim_stats_every_n_steps: Option<u32>,
         grad_accum_in_fp32: bool,
         data_parallel_def: Option<DataParallel>,
+        can_do_inference: Arc<AtomicBool>,
     ) {
         #[allow(unused_mut)]
         let mut data_parallel: Option<(Arc<Communicator>, Arc<dyn Barrier>)> = None;
@@ -999,6 +1024,8 @@ impl LocalTrainer {
                         },
                         true => None,
                     };
+                    // with Python FSDP we need to do a full forward/backward correctly before we can do inference
+                    can_do_inference.store(true, Ordering::Relaxed);
                     if submission
                         .send(ParallelResult::Train {
                             loss: match loss {
@@ -1055,6 +1082,10 @@ impl LocalTrainer {
                     num_logits_to_keep,
                     loss_scale,
                 }) => {
+                    if !can_do_inference.load(Ordering::Relaxed) {
+                        error!("This model not set up for inference, but got inference request");
+                        return;
+                    }
                     let logits_and_loss = Self::forward(
                         &mut *model,
                         &data,
@@ -1112,6 +1143,15 @@ impl LocalTrainer {
             .as_ref()
             .and_then(|x| x.first().map(|y| y.world_size))
             .unwrap_or(1)
+    }
+
+    pub fn can_do_inference(&self) -> bool {
+        for can in &self.can_do_inferences {
+            if !can.load(Ordering::Relaxed) {
+                return false;
+            }
+        }
+        true
     }
 }
 

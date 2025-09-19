@@ -27,9 +27,7 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
     ops::Sub,
-    path::PathBuf,
-    str::FromStr,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
@@ -97,9 +95,8 @@ pub use util::fmt_bytes;
 
 use crate::p2p_model_sharing::ModelSharing;
 
-const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
-const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
-const EUC_RELAY_HOSTNAME: &str = "euc1-1.relay.psyche.iroh.link";
+const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
+const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
 
 /// How should this node discover other nodes?
 ///
@@ -119,7 +116,6 @@ where
     router: Arc<Router>,
     blobs_store: MemStore,
     state: State,
-    pub gossip: Gossip,
     gossip_tx: GossipSender,
     gossip_rx: GossipReceiver,
     rx_model_parameter_req: UnboundedReceiver<ParameterSharingMessage>,
@@ -165,7 +161,6 @@ where
         secret_key: Option<SecretKey>,
         allowlist: A,
         metrics: Arc<ClientMetrics>,
-        sim_endpoint: Option<Endpoint>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rngs::OsRng),
@@ -201,15 +196,13 @@ where
             Ipv4Addr::new(0, 0, 0, 0)
         };
 
-        let endpoint = if let Some(endpoint) = sim_endpoint {
-            endpoint
-        } else {
+        let endpoint = {
             let mut transport_config = TransportConfig::default();
             transport_config
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Some(Duration::from_secs(1)));
 
-            let relay_mode = RelayMode::Default;
+            let relay_mode = RelayMode::Custom(psyche_relay_map());
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
             let endpoint = Endpoint::builder()
@@ -232,7 +225,7 @@ where
         let node_addr = endpoint.node_addr().initialized().await;
 
         info!("Our node addr: {}", node_addr.node_id);
-        info!("Our join ticket: {}", PeerList(vec![node_addr.clone()]));
+        info!("Our join ticket: {}", PeerList(vec![node_addr]));
 
         trace!("creating blobs store...");
         let store = MemStore::new();
@@ -298,7 +291,6 @@ where
         let update_stats_interval = interval(Duration::from_secs(1));
 
         Ok(Self {
-            gossip,
             blobs_store: store,
             gossip_rx,
             gossip_tx,
@@ -382,7 +374,7 @@ where
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
 
-        info!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let downloader = self.blobs_store.downloader(&self.endpoint);
         let endpoint = self.endpoint.clone();
@@ -719,11 +711,7 @@ async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
 
 /// Get the Psyche [`RelayMap`].
 pub fn psyche_relay_map() -> RelayMap {
-    RelayMap::from_iter([
-        psyche_use_relay_node(),
-        psyche_usw_relay_node(),
-        psyche_euc_relay_node(),
-    ])
+    RelayMap::from_iter([psyche_use_relay_node(), psyche_usw_relay_node()])
 }
 
 /// Get the Psyche [`RelayNode`] for US East.
@@ -733,8 +721,6 @@ pub fn psyche_use_relay_node() -> RelayNode {
         .expect("default url");
     RelayNode {
         url: url.into(),
-        // stun_only: false,
-        // stun_port: DEFAULT_STUN_PORT,
         quic: Some(RelayQuicConfig::default()),
     }
 }
@@ -746,21 +732,6 @@ pub fn psyche_usw_relay_node() -> RelayNode {
         .expect("default_url");
     RelayNode {
         url: url.into(),
-        // stun_only: false,
-        // stun_port: DEFAULT_STUN_PORT,
-        quic: Some(RelayQuicConfig::default()),
-    }
-}
-
-/// Get the Psyche [`RelayNode`] for Europe
-pub fn psyche_euc_relay_node() -> RelayNode {
-    let url: Url = format!("https://{EUC_RELAY_HOSTNAME}")
-        .parse()
-        .expect("default_url");
-    RelayNode {
-        url: url.into(),
-        // stun_only: false,
-        // stun_port: DEFAULT_STUN_PORT,
         quic: Some(RelayQuicConfig::default()),
     }
 }

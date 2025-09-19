@@ -40,7 +40,9 @@ builds:
   # on main, might as well build everything, though
   - exclude:
       - 'packages.*.docker-psyche-solana-test-validator'
+      - 'packages.aarch64-darwin.*'
+      - 'devShells.aarch64-darwin.*'
     include:
-      - 'packages.*.*'
-      - 'devShells.*.*'
+      - 'packages.x86_64-linux.*'
+      - 'devShells.x86_64-linux.*'
     branch: main
