@@ -18,7 +18,21 @@ pub enum AutoTokenizerError {
     ConfigParseError(#[from] serde_json::Error),
 }
 
+#[derive(Debug, Clone)]
+pub struct TokenizerConfig {
+    pub tokenizer: Tokenizer,
+    pub bos_token: Option<String>,
+    pub add_bos_token: bool,
+}
+
 pub fn auto_tokenizer(repo_files: &[PathBuf]) -> Result<Tokenizer, AutoTokenizerError> {
+    let config = auto_tokenizer_config(repo_files)?;
+    Ok(config.tokenizer)
+}
+
+pub fn auto_tokenizer_config(
+    repo_files: &[PathBuf],
+) -> Result<TokenizerConfig, AutoTokenizerError> {
     // Find tokenizer.json
     let tokenizer_path = repo_files
         .iter()
@@ -27,6 +41,8 @@ pub fn auto_tokenizer(repo_files: &[PathBuf]) -> Result<Tokenizer, AutoTokenizer
 
     // Load base tokenizer
     let mut tokenizer = Tokenizer::from_file(tokenizer_path.as_path())?;
+    let mut bos_token = None;
+    let mut add_bos_token = false;
 
     // Try to find and apply tokenizer_config.json
     if let Some(config_path) = repo_files
@@ -41,7 +57,10 @@ pub fn auto_tokenizer(repo_files: &[PathBuf]) -> Result<Tokenizer, AutoTokenizer
             );
             if let Ok(config) = serde_json::from_str::<Value>(&config_content) {
                 println!("DEBUG: Successfully parsed tokenizer_config.json");
-                apply_tokenizer_config(&mut tokenizer, &config);
+                let (extracted_bos, extracted_add_bos) =
+                    apply_tokenizer_config(&mut tokenizer, &config);
+                bos_token = extracted_bos;
+                add_bos_token = extracted_add_bos;
             } else {
                 println!("DEBUG: Failed to parse tokenizer_config.json as JSON");
             }
@@ -56,10 +75,14 @@ pub fn auto_tokenizer(repo_files: &[PathBuf]) -> Result<Tokenizer, AutoTokenizer
         );
     }
 
-    Ok(tokenizer)
+    Ok(TokenizerConfig {
+        tokenizer,
+        bos_token,
+        add_bos_token,
+    })
 }
 
-fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
+fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) -> (Option<String>, bool) {
     println!("DEBUG: Applying tokenizer config...");
     println!(
         "DEBUG: Config keys: {:?}",
@@ -80,7 +103,7 @@ fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
             .or_else(|| v.get("content").and_then(|c| c.as_str()))
     });
 
-    if let Some(bos_token) = bos_token {
+    if let Some(bos_token) = &bos_token {
         println!("DEBUG: Found BOS token in config: {}", bos_token);
         if let Some(bos_id) = tokenizer.token_to_id(bos_token) {
             println!(
@@ -168,14 +191,18 @@ fn apply_tokenizer_config(tokenizer: &mut Tokenizer, config: &Value) {
     }
 
     // Check add_bos_token setting
-    if let Some(add_bos_token) = config.get("add_bos_token").and_then(|v| v.as_bool()) {
-        println!("DEBUG: Found add_bos_token setting: {}", add_bos_token);
-        // Note: The tokenizers crate doesn't expose a way to modify the add_special_tokens behavior
-        // after tokenizer creation. The evaluation harness needs to handle this during encode() calls.
-        // For now, we just log this information.
-    } else {
-        println!("DEBUG: No add_bos_token setting found in config");
-    }
+    let add_bos_token =
+        if let Some(add_bos_token) = config.get("add_bos_token").and_then(|v| v.as_bool()) {
+            println!("DEBUG: Found add_bos_token setting: {}", add_bos_token);
+            // Note: The tokenizers crate doesn't expose a way to modify the add_special_tokens behavior
+            // after tokenizer creation. The evaluation harness needs to handle this during encode() calls.
+            // For now, we just log this information.
+            add_bos_token
+        } else {
+            println!("DEBUG: No add_bos_token setting found in config");
+            false
+        };
 
     println!("DEBUG: Finished applying tokenizer config");
+    (bos_token.map(|s| s.to_string()), add_bos_token)
 }

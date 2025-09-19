@@ -3,7 +3,10 @@ use clap::Parser;
 use psyche_core::RunningAverage;
 use psyche_data_provider::download_model_repo_sync;
 use psyche_eval::{ALL_TASK_NAMES, EvalTaskOptions, Task, tasktype_from_name};
-use psyche_modeling::{auto_model_for_causal_lm_from_pretrained, auto_tokenizer};
+use psyche_modeling::{
+    TokenizerConfig, auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
+    auto_tokenizer_config,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -103,7 +106,8 @@ fn main() -> Result<()> {
         args.hf_token,
         true,
     )?;
-    let tokenizer = auto_tokenizer(&repo)?;
+    let tokenizer_config = auto_tokenizer_config(&repo)?;
+    let tokenizer = &tokenizer_config.tokenizer;
 
     // Log tokenizer information for debugging
     if !args.quiet {
@@ -117,6 +121,17 @@ fn main() -> Result<()> {
         // Log vocabulary size
         let vocab_size = tokenizer.get_vocab_size(false);
         println!("Tokenizer vocab size: {}", vocab_size);
+
+        // Log BOS token configuration
+        if let Some(ref bos_token) = tokenizer_config.bos_token {
+            println!("BOS token from config: {}", bos_token);
+            if let Some(bos_id) = tokenizer.token_to_id(bos_token) {
+                println!("BOS token ID: {}", bos_id);
+            }
+        } else {
+            println!("No BOS token found in config");
+        }
+        println!("add_bos_token setting: {}", tokenizer_config.add_bos_token);
 
         // Debug: Create a sample CEval prompt to compare tokenization strategies
         let sample_prompt = "以下是中国关于高等数学的单项选择题，请选出其中的正确答案。\n\n设函数f(x)=x²+2x+1,则f'(x)等于\nA. 2x+2\nB. x+1\nC. 2x+1\nD. x²+1\n答案：";
@@ -172,19 +187,37 @@ fn main() -> Result<()> {
             }
         }
 
-        // Strategy 3: Manual BOS prepending
-        let manual_bos_prompt = format!("<｜begin▁of▁sentence｜>{}", sample_prompt);
-        if let Ok(encoded) = tokenizer.encode(&manual_bos_prompt, false) {
-            println!("Strategy 3 (manual BOS prepending):");
-            println!("  Prompt tokens: {}", encoded.get_ids().len());
-            println!(
-                "  First 5 IDs: {:?}",
-                &encoded.get_ids()[..encoded.get_ids().len().min(5)]
-            );
-            println!(
-                "  Starts with BOS (100000): {}",
-                encoded.get_ids().first() == Some(&100000)
-            );
+        // Strategy 3: Manual BOS prepending (when add_bos_token=true but tokenizer doesn't add it)
+        if tokenizer_config.add_bos_token && tokenizer_config.bos_token.is_some() {
+            let bos_token = tokenizer_config.bos_token.as_ref().unwrap();
+            let manual_bos_prompt = format!("{}{}", bos_token, sample_prompt);
+            if let Ok(encoded) = tokenizer.encode(manual_bos_prompt.as_str(), false) {
+                println!("Strategy 3 (manual BOS prepending with config BOS token):");
+                println!("  Prompt tokens: {}", encoded.get_ids().len());
+                println!(
+                    "  First 5 IDs: {:?}",
+                    &encoded.get_ids()[..encoded.get_ids().len().min(5)]
+                );
+                if let Some(bos_id) = tokenizer.token_to_id(bos_token) {
+                    println!(
+                        "  Starts with BOS ({}): {}",
+                        bos_id,
+                        encoded.get_ids().first() == Some(&bos_id)
+                    );
+                }
+
+                if let Ok(choice_encoded) = tokenizer.encode(choice_a, false) {
+                    let mut full_sequence = encoded.get_ids().to_vec();
+                    full_sequence.extend(choice_encoded.get_ids());
+                    println!("  Full sequence length: {}", full_sequence.len());
+                    println!(
+                        "  Full first 8 IDs: {:?}",
+                        &full_sequence[..full_sequence.len().min(8)]
+                    );
+                }
+            }
+        } else {
+            println!("Strategy 3 skipped: add_bos_token=false or no BOS token in config");
         }
 
         // Test original simple cases
@@ -224,7 +257,7 @@ fn main() -> Result<()> {
     run_data_parallel(
         tasks,
         repo,
-        tokenizer,
+        tokenizer_config,
         args.data_parallelism,
         args.quiet,
         args.seed,
@@ -236,7 +269,7 @@ fn main() -> Result<()> {
 fn run_data_parallel(
     tasks: Vec<Task>,
     repo: Vec<PathBuf>,
-    tokenizer: Tokenizer,
+    tokenizer_config: TokenizerConfig,
     data_parallelism: usize,
     quiet: bool,
     seed: u64,
@@ -258,7 +291,7 @@ fn run_data_parallel(
     let mut gpu_handles: Vec<JoinHandle<Result<()>>> = vec![];
     for gpu_id in 0..data_parallelism {
         let repo = repo.clone();
-        let tokenizer = tokenizer.clone();
+        let tokenizer_config = tokenizer_config.clone();
         let shared_results = shared_results.clone();
         let task_info = task_info.clone();
 
@@ -282,7 +315,7 @@ fn run_data_parallel(
                 let task_type = tasktype_from_name(&task_name)?;
                 let task = Task::new(task_type, num_fewshot, seed + task_idx as u64);
 
-                let _result = task.prepare(&tokenizer, None).run(
+                let _result = task.prepare(&tokenizer_config.tokenizer, None).run(
                     EvalTaskOptions {
                         model: model.as_mut(),
                         skip_and_step_by: Some((gpu_id, data_parallelism)),
