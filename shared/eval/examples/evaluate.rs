@@ -212,6 +212,7 @@ fn run_data_parallel(
                 let _ = task.prepare(&tokenizer, None).run(
                     EvalTaskOptions {
                         model: model.as_mut(),
+                        tokenizer: &tokenizer,
                         skip_and_step_by: Some((gpu_id, threads)),
                         live_results: Some(shared_results[task_idx].clone()),
                         cancel: None,

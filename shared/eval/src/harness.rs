@@ -24,7 +24,7 @@ static FILE_INITIALIZED: AtomicBool = AtomicBool::new(false);
 fn debug_write_tokens(tokens: &[i64], task_name: &str, tokenizer: &Tokenizer) {
     let is_first_write = !FILE_INITIALIZED.swap(true, Ordering::SeqCst);
 
-    let mut file = if is_first_write {
+    let file = if is_first_write {
         OpenOptions::new()
             .create(true)
             .write(true)
