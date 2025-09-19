@@ -590,7 +590,7 @@ impl SharableModel {
                 };
                 parameters_to_send.insert(param_name, tensor);
             }
-            tx_params_response.send(parameters_to_send).unwrap();
+            tx_params_response.send(parameters_to_send)?;
             return Ok(());
         }
         Err(SharableModelError::ResponseChannelNotInitialized)
@@ -660,8 +660,8 @@ impl ModelSharing {
             }
         };
 
-        let data = postcard::to_stdvec(&blob_ticket).unwrap();
-        send.write_all(&data).await.unwrap();
+        let data = postcard::to_stdvec(&blob_ticket)?;
+        send.write_all(&data).await?;
         send.finish()?;
 
         // Wait until the remote closes the connection, which it does once it
