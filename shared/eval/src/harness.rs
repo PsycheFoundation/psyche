@@ -8,13 +8,49 @@ use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
 use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
 use regex::Regex;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 const GENERATE_UNTIL_MAX_TOKENS: usize = 1024;
+
+static FILE_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+fn debug_write_tokens(tokens: &[i64], _label: &str) {
+    let is_first_write = !FILE_INITIALIZED.swap(true, Ordering::SeqCst);
+
+    let mut file = if is_first_write {
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open("tokens.out")
+    } else {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("tokens.out")
+    };
+
+    if let Ok(mut file) = file {
+        let tokens_str = format!(
+            "[{}]",
+            tokens
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        if let Err(e) = writeln!(file, "{}", tokens_str) {
+            tracing::warn!("Failed to write debug tokens: {}", e);
+        }
+    }
+}
 
 const TASKS_WITH_ACC_NORM: [&str; 5] = [
     ArcChallenge::name(),
@@ -411,6 +447,17 @@ impl PreparedTask {
                 }
             }
             let mut scores: Vec<(f32, bool)> = Vec::new();
+
+            // Debug: Print the first request tokens (context/prompt) once per document
+            if !doc.requests.is_empty() {
+                let mut first_request = doc.requests[0].clone();
+                first_request.pop(); // Remove last token like the model processing does
+                debug_write_tokens(
+                    &first_request,
+                    &format!("LogLikelihood_model_input_doc{}", doc_index),
+                );
+            }
+
             for idx in 0..doc.requests.len() {
                 // e.g:
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
@@ -584,6 +631,11 @@ impl PreparedTask {
 
             // Start with the tokenized prompt
             let mut full_sequence = request.clone();
+            // Debug: Print the actual input that goes to the model (this is the context/prompt)
+            debug_write_tokens(
+                &full_sequence,
+                &format!("GenerateUntil_model_input_doc{}", doc_index),
+            );
 
             // Check if we have cached generated tokens for this document
             let mut generated_tokens = {
