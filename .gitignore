@@ -62,5 +62,5 @@ book
 **/.env
 
 ### Website ###
-website/frontend/public/*.json
+website/frontend/public/tokenizers/*.json
 website/frontend/public/prompts/index.json
