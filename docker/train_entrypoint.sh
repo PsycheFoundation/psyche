@@ -1,26 +1,32 @@
-#! /bin/bash
+#!/bin/bash
 
 set -o errexit
 set -euo pipefail
 
+# check if this should run as a sidecar instead of main training
+if [[ "${PSYCHE_MAIN_HOST:-}" != "" ]]; then
+    echo "PSYCHE_MAIN_HOST detected - switching to sidecar mode"
+    exec /bin/sidecar_entrypoint.sh
+fi
+
 # Some sanity checks before starting
 
-if [[ "$NVIDIA_DRIVER_CAPABILITIES" == "" ]]; then
+if [[ "${NVIDIA_DRIVER_CAPABILITIES:-}" == "" ]]; then
     echo -e "\n[!] The NVIDIA_DRIVER_CAPABILITIES env variable was not set."
     exit 1
 fi
 
-if [[ "$RPC" == "" ]]; then
+if [[ "${RPC:-}" == "" ]]; then
     echo -e "\n[!] The RPC env variable was not set."
     exit 1
 fi
 
-if [[ "$WS_RPC" == "" ]]; then
+if [[ "${WS_RPC:-}" == "" ]]; then
     echo -e "\n[!] The WS_RPC env variable was not set."
     exit 1
 fi
 
-if [[ "$RUN_ID" == "" ]]; then
+if [[ "${RUN_ID:-}" == "" ]]; then
     echo -e "\n[!] The RUN_ID env variable was not set."
     exit 1
 fi
@@ -66,7 +72,7 @@ while true; do
 
     start_time=$SECONDS  # Record start time
 
-    /bin/psyche-solana-client-wrapped train \
+    psyche-solana-client train \
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
