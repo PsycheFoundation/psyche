@@ -63,6 +63,13 @@ const runSort = [
 
 type RunType = (typeof runTypes)[number]['value']
 
+const sortFuncs = {
+	updated: (a: ApiGetRuns['runs'][0], b: ApiGetRuns['runs'][0]) =>
+		b.lastUpdate.time.getTime() - a.lastUpdate.time.getTime(),
+	size: (a: ApiGetRuns['runs'][0], b: ApiGetRuns['runs'][0]) =>
+		Number(b.size - a.size),
+} as const
+
 export function Runs({
 	runs,
 	totalTokens,
@@ -106,6 +113,7 @@ export function Runs({
 					.filter(
 						(r) => runTypeFilter === 'all' || runTypeFilter === r.status.type
 					)
+					.sort(sortFuncs[sort.value])
 					.map((r) => (
 						<RunSummaryCard key={`id: ${r.id} index: ${r.index}`} info={r} />
 					))}
