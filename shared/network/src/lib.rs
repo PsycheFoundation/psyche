@@ -374,7 +374,7 @@ where
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
 
-        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let downloader = self.blobs_store.downloader(&self.endpoint);
         let endpoint = self.endpoint.clone();

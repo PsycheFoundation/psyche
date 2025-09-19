@@ -186,7 +186,6 @@ impl App {
             Some(params.identity_secret_key.clone()),
             allowlist.clone(),
             metrics.clone(),
-            params.sim_endpoint.clone(),
         )
         .await?;
 
@@ -326,7 +325,7 @@ impl App {
         let p2p = self.p2p.take().unwrap();
         let backend = self.backend.take().unwrap();
 
-        let gossip_metrics = p2p.gossip.metrics().clone();
+        // let gossip_metrics = p2p.gossip.metrics().clone();
         let router = p2p.router().clone();
         let client = Client::new(
             backend,

@@ -123,7 +123,7 @@ impl ClientHandle {
 }
 
 impl Node for ClientHandle {
-    fn endpoint(&self) -> Option<&Endpoint> {
+    fn endpoint(&self) -> Option<&iroh_n0des::iroh::Endpoint> {
         Some(self.router.endpoint())
     }
 

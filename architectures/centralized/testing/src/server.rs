@@ -423,7 +423,7 @@ impl CoordinatorServerHandle {
 }
 
 impl Node for CoordinatorServerHandle {
-    fn endpoint(&self) -> Option<&Endpoint> {
+    fn endpoint(&self) -> Option<&iroh_n0des::iroh::Endpoint> {
         None
     }
 
