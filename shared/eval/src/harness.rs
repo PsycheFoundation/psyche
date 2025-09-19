@@ -21,7 +21,7 @@ const GENERATE_UNTIL_MAX_TOKENS: usize = 1024;
 
 static FILE_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-fn debug_write_tokens(tokens: &[i64], _label: &str) {
+fn debug_write_tokens(tokens: &[i64], task_name: &str, tokenizer: &Tokenizer) {
     let is_first_write = !FILE_INITIALIZED.swap(true, Ordering::SeqCst);
 
     let mut file = if is_first_write {
@@ -38,6 +38,11 @@ fn debug_write_tokens(tokens: &[i64], _label: &str) {
     };
 
     if let Ok(mut file) = file {
+        // Decode tokens to text
+        let decoded_text = tokenizer
+            .decode(&tokens.iter().map(|&t| t as u32).collect::<Vec<_>>(), false)
+            .unwrap_or_else(|_| "<decode_error>".to_string());
+
         let tokens_str = format!(
             "[{}]",
             tokens
@@ -46,8 +51,18 @@ fn debug_write_tokens(tokens: &[i64], _label: &str) {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+
+        if let Err(e) = writeln!(file, "# Task: {}", task_name) {
+            tracing::warn!("Failed to write debug task name: {}", e);
+        }
+        if let Err(e) = writeln!(file, "# Text: '{}'", decoded_text) {
+            tracing::warn!("Failed to write debug text: {}", e);
+        }
         if let Err(e) = writeln!(file, "{}", tokens_str) {
             tracing::warn!("Failed to write debug tokens: {}", e);
+        }
+        if let Err(e) = writeln!(file, "") {
+            tracing::warn!("Failed to write debug newline: {}", e);
         }
     }
 }
@@ -354,6 +369,7 @@ impl Task {
 
 pub struct EvalTaskOptions<'a> {
     pub model: &'a mut dyn CausalLM,
+    pub tokenizer: &'a Tokenizer,
     pub skip_and_step_by: Option<(usize, usize)>,
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
@@ -452,10 +468,7 @@ impl PreparedTask {
             if !doc.requests.is_empty() {
                 let mut first_request = doc.requests[0].clone();
                 first_request.pop(); // Remove last token like the model processing does
-                debug_write_tokens(
-                    &first_request,
-                    &format!("LogLikelihood_model_input_doc{}", doc_index),
-                );
+                debug_write_tokens(&first_request, eval_name, options.tokenizer);
             }
 
             for idx in 0..doc.requests.len() {
@@ -632,10 +645,7 @@ impl PreparedTask {
             // Start with the tokenized prompt
             let mut full_sequence = request.clone();
             // Debug: Print the actual input that goes to the model (this is the context/prompt)
-            debug_write_tokens(
-                &full_sequence,
-                &format!("GenerateUntil_model_input_doc{}", doc_index),
-            );
+            debug_write_tokens(&full_sequence, eval_name, options.tokenizer);
 
             // Check if we have cached generated tokens for this document
             let mut generated_tokens = {
