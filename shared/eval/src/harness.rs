@@ -120,6 +120,18 @@ impl TokenizedLLHDocument {
             .map(|x| *x as i64)
             .collect();
 
+        // Debug fewshot prefix if this is our target question
+        let is_target_question = doc
+            .text
+            .contains("为了定量分析采取某项措施对于减少城市污染的效果");
+        if is_target_question {
+            println!("\n=== FEWSHOT PREFIX DEBUG ===");
+            println!("FEWSHOT PREFIX TEXT: '{}'", fewshot_prefix);
+            println!("FEWSHOT PREFIX TOKENS: {:?}", fewshot_tokens);
+            println!("FEWSHOT PREFIX LENGTH: {}", fewshot_tokens.len());
+            println!("==========================\n");
+        }
+
         // Debug: Show first document's prompt format
         static FIRST_DOC_DEBUG: std::sync::Once = std::sync::Once::new();
         FIRST_DOC_DEBUG.call_once(|| {
@@ -128,6 +140,58 @@ impl TokenizedLLHDocument {
             println!("Choices: {:?}", doc.choices);
             println!("==========================\n");
         });
+
+        // HARDCODED QUESTION DEBUG: Check if this is our target question
+        let is_target_question = doc
+            .text
+            .contains("为了定量分析采取某项措施对于减少城市污染的效果");
+        if is_target_question {
+            println!("\n=== TARGET QUESTION FOUND ===");
+            println!("EXACT PROMPT TEXT FOR LM_EVAL COPY-PASTE:");
+            println!("Context: '{}'", doc.text);
+            println!("Choice A continuation: '{}'", doc.choices[0]);
+            println!("Choice B continuation: '{}'", doc.choices[1]);
+            println!("Choice C continuation: '{}'", doc.choices[2]);
+            println!("Choice D continuation: '{}'", doc.choices[3]);
+
+            println!("\n--- LM_EVAL TEST STRINGS ---");
+            println!("For lm_eval encode_pair debugging:");
+            println!("context = '''{}'''", doc.text);
+            println!("choice_a = '''{}'''", doc.choices[0]);
+            println!("choice_b = '''{}'''", doc.choices[1]);
+            println!("choice_c = '''{}'''", doc.choices[2]);
+            println!("choice_d = '''{}'''", doc.choices[3]);
+            println!("----------------------------");
+
+            // Tokenize the context
+            let context_tokens: Vec<i64> = tokenizer
+                .encode(doc.text.as_str(), false)
+                .unwrap()
+                .get_ids()
+                .iter()
+                .map(|x| *x as i64)
+                .collect();
+            println!("FULL CONTEXT TOKENS: {:?}", context_tokens);
+            println!("CONTEXT TOKEN COUNT: {}", context_tokens.len());
+
+            // Tokenize each choice
+            for (i, choice) in doc.choices.iter().enumerate() {
+                let choice_tokens: Vec<i64> = tokenizer
+                    .encode(choice.as_str(), false)
+                    .unwrap()
+                    .get_ids()
+                    .iter()
+                    .map(|x| *x as i64)
+                    .collect();
+                println!(
+                    "CHOICE {} ('{}') TOKENS: {:?}",
+                    ['A', 'B', 'C', 'D'][i],
+                    choice,
+                    choice_tokens
+                );
+            }
+            println!("===============================\n");
+        }
 
         for choice in doc.choices.iter() {
             choices_str.push(choice.clone());
@@ -145,6 +209,14 @@ impl TokenizedLLHDocument {
             let mut full_request = fewshot_tokens.clone();
             full_request.extend_from_slice(&text_choice_tokens);
             requests.push(full_request.clone());
+
+            // Debug the target question's full sequences
+            if is_target_question {
+                println!("FULL SEQUENCE FOR CHOICE '{}': {:?}", choice, full_request);
+                println!("FULL SEQUENCE LENGTH: {}", full_request.len());
+                println!("FEWSHOT PREFIX LENGTH: {}", fewshot_tokens.len());
+                println!("TEXT+CHOICE LENGTH: {}", text_choice_tokens.len());
+            }
 
             // Extract choice tokens from the text_choice_tokens part
             // Tokenizing "choice" alone produces different tokens than tokenizing "text + choice" together.
