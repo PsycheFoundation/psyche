@@ -1,8 +1,8 @@
 use allowlist::Allowlist;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
-use futures_util::{StreamExt, TryFutureExt};
+use futures_util::{future::join_all, StreamExt, TryFutureExt};
 use iroh::endpoint::{RemoteInfo, TransportConfig};
 use iroh_blobs::{
     downloader::{ConcurrencyLimits, RetryConfig},
@@ -16,10 +16,11 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
-    PeerManagerHandle,
+    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
+    MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
+use rand::seq::SliceRandom;
 use router::Router;
 use state::State;
 use std::{
@@ -38,15 +39,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{Interval, interval},
+    time::{interval, Interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
-pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
+pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
+pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -68,23 +69,23 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
 pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
-    RetriedDownloadsHandle, TransmittableDownload,
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
+    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
 };
 use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
 pub use p2p_model_sharing::{
-    ALPN, ModelRequestType, ModelSharing, SharableModel, SharableModelError,
-    TransmittableModelConfig,
+    ModelRequestType, ModelSharing, SharableModel, SharableModelError, TransmittableModelConfig,
+    ALPN,
 };
 pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
-    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
-    distro_results_from_reader, distro_results_to_bytes,
+    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
+    SerializedDistroResult, TransmittableDistroResult,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -383,50 +384,74 @@ where
         Ok(())
     }
 
-    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
-        let provider_node_id = ticket.node_addr().clone();
-        let ticket_hash = ticket.hash();
+    pub fn start_download(
+        &mut self,
+        tickets: Vec<BlobTicket>,
+        tag: u32,
+        download_type: DownloadType,
+    ) {
         let additional_peers_to_try = match download_type.clone() {
             DownloadType::DistroResult(peers) => peers,
             DownloadType::ModelSharing(_) => {
                 vec![]
             }
         };
-        let (tx, rx) = mpsc::unbounded_channel();
 
-        self.state.currently_sharing_blobs.insert(ticket_hash);
-        self.state.blob_tags.insert((tag, ticket_hash));
-        self.download_manager
-            .add(ticket, tag, rx, download_type.clone());
+        let provider_node_id = tickets
+            .iter()
+            .map(|ticket| ticket.node_addr().clone())
+            .chain(additional_peers_to_try.iter().cloned())
+            .collect::<Vec<_>>();
+        //let ticket_hash = ticket.hash();
 
-        debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        let mut download_updaters = Vec::new();
 
-        let blobs_client = self.blobs.client().clone();
-        tokio::spawn(async move {
-            let download_opts = DownloadOptions {
-                format: BlobFormat::Raw,
-                nodes: std::iter::once(provider_node_id)
-                    .chain(additional_peers_to_try.iter().cloned())
-                    .collect(),
-                tag: SetTagOption::Auto,
-                mode: DownloadMode::Queued,
-            };
+        for (idx, ticket) in tickets.into_iter().enumerate() {
+            let ticket_hash = ticket.hash();
+            self.state.currently_sharing_blobs.insert(ticket_hash);
+            self.state.blob_tags.insert((tag, ticket_hash));
 
-            let download_start_result = blobs_client
-                .download_with_opts(ticket_hash, download_opts)
-                .await;
+            debug!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
-            match download_start_result {
-                Ok(mut progress) => {
-                    while let Some(val) = progress.next().await {
-                        if let Err(err) = tx.send(val) {
-                            panic!("Failed to send download progress: {err:?} {:?}", err.0);
+            let (tx, rx) = mpsc::unbounded_channel();
+            download_updaters.push(rx);
+
+            let blobs_client = self.blobs.client().clone();
+
+            // reuse the nodes list for our N blobs to download
+            // and try to randomize the nodes we get the various blobs of the download from.
+            // this is super inefficient though, and ideally, iroh would just have an Arc<Vec<_>>
+            // with an RNG taken in DownloadOptions and just randomize the order that way
+            let mut provider_node_id_clone = provider_node_id[..].to_vec();
+            provider_node_id_clone.shuffle(&mut rand::thread_rng());
+
+            tokio::spawn(async move {
+                let download_opts = DownloadOptions {
+                    format: BlobFormat::Raw,
+                    nodes: provider_node_id_clone,
+                    tag: SetTagOption::Auto,
+                    mode: DownloadMode::Queued,
+                };
+
+                let download_start_result = blobs_client
+                    .download_with_opts(ticket_hash, download_opts)
+                    .await;
+
+                match download_start_result {
+                    Ok(mut progress) => {
+                        while let Some(val) = progress.next().await {
+                            if let Err(err) = tx.send((val, idx)) {
+                                panic!("Failed to send download progress: {err:?} {:?}", err.0);
+                            }
                         }
                     }
+                    Err(e) => panic!("Failed to start download: {e}"),
                 }
-                Err(e) => panic!("Failed to start download: {e}"),
-            }
-        });
+            });
+        }
+
+        self.download_manager
+            .add(tickets, tag, download_updaters, download_type.clone());
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
@@ -452,6 +477,40 @@ where
         self.state.blob_tags.insert((tag, hash));
 
         Ok(blob_ticket)
+    }
+
+    pub async fn add_downloadables(&mut self, data: Download, tag: u32) -> Result<Vec<BlobTicket>> {
+        let bytes_chunks = data.to_chunks(1024);
+
+        let blobs_res =
+            join_all(bytes_chunks.into_iter().map(async |bytes_chunk| {
+                self.blobs.client().add_bytes(bytes_chunk).await.unwrap()
+            }))
+            .await;
+
+        let addr = self.router.endpoint().node_addr().await?;
+        let blobs_res = blobs_res
+            .into_iter()
+            .map(|res| {
+                let ret = BlobTicket::new(addr.clone(), res.hash, res.format).unwrap();
+                debug!(
+                    name: "blob_upload",
+                    hash = res.hash.fmt_short(),
+                    size = res.size,
+                    "blob added for upload with hash {} and size {}",
+                    res.hash.fmt_short(),
+                    res.size
+                );
+
+                let hash = ret.hash();
+                self.state.currently_sharing_blobs.insert(hash);
+                self.state.blob_tags.insert((tag, hash));
+
+                ret
+            })
+            .collect::<Vec<_>>();
+
+        Ok(blobs_res)
     }
 
     // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
@@ -564,6 +623,8 @@ where
         if update.all_done {
             self.state.download_progesses.remove(&hash);
 
+            //todo: we need some way to associate blob tickets with their Downloadable, to have the final Bytes from all the blobs
+            // after all the blobs are done downloading
             let blobs = self.blobs.client().clone();
             let (send, recv) = oneshot::channel();
             trace!(name: "blob_download_read_start", hash = hash.fmt_short());
@@ -620,7 +681,7 @@ pub async fn request_model_blob_ticket(
     router: Arc<Router>,
     node_addr: NodeId,
     request_type: &ModelRequestType,
-) -> Result<BlobTicket> {
+) -> Result<Vec<BlobTicket>> {
     let conn = router
         .endpoint()
         .connect(node_addr, p2p_model_sharing::ALPN)
@@ -634,8 +695,10 @@ pub async fn request_model_blob_ticket(
 
     // Receive parameter value blob ticket
     let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
-    let parameter_blob_ticket: Result<Result<BlobTicket, SharableModelError>, postcard::Error> =
-        postcard::from_bytes(&parameter_blob_ticket_bytes);
+    let parameter_blob_ticket: Result<
+        Result<Vec<BlobTicket>, SharableModelError>,
+        postcard::Error,
+    > = postcard::from_bytes(&parameter_blob_ticket_bytes);
     let result = parameter_blob_ticket
         .with_context(|| "Error parsing model parameter blob ticket".to_string())?;
 
@@ -704,9 +767,9 @@ where
     DownloadFailed(DownloadFailed),
     ParameterRequest(
         String,
-        oneshot::Sender<Result<BlobTicket, SharableModelError>>,
+        oneshot::Sender<Result<Vec<BlobTicket>, SharableModelError>>,
     ),
-    ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
+    ModelConfigRequest(oneshot::Sender<Result<Vec<BlobTicket>, SharableModelError>>),
 }
 
 async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
@@ -800,7 +863,7 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
+    model_blob_tickets: Arc<std::sync::Mutex<Vec<(Vec<BlobTicket>, ModelRequestType)>>>,
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
 ) {
@@ -824,11 +887,11 @@ pub async fn blob_ticket_param_request_task(
         .await;
 
         match result {
-            Ok(Ok(blob_ticket)) => {
+            Ok(Ok(blob_tickets)) => {
                 model_blob_tickets
                     .lock()
                     .unwrap()
-                    .push((blob_ticket, model_request_type));
+                    .push((blob_tickets, model_request_type.clone()));
 
                 peer_manager.report_success(peer_id);
                 return;

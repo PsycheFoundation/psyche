@@ -12,6 +12,7 @@ iroh.workspace = true
 iroh-blobs.workspace = true
 iroh-gossip.workspace = true
 iroh-relay.workspace = true
+itertools.workspace = true
 tokio-util.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true

@@ -436,8 +436,10 @@ impl ClientMetrics {
 
     pub fn record_download_started(&self, hash: impl Display, kind: impl Display) {
         debug!(name: "download_started", hash = %hash);
+        // todo: should we count the number of "downloads" or the number of blobs?
         self.downloads_started_counter
             .add(1, &[KeyValue::new("type", kind.to_string())]);
+        // todo: do we really need a lock, is an atomic not enough for this?
         self.tcp_metrics.lock().unwrap().downloads_started += 1;
     }
     pub fn record_download_retry(&self, hash: impl Display) {

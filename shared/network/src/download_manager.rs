@@ -1,12 +1,12 @@
 use crate::{
-    ModelRequestType, Networkable,
     p2p_model_sharing::{TransmittableModelConfig, TransmittableModelParameter},
     serialized_distro::TransmittableDistroResult,
+    ModelRequestType, Networkable,
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use bytes::Bytes;
-use futures_util::future::select_all;
+use futures_util::future::{join_all, select, select_all};
 use iroh::{NodeAddr, PublicKey};
 use iroh_blobs::Hash;
 use iroh_blobs::{get::db::DownloadProgress, ticket::BlobTicket};
@@ -16,18 +16,20 @@ use std::{
     time::Instant,
 };
 use tokio::{
-    sync::{Mutex, mpsc, oneshot},
+    sync::{mpsc, oneshot, Mutex},
     task::JoinHandle,
 };
 use tracing::{error, info, trace, warn};
 
 pub const MAX_DOWNLOAD_RETRIES: usize = 3;
 
+// todo: this implies that we'll retry the entire download (e.g. parameter) if even 1 blob download fails
+// ideally, we'd allow to retry only failed blob downloads, while keeping the association of each blob with its download
 #[derive(Debug, Clone)]
 pub struct DownloadRetryInfo {
     pub retries: usize,
     pub retry_time: Option<Instant>,
-    pub ticket: BlobTicket,
+    pub tickets: Vec<BlobTicket>,
     pub tag: u32,
     pub r#type: DownloadType,
 }
@@ -46,7 +48,7 @@ pub enum RetriedDownloadsMessage {
         response: oneshot::Sender<Option<DownloadRetryInfo>>,
     },
     PendingRetries {
-        response: oneshot::Sender<Vec<(Hash, BlobTicket, u32, DownloadType)>>,
+        response: oneshot::Sender<Vec<(Hash, Vec<BlobTicket>, u32, DownloadType)>>,
     },
     UpdateTime {
         hash: Hash,
@@ -118,7 +120,7 @@ impl RetriedDownloadsHandle {
     }
 
     /// Get the retries that are considered pending and have not been retried yet
-    pub async fn pending_retries(&self) -> Vec<(Hash, BlobTicket, u32, DownloadType)> {
+    pub async fn pending_retries(&self) -> Vec<(Hash, Vec<BlobTicket>, u32, DownloadType)> {
         let (response_tx, response_rx) = oneshot::channel();
 
         if self
@@ -167,7 +169,9 @@ impl RetriedDownloadsActor {
     fn handle_message(&mut self, message: RetriedDownloadsMessage) {
         match message {
             RetriedDownloadsMessage::Insert { info } => {
-                let hash = info.ticket.hash();
+                // this assumes each download will have at least 1 blob, and each blob is unique
+                // across all downloads (e.g. each blob into which all the params are subdivided will be unique)
+                let hash = info.tickets[0].hash();
                 self.downloads.insert(hash, info);
             }
 
@@ -191,7 +195,14 @@ impl RetriedDownloadsActor {
                             .map(|retry_time| now >= retry_time)
                             .unwrap_or(false)
                     })
-                    .map(|(hash, info)| (*hash, info.ticket.clone(), info.tag, info.r#type.clone()))
+                    .map(|(hash, info)| {
+                        (
+                            *hash,
+                            info.tickets[..].to_vec(),
+                            info.tag,
+                            info.r#type.clone(),
+                        )
+                    })
                     .collect();
 
                 let _ = response.send(pending);
@@ -245,16 +256,19 @@ impl DownloadType {
 
 #[derive(Debug)]
 struct Download {
-    blob_ticket: BlobTicket,
+    blob_ticket: Vec<BlobTicket>,
     tag: u32,
-    download: mpsc::UnboundedReceiver<Result<DownloadProgress>>,
+    download: Vec<mpsc::UnboundedReceiver<(Result<DownloadProgress>, usize)>>,
     last_offset: u64,
     total_size: u64,
     r#type: DownloadType,
+    // the number of the blob downloads that are done
+    // todo: maybe a u64?
+    num_done: usize,
 }
 
 struct ReadingFinishedDownload {
-    blob_ticket: BlobTicket,
+    blob_tickets: Vec<BlobTicket>,
     tag: u32,
     download: oneshot::Receiver<Bytes>,
     r#type: DownloadType,
@@ -263,7 +277,7 @@ struct ReadingFinishedDownload {
 impl Debug for ReadingFinishedDownload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ReadingFinishedDownload")
-            .field("blob_ticket", &self.blob_ticket)
+            .field("blob_ticket", &self.blob_tickets)
             .field("reading", &"...")
             .finish()
     }
@@ -271,9 +285,9 @@ impl Debug for ReadingFinishedDownload {
 
 impl Download {
     fn new(
-        blob_ticket: BlobTicket,
+        blob_ticket: Vec<BlobTicket>,
         tag: u32,
-        download: mpsc::UnboundedReceiver<Result<DownloadProgress>>,
+        download: Vec<mpsc::UnboundedReceiver<(Result<DownloadProgress>, usize)>>,
         download_type: DownloadType,
     ) -> Self {
         Self {
@@ -283,6 +297,7 @@ impl Download {
             last_offset: 0,
             total_size: 0,
             r#type: download_type,
+            num_done: 0,
         }
     }
 }
@@ -402,18 +417,20 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
 
     pub fn add(
         &mut self,
-        blob_ticket: BlobTicket,
+        blob_ticket: Vec<BlobTicket>,
         tag: u32,
-        progress: mpsc::UnboundedReceiver<Result<DownloadProgress>>,
+        progress_updaters: Vec<mpsc::UnboundedReceiver<(Result<DownloadProgress>, usize)>>,
         download_type: DownloadType,
     ) {
         let downloads = self.downloads.clone();
         let sender = self.tx_new_item.clone();
         tokio::spawn(async move {
-            downloads
-                .lock()
-                .await
-                .push(Download::new(blob_ticket, tag, progress, download_type));
+            downloads.lock().await.push(Download::new(
+                blob_ticket,
+                tag,
+                progress_updaters,
+                download_type,
+            ));
 
             if let Err(err) = sender.send(()) {
                 error!("{err:#}");
@@ -423,7 +440,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
 
     pub fn read(
         &mut self,
-        blob_ticket: BlobTicket,
+        blob_tickets: Vec<BlobTicket>,
         tag: u32,
         download: oneshot::Receiver<Bytes>,
         download_type: DownloadType,
@@ -432,7 +449,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         let sender = self.tx_new_item.clone();
         tokio::spawn(async move {
             reading.lock().await.push(ReadingFinishedDownload {
-                blob_ticket,
+                blob_tickets,
                 tag,
                 download,
                 r#type: download_type,
@@ -457,20 +474,23 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
 
         #[derive(Debug)]
         enum FutureResult {
-            Download(usize, Result<DownloadProgress>),
+            Download(usize, (Result<DownloadProgress>, usize)),
             Read(usize, Result<Bytes>),
         }
 
+        // todo: this is so bad, we're doing a select_all on n select_alls
         let download_futures = downloads.iter_mut().enumerate().map(|(i, download)| {
             Box::pin(async move {
                 FutureResult::Download(
                     i,
-                    download.download.recv().await.unwrap_or_else(|| {
-                        Err(anyhow!(
-                            "download channel closed when trying to download blob with hash {}.",
-                            download.blob_ticket.hash()
-                        ))
-                    }),
+                    select_all(
+                        download
+                            .download
+                            .iter_mut()
+                            .map(|download| Box::pin(async { download.recv().await.unwrap() })),
+                    )
+                    .await
+                    .0,
                 )
             }) as Pin<Box<dyn Future<Output = FutureResult> + Send>>
         });
@@ -501,16 +521,17 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
 
     fn handle_download_progress(
         downloads: &mut Vec<Download>,
-        result: Result<DownloadProgress>,
+        result: (Result<DownloadProgress>, usize),
         index: usize,
     ) -> Option<DownloadManagerEvent<D>> {
         let download = &mut downloads[index];
-        let event = match result {
+
+        let event = match result.0 {
             Ok(progress) => match progress {
                 DownloadProgress::InitialState(_) => None,
                 DownloadProgress::FoundLocal { size, .. } => {
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
+                        blob_ticket: download.blob_ticket[result.1].clone(),
                         tag: download.tag,
                         downloaded_size_delta: 0,
                         downloaded_size: size.value(),
@@ -523,7 +544,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 DownloadProgress::Found { size, .. } => {
                     download.total_size = size;
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
+                        blob_ticket: download.blob_ticket[result.1].clone(),
                         tag: download.tag,
                         downloaded_size_delta: 0,
                         downloaded_size: 0,
@@ -537,7 +558,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     let delta = offset.saturating_sub(download.last_offset);
                     download.last_offset = offset;
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
+                        blob_ticket: download.blob_ticket[result.1].clone(),
                         tag: download.tag,
                         downloaded_size_delta: delta,
                         downloaded_size: offset,
@@ -549,7 +570,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 DownloadProgress::Done { .. } => None,
                 DownloadProgress::AllDone(_) => {
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
+                        blob_ticket: download.blob_ticket[result.1].clone(),
                         tag: download.tag,
                         downloaded_size_delta: 0,
                         downloaded_size: download.total_size,
@@ -560,7 +581,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 }
                 DownloadProgress::Abort(err) => {
                     Some(DownloadManagerEvent::Failed(DownloadFailed {
-                        blob_ticket: download.blob_ticket.clone(),
+                        blob_ticket: download.blob_ticket[result.1].clone(),
                         error: err.into(),
                         tag: download.tag,
                         download_type: download.r#type.clone(),
@@ -568,7 +589,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 }
             },
             Err(e) => Some(DownloadManagerEvent::Failed(DownloadFailed {
-                blob_ticket: download.blob_ticket.clone(),
+                blob_ticket: download.blob_ticket[result.1].clone(),
                 error: e,
                 tag: download.tag,
                 download_type: download.r#type.clone(),
@@ -576,12 +597,18 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         };
         match &event {
             Some(DownloadManagerEvent::Update(DownloadUpdate { all_done, .. })) if *all_done => {
-                let removed = downloads.swap_remove(index);
                 trace!(
-                    "Since download is complete, removing it: idx {index}, hash {}",
-                    removed.blob_ticket.hash()
+                    "Blob {} download complete",
+                    downloads[index].blob_ticket[result.1].hash()
                 );
+                downloads[index].num_done += 1;
+                if downloads[index].num_done == downloads[index].download.len() {
+                    let removed = downloads.swap_remove(index);
+                    trace!("Since download is complete, removing it: idx {index}");
+                }
             }
+            // todo: maybe have a retry mechanism. right now, we basically fail the entire download if one of the
+            // blob downloads in it fails
             Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket, error, ..
             })) => {
@@ -597,6 +624,10 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 // download update is normal, doesn't cause removal.
             }
         }
+
+        //todo: this is wrong. we're emitting an all_done == true event when any, not all of the blob tickets in a download are.
+        // we might solve this by doing a join_all rather than a select_all in poll_next_inner to ensure that all the blobs are done 
+        // downloading before we update...
         event
     }
 
@@ -606,20 +637,23 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
     ) -> Option<DownloadManagerEvent<D>> {
         match result {
             Ok(bytes) => match postcard::from_bytes(&bytes) {
+                // todo: we assume blob_tickets is non-empty and the hashes for all the subpieces of our download will be
+                // unique. the first a fair assumption (although - zero-bytes downloads??? are those possible???), though we still need to enforce it throughout
+                // but for the second we should provide some stronger guarantees, eg some kind of hash tree root made from all the hashes
                 Ok(decoded) => Some(DownloadManagerEvent::Complete(DownloadComplete {
                     data: decoded,
-                    from: downloader.blob_ticket.node_addr().node_id,
-                    hash: downloader.blob_ticket.hash(),
+                    from: downloader.blob_tickets[0].node_addr().node_id,
+                    hash: downloader.blob_tickets[0].hash(),
                 })),
                 Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
-                    blob_ticket: downloader.blob_ticket,
+                    blob_ticket: downloader.blob_tickets[0].clone(),
                     tag: downloader.tag,
                     error: err.into(),
                     download_type: downloader.r#type.clone(),
                 })),
             },
             Err(e) => Some(DownloadManagerEvent::Failed(DownloadFailed {
-                blob_ticket: downloader.blob_ticket,
+                blob_ticket: downloader.blob_tickets[0].clone(),
                 tag: downloader.tag,
                 error: e,
                 download_type: downloader.r#type.clone(),

@@ -7430,6 +7430,7 @@ dependencies = [
  "iroh-blobs",
  "iroh-gossip",
  "iroh-relay",
+ "itertools 0.14.0",
  "postcard",
  "psyche-core",
  "psyche-metrics",

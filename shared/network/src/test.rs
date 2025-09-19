@@ -100,7 +100,7 @@ impl App {
                 }
 
                 self.network
-                    .start_download(blob_ticket, step, DownloadType::DistroResult(peers));
+                    .start_download(vec![blob_ticket], step, DownloadType::DistroResult(peers));
 
                 if !self.should_wait_before {
                     println!("Waiting to kill sender");

@@ -152,7 +152,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
     pub tx_distro_result: UnboundedSender<DistroBroadcastAndPayload>,
-    pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
+    pub tx_request_download: UnboundedSender<(Vec<BlobTicket>, u32)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
 
