@@ -471,7 +471,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				) {
 					return sum
 				}
-				return sum + (summary.trainingStep?.tokensCompletedAtStartOfStep ?? 0n)
+				return sum + (summary.trainingStep?.lastTokensPerSecond ?? 0n)
 			}, 0n),
 		}
 		this.#summaryCache = summaries
