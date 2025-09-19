@@ -77,14 +77,14 @@
             + lib.optionalString pkgs.config.cudaSupport ''
               # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
               # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
-              export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p):${pkgs.rdma-core}/lib
+              export LD_LIBRARY_PATH=$(${pkgs.nix-gl-host}/bin/nixglhost -p):${pkgs.rdma-core}/lib
             ''
             + lib.optionalString pkgs.config.metalSupport ''
               # macOS: Ensure PyTorch can use Metal Performance Shaders
               export PYTORCH_ENABLE_MPS_FALLBACK=1
 
               # Set up PyTorch library path for test execution
-              export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch}/lib/python3.12/site-packages/torch/lib:$DYLD_LIBRARY_PATH"
+              export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch}/lib/python3.12/site-packages/torch/lib"
             ''
             + ''
               echo "Welcome to the Psyche development shell.";
