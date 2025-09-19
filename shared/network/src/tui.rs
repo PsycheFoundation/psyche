@@ -1,5 +1,6 @@
 use crate::{NetworkConnection, Networkable, peer_list::PeerList, util::fmt_bytes};
 
+use futures_util::StreamExt;
 use iroh::{PublicKey, endpoint::ConnectionType};
 use psyche_tui::ratatui::{
     buffer::Buffer,
@@ -212,14 +213,23 @@ pub struct NetworkTUIState {
     pub inner: Option<NetworkTUIStateInner>,
 }
 
-impl<M, D> From<&NetworkConnection<M, D>> for NetworkTUIState
-where
-    M: Networkable,
-    D: Networkable,
-{
-    fn from(nc: &NetworkConnection<M, D>) -> Self {
+impl NetworkTUIState {
+    pub async fn from_network_connection<M, D>(nc: &NetworkConnection<M, D>) -> anyhow::Result<Self>
+    where
+        M: Networkable,
+        D: Networkable,
+    {
         let s = &nc.state;
-        Self {
+        let blob_hashes = nc
+            .blobs_store
+            .list()
+            .stream()
+            .await?
+            .filter_map(|hash_result| async move { hash_result.ok().map(|h| h.to_string()) })
+            .collect::<Vec<_>>()
+            .await;
+
+        Ok(Self {
             inner: Some(NetworkTUIStateInner {
                 join_ticket: s.join_ticket.clone(),
                 last_seen: s.last_seen.clone(),
@@ -238,12 +248,8 @@ where
                         )
                     })
                     .collect(),
-                blob_hashes: s
-                    .currently_sharing_blobs
-                    .iter()
-                    .map(|blob| blob.to_string())
-                    .collect(),
+                blob_hashes,
             }),
-        }
+        })
     }
 }

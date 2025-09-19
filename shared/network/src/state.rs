@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt::Debug,
     time::{Duration, Instant},
 };
@@ -15,9 +15,6 @@ pub struct State {
     pub bandwidth_tracker: BandwidthTracker,
     pub bandwidth_history: VecDeque<f64>,
     pub download_progesses: HashMap<iroh_blobs::Hash, DownloadUpdate>,
-
-    pub currently_sharing_blobs: HashSet<iroh_blobs::Hash>,
-    pub blob_tags: HashSet<(u32, iroh_blobs::Hash)>,
 }
 
 impl State {
@@ -28,8 +25,6 @@ impl State {
             bandwidth_tracker: BandwidthTracker::new(bandwidth_average_period),
             bandwidth_history: Default::default(),
             download_progesses: Default::default(),
-            currently_sharing_blobs: Default::default(),
-            blob_tags: Default::default(),
         }
     }
 }
