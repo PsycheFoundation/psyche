@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
-    "solana_toolbox_web3": "^0.0.8"
+    "solana_toolbox_web3": "^0.0.9"
   }
 }

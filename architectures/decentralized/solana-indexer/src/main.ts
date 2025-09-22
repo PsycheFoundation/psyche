@@ -1,16 +1,25 @@
 import { PublicKey } from "@solana/web3.js";
-import { ToolboxEndpoint } from "solana_toolbox_web3";
-import { monitorTransactions } from "./monitor";
+import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
+import { syncMiningPool } from "./miningPool";
 
-const endpoint = new ToolboxEndpoint("devnet", "confirmed");
+const miningPoolEndpoint = new ToolboxEndpoint("mainnet", "confirmed");
+const miningPoolProgramAddress = new PublicKey(
+  "PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf",
+);
 
 async function main() {
-  console.log("Hello, Solana Indexer!");
-  monitorTransactions(endpoint, PublicKey.default, (signature, execution) => {
-    console.log("------");
-    //console.log("Transaction:", signature, execution);
-  });
-  console.log("After sync call");
+  const idlProgram = await new ToolboxIdlService().getOrResolveProgram(
+    miningPoolEndpoint,
+    miningPoolProgramAddress,
+  );
+  if (!idlProgram) {
+    throw new Error("Failed to fetch IDL for mining pool program");
+  }
+  await syncMiningPool(
+    miningPoolEndpoint,
+    idlProgram,
+    miningPoolProgramAddress,
+  );
 }
 
 main();
