@@ -319,9 +319,11 @@ impl SolanaBackend {
         id: psyche_solana_coordinator::ClientId,
         check: CommitteeProof,
     ) {
+        let user = self.get_payer();
         let instruction = instructions::coordinator_health_check(
             &coordinator_instance,
             &coordinator_account,
+            &user,
             id,
             check,
         );
