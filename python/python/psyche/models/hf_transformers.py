@@ -3,15 +3,25 @@ import json
 import os
 
 from .causal_lm import CausalLM, PretrainedSourceRepoFiles, PretrainedSourceStateDict
-from transformers import AutoModelForCausalLM, PreTrainedModel
+from transformers import (
+    AutoModelForCausalLM,
+    GradientCheckpointingLayer,
+    PreTrainedModel,
+)
 from typing import Union, Iterable, Optional, Tuple
 from safetensors import safe_open
 from safetensors.torch import load_file as safe_load_file
 from transformers.models.auto.configuration_auto import CONFIG_MAPPING
 from torch.distributed import init_device_mesh
+from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
-from torch.distributed.tensor import DTensor, distribute_tensor
+from torch.distributed.tensor import DTensor, Replicate, distribute_tensor
+from torch.distributed.tensor.parallel import (
+    parallelize_module,
+    ColwiseParallel,
+    RowwiseParallel,
+)
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
     _CHECKPOINT_PREFIX,
@@ -66,10 +76,11 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
 
 class HfTransformersAuto(CausalLM):
 
-    def __init__(self, model, config, world_mesh: DeviceMesh):
+    def __init__(self, model, config, world_mesh: DeviceMesh, device: torch.device):
         self.model = model
         self.config = config
         self.world_mesh = world_mesh
+        self.device = device
 
     @staticmethod
     def from_pretrained(
@@ -128,18 +139,59 @@ class HfTransformersAuto(CausalLM):
 
         world_mesh = None
         if tp != 1 or dp != 1:
-            world_mesh = build_mesh("cuda", dp_shard=dp)
+            world_mesh = build_mesh("cuda", dp_shard=dp, tp=tp)
+
+            tp_mesh = world_mesh["tp"] if tp > 1 else None
+            dp_shard_mesh = world_mesh["dp_shard"] if dp > 1 else None
+
             if tp != 1:
-                raise RuntimeError("TP not supported in HfTransformers yet")
-                # model.tensor_parallel(world_mesh[("tp",)])
+                tp_mesh = world_mesh["tp"]
+
+                if config.model_type != "llama" and config.model_type != "seed_oss":
+                    raise RuntimeError(
+                        f"Tensor parallelism not supported for model type `{config.model_type}` (yet)"
+                    )
+
+                # Ensure TP degree divides key model dimensions for even head sharding
+                assert (
+                    config.num_attention_heads % tp == 0
+                ), f"TP degree {tp} must divide num_attention_heads {config.num_attention_heads}"
+                assert (
+                    config.num_key_value_heads % tp == 0
+                ), f"TP degree {tp} must divide num_key_value_heads {config.num_key_value_heads}"
+
+                layer_plan = {
+                    "self_attn.q_proj": ColwiseParallel(),
+                    "self_attn.k_proj": ColwiseParallel(),
+                    "self_attn.v_proj": ColwiseParallel(),
+                    "self_attn.o_proj": RowwiseParallel(),
+                    "mlp.gate_proj": ColwiseParallel(),
+                    "mlp.up_proj": ColwiseParallel(),
+                    "mlp.down_proj": RowwiseParallel(),
+                }
+
+                for layer in model.model.layers:
+                    parallelize_module(layer, tp_mesh, parallelize_plan=layer_plan)
+
+                parallelize_module(
+                    model,
+                    tp_mesh,
+                    parallelize_plan={
+                        "lm_head": ColwiseParallel(output_layouts=Replicate()),
+                    },
+                )
+
+            apply_activation_checkpointing(
+                model,
+                auto_wrap_policy=ModuleWrapPolicy(set((GradientCheckpointingLayer,))),
+            )
 
             if dp != 1:
                 mp_policy = MixedPrecisionPolicy(
                     param_dtype=param_dtype, reduce_dtype=reduce_dtype
                 )
                 fsdp_config = {
-                    # "mesh": world_mesh[tuple(("dp_replicate",))],
-                    "mesh": world_mesh[tuple(("dp_shard",))],
+                    "mesh": dp_shard_mesh,
                     "mp_policy": mp_policy,
                 }
 
@@ -151,12 +203,6 @@ class HfTransformersAuto(CausalLM):
                             fsdp_modules = model.model._no_split_modules
                 if fsdp_modules is None:
                     raise RuntimeError("Could not determine models to apply FSDP to")
-
-                # seems to break with latest transformers, let's fall back to their activation checkpointing
-                # apply_activation_checkpointing(
-                #     model,
-                #     check_fn=lambda module: module.__class__.__name__ in fsdp_modules,
-                # )
 
                 for module in model.modules():
                     if module.__class__.__name__ in fsdp_modules:
@@ -199,9 +245,6 @@ class HfTransformersAuto(CausalLM):
             reinit_rope(module)
         reinit_rope(model)
 
-        if model.supports_gradient_checkpointing:
-            model._set_gradient_checkpointing(True)
-
         # for super large models, loading the entire model in RAM nproc times can CPU OOM
         # TODO: switch to use torch.distributed.checkpoint.state_dict_loader.load()
 
@@ -217,7 +260,7 @@ class HfTransformersAuto(CausalLM):
 
             dest.copy_(source)
 
-        return HfTransformersAuto(model, config, world_mesh)
+        return HfTransformersAuto(model, config, world_mesh, device)
 
     def forward(
         self,
@@ -247,14 +290,21 @@ class HfTransformersAuto(CausalLM):
                         ).contiguous()
 
         num_logits_to_keep = 0 if num_logits_to_keep is None else num_logits_to_keep
-        ret = self.model(
-            input_ids,
-            labels=labels,
-            position_ids=position_ids,
-            logits_to_keep=num_logits_to_keep,  # name changed in 4.50
-            return_dict=True,
-            use_cache=False,
-        )
+        try:
+            ret = self.model(
+                input_ids,
+                labels=labels,
+                position_ids=position_ids,
+                logits_to_keep=num_logits_to_keep,  # name changed in 4.50
+                return_dict=True,
+                use_cache=False,
+            )
+        except Exception as e:
+            import traceback
+
+            print(f"[{self.device}]: {e}")
+            traceback.print_exception(e)
+            raise e
         if ret.loss and loss_scale:
             ret.loss /= loss_scale
         return (ret.logits, ret.loss)
