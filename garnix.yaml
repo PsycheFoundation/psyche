@@ -19,9 +19,6 @@ servers:
       type: on-branch
       branch: main
 builds:
-  # only build the rust packages explicitly!
-  # all other packages like the book are built via deployments, etc
-  # and duplicating work in garnix causes big big compute overspend.
   - exclude:
       - 'checks.x86_64-linux.workspace-test-all'
       - 'checks.x86_64-linux.workspace-test-decentralized'

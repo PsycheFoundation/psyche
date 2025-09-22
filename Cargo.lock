@@ -7475,6 +7475,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-sidecar"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap-markdown",
+ "futures",
+ "tch",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "psyche-solana-authorizer"
 version = "0.1.0"
 dependencies = [
