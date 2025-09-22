@@ -13,6 +13,7 @@ lib.makeScope pkgs.newScope (
       "psyche-centralized-local-testnet"
       "expand-distro"
       "preview-lr"
+      "psyche-sidecar"
     ];
 
     rustExampleNames = [
@@ -24,7 +25,7 @@ lib.makeScope pkgs.newScope (
     rustPackages = lib.mapAttrs (_: lib.id) (
       lib.genAttrs (rustPackageNames ++ rustExampleNames) (
         name:
-        self.psycheLib.buildRustPackageWithPythonSidecar {
+        self.psycheLib.buildRustPackageWithPsychePythonEnvironment {
           inherit name;
           isExample = lib.elem name rustExampleNames;
         }
