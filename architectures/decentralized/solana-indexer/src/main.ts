@@ -1,25 +1,38 @@
 import { PublicKey } from "@solana/web3.js";
-import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
-import { syncMiningPool } from "./miningPool";
+import { ToolboxEndpoint } from "solana_toolbox_web3";
+import { coordinatorProcess } from "./coordinator/CoordinatorProcess";
 
-const miningPoolEndpoint = new ToolboxEndpoint("mainnet", "confirmed");
+const miningPoolCluster = "mainnet";
+const miningPoolEndpoint = new ToolboxEndpoint(
+  "https://mainnet.helius-rpc.com/?api-key=73970171-7c76-4e93-85f9-7042d1ab6722",
+  "confirmed",
+);
 const miningPoolProgramAddress = new PublicKey(
   "PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf",
 );
 
+const coordinatorCluster = "devnet";
+const coordinatorEndpoint = new ToolboxEndpoint(
+  "https://devnet.helius-rpc.com/?api-key=73970171-7c76-4e93-85f9-7042d1ab6722",
+  "confirmed",
+);
+const coordinatorProgramAddress = new PublicKey(
+  "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y",
+);
+
 async function main() {
-  const idlProgram = await new ToolboxIdlService().getOrResolveProgram(
+  coordinatorProcess(
+    coordinatorCluster,
+    coordinatorEndpoint,
+    coordinatorProgramAddress,
+  );
+  /*
+  miningPoolProcess(
+    miningPoolCluster,
     miningPoolEndpoint,
     miningPoolProgramAddress,
   );
-  if (!idlProgram) {
-    throw new Error("Failed to fetch IDL for mining pool program");
-  }
-  await syncMiningPool(
-    miningPoolEndpoint,
-    idlProgram,
-    miningPoolProgramAddress,
-  );
+  */
 }
 
 main();
