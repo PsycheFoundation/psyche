@@ -302,23 +302,33 @@ impl ModelConfig for LlamaConfig {
     // but it is probably overkill. We should think about a better way to get them
     // to make the p2p requests.
     fn get_parameter_names(&self) -> Vec<String> {
-        let mut variables: nn::VarStore = nn::VarStore::new(Device::Cpu);
-        variables.set_kind(Kind::BFloat16);
-        let _model = Llama::new(variables.root(), self, Default::default(), None);
-        let c = nn::LinearConfig {
-            bias: false,
-            ..Default::default()
-        };
+        let mut variables = Vec::new();
 
-        let _lm_head = nn::linear(
-            &variables.root() / "lm_head",
-            self.hidden_size as i64,
-            self.vocab_size as i64,
-            c,
-        );
+        // 2. Transformer layers
+        for layer_idx in 0..self.num_hidden_layers {
+            let layer_prefix = format!("model.layers.{}", layer_idx);
 
-        let variables_lock = variables.variables_.lock().unwrap();
-        variables_lock.named_variables.keys().cloned().collect()
+            // Self-attention
+            variables.push(format!("{}.self_attn.q_proj.weight", layer_prefix));
+            variables.push(format!("{}.self_attn.k_proj.weight", layer_prefix));
+            variables.push(format!("{}.self_attn.v_proj.weight", layer_prefix));
+            variables.push(format!("{}.self_attn.o_proj.weight", layer_prefix));
+
+            // MLP (Feed Forward)
+            variables.push(format!("{}.mlp.gate_proj.weight", layer_prefix));
+            variables.push(format!("{}.mlp.up_proj.weight", layer_prefix));
+            variables.push(format!("{}.mlp.down_proj.weight", layer_prefix));
+
+            // Layer norms (RMSNorm in LLaMA)
+            variables.push(format!("{}.input_layernorm.weight", layer_prefix));
+            variables.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
+        }
+
+        variables.push("lm_head.weight".to_string());
+        variables.push("model.norm.weight".to_string());
+        variables.push("model.embed_tokens.weight".to_string());
+
+        variables
     }
 }
 
