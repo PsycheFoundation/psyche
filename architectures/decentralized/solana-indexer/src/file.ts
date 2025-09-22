@@ -1,9 +1,18 @@
-export async function fileJsonWrite(path: string, json: any): Promise<void> {
-  const fs = require("fs").promises;
-  return fs.writeFile(path, JSON.stringify(json, null, 2));
+import fs from "fs";
+
+export async function fileJsonPath(file: string): Promise<string> {
+  // TODO - env variable for data directory
+  return `./${file}`;
 }
 
-export async function fileJsonRead(path: string): Promise<any> {
-  const fs = require("fs").promises;
-  return fs.readFile(path, "utf-8").then((data: string) => JSON.parse(data));
+export async function fileJsonWrite(file: string, json: any): Promise<void> {
+  const path = await fileJsonPath(file);
+  return fs.promises.writeFile(path, JSON.stringify(json, null, 2));
+}
+
+export async function fileJsonRead(file: string): Promise<any> {
+  const path = await fileJsonPath(file);
+  return fs.promises
+    .readFile(path, "utf-8")
+    .then((data: string) => JSON.parse(data));
 }

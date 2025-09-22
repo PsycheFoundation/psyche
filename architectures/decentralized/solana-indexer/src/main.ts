@@ -1,6 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint } from "solana_toolbox_web3";
 import { coordinatorProcess } from "./coordinator/CoordinatorProcess";
+import { miningPoolProcess } from "./mining-pool/MiningPoolProcess";
 
 const miningPoolCluster = "mainnet";
 const miningPoolEndpoint = new ToolboxEndpoint(
@@ -20,19 +21,20 @@ const coordinatorProgramAddress = new PublicKey(
   "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y",
 );
 
-async function main() {
+async function main1() {
   coordinatorProcess(
     coordinatorCluster,
     coordinatorEndpoint,
     coordinatorProgramAddress,
   );
-  /*
+}
+
+async function main2() {
   miningPoolProcess(
     miningPoolCluster,
     miningPoolEndpoint,
     miningPoolProgramAddress,
   );
-  */
 }
 
-main();
+main2();
