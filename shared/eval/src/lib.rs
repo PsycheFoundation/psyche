@@ -5,7 +5,10 @@ mod harness;
 mod tasks;
 mod traits;
 
-pub use harness::{EvalTaskOptions, PreparedTask, PreparedTaskResult, Task, TaskType};
+pub use harness::{
+    EvalTaskOptions, PROGRESS_BAR_TEMPLATE, PreparedTask, PreparedTaskResult, Task, TaskType,
+    progress_bar_template_with_task,
+};
 pub use tasks::{ArcChallenge, ArcEasy, BoolQ, CEval, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA};
 
 pub const ASCII_UPPERCASE: [&str; 26] = [

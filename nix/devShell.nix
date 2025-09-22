@@ -43,6 +43,7 @@
 
                 # for some build scripts
                 jq
+                gnused # not installed by default on MacOS!
 
                 # it pretty :3
                 nix-output-monitor

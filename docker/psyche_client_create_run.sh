@@ -86,4 +86,4 @@ docker run --rm -v "$WALLET_FILE":/keys/id.json \
     --run-id ${RUN_ID} \
     --resume
 
-echo -e "\n[+] Training run with run ID '${RUN_ID}' was set up succesfully!"
+echo -e "\n[+] Training run with run ID '${RUN_ID}' was set up successfully!"
