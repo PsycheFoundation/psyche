@@ -137,7 +137,6 @@ async fn async_main() -> Result<()> {
                 dummy_training_delay_secs: args.dummy_training_delay_secs,
                 discovery_mode: DiscoveryMode::N0,
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
-                max_concurrent_downloads: args.max_concurrent_downloads,
                 metrics_local_port: args.metrics_local_port,
                 device: args.device,
             })

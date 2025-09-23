@@ -152,7 +152,9 @@ impl App {
         if let Some(tx_tui_state) = &self.tx_tui_state {
             let tui_state = TUIState {
                 current_step: self.current_step,
-                network: (&self.network).into(),
+                network: NetworkTUIState::from_network_connection(&self.network)
+                    .await
+                    .unwrap(),
             };
             tx_tui_state.send(tui_state).await.unwrap();
         }
@@ -164,7 +166,7 @@ impl App {
                 info!(name:"message_recv_text", from=from.fmt_short(), text=text)
             }
             NetworkEvent::MessageReceived((from, Message::DistroResult { step, blob_ticket })) => {
-                info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
+                info!(name:"message_recv_distro", from=%from.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network.start_download(
                     blob_ticket,
@@ -184,7 +186,7 @@ impl App {
                     fmt_bytes(file.data.len() as f64),
                     fmt_bytes(speed),
                 );
-                info!(name:"download_blob", from=result.from.fmt_short(), step=file.step, blob=hash.fmt_short());
+                info!(name:"download_blob", from=%result.from.fmt_short(), step=file.step, blob=%hash.fmt_short());
             }
             NetworkEvent::DownloadFailed(result) => {
                 info!(
@@ -222,7 +224,7 @@ impl App {
             .await
         {
             Ok(v) => {
-                info!(name:"upload_blob", from=node_id.fmt_short(), step=step, blob=v.hash().fmt_short());
+                info!(name:"upload_blob", from=%node_id.fmt_short(), step=step, blob=%v.hash().fmt_short());
                 v
             }
             Err(err) => {
@@ -240,7 +242,7 @@ impl App {
             error!("Error sending message: {err}");
         } else {
             info!("broadcasted message for step {step}: {}", blob_ticket);
-            info!(name:"message_send_distro", from=node_id.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
+            info!(name:"message_send_distro", from=%node_id.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
         }
     }
 }
@@ -287,12 +289,10 @@ async fn main() -> Result<()> {
         "123",
         args.bind_port,
         args.bind_interface,
-        relay_mode,
         DiscoveryMode::N0,
         peers,
         secret_key,
         allowlist::AllowAll,
-        4,
         Arc::new(ClientMetrics::new(None)),
     )
     .await?;
