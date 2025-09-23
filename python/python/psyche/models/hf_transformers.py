@@ -181,11 +181,6 @@ class HfTransformersAuto(CausalLM):
                     },
                 )
 
-            apply_activation_checkpointing(
-                model,
-                auto_wrap_policy=ModuleWrapPolicy(set((GradientCheckpointingLayer,))),
-            )
-
             if dp != 1:
                 mp_policy = MixedPrecisionPolicy(
                     param_dtype=param_dtype, reduce_dtype=reduce_dtype
@@ -244,6 +239,12 @@ class HfTransformersAuto(CausalLM):
         for module in model.modules():
             reinit_rope(module)
         reinit_rope(model)
+
+        if model.supports_gradient_checkpointing:
+            model.gradient_checkpointing_enable()
+
+        # compile the loss, greatly reduces mem usage for large vocabularies
+        model.loss_function = torch.compile(model.loss_function)
 
         # for super large models, loading the entire model in RAM nproc times can CPU OOM
         # TODO: switch to use torch.distributed.checkpoint.state_dict_loader.load()
