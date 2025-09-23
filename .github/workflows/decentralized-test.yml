@@ -53,6 +53,28 @@ jobs:
           docker-compose --version
           docker system prune -af
 
-      - name: Enter development shell and run test
+      - name: Install Rust and Cargo
         run: |
-          nix develop --command just decentralized-integration-test test_two_clients_three_epochs_run
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source ~/.cargo/env
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install latest
+          avm use latest
+
+      - name: Build Anchor programs
+        run: |
+          source ~/.cargo/env
+          cd architectures/decentralized/solana-coordinator && anchor build
+          cd architectures/decentralized/solana-authorizer && anchor build
+
+      - name: Build Docker images and run test
+        run: |
+          nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
+          nix-results/docker-psyche-solana-test-client | docker load
+          PSYCHE_HOME=$(realpath .) nix build .#docker-psyche-solana-test-validator --out-link nix-results/docker-psyche-solana-test-validator --impure
+          nix-results/docker-psyche-solana-test-validator | docker load
+          source ~/.cargo/env
+          cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "test_two_clients_three_epochs_run"
