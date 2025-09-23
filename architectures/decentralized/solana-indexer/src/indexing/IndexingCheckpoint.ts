@@ -1,4 +1,11 @@
 import { TransactionSignature } from "@solana/web3.js";
+import {
+  jsonSchemaArray,
+  jsonSchemaNumber,
+  jsonSchemaObject,
+  jsonSchemaString,
+  JsonValue,
+} from "../json";
 
 export type IndexingCheckpointChunk = {
   orderingHigh: bigint;
@@ -16,43 +23,52 @@ export class IndexingCheckpoint {
   constructor(indexedOrderedChunks: Readonly<Array<IndexingCheckpointChunk>>) {
     this.indexedOrderedChunks = indexedOrderedChunks;
   }
+}
 
-  public toJson(): any {
-    return {
-      indexedOrderedChunks: this.indexedOrderedChunks.map((chunk) => ({
-        orderingHigh: String(chunk.orderingHigh),
-        orderingLow: String(chunk.orderingLow),
-        startedFrom: chunk.startedFrom,
-        rewindedUntil: chunk.rewindedUntil,
-        processedCounter: chunk.processedCounter,
-      })),
-    };
-  }
+const indexingCheckpointJsonSchema = jsonSchemaObject({
+  version: jsonSchemaNumber(),
+  indexedOrderedChunks: jsonSchemaArray(
+    jsonSchemaObject({
+      orderingHigh: jsonSchemaString(),
+      orderingLow: jsonSchemaString(),
+      startedFrom: jsonSchemaString(),
+      rewindedUntil: jsonSchemaString(),
+      processedCounter: jsonSchemaNumber(),
+    }),
+  ),
+});
 
-  public static fromJson(obj: any): IndexingCheckpoint {
-    const indexedOrderedChunks = obj?.["indexedOrderedChunks"];
-    if (!Array.isArray(indexedOrderedChunks)) {
-      throw new Error("Invalid indexedOrderedChunks");
-    }
-    for (const chunk of indexedOrderedChunks) {
-      if (
-        typeof chunk?.["orderingHigh"] !== "string" ||
-        typeof chunk?.["orderingLow"] !== "string" ||
-        typeof chunk?.["startedFrom"] !== "string" ||
-        typeof chunk?.["rewindedUntil"] !== "string" ||
-        typeof chunk?.["processedCounter"] !== "number"
-      ) {
-        throw new Error("Invalid chunk");
-      }
-    }
-    return new IndexingCheckpoint(
-      indexedOrderedChunks.map((chunk: any) => ({
-        orderingHigh: BigInt(chunk["orderingHigh"]),
-        orderingLow: BigInt(chunk["orderingLow"]),
-        startedFrom: chunk["startedFrom"],
-        rewindedUntil: chunk["rewindedUntil"],
-        processedCounter: chunk["processedCounter"],
-      })),
-    );
+export function indexingCheckpointToJson(
+  checkpoint: IndexingCheckpoint,
+): JsonValue {
+  return indexingCheckpointJsonSchema.guard({
+    version: 1,
+    indexedOrderedChunks: checkpoint.indexedOrderedChunks.map((chunk) => ({
+      orderingHigh: String(chunk.orderingHigh),
+      orderingLow: String(chunk.orderingLow),
+      startedFrom: chunk.startedFrom,
+      rewindedUntil: chunk.rewindedUntil,
+      processedCounter: chunk.processedCounter,
+    })),
+  });
+}
+
+export function indexingCheckpointFromJson(
+  jsonValue: JsonValue,
+): IndexingCheckpoint {
+  const jsonParsed = indexingCheckpointJsonSchema.parse(jsonValue);
+  if (jsonParsed.version !== 1) {
+    throw new Error("Unsupported version");
   }
+  return new IndexingCheckpoint(
+    jsonParsed.indexedOrderedChunks.map((chunkValue) => {
+      return {
+        orderingHigh: BigInt(chunkValue.orderingHigh),
+        orderingLow: BigInt(chunkValue.orderingLow),
+        startedFrom: chunkValue.startedFrom,
+        rewindedUntil: chunkValue.rewindedUntil,
+        processedCounter: chunkValue.processedCounter,
+      };
+    }),
+  );
 }

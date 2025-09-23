@@ -1,15 +1,29 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
 import { fileJsonRead, fileJsonWrite } from "../file";
-import { IndexingCheckpoint } from "../indexing/IndexingCheckpoint";
+import {
+  IndexingCheckpoint,
+  indexingCheckpointFromJson,
+  indexingCheckpointToJson,
+} from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
+import {
+  jsonSchemaObject,
+  jsonSchemaString,
+  jsonSchemaValue,
+  JsonValue,
+} from "../json";
 import {
   miningPoolDataFromJson,
   miningPoolDataToJson,
 } from "./MiningPoolDataJson";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
-const idlService = new ToolboxIdlService();
+const saveFileJsonSchema = jsonSchemaObject({
+  updatedAt: jsonSchemaString(),
+  checkpoint: jsonSchemaValue(),
+  dataStore: jsonSchemaValue(),
+});
 
 export async function miningPoolProcess(
   cluster: string,
@@ -21,17 +35,31 @@ export async function miningPoolProcess(
   let dataStore: MiningPoolDataStore;
   try {
     const jsonValue = await fileJsonRead(fileJson);
-    checkpoint = IndexingCheckpoint.fromJson(jsonValue.checkpoint);
-    dataStore = miningPoolDataFromJson(jsonValue.dataStore);
+    const jsonParsed = saveFileJsonSchema.parse(jsonValue);
+    checkpoint = indexingCheckpointFromJson(jsonParsed.checkpoint);
+    dataStore = miningPoolDataFromJson(jsonParsed.dataStore);
+    console.log(
+      "Loaded mining pool state from JSON from:",
+      jsonParsed.updatedAt,
+    );
   } catch (error) {
     console.warn("Failed to read existing mining pool JSON, starting fresh");
     checkpoint = new IndexingCheckpoint([]);
     dataStore = new MiningPoolDataStore(new Map());
   }
+  const idlService = new ToolboxIdlService();
+  const idlProgram = await idlService.getOrResolveProgram(
+    endpoint,
+    programAddress,
+  );
+  if (idlProgram === undefined) {
+    throw new Error(`Failed to resolve program IDL: ${programAddress}`);
+  }
   await indexingInstructionsLoop(
     endpoint,
     programAddress,
     checkpoint,
+    idlProgram,
     async (
       instructionName,
       instructionAddresses,
@@ -59,17 +87,23 @@ export async function miningPoolProcess(
       }
       await fileJsonWrite(fileJson, {
         updatedAt: new Date().toISOString(),
-        checkpoint: checkpoint.toJson(),
+        checkpoint: indexingCheckpointToJson(checkpoint),
         dataStore: miningPoolDataToJson(dataStore),
       });
     },
   );
 }
 
+const lenderParamsJsonSchema = jsonSchemaObject({
+  params: jsonSchemaObject({
+    collateral_amount: jsonSchemaString(),
+  }),
+});
+
 export async function miningPoolProcessLenderDeposit(
   dataStore: MiningPoolDataStore,
   instructionAddresses: Map<string, PublicKey>,
-  instructionPayload: any,
+  instructionPayload: JsonValue,
   ordering: bigint,
 ): Promise<void> {
   const pool = instructionAddresses.get("pool")?.toBase58();
@@ -80,9 +114,7 @@ export async function miningPoolProcessLenderDeposit(
   if (user === undefined) {
     throw new Error("Missing user address");
   }
-  const amount = instructionPayload?.["params"]?.["collateral_amount"];
-  if (amount === undefined) {
-    throw new Error("Missing collateral_amount");
-  }
-  dataStore.savePoolUserDeposit(pool, user, BigInt(amount), ordering);
+  const payload = lenderParamsJsonSchema.parse(instructionPayload);
+  const amount = BigInt(payload.params.collateral_amount);
+  dataStore.savePoolUserDeposit(ordering, pool, user, amount);
 }

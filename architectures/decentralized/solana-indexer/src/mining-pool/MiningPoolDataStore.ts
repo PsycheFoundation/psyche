@@ -28,10 +28,10 @@ export class MiningPoolDataStore {
   }
 
   public savePoolUserDeposit(
+    ordering: bigint,
     poolAddress: string,
     userAddress: string,
     depositAmount: bigint,
-    ordering: bigint,
   ): void {
     let pool = this.pools.get(poolAddress);
     if (pool === undefined) {

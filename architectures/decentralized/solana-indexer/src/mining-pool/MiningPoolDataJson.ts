@@ -1,80 +1,78 @@
 import {
+  JsonSchemaInfered,
+  jsonSchemaNull,
+  jsonSchemaNumber,
+  jsonSchemaObject,
+  jsonSchemaRecord,
+  jsonSchemaString,
+  jsonSchemaUnion,
+  JsonValue,
+} from "../json";
+import {
   MiningPoolDataStore,
   MiningPoolDataStorePool,
 } from "./MiningPoolDataStore";
 
-export function miningPoolDataToJson(dataStore: MiningPoolDataStore): any {
-  const pools: any = {};
-  for (const [poolKey, poolValue] of dataStore.getPools().entries()) {
-    const latestAccountState = poolValue.latestAccountState; // TODO - implement properly
-    const latestAccountOrdering = poolValue.latestAccountOrdering.toString();
-    const depositAmountPerUser: any = {};
-    for (const [user, amount] of poolValue.depositAmountPerUser.entries()) {
+const miningPoolJsonSchema = jsonSchemaObject({
+  version: jsonSchemaNumber(),
+  pools: jsonSchemaRecord(
+    jsonSchemaObject({
+      latestAccountState: jsonSchemaUnion(jsonSchemaNull(), jsonSchemaString()),
+      latestAccountOrdering: jsonSchemaString(),
+      depositAmountPerUser: jsonSchemaRecord(jsonSchemaString()),
+    }),
+  ),
+});
+
+export function miningPoolDataToJson(
+  dataStore: MiningPoolDataStore,
+): JsonValue {
+  const pools: JsonSchemaInfered<typeof miningPoolJsonSchema>["pools"] = {};
+  for (const [poolAddress, pool] of dataStore.getPools().entries()) {
+    const depositAmountPerUser: Record<string, string> = {};
+    for (const [user, amount] of pool.depositAmountPerUser.entries()) {
       depositAmountPerUser[user] = amount.toString();
     }
-    pools[poolKey] = {
-      latestAccountState,
-      latestAccountOrdering,
+    pools[poolAddress] = {
+      // TODO - implement properly
+      latestAccountState:
+        pool.latestAccountState === undefined
+          ? null
+          : String(pool.latestAccountState),
+      latestAccountOrdering: String(pool.latestAccountOrdering),
       depositAmountPerUser,
     };
   }
-  return {
+  return miningPoolJsonSchema.guard({
     version: 2,
     pools,
-  };
+  });
 }
 
-export function miningPoolDataFromJson(json: any): MiningPoolDataStore {
-  if (json?.["version"] !== 2) {
+export function miningPoolDataFromJson(
+  jsonValue: JsonValue,
+): MiningPoolDataStore {
+  const jsonParsed = miningPoolJsonSchema.parse(jsonValue);
+  if (jsonParsed.version !== 2) {
     throw new Error("Unsupported version");
   }
-  // TODO - de-uglify this
-  const poolsInfos = new Map<string, MiningPoolDataStorePool>();
-  const poolsJson = json?.["pools"];
-  if (poolsJson && typeof poolsJson === "object") {
-    for (const [poolKey, poolValueRaw] of Object.entries(poolsJson)) {
-      const poolValue: any = poolValueRaw;
-      if (typeof poolKey !== "string" || typeof poolValue !== "object") {
-        continue;
-      }
-      const latestAccountState = poolValue?.["latestAccountState"]; // TODO - implement properly
-      const latestAccountOrderingStr = poolValue?.["latestAccountOrdering"];
-      if (typeof latestAccountOrderingStr !== "string") {
-        continue;
-      }
-      let latestAccountOrdering: bigint;
-      try {
-        latestAccountOrdering = BigInt(latestAccountOrderingStr);
-      } catch (error) {
-        continue;
-      }
-      const depositAmountPerUser = new Map<string, bigint>();
-      const depositAmountPerUserJson = poolValue?.["depositAmountPerUser"];
-      if (
-        depositAmountPerUserJson &&
-        typeof depositAmountPerUserJson === "object"
-      ) {
-        for (const [user, amountStr] of Object.entries(
-          depositAmountPerUserJson,
-        )) {
-          if (typeof user !== "string" || typeof amountStr !== "string") {
-            continue;
-          }
-          let amount: bigint;
-          try {
-            amount = BigInt(amountStr);
-          } catch (error) {
-            continue;
-          }
-          depositAmountPerUser.set(user, amount);
-        }
-      }
-      poolsInfos.set(poolKey, {
-        latestAccountState,
-        latestAccountOrdering,
-        depositAmountPerUser,
-      });
+  const pools = new Map<string, MiningPoolDataStorePool>();
+  for (const [poolAddress, poolParsed] of Object.entries(jsonParsed.pools)) {
+    const depositAmountPerUser = new Map<string, bigint>();
+    for (const [userAddress, amountValue] of Object.entries(
+      poolParsed.depositAmountPerUser,
+    )) {
+      depositAmountPerUser.set(userAddress, BigInt(amountValue));
     }
+    pools.set(poolAddress, {
+      // TODO - implement properly
+      latestAccountState:
+        poolParsed.latestAccountState === null
+          ? undefined
+          : poolParsed.latestAccountState,
+      latestAccountOrdering: BigInt(poolParsed.latestAccountOrdering),
+      depositAmountPerUser,
+    });
   }
-  return new MiningPoolDataStore(poolsInfos);
+  return new MiningPoolDataStore(pools);
 }
