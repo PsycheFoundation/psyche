@@ -20,7 +20,7 @@ max_seq_len = 2048
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
+repo_id = "pefontana/micro-llama"
 
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"
