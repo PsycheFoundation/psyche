@@ -13,7 +13,7 @@ buildPythonPackage rec {
     owner = "linkedin";
     repo = "Liger-Kernel";
     rev = "v${version}";
-    hash = "sha256-Ys3P8V6qkIucOaROsevRgnGwq0NJAJsDs6dupgPMudQ="; # You'll need to update this
+    hash = "sha256-Ys3P8V6qkIucOaROsevRgnGwq0NJAJsDs6dupgPMudQ=";
   };
 
   propagatedBuildInputs = [
