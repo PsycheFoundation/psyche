@@ -11,6 +11,11 @@
 set -euo pipefail
 
 source .multinode_env
+if [[ "${WALLET_PRIVATE_KEY_PATH:-}" == "" ]]; then
+    echo -e "\n[!] WALLET_PRIVATE_KEY_PATH env variable was not set."
+    exit 1
+fi
+
 if [[ "${DATA_PARALLELISM:-}" == "" ]]; then
     echo -e "\n[!] DATA_PARALLELISM env variable was not set."
     exit 1
@@ -43,6 +48,7 @@ Model:          $HF_MODEL_REPO
 "
 
 echo -e "[+] Starting Psyche sidecars...\n"
+echo -e "---------------------------------------\n"
 for i in ${!sidecar_nodes[@]}; do
     sidecar_hostname="${sidecar_nodes[$i]}"
     echo "Starting sidecar in node $sidecar_hostname"
@@ -61,15 +67,15 @@ for i in ${!sidecar_nodes[@]}; do
         --shm-size=1g \
         --gpus all \
         --network host \
-        psyche-solana-client &
+        nousresearch/psyche-client &
 
-    echo -e ""
-    echo "------------------------------------------"
-    echo -e ""
+    echo "\n------------------------------------------\n"
     sleep 10
 done
 
 echo -e "[+] Starting Psyche master node...\n"
+
+raw_wallet_private_key=(cat $WALLET_PRIVATE_KEY_PATH)
 
 srun --nodes=1 --nodelist="$MASTER_NODE" \
     --exclusive \
@@ -77,7 +83,7 @@ srun --nodes=1 --nodelist="$MASTER_NODE" \
     sudo docker run --rm \
     --privileged \
     -v /dev/infiniband:/dev/infiniband \
-    -v "/tmp/id.json":"/keys/id.json" \
+    -e RAW_WALLET_PRIVATE_KEY=$raw_wallet_private_key \
     -e DATA_PARALLELISM=$PSYCHE_WORLD_SIZE \
     -e RPC="http://localhost:8899" \
     -e WS_RPC="ws://localhost:8900" \
@@ -86,7 +92,7 @@ srun --nodes=1 --nodelist="$MASTER_NODE" \
     --shm-size=1g \
     --gpus all \
     --network host \
-    psyche-solana-client &
+    nousresearch/psyche-client &
 
 echo "Waiting for all processes..."
 
