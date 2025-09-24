@@ -22,7 +22,7 @@ export async function indexingInstructionsLoop(
     execution: ToolboxEndpointExecution,
     instructionIndex: number,
   ) => Promise<void>,
-  onCheckpoint: (checkpoint: IndexingCheckpoint) => Promise<void>,
+  onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<void> {
   await indexingSignaturesLoop(
     endpoint,

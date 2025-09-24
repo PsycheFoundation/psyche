@@ -187,6 +187,83 @@ export function jsonExpectValueFromObject(
   return value;
 }
 
+export type JsonType<Encoded extends JsonValue, Decoded> = {
+  valid(json: JsonValue): boolean;
+  decode(json: JsonValue): Decoded;
+  encode(value: Decoded): Encoded;
+};
+
+export function jsonTypeNull(): JsonType<null, null> {
+  // TODO - cache
+  return {
+    valid(json: JsonValue): boolean {
+      return jsonIsNull(json);
+    },
+    decode(json: JsonValue): null {
+      return jsonExpectNull(json);
+    },
+    encode(value: null): null {
+      return value;
+    },
+  };
+}
+export function jsonTypeBoolean(): JsonType<boolean, boolean> {
+  // TODO - cache
+  return {
+    valid(json: JsonValue): boolean {
+      return jsonIsBoolean(json);
+    },
+    decode(json: JsonValue): boolean {
+      return jsonExpectBoolean(json);
+    },
+    encode(value: boolean): boolean {
+      return value;
+    },
+  };
+}
+export function jsonTypeNumber(): JsonType<number, number> {
+  // TODO - cache
+  return {
+    valid(json: JsonValue): boolean {
+      return jsonIsNumber(json);
+    },
+    decode(json: JsonValue): number {
+      return jsonExpectNumber(json);
+    },
+    encode(value: number): number {
+      return value;
+    },
+  };
+}
+export function jsonTypeString(): JsonType<string, string> {
+  // TODO - cache
+  return {
+    valid(json: JsonValue): boolean {
+      return jsonIsString(json);
+    },
+    decode(json: JsonValue): string {
+      return jsonExpectString(json);
+    },
+    encode(value: string): string {
+      return value;
+    },
+  };
+}
+export function jsonTypeStringToBigint(): JsonType<string, bigint> {
+  // TODO - cache
+  return {
+    valid(json: JsonValue): boolean {
+      return jsonIsString(json);
+    },
+    decode(json: JsonValue): bigint {
+      return BigInt(jsonExpectString(json));
+    },
+    encode(value: bigint): string {
+      return String(value);
+    },
+  };
+}
+
 export type JsonSchemaInfered<S> = S extends JsonSchema<infer T> ? T : never;
 export type JsonSchema<T> = {
   check: (value: JsonValue) => boolean;
@@ -194,7 +271,7 @@ export type JsonSchema<T> = {
   guard: (value: T) => JsonValue;
 };
 
-function jsonSchemaGuard<T>(value: T) {
+function jsonSchemaGuard<T extends JsonValue>(value: T): JsonValue {
   return value;
 }
 
@@ -224,6 +301,18 @@ const jsonSchemaBooleanCached = {
 export function jsonSchemaBoolean() {
   return jsonSchemaBooleanCached;
 }
+export function jsonSchemaBooleanConst<T extends boolean>(expected: T) {
+  return {
+    check: (value: JsonValue) => value === expected,
+    parse: (value: JsonValue) => {
+      if (value !== expected) {
+        throw new Error(`JSON: Expected boolean ${expected} (found: ${value})`);
+      }
+      return expected;
+    },
+    guard: jsonSchemaGuard<T>,
+  };
+}
 
 const jsonSchemaNumberCached = {
   check: (value: JsonValue) => jsonIsNumber(value),
@@ -232,6 +321,18 @@ const jsonSchemaNumberCached = {
 };
 export function jsonSchemaNumber() {
   return jsonSchemaNumberCached;
+}
+export function jsonSchemaNumberConst<T extends number>(expected: T) {
+  return {
+    check: (value: JsonValue) => value === expected,
+    parse: (value: JsonValue) => {
+      if (value !== expected) {
+        throw new Error(`JSON: Expected number ${expected} (found: ${value})`);
+      }
+      return expected;
+    },
+    guard: jsonSchemaGuard<T>,
+  };
 }
 
 const jsonSchemaStringCached = {
@@ -242,10 +343,23 @@ const jsonSchemaStringCached = {
 export function jsonSchemaString() {
   return jsonSchemaStringCached;
 }
-
-export function jsonSchemaArray<T>(items: JsonSchema<T>) {
+export function jsonSchemaStringConst<T extends string>(expected: T) {
   return {
-    items,
+    check: (value: JsonValue) => value === expected,
+    parse: (value: JsonValue) => {
+      if (value !== expected) {
+        throw new Error(
+          `JSON: Expected string "${expected}" (found: "${value}")`,
+        );
+      }
+      return expected;
+    },
+    guard: jsonSchemaGuard<T>,
+  };
+}
+
+export function jsonSchemaArray<T extends JsonValue>(items: JsonSchema<T>) {
+  return {
     check: (value: JsonValue) => {
       const array = jsonAsArray(value);
       if (array === undefined) {
@@ -253,7 +367,12 @@ export function jsonSchemaArray<T>(items: JsonSchema<T>) {
       }
       return array.every((value) => items.check(value));
     },
-    parse: (value: JsonValue) => jsonExpectArray(value).map(items.parse),
+    parse: (value: JsonValue) =>
+      jsonExpectArray(value).map((item, index) =>
+        withContext(`JSON: Parsing Array[${index}] =>`, () =>
+          items.parse(item),
+        ),
+      ),
     guard: jsonSchemaGuard<T[]>,
   } as JsonSchema<T[]>;
 }
@@ -277,7 +396,11 @@ export function jsonSchemaTuple<T extends JsonSchema<any>[]>(...items: T) {
           `JSON: Expected tuple of length ${items.length} (found: ${array.length})`,
         );
       }
-      return array.map((v, i) => items[i]!.parse(v)) as {
+      return array.map((item, index) =>
+        withContext(`JSON: Parsing Tuple[${index}]`, () =>
+          items[index]!.parse(item),
+        ),
+      ) as {
         [K in keyof T]: T[K] extends JsonSchema<infer U> ? U : never;
       };
     },
@@ -311,9 +434,11 @@ export function jsonSchemaObject<S extends Record<string, JsonSchema<any>>>(
       const object = jsonExpectObject(value);
       const result = {} as { [K in keyof S]: JsonSchemaInfered<S[K]> };
       for (const key in shape) {
-        result[key as keyof S] = shape[key]!.parse(
-          jsonExpectValueFromObject(object, key),
-        );
+        withContext(`JSON: Parsing Object["${key}"] =>`, () => {
+          result[key as keyof S] = shape[key]!.parse(
+            jsonExpectValueFromObject(object, key),
+          );
+        });
       }
       return result;
     },
@@ -321,9 +446,8 @@ export function jsonSchemaObject<S extends Record<string, JsonSchema<any>>>(
   };
 }
 
-export function jsonSchemaRecord<T>(values: JsonSchema<T>) {
+export function jsonSchemaRecord<T extends JsonValue>(values: JsonSchema<T>) {
   return {
-    values,
     check: (value: JsonValue) => {
       const object = jsonAsObject(value);
       if (object === undefined) {
@@ -340,7 +464,9 @@ export function jsonSchemaRecord<T>(values: JsonSchema<T>) {
       const object = jsonExpectObject(value);
       const result = {} as { [key: string]: T };
       for (const key in object) {
-        result[key] = values.parse(object[key]!);
+        withContext(`JSON: Record["${key}"] =>`, () => {
+          result[key] = values.parse(object[key]!);
+        });
       }
       return result;
     },
@@ -357,15 +483,21 @@ export function jsonSchemaUnion<S extends JsonSchema<any>[]>(...schemas: S) {
       const errors: string[] = [];
       for (const schema of schemas) {
         if (schema.check(value)) {
-          try {
-            return schema.parse(value) as JsonSchemaInfered<S[number]>;
-          } catch (error) {
-            errors.push(String(error));
-          }
+          return schema.parse(value) as JsonSchemaInfered<S[number]>;
         }
       }
       throw new Error(`No union variant matched:\n- ${errors.join("\n- ")}`);
     },
     guard: jsonSchemaGuard<JsonSchemaInfered<S[number]>>,
   } as JsonSchema<JsonSchemaInfered<S[number]>>;
+}
+
+function withContext<T>(message: string, fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    throw new Error(
+      `${message}\n > ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }

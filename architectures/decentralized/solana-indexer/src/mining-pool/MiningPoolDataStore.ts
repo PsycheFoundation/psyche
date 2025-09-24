@@ -27,6 +27,16 @@ export class MiningPoolDataStore {
     }
   }
 
+  public getInvalidatedPoolsAddresses(): string[] {
+    const dirtyPools: string[] = [];
+    for (const [poolAddress, pool] of this.pools.entries()) {
+      if (pool.latestAccountState === undefined) {
+        dirtyPools.push(poolAddress);
+      }
+    }
+    return dirtyPools;
+  }
+
   public savePoolUserDeposit(
     ordering: bigint,
     poolAddress: string,
@@ -50,7 +60,24 @@ export class MiningPoolDataStore {
     this.invalidatePoolAccountState(poolAddress, ordering);
   }
 
-  public getPools(): ReadonlyMap<string, MiningPoolDataStorePool> {
+  public savePoolAccountState(
+    poolAddress: string,
+    accountState: MiningPoolDataStorePoolAccount,
+  ) {
+    let pool = this.pools.get(poolAddress);
+    if (pool != undefined) {
+      pool.latestAccountState = accountState;
+    } else {
+      pool = {
+        latestAccountState: accountState,
+        latestAccountOrdering: 0n,
+        depositAmountPerUser: new Map<string, bigint>(),
+      };
+      this.pools.set(poolAddress, pool);
+    }
+  }
+
+  public getPools(): ReadonlyMap<string, Readonly<MiningPoolDataStorePool>> {
     return this.pools;
   }
 }

@@ -1,7 +1,7 @@
 import {
   JsonSchemaInfered,
   jsonSchemaNull,
-  jsonSchemaNumber,
+  jsonSchemaNumberConst,
   jsonSchemaObject,
   jsonSchemaRecord,
   jsonSchemaString,
@@ -13,8 +13,19 @@ import {
   MiningPoolDataStorePool,
 } from "./MiningPoolDataStore";
 
-const miningPoolJsonSchema = jsonSchemaObject({
-  version: jsonSchemaNumber(),
+const jsonSchemaV2 = jsonSchemaObject({
+  version: jsonSchemaNumberConst(2),
+  pools: jsonSchemaRecord(
+    jsonSchemaObject({
+      latestAccountState: jsonSchemaUnion(jsonSchemaNull(), jsonSchemaString()),
+      latestAccountOrdering: jsonSchemaString(),
+      depositAmountPerUser: jsonSchemaRecord(jsonSchemaString()),
+    }),
+  ),
+});
+
+const jsonSchemaV3 = jsonSchemaObject({
+  version: jsonSchemaNumberConst(3),
   pools: jsonSchemaRecord(
     jsonSchemaObject({
       latestAccountState: jsonSchemaUnion(jsonSchemaNull(), jsonSchemaString()),
@@ -27,7 +38,7 @@ const miningPoolJsonSchema = jsonSchemaObject({
 export function miningPoolDataToJson(
   dataStore: MiningPoolDataStore,
 ): JsonValue {
-  const pools: JsonSchemaInfered<typeof miningPoolJsonSchema>["pools"] = {};
+  const pools: JsonSchemaInfered<typeof jsonSchemaV2>["pools"] = {};
   for (const [poolAddress, pool] of dataStore.getPools().entries()) {
     const depositAmountPerUser: Record<string, string> = {};
     for (const [user, amount] of pool.depositAmountPerUser.entries()) {
@@ -43,7 +54,7 @@ export function miningPoolDataToJson(
       depositAmountPerUser,
     };
   }
-  return miningPoolJsonSchema.guard({
+  return jsonSchemaV2.guard({
     version: 2,
     pools,
   });
@@ -52,10 +63,7 @@ export function miningPoolDataToJson(
 export function miningPoolDataFromJson(
   jsonValue: JsonValue,
 ): MiningPoolDataStore {
-  const jsonParsed = miningPoolJsonSchema.parse(jsonValue);
-  if (jsonParsed.version !== 2) {
-    throw new Error("Unsupported version");
-  }
+  const jsonParsedV2 = jsonSchemaV2.parse(jsonValue);
   const pools = new Map<string, MiningPoolDataStorePool>();
   for (const [poolAddress, poolParsed] of Object.entries(jsonParsed.pools)) {
     const depositAmountPerUser = new Map<string, bigint>();

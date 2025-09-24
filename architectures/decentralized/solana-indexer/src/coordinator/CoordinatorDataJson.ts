@@ -1,14 +1,14 @@
-import { jsonSchemaNumber, jsonSchemaObject, JsonValue } from "../json";
+import { jsonSchemaNumberConst, jsonSchemaObject, JsonValue } from "../json";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
-const coordinatorJsonSchema = jsonSchemaObject({
-  version: jsonSchemaNumber(),
+const jsonSchemaV1 = jsonSchemaObject({
+  version: jsonSchemaNumberConst(1),
 });
 
 export function coordinatorDataToJson(
   dataStore: CoordinatorDataStore,
 ): JsonValue {
-  return coordinatorJsonSchema.guard({
+  return jsonSchemaV1.guard({
     version: 1,
   });
 }
@@ -16,9 +16,7 @@ export function coordinatorDataToJson(
 export function coordinatorDataFromJson(
   jsonValue: JsonValue,
 ): CoordinatorDataStore {
-  const typedValue = coordinatorJsonSchema.parse(jsonValue);
-  if (typedValue.version !== 1) {
-    throw new Error("Unsupported version");
-  }
+  const typedValue = jsonSchemaV1.parse(jsonValue);
+  // TODO - use typedValue
   return new CoordinatorDataStore();
 }

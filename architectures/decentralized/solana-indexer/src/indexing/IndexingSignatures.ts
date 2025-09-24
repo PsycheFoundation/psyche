@@ -13,7 +13,7 @@ export async function indexingSignaturesLoop(
     signature: TransactionSignature,
     ordering: bigint,
   ) => Promise<void>,
-  onCheckpoint: (checkpoint: IndexingCheckpoint) => Promise<void>,
+  onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<never> {
   const indexedOrderedChunks = startingCheckpoint.indexedOrderedChunks.slice();
   while (true) {
@@ -36,7 +36,7 @@ async function indexingSignaturesUntilNow(
     signature: TransactionSignature,
     ordering: bigint,
   ) => Promise<void>,
-  onCheckpoint: (checkpoint: IndexingCheckpoint) => Promise<void>,
+  onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<void> {
   let currChunkIndex = -1;
   while (true) {

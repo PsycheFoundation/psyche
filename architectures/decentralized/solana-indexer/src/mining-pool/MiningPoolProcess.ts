@@ -1,51 +1,36 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
-import { fileJsonRead, fileJsonWrite } from "../file";
 import {
   IndexingCheckpoint,
   indexingCheckpointFromJson,
   indexingCheckpointToJson,
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
-import {
-  jsonSchemaObject,
-  jsonSchemaString,
-  jsonSchemaValue,
-  JsonValue,
-} from "../json";
+import { jsonSchemaObject, jsonSchemaString, JsonValue } from "../json";
+import { saveRead, saveWrite } from "../save";
 import {
   miningPoolDataFromJson,
   miningPoolDataToJson,
 } from "./MiningPoolDataJson";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
-const saveFileJsonSchema = jsonSchemaObject({
-  updatedAt: jsonSchemaString(),
-  checkpoint: jsonSchemaValue(),
-  dataStore: jsonSchemaValue(),
-});
-
 export async function miningPoolProcess(
   cluster: string,
   endpoint: ToolboxEndpoint,
   programAddress: PublicKey,
 ): Promise<void> {
-  const fileJson = `mining_pool_${cluster}_${programAddress.toBase58()}.json`;
+  const saveName = `mining_pool_${cluster}_${programAddress.toBase58()}`;
   let checkpoint: IndexingCheckpoint;
   let dataStore: MiningPoolDataStore;
   try {
-    const jsonValue = await fileJsonRead(fileJson);
-    const jsonParsed = saveFileJsonSchema.parse(jsonValue);
-    checkpoint = indexingCheckpointFromJson(jsonParsed.checkpoint);
-    dataStore = miningPoolDataFromJson(jsonParsed.dataStore);
-    console.log(
-      "Loaded mining pool state from JSON from:",
-      jsonParsed.updatedAt,
-    );
+    const saveContent = await saveRead(saveName);
+    checkpoint = indexingCheckpointFromJson(saveContent.checkpoint);
+    dataStore = miningPoolDataFromJson(saveContent.dataStore);
+    console.log("Loaded mining pool state saved from:", saveContent.updatedAt);
   } catch (error) {
-    console.warn("Failed to read existing mining pool JSON, starting fresh");
     checkpoint = new IndexingCheckpoint([]);
     dataStore = new MiningPoolDataStore(new Map());
+    console.warn("Failed to read existing mining pool JSON, starting fresh");
   }
   const idlService = new ToolboxIdlService();
   const idlProgram = await idlService.getOrResolveProgram(
@@ -67,25 +52,27 @@ export async function miningPoolProcess(
       ordering,
     ) => {
       if (instructionName === "lender_deposit") {
-        await miningPoolProcessLenderDeposit(
+        await processLenderDeposit(
           dataStore,
+          ordering,
           instructionAddresses,
           instructionPayload,
-          ordering,
         );
       }
     },
     async (checkpoint) => {
-      for (const [poolAddress, poolValue] of dataStore.getPools()) {
-        if (poolValue.latestAccountState === undefined) {
-          const accountInfo = await idlService.getAndInferAndDecodeAccount(
-            endpoint,
-            new PublicKey(poolAddress),
-          );
-          poolValue.latestAccountState = accountInfo.state;
-        }
+      for (const poolAddress of dataStore.getInvalidatedPoolsAddresses()) {
+        const accountInfo = await idlService.getAndInferAndDecodeAccount(
+          endpoint,
+          new PublicKey(poolAddress),
+        );
+        processRefreshPoolAccountState(
+          dataStore,
+          poolAddress,
+          accountInfo.state as JsonValue,
+        );
       }
-      await fileJsonWrite(fileJson, {
+      await saveWrite(saveName, {
         updatedAt: new Date().toISOString(),
         checkpoint: indexingCheckpointToJson(checkpoint),
         dataStore: miningPoolDataToJson(dataStore),
@@ -94,17 +81,26 @@ export async function miningPoolProcess(
   );
 }
 
+const poolJsonSchema = jsonSchemaObject({});
+export async function processRefreshPoolAccountState(
+  dataStore: MiningPoolDataStore,
+  poolAddress: string,
+  accountState: JsonValue,
+): Promise<void> {
+  const accountParsed = poolJsonSchema.parse(accountState);
+  dataStore.savePoolAccountState(poolAddress, accountParsed);
+}
+
 const lenderParamsJsonSchema = jsonSchemaObject({
   params: jsonSchemaObject({
     collateral_amount: jsonSchemaString(),
   }),
 });
-
-export async function miningPoolProcessLenderDeposit(
+export async function processLenderDeposit(
   dataStore: MiningPoolDataStore,
+  ordering: bigint,
   instructionAddresses: Map<string, PublicKey>,
   instructionPayload: JsonValue,
-  ordering: bigint,
 ): Promise<void> {
   const pool = instructionAddresses.get("pool")?.toBase58();
   if (pool === undefined) {

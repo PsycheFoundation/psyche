@@ -2,6 +2,7 @@ import { TransactionSignature } from "@solana/web3.js";
 import {
   jsonSchemaArray,
   jsonSchemaNumber,
+  jsonSchemaNumberConst,
   jsonSchemaObject,
   jsonSchemaString,
   JsonValue,
@@ -16,17 +17,19 @@ export type IndexingCheckpointChunk = {
 };
 
 export class IndexingCheckpoint {
-  public readonly indexedOrderedChunks: Readonly<
-    Array<IndexingCheckpointChunk>
+  public readonly indexedOrderedChunks: ReadonlyArray<
+    Readonly<IndexingCheckpointChunk>
   >;
 
-  constructor(indexedOrderedChunks: Readonly<Array<IndexingCheckpointChunk>>) {
+  constructor(
+    indexedOrderedChunks: ReadonlyArray<Readonly<IndexingCheckpointChunk>>,
+  ) {
     this.indexedOrderedChunks = indexedOrderedChunks;
   }
 }
 
-const indexingCheckpointJsonSchema = jsonSchemaObject({
-  version: jsonSchemaNumber(),
+const jsonSchemaV1 = jsonSchemaObject({
+  version: jsonSchemaNumberConst(1),
   indexedOrderedChunks: jsonSchemaArray(
     jsonSchemaObject({
       orderingHigh: jsonSchemaString(),
@@ -41,7 +44,7 @@ const indexingCheckpointJsonSchema = jsonSchemaObject({
 export function indexingCheckpointToJson(
   checkpoint: IndexingCheckpoint,
 ): JsonValue {
-  return indexingCheckpointJsonSchema.guard({
+  return jsonSchemaV1.guard({
     version: 1,
     indexedOrderedChunks: checkpoint.indexedOrderedChunks.map((chunk) => ({
       orderingHigh: String(chunk.orderingHigh),
@@ -56,10 +59,7 @@ export function indexingCheckpointToJson(
 export function indexingCheckpointFromJson(
   jsonValue: JsonValue,
 ): IndexingCheckpoint {
-  const jsonParsed = indexingCheckpointJsonSchema.parse(jsonValue);
-  if (jsonParsed.version !== 1) {
-    throw new Error("Unsupported version");
-  }
+  const jsonParsed = jsonSchemaV1.parse(jsonValue);
   return new IndexingCheckpoint(
     jsonParsed.indexedOrderedChunks.map((chunkValue) => {
       return {

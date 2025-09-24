@@ -1,46 +1,35 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
-import { fileJsonRead, fileJsonWrite } from "../file";
 import {
   IndexingCheckpoint,
   indexingCheckpointFromJson,
   indexingCheckpointToJson,
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
-import { jsonSchemaObject, jsonSchemaString, jsonSchemaValue } from "../json";
+import { saveRead, saveWrite } from "../save";
 import {
   coordinatorDataFromJson,
   coordinatorDataToJson,
 } from "./CoordinatorDataJson";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
-const saveFileJsonSchema = jsonSchemaObject({
-  updatedAt: jsonSchemaString(),
-  checkpoint: jsonSchemaValue(),
-  dataStore: jsonSchemaValue(),
-});
-
 export async function coordinatorProcess(
   cluster: string,
   endpoint: ToolboxEndpoint,
   programAddress: PublicKey,
 ): Promise<void> {
-  const fileJson = `coordinator_${cluster}_${programAddress.toBase58()}.json`;
+  const saveName = `coordinator_${cluster}_${programAddress.toBase58()}.json`;
   let checkpoint: IndexingCheckpoint;
   let dataStore: CoordinatorDataStore;
   try {
-    const jsonValue = await fileJsonRead(fileJson);
-    const jsonContent = saveFileJsonSchema.parse(jsonValue);
-    checkpoint = indexingCheckpointFromJson(jsonContent.checkpoint);
-    dataStore = coordinatorDataFromJson(jsonContent.dataStore);
-    console.log(
-      "Loaded coordinator state from JSON from:",
-      jsonContent.updatedAt,
-    );
+    const saveContent = await saveRead(saveName);
+    checkpoint = indexingCheckpointFromJson(saveContent.checkpoint);
+    dataStore = coordinatorDataFromJson(saveContent.dataStore);
+    console.log("Loaded coordinator state saved from:", saveContent.updatedAt);
   } catch (error) {
-    console.warn("Failed to read existing coordinator JSON, starting fresh");
     checkpoint = new IndexingCheckpoint([]);
     dataStore = new CoordinatorDataStore();
+    console.warn("Failed to read existing coordinator JSON, starting fresh");
   }
   const idlService = new ToolboxIdlService();
   const idlProgram = await idlService.getOrResolveProgram(
@@ -73,10 +62,10 @@ export async function coordinatorProcess(
       }
     },
     async (checkpoint) => {
-      await fileJsonWrite(fileJson, {
+      await saveWrite(saveName, {
         updatedAt: new Date().toISOString(),
         checkpoint: indexingCheckpointToJson(checkpoint),
-        store: coordinatorDataToJson(dataStore),
+        dataStore: coordinatorDataToJson(dataStore),
       });
     },
   );
