@@ -18,8 +18,9 @@ jobs:
           hatchet-protocol: 'rampage' # ~130GB, maximum aggression
           nix-permission-edict: true # Make /nix writable by user
           witness-carnage: true # Optional: see what's being removed
-          root-safe-haven: '1024' # Reduce to 1GB
-          mnt-safe-haven: '512' # Reduce to 512MB
+          root-safe-haven: '20480' # Give 20GB to root
+          mnt-safe-haven: '512' # Keep 512MB for /mnt
+          nix-store-size: '61440' # Give 60GB to Nix store
 
       # Install Nix AFTER Nothing but Nix
       - uses: nixbuild/nix-quick-install-action@v31
