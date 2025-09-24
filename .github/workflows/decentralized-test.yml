@@ -55,4 +55,4 @@ jobs:
 
       - name: Run decentralized integration test
         run: |
-          nix develop --command just decentralized-integration-test test_two_clients_three_epochs_run
+          nix develop .#psyche-cpu --command just decentralized-integration-test-cpu test_two_clients_three_epochs_run

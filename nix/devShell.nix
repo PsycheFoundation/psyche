@@ -104,6 +104,40 @@
               '';
             }
           );
+          psyche-cpu = craneLib.devShell {
+            inherit env;
+            packages =
+              with pkgs;
+              [
+                # Task runner
+                just
+
+                # Solana tools needed for anchor build
+                inputs'.solana-pkgs.packages.solana
+                inputs'.solana-pkgs.packages.anchor
+
+                # Build tools for Rust compilation
+                pkg-config
+                perl
+                openssl
+
+                # For Docker image building
+                docker
+                nix-output-monitor
+
+                # Basic utilities
+                jq
+                gnused
+              ]
+              ++ rustWorkspaceArgs.nativeBuildInputs;
+
+            shellHook = ''
+              echo "Psyche CPU development shell for integration tests.";
+              echo "Available commands:";
+              echo "  - anchor build (for Solana programs)";
+              echo "  - just nix build_docker_* (for Docker images)";
+            '';
+          };
         };
     };
 }

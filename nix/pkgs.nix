@@ -42,6 +42,16 @@ lib.makeScope pkgs.newScope (
       )
     );
 
+    rustPackagesCpuOnly = lib.mapAttrs (_: lib.id) (
+      lib.genAttrs (rustPackageNames ++ rustExampleNames) (
+        name:
+        self.psycheLib.buildRustPackageCpuOnly {
+          inherit name;
+          isExample = lib.elem name rustExampleNames;
+        }
+      )
+    );
+
     externalRustPackages = {
       solana_toolbox_cli = pkgs.rustPlatform.buildRustPackage rec {
         pname = "solana_toolbox_cli";
@@ -92,6 +102,8 @@ lib.makeScope pkgs.newScope (
         pkgs
         nixglhostRustPackages
         nixglhostRustPackagesNoPython
+        rustPackagesNoPython
+        rustPackagesCpuOnly
         inputs
         externalRustPackages
         ;
@@ -110,6 +122,7 @@ lib.makeScope pkgs.newScope (
     }
     // rustPackages
     // rustPackagesNoPython
+    // rustPackagesCpuOnly
     // externalRustPackages
     // nixglhostRustPackages
     // nixglhostRustPackagesNoPython

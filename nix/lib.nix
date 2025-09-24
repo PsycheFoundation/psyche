@@ -26,6 +26,19 @@ let
     filter = path: type: (testResourcesFilter path type) || (craneLib.filterCargoSources path type);
   };
 
+  srcCpuOnly = lib.cleanSourceWith {
+    src = ../.;
+    filter =
+      path: type:
+      # Exclude python directories for CPU-only builds
+      let
+        pythonFilter =
+          path:
+          !(lib.hasInfix "/python/" path || lib.hasInfix "/python\n" path || lib.hasSuffix "/python" path);
+      in
+      (pythonFilter path) && ((testResourcesFilter path type) || (craneLib.filterCargoSources path type));
+  };
+
   env = {
     LIBTORCH_USE_PYTORCH = 1;
   };
@@ -57,11 +70,36 @@ let
     );
   };
 
+  rustWorkspaceDepsCpu = {
+    nativeBuildInputs = with pkgs; [
+      pkg-config
+      perl
+      python312 # Add Python for torch-sys build script
+    ];
+
+    buildInputs = with pkgs; [
+      openssl
+      # Add PyTorch for CPU-only builds (without CUDA)
+      python312Packages.torch-bin
+    ];
+  };
+
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
     # Enable parallelism feature only on CUDA-supported platforms
     cargoExtraArgs = "--features python" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
+  };
+
+  rustWorkspaceArgsCpu = rustWorkspaceDepsCpu // {
+    inherit src;
+    env = {
+      # Add PyTorch environment for CPU-only builds
+      LIBTORCH_USE_PYTORCH = "1";
+    };
+    strictDeps = true;
+    # Build only specific packages needed for solana client, avoiding workspace dependencies
+    cargoExtraArgs = "--package psyche-solana-client --no-default-features";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
@@ -122,6 +160,28 @@ let
         pname = name;
         cargoExtraArgs =
           (lib.optionalString (pkgs.config.cudaSupport) "--features parallelism")
+          + (if isExample then " --example ${name}" else " --bin ${name}");
+        doCheck = false;
+
+        meta.mainProgram = name;
+      }
+    );
+
+  buildRustPackageCpuOnly =
+    {
+      name,
+      isExample ? false,
+    }:
+    let
+      cargoArtifactsCpu = craneLib.buildDepsOnly rustWorkspaceArgsCpu;
+    in
+    craneLib.buildPackage (
+      rustWorkspaceArgsCpu
+      // {
+        cargoArtifacts = cargoArtifactsCpu;
+        pname = name;
+        cargoExtraArgs =
+          rustWorkspaceArgsCpu.cargoExtraArgs
           + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
 
@@ -277,10 +337,12 @@ in
     craneLib
     buildSolanaIdl
     rustWorkspaceArgs
+    rustWorkspaceArgsCpu
     rustWorkspaceArgsWithPython
     cargoArtifacts
     buildRustPackageWithPsychePythonEnvironment
     buildRustPackageWithoutPython
+    buildRustPackageCpuOnly
     buildRustWasmTsPackage
     useHostGpuDrivers
     env

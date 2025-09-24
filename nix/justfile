@@ -26,6 +26,12 @@ build_docker_solana_test_client_no_python:
     nix-results/docker-psyche-solana-test-client-no-python | docker load
     docker tag psyche-solana-test-client-no-python:latest psyche-solana-test-client:latest
 
+# Build the image for the solana client used for testing (CPU only, no GPU dependencies)
+build_docker_solana_test_client_cpu:
+    nix build .#docker-psyche-solana-test-client-cpu --out-link nix-results/docker-psyche-solana-test-client-cpu
+    nix-results/docker-psyche-solana-test-client-cpu | docker load
+    docker tag psyche-solana-test-client-cpu:latest psyche-solana-test-client:latest
+
 # Build the image for the solana vaidator used for testing
 build_docker_solana_test_validator:
     PSYCHE_HOME=$(realpath ..) nix build .#docker-psyche-solana-test-validator --out-link nix-results/docker-psyche-solana-test-validator --impure
