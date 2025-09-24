@@ -70,17 +70,36 @@ let
     );
   };
 
+  # Create CPU-only nixpkgs without CUDA support
+  pkgsCpuOnly = import inputs.nixpkgs (
+    (import ./nixpkgs.nix { inherit inputs system; })
+    // {
+      config = {
+        allowUnfree = true;
+        cudaSupport = false; # Explicitly disable CUDA
+        metalSupport = false;
+      };
+    }
+  );
+
   rustWorkspaceDepsCpu = {
     nativeBuildInputs = with pkgs; [
       pkg-config
       perl
-      python312 # Add Python for torch-sys build script
+      python312
     ];
 
     buildInputs = with pkgs; [
       openssl
-      # Add PyTorch for CPU-only builds (without CUDA)
+      # Use the correct torch-bin version that matches torch-sys expectations
       python312Packages.torch-bin
+      # Add minimal CUDA libraries needed for compilation (but runtime will be CPU-only)
+      cudaPackages.libcublas.lib
+      cudaPackages.libcufft.lib
+      cudaPackages.libcurand.lib
+      cudaPackages.libcusparse.lib
+      cudaPackages.libcusolver.lib
+      cudaPackages.cuda_cudart
     ];
   };
 
@@ -96,6 +115,11 @@ let
     env = {
       # Add PyTorch environment for CPU-only builds
       LIBTORCH_USE_PYTORCH = "1";
+      # Bypass version check since we're using different PyTorch version
+      LIBTORCH_BYPASS_VERSION_CHECK = "1";
+      # Force CPU-only execution even with CUDA libraries available
+      CUDA_VISIBLE_DEVICES = "";
+      TORCH_CUDA_ARCH_LIST = "";
     };
     strictDeps = true;
     # Build only specific packages needed for solana client, avoiding workspace dependencies
