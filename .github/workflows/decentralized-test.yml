@@ -16,6 +16,7 @@ jobs:
       - uses: wimpysworld/nothing-but-nix@main
         with:
           hatchet-protocol: 'cleave' # ~115GB, removes large packages but preserves core functionality
+          nix-permission-edict: true # Make /nix writable by user (fixes the error)
           witness-carnage: true # Optional: see what's being removed
           root-safe-haven: '2048' # Keep 2GB safe on root
           mnt-safe-haven: '1024' # Keep 1GB safe on mnt
