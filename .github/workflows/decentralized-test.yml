@@ -53,20 +53,23 @@ jobs:
           docker-compose --version
           docker system prune -af
 
-      - name: Install Rust and Cargo
+      - name: Install Solana and Anchor
         run: |
+          # Install Rust
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           source ~/.cargo/env
 
-      - name: Install Anchor CLI
-        run: |
-          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
-          avm install latest
-          avm use latest
+          # Install Solana CLI
+          sh -c "$(curl -sSfL https://release.solana.com/v1.18.18/install)"
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+
+          # Install Anchor CLI
+          cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked --force
 
       - name: Build Anchor programs
         run: |
           source ~/.cargo/env
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
           cd architectures/decentralized/solana-coordinator && anchor build
           cd architectures/decentralized/solana-authorizer && anchor build
 
