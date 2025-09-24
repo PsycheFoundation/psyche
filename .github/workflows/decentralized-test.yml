@@ -53,6 +53,11 @@ jobs:
           docker-compose --version
           docker system prune -af
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
       - name: Install Solana and Anchor
         run: |
           # Install Rust
@@ -63,8 +68,8 @@ jobs:
           sh -c "$(curl -sSfL https://release.solana.com/v1.18.18/install)"
           export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 
-          # Install Anchor CLI
-          cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked --force
+          # Install Anchor CLI using precompiled binary
+          cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.30.1 --locked
 
       - name: Build Anchor programs
         run: |
