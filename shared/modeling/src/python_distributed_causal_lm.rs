@@ -193,6 +193,7 @@ impl PythonDistributedCausalLM {
         attn_implementation: AttentionImplementation,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
+        port: u16,
     ) -> Result<Self, PythonDistributedCausalLMError> {
         let world_size = parallelism.dp * parallelism.tp;
         let rank = match device {
@@ -205,7 +206,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = "tcp://127.0.0.1:34567".to_string();
+        let init_method = format!("tcp://127.0.0.1:{}", port);
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();
