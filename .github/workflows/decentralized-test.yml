@@ -1,40 +1,26 @@
 name: Decentralized Integration Test
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 jobs:
   test-two-clients-three-epochs:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
-
-      - name: Additional disk cleanup
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          docker system prune -af
-          df -h
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # Replace your disk cleanup with Nothing but Nix
+      - uses: wimpysworld/nothing-but-nix@main
+        with:
+          hatchet-protocol: 'cleave' # ~115GB, removes large packages but preserves core functionality
+          witness-carnage: true # Optional: see what's being removed
+          root-safe-haven: '2048' # Keep 2GB safe on root
+          mnt-safe-haven: '1024' # Keep 1GB safe on mnt
+
+      # Install Nix AFTER Nothing but Nix
       - uses: nixbuild/nix-quick-install-action@v31
         with:
           nix_conf: |
@@ -43,15 +29,30 @@ jobs:
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
+      # Check if Docker survived and reinstall if needed
       - name: Setup Docker
         run: |
-          # Docker is already available in GitHub Actions
+          if ! command -v docker &> /dev/null; then
+            echo "Docker was removed, reinstalling..."
+            sudo apt-get update
+            sudo apt-get install -y docker.io
+            sudo systemctl start docker
+            sudo usermod -aG docker $USER
+          fi
           docker --version
-          # Install docker-compose
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
+
+          # Install docker-compose if not present
+          if ! command -v docker-compose &> /dev/null; then
+            sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+          fi
           docker-compose --version
+
+          # Final cleanup
           docker system prune -af
+
+          # Show available space
+          df -h
 
       - name: Run decentralized integration test
         run: |
