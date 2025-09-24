@@ -116,13 +116,22 @@ let
       isExample ? false,
     }:
     craneLib.buildPackage (
-      rustWorkspaceArgs
+      {
+        inherit env src;
+        strictDeps = true;
+        # Minimal dependencies for CPU-only CI testing
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+          perl
+        ];
+        buildInputs = with pkgs; [
+          openssl
+        ];
+      }
       // {
         inherit cargoArtifacts;
         pname = name;
-        cargoExtraArgs =
-          (lib.optionalString (pkgs.config.cudaSupport) "--features parallelism")
-          + (if isExample then " --example ${name}" else " --bin ${name}");
+        cargoExtraArgs = if isExample then " --example ${name}" else " --bin ${name}";
         doCheck = false;
 
         meta.mainProgram = name;
