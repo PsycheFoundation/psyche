@@ -110,6 +110,25 @@ let
           --prefix PATH : "${pythonWithPsycheExtension}/bin"
       '';
 
+  buildRustPackageWithoutPython =
+    {
+      name,
+      isExample ? false,
+    }:
+    craneLib.buildPackage (
+      rustWorkspaceArgs
+      // {
+        inherit cargoArtifacts;
+        pname = name;
+        cargoExtraArgs =
+          (lib.optionalString (pkgs.config.cudaSupport) "--features parallelism")
+          + (if isExample then " --example ${name}" else " --bin ${name}");
+        doCheck = false;
+
+        meta.mainProgram = name;
+      }
+    );
+
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
   # like do the buildDepsOnly for not the workspace, but my specific package that *happens* to be in a workspace.
@@ -261,6 +280,7 @@ in
     rustWorkspaceArgsWithPython
     cargoArtifacts
     buildRustPackageWithPsychePythonEnvironment
+    buildRustPackageWithoutPython
     buildRustWasmTsPackage
     useHostGpuDrivers
     env
