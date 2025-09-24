@@ -33,6 +33,7 @@ let
     {
       imageName,
       solanaClientPackage,
+      minimal ? false,
     }:
     pkgs.dockerTools.streamLayeredImage {
       name = imageName;
@@ -131,9 +132,48 @@ let
       solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nixglhost";
     };
 
-    docker-psyche-solana-test-client-no-python = mkSolanaTestClientImage {
-      imageName = "psyche-solana-test-client-no-python";
-      solanaClientPackage = nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python";
+    docker-psyche-solana-test-client-no-python = pkgs.dockerTools.streamLayeredImage {
+      name = "psyche-solana-test-client-no-python";
+      tag = "latest";
+
+      # Minimal CPU-only image for CI testing
+      contents = with pkgs; [
+        bashInteractive
+        busybox
+        cacert
+        nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python"
+        externalRustPackages.solana_toolbox_cli
+
+        # Minimal system structure
+        (pkgs.runCommand "minimal-system-setup" { } ''
+                    mkdir -p $out/etc $out/tmp $out/var/tmp $out/run
+                    cat > $out/etc/passwd << EOF
+          root:x:0:0:root:/root:/bin/bash
+          nobody:x:65534:65534:nobody:/nonexistent:/bin/false
+          EOF
+                    cat > $out/etc/group << EOF
+          root:x:0:
+          nobody:x:65534:
+          EOF
+                    chmod 1777 $out/tmp $out/var/tmp
+                    chmod 755 $out/run
+        '')
+
+        (pkgs.runCommand "entrypoint" { } ''
+          mkdir -p $out/bin
+          cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
+          cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
+          cp ${../scripts/join-authorization-create.sh} $out/bin/join-authorization-create.sh
+          chmod +x $out/bin/client_test_entrypoint.sh
+          chmod +x $out/bin/run_owner_entrypoint.sh
+          chmod +x $out/bin/join-authorization-create.sh
+        '')
+      ];
+
+      config = {
+        # No GPU capabilities for CPU-only testing
+        Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
+      };
     };
 
     docker-psyche-solana-test-validator = pkgs.dockerTools.streamLayeredImage {
