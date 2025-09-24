@@ -15,11 +15,11 @@ jobs:
       # Replace your disk cleanup with Nothing but Nix
       - uses: wimpysworld/nothing-but-nix@main
         with:
-          hatchet-protocol: 'cleave' # ~115GB, removes large packages but preserves core functionality
+          hatchet-protocol: 'rampage' # ~130GB, maximum aggression
           nix-permission-edict: true # Make /nix writable by user
           witness-carnage: true # Optional: see what's being removed
-          root-safe-haven: '2048' # Keep 2GB safe on root
-          mnt-safe-haven: '1024' # Keep 1GB safe on mnt
+          root-safe-haven: '1024' # Reduce to 1GB
+          mnt-safe-haven: '512' # Reduce to 512MB
 
       # Install Nix AFTER Nothing but Nix
       - uses: nixbuild/nix-quick-install-action@v31
@@ -74,4 +74,21 @@ jobs:
 
       - name: Run decentralized integration test
         run: |
+          # Clear any existing build artifacts and temp files
+          sudo rm -rf /tmp/* || true
+          sudo rm -rf /var/tmp/* || true
+          docker system prune -af || true
+
+          # Monitor disk usage during build
+          df -h
+          echo "Starting Nix build with aggressive cleanup..."
+
+          # Configure Nix for low disk usage
+          mkdir -p ~/.config/nix
+          echo "max-jobs = 1" >> ~/.config/nix/nix.conf
+          echo "cores = 2" >> ~/.config/nix/nix.conf
+          echo "keep-outputs = false" >> ~/.config/nix/nix.conf
+          echo "keep-derivations = false" >> ~/.config/nix/nix.conf
+
+          # Run the test with periodic cleanup
           nix develop .#psyche-cpu --command just decentralized-integration-test-cpu test_two_clients_three_epochs_run
