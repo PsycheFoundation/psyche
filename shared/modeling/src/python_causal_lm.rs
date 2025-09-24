@@ -124,7 +124,7 @@ pub struct PythonCausalLM {
     bos_token_id: Option<i64>,
     eos_token_id: Option<EosToks>,
     max_context_length: usize,
-    pure_tp: bool,
+    pure_fsdp: bool,
 }
 
 unsafe impl Send for PythonCausalLM {}
@@ -189,8 +189,8 @@ impl PythonCausalLM {
         let max_context_length = override_max_position_embeddings
             .or(config.max_position_embeddings())
             .unwrap_or(2048); // Default fallback
-        let pure_tp = parallelism
-            .map(|x| x.dp == 1 && x.tp != 1)
+        let pure_fsdp = parallelism
+            .map(|x| x.dp >= 1 && x.tp == 1)
             .unwrap_or_default();
         Ok(Self {
             causal_lm,
@@ -199,7 +199,7 @@ impl PythonCausalLM {
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
             max_context_length,
-            pure_tp,
+            pure_fsdp,
         })
     }
 
@@ -212,7 +212,7 @@ impl PythonCausalLM {
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
             max_context_length: config.max_position_embeddings().unwrap_or(2048),
-            pure_tp: false,
+            pure_fsdp: false,
         }
     }
 
@@ -289,10 +289,7 @@ impl CausalLM for PythonCausalLM {
     }
 
     fn clip_grad_norm(&self, max_grad_norm: f64) {
-        assert!(
-            !self.pure_tp,
-            "Pure TP does not currently support clip_grad_norm"
-        );
+        assert!(!self.pure_fsdp, "Only pure FSDP supports `clip_grad_norm`");
         let result: PyResult<()> = Python::with_gil(|py| {
             let module = py.import("torch.nn.utils")?;
             let clip_grad_norm = module.getattr("clip_grad_norm_")?;
