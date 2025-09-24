@@ -148,17 +148,17 @@ class HfTransformersAuto(CausalLM):
                 tp_mesh = world_mesh["tp"]
 
                 if config.model_type != "llama" and config.model_type != "seed_oss":
-                    raise RuntimeError(
+                    raise ValueError(
                         f"Tensor parallelism not supported for model type `{config.model_type}` (yet)"
                     )
-
-                # Ensure TP degree divides key model dimensions for even head sharding
-                assert (
-                    config.num_attention_heads % tp == 0
-                ), f"TP degree {tp} must divide num_attention_heads {config.num_attention_heads}"
-                assert (
-                    config.num_key_value_heads % tp == 0
-                ), f"TP degree {tp} must divide num_key_value_heads {config.num_key_value_heads}"
+                if config.num_attention_heads % tp != 0:
+                    raise ValueError(
+                        f"TP degree {tp} must divide num_attention_heads {config.num_attention_heads}"
+                    )
+                if config.num_key_value_heads % tp != 0:
+                    raise ValueError(
+                        f"TP degree {tp} must divide num_key_value_heads {config.num_key_value_heads}"
+                    )
 
                 layer_plan = {
                     "self_attn.q_proj": ColwiseParallel(),
@@ -204,6 +204,7 @@ class HfTransformersAuto(CausalLM):
                         fully_shard(module, **fsdp_config)
                 model = fully_shard(model, **fsdp_config)
             else:
+                # pure TP
                 model = model.to(dtype=param_dtype)
         else:
             # if not sharding, apply param_dtype

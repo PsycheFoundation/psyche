@@ -124,6 +124,7 @@ pub struct PythonCausalLM {
     bos_token_id: Option<i64>,
     eos_token_id: Option<EosToks>,
     max_context_length: usize,
+    pure_tp: bool,
 }
 
 unsafe impl Send for PythonCausalLM {}
@@ -188,6 +189,9 @@ impl PythonCausalLM {
         let max_context_length = override_max_position_embeddings
             .or(config.max_position_embeddings())
             .unwrap_or(2048); // Default fallback
+        let pure_tp = parallelism
+            .map(|x| x.dp == 1 && x.tp != 1)
+            .unwrap_or_default();
         Ok(Self {
             causal_lm,
             device,
@@ -195,6 +199,7 @@ impl PythonCausalLM {
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
             max_context_length,
+            pure_tp,
         })
     }
 
@@ -207,6 +212,7 @@ impl PythonCausalLM {
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
             max_context_length: config.max_position_embeddings().unwrap_or(2048),
+            pure_tp: false,
         }
     }
 
@@ -283,24 +289,20 @@ impl CausalLM for PythonCausalLM {
     }
 
     fn clip_grad_norm(&self, max_grad_norm: f64) {
+        assert!(
+            !self.pure_tp,
+            "Pure TP does not currently support clip_grad_norm"
+        );
         let result: PyResult<()> = Python::with_gil(|py| {
             let module = py.import("torch.nn.utils")?;
             let clip_grad_norm = module.getattr("clip_grad_norm_")?;
-            let tensors: Result<Vec<_>, _> = self
+            let tensors: Vec<_> = self
                 .order
                 .entries
                 .iter()
-                .map(|x| match x.sharded {
-                    true => x
-                        .dtensor_references
-                        .gather_full_tensor
-                        .bind(py)
-                        .call1((x.python.clone_ref(py),))
-                        .map(|x| x.unbind()),
-                    false => Ok(x.python.clone_ref(py)),
-                })
+                .map(|x| x.python.clone_ref(py))
                 .collect();
-            clip_grad_norm.call1((tensors.unwrap(), max_grad_norm))?;
+            clip_grad_norm.call1((tensors, max_grad_norm))?;
             Ok(())
         });
         result.unwrap();
