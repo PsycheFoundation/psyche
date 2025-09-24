@@ -11,6 +11,16 @@
 set -euo pipefail
 
 source .multinode_env
+if [[ "${RPC:-}" == "" ]]; then
+    echo -e "\n[!] RPC env variable was not set."
+    exit 1
+fi
+
+if [[ "${WS_RPC:-}" == "" ]]; then
+    echo -e "\n[!] WS_RPC env variable was not set."
+    exit 1
+fi
+
 if [[ "${WALLET_PRIVATE_KEY_PATH:-}" == "" ]]; then
     echo -e "\n[!] WALLET_PRIVATE_KEY_PATH env variable was not set."
     exit 1
@@ -47,6 +57,24 @@ Node List:      $SLURM_JOB_NODELIST
 Model:          $HF_MODEL_REPO
 "
 
+echo -e "\n[!] Pulling Psyche client docker images...\n"
+
+for i in ${!NODE_LIST[@]}; do
+    node_hostname="${NODE_LIST[$i]}"
+
+    echo -e "\t * Pulling docker image on node $node_hostname\n"
+
+    srun --nodes=1 --nodelist="$node_hostname" \
+        --exclusive \
+        sudo docker pull nousresearch/psyche-client:latest &
+
+    sleep 1
+done
+
+echo -e "\n-------------------------------------\n"
+echo -e "Waiting for all nodes to download docker images...\n"
+wait
+
 echo -e "[+] Starting Psyche sidecars...\n"
 echo -e "---------------------------------------\n"
 for i in ${!sidecar_nodes[@]}; do
@@ -67,15 +95,15 @@ for i in ${!sidecar_nodes[@]}; do
         --shm-size=1g \
         --gpus all \
         --network host \
-        nousresearch/psyche-client &
+        nousresearch/psyche-client:latest &
 
-    echo "\n------------------------------------------\n"
+    echo -e "\n------------------------------------------\n"
     sleep 10
 done
 
 echo -e "[+] Starting Psyche master node...\n"
 
-raw_wallet_private_key=(cat $WALLET_PRIVATE_KEY_PATH)
+raw_wallet_private_key=$(cat $WALLET_PRIVATE_KEY_PATH)
 
 srun --nodes=1 --nodelist="$MASTER_NODE" \
     --exclusive \
@@ -85,8 +113,8 @@ srun --nodes=1 --nodelist="$MASTER_NODE" \
     -v /dev/infiniband:/dev/infiniband \
     -e RAW_WALLET_PRIVATE_KEY=$raw_wallet_private_key \
     -e DATA_PARALLELISM=$PSYCHE_WORLD_SIZE \
-    -e RPC="http://localhost:8899" \
-    -e WS_RPC="ws://localhost:8900" \
+    -e RPC=$RPC \
+    -e WS_RPC=$WS_RPC \
     -e RUN_ID="test" \
     -e NVIDIA_DRIVER_CAPABILITIES="all" \
     --shm-size=1g \
