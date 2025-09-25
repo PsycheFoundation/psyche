@@ -1,9 +1,10 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context, Result, bail};
 use big_block_sync::{sync, Config, PerNodeStats};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
+use iroh::endpoint::{RemoteInfo, TransportConfig};
 use iroh::{
     Watcher,
     endpoint::{RemoteInfo, TransportConfig},
@@ -20,7 +21,7 @@ pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::ClientMetrics;
-use router::{SupportedProtocols, spawn_router_with_allowlist};
+use router::{spawn_router_with_allowlist, SupportedProtocols};
 use state::State;
 use std::{
     fmt::Debug,
@@ -379,17 +380,32 @@ where
         tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
         Ok(())
     }
-
+#[warn(clippy::future_not_send)]
     pub async fn start_download_big_blob(
         &mut self,
         tickets: Vec<(NodeAddr, Hash)>,
+        _cancel: CancellationToken,
     ) -> Result<(Vec<u8>, HashMap<NodeId, PerNodeStats>)> {
         let config = Config {
             parallelism: 8,
             block_size: 1024,
         };
+        bail!("cancelled");
+/*
+        let marker = Default::default();
 
-        sync(tickets, config, 0).await
+        select! {
+            _ = _cancel.cancelled() => {
+                                                        bail!("cancelled");
+                                        }
+
+
+
+
+        res =sync(tickets, config, 0, &marker) => {
+        return res;}}
+*/
+        //Ok(vec![])
     }
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
@@ -436,7 +452,7 @@ where
     }
 
     //todo: this is so bad T_T
-    pub async fn add_downloadable_raw(&mut self, data: Vec<u8>, tag: u32)-> Result<BlobTicket> {
+    pub async fn add_downloadable_raw(&mut self, data: Vec<u8>, tag: u32) -> Result<BlobTicket> {
         let blob_res = self
             .blobs
             .client()
@@ -487,7 +503,6 @@ where
         let addr = self.router.endpoint().node_addr().await?;
         Ok(addr)
     }
-
 
     pub async fn remove_blobs_with_tag_less_than(&mut self, target_tag: u32) -> anyhow::Result<()> {
         let store = self.blobs_store.as_ref().clone();

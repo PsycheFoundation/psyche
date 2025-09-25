@@ -102,7 +102,7 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
   "psyche-impl",
 ] }
 rayon = "1.10.0"
-big-block-sync = {git = "https://github.com/ryleung-solana/big-block-sync.git", rev = "1d295d9868cca24b62e5183ceebd3b28efc09fae"}
+big-block-sync = {git = "https://github.com/ryleung-solana/big-block-sync.git", rev = "9677cdcd5368ead4b5110666261b311958e3d53f"}
 
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }
@@ -115,3 +115,6 @@ opt-level = 1
 
 [profile.test]
 opt-level = 1
+
+[workspace.lints.clippy]
+future_not_send = "deny"

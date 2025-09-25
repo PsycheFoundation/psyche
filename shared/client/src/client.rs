@@ -61,6 +61,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
     Client<T, A, B>
 {
     #[allow(clippy::too_many_arguments)]
+    #[warn(clippy::future_not_send)]
     pub fn new(
         backend: B,
         allowlist: allowlist::AllowDynamic,
@@ -849,7 +850,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 p2p.start_download(config_blob_ticket, 0, kind);
                                             }
                                             Some(model_addrs_and_hashes) = rx_model_download.recv() => {
-                                                match p2p.start_download_big_blob(model_addrs_and_hashes).await {
+                                                match p2p.start_download_big_blob(model_addrs_and_hashes, cancel.clone()).await {
                                                     Ok((data, _)) => {
                                                         if let Err(err) = sharable_model.deserialize_params(data).await {
                                                             error!("Error deserializing the model: {:?}, we'll not proceed", err);

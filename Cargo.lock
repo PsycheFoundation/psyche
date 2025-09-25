@@ -928,7 +928,7 @@ dependencies = [
 [[package]]
 name = "big-block-sync"
 version = "0.1.0"
-source = "git+https://github.com/ryleung-solana/big-block-sync.git?rev=1d295d9868cca24b62e5183ceebd3b28efc09fae#1d295d9868cca24b62e5183ceebd3b28efc09fae"
+source = "git+https://github.com/ryleung-solana/big-block-sync.git?rev=9677cdcd5368ead4b5110666261b311958e3d53f#9677cdcd5368ead4b5110666261b311958e3d53f"
 dependencies = [
  "anyhow",
  "bao-tree",

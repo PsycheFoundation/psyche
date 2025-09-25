@@ -1,2 +1,8 @@
 [build]
 rustflags = ["--cfg", "tokio_unstable"]
+
+[env]
+        LD_LIBRARY_PATH = "/home/ryleung/.venv/lib/python3.10/site-packages/torch/lib"
+        LIBTORCH_USE_PYTORCH= "1"
+        CPLUS_INCLUDE_PATH= "/usr/local/cuda/include"
+        LIBTORCH_BYPASS_VERSION_CHECK= "1"
