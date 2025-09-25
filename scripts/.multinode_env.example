@@ -1,0 +1,5 @@
+DATA_PARALLELISM=16
+HF_MODEL_REPO=NousResearch/Meta-Llama-3.1-8B
+WALLET_PRIVATE_KEY_PATH=/keys/id.json
+RPC=http://localhost:8899
+WS_RPC=ws://localhost:8900
