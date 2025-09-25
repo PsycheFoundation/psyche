@@ -37,6 +37,7 @@ let
         bashInteractive
         cacert
         coreutils
+        stdenv.cc
         rdma-core
         nixglhostRustPackages."psyche-solana-client-nixglhost"
         nixglhostRustPackages."psyche-centralized-client-nixglhost"
