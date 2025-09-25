@@ -2,8 +2,6 @@
   pkgs,
   nixglhostRustPackages,
   nixglhostRustPackagesNoPython,
-  rustPackagesNoPython,
-  rustPackagesCpuOnly,
   inputs,
   externalRustPackages,
 }:
@@ -171,11 +169,6 @@ let
           "8900/tcp" = { };
         };
       };
-    };
-
-    docker-psyche-solana-test-client-cpu = mkSolanaTestClientImage {
-      imageName = "psyche-solana-test-client-cpu";
-      solanaClientPackage = rustPackagesCpuOnly."psyche-solana-client";
     };
 
     docker-psyche-centralized-client = pkgs.dockerTools.streamLayeredImage {

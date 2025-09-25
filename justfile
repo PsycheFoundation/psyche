@@ -32,15 +32,6 @@ decentralized-integration-test test_name="":
         cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-# run integration decentralized tests (CPU only, no GPU dependencies)
-decentralized-integration-test-cpu test_name="":
-    just setup_test_infra_cpu
-    if [ "{{ test_name }}" = "" ]; then \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
-    else \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
-    fi
-
 # run integration decentralized chaos tests
 decentralized-chaos-integration-test test_name="":
     if [ "{{ test_name }}" = "" ]; then \
@@ -138,13 +129,6 @@ setup_test_infra:
     cd architectures/decentralized/solana-coordinator && anchor build
     cd architectures/decentralized/solana-authorizer && anchor build
     just nix build_docker_solana_test_client_no_python
-    just nix build_docker_solana_test_validator
-
-# Setup the infrastructure for testing locally using Docker (CPU only, no GPU dependencies).
-setup_test_infra_cpu:
-    cd architectures/decentralized/solana-coordinator && anchor build
-    cd architectures/decentralized/solana-authorizer && anchor build
-    just nix build_docker_solana_test_client_cpu
     just nix build_docker_solana_test_validator
 
 run_test_infra num_clients="1":

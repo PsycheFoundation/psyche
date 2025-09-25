@@ -26,19 +26,6 @@ let
     filter = path: type: (testResourcesFilter path type) || (craneLib.filterCargoSources path type);
   };
 
-  srcCpuOnly = lib.cleanSourceWith {
-    src = ../.;
-    filter =
-      path: type:
-      # Exclude python directories for CPU-only builds
-      let
-        pythonFilter =
-          path:
-          !(lib.hasInfix "/python/" path || lib.hasInfix "/python\n" path || lib.hasSuffix "/python" path);
-      in
-      (pythonFilter path) && ((testResourcesFilter path type) || (craneLib.filterCargoSources path type));
-  };
-
   env = {
     LIBTORCH_USE_PYTORCH = 1;
   };
@@ -70,60 +57,11 @@ let
     );
   };
 
-  # Create CPU-only nixpkgs without CUDA support
-  pkgsCpuOnly = import inputs.nixpkgs (
-    (import ./nixpkgs.nix { inherit inputs system; })
-    // {
-      config = {
-        allowUnfree = true;
-        cudaSupport = false; # Explicitly disable CUDA
-        metalSupport = false;
-      };
-    }
-  );
-
-  rustWorkspaceDepsCpu = {
-    nativeBuildInputs = with pkgs; [
-      pkg-config
-      perl
-      python312
-    ];
-
-    buildInputs = with pkgs; [
-      openssl
-      # Use the correct torch-bin version that matches torch-sys expectations
-      python312Packages.torch-bin
-      # Add minimal CUDA libraries needed for compilation (but runtime will be CPU-only)
-      cudaPackages.libcublas.lib
-      cudaPackages.libcufft.lib
-      cudaPackages.libcurand.lib
-      cudaPackages.libcusparse.lib
-      cudaPackages.libcusolver.lib
-      cudaPackages.cuda_cudart
-    ];
-  };
-
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
     # Enable parallelism feature only on CUDA-supported platforms
     cargoExtraArgs = "--features python" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
-  };
-
-  rustWorkspaceArgsCpu = rustWorkspaceDepsCpu // {
-    inherit src;
-    env = {
-      # Add PyTorch environment for CPU-only builds
-      LIBTORCH_USE_PYTORCH = "1";
-      # Bypass version check since we're using different PyTorch version
-      LIBTORCH_BYPASS_VERSION_CHECK = "1";
-      # Force CPU-only execution even with CUDA libraries available
-      CUDA_VISIBLE_DEVICES = "";
-      TORCH_CUDA_ARCH_LIST = "";
-    };
-    strictDeps = true;
-    # Build only specific packages needed for solana client, avoiding workspace dependencies
-    cargoExtraArgs = "--package psyche-solana-client --no-default-features";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
@@ -184,28 +122,6 @@ let
         pname = name;
         cargoExtraArgs =
           (lib.optionalString (pkgs.config.cudaSupport) "--features parallelism")
-          + (if isExample then " --example ${name}" else " --bin ${name}");
-        doCheck = false;
-
-        meta.mainProgram = name;
-      }
-    );
-
-  buildRustPackageCpuOnly =
-    {
-      name,
-      isExample ? false,
-    }:
-    let
-      cargoArtifactsCpu = craneLib.buildDepsOnly rustWorkspaceArgsCpu;
-    in
-    craneLib.buildPackage (
-      rustWorkspaceArgsCpu
-      // {
-        cargoArtifacts = cargoArtifactsCpu;
-        pname = name;
-        cargoExtraArgs =
-          rustWorkspaceArgsCpu.cargoExtraArgs
           + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
 
@@ -361,12 +277,10 @@ in
     craneLib
     buildSolanaIdl
     rustWorkspaceArgs
-    rustWorkspaceArgsCpu
     rustWorkspaceArgsWithPython
     cargoArtifacts
     buildRustPackageWithPsychePythonEnvironment
     buildRustPackageWithoutPython
-    buildRustPackageCpuOnly
     buildRustWasmTsPackage
     useHostGpuDrivers
     env
