@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Slurm Multi-Node Sidecar Launcher
-# Usage: sbatch --nodelist=7da1cfaf-50,7da1cfaf-52,7da1cfaf-53 launch_multinode.sh
+# Usage: sbatch --nodes=<NUMBER_OF_NODES> launch_multinode.sh
 
 #SBATCH --job-name=psyche-multinode
 #SBATCH --output=multinode_run_%j.out
@@ -9,6 +9,11 @@
 #SBATCH --gres=gpu:8
 
 set -euo pipefail
+
+if [ ! -e ".multinode_env" ]; then
+    echo "\n[!] .multinode_env file was not present"
+    exit 1
+fi
 
 source .multinode_env
 if [[ "${RPC:-}" == "" ]]; then
@@ -39,9 +44,10 @@ fi
 PSYCHE_IMPL=${PSYCHE_IMPL:-python}
 PSYCHE_WORLD_SIZE=$DATA_PARALLELISM
 
+# Get all selected node hostnames, use the last one as the master node and all
+# the others as the sidecar ones
 NODE_LIST=($(scontrol show hostnames "$SLURM_JOB_NODELIST"))
 MASTER_NODE="${NODE_LIST[-1]}"
-
 mapfile -t sidecar_nodes < <(scontrol show hostnames "$SLURM_JOB_NODELIST")
 unset "sidecar_nodes[-1]"
 
@@ -123,6 +129,4 @@ srun --nodes=1 --nodelist="$MASTER_NODE" \
     nousresearch/psyche-client &
 
 echo "Waiting for all processes..."
-
 wait
-echo "All nodes completed work"
