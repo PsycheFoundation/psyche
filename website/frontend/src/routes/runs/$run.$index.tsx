@@ -8,7 +8,7 @@ import { text } from '../../fonts.js'
 import { StatusChip } from '../../components/StatusChip.js'
 import { MiniCard } from '../../components/MiniCard.js'
 import { RadialGraph } from '../../components/RadialGraph.js'
-import { c, formatBytes, formatNumber, metricToGraph } from '../../utils.js'
+import { c, formatNumber, metricToGraph } from '../../utils.js'
 import { ResponsiveLineGraph } from '../../components/Chart.js'
 import { useMemo, useState } from 'react'
 import { css } from '@linaria/core'
@@ -238,16 +238,6 @@ function RouteComponent() {
 												value={`${run.metrics.summary.loss.toFixed(2)}`}
 											/>
 										)}
-										{run.metrics.summary.bandwidth !== null && (
-											<MiniCard
-												text="bandwidth"
-												value={`${formatBytes(
-													run.metrics.summary.bandwidth,
-													2,
-													'bits'
-												)}ps`}
-											/>
-										)}
 										{run.metrics.summary.tokensPerSecond !== null && (
 											<MiniCard
 												text="training rate"
@@ -303,19 +293,6 @@ function RouteComponent() {
 												label: 'training speed',
 												points: graphData.tokensPerSecond,
 												unit: ' tok/s',
-											}}
-										/>
-									</LineGraphContainer>
-
-									<LineGraphContainer>
-										<ResponsiveLineGraph
-											renderValue={(x) => `${formatBytes(x, 0, 'bits')}`}
-											xLabel="step"
-											title="inter-node bandwidth"
-											line={{
-												label: 'bandwidth',
-												points: graphData.bandwidth,
-												unit: '/s',
 											}}
 										/>
 									</LineGraphContainer>
