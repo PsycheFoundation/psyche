@@ -8,6 +8,7 @@ from datetime import timedelta
 from .. import (
     make_causal_lm,
     PretrainedSourceRepoFiles,
+    PretrainedSourceStateDict,
     Trainer,
     DistroResult,
     start_process_watcher,
@@ -153,8 +154,47 @@ def main():
     if source == "files":
         files = store.get("files").decode()
         source = PretrainedSourceRepoFiles(files=json.loads(files))
-    else:
-        raise ValueError(f"Unsupported source type {source}")
+    elif source == "config_and_tensors":
+        dist.barrier()
+        # tensors = store.get("tensors").decode()
+        config = store.get("config").decode()
+        # state_dict = store.get("tensors").decode()
+        print("CONFIG: ", config)
+
+        # Get tensor metadata from store
+        tensor_names = json.loads(store.get("tensor_names").decode())
+
+        # Prepare to receive tensors
+        state_dict = {}
+
+        for name in tensor_names:
+            # Get metadata for this tensor
+            tensor_shape = json.loads(store.get(f"tensor_shape_{name}").decode())
+            tensor_dtype_str = store.get(f"tensor_dtype_{name}").decode()
+
+            # Map Rust dtype string to PyTorch dtype
+            dtype_map = {
+                "Float": torch.float32,
+                "Double": torch.float64,
+                "Int": torch.int32,
+                "Int64": torch.int64,
+                "Half": torch.float16,
+                "BFloat16": torch.bfloat16,
+            }
+            tensor_dtype = dtype_map.get(tensor_dtype_str, torch.float32)
+
+            # Create empty tensor to receive broadcast
+            tensor = torch.empty(tensor_shape, dtype=tensor_dtype, device=args.rank)
+
+            # Receive broadcast from Rust (rank 0)
+            print("Received tensor:", name)
+            dist.broadcast(tensor, 0)
+            dist.barrier()
+            print("Continue")
+
+            state_dict[tensor_name] = tensor
+
+        source = PretrainedSourceStateDict(config_json=config, state_dict=state_dict)
 
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())

@@ -5,6 +5,7 @@ use crate::{
 };
 
 use psyche_core::BatchId;
+use pyo3::types::IntoPyDict;
 use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
@@ -129,6 +130,28 @@ impl TorchDistributedCommunicator {
         ret
     }
 
+    pub fn wait_for_all_ranks(&self) -> PyResult<()> {
+        // Set a flag that rank 0 is ready
+        self.set("rank_0_ready", "1")?;
+
+        // Wait for all other ranks to signal ready
+        Python::with_gil(|py| {
+            let distributed = Python::import(py, "torch.distributed")?;
+            let barrier = distributed.getattr("barrier")?;
+            barrier.call0()?; // This will block until all ranks join
+            Ok(())
+        })
+    }
+
+    pub fn barrier(&self) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let distributed = Python::import(py, "torch.distributed")?;
+            let barrier = distributed.getattr("barrier")?;
+            barrier.call0()?;
+            Ok(())
+        })
+    }
+
     pub fn size(&self) -> usize {
         self.world_size.expect("World size not specified")
     }
@@ -228,7 +251,36 @@ impl PythonDistributedCausalLM {
                         let files = serde_json::to_string(&files).unwrap();
                         comm.set("files", &files)?;
                     }
-                    PretrainedSource::ConfigAndTensors(_, _hash_map) => todo!(),
+                    PretrainedSource::ConfigAndTensors(config, hash_map) => {
+                        let config = serde_json::to_string(&config).unwrap();
+                        comm.set("source", "config_and_tensors")?;
+                        comm.set("config", &config)?;
+                        // comm.set("tensors", &vec_of_tensors)?;
+                        comm.wait_for_all_ranks()?;
+
+                        // Send tensor metadata via store
+                        let tensor_names: Vec<String> = hash_map.keys().cloned().collect();
+                        comm.set(
+                            "tensor_names",
+                            &serde_json::to_string(&tensor_names).unwrap(),
+                        )?;
+
+                        // Send tensor shapes via store
+                        for (i, (name, tensor)) in hash_map.iter().enumerate() {
+                            comm.set(
+                                &format!("tensor_shape_{}", name),
+                                &serde_json::to_string(&tensor.size()).unwrap(),
+                            )?;
+                            comm.set(
+                                &format!("tensor_dtype_{}", name),
+                                &format!("{:?}", tensor.kind()),
+                            )?;
+                            println!("BROADCASTING TENSOR {}", name);
+                            comm.broadcast(tensor)?;
+                            comm.barrier()?;
+                            println!("CONTINUE");
+                        }
+                    }
                 }
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
