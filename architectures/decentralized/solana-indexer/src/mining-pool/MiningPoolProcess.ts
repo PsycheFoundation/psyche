@@ -6,7 +6,14 @@ import {
   indexingCheckpointToJson,
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
-import { jsonSchemaObject, jsonSchemaString, JsonValue } from "../json";
+import { JsonValue } from "../json";
+import {
+  jsonTypeBoolean,
+  jsonTypeNumber,
+  jsonTypeObject,
+  jsonTypeString,
+  jsonTypeStringToBigint,
+} from "../jsonType";
 import { saveRead, saveWrite } from "../save";
 import {
   miningPoolDataFromJson,
@@ -81,19 +88,32 @@ export async function miningPoolProcess(
   );
 }
 
-const poolJsonSchema = jsonSchemaObject({});
+const jsonTypePool = jsonTypeObject({
+  bump: jsonTypeNumber(),
+  index: jsonTypeStringToBigint(),
+  authority: jsonTypeString(),
+  collateral_mint: jsonTypeString(),
+  max_deposit_collateral_amount: jsonTypeStringToBigint(),
+  total_deposited_collateral_amount: jsonTypeStringToBigint(),
+  total_extracted_collateral_amount: jsonTypeStringToBigint(),
+  claiming_enabled: jsonTypeBoolean(),
+  redeemable_mint: jsonTypeString(),
+  total_claimed_redeemable_amount: jsonTypeStringToBigint(),
+  freeze: jsonTypeBoolean(),
+});
 export async function processRefreshPoolAccountState(
   dataStore: MiningPoolDataStore,
   poolAddress: string,
   accountState: JsonValue,
 ): Promise<void> {
-  const accountParsed = poolJsonSchema.parse(accountState);
+  console.log("Refreshing pool account state", poolAddress, accountState);
+  const accountParsed = jsonTypePool.decode(accountState);
   dataStore.savePoolAccountState(poolAddress, accountParsed);
 }
 
-const lenderParamsJsonSchema = jsonSchemaObject({
-  params: jsonSchemaObject({
-    collateral_amount: jsonSchemaString(),
+const jsonTypeLenderDepositArgs = jsonTypeObject({
+  params: jsonTypeObject({
+    collateral_amount: jsonTypeStringToBigint(),
   }),
 });
 export async function processLenderDeposit(
@@ -110,7 +130,6 @@ export async function processLenderDeposit(
   if (user === undefined) {
     throw new Error("Missing user address");
   }
-  const payload = lenderParamsJsonSchema.parse(instructionPayload);
-  const amount = BigInt(payload.params.collateral_amount);
-  dataStore.savePoolUserDeposit(ordering, pool, user, amount);
+  const params = jsonTypeLenderDepositArgs.decode(instructionPayload).params;
+  dataStore.savePoolUserDeposit(ordering, pool, user, params.collateral_amount);
 }

@@ -1,17 +1,17 @@
 import fs from "fs";
+import { JsonValue } from "./json";
 import {
-  jsonSchemaNumberConst,
-  jsonSchemaObject,
-  jsonSchemaString,
-  jsonSchemaValue,
-  JsonValue,
-} from "./json";
+  jsonTypeNumber,
+  jsonTypeObject,
+  jsonTypeString,
+  jsonTypeValue,
+} from "./jsonType";
 
-const jsonSchema = jsonSchemaObject({
-  version: jsonSchemaNumberConst(1),
-  updatedAt: jsonSchemaString(),
-  checkpoint: jsonSchemaValue(),
-  dataStore: jsonSchemaValue(),
+const jsonType = jsonTypeObject({
+  version: jsonTypeNumber(),
+  updatedAt: jsonTypeString(),
+  checkpoint: jsonTypeValue(),
+  dataStore: jsonTypeValue(),
 });
 
 async function savePath(saveName: string): Promise<string> {
@@ -28,13 +28,13 @@ export async function saveWrite(
   },
 ): Promise<void> {
   const path = await savePath(saveName);
-  const json = jsonSchema.guard({
+  const encoded = jsonType.encode({
     version: 1,
     updatedAt: saveContent.updatedAt,
     checkpoint: saveContent.checkpoint,
     dataStore: saveContent.dataStore,
   });
-  return fs.promises.writeFile(path, JSON.stringify(json, null, 2));
+  return fs.promises.writeFile(path, JSON.stringify(encoded, null, 2));
 }
 
 export async function saveRead(saveName: string): Promise<{
@@ -46,13 +46,13 @@ export async function saveRead(saveName: string): Promise<{
   const json = await fs.promises
     .readFile(path, "utf-8")
     .then((data: string) => JSON.parse(data) as JsonValue);
-  const parsed = jsonSchema.parse(json);
-  if (parsed.version !== 1) {
+  const decoded = jsonType.decode(json);
+  if (decoded.version !== 1) {
     throw new Error("Unsupported version");
   }
   return {
-    updatedAt: parsed.updatedAt,
-    checkpoint: parsed.checkpoint,
-    dataStore: parsed.dataStore,
+    updatedAt: decoded.updatedAt,
+    checkpoint: decoded.checkpoint,
+    dataStore: decoded.dataStore,
   };
 }

@@ -1,12 +1,12 @@
 import { TransactionSignature } from "@solana/web3.js";
+import { JsonValue } from "../json";
 import {
-  jsonSchemaArray,
-  jsonSchemaNumber,
-  jsonSchemaNumberConst,
-  jsonSchemaObject,
-  jsonSchemaString,
-  JsonValue,
-} from "../json";
+  jsonTypeArray,
+  jsonTypeNumber,
+  jsonTypeObject,
+  jsonTypeString,
+  jsonTypeStringToBigint,
+} from "../jsonType";
 
 export type IndexingCheckpointChunk = {
   orderingHigh: bigint;
@@ -28,15 +28,15 @@ export class IndexingCheckpoint {
   }
 }
 
-const jsonSchemaV1 = jsonSchemaObject({
-  version: jsonSchemaNumberConst(1),
-  indexedOrderedChunks: jsonSchemaArray(
-    jsonSchemaObject({
-      orderingHigh: jsonSchemaString(),
-      orderingLow: jsonSchemaString(),
-      startedFrom: jsonSchemaString(),
-      rewindedUntil: jsonSchemaString(),
-      processedCounter: jsonSchemaNumber(),
+const jsonTypeV1 = jsonTypeObject({
+  version: jsonTypeNumber(),
+  indexedOrderedChunks: jsonTypeArray(
+    jsonTypeObject({
+      orderingHigh: jsonTypeStringToBigint(),
+      orderingLow: jsonTypeStringToBigint(),
+      startedFrom: jsonTypeString(),
+      rewindedUntil: jsonTypeString(),
+      processedCounter: jsonTypeNumber(),
     }),
   ),
 });
@@ -44,31 +44,18 @@ const jsonSchemaV1 = jsonSchemaObject({
 export function indexingCheckpointToJson(
   checkpoint: IndexingCheckpoint,
 ): JsonValue {
-  return jsonSchemaV1.guard({
+  return jsonTypeV1.encode({
     version: 1,
-    indexedOrderedChunks: checkpoint.indexedOrderedChunks.map((chunk) => ({
-      orderingHigh: String(chunk.orderingHigh),
-      orderingLow: String(chunk.orderingLow),
-      startedFrom: chunk.startedFrom,
-      rewindedUntil: chunk.rewindedUntil,
-      processedCounter: chunk.processedCounter,
-    })),
+    indexedOrderedChunks: checkpoint.indexedOrderedChunks,
   });
 }
 
 export function indexingCheckpointFromJson(
   jsonValue: JsonValue,
 ): IndexingCheckpoint {
-  const jsonParsed = jsonSchemaV1.parse(jsonValue);
-  return new IndexingCheckpoint(
-    jsonParsed.indexedOrderedChunks.map((chunkValue) => {
-      return {
-        orderingHigh: BigInt(chunkValue.orderingHigh),
-        orderingLow: BigInt(chunkValue.orderingLow),
-        startedFrom: chunkValue.startedFrom,
-        rewindedUntil: chunkValue.rewindedUntil,
-        processedCounter: chunkValue.processedCounter,
-      };
-    }),
-  );
+  const decoded = jsonTypeV1.decode(jsonValue);
+  if (decoded.version !== 1) {
+    throw new Error(`Unsupported indexing checkpoint version`);
+  }
+  return new IndexingCheckpoint(decoded.indexedOrderedChunks);
 }

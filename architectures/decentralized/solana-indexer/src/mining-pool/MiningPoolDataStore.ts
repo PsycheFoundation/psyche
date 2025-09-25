@@ -4,7 +4,19 @@ export interface MiningPoolDataStorePool {
   depositAmountPerUser: Map<string, bigint>;
 }
 
-export interface MiningPoolDataStorePoolAccount {}
+export interface MiningPoolDataStorePoolAccount {
+  bump: number;
+  index: bigint;
+  authority: string;
+  collateral_mint: string;
+  max_deposit_collateral_amount: bigint;
+  total_deposited_collateral_amount: bigint;
+  total_extracted_collateral_amount: bigint;
+  claiming_enabled: boolean;
+  redeemable_mint: string;
+  total_claimed_redeemable_amount: bigint;
+  freeze: boolean;
+}
 
 export class MiningPoolDataStore {
   private pools: Map<string, MiningPoolDataStorePool>;
