@@ -3,7 +3,7 @@
 A training run on Psyche is described using a Run Configuration file.
 It's a `.toml` file with information about the model shape, size, checkpoints, optimizer settings, run witnessing settings, and more.
 
-There's two top-level values in a run configuration: a `config`, and a `model`.
+There are two top-level values in a run configuration: a `config`, and a `model`.
 
 While some examples are described below, you can find the full range of options [for the coordinator here](https://github.com/PsycheFoundation/psyche/blob/main/shared/coordinator/src/coordinator.rs) and [for the model here](https://github.com/PsycheFoundation/psyche/blob/main/shared/coordinator/src/model.rs)
 
@@ -37,7 +37,7 @@ round_witness_time = 1
 # than 100.
 min_clients = 1
 
-# minumum number of clients required before we transition from WaitingForMembers to Warmup.
+# minimum number of clients required before we transition from WaitingForMembers to Warmup.
 # must be equal to or greater than min_clients
 init_min_clients = 1
 

@@ -12,7 +12,7 @@ solana-keygen new
 
 In a new terminal, run the following command to:
 
-- setup a `solana-test-validator`
+- Set up a `solana-test-validator`
 - Deploy all the required programs
 - Create a local run with name `<RUN_ID>`. If no run name is provided, the name `test` will be used by default.
 
@@ -20,7 +20,7 @@ In a new terminal, run the following command to:
 just setup-solana-localnet-test-run run_id=<RUN_ID>
 ```
 
-Then, in another terminal, run a client to train the test model and joining the run with name `RUN_ID`. If no run name is provided, the name `test` will be used by default.
+Then, in another terminal, run a client to train the test model and join the run with name `RUN_ID`. If no run name is provided, the name `test` will be used by default.
 
 ```bash
 just start-training-localnet-client run_id=<RUN_ID>
