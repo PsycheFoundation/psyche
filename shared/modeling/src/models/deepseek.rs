@@ -1051,11 +1051,8 @@ impl ModelConfig for DeepseekConfig {
 
             generate_attention_params(&mut names, &layer_prefix, self);
 
-            if is_dense_layer(layer_idx, self) {
-                generate_dense_mlp_params(&mut names, &layer_prefix);
-            } else {
-                generate_moe_params(&mut names, &layer_prefix, self);
-            }
+            generate_dense_mlp_params(&mut names, &layer_prefix);
+            generate_moe_params(&mut names, &layer_prefix, self);
         }
 
         names

@@ -192,7 +192,7 @@ def main():
             dist.barrier()
             print("Continue")
 
-            state_dict[tensor_name] = tensor
+            state_dict[name] = tensor
 
         source = PretrainedSourceStateDict(config_json=config, state_dict=state_dict)
 

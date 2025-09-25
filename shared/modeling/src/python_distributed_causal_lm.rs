@@ -259,14 +259,20 @@ impl PythonDistributedCausalLM {
                         comm.wait_for_all_ranks()?;
 
                         // Send tensor metadata via store
-                        let tensor_names: Vec<String> = hash_map.keys().cloned().collect();
+                        let mut tensors_vec: Vec<(String, Tensor)> = hash_map
+                            .iter()
+                            .map(|(name, tensor)| (name.clone(), tensor.shallow_clone()))
+                            .collect();
+                        tensors_vec.sort_by(|(a, _), (b, _)| a.cmp(b));
+                        let tensor_names: Vec<String> =
+                            tensors_vec.iter().map(|(name, _)| name.clone()).collect();
                         comm.set(
                             "tensor_names",
                             &serde_json::to_string(&tensor_names).unwrap(),
                         )?;
 
                         // Send tensor shapes via store
-                        for (i, (name, tensor)) in hash_map.iter().enumerate() {
+                        for (name, tensor) in tensors_vec.iter() {
                             comm.set(
                                 &format!("tensor_shape_{}", name),
                                 &serde_json::to_string(&tensor.size()).unwrap(),
@@ -276,7 +282,11 @@ impl PythonDistributedCausalLM {
                                 &format!("{:?}", tensor.kind()),
                             )?;
                             println!("BROADCASTING TENSOR {}", name);
-                            comm.broadcast(tensor)?;
+                            let tensor = tensor.to(device);
+                            if let Err(e) = comm.broadcast(&tensor.shallow_clone()) {
+                                println!("Error broadcasting tensor {}: {}", name, e);
+                                return Err(PythonDistributedCausalLMError::PythonError(e));
+                            }
                             comm.barrier()?;
                             println!("CONTINUE");
                         }
