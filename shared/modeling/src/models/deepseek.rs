@@ -1037,23 +1037,91 @@ impl ModelConfig for DeepseekConfig {
     // but it is probably overkill. We should think about a better way to get them
     // to make the p2p requests.
     fn get_parameter_names(&self) -> Vec<String> {
-        let mut variables: nn::VarStore = nn::VarStore::new(Device::Cpu);
-        variables.set_kind(Kind::BFloat16);
-        let _model = Deepseek::new(variables.root(), self, Default::default(), None);
-        let c = nn::LinearConfig {
-            bias: false,
-            ..Default::default()
-        };
+        let mut names = Vec::new();
 
-        let _lm_head = nn::linear(
-            &variables.root() / "lm_head",
-            self.hidden_size as i64,
-            self.vocab_size as i64,
-            c,
-        );
+        names.push("model.embed_tokens.weight".to_string());
+        names.push("model.norm.weight".to_string());
+        names.push("lm_head.weight".to_string());
 
-        let variables_lock = variables.variables_.lock().unwrap();
-        variables_lock.named_variables.keys().cloned().collect()
+        for layer_idx in 0..self.num_hidden_layers {
+            let layer_prefix = format!("model.layers.{}", layer_idx);
+
+            names.push(format!("{}.input_layernorm.weight", layer_prefix));
+            names.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
+
+            generate_attention_params(&mut names, &layer_prefix, self);
+
+            if is_dense_layer(layer_idx, self) {
+                generate_dense_mlp_params(&mut names, &layer_prefix);
+            } else {
+                generate_moe_params(&mut names, &layer_prefix, self);
+            }
+        }
+
+        names
+    }
+}
+
+fn generate_attention_params(names: &mut Vec<String>, prefix: &str, config: &DeepseekConfig) {
+    // Always have output projection
+    names.push(format!("{}.self_attn.o_proj.weight", prefix));
+
+    if config.q_lora_rank.is_some() && config.kv_lora_rank.is_some() {
+        // Multi-head Latent Attention (MLA)
+        names.push(format!("{}.self_attn.q_proj.weight", prefix));
+        names.push(format!("{}.self_attn.kv_a_proj_with_mqa.weight", prefix));
+        names.push(format!("{}.self_attn.kv_b_proj.weight", prefix));
+        names.push(format!("{}.self_attn.kv_a_layernorm.weight", prefix));
+
+        // Optional bias terms
+        if config.attention_bias.unwrap_or(false) {
+            names.push(format!("{}.self_attn.q_proj.bias", prefix));
+            names.push(format!("{}.self_attn.kv_a_proj_with_mqa.bias", prefix));
+            names.push(format!("{}.self_attn.kv_b_proj.bias", prefix));
+            names.push(format!("{}.self_attn.o_proj.bias", prefix));
+        }
+    } else {
+        // Standard attention (fallback)
+        names.push(format!("{}.self_attn.q_proj.weight", prefix));
+        names.push(format!("{}.self_attn.k_proj.weight", prefix));
+        names.push(format!("{}.self_attn.v_proj.weight", prefix));
+    }
+}
+
+fn generate_dense_mlp_params(names: &mut Vec<String>, prefix: &str) {
+    names.push(format!("{}.mlp.gate_proj.weight", prefix));
+    names.push(format!("{}.mlp.up_proj.weight", prefix));
+    names.push(format!("{}.mlp.down_proj.weight", prefix));
+}
+
+fn generate_moe_params(names: &mut Vec<String>, prefix: &str, config: &DeepseekConfig) {
+    // Router/gate
+    names.push(format!("{}.mlp.gate.weight", prefix));
+
+    // Routed experts
+    if let Some(n_experts) = config.n_routed_experts {
+        for expert_idx in 0..n_experts {
+            names.push(format!(
+                "{}.mlp.experts.{}.gate_proj.weight",
+                prefix, expert_idx
+            ));
+            names.push(format!(
+                "{}.mlp.experts.{}.up_proj.weight",
+                prefix, expert_idx
+            ));
+            names.push(format!(
+                "{}.mlp.experts.{}.down_proj.weight",
+                prefix, expert_idx
+            ));
+        }
+    }
+
+    if let Some(n_shared) = config.n_shared_experts {
+        if n_shared > 0 {
+            names.push(format!("{}.mlp.shared_experts.gate_proj.weight", prefix));
+            names.push(format!("{}.mlp.shared_experts.up_proj.weight", prefix));
+            names.push(format!("{}.mlp.shared_experts.down_proj.weight", prefix));
+        }
     }
 }
 
