@@ -39,16 +39,11 @@ jobs:
           df -h
 
           # Build the image
-          just nix build_docker_solana_test_client_no_python
+          nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
 
-      - name: Save Docker image as artifact
-        run: |
-          docker save psyche-solana-test-client:latest > client-image.tar
-          ls -lh client-image.tar
-
-      - name: Upload image artifact
+      - name: Upload Docker image as artifact
         uses: actions/upload-artifact@v4
         with:
           name: solana-test-client-${{ github.sha }}
-          path: client-image.tar
+          path: nix-results/docker-psyche-solana-test-client-no-python
           retention-days: 1
