@@ -43,11 +43,11 @@ jobs:
           nix-results/docker-psyche-solana-test-client-no-python | docker load
 
       - name: Download validator image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: solana-test-validator-ead039ca2640b8594c6de5eafad7a79b1b650ba6
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 18047928688
+        run: |
+          # Download artifact using GitHub CLI
+          gh run download 18047928688 --name solana-test-validator-ead039ca2640b8594c6de5eafad7a79b1b650ba6
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Load validator image and run test
         run: |
