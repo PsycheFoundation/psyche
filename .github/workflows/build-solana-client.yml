@@ -42,6 +42,14 @@ jobs:
           nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
           nix-results/docker-psyche-solana-test-client-no-python | docker load
 
+      - name: Wait for validator build to complete
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: 'build-validator-image'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
+
       - name: Download validator image artifact
         uses: actions/download-artifact@v4
         with:
