@@ -18,7 +18,7 @@ jobs:
           hatchet-protocol: 'rampage' # ~130GB, maximum aggression
           nix-permission-edict: true # Make /nix writable by user
           witness-carnage: true # Optional: see what's being removed
-          root-safe-haven: '10240' # Give 10GB to root
+          root-safe-haven: '20480' # Give 20GB to root
           mnt-safe-haven: '64' # Keep 64MB for /mnt
           nix-store-size: '61440' # Give 60GB to Nix store
 
