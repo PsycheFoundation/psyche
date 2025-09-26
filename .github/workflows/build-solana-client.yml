@@ -43,12 +43,12 @@ jobs:
 
       - name: Save Docker image as artifact
         run: |
-          docker save psyche-solana-test-client:latest | gzip > client-image.tar.gz
-          ls -lh client-image.tar.gz
+          docker save psyche-solana-test-client:latest > client-image.tar
+          ls -lh client-image.tar
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
           name: solana-test-client-${{ github.sha }}
-          path: client-image.tar.gz
+          path: client-image.tar
           retention-days: 1

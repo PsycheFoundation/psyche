@@ -33,7 +33,7 @@ jobs:
         run: |
           # Load client image
           echo "Loading client image..."
-          gunzip -c client-image.tar.gz | docker load
+          docker load < client-image.tar
 
           # Load validator image
           echo "Loading validator image..."
