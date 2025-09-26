@@ -18,9 +18,9 @@ jobs:
           hatchet-protocol: 'rampage' # ~130GB, maximum aggression
           nix-permission-edict: true # Make /nix writable by user
           witness-carnage: true # Optional: see what's being removed
-          root-safe-haven: '20480' # Give 20GB to root
+          root-safe-haven: '10240' # Give 10GB to root
           mnt-safe-haven: '64' # Keep 64MB for /mnt
-          nix-store-size: '61440' # Give 60GB to Nix store
+          nix-store-size: '90000' # Give 90GB to Nix store
 
       # Install Nix AFTER Nothing but Nix
       - uses: nixbuild/nix-quick-install-action@v31
@@ -90,6 +90,11 @@ jobs:
           echo "cores = 2" >> ~/.config/nix/nix.conf
           echo "keep-outputs = false" >> ~/.config/nix/nix.conf
           echo "keep-derivations = false" >> ~/.config/nix/nix.conf
+
+          # Aggressive pre-build cleanup
+          nix-collect-garbage -d
+          nix store gc --max-freed 10G
+          docker system prune -af --volumes
 
           # Run the test with periodic cleanup
           nix develop --command just decentralized-integration-test test_two_clients_three_epochs_run
