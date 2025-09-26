@@ -155,11 +155,9 @@ def main():
         files = store.get("files").decode()
         source = PretrainedSourceRepoFiles(files=json.loads(files))
     elif source == "config_and_tensors":
+        # Sync all ranks before receiving anything
         dist.barrier()
-        # tensors = store.get("tensors").decode()
         config = store.get("config").decode()
-        # state_dict = store.get("tensors").decode()
-        print("CONFIG: ", config)
 
         # Get tensor metadata from store
         tensor_names = json.loads(store.get("tensor_names").decode())

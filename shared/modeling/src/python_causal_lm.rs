@@ -4,6 +4,7 @@ use crate::{
     device_utils::DevicePytorchStr,
 };
 
+use crate::{DeepseekConfig, LlamaConfig};
 use pyo3::{
     prelude::*,
     types::{IntoPyDict, PyDict, PyList, PyString, PyTuple},
@@ -12,7 +13,6 @@ use pyo3_tch::PyTensor;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
-use crate::{DeepseekConfig, LlamaConfig};
 
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {

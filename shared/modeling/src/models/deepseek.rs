@@ -1050,8 +1050,7 @@ impl ModelConfig for DeepseekConfig {
             names.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
 
             generate_attention_params(&mut names, &layer_prefix, self);
-            if layer_idx >= self.first_k_dense_replace.unwrap() && self.n_routed_experts.is_some()
-            {
+            if layer_idx >= self.first_k_dense_replace.unwrap() && self.n_routed_experts.is_some() {
                 generate_moe_params(&mut names, layer_idx, self);
             } else {
                 generate_dense_mlp_params(&mut names, &layer_prefix);
@@ -1100,33 +1099,36 @@ fn generate_moe_params(names: &mut Vec<String>, layer_idx: usize, config: &Deeps
 
     if let Some(n_experts) = config.n_routed_experts {
         names.push(format!("model.layers.{}.mlp.gate.weight", layer_idx));
-        names.push(format!("model.layers.{}.mlp.gate.e_score_correction_bias", layer_idx));
+        names.push(format!(
+            "model.layers.{}.mlp.gate.e_score_correction_bias",
+            layer_idx
+        ));
         for expert_idx in 0..n_experts {
-                names.push(format!(
-                    "model.layers.{}.mlp.experts.{}.gate_proj.weight",
-                    layer_idx, expert_idx
-                ));
-                names.push(format!(
-                    "model.layers.{}.mlp.experts.{}.up_proj.weight",
-                    layer_idx, expert_idx
-                ));
-                names.push(format!(
-                    "model.layers.{}.mlp.experts.{}.down_proj.weight",
-                    layer_idx, expert_idx
-                ));
+            names.push(format!(
+                "model.layers.{}.mlp.experts.{}.gate_proj.weight",
+                layer_idx, expert_idx
+            ));
+            names.push(format!(
+                "model.layers.{}.mlp.experts.{}.up_proj.weight",
+                layer_idx, expert_idx
+            ));
+            names.push(format!(
+                "model.layers.{}.mlp.experts.{}.down_proj.weight",
+                layer_idx, expert_idx
+            ));
 
             names.push(format!(
-                    "model.layers.{}.mlp.shared_experts.gate_proj.weight",
-                    layer_idx
-                ));
+                "model.layers.{}.mlp.shared_experts.gate_proj.weight",
+                layer_idx
+            ));
             names.push(format!(
-                        "model.layers.{}.mlp.shared_experts.up_proj.weight",
-                        layer_idx
-                    ));
+                "model.layers.{}.mlp.shared_experts.up_proj.weight",
+                layer_idx
+            ));
             names.push(format!(
-                        "model.layers.{}.mlp.shared_experts.down_proj.weight",
-                        layer_idx
-                    ));
+                "model.layers.{}.mlp.shared_experts.down_proj.weight",
+                layer_idx
+            ));
         }
     }
 }

@@ -255,14 +255,13 @@ impl PythonDistributedCausalLM {
                         let config = serde_json::to_string(&config).unwrap();
                         comm.set("source", "config_and_tensors")?;
                         comm.set("config", &config)?;
-                        // comm.set("tensors", &vec_of_tensors)?;
-                        comm.wait_for_all_ranks()?;
 
                         // Send tensor metadata via store
                         let mut tensors_vec: Vec<(String, Tensor)> = hash_map
                             .iter()
                             .map(|(name, tensor)| (name.clone(), tensor.shallow_clone()))
                             .collect();
+
                         tensors_vec.sort_by(|(a, _), (b, _)| a.cmp(b));
                         let tensor_names: Vec<String> =
                             tensors_vec.iter().map(|(name, _)| name.clone()).collect();
@@ -271,7 +270,9 @@ impl PythonDistributedCausalLM {
                             &serde_json::to_string(&tensor_names).unwrap(),
                         )?;
 
-                        // Send tensor shapes via store
+                        // Wait for all ranks to be ready before broadcasting tensors
+                        comm.wait_for_all_ranks()?;
+
                         for (name, tensor) in tensors_vec.iter() {
                             comm.set(
                                 &format!("tensor_shape_{}", name),
@@ -281,14 +282,19 @@ impl PythonDistributedCausalLM {
                                 &format!("tensor_dtype_{}", name),
                                 &format!("{:?}", tensor.kind()),
                             )?;
-                            println!("BROADCASTING TENSOR {}", name);
+
+                            debug!("Broadcasting tensor {} to other ranks", name);
+
+                            // To broadcast we have to move the tensor to the GPU
                             let tensor = tensor.to(device);
+
                             if let Err(e) = comm.broadcast(&tensor.shallow_clone()) {
-                                println!("Error broadcasting tensor {}: {}", name, e);
+                                error!("Error broadcasting tensor {}: {}", name, e);
                                 return Err(PythonDistributedCausalLMError::PythonError(e));
                             }
-                            comm.barrier()?;
-                            println!("CONTINUE");
+
+                            // Ensure all ranks have received the tensor before continuing
+                            comm.wait_for_all_ranks()?;
                         }
                     }
                 }
