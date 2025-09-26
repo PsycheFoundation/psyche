@@ -38,12 +38,30 @@ jobs:
           # Show available space
           df -h
 
-          # Build the image
+          # Build the image and load it into Docker
           nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
+          nix-results/docker-psyche-solana-test-client-no-python | docker load
 
-      - name: Upload Docker image as artifact
-        uses: actions/upload-artifact@v4
+      - name: Download validator image artifact
+        uses: actions/download-artifact@v4
         with:
-          name: solana-test-client-${{ github.sha }}
-          path: nix-results/docker-psyche-solana-test-client-no-python
-          retention-days: 1
+          name: solana-test-validator-${{ github.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load validator image and run test
+        run: |
+          # Load validator image
+          gunzip -c validator-image.tar.gz | docker load
+
+          # Immediately remove the compressed file to save space
+          rm validator-image.tar.gz
+
+          # Show loaded images
+          docker images
+
+          # Build Anchor programs using nix develop
+          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
+
+          # Run the test (both images are now loaded)
+          cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "test_two_clients_three_epochs_run"
