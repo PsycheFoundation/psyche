@@ -33,13 +33,6 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build Solana Test Validator Image
         run: |
           # Show available space
@@ -48,11 +41,14 @@ jobs:
           # Build the image
           just nix build_docker_solana_test_validator
 
-          # Tag and push the image
-          docker tag psyche-solana-test-validator:latest ghcr.io/${{ github.repository_owner }}/psyche-solana-test-validator:${{ github.sha }}
-          docker tag psyche-solana-test-validator:latest ghcr.io/${{ github.repository_owner }}/psyche-solana-test-validator:latest
+      - name: Save Docker image as artifact
+        run: |
+          docker save psyche-solana-test-validator:latest | gzip > validator-image.tar.gz
+          ls -lh validator-image.tar.gz
 
-          docker push ghcr.io/${{ github.repository_owner }}/psyche-solana-test-validator:${{ github.sha }}
-          docker push ghcr.io/${{ github.repository_owner }}/psyche-solana-test-validator:latest
-
-          echo "Image pushed: ghcr.io/${{ github.repository_owner }}/psyche-solana-test-validator:${{ github.sha }}"
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: solana-test-validator-${{ github.sha }}
+          path: validator-image.tar.gz
+          retention-days: 1
