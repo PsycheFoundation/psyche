@@ -93,7 +93,7 @@ jobs:
 
           # Aggressive pre-build cleanup
           nix-collect-garbage -d
-          nix store gc --max-freed 10G
+          nix store gc
           docker system prune -af --volumes
 
           # Run the test with periodic cleanup
