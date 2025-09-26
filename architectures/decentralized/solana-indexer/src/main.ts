@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint } from "solana_toolbox_web3";
 import { coordinatorProcess } from "./coordinator/CoordinatorProcess";
-import { miningPoolProcess } from "./mining-pool/MiningPoolProcess";
+import { miningPoolService } from "./mining-pool/MiningPoolService";
 
 const miningPoolCluster = "mainnet";
 const miningPoolEndpoint = new ToolboxEndpoint(
@@ -30,7 +30,7 @@ async function main1() {
 }
 
 async function main2() {
-  miningPoolProcess(
+  miningPoolService(
     miningPoolCluster,
     miningPoolEndpoint,
     miningPoolProgramAddress,
@@ -38,63 +38,3 @@ async function main2() {
 }
 
 main2();
-
-export function withContext<T>(message: string, fn: () => T): T {
-  try {
-    return fn();
-  } catch (error) {
-    throw new Error(
-      `${message}\n > ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-// Deep readonly (handles Map/Set/Array/Tuple/Promise + plain objects)
-export type Immutable<T> =
-  // leave primitives & common builtins as-is
-  T extends
-    | string
-    | number
-    | boolean
-    | bigint
-    | symbol
-    | null
-    | undefined
-    | Date
-    | RegExp
-    | Error
-    ? T
-    : // functions stay callable
-      T extends (...args: any[]) => any
-      ? T
-      : T extends ReadonlyMap<infer K, infer V>
-        ? ReadonlyMap<Immutable<K>, Immutable<V>>
-        : T extends Map<infer K, infer V>
-          ? ReadonlyMap<Immutable<K>, Immutable<V>>
-          : // Set / ReadonlySet -> ReadonlySet (deep on T)
-            T extends ReadonlySet<infer U>
-            ? ReadonlySet<Immutable<U>>
-            : T extends Set<infer U>
-              ? ReadonlySet<Immutable<U>>
-              : // WeakMap/WeakSet have no readonly counterparts; keep types but deep the params
-                T extends WeakMap<infer K, infer V>
-                ? WeakMap<Immutable<K>, Immutable<V>>
-                : T extends WeakSet<infer U>
-                  ? WeakSet<Immutable<U>>
-                  : // Promise deepens its value
-                    T extends Promise<infer U>
-                    ? Promise<Immutable<U>>
-                    : // Preserve tuples exactly (don’t widen)
-                      T extends readonly []
-                      ? T
-                      : T extends readonly [infer _H, ...infer _R]
-                        ? { readonly [I in keyof T]: Immutable<T[I]> }
-                        : // Arrays
-                          T extends ReadonlyArray<infer U>
-                          ? ReadonlyArray<Immutable<U>>
-                          : T extends Array<infer U>
-                            ? ReadonlyArray<Immutable<U>>
-                            : // Plain objects
-                              T extends object
-                              ? { readonly [P in keyof T]: Immutable<T[P]> }
-                              : T;

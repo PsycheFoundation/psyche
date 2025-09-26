@@ -1,38 +1,77 @@
 import { Immutable } from "../utils";
 
-export interface MiningPoolDataStorePool {
-  latestAccountState: MiningPoolDataStorePoolAccount | undefined;
-  latestAccountOrdering: bigint;
-  depositAmountPerUser: Map<string, bigint>;
-  computedTotal1: bigint;
-  computedTotal2: bigint;
-}
-
 export interface MiningPoolDataStorePoolAccount {
   bump: number;
   index: bigint;
   authority: string;
-  collateral_mint: string;
-  max_deposit_collateral_amount: bigint;
-  total_deposited_collateral_amount: bigint;
-  total_extracted_collateral_amount: bigint;
-  claiming_enabled: boolean;
-  redeemable_mint: string;
-  total_claimed_redeemable_amount: bigint;
+  collateralMint: string;
+  maxDepositCollateralAmount: bigint;
+  totalDepositedCollateralAmount: bigint;
+  totalExtractedCollateralAmount: bigint;
+  claimingEnabled: boolean;
+  redeemableMint: string;
+  totalClaimedRedeemableAmount: bigint;
   freeze: boolean;
+}
+
+export interface MiningPoolDataStorePool {
+  latestAccountState: MiningPoolDataStorePoolAccount | undefined;
+  latestAccountOrdering: bigint;
+  depositAmountPerUser: Map<string, bigint>;
 }
 
 export class MiningPoolDataStore {
   private pools: Map<string, MiningPoolDataStorePool>;
 
-  constructor(poolsInfos: Map<string, MiningPoolDataStorePool>) {
-    this.pools = poolsInfos;
+  constructor(pools: Map<string, MiningPoolDataStorePool>) {
+    this.pools = pools;
   }
 
-  public invalidatePoolAccountState(
+  public getPools(): Immutable<Map<string, MiningPoolDataStorePool>> {
+    return this.pools;
+  }
+
+  public savePoolUserDeposit(
     poolAddress: string,
+    userAddress: string,
+    depositAmount: bigint,
     ordering: bigint,
-  ): void {
+  ) {
+    let pool = this.pools.get(poolAddress);
+    if (pool === undefined) {
+      pool = {
+        latestAccountState: undefined,
+        latestAccountOrdering: ordering,
+        depositAmountPerUser: new Map<string, bigint>(),
+      };
+      this.pools.set(poolAddress, pool);
+      return;
+    }
+    const depositAmountBefore =
+      pool.depositAmountPerUser.get(userAddress) ?? 0n;
+    const depositAmountAfter = depositAmountBefore + depositAmount;
+    pool.depositAmountPerUser.set(userAddress, depositAmountAfter);
+  }
+
+  public savePoolAccountState(
+    poolAddress: string,
+    accountState: MiningPoolDataStorePoolAccount,
+  ) {
+    console.log("Saving pool account state", poolAddress, accountState);
+    let pool = this.pools.get(poolAddress);
+    if (pool != undefined) {
+      pool.latestAccountState = accountState;
+    } else {
+      pool = {
+        latestAccountState: accountState,
+        latestAccountOrdering: 0n,
+        depositAmountPerUser: new Map<string, bigint>(),
+      };
+      this.pools.set(poolAddress, pool);
+    }
+  }
+
+  public invalidatePoolAccountState(poolAddress: string, ordering: bigint) {
     const pool = this.pools.get(poolAddress);
     if (pool === undefined) {
       return;
@@ -43,69 +82,13 @@ export class MiningPoolDataStore {
     }
   }
 
-  public getInvalidatedPoolsAddresses(): string[] {
-    const dirtyPools: string[] = [];
+  public getInvalidatedPoolsAddresses(): Array<string> {
+    const dirtyPools: Array<string> = [];
     for (const [poolAddress, pool] of this.pools.entries()) {
       if (pool.latestAccountState === undefined) {
         dirtyPools.push(poolAddress);
       }
     }
     return dirtyPools;
-  }
-
-  public savePoolUserDeposit(
-    ordering: bigint,
-    poolAddress: string,
-    userAddress: string,
-    depositAmount: bigint,
-  ): void {
-    let pool = this.pools.get(poolAddress);
-    if (pool === undefined) {
-      pool = {
-        latestAccountState: undefined,
-        latestAccountOrdering: ordering,
-        depositAmountPerUser: new Map<string, bigint>(),
-        computedTotal1: 0n,
-        computedTotal2: 0n,
-      };
-      this.pools.set(poolAddress, pool);
-      return;
-    }
-    const depositAmountBefore =
-      pool.depositAmountPerUser.get(userAddress) ?? 0n;
-    const depositAmountAfter = depositAmountBefore + depositAmount;
-    pool.depositAmountPerUser.set(userAddress, depositAmountAfter);
-
-    pool.computedTotal1 = pool.computedTotal1 + depositAmount;
-
-    let total2 = 0n;
-    for (const depositAmount of pool.depositAmountPerUser.values()) {
-      total2 += depositAmount;
-    }
-    pool.computedTotal2 = total2;
-    this.invalidatePoolAccountState(poolAddress, ordering);
-  }
-
-  public savePoolAccountState(
-    poolAddress: string,
-    accountState: MiningPoolDataStorePoolAccount,
-  ) {
-    let pool = this.pools.get(poolAddress);
-    if (pool != undefined) {
-      pool.latestAccountState = accountState;
-    } else {
-      pool = {
-        latestAccountState: accountState,
-        latestAccountOrdering: 0n,
-        depositAmountPerUser: new Map<string, bigint>(),
-        computedTotal1: 0n,
-        computedTotal2: 0n,
-      };
-      this.pools.set(poolAddress, pool);
-    }
-  }
-
-  public getPools(): Immutable<Map<string, MiningPoolDataStorePool>> {
-    return this.pools;
   }
 }

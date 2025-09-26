@@ -7,7 +7,7 @@ import {
   jsonTypeValue,
 } from "./jsonType";
 
-const jsonType = jsonTypeObject({
+const saveJsonType = jsonTypeObject({
   version: jsonTypeConst(1),
   updatedAt: jsonTypeString(),
   checkpoint: jsonTypeValue(),
@@ -28,7 +28,7 @@ export async function saveWrite(
   },
 ): Promise<void> {
   const path = await savePath(saveName);
-  const encoded = jsonType.encode({
+  const encoded = saveJsonType.encode({
     version: 1,
     updatedAt: saveContent.updatedAt,
     checkpoint: saveContent.checkpoint,
@@ -46,7 +46,7 @@ export async function saveRead(saveName: string): Promise<{
   const encoded = await fs.promises
     .readFile(path, "utf-8")
     .then((data: string) => JSON.parse(data) as JsonValue);
-  const decoded = jsonType.decode(encoded);
+  const decoded = saveJsonType.decode(encoded);
   return {
     updatedAt: decoded.updatedAt,
     checkpoint: decoded.checkpoint,

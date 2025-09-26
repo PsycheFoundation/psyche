@@ -11,58 +11,54 @@ import {
 } from "../jsonType";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
-export const miningPoolJsonTypePool = jsonTypeObject({
-  bump: jsonTypeNumber(),
-  index: jsonTypeStringToBigint(),
-  authority: jsonTypeString(),
-  collateral_mint: jsonTypeString(),
-  max_deposit_collateral_amount: jsonTypeStringToBigint(),
-  total_deposited_collateral_amount: jsonTypeStringToBigint(),
-  total_extracted_collateral_amount: jsonTypeStringToBigint(),
-  claiming_enabled: jsonTypeBoolean(),
-  redeemable_mint: jsonTypeString(),
-  total_claimed_redeemable_amount: jsonTypeStringToBigint(),
-  freeze: jsonTypeBoolean(),
-});
+function camelToSnake(str: string): string {
+  return str
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // insert underscore before capital letters
+    .toLowerCase();
+}
 
-const jsonTypeV2 = jsonTypeObject({
-  version: jsonTypeConst(2),
+export const miningPoolDataStorePoolAccountJsonTypeV1 = jsonTypeObject(
+  {
+    bump: jsonTypeNumber(),
+    index: jsonTypeStringToBigint(),
+    authority: jsonTypeString(),
+    collateralMint: jsonTypeString(),
+    maxDepositCollateralAmount: jsonTypeStringToBigint(),
+    totalDepositedCollateralAmount: jsonTypeStringToBigint(),
+    totalExtractedCollateralAmount: jsonTypeStringToBigint(),
+    claimingEnabled: jsonTypeBoolean(),
+    redeemableMint: jsonTypeString(),
+    totalClaimedRedeemableAmount: jsonTypeStringToBigint(),
+    freeze: jsonTypeBoolean(),
+  },
+  camelToSnake,
+);
+
+export const miningPoolDataStoreJsonTypeV1 = jsonTypeObject({
+  version: jsonTypeConst(1),
   pools: jsonTypeObjectToMap(
     jsonTypeObject({
-      latestAccountState: jsonTypeNullableToOptional(miningPoolJsonTypePool),
+      latestAccountState: jsonTypeNullableToOptional(
+        miningPoolDataStorePoolAccountJsonTypeV1,
+      ),
       latestAccountOrdering: jsonTypeStringToBigint(),
       depositAmountPerUser: jsonTypeObjectToMap(jsonTypeStringToBigint()),
-      computedTotal1: jsonTypeStringToBigint(),
-      computedTotal2: jsonTypeStringToBigint(),
     }),
   ),
 });
 
-/*
-const jsonTypeV3 = jsonTypeObject({
-  version: jsonTypeNumber(3),
-  pools: jsonTypeObjectToMap(
-    jsonTypeObject({
-      latestAccountState: jsonTypeUnion(jsonTypeNull(), jsonTypeString()),
-      latestAccountOrdering: jsonTypeString(),
-      depositAmountPerUser: jsonTypeObjectToMap(jsonTypeString()),
-    }),
-  ),
-});
-*/
-
-export function miningPoolDataToJson(
+export function miningPoolDataStoreToJson(
   dataStore: MiningPoolDataStore,
 ): JsonValue {
-  return jsonTypeV2.encode({
-    version: 2,
+  return miningPoolDataStoreJsonTypeV1.encode({
+    version: 1,
     pools: dataStore.getPools(),
   });
 }
 
-export function miningPoolDataFromJson(
+export function miningPoolDataStoreFromJson(
   jsonValue: JsonValue,
 ): MiningPoolDataStore {
-  const decoded = jsonTypeV2.decode(jsonValue);
+  const decoded = miningPoolDataStoreJsonTypeV1.decode(jsonValue);
   return new MiningPoolDataStore(decoded.pools);
 }

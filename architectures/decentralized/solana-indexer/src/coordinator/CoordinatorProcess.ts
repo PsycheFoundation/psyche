@@ -28,7 +28,7 @@ export async function coordinatorProcess(
     console.log("Loaded coordinator state saved from:", saveContent.updatedAt);
   } catch (error) {
     checkpoint = new IndexingCheckpoint([]);
-    dataStore = new CoordinatorDataStore();
+    dataStore = new CoordinatorDataStore(new Map());
     console.warn("Failed to read existing coordinator JSON, starting fresh");
   }
   const idlService = new ToolboxIdlService();
