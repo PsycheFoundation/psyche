@@ -12,6 +12,7 @@ use pyo3_tch::PyTensor;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
+use crate::{DeepseekConfig, LlamaConfig};
 
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {
@@ -23,35 +24,11 @@ impl ModelConfig for PythonModelConfig {
         println!("Config: {:?}", self.config);
         let architecture = self.config["architectures"][0].as_str().unwrap();
         if architecture.to_lowercase().contains("llama") {
-            let mut variables = Vec::new();
-
-            // 2. Transformer layers
-            for layer_idx in 0..self.config["num_hidden_layers"].as_u64().unwrap_or(0) {
-                let layer_prefix = format!("model.layers.{}", layer_idx);
-
-                // Self-attention
-                variables.push(format!("{}.self_attn.q_proj.weight", layer_prefix));
-                variables.push(format!("{}.self_attn.k_proj.weight", layer_prefix));
-                variables.push(format!("{}.self_attn.v_proj.weight", layer_prefix));
-                variables.push(format!("{}.self_attn.o_proj.weight", layer_prefix));
-
-                // MLP (Feed Forward)
-                variables.push(format!("{}.mlp.gate_proj.weight", layer_prefix));
-                variables.push(format!("{}.mlp.up_proj.weight", layer_prefix));
-                variables.push(format!("{}.mlp.down_proj.weight", layer_prefix));
-
-                // Layer norms (RMSNorm in LLaMA)
-                variables.push(format!("{}.input_layernorm.weight", layer_prefix));
-                variables.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
-            }
-
-            variables.push("lm_head.weight".to_string());
-            variables.push("model.norm.weight".to_string());
-            variables.push("model.embed_tokens.weight".to_string());
-
-            variables
+            let config = serde_json::from_value::<LlamaConfig>(self.config.clone()).unwrap();
+            config.get_parameter_names()
         } else if architecture.to_lowercase().contains("deepseek") {
-            vec![format!("{}_{}", architecture, "parameter_name")]
+            let config = serde_json::from_value::<DeepseekConfig>(self.config.clone()).unwrap();
+            config.get_parameter_names()
         } else {
             vec![]
         }
