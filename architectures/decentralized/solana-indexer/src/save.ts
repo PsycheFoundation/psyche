@@ -1,14 +1,14 @@
 import fs from "fs";
 import { JsonValue } from "./json";
 import {
-  jsonTypeNumber,
+  jsonTypeConst,
   jsonTypeObject,
   jsonTypeString,
   jsonTypeValue,
 } from "./jsonType";
 
 const jsonType = jsonTypeObject({
-  version: jsonTypeNumber(),
+  version: jsonTypeConst(1),
   updatedAt: jsonTypeString(),
   checkpoint: jsonTypeValue(),
   dataStore: jsonTypeValue(),
@@ -43,13 +43,10 @@ export async function saveRead(saveName: string): Promise<{
   dataStore: JsonValue;
 }> {
   const path = await savePath(saveName);
-  const json = await fs.promises
+  const encoded = await fs.promises
     .readFile(path, "utf-8")
     .then((data: string) => JSON.parse(data) as JsonValue);
-  const decoded = jsonType.decode(json);
-  if (decoded.version !== 1) {
-    throw new Error("Unsupported version");
-  }
+  const decoded = jsonType.decode(encoded);
   return {
     updatedAt: decoded.updatedAt,
     checkpoint: decoded.checkpoint,

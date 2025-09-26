@@ -1,7 +1,11 @@
+import { Immutable } from "../utils";
+
 export interface MiningPoolDataStorePool {
   latestAccountState: MiningPoolDataStorePoolAccount | undefined;
   latestAccountOrdering: bigint;
   depositAmountPerUser: Map<string, bigint>;
+  computedTotal1: bigint;
+  computedTotal2: bigint;
 }
 
 export interface MiningPoolDataStorePoolAccount {
@@ -61,6 +65,8 @@ export class MiningPoolDataStore {
         latestAccountState: undefined,
         latestAccountOrdering: ordering,
         depositAmountPerUser: new Map<string, bigint>(),
+        computedTotal1: 0n,
+        computedTotal2: 0n,
       };
       this.pools.set(poolAddress, pool);
       return;
@@ -69,6 +75,14 @@ export class MiningPoolDataStore {
       pool.depositAmountPerUser.get(userAddress) ?? 0n;
     const depositAmountAfter = depositAmountBefore + depositAmount;
     pool.depositAmountPerUser.set(userAddress, depositAmountAfter);
+
+    pool.computedTotal1 = pool.computedTotal1 + depositAmount;
+
+    let total2 = 0n;
+    for (const depositAmount of pool.depositAmountPerUser.values()) {
+      total2 += depositAmount;
+    }
+    pool.computedTotal2 = total2;
     this.invalidatePoolAccountState(poolAddress, ordering);
   }
 
@@ -84,12 +98,14 @@ export class MiningPoolDataStore {
         latestAccountState: accountState,
         latestAccountOrdering: 0n,
         depositAmountPerUser: new Map<string, bigint>(),
+        computedTotal1: 0n,
+        computedTotal2: 0n,
       };
       this.pools.set(poolAddress, pool);
     }
   }
 
-  public getPools(): ReadonlyMap<string, Readonly<MiningPoolDataStorePool>> {
+  public getPools(): Immutable<Map<string, MiningPoolDataStorePool>> {
     return this.pools;
   }
 }

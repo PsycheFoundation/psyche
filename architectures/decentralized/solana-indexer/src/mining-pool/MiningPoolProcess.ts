@@ -7,17 +7,12 @@ import {
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
 import { JsonValue } from "../json";
-import {
-  jsonTypeBoolean,
-  jsonTypeNumber,
-  jsonTypeObject,
-  jsonTypeString,
-  jsonTypeStringToBigint,
-} from "../jsonType";
+import { jsonTypeObject, jsonTypeStringToBigint } from "../jsonType";
 import { saveRead, saveWrite } from "../save";
 import {
   miningPoolDataFromJson,
   miningPoolDataToJson,
+  miningPoolJsonTypePool,
 } from "./MiningPoolDataJson";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
@@ -58,6 +53,7 @@ export async function miningPoolProcess(
       instructionPayload,
       ordering,
     ) => {
+      console.log("instructionName", instructionName, instructionPayload);
       if (instructionName === "lender_deposit") {
         await processLenderDeposit(
           dataStore,
@@ -88,26 +84,13 @@ export async function miningPoolProcess(
   );
 }
 
-const jsonTypePool = jsonTypeObject({
-  bump: jsonTypeNumber(),
-  index: jsonTypeStringToBigint(),
-  authority: jsonTypeString(),
-  collateral_mint: jsonTypeString(),
-  max_deposit_collateral_amount: jsonTypeStringToBigint(),
-  total_deposited_collateral_amount: jsonTypeStringToBigint(),
-  total_extracted_collateral_amount: jsonTypeStringToBigint(),
-  claiming_enabled: jsonTypeBoolean(),
-  redeemable_mint: jsonTypeString(),
-  total_claimed_redeemable_amount: jsonTypeStringToBigint(),
-  freeze: jsonTypeBoolean(),
-});
 export async function processRefreshPoolAccountState(
   dataStore: MiningPoolDataStore,
   poolAddress: string,
   accountState: JsonValue,
 ): Promise<void> {
   console.log("Refreshing pool account state", poolAddress, accountState);
-  const accountParsed = jsonTypePool.decode(accountState);
+  const accountParsed = miningPoolJsonTypePool.decode(accountState);
   dataStore.savePoolAccountState(poolAddress, accountParsed);
 }
 

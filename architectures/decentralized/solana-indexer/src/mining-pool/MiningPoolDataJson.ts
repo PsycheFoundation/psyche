@@ -1,6 +1,7 @@
 import { JsonValue } from "../json";
 import {
   jsonTypeBoolean,
+  jsonTypeConst,
   jsonTypeNullableToOptional,
   jsonTypeNumber,
   jsonTypeObject,
@@ -10,7 +11,7 @@ import {
 } from "../jsonType";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
-const jsonTypePool = jsonTypeObject({
+export const miningPoolJsonTypePool = jsonTypeObject({
   bump: jsonTypeNumber(),
   index: jsonTypeStringToBigint(),
   authority: jsonTypeString(),
@@ -25,12 +26,14 @@ const jsonTypePool = jsonTypeObject({
 });
 
 const jsonTypeV2 = jsonTypeObject({
-  version: jsonTypeNumber(),
+  version: jsonTypeConst(2),
   pools: jsonTypeObjectToMap(
     jsonTypeObject({
-      latestAccountState: jsonTypeNullableToOptional(jsonTypePool),
+      latestAccountState: jsonTypeNullableToOptional(miningPoolJsonTypePool),
       latestAccountOrdering: jsonTypeStringToBigint(),
       depositAmountPerUser: jsonTypeObjectToMap(jsonTypeStringToBigint()),
+      computedTotal1: jsonTypeStringToBigint(),
+      computedTotal2: jsonTypeStringToBigint(),
     }),
   ),
 });
@@ -61,8 +64,5 @@ export function miningPoolDataFromJson(
   jsonValue: JsonValue,
 ): MiningPoolDataStore {
   const decoded = jsonTypeV2.decode(jsonValue);
-  if (decoded.version !== 2) {
-    throw new Error(`Unsupported mining pool data version`);
-  }
   return new MiningPoolDataStore(decoded.pools);
 }

@@ -1,128 +1,144 @@
+import { PublicKey } from "@solana/web3.js";
 import {
-  jsonAsArray,
-  jsonAsObject,
   jsonExpectArray,
   jsonExpectBoolean,
   jsonExpectNull,
   jsonExpectNumber,
   jsonExpectObject,
   jsonExpectString,
-  jsonIsBoolean,
-  jsonIsNull,
-  jsonIsNumber,
-  jsonIsString,
   JsonValue,
 } from "./json";
-import { Immutable, withContext } from "./main";
+import { Immutable, withContext } from "./utils";
 
-export type JsonTypeEncoded<S> = S extends JsonType<infer T, any> ? T : never;
-export type JsonTypeDecoded<S> = S extends JsonType<any, infer T> ? T : never;
-
-export type JsonType<Encoded extends JsonValue, Decoded> = {
-  validate(encoded: JsonValue): boolean;
-  decode(encoded: JsonValue): Decoded;
+export type JsonTypeDecoder<Decoded> = {
+  decode(encoded: Immutable<JsonValue>): Decoded;
+};
+export type JsonTypeEncoder<Encoded extends JsonValue, Decoded> = {
   encode(decoded: Immutable<Decoded>): Encoded;
 };
+export type JsonType<
+  Encoded extends JsonValue,
+  Decoded,
+> = JsonTypeDecoder<Decoded> & JsonTypeEncoder<Encoded, Decoded>;
 
+export type JsonTypeEncoded<S> =
+  S extends JsonTypeEncoder<infer T, any> ? T : never;
+export type JsonTypeDecoded<S> = S extends JsonTypeDecoder<infer T> ? T : never;
+
+// TODO - using classes would dampen allocation pressure
+
+class JsonTypeConst<T extends number | string | boolean> {
+  private expected: T;
+
+  constructor(expected: T) {
+    this.expected = expected;
+  }
+  decode(encoded: JsonValue): T {
+    if (encoded !== this.expected) {
+      throw new Error(
+        `JSON: Expected const: ${this.expected} (found: ${encoded})`,
+      );
+    }
+    return this.expected;
+  }
+  encode(_decoded: Immutable<T>): T {
+    return this.expected;
+  }
+}
+export function jsonTypeConst<N extends number | string | boolean>(
+  expected: N,
+): JsonType<N, N> {
+  return new JsonTypeConst(expected);
+}
+
+const jsonTypeValueCached = {
+  decode(encoded: JsonValue): JsonValue {
+    return encoded;
+  },
+  encode(decoded: Immutable<JsonValue>): JsonValue {
+    return JSON.parse(JSON.stringify(decoded));
+  },
+};
 export function jsonTypeValue(): JsonType<JsonValue, JsonValue> {
-  // TODO - cache
-  return {
-    validate(): boolean {
-      return true;
-    },
-    decode(encoded: JsonValue): JsonValue {
-      return encoded;
-    },
-    encode(decoded: Immutable<JsonValue>): JsonValue {
-      return JSON.parse(JSON.stringify(decoded));
-    },
-  };
+  return jsonTypeValueCached;
 }
+
+const jsonTypeNullCached = {
+  decode(encoded: JsonValue): null {
+    return jsonExpectNull(encoded);
+  },
+  encode(decoded: Immutable<null>): null {
+    return decoded;
+  },
+};
 export function jsonTypeNull(): JsonType<null, null> {
-  // TODO - cache
-  return {
-    validate(encoded: JsonValue): boolean {
-      return jsonIsNull(encoded);
-    },
-    decode(encoded: JsonValue): null {
-      return jsonExpectNull(encoded);
-    },
-    encode(decoded: Immutable<null>): null {
-      return decoded;
-    },
-  };
+  return jsonTypeNullCached;
 }
+
+const jsonTypeBooleanCached = {
+  decode(encoded: JsonValue): boolean {
+    return jsonExpectBoolean(encoded);
+  },
+  encode(decoded: Immutable<boolean>): boolean {
+    return decoded;
+  },
+};
 export function jsonTypeBoolean(): JsonType<boolean, boolean> {
-  // TODO - cache
-  return {
-    validate(encoded: JsonValue): boolean {
-      return jsonIsBoolean(encoded);
-    },
-    decode(encoded: JsonValue): boolean {
-      return jsonExpectBoolean(encoded);
-    },
-    encode(decoded: Immutable<boolean>): boolean {
-      return decoded;
-    },
-  };
+  return jsonTypeBooleanCached;
 }
+
+const jsonTypeNumberCached = {
+  decode(encoded: JsonValue): number {
+    return jsonExpectNumber(encoded);
+  },
+  encode(decoded: Immutable<number>): number {
+    return decoded;
+  },
+};
 export function jsonTypeNumber(): JsonType<number, number> {
-  // TODO - cache
-  return {
-    validate(encoded: JsonValue): boolean {
-      return jsonIsNumber(encoded);
-    },
-    decode(encoded: JsonValue): number {
-      return jsonExpectNumber(encoded);
-    },
-    encode(decoded: Immutable<number>): number {
-      return decoded;
-    },
-  };
+  return jsonTypeNumberCached;
 }
 
-// TODO - support const numbers/strings/booleans
-
+const jsonTypeStringCached = {
+  decode(encoded: JsonValue): string {
+    return jsonExpectString(encoded);
+  },
+  encode(decoded: Immutable<string>): string {
+    return decoded;
+  },
+};
 export function jsonTypeString(): JsonType<string, string> {
-  // TODO - cache
-  return {
-    validate(encoded: JsonValue): boolean {
-      return jsonIsString(encoded);
-    },
-    decode(encoded: JsonValue): string {
-      return jsonExpectString(encoded);
-    },
-    encode(decoded: Immutable<string>): string {
-      return decoded;
-    },
-  };
+  return jsonTypeStringCached;
 }
+
+const jsonTypeStringToPubkeyCached = {
+  decode(encoded: JsonValue): PublicKey {
+    return new PublicKey(jsonExpectString(encoded));
+  },
+  encode(decoded: Immutable<PublicKey>): string {
+    return String(decoded);
+  },
+};
+export function jsonTypeStringToPubkey(): JsonType<string, PublicKey> {
+  return jsonTypeStringToPubkeyCached;
+}
+
+const jsonTypeStringToBigintCached = {
+  decode(encoded: JsonValue): bigint {
+    return BigInt(jsonExpectString(encoded));
+  },
+  encode(decoded: Immutable<bigint>): string {
+    return String(decoded);
+  },
+};
 export function jsonTypeStringToBigint(): JsonType<string, bigint> {
-  // TODO - cache
-  return {
-    validate(encoded: JsonValue): boolean {
-      return jsonIsString(encoded);
-    },
-    decode(encoded: JsonValue): bigint {
-      return BigInt(jsonExpectString(encoded));
-    },
-    encode(decoded: Immutable<bigint>): string {
-      return String(decoded);
-    },
-  };
+  return jsonTypeStringToBigintCached;
 }
 
 export function jsonTypeArray<ItemEncoded extends JsonValue, ItemDecoded>(
   itemType: JsonType<ItemEncoded, ItemDecoded>,
 ): JsonType<Array<ItemEncoded>, Array<ItemDecoded>> {
   return {
-    validate(encoded: JsonValue): boolean {
-      const array = jsonAsArray(encoded);
-      if (array === undefined) {
-        return false;
-      }
-      return array.every((item) => itemType.validate(item));
-    },
     decode(encoded: JsonValue): Array<ItemDecoded> {
       return jsonExpectArray(encoded).map((item, index) =>
         withContext(`JSON: Decode Array[${index}] =>`, () =>
@@ -145,18 +161,6 @@ export function jsonTypeObject<
   { [K in keyof Shape]: JsonTypeDecoded<Shape[K]> }
 > {
   return {
-    validate(encoded: JsonValue): boolean {
-      const object = jsonAsObject(encoded);
-      if (object === undefined) {
-        return false;
-      }
-      for (const key in shape) {
-        if (!shape[key]!.validate(object[key]!)) {
-          return false;
-        }
-      }
-      return true;
-    },
     decode(encoded: JsonValue): {
       [K in keyof Shape]: JsonTypeDecoded<Shape[K]>;
     } {
@@ -192,18 +196,6 @@ export function jsonTypeObjectToRecord<
   valueType: JsonType<ValueEncoded, ValueDecoded>,
 ): JsonType<Record<string, ValueEncoded>, Record<string, ValueDecoded>> {
   return {
-    validate(encoded: JsonValue): boolean {
-      const object = jsonAsObject(encoded);
-      if (object === undefined) {
-        return false;
-      }
-      for (const key in object) {
-        if (!valueType.validate(object[key]!)) {
-          return false;
-        }
-      }
-      return true;
-    },
     decode(encoded: JsonValue): Record<string, ValueDecoded> {
       const object = jsonExpectObject(encoded);
       const decoded: Record<string, ValueDecoded> = {};
@@ -233,18 +225,6 @@ export function jsonTypeObjectToMap<
   valueType: JsonType<ValueEncoded, ValueDecoded>,
 ): JsonType<Record<string, ValueEncoded>, Map<string, ValueDecoded>> {
   return {
-    validate(encoded: JsonValue): boolean {
-      const object = jsonAsObject(encoded);
-      if (object === undefined) {
-        return false;
-      }
-      for (const key in object) {
-        if (!valueType.validate(object[key]!)) {
-          return false;
-        }
-      }
-      return true;
-    },
     decode(encoded: JsonValue): Map<string, ValueDecoded> {
       const object = jsonExpectObject(encoded);
       const decoded = new Map<string, ValueDecoded>();
@@ -270,58 +250,6 @@ export function jsonTypeObjectToMap<
   };
 }
 
-export function jsonTypeNullable<
-  ContentEncoded extends JsonValue,
-  ContentDecoded,
->(
-  contentType: JsonType<ContentEncoded, ContentDecoded>,
-): JsonType<ContentEncoded | null, ContentDecoded | null> {
-  return {
-    validate(encoded: JsonValue): boolean {
-      return encoded === null || contentType.validate(encoded);
-    },
-    decode(encoded: JsonValue): ContentDecoded | null {
-      if (encoded === null) {
-        return null;
-      }
-      return contentType.decode(encoded);
-    },
-    encode(decoded: Immutable<ContentDecoded | null>): ContentEncoded | null {
-      if (decoded === null) {
-        return null;
-      }
-      return contentType.encode(decoded);
-    },
-  };
-}
-
-export function jsonTypeNullableToOptional<
-  ContentEncoded extends JsonValue,
-  ContentDecoded,
->(
-  contentType: JsonType<ContentEncoded, ContentDecoded>,
-): JsonType<ContentEncoded | null, ContentDecoded | undefined> {
-  return {
-    validate(encoded: JsonValue): boolean {
-      return encoded === null || contentType.validate(encoded);
-    },
-    decode(encoded: JsonValue): ContentDecoded | undefined {
-      if (encoded === null) {
-        return undefined;
-      }
-      return contentType.decode(encoded);
-    },
-    encode(
-      decoded: Immutable<ContentDecoded | undefined>,
-    ): ContentEncoded | null {
-      if (decoded === undefined) {
-        return null;
-      }
-      return contentType.encode(decoded);
-    },
-  };
-}
-
 export function jsonTypeArrayToMap<
   KeyEncoded extends JsonValue,
   KeyDecoded,
@@ -332,25 +260,6 @@ export function jsonTypeArrayToMap<
   valueType: JsonType<ValueEncoded, ValueDecoded>,
 ): JsonType<Array<[KeyEncoded, ValueEncoded]>, Map<KeyDecoded, ValueDecoded>> {
   return {
-    validate(encoded: JsonValue): boolean {
-      const array = jsonAsArray(encoded);
-      if (array === undefined) {
-        return false;
-      }
-      for (const item of array) {
-        const keyValue = jsonAsArray(item);
-        if (keyValue === undefined || keyValue.length !== 2) {
-          return false;
-        }
-        if (!keyType.validate(keyValue[0]!)) {
-          return false;
-        }
-        if (!valueType.validate(keyValue[1]!)) {
-          return false;
-        }
-      }
-      return true;
-    },
     decode(encoded: JsonValue): Map<KeyDecoded, ValueDecoded> {
       const array = jsonExpectArray(encoded);
       const decoded = new Map<KeyDecoded, ValueDecoded>();
@@ -378,7 +287,54 @@ export function jsonTypeArrayToMap<
       for (const [key, val] of decoded.entries()) {
         encoded.push([keyType.encode(key), valueType.encode(val)]);
       }
+      encoded.sort();
       return encoded;
+    },
+  };
+}
+
+export function jsonTypeNullable<
+  ContentEncoded extends JsonValue,
+  ContentDecoded,
+>(
+  contentType: JsonType<ContentEncoded, ContentDecoded>,
+): JsonType<ContentEncoded | null, ContentDecoded | null> {
+  return {
+    decode(encoded: JsonValue): ContentDecoded | null {
+      if (encoded === null) {
+        return null;
+      }
+      return contentType.decode(encoded);
+    },
+    encode(decoded: Immutable<ContentDecoded | null>): ContentEncoded | null {
+      if (decoded === null) {
+        return null;
+      }
+      return contentType.encode(decoded);
+    },
+  };
+}
+
+export function jsonTypeNullableToOptional<
+  ContentEncoded extends JsonValue,
+  ContentDecoded,
+>(
+  contentType: JsonType<ContentEncoded, ContentDecoded>,
+): JsonType<ContentEncoded | null, ContentDecoded | undefined> {
+  return {
+    decode(encoded: JsonValue): ContentDecoded | undefined {
+      if (encoded === null) {
+        return undefined;
+      }
+      return contentType.decode(encoded);
+    },
+    encode(
+      decoded: Immutable<ContentDecoded | undefined>,
+    ): ContentEncoded | null {
+      if (decoded === undefined) {
+        return null;
+      }
+      return contentType.encode(decoded);
     },
   };
 }

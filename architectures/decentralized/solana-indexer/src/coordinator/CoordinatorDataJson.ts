@@ -1,9 +1,9 @@
 import { JsonValue } from "../json";
-import { jsonTypeNumber, jsonTypeObject } from "../jsonType";
+import { jsonTypeConst, jsonTypeObject } from "../jsonType";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 const jsonTypeV1 = jsonTypeObject({
-  version: jsonTypeNumber(),
+  version: jsonTypeConst(1),
 });
 
 export function coordinatorDataToJson(
@@ -18,9 +18,5 @@ export function coordinatorDataFromJson(
   jsonValue: JsonValue,
 ): CoordinatorDataStore {
   const decoded = jsonTypeV1.decode(jsonValue);
-  if (decoded.version !== 1) {
-    throw new Error(`Unsupported coordinator data version`);
-  }
-  // TODO - use decoded
   return new CoordinatorDataStore();
 }

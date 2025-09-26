@@ -24,16 +24,16 @@ export function jsonPreview(value: JsonValue): string {
     return `String: "${value}"`;
   }
   const maxColumns = 40;
-  if (jsonIsArray(value)) {
-    const array = value as JsonArray;
+  const array = jsonAsArray(value);
+  if (array !== undefined) {
     let previews = array.map(jsonPreview).join(", ");
     if (previews.length > maxColumns) {
       previews = previews.slice(0, maxColumns - 3) + "...";
     }
     return `Array(x${array.length}): [${previews}]`;
   }
-  if (jsonIsObject(value)) {
-    const object = value as JsonObject;
+  const object = jsonAsObject(value);
+  if (object !== undefined) {
     const entries = Object.entries(object);
     let previews = entries
       .map(([key, val]) => `${key}: ${jsonPreview(val)}`)

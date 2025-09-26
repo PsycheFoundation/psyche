@@ -2,6 +2,7 @@ import { TransactionSignature } from "@solana/web3.js";
 import { JsonValue } from "../json";
 import {
   jsonTypeArray,
+  jsonTypeConst,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeString,
@@ -29,7 +30,7 @@ export class IndexingCheckpoint {
 }
 
 const jsonTypeV1 = jsonTypeObject({
-  version: jsonTypeNumber(),
+  version: jsonTypeConst(1),
   indexedOrderedChunks: jsonTypeArray(
     jsonTypeObject({
       orderingHigh: jsonTypeStringToBigint(),
@@ -54,8 +55,5 @@ export function indexingCheckpointFromJson(
   jsonValue: JsonValue,
 ): IndexingCheckpoint {
   const decoded = jsonTypeV1.decode(jsonValue);
-  if (decoded.version !== 1) {
-    throw new Error(`Unsupported indexing checkpoint version`);
-  }
   return new IndexingCheckpoint(decoded.indexedOrderedChunks);
 }

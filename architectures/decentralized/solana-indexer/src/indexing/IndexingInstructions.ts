@@ -5,6 +5,7 @@ import {
   ToolboxIdlProgram,
 } from "solana_toolbox_web3";
 import { JsonValue } from "../json";
+import { Immutable } from "../utils";
 import { IndexingCheckpoint } from "./IndexingCheckpoint";
 import { indexingSignaturesLoop } from "./IndexingSignatures";
 
@@ -18,9 +19,11 @@ export async function indexingInstructionsLoop(
     instructionAddresses: Map<string, PublicKey>,
     instructionPayload: JsonValue,
     ordering: bigint,
-    signature: TransactionSignature,
-    execution: ToolboxEndpointExecution,
-    instructionIndex: number,
+    source: Immutable<{
+      signature: TransactionSignature;
+      execution: ToolboxEndpointExecution;
+      instructionIndex: number;
+    }>,
   ) => Promise<void>,
   onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<void> {
@@ -34,11 +37,13 @@ export async function indexingInstructionsLoop(
         if (execution.error !== null) {
           return;
         }
+        const source = { signature, execution, instructionIndex: -1 };
         for (
           let instructionIndex = 0;
           instructionIndex < execution.instructions.length;
           instructionIndex++
         ) {
+          source.instructionIndex = instructionIndex;
           const instruction = execution.instructions[instructionIndex]!;
           try {
             if (!instruction.programId.equals(programAddress)) {
@@ -57,9 +62,7 @@ export async function indexingInstructionsLoop(
               instructionAddresses,
               instructionPayload,
               ordering * 1000n + BigInt(instructionIndex),
-              signature, // TODO - those parameters should be cleaned up
-              execution,
-              instructionIndex,
+              source,
             );
           } catch (error) {
             console.error("Failed to process instruction content", error);

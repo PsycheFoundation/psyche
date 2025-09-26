@@ -87,6 +87,8 @@ async function indexingSignaturesUntilNow(
       promises.push(onSignature(signature, ordering));
     }
     await Promise.all(promises);
-    await onCheckpoint(new IndexingCheckpoint(indexedOrderedChunks));
+    await onCheckpoint(
+      new IndexingCheckpoint(indexedOrderedChunks.map((c) => ({ ...c }))),
+    );
   }
 }
