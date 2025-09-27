@@ -1,18 +1,20 @@
 import fs from "fs";
 import { JsonValue } from "./json";
 import {
-  jsonTypeConst,
   jsonTypeObject,
+  jsonTypeObjectToVariant,
   jsonTypeString,
   jsonTypeValue,
 } from "./jsonType";
 
-const saveJsonType = jsonTypeObject({
-  version: jsonTypeConst(1),
-  updatedAt: jsonTypeString(),
-  checkpoint: jsonTypeValue(),
-  dataStore: jsonTypeValue(),
-});
+const saveJsonType = jsonTypeObjectToVariant(
+  "save_v1",
+  jsonTypeObject({
+    updatedAt: jsonTypeString(),
+    checkpoint: jsonTypeValue(),
+    dataStore: jsonTypeValue(),
+  }),
+);
 
 async function savePath(saveName: string): Promise<string> {
   // TODO - env variable for data directory
@@ -28,7 +30,6 @@ export async function saveWrite(
 ): Promise<void> {
   const path = await savePath(saveName);
   const encoded = saveJsonType.encode({
-    version: 1,
     updatedAt: new Date().toISOString(),
     checkpoint: saveContent.checkpoint,
     dataStore: saveContent.dataStore,

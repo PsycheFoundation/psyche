@@ -14,6 +14,10 @@ export function camelCaseToSnakeCase(str: string): string {
     .toLowerCase();
 }
 
+export function identity<T>(value: T): T {
+  return value;
+}
+
 // Deep readonly (handles Map/Set/Array/Tuple/Promise + plain objects)
 export type Immutable<T> =
   // leave primitives & common builtins as-is

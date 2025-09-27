@@ -1,11 +1,13 @@
 import { TransactionSignature } from "@solana/web3.js";
 import {
   jsonTypeArray,
+  jsonTypeMapped,
   jsonTypeNumber,
   jsonTypeObject,
+  jsonTypeObjectToVariant,
   jsonTypeString,
   jsonTypeStringToBigint,
-  jsonTypeWrap,
+  jsonTypeWithDecodeFallbacks,
 } from "../jsonType";
 
 export type IndexingCheckpointChunk = {
@@ -28,7 +30,8 @@ export class IndexingCheckpoint {
   }
 }
 
-const indexingCheckpointJsonTypeV1 = jsonTypeWrap(
+const jsonTypeV1 = jsonTypeObjectToVariant(
+  "IndexingCheckpoint:v1",
   jsonTypeObject({
     indexedOrderedChunks: jsonTypeArray(
       jsonTypeObject({
@@ -40,13 +43,12 @@ const indexingCheckpointJsonTypeV1 = jsonTypeWrap(
       }),
     ),
   }),
-  (decoded) => new IndexingCheckpoint(decoded.indexedOrderedChunks),
-  (encoded) => ({ indexedOrderedChunks: encoded.indexedOrderedChunks }),
 );
 
-// TODO - support versionning ?
-export const indexingCheckpointJsonType = jsonTypeWrap(
-  indexingCheckpointJsonTypeV1,
-  (decoded) => decoded,
-  (encoded) => encoded,
+export const indexingCheckpointJsonType = jsonTypeMapped(
+  jsonTypeWithDecodeFallbacks(jsonTypeV1, []),
+  {
+    map: (unmapped) => new IndexingCheckpoint(unmapped.indexedOrderedChunks),
+    unmap: (mapped) => ({ indexedOrderedChunks: mapped.indexedOrderedChunks }),
+  },
 );

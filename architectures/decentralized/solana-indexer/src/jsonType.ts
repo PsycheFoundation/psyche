@@ -13,48 +13,34 @@ import {
 import { camelCaseToSnakeCase, Immutable, withContext } from "./utils";
 
 export type JsonTypeContent<S> = S extends JsonType<infer T> ? T : never;
-export type JsonTypeEncoder<Content> = {
-  encode: (decoded: Immutable<Content>) => JsonValue;
-};
-export type JsonTypeDecoder<Content> = {
-  decode: (encoded: Immutable<JsonValue>) => Content;
-};
 export type JsonType<Content> = {
-  decode(encoded: Immutable<JsonValue>): Content;
+  decode(encoded: JsonValue): Content;
   encode(decoded: Immutable<Content>): JsonValue;
 };
 
-// TODO - using classes would dampen allocation pressure
-
-class JsonTypeConst<T extends number | string | boolean> {
-  private expected: T;
-
-  constructor(expected: T) {
-    this.expected = expected;
-  }
-  decode(encoded: JsonValue): T {
-    if (encoded !== this.expected) {
-      throw new Error(
-        `JSON: Expected const: ${this.expected} (found: ${encoded})`,
-      );
-    }
-    return this.expected;
-  }
-  encode(_decoded: Immutable<T>): JsonValue {
-    return this.expected;
-  }
-}
-export function jsonTypeConst<N extends number | string | boolean>(
-  expected: N,
-): JsonType<N> {
-  return new JsonTypeConst(expected);
+export function jsonTypeConst<Const extends number | string | boolean>(
+  expected: Const,
+): JsonType<Const> {
+  return {
+    decode(encoded: JsonValue): Const {
+      if (encoded !== expected) {
+        throw new Error(
+          `JSON: Expected const: ${expected} (found: ${encoded})`,
+        );
+      }
+      return expected;
+    },
+    encode(): JsonValue {
+      return expected;
+    },
+  };
 }
 
 const jsonTypeValueCached = {
   decode(encoded: JsonValue): JsonValue {
     return JSON.parse(JSON.stringify(encoded));
   },
-  encode(decoded: Immutable<JsonValue>): JsonValue {
+  encode(decoded: JsonValue): JsonValue {
     return JSON.parse(JSON.stringify(decoded));
   },
 };
@@ -312,18 +298,62 @@ export function jsonTypeNullableToOptional<Content>(
   };
 }
 
-// TODO - better naming ?
-export function jsonTypeWrap<Outer, Inner>(
-  innerType: JsonType<Inner>,
-  toOuter: (inner: Inner) => Outer,
-  toInner: (outer: Immutable<Outer>) => Immutable<Inner>,
-): JsonType<Outer> {
+export function jsonTypeMapped<Mapped, Unmapped>(
+  unmappedType: JsonType<Unmapped>,
+  processors: {
+    map: (unmapped: Unmapped) => Mapped;
+    unmap: (mapped: Immutable<Mapped>) => Immutable<Unmapped>;
+  },
+): JsonType<Mapped> {
   return {
-    decode(encoded: JsonValue): Outer {
-      return toOuter(innerType.decode(encoded));
+    decode(encoded: JsonValue): Mapped {
+      return processors.map(unmappedType.decode(encoded));
     },
-    encode(decoded: Immutable<Outer>): JsonValue {
-      return innerType.encode(toInner(decoded));
+    encode(decoded: Immutable<Mapped>): JsonValue {
+      return unmappedType.encode(processors.unmap(decoded));
     },
+  };
+}
+
+export function jsonTypeObjectToVariant<Variant>(
+  variantKey: string,
+  variantType: JsonType<Variant>,
+): JsonType<Variant> {
+  return jsonTypeMapped(
+    jsonTypeObject({
+      [variantKey]: variantType,
+    }),
+    {
+      map: (unmapped) => unmapped[variantKey]!,
+      unmap: (mapped) => ({ [variantKey]: mapped }),
+    },
+  );
+}
+
+export function jsonTypeWithDecodeFallbacks<Content>(
+  currentType: JsonType<Content>,
+  decodeFallbacks: Array<(value: JsonValue) => Content>,
+): JsonType<Content> {
+  return {
+    decode(encoded: JsonValue): Content {
+      const errors = [];
+      try {
+        return currentType.decode(encoded);
+      } catch (error) {
+        errors.push(error);
+      }
+      for (const decodeFallback of decodeFallbacks) {
+        try {
+          return decodeFallback(encoded);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      const separator = "\n---\n > > JSON: Decode error: ";
+      throw new Error(
+        `JSON: Decode with fallbacks failed: ${separator}${errors.join(separator)})`,
+      );
+    },
+    encode: currentType.encode,
   };
 }

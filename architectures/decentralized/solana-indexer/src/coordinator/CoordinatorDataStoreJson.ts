@@ -1,13 +1,15 @@
-import { jsonTypeObject, jsonTypeWrap } from "../jsonType";
+import { jsonTypeMapped, jsonTypeObject } from "../jsonType";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export const coordinatorAccountJsonTypeV1 = jsonTypeObject({});
 
 // TODO - implement
-export const coordinatorDataStoreJsonType = jsonTypeWrap(
+export const coordinatorDataStoreJsonType = jsonTypeMapped(
   coordinatorAccountJsonTypeV1,
-  (decoded) => new CoordinatorDataStore(new Map()),
-  (encoded) => ({}),
+  {
+    map: (unmapped) => new CoordinatorDataStore(new Map()),
+    unmap: (mapped) => ({}),
+  },
 );
 
 /*

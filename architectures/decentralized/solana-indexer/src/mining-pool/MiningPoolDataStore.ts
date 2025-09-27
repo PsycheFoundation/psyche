@@ -1,33 +1,26 @@
+import {
+  JsonType,
+  jsonTypeMapped,
+  jsonTypeObject,
+  jsonTypeObjectToMap,
+  jsonTypeObjectToVariant,
+  jsonTypeWithDecodeFallbacks,
+} from "../jsonType";
 import { Immutable } from "../utils";
-
-export interface MiningPoolDataStorePoolAccount {
-  bump: number;
-  index: bigint;
-  authority: string;
-  collateralMint: string;
-  maxDepositCollateralAmount: bigint;
-  totalDepositedCollateralAmount: bigint;
-  totalExtractedCollateralAmount: bigint;
-  claimingEnabled: boolean;
-  redeemableMint: string;
-  totalClaimedRedeemableAmount: bigint;
-  freeze: boolean;
-}
-
-export interface MiningPoolDataStorePool {
-  latestAccountState: MiningPoolDataStorePoolAccount | undefined;
-  latestAccountOrdering: bigint;
-  depositAmountPerUser: Map<string, bigint>;
-}
+import {
+  MiningPoolDataPoolAccountState,
+  MiningPoolDataPoolDetails,
+  miningPoolDataPoolDetailsJsonType,
+} from "./MiningPoolDataPoolDetails";
 
 export class MiningPoolDataStore {
-  private pools: Map<string, MiningPoolDataStorePool>;
+  private pools: Map<string, MiningPoolDataPoolDetails>;
 
-  constructor(pools: Map<string, MiningPoolDataStorePool>) {
+  constructor(pools: Map<string, MiningPoolDataPoolDetails>) {
     this.pools = pools;
   }
 
-  public getPools(): Immutable<Map<string, MiningPoolDataStorePool>> {
+  public getPools(): Immutable<Map<string, MiningPoolDataPoolDetails>> {
     return this.pools;
   }
 
@@ -55,15 +48,15 @@ export class MiningPoolDataStore {
 
   public savePoolAccountState(
     poolAddress: string,
-    accountState: MiningPoolDataStorePoolAccount,
+    poolAccountState: MiningPoolDataPoolAccountState,
   ) {
-    console.log("Saving pool account state", poolAddress, accountState);
+    console.log("Saving pool account state", poolAddress, poolAccountState);
     let pool = this.pools.get(poolAddress);
     if (pool != undefined) {
-      pool.latestAccountState = accountState;
+      pool.latestAccountState = poolAccountState;
     } else {
       pool = {
-        latestAccountState: accountState,
+        latestAccountState: poolAccountState,
         latestAccountOrdering: 0n,
         depositAmountPerUser: new Map<string, bigint>(),
       };
@@ -92,3 +85,18 @@ export class MiningPoolDataStore {
     return dirtyPools;
   }
 }
+
+const jsonTypeV1 = jsonTypeObjectToVariant(
+  "mining_pool_data_v1",
+  jsonTypeObject({
+    pools: jsonTypeObjectToMap(miningPoolDataPoolDetailsJsonType),
+  }),
+);
+
+export const miningPoolDataStoreJsonType: JsonType<MiningPoolDataStore> =
+  jsonTypeMapped(jsonTypeWithDecodeFallbacks(jsonTypeV1, []), {
+    map: (unmapped) => new MiningPoolDataStore(unmapped.pools),
+    unmap: (mapped) => ({
+      pools: mapped.getPools(),
+    }),
+  });

@@ -6,8 +6,10 @@ import {
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
 import { saveRead, saveWrite } from "../save";
-import { MiningPoolDataStore } from "./MiningPoolDataStore";
-import { miningPoolDataStoreJsonType } from "./MiningPoolDataStoreJson";
+import {
+  MiningPoolDataStore,
+  miningPoolDataStoreJsonType,
+} from "./MiningPoolDataStore";
 import { miningPoolIndexingCheckpoint } from "./MiningPoolIndexingCheckpoint";
 import { miningPoolIndexingInstruction } from "./MiningPoolIndexingInstruction";
 
@@ -18,6 +20,7 @@ export async function miningPoolService(
 ): Promise<void> {
   const saveName = `mining_pool_${cluster}_${programAddress.toBase58()}`;
   const { checkpoint, dataStore } = await miningPoolServiceLoader(saveName);
+  // TODO - add API calls here to serve data from dataStore
   await miningPoolServiceIndexing(
     saveName,
     endpoint,
