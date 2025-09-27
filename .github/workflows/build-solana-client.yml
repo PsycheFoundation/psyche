@@ -153,4 +153,4 @@ jobs:
           du -sh target/ 2>/dev/null || true
 
           # Run the test (both images are now loaded)
-          cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "test_two_clients_three_epochs_run"
+          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "test_two_clients_three_epochs_run"
