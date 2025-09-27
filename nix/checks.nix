@@ -49,6 +49,8 @@
 
           workspace-test-parallelism = testWithProfile "parallelism";
 
+          workspace-test-two-clients-three-epochs = testWithProfile "two-clients-three-epochs";
+
           validate-all-configs =
             pkgs.runCommandNoCC "validate-configs"
               { nativeBuildInputs = [ self'.packages.psyche-centralized-server ]; }
