@@ -15,10 +15,31 @@ jobs:
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
+        with:
+          # You can customize what to remove to free more space
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Check disk space after cleanup
+        run: |
+          echo "=== Disk space after initial cleanup ==="
+          df -h
+          echo "=== Largest directories ==="
+          du -h -d 1 / 2>/dev/null | sort -rh | head -20 || true
 
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Check disk space after checkout
+        run: |
+          echo "=== Disk space after checkout ==="
+          df -h
 
       - uses: nixbuild/nix-quick-install-action@v31
         with:
@@ -28,6 +49,13 @@ jobs:
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
+      - name: Check disk space after nix install
+        run: |
+          echo "=== Disk space after nix install ==="
+          df -h
+          echo "=== Nix store size ==="
+          du -sh /nix/store 2>/dev/null || true
+
       - name: Install just
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
@@ -35,12 +63,21 @@ jobs:
 
       - name: Build Solana Test Client Image
         run: |
-          # Show available space
+          echo "=== Disk space before building client image ==="
           df -h
 
           # Build the image and load it into Docker
           nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
+
+          echo "=== Disk space after nix build ==="
+          df -h
+
           nix-results/docker-psyche-solana-test-client-no-python | docker load
+
+          echo "=== Disk space after docker load ==="
+          df -h
+          echo "=== Docker images size ==="
+          docker images
 
       - name: Download validator image artifact
         uses: dawidd6/action-download-artifact@v2
@@ -50,9 +87,15 @@ jobs:
           name: solana-test-validator-${{ github.sha }}
           path: .
           if_no_artifact_found: fail
-          search_artifacts: false # Set to true if you want to search for artifacts in other branches
+          search_artifacts: false
 
-      - name: Load validator image and run test
+      - name: Check disk space after download
+        run: |
+          echo "=== Disk space after downloading validator artifact ==="
+          df -h
+          ls -lh validator-image.tar.gz
+
+      - name: Load validator image and check space
         run: |
           # Load validator image
           gunzip -c validator-image.tar.gz | docker load
@@ -60,12 +103,54 @@ jobs:
           # Immediately remove the compressed file to save space
           rm validator-image.tar.gz
 
-          # Show loaded images
-          docker images
+          echo "=== Disk space after loading validator and cleanup ==="
+          df -h
 
-          # Build Anchor programs using nix develop
+          # Show loaded images
+          echo "=== All Docker images ==="
+          docker images
+          docker images ls
+          echo "=== Total Docker space usage ==="
+          docker system df
+
+      - name: Build Anchor programs
+        run: |
+          echo "=== Disk space before Anchor builds ==="
+          df -h
+
           nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+
+          echo "=== Disk space after first Anchor build ==="
+          df -h
+
           nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
+
+          echo "=== Disk space after second Anchor build ==="
+          df -h
+
+      - name: Clean up before test
+        run: |
+          echo "=== Attempting to free more space before test ==="
+          # Clean nix store of unused paths
+          nix-collect-garbage -d || true
+
+          # Clean cargo cache if it exists
+          rm -rf ~/.cargo/registry/cache || true
+          rm -rf ~/.cargo/git/db || true
+
+          echo "=== Disk space after additional cleanup ==="
+          df -h
+
+          # Show what's using the most space in the workspace
+          echo "=== Largest directories in workspace ==="
+          du -h -d 2 . 2>/dev/null | sort -rh | head -20 || true
+
+      - name: Run integration test
+        run: |
+          echo "=== Disk space before cargo test ==="
+          df -h
+          echo "=== Target directory size before test ==="
+          du -sh target/ 2>/dev/null || true
 
           # Run the test (both images are now loaded)
           cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "test_two_clients_three_epochs_run"
