@@ -6,19 +6,19 @@ import {
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
 import { saveRead, saveWrite } from "../save";
-import { MiningPoolDataStore } from "./MiningPoolDataStore";
-import { miningPoolDataStoreJsonType } from "./MiningPoolDataStoreJson";
-import { miningPoolIndexingCheckpoint } from "./MiningPoolIndexingCheckpoint";
-import { miningPoolIndexingInstruction } from "./MiningPoolIndexingInstruction";
+import { CoordinatorDataStore } from "./CoordinatorDataStore";
+import { coordinatorDataStoreJsonType } from "./CoordinatorDataStoreJson";
+import { coordinatorIndexingCheckpoint } from "./CoordinatorIndexingCheckpoint";
+import { coordinatorIndexingInstruction } from "./CoordinatorIndexingInstruction";
 
-export async function miningPoolService(
+export async function coordinatorService(
   cluster: string,
   endpoint: ToolboxEndpoint,
   programAddress: PublicKey,
-): Promise<void> {
-  const saveName = `mining_pool_${cluster}_${programAddress.toBase58()}`;
-  const { checkpoint, dataStore } = await miningPoolServiceLoader(saveName);
-  await miningPoolServiceIndexing(
+) {
+  const saveName = `coordinator_${cluster}_${programAddress.toBase58()}.json`;
+  const { checkpoint, dataStore } = await coordinatorServiceLoader(saveName);
+  await coordinatorServiceIndexing(
     saveName,
     endpoint,
     programAddress,
@@ -27,29 +27,29 @@ export async function miningPoolService(
   );
 }
 
-export async function miningPoolServiceLoader(saveName: string) {
+export async function coordinatorServiceLoader(saveName: string) {
   let checkpoint: IndexingCheckpoint;
-  let dataStore: MiningPoolDataStore;
+  let dataStore: CoordinatorDataStore;
   try {
     const saveContent = await saveRead(saveName);
     checkpoint = indexingCheckpointJsonType.decode(saveContent.checkpoint);
-    dataStore = miningPoolDataStoreJsonType.decode(saveContent.dataStore);
-    console.log("Loaded mining pool state saved from:", saveContent.updatedAt);
+    dataStore = coordinatorDataStoreJsonType.decode(saveContent.dataStore);
+    console.log("Loaded coordinator state saved from:", saveContent.updatedAt);
   } catch (error) {
     checkpoint = new IndexingCheckpoint([]);
-    dataStore = new MiningPoolDataStore(new Map());
-    console.warn("Failed to read existing mining pool JSON, starting fresh");
+    dataStore = new CoordinatorDataStore(new Map());
+    console.warn("Failed to read existing coordinator JSON, starting fresh");
   }
   return { checkpoint, dataStore };
 }
 
-export async function miningPoolServiceIndexing(
+export async function coordinatorServiceIndexing(
   saveName: string,
   endpoint: ToolboxEndpoint,
   programAddress: PublicKey,
   startingCheckpoint: IndexingCheckpoint,
-  dataStore: MiningPoolDataStore,
-) {
+  dataStore: CoordinatorDataStore,
+): Promise<void> {
   const idlService = new ToolboxIdlService();
   const idlProgram = await idlService.getOrResolveProgram(
     endpoint,
@@ -69,7 +69,7 @@ export async function miningPoolServiceIndexing(
       instructionPayload,
       ordering,
     ) => {
-      await miningPoolIndexingInstruction(
+      await coordinatorIndexingInstruction(
         dataStore,
         instructionName,
         instructionAddresses,
@@ -78,10 +78,10 @@ export async function miningPoolServiceIndexing(
       );
     },
     async (checkpoint) => {
-      await miningPoolIndexingCheckpoint(dataStore, idlService, endpoint);
+      await coordinatorIndexingCheckpoint(dataStore, idlService, endpoint);
       await saveWrite(saveName, {
         checkpoint: indexingCheckpointJsonType.encode(checkpoint),
-        dataStore: miningPoolDataStoreJsonType.encode(dataStore),
+        dataStore: coordinatorDataStoreJsonType.encode(dataStore),
       });
     },
   );

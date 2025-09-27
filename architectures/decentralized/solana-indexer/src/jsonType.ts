@@ -10,9 +10,15 @@ import {
   JsonObject,
   JsonValue,
 } from "./json";
-import { Immutable, withContext } from "./utils";
+import { camelCaseToSnakeCase, Immutable, withContext } from "./utils";
 
 export type JsonTypeContent<S> = S extends JsonType<infer T> ? T : never;
+export type JsonTypeEncoder<Content> = {
+  encode: (decoded: Immutable<Content>) => JsonValue;
+};
+export type JsonTypeDecoder<Content> = {
+  decode: (encoded: Immutable<JsonValue>) => Content;
+};
 export type JsonType<Content> = {
   decode(encoded: Immutable<JsonValue>): Content;
   encode(decoded: Immutable<Content>): JsonValue;
@@ -46,7 +52,7 @@ export function jsonTypeConst<N extends number | string | boolean>(
 
 const jsonTypeValueCached = {
   decode(encoded: JsonValue): JsonValue {
-    return encoded;
+    return JSON.parse(JSON.stringify(encoded));
   },
   encode(decoded: Immutable<JsonValue>): JsonValue {
     return JSON.parse(JSON.stringify(decoded));
@@ -145,15 +151,9 @@ export function jsonTypeArray<Item>(
   };
 }
 
-function camelToSnake(str: string): string {
-  return str
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // insert underscore before capital letters
-    .toLowerCase();
-}
-
 export function jsonTypeObject<Shape extends { [key: string]: JsonType<any> }>(
   shape: Shape,
-  keyEncoder: (key: string) => string = camelToSnake,
+  keyEncoder: (key: string) => string = camelCaseToSnakeCase,
 ): JsonType<{ [K in keyof Shape]: JsonTypeContent<Shape[K]> }> {
   return {
     decode(encoded: JsonValue): {
@@ -312,6 +312,7 @@ export function jsonTypeNullableToOptional<Content>(
   };
 }
 
+// TODO - better naming ?
 export function jsonTypeWrap<Outer, Inner>(
   innerType: JsonType<Inner>,
   toOuter: (inner: Inner) => Outer,

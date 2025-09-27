@@ -22,7 +22,6 @@ async function savePath(saveName: string): Promise<string> {
 export async function saveWrite(
   saveName: string,
   saveContent: {
-    updatedAt: string;
     checkpoint: JsonValue;
     dataStore: JsonValue;
   },
@@ -30,7 +29,7 @@ export async function saveWrite(
   const path = await savePath(saveName);
   const encoded = saveJsonType.encode({
     version: 1,
-    updatedAt: saveContent.updatedAt,
+    updatedAt: new Date().toISOString(),
     checkpoint: saveContent.checkpoint,
     dataStore: saveContent.dataStore,
   });
@@ -46,10 +45,5 @@ export async function saveRead(saveName: string): Promise<{
   const encoded = await fs.promises
     .readFile(path, "utf-8")
     .then((data: string) => JSON.parse(data) as JsonValue);
-  const decoded = saveJsonType.decode(encoded);
-  return {
-    updatedAt: decoded.updatedAt,
-    checkpoint: decoded.checkpoint,
-    dataStore: decoded.dataStore,
-  };
+  return saveJsonType.decode(encoded);
 }

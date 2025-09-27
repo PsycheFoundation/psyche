@@ -1,8 +1,8 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
 import { JsonValue } from "../json";
-import { miningPoolDataStorePoolAccountJsonTypeV1 } from "./MiningPoolDataJson";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
+import { miningPoolDataStorePoolAccountJsonTypeV1 } from "./MiningPoolDataStoreJson";
 
 export async function miningPoolIndexingCheckpoint(
   dataStore: MiningPoolDataStore,
@@ -14,7 +14,7 @@ export async function miningPoolIndexingCheckpoint(
       endpoint,
       new PublicKey(poolAddress),
     );
-    processRefreshPoolAccountState(
+    miningPoolIndexingCheckpointPoolAccountState(
       dataStore,
       poolAddress,
       accountInfo.state as JsonValue,
@@ -22,7 +22,7 @@ export async function miningPoolIndexingCheckpoint(
   }
 }
 
-export async function processRefreshPoolAccountState(
+export async function miningPoolIndexingCheckpointPoolAccountState(
   dataStore: MiningPoolDataStore,
   poolAddress: string,
   accountState: JsonValue,

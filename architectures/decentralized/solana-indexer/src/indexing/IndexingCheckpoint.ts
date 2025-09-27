@@ -1,12 +1,11 @@
 import { TransactionSignature } from "@solana/web3.js";
-import { JsonValue } from "../json";
 import {
   jsonTypeArray,
-  jsonTypeConst,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeString,
   jsonTypeStringToBigint,
+  jsonTypeWrap,
 } from "../jsonType";
 
 export type IndexingCheckpointChunk = {
@@ -29,31 +28,25 @@ export class IndexingCheckpoint {
   }
 }
 
-const jsonTypeV1 = jsonTypeObject({
-  version: jsonTypeConst(1),
-  indexedOrderedChunks: jsonTypeArray(
-    jsonTypeObject({
-      orderingHigh: jsonTypeStringToBigint(),
-      orderingLow: jsonTypeStringToBigint(),
-      startedFrom: jsonTypeString(),
-      rewindedUntil: jsonTypeString(),
-      processedCounter: jsonTypeNumber(),
-    }),
-  ),
-});
+const indexingCheckpointJsonTypeV1 = jsonTypeWrap(
+  jsonTypeObject({
+    indexedOrderedChunks: jsonTypeArray(
+      jsonTypeObject({
+        orderingHigh: jsonTypeStringToBigint(),
+        orderingLow: jsonTypeStringToBigint(),
+        startedFrom: jsonTypeString(),
+        rewindedUntil: jsonTypeString(),
+        processedCounter: jsonTypeNumber(),
+      }),
+    ),
+  }),
+  (decoded) => new IndexingCheckpoint(decoded.indexedOrderedChunks),
+  (encoded) => ({ indexedOrderedChunks: encoded.indexedOrderedChunks }),
+);
 
-export function indexingCheckpointToJson(
-  checkpoint: IndexingCheckpoint,
-): JsonValue {
-  return jsonTypeV1.encode({
-    version: 1,
-    indexedOrderedChunks: checkpoint.indexedOrderedChunks,
-  });
-}
-
-export function indexingCheckpointFromJson(
-  jsonValue: JsonValue,
-): IndexingCheckpoint {
-  const decoded = jsonTypeV1.decode(jsonValue);
-  return new IndexingCheckpoint(decoded.indexedOrderedChunks);
-}
+// TODO - support versionning ?
+export const indexingCheckpointJsonType = jsonTypeWrap(
+  indexingCheckpointJsonTypeV1,
+  (decoded) => decoded,
+  (encoded) => encoded,
+);

@@ -8,6 +8,12 @@ export function withContext<T>(message: string, fn: () => T): T {
   }
 }
 
+export function camelCaseToSnakeCase(str: string): string {
+  return str
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // insert underscore before capital letters
+    .toLowerCase();
+}
+
 // Deep readonly (handles Map/Set/Array/Tuple/Promise + plain objects)
 export type Immutable<T> =
   // leave primitives & common builtins as-is

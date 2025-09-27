@@ -1,22 +1,14 @@
-import { JsonValue } from "../json";
-import { jsonTypeObject } from "../jsonType";
+import { jsonTypeObject, jsonTypeWrap } from "../jsonType";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export const coordinatorAccountJsonTypeV1 = jsonTypeObject({});
 
-export function coordinatorDataToJson(
-  dataStore: CoordinatorDataStore,
-): JsonValue {
-  return coordinatorAccountJsonTypeV1.encode({});
-}
-
-export function coordinatorDataFromJson(
-  jsonValue: JsonValue,
-): CoordinatorDataStore {
-  console.log("Decoding coordinator data from JSON", jsonValue);
-  //const decoded = coordinatorAccountJsonTypeV1.decode(jsonValue);
-  return new CoordinatorDataStore(new Map());
-}
+// TODO - implement
+export const coordinatorDataStoreJsonType = jsonTypeWrap(
+  coordinatorAccountJsonTypeV1,
+  (decoded) => new CoordinatorDataStore(new Map()),
+  (encoded) => ({}),
+);
 
 /*
 function jsonTypeWrappedArray<Item>(
