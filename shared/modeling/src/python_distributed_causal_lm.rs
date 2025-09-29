@@ -5,7 +5,6 @@ use crate::{
 };
 
 use psyche_core::BatchId;
-use pyo3::types::IntoPyDict;
 use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
@@ -19,7 +18,7 @@ use std::{
 };
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -212,6 +211,7 @@ pub struct PythonDistributedCausalLM {
 unsafe impl Send for PythonDistributedCausalLM {}
 
 impl PythonDistributedCausalLM {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         architecture: String,
         source: PretrainedSource<PythonModelConfig>,
