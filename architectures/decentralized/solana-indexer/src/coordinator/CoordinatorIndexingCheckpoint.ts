@@ -1,6 +1,16 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
-import { JsonValue } from "../json";
+import {
+  jsonTypeNumber,
+  jsonTypeString,
+  jsonTypeStringToBigint,
+  JsonValue,
+} from "../json";
+import {
+  jsonTypeObjectSnakeCase,
+  jsonTypeRustFixedArray,
+  jsonTypeRustFixedString,
+} from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export async function coordinatorIndexingCheckpoint(
@@ -8,28 +18,62 @@ export async function coordinatorIndexingCheckpoint(
   idlService: ToolboxIdlService,
   endpoint: ToolboxEndpoint,
 ) {
-  for (const runAddress of dataStore.getInvalidatedRunsAddresses()) {
-    const accountInfo = await idlService.getAndInferAndDecodeAccount(
-      endpoint,
-      new PublicKey(runAddress),
-    );
-    coordinatorIndexingCheckpointRunAccountState(
-      dataStore,
-      runAddress,
-      accountInfo.state as JsonValue,
-    );
+  for (const [runAddress, runInfo] of dataStore.runsInfos) {
+    if (runInfo.accountFetchedOrdering === runInfo.accountRequestOrdering) {
+      break;
+    }
+    try {
+      const runAccount = await idlService.getAndInferAndDecodeAccount(
+        endpoint,
+        new PublicKey(runAddress),
+      );
+      const runState = runStateJsonType.decode(runAccount.state as JsonValue);
+      dataStore.saveRunState(runAddress, {
+        runId: runState.state.coordinator.runId.value,
+        name: runState.state.metadata.name.value,
+        description: runState.state.metadata.description.value,
+        status: runState.state.coordinator.runState,
+        epochClients: runState.state.coordinator.epochState.clients.map(
+          (client) => ({
+            signer: client.id.signer,
+            state: client.state,
+          }),
+        ),
+        nonce: runState.nonce,
+      });
+    } catch (error) {
+      console.error("Failed to refresh run state", runAddress, error);
+    }
   }
 }
 
-export async function coordinatorIndexingCheckpointRunAccountState(
-  dataStore: CoordinatorDataStore,
-  runAddress: string,
-  accountState: JsonValue,
-): Promise<void> {
-  console.log("Refreshing run account state", runAddress, accountState);
-  try {
-    dataStore.saveRunAccountState(runAddress, { runId: "hello world!" });
-  } catch (error) {
-    console.error("Failed to parse run account state", runAddress, error);
-  }
-}
+const runStateJsonType = jsonTypeObjectSnakeCase({
+  nonce: jsonTypeStringToBigint(),
+  state: jsonTypeObjectSnakeCase({
+    metadata: jsonTypeObjectSnakeCase({
+      name: jsonTypeRustFixedString(),
+      description: jsonTypeRustFixedString(),
+      numParameters: jsonTypeStringToBigint(),
+      vocabSize: jsonTypeStringToBigint(),
+    }),
+    coordinator: jsonTypeObjectSnakeCase({
+      runId: jsonTypeRustFixedString(),
+      runState: jsonTypeString(),
+      progress: jsonTypeObjectSnakeCase({
+        epoch: jsonTypeNumber(),
+        step: jsonTypeNumber(),
+        epochStartDataIndex: jsonTypeStringToBigint(),
+      }),
+      epochState: jsonTypeObjectSnakeCase({
+        clients: jsonTypeRustFixedArray(
+          jsonTypeObjectSnakeCase({
+            id: jsonTypeObjectSnakeCase({
+              signer: jsonTypeString(),
+            }),
+            state: jsonTypeString(),
+          }),
+        ),
+      }),
+    }),
+  }),
+});

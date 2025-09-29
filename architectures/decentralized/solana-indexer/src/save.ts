@@ -1,20 +1,16 @@
 import fs from "fs";
 import {
   jsonTypeObject,
-  jsonTypeObjectToVariant,
   jsonTypeString,
   jsonTypeValue,
   JsonValue,
 } from "./json";
 
-const saveJsonType = jsonTypeObjectToVariant(
-  "save_v1",
-  jsonTypeObject({
-    updatedAt: jsonTypeString(),
-    checkpoint: jsonTypeValue(),
-    dataStore: jsonTypeValue(),
-  }),
-);
+const saveJsonType = jsonTypeObject({
+  updatedAt: jsonTypeString(),
+  checkpoint: jsonTypeValue(),
+  dataStore: jsonTypeValue(),
+});
 
 async function savePath(saveName: string): Promise<string> {
   // TODO - env variable for data directory

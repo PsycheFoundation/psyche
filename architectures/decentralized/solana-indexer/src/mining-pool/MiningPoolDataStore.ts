@@ -1,102 +1,75 @@
 import {
-  JsonType,
+  jsonTypeArrayToVariant,
   jsonTypeMapped,
   jsonTypeObject,
   jsonTypeObjectToMap,
-  jsonTypeObjectToVariant,
-  jsonTypeWithDecodeFallbacks,
 } from "../json";
-import { Immutable } from "../utils";
 import {
-  MiningPoolDataPoolAccountState,
-  MiningPoolDataPoolDetails,
-  miningPoolDataPoolDetailsJsonType,
-} from "./MiningPoolDataPoolDetails";
+  MiningPoolDataPoolInfo,
+  miningPoolDataPoolInfoJsonType,
+} from "./MiningPoolDataPoolInfo";
+import { MiningPoolDataPoolState } from "./MiningPoolDataPoolState";
 
 export class MiningPoolDataStore {
-  private pools: Map<string, MiningPoolDataPoolDetails>;
+  public poolsInfos: Map<string, MiningPoolDataPoolInfo>;
 
-  constructor(pools: Map<string, MiningPoolDataPoolDetails>) {
-    this.pools = pools;
+  constructor(pools: Map<string, MiningPoolDataPoolInfo>) {
+    this.poolsInfos = pools;
   }
 
-  public getPools(): Immutable<Map<string, MiningPoolDataPoolDetails>> {
-    return this.pools;
+  public getPoolInfo(poolAddress: string): MiningPoolDataPoolInfo {
+    let poolInfo = this.poolsInfos.get(poolAddress);
+    if (poolInfo === undefined) {
+      poolInfo = {
+        accountState: undefined,
+        accountFetchedOrdering: 0n,
+        accountRequestOrdering: 0n,
+        depositAmountPerUser: new Map<string, bigint>(),
+        depositAmountTotal: 0n,
+      };
+      this.poolsInfos.set(poolAddress, poolInfo);
+    }
+    return poolInfo;
+  }
+
+  public savePoolState(
+    poolAddress: string,
+    poolState: MiningPoolDataPoolState,
+  ) {
+    let poolInfo = this.getPoolInfo(poolAddress);
+    poolInfo.accountState = poolState;
+    poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering;
   }
 
   public savePoolUserDeposit(
     poolAddress: string,
     userAddress: string,
     depositAmount: bigint,
-    ordering: bigint,
   ) {
-    let pool = this.pools.get(poolAddress);
-    if (pool === undefined) {
-      pool = {
-        latestAccountState: undefined,
-        latestAccountOrdering: ordering,
-        depositAmountPerUser: new Map<string, bigint>(),
-      };
-      this.pools.set(poolAddress, pool);
-      return;
-    }
+    let poolInfo = this.getPoolInfo(poolAddress);
     const depositAmountBefore =
-      pool.depositAmountPerUser.get(userAddress) ?? 0n;
+      poolInfo.depositAmountPerUser.get(userAddress) ?? 0n;
     const depositAmountAfter = depositAmountBefore + depositAmount;
-    pool.depositAmountPerUser.set(userAddress, depositAmountAfter);
+    poolInfo.depositAmountPerUser.set(userAddress, depositAmountAfter);
+    poolInfo.depositAmountTotal += depositAmount;
   }
 
-  public savePoolAccountState(
-    poolAddress: string,
-    poolAccountState: MiningPoolDataPoolAccountState,
-  ) {
-    console.log("Saving pool account state", poolAddress, poolAccountState);
-    let pool = this.pools.get(poolAddress);
-    if (pool != undefined) {
-      pool.latestAccountState = poolAccountState;
-    } else {
-      pool = {
-        latestAccountState: poolAccountState,
-        latestAccountOrdering: 0n,
-        depositAmountPerUser: new Map<string, bigint>(),
-      };
-      this.pools.set(poolAddress, pool);
+  public setPoolRequestOrdering(poolAddress: string, ordering: bigint) {
+    const poolInfo = this.getPoolInfo(poolAddress);
+    if (ordering > poolInfo.accountRequestOrdering) {
+      poolInfo.accountRequestOrdering = ordering;
     }
-  }
-
-  public invalidatePoolAccountState(poolAddress: string, ordering: bigint) {
-    const pool = this.pools.get(poolAddress);
-    if (pool === undefined) {
-      return;
-    }
-    if (ordering > pool.latestAccountOrdering) {
-      pool.latestAccountState = undefined;
-      pool.latestAccountOrdering = ordering;
-    }
-  }
-
-  public getInvalidatedPoolsAddresses(): Array<string> {
-    const dirtyPools: Array<string> = [];
-    for (const [poolAddress, pool] of this.pools.entries()) {
-      if (pool.latestAccountState === undefined) {
-        dirtyPools.push(poolAddress);
-      }
-    }
-    return dirtyPools;
   }
 }
 
-const jsonTypeV1 = jsonTypeObjectToVariant(
-  "mining_pool_data_v1",
+const jsonTypeV1 = jsonTypeArrayToVariant(
+  "Store(v1)",
   jsonTypeObject({
-    pools: jsonTypeObjectToMap(miningPoolDataPoolDetailsJsonType),
+    poolsInfos: jsonTypeObjectToMap(miningPoolDataPoolInfoJsonType),
   }),
 );
 
-export const miningPoolDataStoreJsonType: JsonType<MiningPoolDataStore> =
-  jsonTypeMapped(jsonTypeWithDecodeFallbacks(jsonTypeV1, []), {
-    map: (unmapped) => new MiningPoolDataStore(unmapped.pools),
-    unmap: (mapped) => ({
-      pools: mapped.getPools(),
-    }),
-  });
+export const miningPoolDataStoreJsonType = jsonTypeMapped(jsonTypeV1, {
+  map: (unmapped) => new MiningPoolDataStore(unmapped.poolsInfos),
+  unmap: (mapped) => ({ poolsInfos: mapped.poolsInfos }),
+});

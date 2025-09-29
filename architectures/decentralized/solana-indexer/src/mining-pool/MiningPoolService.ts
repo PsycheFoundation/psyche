@@ -37,9 +37,9 @@ export async function miningPoolServiceLoader(saveName: string) {
     const saveContent = await saveRead(saveName);
     checkpoint = indexingCheckpointJsonType.decode(saveContent.checkpoint);
     dataStore = miningPoolDataStoreJsonType.decode(saveContent.dataStore);
-    console.log("Loaded mining pool state saved from:", saveContent.updatedAt);
+    console.log("Loaded mining pool state from:", saveContent.updatedAt);
   } catch (error) {
-    checkpoint = new IndexingCheckpoint([]);
+    checkpoint = { indexedChunks: [] };
     dataStore = new MiningPoolDataStore(new Map());
     console.warn("Failed to read existing mining pool JSON, starting fresh");
   }

@@ -6,8 +6,10 @@ import {
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
 import { saveRead, saveWrite } from "../save";
-import { CoordinatorDataStore } from "./CoordinatorDataStore";
-import { coordinatorDataStoreJsonType } from "./CoordinatorDataStoreJson";
+import {
+  CoordinatorDataStore,
+  coordinatorDataStoreJsonType,
+} from "./CoordinatorDataStore";
 import { coordinatorIndexingCheckpoint } from "./CoordinatorIndexingCheckpoint";
 import { coordinatorIndexingInstruction } from "./CoordinatorIndexingInstruction";
 
@@ -18,6 +20,7 @@ export async function coordinatorService(
 ) {
   const saveName = `coordinator_${cluster}_${programAddress.toBase58()}.json`;
   const { checkpoint, dataStore } = await coordinatorServiceLoader(saveName);
+  // TODO - add API calls here to serve data from dataStore
   await coordinatorServiceIndexing(
     saveName,
     endpoint,
@@ -34,9 +37,9 @@ export async function coordinatorServiceLoader(saveName: string) {
     const saveContent = await saveRead(saveName);
     checkpoint = indexingCheckpointJsonType.decode(saveContent.checkpoint);
     dataStore = coordinatorDataStoreJsonType.decode(saveContent.dataStore);
-    console.log("Loaded coordinator state saved from:", saveContent.updatedAt);
+    console.log("Loaded coordinator state from:", saveContent.updatedAt);
   } catch (error) {
-    checkpoint = new IndexingCheckpoint([]);
+    checkpoint = { indexedChunks: [] };
     dataStore = new CoordinatorDataStore(new Map());
     console.warn("Failed to read existing coordinator JSON, starting fresh");
   }

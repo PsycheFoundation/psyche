@@ -1,4 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
+import { jsonTypeNumber } from "../json";
+import { jsonTypeObjectSnakeCase, jsonTypeRustFixedArray } from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export async function coordinatorIndexingInstruction(
@@ -8,23 +10,15 @@ export async function coordinatorIndexingInstruction(
   instructionPayload: any,
   ordering: bigint,
 ): Promise<void> {
-  if (instructionName === "tick") {
-    return await coordinatorIndexingInstructionTick(
+  if (instructionName === "witness") {
+    await coordinatorIndexingInstructionWitness(
       dataStore,
       instructionAddresses,
       instructionPayload,
       ordering,
     );
-  } else if (instructionName === "witness") {
-    return await coordinatorIndexingInstructionWitness(
-      dataStore,
-      instructionAddresses,
-      instructionPayload,
-      ordering,
-    );
-  } else {
-    console.warn("Unknown instruction", instructionName);
   }
+  //console.log(instructionName, instructionPayload);
 
   const runAddress = instructionAddresses
     .get("coordinator_account")
@@ -32,7 +26,7 @@ export async function coordinatorIndexingInstruction(
   if (runAddress === undefined) {
     throw new Error("Coordinator: Instruction: Missing run address");
   }
-  dataStore.invalidateRunAccountState(runAddress, ordering);
+  dataStore.setRunRequestOrdering(runAddress, ordering);
 }
 
 export async function coordinatorIndexingInstructionTick(
@@ -40,9 +34,7 @@ export async function coordinatorIndexingInstructionTick(
   instructionAddresses: Map<string, PublicKey>,
   instructionPayload: any,
   ordering: bigint,
-): Promise<void> {
-  console.log("tick", instructionPayload);
-}
+): Promise<void> {}
 
 export async function coordinatorIndexingInstructionWitness(
   dataStore: CoordinatorDataStore,
@@ -50,9 +42,21 @@ export async function coordinatorIndexingInstructionWitness(
   instructionPayload: any,
   ordering: bigint,
 ): Promise<void> {
-  console.log("witness", instructionPayload.metadata);
-  console.log(
-    "eval",
-    JSON.stringify(instructionPayload.metadata.evals, null, 2),
-  );
+  const user = instructionAddresses.get("user")?.toBase58();
+  if (user === undefined) {
+    throw new Error("Coordinator: Instruction: Witness: Missing user address");
+  }
+  const dudu = witnessArgsJsonType.decode(instructionPayload);
+  console.log("Witness", dudu);
 }
+
+const witnessArgsJsonType = jsonTypeObjectSnakeCase({
+  metadata: jsonTypeObjectSnakeCase({
+    step: jsonTypeNumber(),
+    tokensPerSec: jsonTypeNumber(),
+    bandwidthPerSec: jsonTypeNumber(),
+    loss: jsonTypeNumber(),
+    promptResults: jsonTypeRustFixedArray(jsonTypeNumber()),
+    promptIndex: jsonTypeNumber(),
+  }),
+});

@@ -37,4 +37,5 @@ async function main2() {
   );
 }
 
+main1();
 main2();

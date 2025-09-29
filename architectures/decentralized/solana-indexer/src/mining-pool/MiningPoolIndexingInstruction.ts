@@ -20,11 +20,6 @@ export async function miningPoolIndexingInstruction(
   }
 }
 
-const jsonTypeLenderDepositArgs = jsonTypeObject({
-  params: jsonTypeObject({
-    collateralAmount: jsonTypeStringToBigint(),
-  }),
-});
 export async function miningPoolIndexingInstructionLenderDeposit(
   dataStore: MiningPoolDataStore,
   instructionAddresses: Map<string, PublicKey>,
@@ -43,12 +38,16 @@ export async function miningPoolIndexingInstructionLenderDeposit(
       "MiningPool: Instruction: LenderDeposit: Missing user address",
     );
   }
-  const params = jsonTypeLenderDepositArgs.decode(instructionPayload).params;
-  dataStore.savePoolUserDeposit(
-    poolAddress,
-    userAddress,
-    params.collateralAmount,
-    ordering,
-  );
-  dataStore.invalidatePoolAccountState(poolAddress, ordering);
+  const collateralAmount =
+    lenderDepositArgsJsonType.decode(instructionPayload).params
+      .collateralAmount;
+  dataStore.savePoolUserDeposit(poolAddress, userAddress, collateralAmount);
+  dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
+
+const lenderDepositArgsJsonType = jsonTypeObject({
+  params: jsonTypeObject(
+    { collateralAmount: jsonTypeStringToBigint() },
+    { collateralAmount: "collateral_amount" },
+  ),
+});

@@ -1,0 +1,242 @@
+{
+  "updatedAt": "2025-09-29T19:51:27.698Z",
+  "checkpoint": {
+    "indexedChunks": [
+      {
+        "orderingHigh": "1759175227309000000",
+        "orderingLow": "1759175227308955100",
+        "startedFrom": "49bzE9UC8TKaZYCrJE4weTYudxUbfXzGWVV2AezUW6pY6ttED8xWTDzQqxcCN38GmCdrUEwgBFV4FiEFqXbdR1hs",
+        "rewindedUntil": "4mwdx9CHCK4gArtMK6SfXjenFynVpLuBXGmLigD86YTTjCfAvyYcG9La8oHoqbqLMr89WnhgkDr1EVb34G52Q8jd",
+        "processedCounter": 44900
+      }
+    ]
+  },
+  "dataStore": [
+    "Store(v1)",
+    {
+      "runsInfos": {
+        "CrhyvR32NFsJdEKbSDCijadQDZMdm4U5AG6Tj1j4ivck": [
+          "RunInfo(v1)",
+          {
+            "accountState": [
+              "RunState(v1)",
+              {
+                "runId": "dm-fwedu-dclm-stack-nmath",
+                "name": "",
+                "description": "Datamix experiment: 42.5% FineWeb-Edu, 42.5% DCLM-Baseline, 12% Stack-Edu, 3% Nemotron-CC-Math-v1_3",
+                "status": "RoundTrain",
+                "epochClients": [
+                  {
+                    "signer": "4bX5zueyEFtYEomqHtQqA7qzV645FmvxCW7fy9WhBVHZ",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "Cxh1RmgsQcVzWX39tez7Qh9hHiV1aEQBrk4Rg5moN3fM",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "Ajrn9magMRZ1wvQoZo9Aazh4siVLLsFDK2pMePhgZyWX",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "7B95u2Ev8XKP4V2ZvarBaiZYyBA49UHW6joTmtitzTDF",
+                    "state": "Healthy"
+                  }
+                ],
+                "nonce": "153581"
+              }
+            ],
+            "accountFetchedOrdering": "1759175227309000000000",
+            "accountRequestOrdering": "1759175227309000000000"
+          }
+        ],
+        "BHdMSJt2nbxk8RPX5AFpMbKwghwMxF4P1QKT3goyaCBv": [
+          "RunInfo(v1)",
+          {
+            "accountState": [
+              "RunState(v1)",
+              {
+                "runId": "dm-fwedu-baseline",
+                "name": "",
+                "description": "Datamix experiment: 100% FineWeb-Edu",
+                "status": "RoundTrain",
+                "epochClients": [
+                  {
+                    "signer": "DkHnQBhhM8EbFbjnjmSZmww6ocuEE8i7UzGsKZNKbU2Y",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "8w4QYn4GkE26fZoEN3irSMUWjgYNVSNiMiAgHTdEZRva",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "4FvjrEDA9EQagFD9agwnNhsv7N98cHW9zhz5BayZNham",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "GXBi6TxVGxRSQEPvmZmSyUWewaiHMdSyGbM2d7ZEAej2",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "DCj3N1m7xRaEqB8EufYv1MYAJKdUdBYcBfZhbce6apa4",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "6BzT8UaGLmiPuWgZT72m4GW3asQ5LCh4nwUTB4LdjRmi",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "F7fNMzRFABWZMqo6fxwjDs8Knt1ZCwKL7Rw2vqxwhofB",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "A81SyZVogEBtG9TSLdByF6vESooNS5s67p1XCtYvWrHj",
+                    "state": "Healthy"
+                  }
+                ],
+                "nonce": "500800"
+              }
+            ],
+            "accountFetchedOrdering": "1759175227308999997000",
+            "accountRequestOrdering": "1759175227308999997000"
+          }
+        ],
+        "AJtYdJctVs6oLeNpTVbappgzjZeN3tKxJygJpKKiWVKi": [
+          "RunInfo(v1)",
+          {
+            "accountState": [
+              "RunState(v1)",
+              {
+                "runId": "dm-fwedu-dclm-fpdf",
+                "name": "",
+                "description": "Datamix experiment: 37.5% FineWeb-Edu, 37.5% DCLM-Baseline, 25% FinePDFs",
+                "status": "RoundTrain",
+                "epochClients": [
+                  {
+                    "signer": "Eyv43YWQQdDkeJN2r9fisbFxXaKJRr3fE8EyaHCsLZpR",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "TnhPaideFwovnbNjvGue3FNMeNEMyEMUfxYKgC4A6is",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "9bRa5HVP5bPaSpiP7TjXUX1KNY8ACCWnxN7Qnj4otTTo",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "5CHyEJ9t4r1kcssF4UZd7yw3uv2XtxGpum1pXndzAD4t",
+                    "state": "Healthy"
+                  }
+                ],
+                "nonce": "149212"
+              }
+            ],
+            "accountFetchedOrdering": "1759175227308999992000",
+            "accountRequestOrdering": "1759175227308999992000"
+          }
+        ],
+        "kvgizHbWgCwhmJLUcwaDhvGewTcNTAdZWrL2oURcooo": [
+          "RunInfo(v1)",
+          {
+            "accountState": [
+              "RunState(v1)",
+              {
+                "runId": "dm-dclm-baseline",
+                "name": "",
+                "description": "Datamix experiment: 100% DCLM-Baseline",
+                "status": "RoundTrain",
+                "epochClients": [
+                  {
+                    "signer": "HC9oxWRnj6JetaeXhYb5YqqXeLh7XSiXsmga564eVnJA",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "HkqMQgbrs1ZBiJdyhGp1oiSNuDUYHxX1a9n4pgK2XtUx",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "cEVQZYUeHomvWVCJ2cK7Cm3h1GMMFjJ5xAagXXsfdyZ",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "vzN8aUeMS4gmnbjCrhZih9RmUkWeW6awU4znTMLaxGE",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "FnpDQyGzi82BCsZT6JfsF2MrV9D6fGBzqSPmKEP2Cn8b",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "FRqTuG6Un6jzSya8bSVTs12Cs6xXK186Dxk2F66hVLnK",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "66U4829SMMHqF9N15VUq9SmKjQXX4RDU6rRV2vfFkXWr",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "DKEXJjukrFzuZJRehJgWYGw4Du3dNkavrk5TQWGuL5XG",
+                    "state": "Healthy"
+                  }
+                ],
+                "nonce": "407243"
+              }
+            ],
+            "accountFetchedOrdering": "1759175227308999940000",
+            "accountRequestOrdering": "1759175227308999940000"
+          }
+        ],
+        "7DpbgkH3dj3PVJ6ZVvqNY63hrS5YQiiLJH4JPmpAQyhJ": [
+          "RunInfo(v1)",
+          {
+            "accountState": [
+              "RunState(v1)",
+              {
+                "runId": "dm-fwedu-dclm-stack",
+                "name": "",
+                "description": "Datamix experiment: 45% FineWeb-Edu, 45% DCLM-Baseline, 10% Stack-Edu",
+                "status": "RoundTrain",
+                "epochClients": [
+                  {
+                    "signer": "3oztbnw2TNwP4iXnhH6Xh4azWPq6y7tHDdCNz25e21aY",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "1257PEnV2hmFz3uFkB9ivLNWSUGysmWzD81RX9xFV6if",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "HUivAaHxb6E5hrYrrrL7jTdxYFB5L5YP3Cje1FxWFE6g",
+                    "state": "Healthy"
+                  },
+                  {
+                    "signer": "5ZvHA2dBCXVZyaj2WZRxk4ve94aBaa6itvnbbGTfkVDK",
+                    "state": "Healthy"
+                  }
+                ],
+                "nonce": "377299"
+              }
+            ],
+            "accountFetchedOrdering": "1759175227308999979000",
+            "accountRequestOrdering": "1759175227308999979000"
+          }
+        ],
+        "CHhdwSfu5WUPBwWwWsDKDorHdnvmtw6fehs6uBvRzJN": [
+          "RunInfo(v1)",
+          {
+            "accountFetchedOrdering": "0",
+            "accountRequestOrdering": "1759175227308999872000"
+          }
+        ],
+        "VbiRZSPAqyCYKST97Rxb1BMFZ2Wkct3TjpDFkJairzm": [
+          "RunInfo(v1)",
+          {
+            "accountFetchedOrdering": "0",
+            "accountRequestOrdering": "1759175227308999894000"
+          }
+        ]
+      }
+    }
+  ]
+}

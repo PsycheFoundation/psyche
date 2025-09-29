@@ -15,12 +15,12 @@ export async function indexingSignaturesLoop(
   ) => Promise<void>,
   onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<never> {
-  const indexedOrderedChunks = startingCheckpoint.indexedOrderedChunks.slice();
+  const indexedChunks = startingCheckpoint.indexedChunks.slice();
   while (true) {
     await indexingSignaturesUntilNow(
       endpoint,
       programAddress,
-      indexedOrderedChunks,
+      indexedChunks,
       onSignature,
       onCheckpoint,
     );
@@ -31,7 +31,7 @@ export async function indexingSignaturesLoop(
 async function indexingSignaturesUntilNow(
   endpoint: ToolboxEndpoint,
   programAddress: PublicKey,
-  indexedOrderedChunks: Array<IndexingCheckpointChunk>,
+  indexedChunks: Array<IndexingCheckpointChunk>,
   onSignature: (
     signature: TransactionSignature,
     ordering: bigint,
@@ -41,8 +41,8 @@ async function indexingSignaturesUntilNow(
   let currChunkIndex = -1;
   while (true) {
     const nextChunkIndex = currChunkIndex + 1;
-    const currChunkInfo = indexedOrderedChunks[currChunkIndex];
-    const nextChunkInfo = indexedOrderedChunks[nextChunkIndex];
+    const currChunkInfo = indexedChunks[currChunkIndex];
+    const nextChunkInfo = indexedChunks[nextChunkIndex];
     const signatures = await endpoint.searchSignatures(
       programAddress,
       100,
@@ -63,7 +63,7 @@ async function indexingSignaturesUntilNow(
       rewindedUntil = nextChunkInfo.rewindedUntil;
       orderingLow = nextChunkInfo.orderingLow;
       processedCounter += nextChunkInfo.processedCounter - 1;
-      indexedOrderedChunks.splice(nextChunkIndex, 1);
+      indexedChunks.splice(nextChunkIndex, 1);
       signatures.pop();
     }
     if (currChunkInfo !== undefined) {
@@ -71,7 +71,7 @@ async function indexingSignaturesUntilNow(
       currChunkInfo.orderingLow = orderingLow;
       currChunkInfo.processedCounter += processedCounter;
     } else {
-      indexedOrderedChunks.unshift({
+      indexedChunks.unshift({
         orderingHigh: orderingHigh,
         orderingLow: orderingLow,
         startedFrom: startedFrom,
@@ -87,8 +87,8 @@ async function indexingSignaturesUntilNow(
       promises.push(onSignature(signature, ordering));
     }
     await Promise.all(promises);
-    await onCheckpoint(
-      new IndexingCheckpoint(indexedOrderedChunks.map((c) => ({ ...c }))),
-    );
+    await onCheckpoint({
+      indexedChunks: indexedChunks.map((c) => ({ ...c })),
+    });
   }
 }
