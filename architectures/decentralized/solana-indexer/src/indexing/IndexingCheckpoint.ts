@@ -8,7 +8,7 @@ import {
   jsonTypeString,
   jsonTypeStringToBigint,
   jsonTypeWithDecodeFallbacks,
-} from "../jsonType";
+} from "../json";
 
 export type IndexingCheckpointChunk = {
   orderingHigh: bigint;

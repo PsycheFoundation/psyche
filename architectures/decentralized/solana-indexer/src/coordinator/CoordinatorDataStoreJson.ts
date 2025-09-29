@@ -1,4 +1,4 @@
-import { jsonTypeMapped, jsonTypeObject } from "../jsonType";
+import { jsonTypeMapped, jsonTypeObject } from "../json";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export const coordinatorAccountJsonTypeV1 = jsonTypeObject({});

@@ -6,7 +6,7 @@ import {
   jsonTypeObjectToVariant,
   jsonTypeStringToBigint,
   jsonTypeWithDecodeFallbacks,
-} from "../jsonType";
+} from "../json";
 import { miningPoolDataPoolAccountStateJsonType } from "./MiningPoolIndexingCheckpoint";
 
 export interface MiningPoolDataPoolAccountState {

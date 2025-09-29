@@ -1,6 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import { JsonValue } from "../json";
-import { jsonTypeObject, jsonTypeStringToBigint } from "../jsonType";
+import { jsonTypeObject, jsonTypeStringToBigint, JsonValue } from "../json";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingInstruction(

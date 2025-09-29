@@ -5,7 +5,7 @@ import {
   jsonTypeObjectToMap,
   jsonTypeObjectToVariant,
   jsonTypeWithDecodeFallbacks,
-} from "../jsonType";
+} from "../json";
 import { Immutable } from "../utils";
 import {
   MiningPoolDataPoolAccountState,

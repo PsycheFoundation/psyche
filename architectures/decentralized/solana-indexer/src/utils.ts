@@ -18,6 +18,17 @@ export function identity<T>(value: T): T {
   return value;
 }
 
+export function mapMap<K, V, U>(
+  map: Map<K, V>,
+  fn: (value: V, key: K) => U,
+): Map<K, U> {
+  const result = new Map<K, U>();
+  for (const [key, value] of map.entries()) {
+    result.set(key, fn(value, key));
+  }
+  return result;
+}
+
 // Deep readonly (handles Map/Set/Array/Tuple/Promise + plain objects)
 export type Immutable<T> =
   // leave primitives & common builtins as-is

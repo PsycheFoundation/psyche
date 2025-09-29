@@ -1,13 +1,13 @@
 import { PublicKey } from "@solana/web3.js";
 import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
-import { JsonValue } from "../json";
 import {
   jsonTypeBoolean,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeString,
   jsonTypeStringToBigint,
-} from "../jsonType";
+  JsonValue,
+} from "../json";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export const miningPoolDataPoolAccountStateJsonType = jsonTypeObject({

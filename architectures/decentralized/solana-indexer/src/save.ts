@@ -1,11 +1,11 @@
 import fs from "fs";
-import { JsonValue } from "./json";
 import {
   jsonTypeObject,
   jsonTypeObjectToVariant,
   jsonTypeString,
   jsonTypeValue,
-} from "./jsonType";
+  JsonValue,
+} from "./json";
 
 const saveJsonType = jsonTypeObjectToVariant(
   "save_v1",
