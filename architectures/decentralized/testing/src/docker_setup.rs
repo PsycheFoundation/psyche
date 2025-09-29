@@ -236,6 +236,32 @@ pub fn spawn_psyche_network(
         .output()
         .expect("Failed to spawn docker compose instances");
     if !output.status.success() {
+        // Collect container logs before panicking
+        println!("\n=== CONTAINER LOGS ===");
+
+        let containers = [
+            "test-psyche-run-owner-1",
+            "test-psyche-solana-test-validator-1",
+            "test-psyche-test-client-1",
+            "test-psyche-test-client-2",
+        ];
+
+        for container in &containers {
+            println!("\n--- Logs for {} ---", container);
+            if let Ok(log_output) = std::process::Command::new("docker")
+                .args(&["logs", container])
+                .output()
+            {
+                println!("{}", String::from_utf8_lossy(&log_output.stdout));
+                if !log_output.stderr.is_empty() {
+                    println!("STDERR: {}", String::from_utf8_lossy(&log_output.stderr));
+                }
+            } else {
+                println!("Failed to get logs for {}", container);
+            }
+        }
+
+        println!("\n=== END CONTAINER LOGS ===\n");
         panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
     }
 
