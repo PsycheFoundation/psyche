@@ -37,21 +37,32 @@ let
         bashInteractive
         cacert
         coreutils
+        stdenv.cc
+        rdma-core
         nixglhostRustPackages."psyche-solana-client-nixglhost"
         nixglhostRustPackages."psyche-centralized-client-nixglhost"
         nixglhostRustPackages."inference-nixglhost"
         nixglhostRustPackages."train-nixglhost"
         nixglhostRustPackages."bandwidth_test-nixglhost"
+        nixglhostRustPackages."psyche-sidecar-nixglhost"
+        python3Packages.huggingface-hub
         (pkgs.runCommand "entrypoint" { } ''
           mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
           cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
+          cp ${../docker/sidecar_entrypoint.sh} $out/bin/sidecar_entrypoint.sh
           chmod +x $out/bin/train_entrypoint.sh
+          chmod +x $out/bin/sidecar_entrypoint.sh
         '')
       ];
 
       config = {
         Env = [
           "NVIDIA_DRIVER_CAPABILITIES=all"
+          "LD_LIBRARY_PATH=/lib:/usr/lib"
+          "LOGNAME=root"
+          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
+          "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/train_entrypoint.sh" ];
       };
@@ -108,6 +119,10 @@ let
         Env = [
           "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
           "NVIDIA_VISIBLE_DEVICES=all"
+          "LOGNAME=root"
+          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
+          "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
       };
@@ -163,6 +178,10 @@ let
         Env = [
           "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
           "NVIDIA_VISIBLE_DEVICES=all"
+          "LOGNAME=root"
+          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
+          "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "PYTHONUNBUFFERED=1"
         ];
       };
     };

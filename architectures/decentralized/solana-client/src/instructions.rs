@@ -202,13 +202,14 @@ pub fn coordinator_warmup_witness(
 pub fn coordinator_health_check(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
+    user: &Pubkey,
     client_id: psyche_solana_coordinator::ClientId,
     check: psyche_coordinator::CommitteeProof,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
         psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
-            user: client_id.signer,
+            user: *user,
             coordinator_instance: *coordinator_instance,
             coordinator_account: *coordinator_account,
         },

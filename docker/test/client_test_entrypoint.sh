@@ -7,7 +7,7 @@ solana-keygen new --no-bip39-passphrase --force
 
 solana airdrop 10 "$(solana-keygen pubkey)"
 
-psyche-solana-client train \
+psyche-solana-client-wrapped train \
     --wallet-private-key-path "/root/.config/solana/id.json" \
     --rpc "${RPC}" \
     --ws-rpc "${WS_RPC}" \
