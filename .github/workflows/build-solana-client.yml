@@ -79,6 +79,21 @@ jobs:
           echo "=== Docker images size ==="
           docker images
 
+      - name: Build Anchor programs
+        run: |
+          echo "=== Disk space before Anchor builds ==="
+          df -h
+
+          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+
+          echo "=== Disk space after first Anchor build ==="
+          df -h
+
+          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
+
+          echo "=== Disk space after second Anchor build ==="
+          df -h
+
       - name: Download validator image artifact
         uses: dawidd6/action-download-artifact@v2
         with:
@@ -95,20 +110,6 @@ jobs:
           df -h
           ls -lh validator-image.tar.gz
 
-      - name: Build Anchor programs
-        run: |
-          echo "=== Disk space before Anchor builds ==="
-          df -h
-
-          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
-
-          echo "=== Disk space after first Anchor build ==="
-          df -h
-
-          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
-
-          echo "=== Disk space after second Anchor build ==="
-          df -h
       - name: Load validator image and check space
         run: |
           # Load validator image
