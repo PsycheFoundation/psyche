@@ -33,7 +33,6 @@ builds:
       - 'devShells.x86_64-linux.*'
       - 'nixosConfigurations.*'
       - 'checks.x86_64-linux.*'
-      - 'checks.x86_64-linux.workspace-test-two-clients-three-epochs'
 
   # on main, might as well build everything, though
   - exclude:

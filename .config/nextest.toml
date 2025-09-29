@@ -19,7 +19,3 @@ default-filter = 'package(psyche-decentralized-testing)'
 [profile.parallelism]
 slow-timeout = { period = "30s", terminate-after = 3 }
 default-filter = 'package(psyche-modeling) and test(parallelism::)'
-
-[profile.two-clients-three-epochs]
-slow-timeout = { period = "120s", terminate-after = 3 }
-default-filter = 'package(psyche-decentralized-testing) and test(test_two_clients_three_epochs_run)'
