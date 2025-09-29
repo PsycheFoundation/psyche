@@ -287,6 +287,7 @@ impl PythonDistributedCausalLM {
 
                         // Wait for all ranks to be ready before broadcasting tensors
                         comm.wait_for_all_ranks()?;
+                        info!("Sharing parameters with the other ranks");
 
                         for (name, tensor) in tensors_vec.iter() {
                             comm.set(

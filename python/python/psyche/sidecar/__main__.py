@@ -167,11 +167,7 @@ def main():
         # Sync all ranks before receiving anything
         dist.barrier()
         config = store.get("config").decode()
-
-        # Get tensor metadata from store
         tensor_names = json.loads(store.get("tensor_names").decode())
-
-        # Prepare to receive tensors
         state_dict = {}
 
         for name in tensor_names:
@@ -190,10 +186,9 @@ def main():
             }
             tensor_dtype = dtype_map.get(tensor_dtype_str, torch.float32)
 
-            # Create empty tensor to receive broadcast
-            tensor = torch.empty(tensor_shape, dtype=tensor_dtype, device=args.rank)
+            # Create empty tensor to overwrite with the broadcasted tensor
+            tensor = torch.empty(tensor_shape, dtype=tensor_dtype, device=args.device)
 
-            # Receive broadcast from Rust (rank 0)
             print("Received tensor:", name)
             dist.broadcast(tensor, 0)
             dist.barrier()
