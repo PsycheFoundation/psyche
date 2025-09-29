@@ -157,6 +157,7 @@ def main():
     architecture = store.get("architecture").decode()
     source = store.get("source").decode()
     if source == "files":
+        files = store.get("files").decode()
         files_list = json.loads(files)
 
         # Expand ~/ to the actual home directory on this machine
