@@ -41,6 +41,15 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
+      - name: Build Solana Test Client Image
+        run: |
+          # Build the image and load it into Docker
+          nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
+          nix-results/docker-psyche-solana-test-client-no-python | docker load
+
+          # Clean up nix result to save space
+          rm -rf nix-results/docker-psyche-solana-test-client-no-python
+
       - name: Download Anchor programs artifact
         uses: dawidd6/action-download-artifact@v2
         with:
@@ -60,15 +69,6 @@ jobs:
 
           echo "=== Extracted Authorizer programs ==="
           ls -la architectures/decentralized/solana-authorizer/target/deploy/
-
-      - name: Build Solana Test Client Image
-        run: |
-          # Build the image and load it into Docker
-          nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
-          nix-results/docker-psyche-solana-test-client-no-python | docker load
-
-          # Clean up nix result to save space
-          rm -rf nix-results/docker-psyche-solana-test-client-no-python
 
       - name: Download validator image artifact
         uses: dawidd6/action-download-artifact@v2
