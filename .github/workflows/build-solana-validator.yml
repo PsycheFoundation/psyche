@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_run:
+    workflows: ['Build Anchor Programs']
+    types:
+      - completed
 
 jobs:
   build-validator-image:
@@ -13,6 +17,10 @@ jobs:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: nixbuild/nix-quick-install-action@v31
         with:
           nix_conf: |
@@ -21,21 +29,38 @@ jobs:
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Install just
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
+      - name: Download Anchor programs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: build-anchor-programs.yml
+          workflow_conclusion: success
+          name: anchor-programs-${{ github.sha }}
+          path: .
+          if_no_artifact_found: fail
+
+      - name: Extract Anchor programs
+        run: |
+          tar -xzf anchor-programs.tar.gz -C architectures/decentralized/
+          rm anchor-programs.tar.gz
+
+          # Verify the .so files exist
+          echo "=== Verifying .so files ==="
+          ls -la architectures/decentralized/solana-coordinator/target/deploy/*.so
+          ls -la architectures/decentralized/solana-authorizer/target/deploy/*.so
+
       - name: Build Solana Test Validator Image
         run: |
-          # Show available space
-          df -h
+          # Set PSYCHE_HOME so Nix can find the files
+          export PSYCHE_HOME=$(pwd)
 
-          # Build the image
-          just nix build_docker_solana_test_validator
+          # Build with --impure to include the non-Git-tracked .so files
+          nix build .#docker-psyche-solana-test-validator --impure --out-link result
+          result | docker load
 
       - name: Save Docker image as artifact
         run: |
