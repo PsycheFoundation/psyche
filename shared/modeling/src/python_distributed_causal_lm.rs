@@ -244,7 +244,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = format!("tcp://127.0.0.1:{}", port);
+        let init_method = format!("tcp://0.0.0.0:{}", port);
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();
