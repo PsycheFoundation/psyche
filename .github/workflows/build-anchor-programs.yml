@@ -1,0 +1,66 @@
+name: Build Anchor Programs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-anchor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false # Keep swap for building
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Build Anchor Programs
+        run: |
+          echo "Building Solana Coordinator..."
+          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+
+          echo "Building Solana Authorizer..."
+          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
+
+          # List built artifacts
+          echo "=== Built Coordinator artifacts ==="
+          ls -la architectures/decentralized/solana-coordinator/target/deploy/
+
+          echo "=== Built Authorizer artifacts ==="
+          ls -la architectures/decentralized/solana-authorizer/target/deploy/
+
+      - name: Package Anchor artifacts
+        run: |
+          # Create a combined archive of all needed files
+          tar -czf anchor-programs.tar.gz \
+            -C architectures/decentralized \
+            solana-coordinator/target/deploy \
+            solana-authorizer/target/deploy
+
+          ls -lh anchor-programs.tar.gz
+
+      - name: Upload Anchor programs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-programs-${{ github.sha }}
+          path: anchor-programs.tar.gz
+          retention-days: 1
