@@ -132,7 +132,11 @@ class HfTransformersAuto(CausalLM):
         with torch.device("meta"):
             model: torch.nn.Module = AutoModelForCausalLM.from_config(
                 config,
-                # attn_implementation=attn_implementation,
+                attn_implementation=(
+                    attn_implementation
+                    if os.getenv("DISABLE_FLASH_ATTN") != "1"
+                    else "eager"
+                ),
             )
         if device.type == "cuda":
             torch.cuda.set_device(device)
