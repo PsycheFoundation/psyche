@@ -105,9 +105,8 @@ jobs:
         run: |
           export PSYCHE_HOME=$(pwd)
 
-          # Build with --impure to include the non-Git-tracked .so files
-          nix build .#docker-psyche-solana-test-validator --impure --out-link result
-          result | docker load
+          # Build and load in one command
+          nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
 
       - name: Save Docker image as artifact
         run: |
