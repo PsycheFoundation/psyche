@@ -2,7 +2,6 @@ use std::{fs::OpenOptions, path::PathBuf, time::Duration};
 
 use crate::CustomWidget;
 use clap::ValueEnum;
-use console_subscriber::ConsoleLayer;
 use crossterm::event::{Event, KeyCode, MouseEventKind};
 use logfire::{
     bridges::tracing::LogfireTracingPendingSpanNotSentLayer,
@@ -566,9 +565,6 @@ fn init_logging_core(
     };
 
     let mut layers: Vec<Box<dyn tracing_subscriber::Layer<_> + Send + Sync>> = Vec::new();
-
-    // add console layer
-    layers.push(ConsoleLayer::builder().with_default_env().spawn().boxed());
 
     // add output layer
     match output {
