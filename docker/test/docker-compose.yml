@@ -43,7 +43,7 @@ services:
       test:
         [
           'CMD-SHELL',
-          'solana cluster-version --url http://localhost:8899 || exit 1',
+          'solana account PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw --url http://localhost:8899 | grep -q "Executable: true" && solana account HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y --url http://localhost:8899 | grep -q "Executable: true" || exit 1',
         ]
       interval: 5s
       timeout: 5s
