@@ -298,28 +298,20 @@ impl LlamaForCausalLM {
 }
 
 impl ModelConfig for LlamaConfig {
-    // TODO: This is just a hacky solution to get the parameter names from the config
-    // but it is probably overkill. We should think about a better way to get them
-    // to make the p2p requests.
     fn get_parameter_names(&self) -> Vec<String> {
         let mut variables = Vec::new();
-
-        // 2. Transformer layers
         for layer_idx in 0..self.num_hidden_layers {
             let layer_prefix = format!("model.layers.{}", layer_idx);
 
-            // Self-attention
             variables.push(format!("{}.self_attn.q_proj.weight", layer_prefix));
             variables.push(format!("{}.self_attn.k_proj.weight", layer_prefix));
             variables.push(format!("{}.self_attn.v_proj.weight", layer_prefix));
             variables.push(format!("{}.self_attn.o_proj.weight", layer_prefix));
 
-            // MLP (Feed Forward)
             variables.push(format!("{}.mlp.gate_proj.weight", layer_prefix));
             variables.push(format!("{}.mlp.up_proj.weight", layer_prefix));
             variables.push(format!("{}.mlp.down_proj.weight", layer_prefix));
 
-            // Layer norms (RMSNorm in LLaMA)
             variables.push(format!("{}.input_layernorm.weight", layer_prefix));
             variables.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
         }

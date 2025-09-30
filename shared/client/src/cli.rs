@@ -174,8 +174,8 @@ pub struct TrainArgs {
     )]
     pub device: Devices,
 
-    #[clap(long, default_value_t = 34567, env)]
-    pub sidecar_port: u16,
+    #[clap(long, env)]
+    pub sidecar_port: Option<u16>,
 }
 
 impl TrainArgs {

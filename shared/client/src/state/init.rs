@@ -71,7 +71,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     // configurable dummy training time (in seconds) for this client - relevant just for testing
     pub dummy_training_delay_secs: Option<u64>,
 
-    pub sidecar_port: u16,
+    pub sidecar_port: Option<u16>,
 }
 
 #[derive(Debug, Error)]

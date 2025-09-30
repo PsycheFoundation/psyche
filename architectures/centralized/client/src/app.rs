@@ -113,7 +113,7 @@ pub struct AppParams {
     pub max_concurrent_parameter_requests: usize,
     pub metrics_local_port: Option<u16>,
     pub device: Devices,
-    pub sidecar_port: u16,
+    pub sidecar_port: Option<u16>,
 }
 
 impl AppBuilder {

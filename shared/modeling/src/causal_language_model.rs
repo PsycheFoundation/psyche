@@ -159,9 +159,6 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
 
             (model, lm_head)
         };
-        // let variables_lock = variables.variables_.lock().unwrap();
-        // let parameters: Vec<String> = variables_lock.named_variables.keys().cloned().collect();
-        // println!("PARAMETERS: {:?}", parameters);
         let variables = StableVarStoreIterator::new(&variables, comm.clone());
         Ok(Self {
             model,

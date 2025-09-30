@@ -133,9 +133,6 @@ impl TorchDistributedCommunicator {
     }
 
     pub fn wait_for_all_ranks(&self) -> PyResult<()> {
-        // Set a flag that rank 0 is ready
-        self.set("rank_0_ready", "1")?;
-
         // Wait for all other ranks to signal ready
         Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
@@ -219,7 +216,7 @@ impl PythonDistributedCausalLM {
         attn_implementation: AttentionImplementation,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
-        port: u16,
+        port: Option<u16>,
         num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
         if !tch::Cuda::is_available() {
@@ -244,7 +241,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = format!("tcp://0.0.0.0:{}", port);
+        let init_method = format!("tcp://0.0.0.0:{}", port.unwrap_or(34567));
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();

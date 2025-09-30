@@ -1033,102 +1033,97 @@ impl DeepseekForCausalLM {
 }
 
 impl ModelConfig for DeepseekConfig {
-    // TODO: This is just a hacky solution to get the parameter names from the config
-    // but it is probably overkill. We should think about a better way to get them
-    // to make the p2p requests.
     fn get_parameter_names(&self) -> Vec<String> {
-        let mut names = Vec::new();
+        let mut parameters = Vec::new();
 
-        names.push("model.embed_tokens.weight".to_string());
-        names.push("model.norm.weight".to_string());
-        names.push("lm_head.weight".to_string());
+        parameters.push("model.embed_tokens.weight".to_string());
+        parameters.push("model.norm.weight".to_string());
+        parameters.push("lm_head.weight".to_string());
 
         for layer_idx in 0..self.num_hidden_layers {
             let layer_prefix = format!("model.layers.{}", layer_idx);
 
-            names.push(format!("{}.input_layernorm.weight", layer_prefix));
-            names.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
+            parameters.push(format!("{}.input_layernorm.weight", layer_prefix));
+            parameters.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
 
-            generate_attention_params(&mut names, &layer_prefix, self);
+            self.generate_attention_params(&mut parameters, &layer_prefix);
             if layer_idx >= self.first_k_dense_replace.unwrap() && self.n_routed_experts.is_some() {
-                generate_moe_params(&mut names, layer_idx, self);
+                self.generate_moe_params(&mut parameters, layer_idx);
             } else {
-                generate_dense_mlp_params(&mut names, &layer_prefix);
+                self.generate_dense_mlp_params(&mut parameters, &layer_prefix);
             }
         }
 
-        names
+        parameters
     }
 }
 
-fn generate_attention_params(names: &mut Vec<String>, prefix: &str, config: &DeepseekConfig) {
-    names.push(format!("{}.self_attn.o_proj.weight", prefix));
+impl DeepseekConfig {
+    fn generate_attention_params(&self, names: &mut Vec<String>, prefix: &str) {
+        names.push(format!("{}.self_attn.o_proj.weight", prefix));
 
-    if config.q_lora_rank.is_some() && config.kv_lora_rank.is_some() {
-        // Multi-head Latent Attention (MLA) - matches actual weight map
-        names.push(format!("{}.self_attn.q_a_proj.weight", prefix));
-        names.push(format!("{}.self_attn.q_b_proj.weight", prefix));
-        names.push(format!("{}.self_attn.q_a_layernorm.weight", prefix));
-        names.push(format!("{}.self_attn.kv_a_proj_with_mqa.weight", prefix));
-        names.push(format!("{}.self_attn.kv_b_proj.weight", prefix));
-        names.push(format!("{}.self_attn.kv_a_layernorm.weight", prefix));
+        if self.q_lora_rank.is_some() && self.kv_lora_rank.is_some() {
+            names.push(format!("{}.self_attn.q_a_proj.weight", prefix));
+            names.push(format!("{}.self_attn.q_b_proj.weight", prefix));
+            names.push(format!("{}.self_attn.q_a_layernorm.weight", prefix));
+            names.push(format!("{}.self_attn.kv_a_proj_with_mqa.weight", prefix));
+            names.push(format!("{}.self_attn.kv_b_proj.weight", prefix));
+            names.push(format!("{}.self_attn.kv_a_layernorm.weight", prefix));
 
-        if config.attention_bias.unwrap_or(false) {
-            names.push(format!("{}.self_attn.q_a_proj.bias", prefix));
-            names.push(format!("{}.self_attn.q_b_proj.bias", prefix));
-            names.push(format!("{}.self_attn.kv_a_proj_with_mqa.bias", prefix));
-            names.push(format!("{}.self_attn.kv_b_proj.bias", prefix));
-            names.push(format!("{}.self_attn.o_proj.bias", prefix));
+            if self.attention_bias.unwrap_or(false) {
+                names.push(format!("{}.self_attn.q_a_proj.bias", prefix));
+                names.push(format!("{}.self_attn.q_b_proj.bias", prefix));
+                names.push(format!("{}.self_attn.kv_a_proj_with_mqa.bias", prefix));
+                names.push(format!("{}.self_attn.kv_b_proj.bias", prefix));
+                names.push(format!("{}.self_attn.o_proj.bias", prefix));
+            }
+        } else {
+            names.push(format!("{}.self_attn.q_proj.weight", prefix));
+            names.push(format!("{}.self_attn.k_proj.weight", prefix));
+            names.push(format!("{}.self_attn.v_proj.weight", prefix));
         }
-    } else {
-        // Standard attention fallback
-        names.push(format!("{}.self_attn.q_proj.weight", prefix));
-        names.push(format!("{}.self_attn.k_proj.weight", prefix));
-        names.push(format!("{}.self_attn.v_proj.weight", prefix));
     }
-}
 
-fn generate_dense_mlp_params(names: &mut Vec<String>, prefix: &str) {
-    names.push(format!("{}.mlp.gate_proj.weight", prefix));
-    names.push(format!("{}.mlp.up_proj.weight", prefix));
-    names.push(format!("{}.mlp.down_proj.weight", prefix));
-}
+    fn generate_dense_mlp_params(&self, names: &mut Vec<String>, prefix: &str) {
+        names.push(format!("{}.mlp.gate_proj.weight", prefix));
+        names.push(format!("{}.mlp.up_proj.weight", prefix));
+        names.push(format!("{}.mlp.down_proj.weight", prefix));
+    }
 
-fn generate_moe_params(names: &mut Vec<String>, layer_idx: usize, config: &DeepseekConfig) {
-    // Routed experts
-
-    if let Some(n_experts) = config.n_routed_experts {
-        names.push(format!("model.layers.{}.mlp.gate.weight", layer_idx));
-        names.push(format!(
-            "model.layers.{}.mlp.gate.e_score_correction_bias",
-            layer_idx
-        ));
-        for expert_idx in 0..n_experts {
+    fn generate_moe_params(&self, names: &mut Vec<String>, layer_idx: usize) {
+        if let Some(n_experts) = self.n_routed_experts {
+            names.push(format!("model.layers.{}.mlp.gate.weight", layer_idx));
             names.push(format!(
-                "model.layers.{}.mlp.experts.{}.gate_proj.weight",
-                layer_idx, expert_idx
-            ));
-            names.push(format!(
-                "model.layers.{}.mlp.experts.{}.up_proj.weight",
-                layer_idx, expert_idx
-            ));
-            names.push(format!(
-                "model.layers.{}.mlp.experts.{}.down_proj.weight",
-                layer_idx, expert_idx
-            ));
-
-            names.push(format!(
-                "model.layers.{}.mlp.shared_experts.gate_proj.weight",
+                "model.layers.{}.mlp.gate.e_score_correction_bias",
                 layer_idx
             ));
-            names.push(format!(
-                "model.layers.{}.mlp.shared_experts.up_proj.weight",
-                layer_idx
-            ));
-            names.push(format!(
-                "model.layers.{}.mlp.shared_experts.down_proj.weight",
-                layer_idx
-            ));
+            for expert_idx in 0..n_experts {
+                names.push(format!(
+                    "model.layers.{}.mlp.experts.{}.gate_proj.weight",
+                    layer_idx, expert_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.experts.{}.up_proj.weight",
+                    layer_idx, expert_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.experts.{}.down_proj.weight",
+                    layer_idx, expert_idx
+                ));
+
+                names.push(format!(
+                    "model.layers.{}.mlp.shared_experts.gate_proj.weight",
+                    layer_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.shared_experts.up_proj.weight",
+                    layer_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.shared_experts.down_proj.weight",
+                    layer_idx
+                ));
+            }
         }
     }
 }

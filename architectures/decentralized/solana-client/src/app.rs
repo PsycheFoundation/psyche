@@ -82,7 +82,7 @@ pub struct AppParams {
     pub authorizer: Option<Pubkey>,
     pub metrics_local_port: Option<u16>,
     pub device: Devices,
-    pub sidecar_port: u16,
+    pub sidecar_port: Option<u16>,
 }
 
 impl AppBuilder {
