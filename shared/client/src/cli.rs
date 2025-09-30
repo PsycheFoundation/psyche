@@ -173,6 +173,9 @@ pub struct TrainArgs {
         default_value = "auto"
     )]
     pub device: Devices,
+
+    #[clap(long, env)]
+    pub sidecar_port: Option<u16>,
 }
 
 impl TrainArgs {

@@ -82,6 +82,7 @@ pub struct AppParams {
     pub authorizer: Option<Pubkey>,
     pub metrics_local_port: Option<u16>,
     pub device: Devices,
+    pub sidecar_port: Option<u16>,
 }
 
 impl AppBuilder {
@@ -133,6 +134,7 @@ impl AppBuilder {
                 dummy_training_delay_secs: p.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
                 device: p.device,
+                sidecar_port: p.sidecar_port,
             };
         let app = App {
             run_id: p.run_id.clone(),

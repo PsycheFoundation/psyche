@@ -181,6 +181,7 @@ fn inference(
                     psyche_modeling::ParallelismConfig { dp: tp, tp: 1 },
                     None,
                     None,
+                    None,
                 )?) as Box<dyn CausalLM>
             }
         }
