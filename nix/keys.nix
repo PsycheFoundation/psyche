@@ -16,7 +16,11 @@ rec {
     ariLunaKey
   ];
 
-  allDevKeys = ariKeys;
+  brooklynKeys = [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGFMeITMkjzJr4i8U6IPD+kL7plbiHVJh8TwI0tYqo9V brooklyn.bb.nicholson@gmail.com"
+  ];
+
+  allDevKeys = ariKeys ++ brooklynKeys;
 
   allKeys = [
     nousRepoKey
