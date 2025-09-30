@@ -1,9 +1,6 @@
 import { PublicKey, TransactionSignature } from "@solana/web3.js";
 import { ToolboxEndpoint } from "solana_toolbox_web3";
-import {
-  IndexingCheckpoint,
-  IndexingCheckpointChunk,
-} from "./IndexingCheckpoint";
+import { IndexingCheckpoint } from "./IndexingCheckpoint";
 
 export async function indexingSignaturesLoop(
   endpoint: ToolboxEndpoint,
@@ -15,42 +12,24 @@ export async function indexingSignaturesLoop(
   ) => Promise<void>,
   onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<never> {
-  const indexedChunks = startingCheckpoint.indexedChunks.slice();
+  const indexedChunks = startingCheckpoint.indexedChunks.map((c) => ({ ...c }));
   while (true) {
-    await indexingSignaturesUntilNow(
-      endpoint,
-      programAddress,
-      indexedChunks,
-      onSignature,
-      onCheckpoint,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 3333));
-  }
-}
-
-async function indexingSignaturesUntilNow(
-  endpoint: ToolboxEndpoint,
-  programAddress: PublicKey,
-  indexedChunks: Array<IndexingCheckpointChunk>,
-  onSignature: (
-    signature: TransactionSignature,
-    ordering: bigint,
-  ) => Promise<void>,
-  onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
-): Promise<void> {
-  let currChunkIndex = -1;
-  while (true) {
+    await onCheckpoint({
+      indexedChunks: indexedChunks.map((c) => ({ ...c })),
+    });
+    const currChunkIndex =
+      Math.floor(Math.random() * (indexedChunks.length + 1)) - 1;
     const nextChunkIndex = currChunkIndex + 1;
     const currChunkInfo = indexedChunks[currChunkIndex];
     const nextChunkInfo = indexedChunks[nextChunkIndex];
     const signatures = await endpoint.searchSignatures(
       programAddress,
-      100,
+      1000,
       currChunkInfo?.rewindedUntil,
       nextChunkInfo?.startedFrom,
     );
     if (signatures.length === 0) {
-      return;
+      continue;
     }
     const orderingHigh = currChunkInfo
       ? currChunkInfo.orderingLow
@@ -78,7 +57,6 @@ async function indexingSignaturesUntilNow(
         rewindedUntil: rewindedUntil,
         processedCounter: processedCounter,
       });
-      currChunkIndex++;
     }
     const promises = new Array<Promise<void>>();
     for (let i = 0; i < signatures.length; i++) {
@@ -87,8 +65,5 @@ async function indexingSignaturesUntilNow(
       promises.push(onSignature(signature, ordering));
     }
     await Promise.all(promises);
-    await onCheckpoint({
-      indexedChunks: indexedChunks.map((c) => ({ ...c })),
-    });
   }
 }

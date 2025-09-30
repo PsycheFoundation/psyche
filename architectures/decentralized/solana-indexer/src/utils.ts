@@ -106,3 +106,10 @@ export function jsonTypeRustFixedArray<T>(itemType: JsonType<T>) {
     },
   );
 }
+
+export function jsonTypeRustSmallBoolean() {
+  return jsonTypeMapped(jsonTypeArrayToTuple([jsonTypeNumber()]), {
+    map: (unmapped) => unmapped[0] !== 0,
+    unmap: (mapped) => (mapped ? ([1] as const) : ([0] as const)),
+  });
+}

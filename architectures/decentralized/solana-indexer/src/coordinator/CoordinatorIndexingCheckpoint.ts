@@ -28,6 +28,7 @@ export async function coordinatorIndexingCheckpoint(
         new PublicKey(runAddress),
       );
       const runState = runStateJsonType.decode(runAccount.state as JsonValue);
+      console.log("Refreshed run state", runAddress, runState.nonce);
       dataStore.saveRunState(runAddress, {
         runId: runState.state.coordinator.runId.value,
         name: runState.state.metadata.name.value,

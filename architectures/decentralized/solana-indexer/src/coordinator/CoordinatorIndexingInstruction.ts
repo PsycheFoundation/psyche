@@ -10,16 +10,6 @@ export async function coordinatorIndexingInstruction(
   instructionPayload: any,
   ordering: bigint,
 ): Promise<void> {
-  if (instructionName === "witness") {
-    await coordinatorIndexingInstructionWitness(
-      dataStore,
-      instructionAddresses,
-      instructionPayload,
-      ordering,
-    );
-  }
-  //console.log(instructionName, instructionPayload);
-
   const runAddress = instructionAddresses
     .get("coordinator_account")
     ?.toBase58();
@@ -27,27 +17,37 @@ export async function coordinatorIndexingInstruction(
     throw new Error("Coordinator: Instruction: Missing run address");
   }
   dataStore.setRunRequestOrdering(runAddress, ordering);
+
+  if (instructionName === "witness") {
+    await coordinatorIndexingInstructionWitness(
+      dataStore,
+      runAddress,
+      instructionAddresses,
+      instructionPayload,
+      ordering,
+    );
+  }
+  //console.log(instructionName, instructionPayload);
 }
 
-export async function coordinatorIndexingInstructionTick(
+async function coordinatorIndexingInstructionWitness(
   dataStore: CoordinatorDataStore,
-  instructionAddresses: Map<string, PublicKey>,
-  instructionPayload: any,
-  ordering: bigint,
-): Promise<void> {}
-
-export async function coordinatorIndexingInstructionWitness(
-  dataStore: CoordinatorDataStore,
+  runAddress: string,
   instructionAddresses: Map<string, PublicKey>,
   instructionPayload: any,
   ordering: bigint,
 ): Promise<void> {
-  const user = instructionAddresses.get("user")?.toBase58();
-  if (user === undefined) {
+  const userAddress = instructionAddresses.get("user")?.toBase58();
+  if (userAddress === undefined) {
     throw new Error("Coordinator: Instruction: Witness: Missing user address");
   }
-  const dudu = witnessArgsJsonType.decode(instructionPayload);
-  console.log("Witness", dudu);
+  const metadata = witnessArgsJsonType.decode(instructionPayload).metadata;
+  dataStore.saveRunWitness(runAddress, userAddress, ordering, {
+    step: metadata.step,
+    tokensPerSec: metadata.tokensPerSec,
+    bandwidthPerSec: metadata.bandwidthPerSec,
+    loss: metadata.loss,
+  });
 }
 
 const witnessArgsJsonType = jsonTypeObjectSnakeCase({

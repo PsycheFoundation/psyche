@@ -354,6 +354,38 @@ export function jsonTypeArrayToTuple<
   };
 }
 
+export function jsonTypeArrayToObject<
+  Shape extends { [key: string]: JsonType<any> },
+>(shape: Shape): JsonType<{ [K in keyof Shape]: JsonTypeContent<Shape[K]> }> {
+  return {
+    decode(encoded: JsonValue): {
+      [K in keyof Shape]: JsonTypeContent<Shape[K]>;
+    } {
+      const array = jsonExpectArray(encoded);
+      const decoded = {} as { [K in keyof Shape]: JsonTypeContent<Shape[K]> };
+      let index = 0;
+      for (const key in shape) {
+        decoded[key] = withContext(`JSON: Decode Array[${index}] =>`, () =>
+          shape[key]!.decode(array[index++]),
+        );
+      }
+      return decoded;
+    },
+    encode(
+      decoded: Immutable<{ [K in keyof Shape]: JsonTypeContent<Shape[K]> }>,
+    ): JsonValue {
+      const encoded = new Array<JsonValue>();
+      let index = 0;
+      for (const key in shape) {
+        encoded[index++] = shape[key]!.encode(
+          decoded[key as keyof typeof decoded],
+        );
+      }
+      return encoded;
+    },
+  };
+}
+
 export function jsonTypeObject<Shape extends { [key: string]: JsonType<any> }>(
   shape: Shape,
   keysEncoding?: { [K in keyof Shape]?: string },
