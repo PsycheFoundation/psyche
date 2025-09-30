@@ -78,6 +78,7 @@ in
     config = {
       allowUnfree = true;
       metalSupport = lib.mkDefault false;
+      disableFlashAttn = lib.mkDefault (builtins.getEnv "DISABLE_FLASH_ATTN" == "1");
     }
     // lib.optionalAttrs cudaSupported {
       cudaSupport = true;
