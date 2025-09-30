@@ -249,7 +249,7 @@ pub fn spawn_psyche_network(
         for container in &containers {
             println!("\n--- Logs for {} ---", container);
             if let Ok(log_output) = std::process::Command::new("docker")
-                .args(&["logs", container])
+                .args(["logs", container])
                 .output()
             {
                 println!("{}", String::from_utf8_lossy(&log_output.stdout));
