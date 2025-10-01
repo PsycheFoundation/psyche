@@ -234,14 +234,14 @@ mod tests {
 
     #[test]
     fn test_uneven_distribution_with_remainder() {
-        // 3 trainers, global batch size 10 -> 3, 3, 4 or similar
-        let coordinator = create_test_coordinator(3, 10, 10);
+        // 24 trainers, global batch size 384
+        let coordinator = create_test_coordinator(23, 384, 10);
 
         let assignments = assign_data_for_state(
             &coordinator,
             &CommitteeSelection::from_coordinator(&coordinator, 0).unwrap(),
         );
-        assert_eq!(assignments.len(), 3);
+        assert_eq!(assignments.len(), 23);
 
         let mut sizes: Vec<u64> = assignments
             .keys()
@@ -249,12 +249,12 @@ mod tests {
             .collect();
         sizes.sort();
 
-        // Base size is 10/3 = 3, remainder is 1
-        // So we expect: [3, 3, 4]
-        assert_eq!(sizes, vec![3, 3, 4]);
+        let mut expected = [16; 7].to_vec();
+        expected.extend([17; 16]);
+        assert_eq!(sizes, expected);
 
         let total: u64 = sizes.iter().sum();
-        assert_eq!(total, 10);
+        assert_eq!(total, 384);
     }
 
     #[test]
