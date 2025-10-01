@@ -212,6 +212,14 @@ jobs:
           echo "=== Extracted Authorizer programs ==="
           ls -la architectures/decentralized/solana-authorizer/target/deploy/
 
+      - name: Free space before client build
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h
+          nix-collect-garbage -d
+          echo "=== Disk space after cleanup ==="
+          df -h
+
       - name: Build Solana Test Client Image
         run: |
           nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
@@ -230,11 +238,6 @@ jobs:
 
           echo "=== All Docker images ==="
           docker images
-
-      - name: Clean up Docker system
-        run: |
-          docker system prune -f
-          df -h
 
       - name: Run integration test
         run: |
