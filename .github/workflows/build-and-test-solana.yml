@@ -101,15 +101,6 @@ jobs:
           ls -la architectures/decentralized/solana-coordinator/target/deploy/*.so
           ls -la architectures/decentralized/solana-authorizer/target/deploy/*.so
 
-      - name: Prepare programs for Nix build
-        run: |
-          # Add target directories to git so Nix can see them (builtins.path respects .gitignore)
-          git add -f architectures/decentralized/solana-coordinator/target/
-          git add -f architectures/decentralized/solana-authorizer/target/
-
-          echo "=== Git status after adding target dirs ==="
-          git status --short
-
       - name: Build Solana Test Validator Image
         run: |
           export PSYCHE_HOME=$(pwd)
