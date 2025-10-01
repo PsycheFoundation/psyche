@@ -81,9 +81,6 @@ jobs:
           nix-collect-garbage -d
           nix store optimise
 
-          # Clean any Docker resources
-          docker system prune -af --volumes || true
-
           echo "=== Disk usage after Anchor cleanup ==="
           df -h
 
@@ -107,18 +104,14 @@ jobs:
           # Remove nix build result
           rm -f result
 
-          # Clean Docker build cache aggressively
-          docker builder prune -af
-          docker system prune -af --volumes
-
-          # Clean nix store garbage
+          # Clean nix store garbage 
           nix-collect-garbage -d
           nix store optimise
 
           # Remove temp files
           sudo rm -rf /tmp/* 2>/dev/null || true
 
-          echo "=== Docker images ==="
+          echo "=== Docker images after validator build ==="
           docker images
 
           echo "=== Disk usage after validator cleanup ==="
@@ -137,28 +130,28 @@ jobs:
           echo "=== Disk space after client build ==="
           df -h
 
-      # Memory cleanup before tests
-      - name: Clean before integration tests
+      # Clean Nix store after client build
+      - name: Clean after client build
         run: |
-          # Clean Docker build cache again
-          docker builder prune -af
-          docker system prune -af --volumes
-
           # Clean nix store garbage
           nix-collect-garbage -d
           nix store optimise
 
-          # Remove any unnecessary files from source tree
-          find . -type d -name "node_modules" -prune -exec rm -rf {} + 2>/dev/null || true
-
-          # Clean more temp files
+          # Remove temp files
           sudo rm -rf /tmp/* 2>/dev/null || true
-          sudo rm -rf /var/tmp/* 2>/dev/null || true
 
-          echo "=== Final Docker images ==="
+          echo "=== Disk space after cleanup ==="
+          df -h
+
+      - name: Verify Docker images exist
+        run: |
+          echo "=== Checking for required Docker images ==="
           docker images
+          docker images | grep psyche-solana-test-validator || (echo "ERROR: psyche-solana-test-validator image not found" && exit 1)
+          docker images | grep psyche-solana-test-client-no-python || (echo "ERROR: psyche-solana-test-client-no-python image not found" && exit 1)
+          echo "All required images are present"
 
-          echo "=== Final disk usage ==="
+          echo "=== Final disk usage before tests ==="
           df -h
 
       # Step 4: Run Integration Tests
