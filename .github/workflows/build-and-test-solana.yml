@@ -35,10 +35,10 @@ jobs:
 
       - name: Build Anchor Programs
         run: |
-          echo "Building Solana Coordinator..."
+          echo "Building Solana Coordinator"
           nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
 
-          echo "Building Solana Authorizer..."
+          echo "Building Solana Authorizer"
           nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
 
           echo "=== Built Coordinator artifacts ==="
@@ -187,6 +187,11 @@ jobs:
           nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
           nix-results/docker-psyche-solana-test-client-no-python | docker load
           rm -rf nix-results/docker-psyche-solana-test-client-no-python
+
+      - name: Wait for validator build
+        run: |
+          echo "Waiting 3 minutes to ensure validator image is ready"
+          sleep 180
 
       - name: Download validator image artifact
         uses: actions/download-artifact@v4
