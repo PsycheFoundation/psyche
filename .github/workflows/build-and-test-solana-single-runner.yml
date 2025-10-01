@@ -1,0 +1,122 @@
+name: Build and Test Solana (Single Runner)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Install just
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          sudo chmod +x /usr/local/bin/just
+
+      # Step 1: Build Anchor Programs
+      - name: Build Anchor Programs
+        run: |
+          echo "Building Solana Coordinator..."
+          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+
+          echo "Building Solana Authorizer..."
+          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
+
+          echo "=== Built Coordinator artifacts ==="
+          ls -la architectures/decentralized/solana-coordinator/target/deploy/
+
+          echo "=== Built Authorizer artifacts ==="
+          ls -la architectures/decentralized/solana-authorizer/target/deploy/
+
+      # Memory cleanup after Anchor build
+      - name: Clean Anchor build
+        run: |
+          # Clean nix store garbage
+          nix-collect-garbage -d
+
+          echo "=== Disk usage after Anchor cleanup ==="
+          df -h
+
+      # Step 2: Build Solana Test Validator Image
+      - name: Build Solana Test Validator Image
+        run: |
+          export PSYCHE_HOME=$(pwd)
+
+          # Build and load in one command
+          nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
+
+      # Memory cleanup after validator build
+      - name: Clean validator build artifacts
+        run: |
+          # Remove nix build result
+          rm -f result
+
+          # Clean Docker build cache
+          docker builder prune -af
+
+          # Clean nix store garbage
+          nix-collect-garbage -d
+
+          echo "=== Docker images ==="
+          docker images
+
+          echo "=== Disk usage after validator cleanup ==="
+          df -h
+
+      # Step 3: Build Solana Test Client Image
+      - name: Build Solana Test Client Image
+        run: |
+          nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
+          nix-results/docker-psyche-solana-test-client-no-python | docker load
+          rm -rf nix-results/docker-psyche-solana-test-client-no-python
+
+      # Memory cleanup before tests
+      - name: Clean before integration tests
+        run: |
+          # Clean Docker build cache again
+          docker builder prune -af
+
+          # Clean nix store garbage
+          nix-collect-garbage -d
+
+          # Remove any unnecessary files from source tree
+          find . -type d -name "node_modules" -prune -exec rm -rf {} + 2>/dev/null || true
+
+          echo "=== Final Docker images ==="
+          docker images
+
+          echo "=== Final disk usage ==="
+          df -h
+
+      # Step 4: Run Integration Tests
+      - name: Run integration test
+        run: |
+          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "test_two_clients_three_epochs_run"
