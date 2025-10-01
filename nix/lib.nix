@@ -71,7 +71,15 @@ let
     NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
   };
 
+  rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
+    inherit env src;
+    strictDeps = true;
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = lib.optionalString (pkgs.config.cudaSupport) "--features parallelism";
+  };
+
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
+  cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
   pythonWithPsycheExtension = (
     pkgs.python312.withPackages (ps: [
@@ -116,12 +124,12 @@ let
       isExample ? false,
     }:
     craneLib.buildPackage (
-      rustWorkspaceArgs
+      rustWorkspaceArgsNoPython
       // {
-        inherit cargoArtifacts;
+        cargoArtifacts = cargoArtifactsNoPython;
         pname = name;
         cargoExtraArgs =
-          (lib.optionalString (pkgs.config.cudaSupport) "--features parallelism")
+          rustWorkspaceArgsNoPython.cargoExtraArgs
           + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
 
