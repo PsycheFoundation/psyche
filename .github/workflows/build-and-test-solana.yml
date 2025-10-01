@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: nixbuild/nix-quick-install-action@v31
         with:
@@ -35,6 +35,8 @@ jobs:
             accept-flake-config = true
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            min-free = 5368709120
+            max-free = 10737418240
 
       - name: Build Anchor Programs
         run: |
@@ -86,7 +88,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: nixbuild/nix-quick-install-action@v31
         with:
@@ -95,8 +97,18 @@ jobs:
             accept-flake-config = true
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            min-free = 5368709120
+            max-free = 10737418240
+
+      - name: Cache just binary
+        id: cache-just
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/just
+          key: just-binary-${{ runner.os }}
 
       - name: Install just
+        if: steps.cache-just.outputs.cache-hit != 'true'
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
@@ -122,15 +134,15 @@ jobs:
           # Build and load in one command
           nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
 
-      - name: Clean up Nix store
-        run: |
-          nix-collect-garbage -d
-          rm -rf result
-
       - name: Save Docker image as artifact
         run: |
           docker save psyche-solana-test-validator:latest | gzip > validator-image.tar.gz
           ls -lh validator-image.tar.gz
+
+      - name: Clean up after build
+        run: |
+          nix-collect-garbage -d
+          rm -rf result
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
@@ -159,7 +171,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: nixbuild/nix-quick-install-action@v31
         with:
@@ -168,8 +180,18 @@ jobs:
             accept-flake-config = true
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            min-free = 5368709120
+            max-free = 10737418240
+
+      - name: Cache just binary
+        id: cache-just
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/just
+          key: just-binary-${{ runner.os }}
 
       - name: Install just
+        if: steps.cache-just.outputs.cache-hit != 'true'
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
@@ -208,6 +230,11 @@ jobs:
 
           echo "=== All Docker images ==="
           docker images
+
+      - name: Clean up Docker system
+        run: |
+          docker system prune -f
+          df -h
 
       - name: Run integration test
         run: |
