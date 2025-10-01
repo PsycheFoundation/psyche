@@ -25,7 +25,7 @@ integration-test test_name="":
 
 # run integration decentralized tests
 decentralized-integration-test test_name="":
-    just setup_test_infra
+    DISABLE_FLASH_ATTN=1 just setup_test_infra
     if [ "{{ test_name }}" = "" ]; then \
         cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
     else \
@@ -132,13 +132,13 @@ setup_test_infra:
     just nix build_docker_solana_test_validator
 
 run_test_infra num_clients="1":
-    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+    cd docker/test && NUM_REPLICAS={{ num_clients }} docker-compose -f docker-compose.yml up -d --force-recreate
 
 run_test_infra_with_proxies_validator num_clients="1":
-    cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
+    cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker-compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
 
 run_test_infra_three_clients:
-    cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
+    cd docker/test/three_clients_test && docker-compose -f docker-compose.yml up -d --force-recreate
 
 stop_test_infra:
-    cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
+    cd docker/test && docker-compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
