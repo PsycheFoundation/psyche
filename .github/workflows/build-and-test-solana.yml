@@ -73,6 +73,17 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -110,6 +121,11 @@ jobs:
 
           # Build and load in one command
           nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
+
+      - name: Clean up Nix store
+        run: |
+          nix-collect-garbage -d
+          rm -rf result
 
       - name: Save Docker image as artifact
         run: |
