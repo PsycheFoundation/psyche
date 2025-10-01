@@ -21,12 +21,6 @@ services:
         condition: service_completed_successfully
     deploy:
       replicas: ${NUM_REPLICAS:-1}
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file:

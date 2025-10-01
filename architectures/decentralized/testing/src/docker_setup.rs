@@ -223,17 +223,8 @@ pub fn spawn_psyche_network(
     config: Option<PathBuf>,
 ) -> Result<(), DockerWatcherError> {
     let mut command = Command::new("just");
-
-    // Use CI-specific docker-compose if CI environment variable is set
-    let use_ci = std::env::var("CI").is_ok();
-    let just_command = if use_ci {
-        "run_test_infra_ci"
-    } else {
-        "run_test_infra"
-    };
-
     let command = command
-        .args([just_command, &format!("{init_num_clients}")])
+        .args(["run_test_infra", &format!("{init_num_clients}")])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 

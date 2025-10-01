@@ -1,5 +1,0 @@
-services:
-  psyche-test-client:
-    deploy:
-      replicas: ${NUM_REPLICAS:-1}
-      resources: {}
