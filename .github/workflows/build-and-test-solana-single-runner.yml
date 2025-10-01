@@ -24,6 +24,13 @@ jobs:
           docker-images: true
           swap-storage: true
 
+      - name: Check initial disk space
+        run: |
+          echo "=== Initial disk usage ==="
+          df -h
+          echo "=== Docker info ==="
+          docker info | grep -i "docker root dir" || true
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -35,6 +42,8 @@ jobs:
             accept-flake-config = true
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+            min-free = 1073741824
+            max-free = 3221225472
 
       - name: Install just
         run: |
@@ -59,8 +68,21 @@ jobs:
       # Memory cleanup after Anchor build
       - name: Clean Anchor build
         run: |
-          # Clean nix store garbage
+          # Keep only the deploy artifacts we need, remove intermediate build files
+          echo "=== Cleaning Anchor build artifacts (keeping deploy and idl folders) ==="
+
+          # For coordinator - keep entire deploy folder but remove intermediate builds
+          find architectures/decentralized/solana-coordinator/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
+
+          # For authorizer - keep entire deploy folder but remove intermediate builds
+          find architectures/decentralized/solana-authorizer/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
+
+          # Clean nix store garbage aggressively
           nix-collect-garbage -d
+          nix store optimise
+
+          # Clean any Docker resources
+          docker system prune -af --volumes || true
 
           echo "=== Disk usage after Anchor cleanup ==="
           df -h
@@ -70,8 +92,14 @@ jobs:
         run: |
           export PSYCHE_HOME=$(pwd)
 
+          echo "=== Disk space before validator build ==="
+          df -h
+
           # Build and load in one command
           nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
+
+          echo "=== Disk space after validator build ==="
+          df -h
 
       # Memory cleanup after validator build
       - name: Clean validator build artifacts
@@ -79,11 +107,16 @@ jobs:
           # Remove nix build result
           rm -f result
 
-          # Clean Docker build cache
+          # Clean Docker build cache aggressively
           docker builder prune -af
+          docker system prune -af --volumes
 
           # Clean nix store garbage
           nix-collect-garbage -d
+          nix store optimise
+
+          # Remove temp files
+          sudo rm -rf /tmp/* 2>/dev/null || true
 
           echo "=== Docker images ==="
           docker images
@@ -94,21 +127,33 @@ jobs:
       # Step 3: Build Solana Test Client Image
       - name: Build Solana Test Client Image
         run: |
+          echo "=== Disk space before client build ==="
+          df -h
+
           nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
           nix-results/docker-psyche-solana-test-client-no-python | docker load
           rm -rf nix-results/docker-psyche-solana-test-client-no-python
+
+          echo "=== Disk space after client build ==="
+          df -h
 
       # Memory cleanup before tests
       - name: Clean before integration tests
         run: |
           # Clean Docker build cache again
           docker builder prune -af
+          docker system prune -af --volumes
 
           # Clean nix store garbage
           nix-collect-garbage -d
+          nix store optimise
 
           # Remove any unnecessary files from source tree
           find . -type d -name "node_modules" -prune -exec rm -rf {} + 2>/dev/null || true
+
+          # Clean more temp files
+          sudo rm -rf /tmp/* 2>/dev/null || true
+          sudo rm -rf /var/tmp/* 2>/dev/null || true
 
           echo "=== Final Docker images ==="
           docker images
