@@ -2,4 +2,4 @@ services:
   psyche-test-client:
     deploy:
       replicas: ${NUM_REPLICAS:-1}
-      # Remove GPU requirements for CI environments
+      resources: {}
