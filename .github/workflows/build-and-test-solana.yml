@@ -51,8 +51,8 @@ jobs:
         run: |
           tar -czf anchor-programs.tar.gz \
             -C architectures/decentralized \
-            solana-coordinator/target/deploy \
-            solana-authorizer/target/deploy
+            solana-coordinator/target \
+            solana-authorizer/target
 
           ls -lh anchor-programs.tar.gz
 
