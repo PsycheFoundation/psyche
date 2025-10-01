@@ -1,0 +1,198 @@
+name: Build and Test Solana
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DISABLE_FLASH_ATTN: 1
+
+jobs:
+  build-anchor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Build Anchor Programs
+        run: |
+          echo "Building Solana Coordinator..."
+          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+
+          echo "Building Solana Authorizer..."
+          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
+
+          echo "=== Built Coordinator artifacts ==="
+          ls -la architectures/decentralized/solana-coordinator/target/deploy/
+
+          echo "=== Built Authorizer artifacts ==="
+          ls -la architectures/decentralized/solana-authorizer/target/deploy/
+
+      - name: Package Anchor artifacts
+        run: |
+          tar -czf anchor-programs.tar.gz \
+            -C architectures/decentralized \
+            solana-coordinator/target \
+            solana-authorizer/target
+
+          ls -lh anchor-programs.tar.gz
+
+      - name: Upload Anchor programs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-programs
+          path: anchor-programs.tar.gz
+          retention-days: 1
+
+  build-validator:
+    runs-on: ubuntu-latest
+    needs: build-anchor # Wait for Anchor programs to complete
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Install just
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          sudo chmod +x /usr/local/bin/just
+
+      - name: Download Anchor programs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: anchor-programs
+
+      - name: Extract Anchor programs
+        run: |
+          tar -xzf anchor-programs.tar.gz -C architectures/decentralized/
+          rm anchor-programs.tar.gz
+
+          echo "=== Verifying .so files ==="
+          ls -la architectures/decentralized/solana-coordinator/target/deploy/*.so
+          ls -la architectures/decentralized/solana-authorizer/target/deploy/*.so
+
+      - name: Build Solana Test Validator Image
+        run: |
+          export PSYCHE_HOME=$(pwd)
+
+          # Build and load in one command
+          nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
+
+      - name: Save Docker image as artifact
+        run: |
+          docker save psyche-solana-test-validator:latest | gzip > validator-image.tar.gz
+          ls -lh validator-image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: solana-test-validator
+          path: validator-image.tar.gz
+          retention-days: 1
+
+  build-client-and-test:
+    runs-on: ubuntu-latest
+    needs: build-anchor # Wait for anchor to complete
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Install just
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          sudo chmod +x /usr/local/bin/just
+
+      - name: Download Anchor programs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: anchor-programs
+
+      - name: Extract Anchor programs
+        run: |
+          tar -xzf anchor-programs.tar.gz -C architectures/decentralized/
+          rm anchor-programs.tar.gz
+
+          echo "=== Extracted Coordinator programs ==="
+          ls -la architectures/decentralized/solana-coordinator/target/deploy/
+
+          echo "=== Extracted Authorizer programs ==="
+          ls -la architectures/decentralized/solana-authorizer/target/deploy/
+
+      - name: Build Solana Test Client Image
+        run: |
+          nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
+          nix-results/docker-psyche-solana-test-client | docker load
+          rm -rf nix-results/docker-psyche-solana-test-client
+
+      - name: Download validator image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: solana-test-validator
+
+      - name: Load validator image
+        run: |
+          gunzip -c validator-image.tar.gz | docker load
+          rm validator-image.tar.gz
+
+          echo "=== All Docker images ==="
+          docker images
+
+      - name: Run integration test
+        run: |
+          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "test_two_clients_three_epochs_run"
