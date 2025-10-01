@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: nixbuild/nix-quick-install-action@v31
         with:
@@ -83,7 +83,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: nixbuild/nix-quick-install-action@v31
         with:
@@ -151,7 +151,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: nixbuild/nix-quick-install-action@v31
         with:
