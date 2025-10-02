@@ -256,6 +256,12 @@ class HfTransformersAuto(CausalLM):
         # compile the loss, greatly reduces mem usage for large vocabularies
         model.loss_function = torch.compile(model.loss_function)
 
+        # Log layer 3 MLP parameter names to verify structure matches
+        layer3_mlp_params = [
+            name for name in model.state_dict().keys() if "layers.3.mlp" in name
+        ]
+        print(f"Python - Layer 3 MLP parameter names: {layer3_mlp_params}")
+
         # for super large models, loading the entire model in RAM nproc times can CPU OOM
         # TODO: switch to use torch.distributed.checkpoint.state_dict_loader.load()
 
@@ -270,13 +276,6 @@ class HfTransformersAuto(CausalLM):
                 )
 
             dest.copy_(source)
-
-            # Log first 10 values of layer 3 gate_proj to compare with Rust
-            if name == "model.layers.3.mlp.gate_proj.weight":
-                # Convert DTensor to regular tensor if needed
-                tensor_to_log = dest.to_local() if isinstance(dest, DTensor) else dest
-                values = tensor_to_log.view(-1)[:10].tolist()
-                print(f"Layer 3 gate_proj first 10 values: {values}")
 
         return HfTransformersAuto(model, config, world_mesh, device)
 

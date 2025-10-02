@@ -156,19 +156,21 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
                 c,
             );
 
-            source.load(&mut variables)?;
-
-            // Log actual parameter values to compare between implementations
+            // Log layer 3 MLP parameter names to verify structure matches
             let vars_lock = variables.variables_.lock().unwrap();
-            if let Some(gate_proj) = vars_lock
+            let layer3_mlp_params: Vec<_> = vars_lock
                 .named_variables
-                .get("model.layers.3.mlp.gate_proj.weight")
-            {
-                let flat = gate_proj.shallow_clone().view(-1);
-                let values: Vec<f64> = Vec::<f64>::try_from(flat.slice(0, 0, 10, 1)).unwrap();
-                debug!("Layer 3 gate_proj first 10 values: {:?}", values);
-            }
+                .keys()
+                .filter(|k| k.contains("layers.3.mlp"))
+                .cloned()
+                .collect();
+            debug!(
+                "Rust - Layer 3 MLP parameter names: {:?}",
+                layer3_mlp_params
+            );
             drop(vars_lock);
+
+            source.load(&mut variables)?;
 
             (model, lm_head)
         };
