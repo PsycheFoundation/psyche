@@ -273,7 +273,9 @@ class HfTransformersAuto(CausalLM):
 
             # Log first 10 values of layer 3 gate_proj to compare with Rust
             if name == "model.layers.3.mlp.gate_proj.weight":
-                values = dest.view(-1)[:10].tolist()
+                # Convert DTensor to regular tensor if needed
+                tensor_to_log = dest.to_local() if isinstance(dest, DTensor) else dest
+                values = tensor_to_log.view(-1)[:10].tolist()
                 print(f"Layer 3 gate_proj first 10 values: {values}")
 
         return HfTransformersAuto(model, config, world_mesh, device)
