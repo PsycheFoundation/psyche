@@ -155,6 +155,17 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
                 c,
             );
 
+            // Log layer 3 MLP parameter names to verify MoE vs dense structure
+            let vars_lock = variables.variables_.lock().unwrap();
+            let layer3_mlp_params: Vec<_> = vars_lock
+                .named_variables
+                .keys()
+                .filter(|k| k.contains("layers.3.mlp"))
+                .map(|s| s.as_str())
+                .collect();
+            debug!("Model layer 3 MLP parameters: {:?}", layer3_mlp_params);
+            drop(vars_lock);
+
             source.load(&mut variables)?;
 
             (model, lm_head)
