@@ -409,7 +409,7 @@ where
             .blobs_store
             .blobs()
             .add_bytes(blob_data.clone())
-            .with_named_tag(tag.to_string())
+            .with_named_tag(tag.to_bytes())
             .await?;
         let addr = self.router.endpoint().node_addr().initialized().await;
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
@@ -454,11 +454,18 @@ where
                 }
             }
 
+            let mut deleted_blobs = 0;
             for tag in to_delete {
-                if let Err(err) = store.tags().delete(tag.to_string()).await {
-                    warn!("Error deleting blob tag {tag}: {err}")
+                match store.tags().delete(tag.to_string()).await {
+                    Ok(_) => {
+                        deleted_blobs += 1;
+                    }
+                    Err(err) => {
+                        warn!("Error deleting blob tag {tag}: {err}")
+                    }
                 }
             }
+            debug!("Deleted {deleted_blobs} old blobs from p2p");
         });
         Ok(())
     }
