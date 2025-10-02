@@ -14,7 +14,13 @@ use std::{
 pub type Row = parquet::record::Row;
 pub type Field = parquet::record::Field;
 
-const SPLITS: [Split; 3] = [Split::Train, Split::Test, Split::Validation];
+const SPLITS: [Split; 5] = [
+    Split::Train,
+    Split::Test,
+    Split::Validation,
+    Split::Dev,
+    Split::Val,
+];
 
 fn looks_like_parquet_file(x: &Path) -> bool {
     if let Some(ext) = x.extension() {
@@ -35,6 +41,8 @@ pub enum Split {
     Train,
     Validation,
     Test,
+    Dev,
+    Val,
 }
 
 impl Display for Split {
@@ -46,6 +54,8 @@ impl Display for Split {
                 Split::Train => "train",
                 Split::Validation => "validation",
                 Split::Test => "test",
+                Split::Dev => "dev",
+                Split::Val => "val",
             }
         )
     }

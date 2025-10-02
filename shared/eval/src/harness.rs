@@ -51,7 +51,7 @@ impl Debug for TaskType {
 #[derive(Debug)]
 pub struct Task {
     task_type: TaskType,
-    num_fewshot: usize,
+    pub num_fewshot: usize,
     rand: ChaCha8Rng,
 }
 

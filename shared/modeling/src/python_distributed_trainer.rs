@@ -115,7 +115,7 @@ impl PythonDistributedTrainer {
         let dummy = Tensor::zeros([], (Kind::Float, device));
         comm.all_reduce(&dummy, ReduceType::Sum)?;
 
-        let iteration = model.iteration();
+        let it = model.iteration();
         let local: WrappedPythonCausalLM = model.local.clone();
         let local = Box::new(LocalTrainer::new(
             ParallelModels {
@@ -130,12 +130,14 @@ impl PythonDistributedTrainer {
             grad_accum_in_fp32,
         ));
 
+        comm.delete(&iteration.to_string())?;
+
         Ok(Self {
             model,
             local,
             comm,
             device,
-            iteration,
+            iteration: it,
         })
     }
 
@@ -245,6 +247,9 @@ impl PythonDistributedTrainer {
         loss /= self.comm.size() as f32; // average from all reduced sums of loss above
         loss *= padded_bs as f32 / original_batch_size as f32; // undilute for padding
 
+        trace!("Train operation complete on all Python clients");
+        self.comm.delete(&iteration.to_string())?;
+
         Ok(TrainOutput {
             trainer: Self {
                 local: match ret.trainer {
@@ -304,6 +309,7 @@ impl PythonDistributedTrainer {
         let result = self.local.optimize(step, warmup_lr_between, distro_results);
 
         trace!("Optimize operation complete on all Python clients");
+        self.comm.delete(&iteration.to_string())?;
 
         result.map(|x| Self {
             local: Box::new(x),
@@ -335,6 +341,8 @@ impl PythonDistributedTrainer {
         let result = self.local.extract();
 
         trace!("Extract operation complete on all Python clients");
+        self.comm.delete(&iteration.to_string())?;
+
         result
     }
 

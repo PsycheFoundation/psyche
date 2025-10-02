@@ -994,7 +994,9 @@ impl LocalTrainer {
                                 let clipped = match clip_grad_norm {
                                     Some(clip_grad_norm) => match barrier.wait() {
                                         Ok(_) => {
-                                            model.clip_grad_norm(*clip_grad_norm as f64);
+                                            if *clip_grad_norm > 0. {
+                                                model.clip_grad_norm(*clip_grad_norm as f64);
+                                            }
                                             barrier.wait().is_ok()
                                         }
                                         Err(_) => false,
@@ -1260,7 +1262,9 @@ fn optimize_step(
                 if barrier.wait().is_err() {
                     return ControlFlow::Break(());
                 }
-                model.clip_grad_norm(*clip_grad_norm as f64);
+                if *clip_grad_norm > 0. {
+                    model.clip_grad_norm(*clip_grad_norm as f64);
+                }
                 if barrier.wait().is_err() {
                     return ControlFlow::Break(());
                 }
