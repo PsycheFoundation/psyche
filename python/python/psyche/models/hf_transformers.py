@@ -128,6 +128,7 @@ class HfTransformersAuto(CausalLM):
 
         # If n_routed_experts is None disable all MoE related features
         if hasattr(config, "n_routed_experts") and config.n_routed_experts is None:
+            config.n_shared_experts = None
             config.moe_layer_freq = None
             config.num_experts_per_tok = None
             config.moe_intermediate_size = None
