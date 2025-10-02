@@ -334,6 +334,11 @@ impl CoordinatorInstanceState {
             if self.coordinator.config.global_batch_size_end
                 == total_num_clients
             {
+                msg!(
+                    "More clients than batches: clients={}, batch_size_end={}",
+                    total_num_clients,
+                    self.coordinator.config.global_batch_size_end
+                );
                 return err!(ProgramError::MoreClientsThanBatches);
             }
 

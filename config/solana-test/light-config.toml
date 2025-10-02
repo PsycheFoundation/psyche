@@ -14,13 +14,13 @@ global_batch_size_warmup_tokens = 0
 total_steps = 25000
 
 [model.LLM]
-architecture = "HfLlama"
+architecture = "HfAuto"
 data_type = "Pretraining"
 max_seq_len = 2048
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
+repo_id = "PsycheFoundation/consilience-v1-3b-init"
 
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"
