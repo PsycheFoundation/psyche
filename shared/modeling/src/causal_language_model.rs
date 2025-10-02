@@ -9,6 +9,7 @@ use tch::{
     Device, Kind, Tensor,
     nn::{self, Module},
 };
+use tracing::debug;
 
 #[cfg(feature = "parallelism")]
 use tch::CNCCL;
@@ -163,13 +164,8 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
                 .named_variables
                 .get("model.layers.3.mlp.gate_proj.weight")
             {
-                let values: Vec<f32> = gate_proj
-                    .shallow_clone()
-                    .view(-1)
-                    .iter::<f32>()
-                    .unwrap()
-                    .take(10)
-                    .collect();
+                let flat = gate_proj.shallow_clone().view(-1);
+                let values: Vec<f64> = Vec::<f64>::try_from(flat.slice(0, 0, 10, 1)).unwrap();
                 debug!("Layer 3 gate_proj first 10 values: {:?}", values);
             }
             drop(vars_lock);
