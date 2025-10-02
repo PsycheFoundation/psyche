@@ -1,5 +1,5 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, Context, Result, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use big_block_sync::{sync, Config, PerNodeStats};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
@@ -380,32 +380,22 @@ where
         tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
         Ok(())
     }
-#[warn(clippy::future_not_send)]
+
     pub async fn start_download_big_blob(
         &mut self,
         tickets: Vec<(NodeAddr, Hash)>,
-        _cancel: CancellationToken,
     ) -> Result<(Vec<u8>, HashMap<NodeId, PerNodeStats>)> {
         let config = Config {
             parallelism: 8,
             block_size: 1024,
+            min_rate: None,
+
+            rate_ratio: None,
+
+            latency: HashMap::new(),
         };
-        bail!("cancelled");
-/*
-        let marker = Default::default();
 
-        select! {
-            _ = _cancel.cancelled() => {
-                                                        bail!("cancelled");
-                                        }
-
-
-
-
-        res =sync(tickets, config, 0, &marker) => {
-        return res;}}
-*/
-        //Ok(vec![])
+        sync(tickets, config, 0).await
     }
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
