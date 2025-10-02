@@ -132,6 +132,15 @@ impl TorchDistributedCommunicator {
         ret
     }
 
+    pub fn delete(&self, key: &str) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let store = self.store.bind(py);
+            let delete = store.getattr("delete_key")?;
+            let _ = delete.call1((key,))?;
+            Ok(())
+        })
+    }
+
     pub fn size(&self) -> usize {
         self.world_size.expect("World size not specified")
     }
@@ -388,6 +397,8 @@ impl CausalLM for PythonDistributedCausalLM {
             num_logits_to_keep,
             loss_scale,
         );
+
+        self.comm.delete(&iteration.to_string()).unwrap();
 
         (logits, loss)
     }
