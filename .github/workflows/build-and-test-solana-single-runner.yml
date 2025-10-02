@@ -1,4 +1,4 @@
-name: Build and Test Solana (Single Runner)
+name: Build and Test Solana two clients (Single Runner)
 
 on:
   push:
