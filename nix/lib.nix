@@ -71,7 +71,15 @@ let
     NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
   };
 
+  rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
+    inherit env src;
+    strictDeps = true;
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = lib.optionalString (pkgs.config.cudaSupport) "--features parallelism";
+  };
+
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
+  cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
   pythonWithPsycheExtension = (
     pkgs.python312.withPackages (ps: [
@@ -109,6 +117,25 @@ let
           --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
           --prefix PATH : "${pythonWithPsycheExtension}/bin"
       '';
+
+  buildRustPackageWithoutPython =
+    {
+      name,
+      isExample ? false,
+    }:
+    craneLib.buildPackage (
+      rustWorkspaceArgsNoPython
+      // {
+        cargoArtifacts = cargoArtifactsNoPython;
+        pname = name;
+        cargoExtraArgs =
+          rustWorkspaceArgsNoPython.cargoExtraArgs
+          + (if isExample then " --example ${name}" else " --bin ${name}");
+        doCheck = false;
+
+        meta.mainProgram = name;
+      }
+    );
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
@@ -261,6 +288,7 @@ in
     rustWorkspaceArgsWithPython
     cargoArtifacts
     buildRustPackageWithPsychePythonEnvironment
+    buildRustPackageWithoutPython
     buildRustWasmTsPackage
     useHostGpuDrivers
     env
