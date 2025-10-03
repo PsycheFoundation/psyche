@@ -20,6 +20,91 @@ use rstest::*;
 use serial_test::serial;
 use tokio::time;
 
+/// spawn 1 clients and run for 3 epochs
+/// assert client and coordinator state synchronization
+/// assert that the loss decreases in each epoch
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_one_clients_three_epochs_run() {
+    // set test variables
+    let run_id = "test".to_string();
+
+    // epochs the test will run
+    let num_of_epochs_to_run = 3;
+    let mut current_epoch = -1;
+    let mut last_epoch_loss = f64::MAX;
+
+    // Initialize DockerWatcher
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // Initialize a Solana run with 1 client
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        1,
+        Some(PathBuf::from(
+            "../../config/solana-test/light-one-min-clients.toml",
+        )),
+    )
+    .await;
+
+    // Monitor the client container
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![
+                IntegrationTestLogMarker::StateChange,
+                IntegrationTestLogMarker::Loss,
+            ],
+        )
+        .unwrap();
+
+    // Initialize solana client to query the coordinator state
+    let solana_client = SolanaTestClient::new(run_id).await;
+    let mut live_interval = time::interval(Duration::from_secs(10));
+
+    loop {
+        tokio::select! {
+            _ = live_interval.tick() => {
+                if let Err(e) = watcher.monitor_clients_health(1).await {
+                    panic!("{}", e);
+                }
+            }
+            response = watcher.log_rx.recv() => {
+                match response {
+                    Some(Response::StateChange(timestamp, _client_1, old_state, new_state, _ , _)) => {
+                        let _coordinator_state = solana_client.get_run_state().await;
+                        println!(
+                            "client: new_state: {new_state}, old_state: {old_state}, timestamp: {timestamp}"
+                        );
+                    }
+                    Some(Response::Loss(client, epoch, step, loss)) => {
+                        println!(
+                            "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
+                        );
+                        // assert that the loss decreases each epoch
+                        if epoch as i64 > current_epoch {
+                            current_epoch = epoch as i64;
+
+                            let Some(loss) = loss else {
+                                println!("Reached new epoch but loss was NaN");
+                                continue;
+                            };
+
+                            assert!(loss < last_epoch_loss);
+                            last_epoch_loss = loss;
+                            if epoch == num_of_epochs_to_run {
+                                break;
+                            }
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+}
+
 /// spawn 2 clients and run for 3 epochs
 /// assert client and coordinator state synchronization
 /// assert that the loss decreases in each epoch
