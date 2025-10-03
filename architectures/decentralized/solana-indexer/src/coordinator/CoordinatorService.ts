@@ -19,7 +19,7 @@ export async function coordinatorService(
   rpcHttp: RpcHttp,
   programAddress: Pubkey,
 ) {
-  const saveName = `coordinator_${cluster}_${programAddress.toBase58()}.json`;
+  const saveName = `coordinator_${cluster}_${programAddress}`;
   const { checkpoint, dataStore } = await coordinatorServiceLoader(saveName);
   // TODO - add API calls here to serve data from dataStore
   await coordinatorServiceIndexing(
