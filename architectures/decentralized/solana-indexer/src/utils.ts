@@ -1,69 +1,20 @@
-import {
-  JsonType,
-  jsonTypeArray,
-  jsonTypeArrayToTuple,
-  jsonTypeMapped,
-  jsonTypeNumber,
-  jsonTypeObject,
-  jsonTypeObjectWithKeyEncoder,
-  jsonTypeStringToBigint,
-} from "./json";
+import { JsonType, jsonTypeArray, jsonTypeArrayToTuple, jsonTypeMap, jsonTypeNumber, jsonTypeObject, jsonTypeString, Pubkey } from "solana-kiss-data";
+import { idlAccountDecode, IdlProgram, idlProgramGuessAccount } from "solana-kiss-idl";
+import { RpcHttp, rpcHttpGetAccountWithData } from "solana-kiss-rpc";
 
-export function withContext<T>(message: string, fn: () => T): T {
-  try {
-    return fn();
-  } catch (error) {
-    throw new Error(
-      `${message}\n > ${error instanceof Error ? error.message : String(error)}`,
-    );
+export async function getAndDecodeAccountState(
+  rpcHttp: RpcHttp,
+  programIdl: IdlProgram,
+  accountAddress: Pubkey,
+) {
+  const accountRecord = await rpcHttpGetAccountWithData(rpcHttp, accountAddress);
+  const accountIdl = idlProgramGuessAccount(programIdl, accountRecord.data);
+  if (accountIdl === undefined) {
+    throw new Error(`Failed to resolve Idl account type for: ${accountAddress}`);
   }
+  const accountState = idlAccountDecode(accountIdl, accountRecord.data);
+  return accountState;
 }
-
-export function camelCaseToSnakeCase(str: string): string {
-  return str
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // insert underscore before capital letters
-    .toLowerCase();
-}
-
-export type Immutable<T> = T extends
-  | string
-  | number
-  | boolean
-  | bigint
-  | symbol
-  | null
-  | undefined
-  | Date
-  | RegExp
-  | Error
-  ? T
-  : T extends (...args: any[]) => any
-    ? T
-    : T extends ReadonlyMap<infer K, infer V>
-      ? ReadonlyMap<Immutable<K>, Immutable<V>>
-      : T extends Map<infer K, infer V>
-        ? ReadonlyMap<Immutable<K>, Immutable<V>>
-        : T extends ReadonlySet<infer U>
-          ? ReadonlySet<Immutable<U>>
-          : T extends Set<infer U>
-            ? ReadonlySet<Immutable<U>>
-            : T extends WeakMap<infer K, infer V>
-              ? WeakMap<Immutable<K>, Immutable<V>>
-              : T extends WeakSet<infer U>
-                ? WeakSet<Immutable<U>>
-                : T extends Promise<infer U>
-                  ? Promise<Immutable<U>>
-                  : T extends readonly []
-                    ? T
-                    : T extends readonly [infer _H, ...infer _R]
-                      ? { readonly [I in keyof T]: Immutable<T[I]> }
-                      : T extends ReadonlyArray<infer U>
-                        ? ReadonlyArray<Immutable<U>>
-                        : T extends Array<infer U>
-                          ? ReadonlyArray<Immutable<U>>
-                          : T extends object
-                            ? { readonly [P in keyof T]: Immutable<T[P]> }
-                            : T;
 
 export function jsonTypeObjectSnakeCase<T>(fields: {
   [key in keyof T]: JsonType<T[key]>;
@@ -72,10 +23,9 @@ export function jsonTypeObjectSnakeCase<T>(fields: {
 }
 
 export function jsonTypeRustFixedString() {
-  return jsonTypeMapped(
-    jsonTypeArrayToTuple([jsonTypeArray(jsonTypeNumber())]),
-    {
-      map: (unmapped) => {
+  return jsonTypeMap(
+    jsonTypeArrayToTuple([jsonTypeArray(jsonTypeNumber)]),
+   (unmapped) => {
         const bytes = unmapped[0];
         const nulIndex = bytes.indexOf(0);
         const trimmed = nulIndex >= 0 ? bytes.slice(0, nulIndex) : bytes;
@@ -83,33 +33,39 @@ export function jsonTypeRustFixedString() {
           value: new TextDecoder().decode(new Uint8Array(trimmed)),
           length: bytes.length,
         };
-      },
-      unmap: (mapped) => {
+      }, (mapped) => {
         const bytes = new TextEncoder().encode(mapped.value);
         const padded = new Uint8Array(mapped.length);
         padded.set(bytes);
         return [Array.from(padded)] as [number[]];
       },
-    },
+    
   );
 }
 
 export function jsonTypeRustFixedArray<T>(itemType: JsonType<T>) {
-  return jsonTypeMapped(
+  return jsonTypeMap(
     jsonTypeObject({
       data: jsonTypeArray(itemType),
       len: jsonTypeStringToBigint(),
     }),
-    {
-      map: (unmapped) => unmapped.data.slice(0, Number(unmapped.len)),
-      unmap: (mapped) => ({ data: mapped, len: BigInt(mapped.length) }),
-    },
+    
+      (unmapped) => unmapped.data.slice(0, Number(unmapped.len)),
+      (mapped) => ({ data: mapped, len: BigInt(mapped.length) }),
+    
   );
 }
 
 export function jsonTypeRustSmallBoolean() {
-  return jsonTypeMapped(jsonTypeArrayToTuple([jsonTypeNumber()]), {
+  return jsonTypeMap(jsonTypeArrayToTuple([jsonTypeNumber]), {
     map: (unmapped) => unmapped[0] !== 0,
     unmap: (mapped) => (mapped ? ([1] as const) : ([0] as const)),
   });
+}
+
+export function jsonTypeStringToBigint() {
+  return jsonTypeMap(jsonTypeString, 
+    map: (unmapped) => BigInt(unmapped),
+    unmap: (mapped) => mapped.toString(),
+  );
 }

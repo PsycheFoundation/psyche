@@ -4,12 +4,12 @@ import {
   jsonTypeString,
   jsonTypeValue,
   JsonValue,
-} from "./json";
+} from "solana-kiss-data";
 
 const saveJsonType = jsonTypeObject({
-  updatedAt: jsonTypeString(),
-  checkpoint: jsonTypeValue(),
-  dataStore: jsonTypeValue(),
+  updatedAt: jsonTypeString,
+  checkpoint: jsonTypeValue,
+  dataStore: jsonTypeValue,
 });
 
 async function savePath(saveName: string): Promise<string> {

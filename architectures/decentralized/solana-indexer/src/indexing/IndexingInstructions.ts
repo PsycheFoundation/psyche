@@ -1,39 +1,38 @@
-import { PublicKey, TransactionSignature } from "@solana/web3.js";
-import {
-  ToolboxEndpoint,
-  ToolboxEndpointExecution,
-  ToolboxIdlProgram,
-} from "solana_toolbox_web3";
-import { JsonValue } from "../json";
+import { JsonValue, Pubkey, Signature } from "solana-kiss-data";
+import { IdlProgram } from "solana-kiss-idl";
+import { RpcHttp, rpcHttpGetTransaction, Transaction } from "solana-kiss-rpc";
 import { Immutable } from "../utils";
 import { IndexingCheckpoint } from "./IndexingCheckpoint";
 import { indexingSignaturesLoop } from "./IndexingSignatures";
 
 export async function indexingInstructionsLoop(
-  endpoint: ToolboxEndpoint,
-  programAddress: PublicKey,
+  rpcHttp: RpcHttp,
+  programAddress: Pubkey,
   startingCheckpoint: IndexingCheckpoint,
-  idlProgram: ToolboxIdlProgram,
+  programIdl: IdlProgram,
   onInstruction: (
     instructionName: string,
-    instructionAddresses: Map<string, PublicKey>,
+    instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
     ordering: bigint,
     source: Immutable<{
-      signature: TransactionSignature;
-      execution: ToolboxEndpointExecution;
+      signature: Signature;
+      transaction: Transaction;
       instructionIndex: number;
     }>,
   ) => Promise<void>,
   onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<void> {
   await indexingSignaturesLoop(
-    endpoint,
+    rpcHttp,
     programAddress,
     startingCheckpoint,
-    async (signature: TransactionSignature, ordering: bigint) => {
+    async (signature: Signature, ordering: bigint) => {
       try {
-        const execution = await endpoint.getExecution(signature);
+        const execution = await rpcHttpGetTransaction(rpcHttp, signature);
+        if (execution === undefined) {
+          return;
+        }
         if (execution.error !== null) {
           return;
         }
@@ -49,16 +48,16 @@ export async function indexingInstructionsLoop(
             if (!instruction.programId.equals(programAddress)) {
               continue;
             }
-            const idlInstruction = idlProgram.guessInstruction(
+            const instructionIdl = programIdl.guessInstruction(
               instruction.data,
             );
-            if (!idlInstruction) {
+            if (!instructionIdl) {
               continue;
             }
             const { instructionAddresses, instructionPayload } =
-              idlInstruction.decode(instruction);
+              instructionIdl.decode(instruction);
             await onInstruction(
-              idlInstruction.name,
+              instructionIdl.name,
               instructionAddresses,
               instructionPayload,
               ordering * 1000n + BigInt(instructionIndex),

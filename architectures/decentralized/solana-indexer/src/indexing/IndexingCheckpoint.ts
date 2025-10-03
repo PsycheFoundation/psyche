@@ -1,17 +1,17 @@
-import { TransactionSignature } from "@solana/web3.js";
 import {
   jsonTypeArray,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeString,
-  jsonTypeStringToBigint,
-} from "../json";
+  Signature,
+} from "solana-kiss-data";
+import { jsonTypeStringToBigint } from "../utils";
 
 export type IndexingCheckpointChunk = {
   orderingHigh: bigint;
   orderingLow: bigint;
-  startedFrom: TransactionSignature;
-  rewindedUntil: TransactionSignature;
+  startedFrom: Signature;
+  rewindedUntil: Signature;
   processedCounter: number;
 };
 
@@ -24,9 +24,9 @@ export const indexingCheckpointJsonType = jsonTypeObject({
     jsonTypeObject({
       orderingHigh: jsonTypeStringToBigint(),
       orderingLow: jsonTypeStringToBigint(),
-      startedFrom: jsonTypeString(),
-      rewindedUntil: jsonTypeString(),
-      processedCounter: jsonTypeNumber(),
+      startedFrom: jsonTypeString,
+      rewindedUntil: jsonTypeString,
+      processedCounter: jsonTypeNumber,
     }),
   ),
 });

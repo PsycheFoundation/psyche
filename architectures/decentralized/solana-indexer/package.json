@@ -12,6 +12,10 @@
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
-    "solana_toolbox_web3": "^0.0.9"
+    "solana_toolbox_web3": "^0.0.9",
+    "solana-kiss-data": "^0.0.3",
+    "solana-kiss-idl": "^0.0.3",
+    "solana-kiss-resolve": "^0.0.3",
+    "solana-kiss-rpc": "^0.0.3"
   }
 }

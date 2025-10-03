@@ -1,41 +1,37 @@
-import { PublicKey } from "@solana/web3.js";
-import { ToolboxEndpoint } from "solana_toolbox_web3";
+import { rpcHttpFromUrl } from "solana-kiss-rpc";
 import { coordinatorService } from "./coordinator/CoordinatorService";
 import { miningPoolService } from "./mining-pool/MiningPoolService";
 
 const miningPoolCluster = "mainnet";
-const miningPoolEndpoint = new ToolboxEndpoint(
+const miningPoolRpcHttp = rpcHttpFromUrl(
   "https://mainnet.helius-rpc.com/?api-key=73970171-7c76-4e93-85f9-7042d1ab6722",
-  "confirmed",
+  { commitment: "confirmed" },
 );
-const miningPoolProgramAddress = new PublicKey(
-  "PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf",
-);
+const miningPoolProgramAddress = "PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf";
 
 const coordinatorCluster = "devnet";
-const coordinatorEndpoint = new ToolboxEndpoint(
+const coordinatorRpcHttp = rpcHttpFromUrl(
   "https://devnet.helius-rpc.com/?api-key=73970171-7c76-4e93-85f9-7042d1ab6722",
-  "confirmed",
+  { commitment: "confirmed" },
 );
-const coordinatorProgramAddress = new PublicKey(
-  "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y",
-);
+const coordinatorProgramAddress =
+  "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y";
 
-async function main1() {
+async function coordinatorMain() {
   coordinatorService(
     coordinatorCluster,
-    coordinatorEndpoint,
+    coordinatorRpcHttp,
     coordinatorProgramAddress,
   );
 }
 
-async function main2() {
+async function miningPoolMain() {
   miningPoolService(
     miningPoolCluster,
-    miningPoolEndpoint,
+    miningPoolRpcHttp,
     miningPoolProgramAddress,
   );
 }
 
-main1();
-main2();
+coordinatorMain();
+miningPoolMain();

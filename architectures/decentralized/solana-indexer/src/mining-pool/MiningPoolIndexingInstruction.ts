@@ -1,11 +1,11 @@
-import { PublicKey } from "@solana/web3.js";
-import { jsonTypeObject, jsonTypeStringToBigint, JsonValue } from "../json";
+import { JsonValue, Pubkey, jsonTypeObject } from "solana-kiss-data";
+import { jsonTypeStringToBigint } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingInstruction(
   dataStore: MiningPoolDataStore,
   instructionName: string,
-  instructionAddresses: Map<string, PublicKey>,
+  instructionAddresses: Map<string, Pubkey>,
   instructionPayload: any,
   ordering: bigint,
 ) {
@@ -22,17 +22,17 @@ export async function miningPoolIndexingInstruction(
 
 export async function miningPoolIndexingInstructionLenderDeposit(
   dataStore: MiningPoolDataStore,
-  instructionAddresses: Map<string, PublicKey>,
+  instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
 ): Promise<void> {
-  const poolAddress = instructionAddresses.get("pool")?.toBase58();
+  const poolAddress = instructionAddresses.get("pool");
   if (poolAddress === undefined) {
     throw new Error(
       "MiningPool: Instruction: LenderDeposit: Missing pool address",
     );
   }
-  const userAddress = instructionAddresses.get("user")?.toBase58();
+  const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {
     throw new Error(
       "MiningPool: Instruction: LenderDeposit: Missing user address",

@@ -1,15 +1,12 @@
-import { PublicKey, TransactionSignature } from "@solana/web3.js";
-import { ToolboxEndpoint } from "solana_toolbox_web3";
+import { Pubkey, Signature } from "solana-kiss-data";
+import { RpcHttp, rpcHttpFindAccountPastSignatures } from "solana-kiss-rpc";
 import { IndexingCheckpoint } from "./IndexingCheckpoint";
 
 export async function indexingSignaturesLoop(
-  endpoint: ToolboxEndpoint,
-  programAddress: PublicKey,
+  rpcHttp: RpcHttp,
+  programAddress: Pubkey,
   startingCheckpoint: IndexingCheckpoint,
-  onSignature: (
-    signature: TransactionSignature,
-    ordering: bigint,
-  ) => Promise<void>,
+  onSignature: (signature: Signature, ordering: bigint) => Promise<void>,
   onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<never> {
   const indexedChunks = startingCheckpoint.indexedChunks.map((c) => ({ ...c }));
@@ -17,22 +14,25 @@ export async function indexingSignaturesLoop(
     await onCheckpoint({
       indexedChunks: indexedChunks.map((c) => ({ ...c })),
     });
-    const currChunkIndex =
+    const prevChunkIndex =
       Math.floor(Math.random() * (indexedChunks.length + 1)) - 1;
-    const nextChunkIndex = currChunkIndex + 1;
-    const currChunkInfo = indexedChunks[currChunkIndex];
+    const nextChunkIndex = prevChunkIndex + 1;
+    const prevChunkInfo = indexedChunks[prevChunkIndex];
     const nextChunkInfo = indexedChunks[nextChunkIndex];
-    const signatures = await endpoint.searchSignatures(
+    const signatures = await rpcHttpFindAccountPastSignatures(
+      rpcHttp,
       programAddress,
       1000,
-      currChunkInfo?.rewindedUntil,
-      nextChunkInfo?.startedFrom,
+      {
+        startBeforeSignature: prevChunkInfo?.startedFrom,
+        rewindUntilSignature: nextChunkInfo?.rewindedUntil,
+      },
     );
     if (signatures.length === 0) {
       continue;
     }
-    const orderingHigh = currChunkInfo
-      ? currChunkInfo.orderingLow
+    const orderingHigh = prevChunkInfo
+      ? prevChunkInfo.orderingLow
       : BigInt(new Date().getTime()) * 1000000n;
     let orderingLow = orderingHigh - BigInt(signatures.length);
     let processedCounter = signatures.length;
@@ -45,10 +45,10 @@ export async function indexingSignaturesLoop(
       indexedChunks.splice(nextChunkIndex, 1);
       signatures.pop();
     }
-    if (currChunkInfo !== undefined) {
-      currChunkInfo.rewindedUntil = rewindedUntil;
-      currChunkInfo.orderingLow = orderingLow;
-      currChunkInfo.processedCounter += processedCounter;
+    if (prevChunkInfo !== undefined) {
+      prevChunkInfo.rewindedUntil = rewindedUntil;
+      prevChunkInfo.orderingLow = orderingLow;
+      prevChunkInfo.processedCounter += processedCounter;
     } else {
       indexedChunks.unshift({
         orderingHigh: orderingHigh,

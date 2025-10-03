@@ -1,12 +1,11 @@
-import { PublicKey } from "@solana/web3.js";
-import { jsonTypeNumber } from "../json";
+import { Pubkey } from "solana-kiss-data";
 import { jsonTypeObjectSnakeCase, jsonTypeRustFixedArray } from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export async function coordinatorIndexingInstruction(
   dataStore: CoordinatorDataStore,
   instructionName: string,
-  instructionAddresses: Map<string, PublicKey>,
+  instructionAddresses: Map<string, Pubkey>,
   instructionPayload: any,
   ordering: bigint,
 ): Promise<void> {
@@ -33,7 +32,7 @@ export async function coordinatorIndexingInstruction(
 async function coordinatorIndexingInstructionWitness(
   dataStore: CoordinatorDataStore,
   runAddress: string,
-  instructionAddresses: Map<string, PublicKey>,
+  instructionAddresses: Map<string, Pubkey>,
   instructionPayload: any,
   ordering: bigint,
 ): Promise<void> {

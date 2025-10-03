@@ -1,11 +1,10 @@
 import {
-  jsonTypeArrayToVariant,
   jsonTypeBoolean,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeString,
-  jsonTypeStringToBigint,
-} from "../json";
+} from "solana-kiss-data";
+import { jsonTypeStringToBigint } from "../utils";
 
 export interface MiningPoolDataPoolState {
   bump: number;

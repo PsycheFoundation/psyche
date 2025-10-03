@@ -1,32 +1,26 @@
-import { PublicKey } from "@solana/web3.js";
-import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
 import {
+  camelCaseToSnakeCase,
   jsonTypeBoolean,
   jsonTypeNumber,
-  jsonTypeObjectWithKeyEncoder,
   jsonTypeString,
-  jsonTypeStringToBigint,
-  JsonValue,
-} from "../json";
-import { camelCaseToSnakeCase } from "../utils";
+} from "solana-kiss-data";
+import { IdlProgram } from "solana-kiss-idl";
+import { RpcHttp } from "solana-kiss-rpc";
+import { getAndDecodeAccountState, jsonTypeStringToBigint } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingCheckpoint(
+  rpcHttp: RpcHttp,
+  programIdl: IdlProgram,
   dataStore: MiningPoolDataStore,
-  idlService: ToolboxIdlService,
-  endpoint: ToolboxEndpoint,
 ) {
   for (const [poolAddress, poolInfo] of dataStore.poolsInfos) {
     if (poolInfo.accountFetchedOrdering === poolInfo.accountRequestOrdering) {
       break;
     }
     try {
-      const poolAccount = await idlService.getAndInferAndDecodeAccount(
-        endpoint,
-        new PublicKey(poolAddress),
-      );
-      const poolState = poolStateJsonType.decode(
-        poolAccount.state as JsonValue,
+      const poolState = poolInfoJsonType.decode(
+        await getAndDecodeAccountState(rpcHttp, programIdl, poolAddress),
       );
       dataStore.savePoolState(poolAddress, poolState);
     } catch (error) {
@@ -37,17 +31,17 @@ export async function miningPoolIndexingCheckpoint(
 
 const poolStateJsonType = jsonTypeObjectWithKeyEncoder(
   {
-    bump: jsonTypeNumber(),
-    index: jsonTypeStringToBigint(),
-    authority: jsonTypeString(),
-    collateralMint: jsonTypeString(),
-    maxDepositCollateralAmount: jsonTypeStringToBigint(),
-    totalDepositedCollateralAmount: jsonTypeStringToBigint(),
-    totalExtractedCollateralAmount: jsonTypeStringToBigint(),
-    claimingEnabled: jsonTypeBoolean(),
-    redeemableMint: jsonTypeString(),
-    totalClaimedRedeemableAmount: jsonTypeStringToBigint(),
-    freeze: jsonTypeBoolean(),
+    bump: jsonTypeNumber,
+    index: jsonTypeStringToBigint,
+    authority: jsonTypeString,
+    collateralMint: jsonTypeString,
+    maxDepositCollateralAmount: jsonTypeStringToBigint,
+    totalDepositedCollateralAmount: jsonTypeStringToBigint,
+    totalExtractedCollateralAmount: jsonTypeStringToBigint,
+    claimingEnabled: jsonTypeBoolean,
+    redeemableMint: jsonTypeString,
+    totalClaimedRedeemableAmount: jsonTypeStringToBigint,
+    freeze: jsonTypeBoolean,
   },
   camelCaseToSnakeCase,
 );

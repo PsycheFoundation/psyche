@@ -1,5 +1,6 @@
-import { PublicKey } from "@solana/web3.js";
-import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
+import { Pubkey } from "solana-kiss-data";
+import { resolveProgramAnchorIdl } from "solana-kiss-resolve";
+import { RpcHttp } from "solana-kiss-rpc";
 import {
   IndexingCheckpoint,
   indexingCheckpointJsonType,
@@ -15,15 +16,15 @@ import { coordinatorIndexingInstruction } from "./CoordinatorIndexingInstruction
 
 export async function coordinatorService(
   cluster: string,
-  endpoint: ToolboxEndpoint,
-  programAddress: PublicKey,
+  rpcHttp: RpcHttp,
+  programAddress: Pubkey,
 ) {
   const saveName = `coordinator_${cluster}_${programAddress.toBase58()}.json`;
   const { checkpoint, dataStore } = await coordinatorServiceLoader(saveName);
   // TODO - add API calls here to serve data from dataStore
   await coordinatorServiceIndexing(
     saveName,
-    endpoint,
+    rpcHttp,
     programAddress,
     checkpoint,
     dataStore,
@@ -48,24 +49,20 @@ export async function coordinatorServiceLoader(saveName: string) {
 
 export async function coordinatorServiceIndexing(
   saveName: string,
-  endpoint: ToolboxEndpoint,
-  programAddress: PublicKey,
+  rpcHttp: RpcHttp,
+  programAddress: Pubkey,
   startingCheckpoint: IndexingCheckpoint,
   dataStore: CoordinatorDataStore,
 ): Promise<void> {
-  const idlService = new ToolboxIdlService();
-  const idlProgram = await idlService.getOrResolveProgram(
-    endpoint,
-    programAddress,
-  );
-  if (idlProgram === undefined) {
+  const programIdl = await resolveProgramAnchorIdl(rpcHttp, programAddress);
+  if (programIdl === undefined) {
     throw new Error(`Failed to resolve program IDL: ${programAddress}`);
   }
   await indexingInstructionsLoop(
-    endpoint,
+    rpcHttp,
     programAddress,
     startingCheckpoint,
-    idlProgram,
+    programIdl,
     async (
       instructionName,
       instructionAddresses,
@@ -81,7 +78,7 @@ export async function coordinatorServiceIndexing(
       );
     },
     async (checkpoint) => {
-      await coordinatorIndexingCheckpoint(dataStore, idlService, endpoint);
+      await coordinatorIndexingCheckpoint(rpcHttp, programIdl, dataStore);
       await saveWrite(saveName, {
         checkpoint: indexingCheckpointJsonType.encode(checkpoint),
         dataStore: coordinatorDataStoreJsonType.encode(dataStore),

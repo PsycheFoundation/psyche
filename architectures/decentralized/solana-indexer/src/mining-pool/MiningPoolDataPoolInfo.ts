@@ -1,10 +1,9 @@
 import {
-  jsonTypeArrayToVariant,
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeOptional,
-  jsonTypeStringToBigint,
-} from "../json";
+} from "solana-kiss-data";
+import { jsonTypeStringToBigint } from "../utils";
 import {
   MiningPoolDataPoolState,
   miningPoolDataPoolStateJsonType,

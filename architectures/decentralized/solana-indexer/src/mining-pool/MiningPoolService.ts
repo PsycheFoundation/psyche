@@ -1,5 +1,6 @@
-import { PublicKey } from "@solana/web3.js";
-import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
+import { Pubkey } from "solana-kiss-data";
+import { resolveProgramAnchorIdl } from "solana-kiss-resolve";
+import { RpcHttp } from "solana-kiss-rpc";
 import {
   IndexingCheckpoint,
   indexingCheckpointJsonType,
@@ -15,15 +16,15 @@ import { miningPoolIndexingInstruction } from "./MiningPoolIndexingInstruction";
 
 export async function miningPoolService(
   cluster: string,
-  endpoint: ToolboxEndpoint,
-  programAddress: PublicKey,
+  rpcHttp: RpcHttp,
+  programAddress: Pubkey,
 ): Promise<void> {
-  const saveName = `mining_pool_${cluster}_${programAddress.toBase58()}`;
+  const saveName = `mining_pool_${cluster}_${programAddress}`;
   const { checkpoint, dataStore } = await miningPoolServiceLoader(saveName);
   // TODO - add API calls here to serve data from dataStore
   await miningPoolServiceIndexing(
     saveName,
-    endpoint,
+    rpcHttp,
     programAddress,
     checkpoint,
     dataStore,
@@ -48,24 +49,20 @@ export async function miningPoolServiceLoader(saveName: string) {
 
 export async function miningPoolServiceIndexing(
   saveName: string,
-  endpoint: ToolboxEndpoint,
-  programAddress: PublicKey,
+  rpcHttp: RpcHttp,
+  programAddress: Pubkey,
   startingCheckpoint: IndexingCheckpoint,
   dataStore: MiningPoolDataStore,
 ) {
-  const idlService = new ToolboxIdlService();
-  const idlProgram = await idlService.getOrResolveProgram(
-    endpoint,
-    programAddress,
-  );
-  if (idlProgram === undefined) {
+  const programIdl = await resolveProgramAnchorIdl(rpcHttp, programAddress);
+  if (programIdl === undefined) {
     throw new Error(`Failed to resolve program IDL: ${programAddress}`);
   }
   await indexingInstructionsLoop(
-    endpoint,
+    rpcHttp,
     programAddress,
     startingCheckpoint,
-    idlProgram,
+    programIdl,
     async (
       instructionName,
       instructionAddresses,
@@ -81,7 +78,7 @@ export async function miningPoolServiceIndexing(
       );
     },
     async (checkpoint) => {
-      await miningPoolIndexingCheckpoint(dataStore, idlService, endpoint);
+      await miningPoolIndexingCheckpoint(rpcHttp, programIdl, dataStore);
       await saveWrite(saveName, {
         checkpoint: indexingCheckpointJsonType.encode(checkpoint),
         dataStore: miningPoolDataStoreJsonType.encode(dataStore),

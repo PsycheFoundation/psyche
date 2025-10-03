@@ -1,39 +1,34 @@
-import { PublicKey } from "@solana/web3.js";
-import { ToolboxEndpoint, ToolboxIdlService } from "solana_toolbox_web3";
+import { jsonTypeNumber, jsonTypeString } from "solana-kiss-data";
+import { IdlProgram } from "solana-kiss-idl";
+import { RpcHttp } from "solana-kiss-rpc";
 import {
-  jsonTypeNumber,
-  jsonTypeString,
-  jsonTypeStringToBigint,
-  JsonValue,
-} from "../json";
-import {
+  getAndDecodeAccountState,
   jsonTypeObjectSnakeCase,
   jsonTypeRustFixedArray,
   jsonTypeRustFixedString,
+  jsonTypeStringToBigint,
 } from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export async function coordinatorIndexingCheckpoint(
+  rpcHttp: RpcHttp,
+  programIdl: IdlProgram,
   dataStore: CoordinatorDataStore,
-  idlService: ToolboxIdlService,
-  endpoint: ToolboxEndpoint,
 ) {
   for (const [runAddress, runInfo] of dataStore.runsInfos) {
     if (runInfo.accountFetchedOrdering === runInfo.accountRequestOrdering) {
       break;
     }
     try {
-      const runAccount = await idlService.getAndInferAndDecodeAccount(
-        endpoint,
-        new PublicKey(runAddress),
+      const runState = runStateJsonType.decode(
+        await getAndDecodeAccountState(rpcHttp, programIdl, runAddress),
       );
-      const runState = runStateJsonType.decode(runAccount.state as JsonValue);
       console.log("Refreshed run state", runAddress, runState.nonce);
       dataStore.saveRunState(runAddress, {
-        runId: runState.state.coordinator.runId.value,
-        name: runState.state.metadata.name.value,
-        description: runState.state.metadata.description.value,
-        status: runState.state.coordinator.runState,
+        runId: runState.runId,
+        name: runState.name,
+        description: runState.description,
+        status: runState.status,
         epochClients: runState.state.coordinator.epochState.clients.map(
           (client) => ({
             signer: client.id.signer,
@@ -59,19 +54,19 @@ const runStateJsonType = jsonTypeObjectSnakeCase({
     }),
     coordinator: jsonTypeObjectSnakeCase({
       runId: jsonTypeRustFixedString(),
-      runState: jsonTypeString(),
+      runState: jsonTypeString,
       progress: jsonTypeObjectSnakeCase({
-        epoch: jsonTypeNumber(),
-        step: jsonTypeNumber(),
+        epoch: jsonTypeNumber,
+        step: jsonTypeNumber,
         epochStartDataIndex: jsonTypeStringToBigint(),
       }),
       epochState: jsonTypeObjectSnakeCase({
         clients: jsonTypeRustFixedArray(
           jsonTypeObjectSnakeCase({
             id: jsonTypeObjectSnakeCase({
-              signer: jsonTypeString(),
+              signer: jsonTypeString,
             }),
-            state: jsonTypeString(),
+            state: jsonTypeString,
           }),
         ),
       }),
