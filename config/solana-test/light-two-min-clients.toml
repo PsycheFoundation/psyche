@@ -16,20 +16,19 @@ total_steps = 25000
 [model.LLM]
 architecture = "HfLlama"
 data_type = "Pretraining"
-max_seq_len = 2048
+max_seq_len = 64
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
 repo_id = "pefontana/micro-llama"
-revision = "60de5e4c051d5471c25bdfee7400009ed8ab743b"
+revision = "565c15104cebc5ac2dbdc33495edff008809f6dd"
 
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"
 shuffle = "DontShuffle"
 
-[model.LLM.data_location.Http.location.Gcp]
-bucket_name = "nous-pretraining-public-us"
-filter_directory = "fineweb-edu-tokenized-llama2"
+[model.LLM.data_location.Http.location]
+SingleUrl = "https://huggingface.co/pefontana/micro-llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds"
 
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4
