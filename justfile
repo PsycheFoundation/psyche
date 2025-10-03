@@ -128,7 +128,7 @@ docker_push_centralized_client:
 setup_test_infra:
     cd architectures/decentralized/solana-coordinator && anchor build
     cd architectures/decentralized/solana-authorizer && anchor build
-    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_client_no_python
     just nix build_docker_solana_test_validator
 
 run_test_infra num_clients="1":

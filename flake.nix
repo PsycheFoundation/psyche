@@ -85,6 +85,7 @@
         ./nix/devShell.nix
         ./nix/checks.nix
         ./nix/nixosModules.nix
+        ./nix/integration-tests.nix
       ];
     };
 }

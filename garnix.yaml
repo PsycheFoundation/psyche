@@ -18,6 +18,11 @@ servers:
     deployment:
       type: on-branch
       branch: main
+
+actions:
+  - on: push
+    run: decentralized-integration-test
+
 builds:
   - exclude:
       - 'checks.x86_64-linux.workspace-test-all'
