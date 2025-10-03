@@ -210,7 +210,14 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, None).await;
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        1,
+        Some(PathBuf::from(
+            "../../config/solana-test/light-two-min-clients.toml",
+        )),
+    )
+    .await;
 
     println!("Waiting for run to go on with the first client");
     tokio::time::sleep(Duration::from_secs(40)).await;
