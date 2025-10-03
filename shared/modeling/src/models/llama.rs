@@ -26,6 +26,7 @@ pub struct LlamaConfig {
     pub rope_scaling: Option<RoPEConfig>,
     pub max_position_embeddings: usize,
     pub tie_word_embeddings: bool,
+    pub attention_bias: Option<bool>,
 }
 
 impl LlamaConfig {
@@ -48,6 +49,7 @@ impl LlamaConfig {
             rope_scaling: None,
             max_position_embeddings: 2048,
             tie_word_embeddings: false,
+            attention_bias: None,
         }
     }
 }
@@ -314,6 +316,12 @@ impl ModelConfig for LlamaConfig {
 
             variables.push(format!("{}.input_layernorm.weight", layer_prefix));
             variables.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
+
+            if self.attention_bias.unwrap_or(false) {
+                variables.push(format!("{}.self_attn.q_proj.bias", layer_prefix));
+                variables.push(format!("{}.self_attn.k_proj.bias", layer_prefix));
+                variables.push(format!("{}.self_attn.v_proj.bias", layer_prefix));
+            }
         }
 
         variables.push("lm_head.weight".to_string());
