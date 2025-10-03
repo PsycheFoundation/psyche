@@ -4400,8 +4400,7 @@ dependencies = [
 [[package]]
 name = "iroh-blobs"
 version = "0.94.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1ebaa36eb3a36492c3b661bdd6eaf359f85def358c1c661d2d04edbe4ad5778"
+source = "git+https://github.com/n0-computer/iroh-blobs.git?rev=f0276f16362ba4b24805be1a834da96ea86fff77#f0276f16362ba4b24805be1a834da96ea86fff77"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -7822,9 +7821,9 @@ dependencies = [
 
 [[package]]
 name = "redb"
-version = "2.4.0"
+version = "2.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea0a72cd7140de9fc3e318823b883abf819c20d478ec89ce880466dc2ef263c6"
+checksum = "8eca1e9d98d5a7e9002d0013e18d5a9b000aee942eb134883a82f06ebffb6c01"
 dependencies = [
  "libc",
 ]

@@ -130,3 +130,156 @@ pub fn get_data_index_for_step<T: NodeIdentity>(
 
     current_data_index
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Client, ClientState, CommitteeSelection, Coordinator};
+    use bytemuck::Zeroable;
+    use psyche_core::{FixedVec, NodeIdentity};
+
+    #[derive(
+        serde::Serialize,
+        serde::Deserialize,
+        Clone,
+        Debug,
+        Hash,
+        PartialEq,
+        Eq,
+        Default,
+        Copy,
+        bytemuck::Zeroable,
+        ts_rs::TS,
+    )]
+    struct TestNode(u64);
+
+    impl NodeIdentity for TestNode {
+        fn get_p2p_public_key(&self) -> &[u8; 32] {
+            todo!()
+        }
+    }
+
+    impl fmt::Display for TestNode {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "Node({})", self.0)
+        }
+    }
+
+    impl anchor_lang::AnchorSerialize for TestNode {
+        fn serialize<W: std::io::Write>(&self, _: &mut W) -> std::io::Result<()> {
+            unimplemented!()
+        }
+    }
+
+    impl anchor_lang::AnchorDeserialize for TestNode {
+        fn deserialize_reader<R: std::io::Read>(_: &mut R) -> std::io::Result<Self> {
+            unimplemented!()
+        }
+    }
+
+    impl anchor_lang::Space for TestNode {
+        const INIT_SPACE: usize = 0;
+    }
+
+    impl AsRef<[u8]> for TestNode {
+        fn as_ref(&self) -> &[u8] {
+            todo!()
+        }
+    }
+
+    fn create_test_coordinator(
+        num_nodes: usize,
+        global_batch_size: u16,
+        total_steps: u32,
+    ) -> Coordinator<TestNode> {
+        let clients: Vec<_> = (0..num_nodes)
+            .map(|i| Client {
+                id: TestNode(i as u64),
+                state: ClientState::Healthy,
+                exited_height: 0,
+            })
+            .collect();
+
+        let mut coordinator = Coordinator::<TestNode>::zeroed();
+        coordinator.config.total_steps = total_steps;
+        coordinator.config.global_batch_size_start = global_batch_size;
+        coordinator.config.global_batch_size_end = global_batch_size;
+        coordinator.epoch_state.clients = FixedVec::from_iter(clients.into_iter());
+
+        coordinator.current_round_mut().unwrap().clients_len =
+            coordinator.epoch_state.clients.len() as u16;
+
+        coordinator
+    }
+
+    #[test]
+    fn test_even_distribution() {
+        // 4 trainers, global batch size 100 -> each gets 25
+        let coordinator = create_test_coordinator(4, 100, 10);
+
+        let assignments = assign_data_for_state(
+            &coordinator,
+            &CommitteeSelection::from_coordinator(&coordinator, 0).unwrap(),
+        );
+        assert_eq!(assignments.len(), 4);
+
+        for (batch_id, _) in &assignments {
+            let size = batch_id.0.end - batch_id.0.start + 1;
+            assert_eq!(size, 25);
+        }
+
+        let total_assigned: u64 = assignments.keys().map(|b| b.0.end - b.0.start + 1).sum();
+        assert_eq!(total_assigned, 100);
+    }
+
+    #[test]
+    fn test_uneven_distribution_with_remainder() {
+        // 24 trainers, global batch size 384
+        let coordinator = create_test_coordinator(23, 384, 10);
+
+        let assignments = assign_data_for_state(
+            &coordinator,
+            &CommitteeSelection::from_coordinator(&coordinator, 0).unwrap(),
+        );
+        assert_eq!(assignments.len(), 23);
+
+        let mut sizes: Vec<u64> = assignments
+            .keys()
+            .map(|b| b.0.end - b.0.start + 1)
+            .collect();
+        sizes.sort();
+
+        let mut expected = [16; 7].to_vec();
+        expected.extend([17; 16]);
+        assert_eq!(sizes, expected);
+
+        let total: u64 = sizes.iter().sum();
+        assert_eq!(total, 384);
+    }
+
+    #[test]
+    fn test_larger_remainder() {
+        // 5 trainers, global batch size 13 -> remainder of 3
+        // Expected: base_size=2, so 3 nodes get 3, 2 nodes get 2
+        let coordinator = create_test_coordinator(5, 13, 10);
+
+        let assignments = assign_data_for_state(
+            &coordinator,
+            &CommitteeSelection::from_coordinator(&coordinator, 0).unwrap(),
+        );
+        assert_eq!(assignments.len(), 5);
+
+        let mut sizes: Vec<u64> = assignments
+            .keys()
+            .map(|b| b.0.end - b.0.start + 1)
+            .collect();
+        sizes.sort();
+
+        // Base: 13/5 = 2, remainder: 13%5 = 3
+        // First 3 nodes get 3, last 2 get 2
+        assert_eq!(sizes, vec![2, 2, 3, 3, 3]);
+
+        let total: u64 = sizes.iter().sum();
+        assert_eq!(total, 13);
+    }
+}
