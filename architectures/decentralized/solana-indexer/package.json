@@ -1,0 +1,19 @@
+{
+  "name": "psyche-solana-indexer",
+  "version": "0.0.1",
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "prettier-plugin-organize-imports": "^4.1.0",
+    "tsx": "^4.20.6"
+  },
+  "scripts": {
+    "fmt": "prettier --write src",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "solana-kiss-data": "0.0.7",
+    "solana-kiss-idl": "0.0.7",
+    "solana-kiss-resolve": "0.0.7",
+    "solana-kiss-rpc": "0.0.7"
+  }
+}
