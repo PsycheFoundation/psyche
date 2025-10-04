@@ -22,6 +22,7 @@ export class CoordinatorDataStore {
     if (runInfo === undefined) {
       runInfo = {
         accountState: undefined,
+        accountUpdatedAt: undefined,
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
         witnessesPerUser: new Map(),
@@ -34,6 +35,7 @@ export class CoordinatorDataStore {
   public saveRunState(runAddress: string, runState: CoordinatorDataRunState) {
     let runInfo = this.getRunInfo(runAddress);
     runInfo.accountState = runState;
+    runInfo.accountUpdatedAt = new Date();
     runInfo.accountFetchedOrdering = runInfo.accountRequestOrdering;
   }
 
@@ -54,8 +56,8 @@ export class CoordinatorDataStore {
       lastFew: [],
       sampled: { rate: 1, data: [] },
     };
-    const desiredLastFewCount = 5;
-    const desiredSampledCount = 20;
+    const desiredLastFewCount = 1;
+    const desiredSampledCount = 5;
     const witness = { processedTime, ordering, metadata };
     userWitnesses.lastFew.push(witness);
     userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));

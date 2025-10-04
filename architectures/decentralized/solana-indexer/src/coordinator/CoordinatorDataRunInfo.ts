@@ -27,6 +27,7 @@ export interface CoordinatorDataRunInfoWitness {
 
 export interface CoordinatorDataRunInfo {
   accountState: CoordinatorDataRunState | undefined;
+  accountUpdatedAt: Date | undefined;
   accountFetchedOrdering: bigint;
   accountRequestOrdering: bigint;
   witnessesPerUser: Map<
@@ -60,6 +61,7 @@ const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
 export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
   jsonTypeObject({
     accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
+    accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
     accountFetchedOrdering: utilsOrderingJsonType,
     accountRequestOrdering: utilsOrderingJsonType,
     witnessesPerUser: jsonTypeObjectToMap(
