@@ -1,15 +1,11 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, bail, Context, Result};
-use big_block_sync::{sync, Config, PerNodeStats};
+use anyhow::{Context, Result, anyhow, bail};
+use big_block_sync::{Config, PerNodeStats, sync};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::endpoint::{RemoteInfo, TransportConfig};
-use iroh::{
-    Watcher,
-    endpoint::{RemoteInfo, TransportConfig},
-    protocol::Router,
-};
+use iroh::{Watcher, protocol::Router};
 use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
@@ -17,13 +13,14 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
-    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
-    MODEL_REQUEST_TIMEOUT_SECS,
+    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
+    PeerManagerHandle,
 };
 use psyche_metrics::ClientMetrics;
-use router::{spawn_router_with_allowlist, SupportedProtocols};
+use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::{
+    collections::HashMap,
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
     marker::PhantomData,
@@ -31,7 +28,6 @@ use std::{
     ops::Sub,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
-    collections::HashMap,
 };
 use tokio::{
     io::AsyncReadExt,
@@ -42,15 +38,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{interval, Interval},
+    time::{Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
+use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{endpoint::ConnectionType, NodeAddr, NodeId, RelayMode};
-pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
+pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
+pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -73,23 +69,23 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
+pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
 pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, RetriedDownloadsHandle,
-    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
+    RetriedDownloadsHandle, TransmittableDownload,
 };
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
-    ModelRequestType, ModelSharing, SharableModel, SharableModelError, TransmittableModelConfig,
-    ALPN,
+    ALPN, ModelRequestType, ModelSharing, SharableModel, SharableModelError,
+    TransmittableModelConfig,
 };
 pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
-    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
-    SerializedDistroResult, TransmittableDistroResult,
+    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_from_reader, distro_results_to_bytes,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -97,12 +93,10 @@ pub use tui::{NetworkTUIState, NetworkTui};
 use url::Url;
 pub use util::fmt_bytes;
 
-use crate::p2p_model_sharing::ModelSharing;
 use crate::p2p_model_sharing::{ModelInfoSharingMessage, ModelMetadataNetworkMessage};
 
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
-
 
 //const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
 //const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
@@ -443,26 +437,23 @@ where
 
     //todo: this is so bad T_T
     pub async fn add_downloadable_raw(&mut self, data: Vec<u8>, tag: u32) -> Result<BlobTicket> {
-        let blob_res = self
-            .blobs
-            .client()
-            .add_bytes(data)
-            .await?;
-        let addr = self.router.endpoint().node_addr().await?;
-        let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format)?;
+        let len = data.len();
+        let blob_res = self.blobs_store.blobs().add_bytes(data).await?;
+        let addr = self.router.endpoint().node_addr().initialized().await;
+        let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
 
         debug!(
             name: "blob_upload",
-            hash = blob_res.hash.fmt_short(),
-            size = blob_res.size,
+            hash = %blob_res.hash.fmt_short(),
+            size = len,
             "blob added for upload with hash {} and size {}",
             blob_res.hash.fmt_short(),
-            blob_res.size
+            len
         );
 
-        let hash = blob_ticket.hash();
-        self.state.currently_sharing_blobs.insert(hash);
-        self.state.blob_tags.insert((tag, hash));
+        //let hash = blob_ticket.hash();
+        //self.state.currently_sharing_blobs.insert(hash);
+        //self.state.blob_tags.insert((tag, hash));
 
         Ok(blob_ticket)
     }
@@ -490,7 +481,7 @@ where
         Ok(blob_ticket)
     }
     pub async fn get_addr(&self) -> Result<NodeAddr> {
-        let addr = self.router.endpoint().node_addr().await?;
+        let addr = self.router.endpoint().node_addr().initialized().await;
         Ok(addr)
     }
 

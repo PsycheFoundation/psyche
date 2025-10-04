@@ -1,14 +1,13 @@
 use anyhow::Result;
-use iroh::{NodeAddr, NodeId};
-use iroh::protocol::AcceptError;
 use ed25519::pkcs8::spki::der::pem::decode_label;
-use iroh::{endpoint::Connection, protocol::ProtocolHandler};
+use iroh::protocol::AcceptError;
 use iroh::{NodeAddr, NodeId};
-use iroh_blobs::{ticket::BlobTicket, Hash};
+use iroh::{endpoint::Connection, protocol::ProtocolHandler};
+use iroh_blobs::{Hash, ticket::BlobTicket};
 use psyche_core::BoxedFuture;
-use serde::{de, ser, Deserialize, Serialize};
-use std::collections::{btree_map::Entry, HashMap, HashSet};
+use serde::{Deserialize, Serialize, de, ser};
 use std::collections::{BTreeMap, VecDeque};
+use std::collections::{HashMap, HashSet, btree_map::Entry};
 use std::io::{Cursor, Write};
 use std::ops::{Deref, DerefMut};
 use tch::Tensor;
@@ -803,50 +802,48 @@ impl ModelSharing {
         let model_request_type_bytes = recv.read_to_end(1000).await?;
         let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes)?;
 
-            let response = match model_request_type {
-                ModelRequestType::Parameter(parameter_request) => {
-                    // Create channel for requesting the model parameter to the client backend
-                    // and add a new blob for it
-                    let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
-                    let request = ParameterSharingMessage::Get(parameter_request, tx_req);
-                    tx_model_parameter_req.send(request)?;
+        let response = match model_request_type {
+            ModelRequestType::Parameter(parameter_request) => {
+                // Create channel for requesting the model parameter to the client backend
+                // and add a new blob for it
+                let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                let request = ParameterSharingMessage::Get(parameter_request, tx_req);
+                tx_model_parameter_req.send(request)?;
 
-                    // Receive the blob ticket and forward it to the requesting client
-                    ModelMetadataNetworkMessage::Ticket(rx_req.await?)
-                }
-                ModelRequestType::ModelHash(name) => {
-                    let (tx_req, rx_req) = oneshot::channel();
-                    let request = ModelInfoSharingMessage::Get(tx_req);
-                    tx_model_info_req.send(request)?;
-
-                    // Receive the blob ticket and forward it to the requesting client
-                    ModelMetadataNetworkMessage::ModelInfo(rx_req.await?)
-                }
-                ModelRequestType::Config => {
-                    // Create channel for requesting the model config to the client backend and add a new blob for it
-                    let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
-                    let request = ModelConfigSharingMessage::Get(tx_req);
-                    tx_model_config_req.send(request)?;
-
-                    // Receive the blob ticket and forward it to the requesting client
-                    ModelMetadataNetworkMessage::Ticket(rx_req.await?)
-                }
-            };
-
-            match response {
-                ModelMetadataNetworkMessage::Ticket(blob_ticket) => {
-                    let data = postcard::to_stdvec(&blob_ticket)?;
-                    send.write_all(&data).await?;
-                    send.finish()?;
-                }
-                ModelMetadataNetworkMessage::ModelInfo(info) => {
-                    let data = postcard::to_stdvec(&info)?;
-                    send.write_all(&data).await?;
-                    send.finish()?;
-                }
+                // Receive the blob ticket and forward it to the requesting client
+                ModelMetadataNetworkMessage::Ticket(rx_req.await?)
             }
+            ModelRequestType::ModelHash(name) => {
+                let (tx_req, rx_req) = oneshot::channel();
+                let request = ModelInfoSharingMessage::Get(tx_req);
+                tx_model_info_req.send(request)?;
+
+                // Receive the blob ticket and forward it to the requesting client
+                ModelMetadataNetworkMessage::ModelInfo(rx_req.await?)
+            }
+            ModelRequestType::Config => {
+                // Create channel for requesting the model config to the client backend and add a new blob for it
+                let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                let request = ModelConfigSharingMessage::Get(tx_req);
+                tx_model_config_req.send(request)?;
+
+                // Receive the blob ticket and forward it to the requesting client
+                ModelMetadataNetworkMessage::Ticket(rx_req.await?)
+            }
+        };
+
+        match response {
+            ModelMetadataNetworkMessage::Ticket(blob_ticket) => {
+                let data = postcard::to_stdvec(&blob_ticket)?;
+                send.write_all(&data).await?;
+                send.finish()?;
+            }
+            ModelMetadataNetworkMessage::ModelInfo(info) => {
+                let data = postcard::to_stdvec(&info)?;
+                send.write_all(&data).await?;
+                send.finish()?;
+            }
+        }
 
         // Wait until the remote closes the connection, which it does once it
         // received the response.
@@ -859,7 +856,13 @@ impl ModelSharing {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
         let tx_model_info_req = self.tx_model_info_req.clone();
-        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req, tx_model_info_req).await
+        Self::_accept_connection(
+            connection,
+            tx_model_parameter_req,
+            tx_model_config_req,
+            tx_model_info_req,
+        )
+        .await
     }
 }
 
@@ -868,11 +871,16 @@ impl ProtocolHandler for ModelSharing {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
         let tx_model_info_req = self.tx_model_info_req.clone();
-        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req, tx_model_info_req)
-            .await
-            .map_err(|e| {
-                let io_error = std::io::Error::other(e.to_string());
-                AcceptError::from_err(io_error)
-            })
+        Self::_accept_connection(
+            connection,
+            tx_model_parameter_req,
+            tx_model_config_req,
+            tx_model_info_req,
+        )
+        .await
+        .map_err(|e| {
+            let io_error = std::io::Error::other(e.to_string());
+            AcceptError::from_err(io_error)
+        })
     }
 }
