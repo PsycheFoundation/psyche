@@ -1,10 +1,9 @@
 import {
   jsonTypeArray,
-  jsonTypeArrayToVariant,
   jsonTypeObject,
   jsonTypeString,
-  jsonTypeStringToBigint,
-} from "../json";
+} from "solana-kiss-data";
+import { utilsBigintStringJsonType } from "../utils";
 
 export interface CoordinatorDataRunState {
   runId: string;
@@ -15,21 +14,16 @@ export interface CoordinatorDataRunState {
   nonce: bigint;
 }
 
-const jsonTypeV1 = jsonTypeArrayToVariant(
-  "RunState(v1)",
-  jsonTypeObject({
-    runId: jsonTypeString(),
-    name: jsonTypeString(),
-    description: jsonTypeString(),
-    status: jsonTypeString(),
-    epochClients: jsonTypeArray(
-      jsonTypeObject({
-        signer: jsonTypeString(),
-        state: jsonTypeString(),
-      }),
-    ),
-    nonce: jsonTypeStringToBigint(),
-  }),
-);
-
-export const coordinatorDataRunStateJsonType = jsonTypeV1;
+export const coordinatorDataRunStateJsonType = jsonTypeObject({
+  runId: jsonTypeString,
+  name: jsonTypeString,
+  description: jsonTypeString,
+  status: jsonTypeString,
+  epochClients: jsonTypeArray(
+    jsonTypeObject({
+      signer: jsonTypeString,
+      state: jsonTypeString,
+    }),
+  ),
+  nonce: utilsBigintStringJsonType,
+});

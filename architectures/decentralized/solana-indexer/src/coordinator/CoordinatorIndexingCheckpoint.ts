@@ -2,11 +2,11 @@ import { jsonTypeNumber, jsonTypeString } from "solana-kiss-data";
 import { IdlProgram } from "solana-kiss-idl";
 import { RpcHttp } from "solana-kiss-rpc";
 import {
-  getAndDecodeAccountState,
-  jsonTypeObjectSnakeCase,
-  jsonTypeRustFixedArray,
-  jsonTypeRustFixedString,
-  jsonTypeStringToBigint,
+  utilsBigintStringJsonType,
+  utilsGetAndDecodeAccountState,
+  utilsObjectSnakeCaseJsonDecoder,
+  utilsRustFixedArrayJsonDecoder,
+  utilsRustFixedStringJsonDecoder,
 } from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
@@ -20,15 +20,15 @@ export async function coordinatorIndexingCheckpoint(
       break;
     }
     try {
-      const runState = runStateJsonType.decode(
-        await getAndDecodeAccountState(rpcHttp, programIdl, runAddress),
+      const runState = runStateJsonDecoder(
+        await utilsGetAndDecodeAccountState(rpcHttp, programIdl, runAddress),
       );
       console.log("Refreshed run state", runAddress, runState.nonce);
       dataStore.saveRunState(runAddress, {
-        runId: runState.runId,
-        name: runState.name,
-        description: runState.description,
-        status: runState.status,
+        runId: runState.state.coordinator.runId,
+        name: runState.state.metadata.name,
+        description: runState.state.metadata.description,
+        status: runState.state.coordinator.runState,
         epochClients: runState.state.coordinator.epochState.clients.map(
           (client) => ({
             signer: client.id.signer,
@@ -43,30 +43,30 @@ export async function coordinatorIndexingCheckpoint(
   }
 }
 
-const runStateJsonType = jsonTypeObjectSnakeCase({
-  nonce: jsonTypeStringToBigint(),
-  state: jsonTypeObjectSnakeCase({
-    metadata: jsonTypeObjectSnakeCase({
-      name: jsonTypeRustFixedString(),
-      description: jsonTypeRustFixedString(),
-      numParameters: jsonTypeStringToBigint(),
-      vocabSize: jsonTypeStringToBigint(),
+const runStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+  nonce: utilsBigintStringJsonType.decoder,
+  state: utilsObjectSnakeCaseJsonDecoder({
+    metadata: utilsObjectSnakeCaseJsonDecoder({
+      name: utilsRustFixedStringJsonDecoder,
+      description: utilsRustFixedStringJsonDecoder,
+      numParameters: utilsBigintStringJsonType.decoder,
+      vocabSize: utilsBigintStringJsonType.decoder,
     }),
-    coordinator: jsonTypeObjectSnakeCase({
-      runId: jsonTypeRustFixedString(),
-      runState: jsonTypeString,
-      progress: jsonTypeObjectSnakeCase({
-        epoch: jsonTypeNumber,
-        step: jsonTypeNumber,
-        epochStartDataIndex: jsonTypeStringToBigint(),
+    coordinator: utilsObjectSnakeCaseJsonDecoder({
+      runId: utilsRustFixedStringJsonDecoder,
+      runState: jsonTypeString.decoder,
+      progress: utilsObjectSnakeCaseJsonDecoder({
+        epoch: jsonTypeNumber.decoder,
+        step: jsonTypeNumber.decoder,
+        epochStartDataIndex: utilsBigintStringJsonType.decoder,
       }),
-      epochState: jsonTypeObjectSnakeCase({
-        clients: jsonTypeRustFixedArray(
-          jsonTypeObjectSnakeCase({
-            id: jsonTypeObjectSnakeCase({
-              signer: jsonTypeString,
+      epochState: utilsObjectSnakeCaseJsonDecoder({
+        clients: utilsRustFixedArrayJsonDecoder(
+          utilsObjectSnakeCaseJsonDecoder({
+            id: utilsObjectSnakeCaseJsonDecoder({
+              signer: jsonTypeString.decoder,
             }),
-            state: jsonTypeString,
+            state: jsonTypeString.decoder,
           }),
         ),
       }),

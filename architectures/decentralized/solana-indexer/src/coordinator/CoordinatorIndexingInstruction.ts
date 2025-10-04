@@ -1,17 +1,18 @@
-import { Pubkey } from "solana-kiss-data";
-import { jsonTypeObjectSnakeCase, jsonTypeRustFixedArray } from "../utils";
+import { jsonTypeNumber, JsonValue, Pubkey } from "solana-kiss-data";
+import {
+  utilsObjectSnakeCaseJsonDecoder,
+  utilsRustFixedArrayJsonDecoder,
+} from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
 export async function coordinatorIndexingInstruction(
   dataStore: CoordinatorDataStore,
   instructionName: string,
   instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: any,
+  instructionPayload: JsonValue,
   ordering: bigint,
 ): Promise<void> {
-  const runAddress = instructionAddresses
-    .get("coordinator_account")
-    ?.toBase58();
+  const runAddress = instructionAddresses.get("coordinator_account");
   if (runAddress === undefined) {
     throw new Error("Coordinator: Instruction: Missing run address");
   }
@@ -33,14 +34,14 @@ async function coordinatorIndexingInstructionWitness(
   dataStore: CoordinatorDataStore,
   runAddress: string,
   instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: any,
+  instructionPayload: JsonValue,
   ordering: bigint,
 ): Promise<void> {
-  const userAddress = instructionAddresses.get("user")?.toBase58();
+  const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {
     throw new Error("Coordinator: Instruction: Witness: Missing user address");
   }
-  const metadata = witnessArgsJsonType.decode(instructionPayload).metadata;
+  const metadata = witnessArgsJsonDecoder(instructionPayload).metadata;
   dataStore.saveRunWitness(runAddress, userAddress, ordering, {
     step: metadata.step,
     tokensPerSec: metadata.tokensPerSec,
@@ -49,13 +50,13 @@ async function coordinatorIndexingInstructionWitness(
   });
 }
 
-const witnessArgsJsonType = jsonTypeObjectSnakeCase({
-  metadata: jsonTypeObjectSnakeCase({
-    step: jsonTypeNumber(),
-    tokensPerSec: jsonTypeNumber(),
-    bandwidthPerSec: jsonTypeNumber(),
-    loss: jsonTypeNumber(),
-    promptResults: jsonTypeRustFixedArray(jsonTypeNumber()),
-    promptIndex: jsonTypeNumber(),
+const witnessArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+  metadata: utilsObjectSnakeCaseJsonDecoder({
+    step: jsonTypeNumber.decoder,
+    tokensPerSec: jsonTypeNumber.decoder,
+    bandwidthPerSec: jsonTypeNumber.decoder,
+    loss: jsonTypeNumber.decoder,
+    promptResults: utilsRustFixedArrayJsonDecoder(jsonTypeNumber.decoder),
+    promptIndex: jsonTypeNumber.decoder,
   }),
 });

@@ -1,14 +1,12 @@
 import {
   JsonType,
   jsonTypeArray,
-  jsonTypeArrayToVariant,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeOptional,
-  jsonTypeStringToBigint,
-} from "../json";
-import { jsonTypeObjectSnakeCase } from "../utils";
+} from "solana-kiss-data";
+import { utilsBigintStringJsonType } from "../utils";
 import {
   CoordinatorDataRunState,
   coordinatorDataRunStateJsonType,
@@ -40,34 +38,29 @@ export interface CoordinatorDataRunInfo {
   >;
 }
 
-const witnessJsonTypeV1: JsonType<CoordinatorDataRunInfoWitness> =
-  jsonTypeObjectSnakeCase({
-    ordering: jsonTypeStringToBigint(),
-    metadata: jsonTypeObjectSnakeCase({
-      tokensPerSec: jsonTypeNumber(),
-      bandwidthPerSec: jsonTypeNumber(),
-      loss: jsonTypeNumber(),
-      step: jsonTypeNumber(),
+const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
+  {
+    ordering: utilsBigintStringJsonType,
+    metadata: jsonTypeObject({
+      tokensPerSec: jsonTypeNumber,
+      bandwidthPerSec: jsonTypeNumber,
+      loss: jsonTypeNumber,
+      step: jsonTypeNumber,
     }),
-  });
-
-const jsonTypeV1 = jsonTypeArrayToVariant(
-  "RunInfo(v1)",
-  jsonTypeObject({
-    accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
-    accountFetchedOrdering: jsonTypeStringToBigint(),
-    accountRequestOrdering: jsonTypeStringToBigint(),
-    witnessesPerUser: jsonTypeObjectToMap(
-      jsonTypeObjectSnakeCase({
-        lastFew: jsonTypeArray(witnessJsonTypeV1),
-        sampled: jsonTypeObjectSnakeCase({
-          rate: jsonTypeNumber(),
-          data: jsonTypeArray(witnessJsonTypeV1),
-        }),
-      }),
-    ),
-  }),
+  },
 );
 
-export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
-  jsonTypeV1;
+export const coordinatorDataRunInfoJsonType = jsonTypeObject({
+  accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
+  accountFetchedOrdering: utilsBigintStringJsonType,
+  accountRequestOrdering: utilsBigintStringJsonType,
+  witnessesPerUser: jsonTypeObjectToMap(
+    jsonTypeObject({
+      lastFew: jsonTypeArray(witnessJsonType),
+      sampled: jsonTypeObject({
+        rate: jsonTypeNumber,
+        data: jsonTypeArray(witnessJsonType),
+      }),
+    }),
+  ),
+});

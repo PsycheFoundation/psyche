@@ -1,9 +1,8 @@
 import {
-  jsonTypeArrayToVariant,
-  jsonTypeMapped,
   jsonTypeObject,
   jsonTypeObjectToMap,
-} from "../json";
+  jsonTypeRemap,
+} from "solana-kiss-data";
 import {
   MiningPoolDataPoolInfo,
   miningPoolDataPoolInfoJsonType,
@@ -62,14 +61,10 @@ export class MiningPoolDataStore {
   }
 }
 
-const jsonTypeV1 = jsonTypeArrayToVariant(
-  "Store(v1)",
+export const miningPoolDataStoreJsonType = jsonTypeRemap(
   jsonTypeObject({
     poolsInfos: jsonTypeObjectToMap(miningPoolDataPoolInfoJsonType),
   }),
+  (unmapped) => new MiningPoolDataStore(unmapped.poolsInfos),
+  (remapped) => ({ poolsInfos: remapped.poolsInfos }),
 );
-
-export const miningPoolDataStoreJsonType = jsonTypeMapped(jsonTypeV1, {
-  map: (unmapped) => new MiningPoolDataStore(unmapped.poolsInfos),
-  unmap: (mapped) => ({ poolsInfos: mapped.poolsInfos }),
-});

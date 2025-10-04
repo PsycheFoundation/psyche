@@ -1,12 +1,15 @@
 import {
-  camelCaseToSnakeCase,
   jsonTypeBoolean,
   jsonTypeNumber,
   jsonTypeString,
 } from "solana-kiss-data";
 import { IdlProgram } from "solana-kiss-idl";
 import { RpcHttp } from "solana-kiss-rpc";
-import { getAndDecodeAccountState, jsonTypeStringToBigint } from "../utils";
+import {
+  utilsBigintStringJsonType,
+  utilsGetAndDecodeAccountState,
+  utilsObjectSnakeCaseJsonDecoder,
+} from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingCheckpoint(
@@ -19,8 +22,8 @@ export async function miningPoolIndexingCheckpoint(
       break;
     }
     try {
-      const poolState = poolInfoJsonType.decode(
-        await getAndDecodeAccountState(rpcHttp, programIdl, poolAddress),
+      const poolState = poolStateJsonDecoder(
+        await utilsGetAndDecodeAccountState(rpcHttp, programIdl, poolAddress),
       );
       dataStore.savePoolState(poolAddress, poolState);
     } catch (error) {
@@ -29,19 +32,16 @@ export async function miningPoolIndexingCheckpoint(
   }
 }
 
-const poolStateJsonType = jsonTypeObjectWithKeyEncoder(
-  {
-    bump: jsonTypeNumber,
-    index: jsonTypeStringToBigint,
-    authority: jsonTypeString,
-    collateralMint: jsonTypeString,
-    maxDepositCollateralAmount: jsonTypeStringToBigint,
-    totalDepositedCollateralAmount: jsonTypeStringToBigint,
-    totalExtractedCollateralAmount: jsonTypeStringToBigint,
-    claimingEnabled: jsonTypeBoolean,
-    redeemableMint: jsonTypeString,
-    totalClaimedRedeemableAmount: jsonTypeStringToBigint,
-    freeze: jsonTypeBoolean,
-  },
-  camelCaseToSnakeCase,
-);
+const poolStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+  bump: jsonTypeNumber.decoder,
+  index: utilsBigintStringJsonType.decoder,
+  authority: jsonTypeString.decoder,
+  collateralMint: jsonTypeString.decoder,
+  maxDepositCollateralAmount: utilsBigintStringJsonType.decoder,
+  totalDepositedCollateralAmount: utilsBigintStringJsonType.decoder,
+  totalExtractedCollateralAmount: utilsBigintStringJsonType.decoder,
+  claimingEnabled: jsonTypeBoolean.decoder,
+  redeemableMint: jsonTypeString.decoder,
+  totalClaimedRedeemableAmount: utilsBigintStringJsonType.decoder,
+  freeze: jsonTypeBoolean.decoder,
+});

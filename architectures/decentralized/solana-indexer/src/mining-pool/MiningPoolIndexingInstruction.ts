@@ -1,12 +1,15 @@
-import { JsonValue, Pubkey, jsonTypeObject } from "solana-kiss-data";
-import { jsonTypeStringToBigint } from "../utils";
+import { JsonValue, Pubkey } from "solana-kiss-data";
+import {
+  utilsBigintStringJsonType,
+  utilsObjectSnakeCaseJsonDecoder,
+} from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingInstruction(
   dataStore: MiningPoolDataStore,
   instructionName: string,
   instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: any,
+  instructionPayload: JsonValue,
   ordering: bigint,
 ) {
   console.log("instructionName", instructionName, instructionPayload);
@@ -39,15 +42,13 @@ export async function miningPoolIndexingInstructionLenderDeposit(
     );
   }
   const collateralAmount =
-    lenderDepositArgsJsonType.decode(instructionPayload).params
-      .collateralAmount;
+    lenderDepositArgsJsonDecoder(instructionPayload).params.collateralAmount;
   dataStore.savePoolUserDeposit(poolAddress, userAddress, collateralAmount);
   dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
-const lenderDepositArgsJsonType = jsonTypeObject({
-  params: jsonTypeObject(
-    { collateralAmount: jsonTypeStringToBigint() },
-    { collateralAmount: "collateral_amount" },
-  ),
+const lenderDepositArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+  params: utilsObjectSnakeCaseJsonDecoder({
+    collateralAmount: utilsBigintStringJsonType.decoder,
+  }),
 });

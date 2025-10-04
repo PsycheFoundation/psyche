@@ -3,7 +3,7 @@ import {
   jsonTypeObjectToMap,
   jsonTypeOptional,
 } from "solana-kiss-data";
-import { jsonTypeStringToBigint } from "../utils";
+import { utilsBigintStringJsonType } from "../utils";
 import {
   MiningPoolDataPoolState,
   miningPoolDataPoolStateJsonType,
@@ -17,15 +17,10 @@ export interface MiningPoolDataPoolInfo {
   depositAmountTotal: bigint;
 }
 
-const jsonTypeV1 = jsonTypeArrayToVariant(
-  "PoolInfo(v1)",
-  jsonTypeObject({
-    accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
-    accountFetchedOrdering: jsonTypeStringToBigint(),
-    accountRequestOrdering: jsonTypeStringToBigint(),
-    depositAmountPerUser: jsonTypeObjectToMap(jsonTypeStringToBigint()),
-    depositAmountTotal: jsonTypeStringToBigint(),
-  }),
-);
-
-export const miningPoolDataPoolInfoJsonType = jsonTypeV1;
+export const miningPoolDataPoolInfoJsonType = jsonTypeObject({
+  accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
+  accountFetchedOrdering: utilsBigintStringJsonType,
+  accountRequestOrdering: utilsBigintStringJsonType,
+  depositAmountPerUser: jsonTypeObjectToMap(utilsBigintStringJsonType),
+  depositAmountTotal: utilsBigintStringJsonType,
+});

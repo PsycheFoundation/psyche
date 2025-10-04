@@ -36,8 +36,8 @@ export async function miningPoolServiceLoader(saveName: string) {
   let dataStore: MiningPoolDataStore;
   try {
     const saveContent = await saveRead(saveName);
-    checkpoint = indexingCheckpointJsonType.decode(saveContent.checkpoint);
-    dataStore = miningPoolDataStoreJsonType.decode(saveContent.dataStore);
+    checkpoint = indexingCheckpointJsonType.decoder(saveContent.checkpoint);
+    dataStore = miningPoolDataStoreJsonType.decoder(saveContent.dataStore);
     console.log("Loaded mining pool state from:", saveContent.updatedAt);
   } catch (error) {
     checkpoint = { indexedChunks: [] };
@@ -80,8 +80,8 @@ export async function miningPoolServiceIndexing(
     async (checkpoint) => {
       await miningPoolIndexingCheckpoint(rpcHttp, programIdl, dataStore);
       await saveWrite(saveName, {
-        checkpoint: indexingCheckpointJsonType.encode(checkpoint),
-        dataStore: miningPoolDataStoreJsonType.encode(dataStore),
+        checkpoint: indexingCheckpointJsonType.encoder(checkpoint),
+        dataStore: miningPoolDataStoreJsonType.encoder(dataStore),
       });
     },
   );

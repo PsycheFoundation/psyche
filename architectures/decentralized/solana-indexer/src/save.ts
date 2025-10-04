@@ -25,7 +25,7 @@ export async function saveWrite(
   },
 ): Promise<void> {
   const path = await savePath(saveName);
-  const encoded = saveJsonType.encode({
+  const encoded = saveJsonType.encoder({
     updatedAt: new Date().toISOString(),
     checkpoint: saveContent.checkpoint,
     dataStore: saveContent.dataStore,
@@ -42,5 +42,5 @@ export async function saveRead(saveName: string): Promise<{
   const encoded = await fs.promises
     .readFile(path, "utf-8")
     .then((data: string) => JSON.parse(data) as JsonValue);
-  return saveJsonType.decode(encoded);
+  return saveJsonType.decoder(encoded);
 }

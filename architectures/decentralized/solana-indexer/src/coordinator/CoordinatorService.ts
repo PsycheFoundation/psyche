@@ -36,8 +36,8 @@ export async function coordinatorServiceLoader(saveName: string) {
   let dataStore: CoordinatorDataStore;
   try {
     const saveContent = await saveRead(saveName);
-    checkpoint = indexingCheckpointJsonType.decode(saveContent.checkpoint);
-    dataStore = coordinatorDataStoreJsonType.decode(saveContent.dataStore);
+    checkpoint = indexingCheckpointJsonType.decoder(saveContent.checkpoint);
+    dataStore = coordinatorDataStoreJsonType.decoder(saveContent.dataStore);
     console.log("Loaded coordinator state from:", saveContent.updatedAt);
   } catch (error) {
     checkpoint = { indexedChunks: [] };
@@ -80,8 +80,8 @@ export async function coordinatorServiceIndexing(
     async (checkpoint) => {
       await coordinatorIndexingCheckpoint(rpcHttp, programIdl, dataStore);
       await saveWrite(saveName, {
-        checkpoint: indexingCheckpointJsonType.encode(checkpoint),
-        dataStore: coordinatorDataStoreJsonType.encode(dataStore),
+        checkpoint: indexingCheckpointJsonType.encoder(checkpoint),
+        dataStore: coordinatorDataStoreJsonType.encoder(dataStore),
       });
     },
   );

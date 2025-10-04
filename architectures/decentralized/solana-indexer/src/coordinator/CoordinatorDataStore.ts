@@ -1,9 +1,8 @@
 import {
-  jsonTypeArrayToVariant,
-  jsonTypeMapped,
   jsonTypeObject,
   jsonTypeObjectToMap,
-} from "../json";
+  jsonTypeRemap,
+} from "solana-kiss-data";
 import {
   CoordinatorDataRunInfo,
   coordinatorDataRunInfoJsonType,
@@ -91,14 +90,10 @@ export class CoordinatorDataStore {
   }
 }
 
-const jsonTypeV1 = jsonTypeArrayToVariant(
-  "Store(v1)",
+export const coordinatorDataStoreJsonType = jsonTypeRemap(
   jsonTypeObject({
     runsInfos: jsonTypeObjectToMap(coordinatorDataRunInfoJsonType),
   }),
+  (unmapped) => new CoordinatorDataStore(unmapped.runsInfos),
+  (remapped) => ({ runsInfos: remapped.runsInfos }),
 );
-
-export const coordinatorDataStoreJsonType = jsonTypeMapped(jsonTypeV1, {
-  map: (unmapped) => new CoordinatorDataStore(unmapped.runsInfos),
-  unmap: (mapped) => ({ runsInfos: mapped.runsInfos }),
-});

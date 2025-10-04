@@ -24,8 +24,8 @@ export async function indexingSignaturesLoop(
       programAddress,
       1000,
       {
-        startBeforeSignature: prevChunkInfo?.startedFrom,
-        rewindUntilSignature: nextChunkInfo?.rewindedUntil,
+        startBeforeSignature: prevChunkInfo?.rewindedUntil,
+        rewindUntilSignature: nextChunkInfo?.startedFrom,
       },
     );
     if (signatures.length === 0) {
