@@ -1,8 +1,5 @@
-import { JsonValue, Pubkey } from "solana-kiss-data";
-import {
-  utilsBigintStringJsonType,
-  utilsObjectSnakeCaseJsonDecoder,
-} from "../utils";
+import { jsonTypeInteger, JsonValue, Pubkey } from "solana-kiss-data";
+import { utilsObjectSnakeCaseJsonDecoder } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingInstruction(
@@ -36,16 +33,15 @@ export async function instructionPoolExtract(
   instructionPayload: JsonValue,
   ordering: bigint,
 ): Promise<void> {
-  console.log("PoolExtract", instructionAddresses, instructionPayload);
   const poolAddress = instructionAddresses.get("pool");
   if (poolAddress === undefined) {
     throw new Error(
       "MiningPool: Instruction: PoolExtract: Missing pool address",
     );
   }
-  const collateralAmount =
-    poolExtractArgsJsonDecoder(instructionPayload).params.collateralAmount;
-  dataStore.savePoolExtract(poolAddress, collateralAmount);
+  const instructionParams =
+    poolExtractArgsJsonDecoder(instructionPayload).params;
+  dataStore.savePoolExtract(poolAddress, instructionParams.collateralAmount);
   dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
@@ -67,20 +63,24 @@ export async function instructionLenderDeposit(
       "MiningPool: Instruction: LenderDeposit: Missing user address",
     );
   }
-  const collateralAmount =
-    lenderDepositArgsJsonDecoder(instructionPayload).params.collateralAmount;
-  dataStore.savePoolUserDeposit(poolAddress, userAddress, collateralAmount);
+  const instructionParams =
+    lenderDepositArgsJsonDecoder(instructionPayload).params;
+  dataStore.savePoolUserDeposit(
+    poolAddress,
+    userAddress,
+    instructionParams.collateralAmount,
+  );
   dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
 const poolExtractArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
   params: utilsObjectSnakeCaseJsonDecoder({
-    collateralAmount: utilsBigintStringJsonType.decoder,
+    collateralAmount: jsonTypeInteger.decoder,
   }),
 });
 
 const lenderDepositArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
   params: utilsObjectSnakeCaseJsonDecoder({
-    collateralAmount: utilsBigintStringJsonType.decoder,
+    collateralAmount: jsonTypeInteger.decoder,
   }),
 });

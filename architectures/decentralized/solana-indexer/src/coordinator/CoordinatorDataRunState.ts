@@ -1,9 +1,9 @@
 import {
   jsonTypeArray,
+  jsonTypeInteger,
   jsonTypeObject,
   jsonTypeString,
 } from "solana-kiss-data";
-import { utilsBigintStringJsonType } from "../utils";
 
 export interface CoordinatorDataRunState {
   runId: string;
@@ -25,5 +25,5 @@ export const coordinatorDataRunStateJsonType = jsonTypeObject({
       state: jsonTypeString,
     }),
   ),
-  nonce: utilsBigintStringJsonType,
+  nonce: jsonTypeInteger,
 });

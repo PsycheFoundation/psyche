@@ -1,12 +1,13 @@
 import {
   JsonType,
   jsonTypeArray,
+  jsonTypeArrayToObject,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeOptional,
 } from "solana-kiss-data";
-import { utilsBigintStringJsonType } from "../utils";
+import { utilsOrderingJsonType } from "../utils";
 import {
   CoordinatorDataRunState,
   coordinatorDataRunStateJsonType,
@@ -32,7 +33,10 @@ export interface CoordinatorDataRunInfo {
       lastFew: Array<CoordinatorDataRunInfoWitness>;
       sampled: {
         rate: number;
-        data: Array<CoordinatorDataRunInfoWitness>;
+        data: Array<{
+          luck: number;
+          witness: CoordinatorDataRunInfoWitness;
+        }>;
       };
     }
   >;
@@ -40,7 +44,7 @@ export interface CoordinatorDataRunInfo {
 
 const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
   {
-    ordering: utilsBigintStringJsonType,
+    ordering: utilsOrderingJsonType,
     metadata: jsonTypeObject({
       tokensPerSec: jsonTypeNumber,
       bandwidthPerSec: jsonTypeNumber,
@@ -52,14 +56,19 @@ const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
 
 export const coordinatorDataRunInfoJsonType = jsonTypeObject({
   accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
-  accountFetchedOrdering: utilsBigintStringJsonType,
-  accountRequestOrdering: utilsBigintStringJsonType,
+  accountFetchedOrdering: utilsOrderingJsonType,
+  accountRequestOrdering: utilsOrderingJsonType,
   witnessesPerUser: jsonTypeObjectToMap(
     jsonTypeObject({
       lastFew: jsonTypeArray(witnessJsonType),
       sampled: jsonTypeObject({
         rate: jsonTypeNumber,
-        data: jsonTypeArray(witnessJsonType),
+        data: jsonTypeArray(
+          jsonTypeArrayToObject({
+            luck: jsonTypeNumber,
+            witness: witnessJsonType,
+          }),
+        ),
       }),
     }),
   ),

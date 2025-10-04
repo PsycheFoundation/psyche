@@ -1,12 +1,12 @@
 import {
   jsonTypeBoolean,
+  jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeString,
 } from "solana-kiss-data";
 import { IdlProgram } from "solana-kiss-idl";
 import { RpcHttp } from "solana-kiss-rpc";
 import {
-  utilsBigintStringJsonType,
   utilsGetAndDecodeAccountState,
   utilsObjectSnakeCaseJsonDecoder,
 } from "../utils";
@@ -34,14 +34,14 @@ export async function miningPoolIndexingCheckpoint(
 
 const poolStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
   bump: jsonTypeNumber.decoder,
-  index: utilsBigintStringJsonType.decoder,
+  index: jsonTypeInteger.decoder,
   authority: jsonTypeString.decoder,
   collateralMint: jsonTypeString.decoder,
-  maxDepositCollateralAmount: utilsBigintStringJsonType.decoder,
-  totalDepositedCollateralAmount: utilsBigintStringJsonType.decoder,
-  totalExtractedCollateralAmount: utilsBigintStringJsonType.decoder,
+  maxDepositCollateralAmount: jsonTypeInteger.decoder,
+  totalDepositedCollateralAmount: jsonTypeInteger.decoder,
+  totalExtractedCollateralAmount: jsonTypeInteger.decoder,
   claimingEnabled: jsonTypeBoolean.decoder,
   redeemableMint: jsonTypeString.decoder,
-  totalClaimedRedeemableAmount: utilsBigintStringJsonType.decoder,
+  totalClaimedRedeemableAmount: jsonTypeInteger.decoder,
   freeze: jsonTypeBoolean.decoder,
 });

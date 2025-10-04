@@ -42,7 +42,10 @@ export async function miningPoolServiceLoader(saveName: string) {
   } catch (error) {
     checkpoint = { indexedChunks: [] };
     dataStore = new MiningPoolDataStore(new Map());
-    console.warn("Failed to read existing mining pool JSON, starting fresh");
+    console.warn(
+      "Failed to read existing mining pool JSON, starting fresh",
+      error,
+    );
   }
   return { checkpoint, dataStore };
 }

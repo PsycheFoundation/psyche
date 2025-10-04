@@ -1,10 +1,11 @@
 import {
-  camelCaseToSnakeCase,
+  casingCamelToSnake,
   JsonDecoder,
   jsonDecoderArray,
-  jsonDecoderArrayToTuple,
+  jsonDecoderArrayToObject,
   jsonDecoderObject,
   jsonDecoderRemap,
+  jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeRemap,
   jsonTypeString,
@@ -40,15 +41,17 @@ export function utilsObjectSnakeCaseJsonDecoder<
 >(shape: Shape) {
   const keysEncoding: { [K in keyof Shape]?: string } = {};
   for (const keyDecoded in shape) {
-    keysEncoding[keyDecoded] = camelCaseToSnakeCase(keyDecoded);
+    keysEncoding[keyDecoded] = casingCamelToSnake(keyDecoded);
   }
   return jsonDecoderObject(shape, keysEncoding);
 }
 
 export const utilsRustFixedStringJsonDecoder = jsonDecoderRemap(
-  jsonDecoderArrayToTuple([jsonDecoderArray(jsonTypeNumber.decoder)]),
+  jsonDecoderArrayToObject({
+    bytes: jsonDecoderArray(jsonTypeNumber.decoder),
+  }),
   (unmapped) => {
-    const bytes = unmapped[0];
+    const bytes = unmapped.bytes;
     const nulIndex = bytes.indexOf(0);
     const trimmed = nulIndex >= 0 ? bytes.slice(0, nulIndex) : bytes;
     return new TextDecoder().decode(new Uint8Array(trimmed));
@@ -59,19 +62,30 @@ export function utilsRustFixedArrayJsonDecoder<T>(itemDecode: JsonDecoder<T>) {
   return jsonDecoderRemap(
     jsonDecoderObject({
       data: jsonDecoderArray(itemDecode),
-      len: utilsBigintStringJsonType.decoder,
+      len: jsonTypeInteger.decoder,
     }),
     (unmapped) => unmapped.data.slice(0, Number(unmapped.len)),
   );
 }
 
 export const utilsRustSmallBooleanJsonDecoder = jsonDecoderRemap(
-  jsonDecoderArrayToTuple([jsonTypeNumber.decoder]),
-  (unmapped) => unmapped[0] !== 0,
+  jsonDecoderArrayToObject({ bit: jsonTypeNumber.decoder }),
+  (unmapped) => unmapped.bit !== 0,
 );
 
-export const utilsBigintStringJsonType = jsonTypeRemap(
+export const utilsOrderingJsonType = jsonTypeRemap(
   jsonTypeString,
-  (unmapped) => BigInt(unmapped),
-  (remapped) => remapped.toString(),
+  (encoded) => {
+    return BigInt(encoded.split(":").join(""));
+  },
+  (decoded) => {
+    return [
+      decoded / 1_000_000_000n,
+      (decoded / 1_000_000n) % 1_000n,
+      (decoded / 1_000n) % 1_000n,
+      decoded % 1_000n,
+    ]
+      .map((p) => p.toString().padStart(3, "0"))
+      .join(":");
+  },
 );

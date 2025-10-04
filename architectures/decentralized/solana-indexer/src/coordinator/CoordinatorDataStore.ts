@@ -60,21 +60,22 @@ export class CoordinatorDataStore {
       metadata,
     };
 
-    const targetCount = 3;
+    const targetCount = 1;
 
     userWitnesses.lastFew.push(witness);
-    userWitnesses.lastFew.sort((a, b) => Number(a.ordering - b.ordering));
-    userWitnesses.lastFew = userWitnesses.lastFew.slice(-targetCount);
+    userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));
+    userWitnesses.lastFew = userWitnesses.lastFew.slice(0, targetCount);
 
-    if (Math.random() < 1 / userWitnesses.sampled.rate) {
-      userWitnesses.sampled.data.push(witness);
+    const sampleLuck = Math.random();
+    if (sampleLuck < 1 / userWitnesses.sampled.rate) {
+      userWitnesses.sampled.data.push({ luck: sampleLuck, witness });
       userWitnesses.sampled.data.sort((a, b) =>
-        Number(a.ordering - b.ordering),
+        Number(b.witness.ordering - a.witness.ordering),
       );
-      while (userWitnesses.sampled.data.length > targetCount) {
-        userWitnesses.sampled.rate *= 2;
+      while (userWitnesses.sampled.data.length >= targetCount * 1.5) {
+        userWitnesses.sampled.rate *= 1.5;
         userWitnesses.sampled.data = userWitnesses.sampled.data.filter(
-          () => Math.random() < 0.5,
+          (item) => item.luck < 1 / userWitnesses.sampled.rate,
         );
       }
     }

@@ -11,9 +11,9 @@
     "dev": "tsx src/main.ts"
   },
   "dependencies": {
-    "solana-kiss-data": "0.0.5",
-    "solana-kiss-idl": "0.0.5",
-    "solana-kiss-resolve": "0.0.5",
-    "solana-kiss-rpc": "0.0.5"
+    "solana-kiss-data": "0.0.6",
+    "solana-kiss-idl": "0.0.6",
+    "solana-kiss-resolve": "0.0.6",
+    "solana-kiss-rpc": "0.0.6"
   }
 }

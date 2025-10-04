@@ -5,7 +5,7 @@ import {
   jsonTypeString,
   Signature,
 } from "solana-kiss-data";
-import { utilsBigintStringJsonType } from "../utils";
+import { utilsOrderingJsonType } from "../utils";
 
 export type IndexingCheckpointChunk = {
   orderingHigh: bigint;
@@ -22,8 +22,8 @@ export type IndexingCheckpoint = {
 export const indexingCheckpointJsonType = jsonTypeObject({
   indexedChunks: jsonTypeArray(
     jsonTypeObject({
-      orderingHigh: utilsBigintStringJsonType,
-      orderingLow: utilsBigintStringJsonType,
+      orderingHigh: utilsOrderingJsonType,
+      orderingLow: utilsOrderingJsonType,
       startedFrom: jsonTypeString,
       rewindedUntil: jsonTypeString,
       processedCounter: jsonTypeNumber,

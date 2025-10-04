@@ -9,8 +9,13 @@ export async function indexingSignaturesLoop(
   rpcHttp: RpcHttp,
   programAddress: Pubkey,
   startingCheckpoint: IndexingCheckpoint,
-  onSignature: (signature: Signature, ordering: bigint) => Promise<void>,
-  onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
+  onChunk: (
+    foundHistory: Array<{
+      signature: Signature;
+      ordering: bigint;
+    }>,
+    updatedCheckpoint: IndexingCheckpoint,
+  ) => Promise<void>,
 ): Promise<never> {
   const indexedChunks = startingCheckpoint.indexedChunks.map((c) => ({ ...c }));
   while (true) {
@@ -19,11 +24,10 @@ export async function indexingSignaturesLoop(
         rpcHttp,
         programAddress,
         indexedChunks,
-        onSignature,
-        onCheckpoint,
+        onChunk,
       );
     } catch (error) {
-      console.error("Indexing signatures loop error", error);
+      console.error("Indexing signatures loop chunk failed", error);
     }
   }
 }
@@ -32,10 +36,11 @@ async function indexingSignaturesChunk(
   rpcHttp: RpcHttp,
   programAddress: Pubkey,
   indexedChunks: Array<IndexingCheckpointChunk>,
-  onSignature: (signature: Signature, ordering: bigint) => Promise<void>,
-  onCheckpoint: (indexedCheckpoint: IndexingCheckpoint) => Promise<void>,
+  onChunk: (
+    foundExecutions: Array<{ signature: Signature; ordering: bigint }>,
+    updatedCheckpoint: IndexingCheckpoint,
+  ) => Promise<void>,
 ) {
-  await onCheckpoint({ indexedChunks: indexedChunks.map((c) => ({ ...c })) });
   const prevChunkIndex =
     Math.floor(Math.random() * (indexedChunks.length + 1)) - 1;
   const nextChunkIndex = prevChunkIndex + 1;
@@ -55,8 +60,11 @@ async function indexingSignaturesChunk(
   }
   const orderingHigh = prevChunkInfo
     ? prevChunkInfo.orderingLow
-    : BigInt(new Date().getTime()) * 1000000n;
-  let orderingLow = orderingHigh - BigInt(signatures.length);
+    : BigInt(Math.floor(new Date().getTime())) *
+      maxTransactionPerMillisecond *
+      maxInstructionPerTransaction;
+  let orderingLow =
+    orderingHigh - BigInt(signatures.length) * maxInstructionPerTransaction;
   let processedCounter = signatures.length;
   const startedFrom = signatures[0]!;
   let rewindedUntil = signatures[signatures.length - 1]!;
@@ -80,11 +88,14 @@ async function indexingSignaturesChunk(
       processedCounter: processedCounter,
     });
   }
-  const promises = new Array<Promise<void>>();
-  for (let i = 0; i < signatures.length; i++) {
-    const signature = signatures[i]!;
-    const ordering = orderingHigh - BigInt(i);
-    promises.push(onSignature(signature, ordering));
-  }
-  await Promise.all(promises);
+  await onChunk(
+    signatures.map((signature, index) => ({
+      signature,
+      ordering: orderingHigh - BigInt(index) * maxInstructionPerTransaction,
+    })),
+    { indexedChunks: indexedChunks.map((c) => ({ ...c })) },
+  );
 }
+
+const maxInstructionPerTransaction = 1000n;
+const maxTransactionPerMillisecond = 1000n;

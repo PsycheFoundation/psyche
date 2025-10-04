@@ -1,10 +1,10 @@
 import {
   jsonTypeBoolean,
+  jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeString,
 } from "solana-kiss-data";
-import { utilsBigintStringJsonType } from "../utils";
 
 export interface MiningPoolDataPoolState {
   bump: number;
@@ -22,14 +22,14 @@ export interface MiningPoolDataPoolState {
 
 export const miningPoolDataPoolStateJsonType = jsonTypeObject({
   bump: jsonTypeNumber,
-  index: utilsBigintStringJsonType,
+  index: jsonTypeInteger,
   authority: jsonTypeString,
   collateralMint: jsonTypeString,
-  maxDepositCollateralAmount: utilsBigintStringJsonType,
-  totalDepositedCollateralAmount: utilsBigintStringJsonType,
-  totalExtractedCollateralAmount: utilsBigintStringJsonType,
+  maxDepositCollateralAmount: jsonTypeInteger,
+  totalDepositedCollateralAmount: jsonTypeInteger,
+  totalExtractedCollateralAmount: jsonTypeInteger,
   claimingEnabled: jsonTypeBoolean,
   redeemableMint: jsonTypeString,
-  totalClaimedRedeemableAmount: utilsBigintStringJsonType,
+  totalClaimedRedeemableAmount: jsonTypeInteger,
   freeze: jsonTypeBoolean,
 });

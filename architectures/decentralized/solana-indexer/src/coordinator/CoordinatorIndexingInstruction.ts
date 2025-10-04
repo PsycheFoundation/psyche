@@ -41,12 +41,12 @@ async function coordinatorIndexingInstructionWitness(
   if (userAddress === undefined) {
     throw new Error("Coordinator: Instruction: Witness: Missing user address");
   }
-  const metadata = witnessArgsJsonDecoder(instructionPayload).metadata;
+  const witnessMetadata = witnessArgsJsonDecoder(instructionPayload).metadata;
   dataStore.saveRunWitness(runAddress, userAddress, ordering, {
-    step: metadata.step,
-    tokensPerSec: metadata.tokensPerSec,
-    bandwidthPerSec: metadata.bandwidthPerSec,
-    loss: metadata.loss,
+    step: witnessMetadata.step,
+    tokensPerSec: witnessMetadata.tokensPerSec,
+    bandwidthPerSec: witnessMetadata.bandwidthPerSec,
+    loss: witnessMetadata.loss,
   });
 }
 

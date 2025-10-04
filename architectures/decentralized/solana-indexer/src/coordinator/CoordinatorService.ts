@@ -42,7 +42,10 @@ export async function coordinatorServiceLoader(saveName: string) {
   } catch (error) {
     checkpoint = { indexedChunks: [] };
     dataStore = new CoordinatorDataStore(new Map());
-    console.warn("Failed to read existing coordinator JSON, starting fresh");
+    console.warn(
+      "Failed to read existing coordinator JSON, starting fresh",
+      error,
+    );
   }
   return { checkpoint, dataStore };
 }
