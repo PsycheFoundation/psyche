@@ -3,6 +3,7 @@ use crate::{
     RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
 };
+use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use futures::future::join_all;
 use iroh::protocol::Router;
@@ -12,13 +13,10 @@ use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    GetMetaData, MAX_DOWNLOAD_RETRIES, MAX_DOWNLOAD_RETRIES, ModelRequestType, ModelRequestType,
-    NetworkConnection, NetworkConnection, NetworkEvent, NetworkEvent, NetworkTUIState,
-    NetworkTUIState, Networkable, Networkable, NodeAddr, NodeAddr, NodeId, NodeId,
-    PeerManagerHandle, PeerManagerHandle, RetriedDownloadsHandle, RetriedDownloadsHandle,
-    SharableModel, SharableModel, TransmittableDownload, TransmittableDownload, allowlist,
-    allowlist, blob_ticket_param_request_task, blob_ticket_param_request_task, raw_p2p_verify,
-    raw_p2p_verify, router::Router,
+    GetMetaData, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent,
+    NetworkTUIState, Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle,
+    SharableModel, TransmittableDownload, allowlist, blob_ticket_param_request_task,
+    raw_p2p_verify,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use rand::{RngCore, seq::SliceRandom, thread_rng};
