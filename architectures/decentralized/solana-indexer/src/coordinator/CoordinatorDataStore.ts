@@ -50,23 +50,21 @@ export class CoordinatorDataStore {
     const runInfo = this.getRunInfo(runAddress);
     const userWitnesses = runInfo.witnessesPerUser.get(userAddress) ?? {
       lastFew: [],
-      sampled: {
-        rate: 1,
-        data: [],
-      },
+      sampled: { rate: 1, data: [] },
     };
-    const targetCount = 1;
+    const desiredLastFewCount = 5;
+    const desiredSampledCount = 20;
     const witness = { ordering, metadata };
     userWitnesses.lastFew.push(witness);
     userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));
-    userWitnesses.lastFew = userWitnesses.lastFew.slice(0, targetCount);
+    userWitnesses.lastFew = userWitnesses.lastFew.slice(0, desiredLastFewCount);
     const selector = Math.random();
     if (selector < 1 / userWitnesses.sampled.rate) {
       userWitnesses.sampled.data.push({ selector, witness });
       userWitnesses.sampled.data.sort((a, b) =>
         Number(b.witness.ordering - a.witness.ordering),
       );
-      while (userWitnesses.sampled.data.length >= targetCount * 1.5) {
+      while (userWitnesses.sampled.data.length >= desiredSampledCount * 1.5) {
         userWitnesses.sampled.rate *= 1.5;
         userWitnesses.sampled.data = userWitnesses.sampled.data.filter(
           (item) => item.selector < 1 / userWitnesses.sampled.rate,

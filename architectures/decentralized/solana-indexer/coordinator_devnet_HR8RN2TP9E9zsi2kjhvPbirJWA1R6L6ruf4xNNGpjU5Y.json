@@ -1,13 +1,13 @@
 {
-  "updatedAt": "2025-10-04T21:14:57.455Z",
+  "updatedAt": "2025-10-04T21:29:51.003Z",
   "checkpoint": {
     "indexedChunks": [
       {
-        "orderingHigh": "1759612496:913:000:000",
-        "orderingLow": "1759612465:324:000:000",
-        "startedFrom": "2GGwKHTsipqQAzUyCoXwCtMsRWmBH2ykvBKRLDes3rKTA2Y8BRi7nH8Xk8sBrCrYoWixpyH6dnvmpbgp5bzrndHa",
-        "rewindedUntil": "4BK82RFsqQbToQMwQ4wGcneqj7ubhgqpAT1auxNjzokigwBZpJ6yDkC3F9LZUszbyDekwkTbM24871NbfRGnCKRo",
-        "processedCounter": 10087
+        "orderingHigh": "1759613390:808:000:000",
+        "orderingLow": "1759612465:206:000:000",
+        "startedFrom": "3mymdsATJDfzMcJ8DDUb972TRyDvCAFnab9s1y4C21s3D3NZZRu9ui1rjhouUahyYXSS4X3bMac5V2vaSTCE6xX5",
+        "rewindedUntil": "2zTikE81o3Cw4nDU5swMNaejaWAMXwZzexj4ypEbcTxGdpwrwmSAegoKjCGy7HvpkgqtPUzumSG88gFfLFw7cqte",
+        "processedCounter": 130402
       }
     ]
   },
@@ -18,7 +18,7 @@
           "runId": "dm-fwedu-dclm-stack-nmath",
           "name": "",
           "description": "Datamix experiment: 42.5% FineWeb-Edu, 42.5% DCLM-Baseline, 12% Stack-Edu, 3% Nemotron-CC-Math-v1_3",
-          "status": "RoundTrain",
+          "status": "Warmup",
           "epochClients": [
             {
               "signer": "4bX5zueyEFtYEomqHtQqA7qzV645FmvxCW7fy9WhBVHZ",
@@ -37,35 +37,71 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "310857"
+          "nonce": "310982"
         },
-        "accountFetchedOrdering": "1759612496:913:000:000",
-        "accountRequestOrdering": "1759612496:913:000:000",
+        "accountFetchedOrdering": "1759612809:435:997:000",
+        "accountRequestOrdering": "1759612809:435:997:000",
         "witnessesPerUser": {
           "Cxh1RmgsQcVzWX39tez7Qh9hHiV1aEQBrk4Rg5moN3fM": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:997:000",
+                "ordering": "1759612769:714:994:000",
                 "metadata": {
-                  "tokensPerSec": 129694.5234375,
-                  "bandwidthPerSec": 12962778112,
-                  "loss": 2.9432711601257324,
-                  "step": 31699
+                  "tokensPerSec": 105372.7265625,
+                  "bandwidthPerSec": 1087492352,
+                  "loss": 2.926090717315674,
+                  "step": 31712
+                }
+              },
+              {
+                "ordering": "1759612465:213:948:000",
+                "metadata": {
+                  "tokensPerSec": 129545.3203125,
+                  "bandwidthPerSec": 14193810432,
+                  "loss": 2.9218389987945557,
+                  "step": 29542
+                }
+              },
+              {
+                "ordering": "1759612465:213:893:000",
+                "metadata": {
+                  "tokensPerSec": 129829.1796875,
+                  "bandwidthPerSec": 9619978240,
+                  "loss": 2.952704668045044,
+                  "step": 29541
+                }
+              },
+              {
+                "ordering": "1759612465:213:832:000",
+                "metadata": {
+                  "tokensPerSec": 130336.3515625,
+                  "bandwidthPerSec": 10855405568,
+                  "loss": 2.939866542816162,
+                  "step": 29540
+                }
+              },
+              {
+                "ordering": "1759612465:213:780:000",
+                "metadata": {
+                  "tokensPerSec": 130669.3828125,
+                  "bandwidthPerSec": 11035666432,
+                  "loss": 2.880527973175049,
+                  "step": 29539
                 }
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 985.2612533569336,
               "data": [
                 [
-                  0.004975665317216382,
+                  0.0008832430616243503,
                   {
-                    "ordering": "1759612465:331:265:000",
+                    "ordering": "1759612465:317:691:000",
                     "metadata": {
-                      "tokensPerSec": 129986.671875,
-                      "bandwidthPerSec": 10827722752,
-                      "loss": 2.9512624740600586,
-                      "step": 31640
+                      "tokensPerSec": 125641.2421875,
+                      "bandwidthPerSec": 9514312704,
+                      "loss": 2.9476327896118164,
+                      "step": 31356
                     }
                   }
                 ]
@@ -75,27 +111,63 @@
           "4bX5zueyEFtYEomqHtQqA7qzV645FmvxCW7fy9WhBVHZ": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:995:000",
+                "ordering": "1759612769:714:995:000",
                 "metadata": {
-                  "tokensPerSec": 129724.6328125,
-                  "bandwidthPerSec": 13025476608,
-                  "loss": 2.909420967102051,
-                  "step": 31699
+                  "tokensPerSec": 105359.3828125,
+                  "bandwidthPerSec": 1101362560,
+                  "loss": 2.878356456756592,
+                  "step": 31712
+                }
+              },
+              {
+                "ordering": "1759612465:213:898:000",
+                "metadata": {
+                  "tokensPerSec": 129868.6953125,
+                  "bandwidthPerSec": 9583909888,
+                  "loss": 2.9158873558044434,
+                  "step": 29541
+                }
+              },
+              {
+                "ordering": "1759612465:213:833:000",
+                "metadata": {
+                  "tokensPerSec": 130282.1640625,
+                  "bandwidthPerSec": 11242694656,
+                  "loss": 2.864583969116211,
+                  "step": 29540
+                }
+              },
+              {
+                "ordering": "1759612465:213:777:000",
+                "metadata": {
+                  "tokensPerSec": 130637.4453125,
+                  "bandwidthPerSec": 10967826432,
+                  "loss": 2.8573389053344727,
+                  "step": 29539
+                }
+              },
+              {
+                "ordering": "1759612465:213:667:000",
+                "metadata": {
+                  "tokensPerSec": 130502.1484375,
+                  "bandwidthPerSec": 13094678528,
+                  "loss": 2.9252769947052,
+                  "step": 29537
                 }
               }
             ],
             "sampled": {
-              "rate": 57.6650390625,
+              "rate": 985.2612533569336,
               "data": [
                 [
-                  0.016251208564170616,
+                  0.00027643760645434945,
                   {
-                    "ordering": "1759612465:328:731:000",
+                    "ordering": "1759612465:222:027:000",
                     "metadata": {
-                      "tokensPerSec": 129564.78125,
-                      "bandwidthPerSec": 11867231232,
-                      "loss": 2.9869472980499268,
-                      "step": 31586
+                      "tokensPerSec": 128548.5546875,
+                      "bandwidthPerSec": 7360920064,
+                      "loss": 2.8348543643951416,
+                      "step": 29684
                     }
                   }
                 ]
@@ -105,27 +177,63 @@
           "7B95u2Ev8XKP4V2ZvarBaiZYyBA49UHW6joTmtitzTDF": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:996:000",
+                "ordering": "1759612719:496:998:000",
                 "metadata": {
-                  "tokensPerSec": 129720.8984375,
-                  "bandwidthPerSec": 13849327616,
-                  "loss": 2.8509318828582764,
-                  "step": 31699
+                  "tokensPerSec": 116734.9921875,
+                  "bandwidthPerSec": 21674838016,
+                  "loss": 2.9144115447998047,
+                  "step": 31711
+                }
+              },
+              {
+                "ordering": "1759612465:213:946:000",
+                "metadata": {
+                  "tokensPerSec": 129566.890625,
+                  "bandwidthPerSec": 17814996992,
+                  "loss": 2.9008970260620117,
+                  "step": 29542
+                }
+              },
+              {
+                "ordering": "1759612465:213:897:000",
+                "metadata": {
+                  "tokensPerSec": 129834.6640625,
+                  "bandwidthPerSec": 9366456320,
+                  "loss": 2.797616958618164,
+                  "step": 29541
+                }
+              },
+              {
+                "ordering": "1759612465:213:779:000",
+                "metadata": {
+                  "tokensPerSec": 130669.3046875,
+                  "bandwidthPerSec": 10914146304,
+                  "loss": 2.973281145095825,
+                  "step": 29539
+                }
+              },
+              {
+                "ordering": "1759612465:213:726:000",
+                "metadata": {
+                  "tokensPerSec": 130364.25,
+                  "bandwidthPerSec": 13343150080,
+                  "loss": 2.909773349761963,
+                  "step": 29538
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 437.8938903808594,
               "data": [
                 [
-                  0.0037126669521929667,
+                  0.0014271706654367389,
                   {
-                    "ordering": "1759612465:326:769:000",
+                    "ordering": "1759612465:240:192:000",
                     "metadata": {
-                      "tokensPerSec": 127664.6875,
-                      "bandwidthPerSec": 6426022400,
-                      "loss": 2.903663396835327,
-                      "step": 31544
+                      "tokensPerSec": 128716.828125,
+                      "bandwidthPerSec": 11778719744,
+                      "loss": 2.8574399948120117,
+                      "step": 30002
                     }
                   }
                 ]
@@ -135,27 +243,63 @@
           "Ajrn9magMRZ1wvQoZo9Aazh4siVLLsFDK2pMePhgZyWX": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:934:000",
+                "ordering": "1759612719:497:000:000",
                 "metadata": {
-                  "tokensPerSec": 129600.4765625,
-                  "bandwidthPerSec": 12387431424,
-                  "loss": 2.8478760719299316,
-                  "step": 31696
+                  "tokensPerSec": 116735.4140625,
+                  "bandwidthPerSec": 8579317248,
+                  "loss": 2.8401196002960205,
+                  "step": 31711
+                }
+              },
+              {
+                "ordering": "1759612465:213:947:000",
+                "metadata": {
+                  "tokensPerSec": 129561.0546875,
+                  "bandwidthPerSec": 14667459584,
+                  "loss": 2.94272518157959,
+                  "step": 29542
+                }
+              },
+              {
+                "ordering": "1759612465:213:834:000",
+                "metadata": {
+                  "tokensPerSec": 130272.578125,
+                  "bandwidthPerSec": 11067024384,
+                  "loss": 2.918785810470581,
+                  "step": 29540
+                }
+              },
+              {
+                "ordering": "1759612465:213:727:000",
+                "metadata": {
+                  "tokensPerSec": 130366.3046875,
+                  "bandwidthPerSec": 12876788736,
+                  "loss": 2.8743085861206055,
+                  "step": 29538
+                }
+              },
+              {
+                "ordering": "1759612465:213:612:000",
+                "metadata": {
+                  "tokensPerSec": 130469.78125,
+                  "bandwidthPerSec": 12201061376,
+                  "loss": 2.901623249053955,
+                  "step": 29536
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 1477.8918800354004,
               "data": [
                 [
-                  0.004213006096530192,
+                  0.0000131452001934651,
                   {
-                    "ordering": "1759612465:333:206:000",
+                    "ordering": "1759612465:319:885:000",
                     "metadata": {
-                      "tokensPerSec": 128547.59375,
-                      "bandwidthPerSec": 13197325312,
-                      "loss": 2.9943015575408936,
-                      "step": 31681
+                      "tokensPerSec": 125860.6953125,
+                      "bandwidthPerSec": 14175948800,
+                      "loss": 2.933777093887329,
+                      "step": 31401
                     }
                   }
                 ]
@@ -204,35 +348,71 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "523374"
+          "nonce": "523603"
         },
-        "accountFetchedOrdering": "1759612496:912:998:000",
-        "accountRequestOrdering": "1759612496:912:998:000",
+        "accountFetchedOrdering": "1759612809:435:994:000",
+        "accountRequestOrdering": "1759613385:658:000:000",
         "witnessesPerUser": {
           "vzN8aUeMS4gmnbjCrhZih9RmUkWeW6awU4znTMLaxGE": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:978:000",
+                "ordering": "1759613364:642:988:000",
                 "metadata": {
-                  "tokensPerSec": 188444.53125,
-                  "bandwidthPerSec": 12710939648,
-                  "loss": 2.644104480743408,
-                  "step": 68707
+                  "tokensPerSec": 208306.609375,
+                  "bandwidthPerSec": 13283778560,
+                  "loss": 2.726317882537842,
+                  "step": 68786
+                }
+              },
+              {
+                "ordering": "1759613364:642:922:000",
+                "metadata": {
+                  "tokensPerSec": 207277.46875,
+                  "bandwidthPerSec": 14418599936,
+                  "loss": 2.721236228942871,
+                  "step": 68784
+                }
+              },
+              {
+                "ordering": "1759613364:642:896:000",
+                "metadata": {
+                  "tokensPerSec": 206060.265625,
+                  "bandwidthPerSec": 14035203072,
+                  "loss": 2.728691577911377,
+                  "step": 68783
+                }
+              },
+              {
+                "ordering": "1759613364:642:866:000",
+                "metadata": {
+                  "tokensPerSec": 206826.640625,
+                  "bandwidthPerSec": 12691335168,
+                  "loss": 2.703907012939453,
+                  "step": 68782
+                }
+              },
+              {
+                "ordering": "1759613364:642:838:000",
+                "metadata": {
+                  "tokensPerSec": 207562.703125,
+                  "bandwidthPerSec": 12907074560,
+                  "loss": 2.786848306655884,
+                  "step": 68781
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 985.2612533569336,
               "data": [
                 [
-                  0.004717636429964589,
+                  0.00042052494685429487,
                   {
-                    "ordering": "1759612465:326:363:000",
+                    "ordering": "1759612465:244:793:000",
                     "metadata": {
-                      "tokensPerSec": 192117.53125,
-                      "bandwidthPerSec": 13876021248,
-                      "loss": 2.735982894897461,
-                      "step": 68471
+                      "tokensPerSec": 191270.40625,
+                      "bandwidthPerSec": 13150455808,
+                      "loss": 2.7941806316375732,
+                      "step": 66313
                     }
                   }
                 ]
@@ -242,74 +422,181 @@
           "HC9oxWRnj6JetaeXhYb5YqqXeLh7XSiXsmga564eVnJA": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:929:000",
+                "ordering": "1759613385:657:997:000",
                 "metadata": {
-                  "tokensPerSec": 188013.125,
-                  "bandwidthPerSec": 13567711232,
-                  "loss": 2.7582333087921143,
-                  "step": 68705
+                  "tokensPerSec": 207170.40625,
+                  "bandwidthPerSec": 13350756352,
+                  "loss": 2.8322999477386475,
+                  "step": 68788
+                }
+              },
+              {
+                "ordering": "1759613364:642:924:000",
+                "metadata": {
+                  "tokensPerSec": 207294,
+                  "bandwidthPerSec": 14880103424,
+                  "loss": 2.775820732116699,
+                  "step": 68784
+                }
+              },
+              {
+                "ordering": "1759613364:642:797:000",
+                "metadata": {
+                  "tokensPerSec": 207213.078125,
+                  "bandwidthPerSec": 22885226496,
+                  "loss": 2.8330540657043457,
+                  "step": 68779
+                }
+              },
+              {
+                "ordering": "1759613364:642:616:000",
+                "metadata": {
+                  "tokensPerSec": 189078.09375,
+                  "bandwidthPerSec": 13481800704,
+                  "loss": 2.771116018295288,
+                  "step": 68775
+                }
+              },
+              {
+                "ordering": "1759613364:642:584:000",
+                "metadata": {
+                  "tokensPerSec": 188966.8125,
+                  "bandwidthPerSec": 13308732416,
+                  "loss": 2.7740702629089355,
+                  "step": 68774
                 }
               }
             ],
             "sampled": {
-              "rate": 86.49755859375,
-              "data": [
-                [
-                  0.005444396481235625,
-                  {
-                    "ordering": "1759612465:324:364:000",
-                    "metadata": {
-                      "tokensPerSec": 187041.171875,
-                      "bandwidthPerSec": 12941228032,
-                      "loss": 2.8014638423919678,
-                      "step": 68409
-                    }
-                  }
-                ]
-              ]
+              "rate": 1477.8918800354004,
+              "data": []
             }
           },
           "66U4829SMMHqF9N15VUq9SmKjQXX4RDU6rRV2vfFkXWr": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:994:000",
+                "ordering": "1759613364:642:420:000",
                 "metadata": {
-                  "tokensPerSec": 187362.03125,
-                  "bandwidthPerSec": 13818958848,
-                  "loss": 2.8296217918395996,
-                  "step": 68710
+                  "tokensPerSec": 191019.109375,
+                  "bandwidthPerSec": 12349004800,
+                  "loss": 2.6878480911254883,
+                  "step": 68768
+                }
+              },
+              {
+                "ordering": "1759613364:642:402:000",
+                "metadata": {
+                  "tokensPerSec": 190576.75,
+                  "bandwidthPerSec": 13102235648,
+                  "loss": 2.903076410293579,
+                  "step": 68767
+                }
+              },
+              {
+                "ordering": "1759613364:642:357:000",
+                "metadata": {
+                  "tokensPerSec": 190145.40625,
+                  "bandwidthPerSec": 13842680832,
+                  "loss": 2.72836971282959,
+                  "step": 68765
+                }
+              },
+              {
+                "ordering": "1759613364:642:305:000",
+                "metadata": {
+                  "tokensPerSec": 188969.953125,
+                  "bandwidthPerSec": 13688109056,
+                  "loss": 2.772857904434204,
+                  "step": 68763
+                }
+              },
+              {
+                "ordering": "1759612941:194:986:000",
+                "metadata": {
+                  "tokensPerSec": 188617.53125,
+                  "bandwidthPerSec": 13045095424,
+                  "loss": 2.818392515182495,
+                  "step": 68750
                 }
               }
             ],
             "sampled": {
-              "rate": 86.49755859375,
+              "rate": 194.6195068359375,
               "data": []
             }
           },
           "HkqMQgbrs1ZBiJdyhGp1oiSNuDUYHxX1a9n4pgK2XtUx": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:981:000",
+                "ordering": "1759613364:642:897:000",
                 "metadata": {
-                  "tokensPerSec": 188410.46875,
-                  "bandwidthPerSec": 12705055744,
-                  "loss": 2.7912747859954834,
-                  "step": 68707
+                  "tokensPerSec": 206039.921875,
+                  "bandwidthPerSec": 14705732608,
+                  "loss": 2.8066651821136475,
+                  "step": 68783
+                }
+              },
+              {
+                "ordering": "1759613364:642:820:000",
+                "metadata": {
+                  "tokensPerSec": 208797.875,
+                  "bandwidthPerSec": 13741928448,
+                  "loss": 2.762504816055298,
+                  "step": 68780
+                }
+              },
+              {
+                "ordering": "1759613364:642:796:000",
+                "metadata": {
+                  "tokensPerSec": 207263.34375,
+                  "bandwidthPerSec": 28305424384,
+                  "loss": 2.7906529903411865,
+                  "step": 68779
+                }
+              },
+              {
+                "ordering": "1759613364:642:769:000",
+                "metadata": {
+                  "tokensPerSec": 207263.34375,
+                  "bandwidthPerSec": 3044871680,
+                  "loss": 2.8532962799072266,
+                  "step": 68778
+                }
+              },
+              {
+                "ordering": "1759613364:642:632:000",
+                "metadata": {
+                  "tokensPerSec": 197369.765625,
+                  "bandwidthPerSec": 10450460672,
+                  "loss": 2.8532962799072266,
+                  "step": 68777
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 1477.8918800354004,
               "data": [
                 [
-                  0.002659715094003534,
+                  0.0006740420623261301,
                   {
-                    "ordering": "1759612465:329:148:000",
+                    "ordering": "1759612465:316:418:000",
                     "metadata": {
-                      "tokensPerSec": 188341.25,
-                      "bandwidthPerSec": 13657693184,
-                      "loss": 2.728501319885254,
-                      "step": 68557
+                      "tokensPerSec": 190688.96875,
+                      "bandwidthPerSec": 14503640064,
+                      "loss": 2.797373056411743,
+                      "step": 68163
+                    }
+                  }
+                ],
+                [
+                  0.000305084460181293,
+                  {
+                    "ordering": "1759612465:210:792:000",
+                    "metadata": {
+                      "tokensPerSec": 188234.640625,
+                      "bandwidthPerSec": 16064306176,
+                      "loss": 2.876812219619751,
+                      "step": 65444
                     }
                   }
                 ]
@@ -319,61 +606,182 @@
           "cEVQZYUeHomvWVCJ2cK7Cm3h1GMMFjJ5xAagXXsfdyZ": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:993:000",
+                "ordering": "1759613374:512:991:000",
                 "metadata": {
-                  "tokensPerSec": 187373.6875,
-                  "bandwidthPerSec": 13769319424,
-                  "loss": 2.6780507564544678,
-                  "step": 68710
+                  "tokensPerSec": 207983.15625,
+                  "bandwidthPerSec": 12711174144,
+                  "loss": 2.757673501968384,
+                  "step": 68787
+                }
+              },
+              {
+                "ordering": "1759613364:642:991:000",
+                "metadata": {
+                  "tokensPerSec": 208299.640625,
+                  "bandwidthPerSec": 14498119680,
+                  "loss": 2.7351608276367188,
+                  "step": 68786
+                }
+              },
+              {
+                "ordering": "1759613364:642:961:000",
+                "metadata": {
+                  "tokensPerSec": 207191.515625,
+                  "bandwidthPerSec": 13352327168,
+                  "loss": 2.724621295928955,
+                  "step": 68785
+                }
+              },
+              {
+                "ordering": "1759613364:642:622:000",
+                "metadata": {
+                  "tokensPerSec": 190026.921875,
+                  "bandwidthPerSec": 13142238208,
+                  "loss": 2.8087451457977295,
+                  "step": 68776
+                }
+              },
+              {
+                "ordering": "1759613364:642:541:000",
+                "metadata": {
+                  "tokensPerSec": 189069.296875,
+                  "bandwidthPerSec": 13556361216,
+                  "loss": 2.7940542697906494,
+                  "step": 68772
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 656.8408355712891,
               "data": []
             }
           },
           "DKEXJjukrFzuZJRehJgWYGw4Du3dNkavrk5TQWGuL5XG": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:992:000",
+                "ordering": "1759613374:512:990:000",
                 "metadata": {
-                  "tokensPerSec": 187384.5,
-                  "bandwidthPerSec": 13662156800,
-                  "loss": 2.714928388595581,
-                  "step": 68710
+                  "tokensPerSec": 208041.109375,
+                  "bandwidthPerSec": 12602693632,
+                  "loss": 2.762779712677002,
+                  "step": 68787
+                }
+              },
+              {
+                "ordering": "1759613364:642:963:000",
+                "metadata": {
+                  "tokensPerSec": 207258.953125,
+                  "bandwidthPerSec": 13316922368,
+                  "loss": 2.7627410888671875,
+                  "step": 68785
+                }
+              },
+              {
+                "ordering": "1759613364:642:898:000",
+                "metadata": {
+                  "tokensPerSec": 206104.875,
+                  "bandwidthPerSec": 13999750144,
+                  "loss": 2.817591667175293,
+                  "step": 68783
+                }
+              },
+              {
+                "ordering": "1759613364:642:837:000",
+                "metadata": {
+                  "tokensPerSec": 207634.671875,
+                  "bandwidthPerSec": 12943039488,
+                  "loss": 2.8482837677001953,
+                  "step": 68781
+                }
+              },
+              {
+                "ordering": "1759613364:642:634:000",
+                "metadata": {
+                  "tokensPerSec": 197416.6875,
+                  "bandwidthPerSec": 10460819456,
+                  "loss": 2.805957317352295,
+                  "step": 68777
                 }
               }
             ],
             "sampled": {
-              "rate": 57.6650390625,
-              "data": []
+              "rate": 2216.8378200531006,
+              "data": [
+                [
+                  0.0002245394775344245,
+                  {
+                    "ordering": "1759612465:263:082:000",
+                    "metadata": {
+                      "tokensPerSec": 187819.140625,
+                      "bandwidthPerSec": 12613113856,
+                      "loss": 2.8541784286499023,
+                      "step": 66777
+                    }
+                  }
+                ]
+              ]
             }
           },
           "FnpDQyGzi82BCsZT6JfsF2MrV9D6fGBzqSPmKEP2Cn8b": {
             "lastFew": [
               {
-                "ordering": "1759612484:608:995:000",
+                "ordering": "1759613385:657:998:000",
                 "metadata": {
-                  "tokensPerSec": 187594.828125,
-                  "bandwidthPerSec": 15229854720,
-                  "loss": 2.768611431121826,
-                  "step": 68709
+                  "tokensPerSec": 207167.6875,
+                  "bandwidthPerSec": 13360126976,
+                  "loss": 2.7957310676574707,
+                  "step": 68788
+                }
+              },
+              {
+                "ordering": "1759613374:512:992:000",
+                "metadata": {
+                  "tokensPerSec": 207926.6875,
+                  "bandwidthPerSec": 12829969408,
+                  "loss": 2.727421522140503,
+                  "step": 68787
+                }
+              },
+              {
+                "ordering": "1759613364:642:990:000",
+                "metadata": {
+                  "tokensPerSec": 208236.671875,
+                  "bandwidthPerSec": 13221701632,
+                  "loss": 2.747737407684326,
+                  "step": 68786
+                }
+              },
+              {
+                "ordering": "1759613364:642:962:000",
+                "metadata": {
+                  "tokensPerSec": 207153.203125,
+                  "bandwidthPerSec": 13202921472,
+                  "loss": 2.780996084213257,
+                  "step": 68785
+                }
+              },
+              {
+                "ordering": "1759613364:642:923:000",
+                "metadata": {
+                  "tokensPerSec": 207281.359375,
+                  "bandwidthPerSec": 14392560640,
+                  "loss": 2.6717424392700195,
+                  "step": 68784
                 }
               }
             ],
             "sampled": {
-              "rate": 86.49755859375,
+              "rate": 437.8938903808594,
               "data": [
                 [
-                  0.004403588463300467,
+                  0.0009739710927110234,
                   {
-                    "ordering": "1759612465:328:452:000",
+                    "ordering": "1759612465:265:651:000",
                     "metadata": {
-                      "tokensPerSec": 188754.390625,
-                      "bandwidthPerSec": 12578917376,
-                      "loss": 2.742097854614258,
-                      "step": 68536
+                      "tokensPerSec": 188549.296875,
+                      "bandwidthPerSec": 13303516160,
+                      "loss": 2.6686854362487793,
+                      "step": 66843
                     }
                   }
                 ]
@@ -383,17 +791,53 @@
           "FRqTuG6Un6jzSya8bSVTs12Cs6xXK186Dxk2F66hVLnK": {
             "lastFew": [
               {
-                "ordering": "1759612484:608:997:000",
+                "ordering": "1759613385:657:996:000",
                 "metadata": {
-                  "tokensPerSec": 187712.703125,
-                  "bandwidthPerSec": 13418925056,
-                  "loss": 2.776993989944458,
-                  "step": 68709
+                  "tokensPerSec": 207221.6875,
+                  "bandwidthPerSec": 13392023552,
+                  "loss": 2.7225914001464844,
+                  "step": 68788
+                }
+              },
+              {
+                "ordering": "1759613364:642:868:000",
+                "metadata": {
+                  "tokensPerSec": 206795.203125,
+                  "bandwidthPerSec": 12673105920,
+                  "loss": 2.825629472732544,
+                  "step": 68782
+                }
+              },
+              {
+                "ordering": "1759613364:642:836:000",
+                "metadata": {
+                  "tokensPerSec": 207583.078125,
+                  "bandwidthPerSec": 12878905344,
+                  "loss": 2.9302144050598145,
+                  "step": 68781
+                }
+              },
+              {
+                "ordering": "1759613364:642:795:000",
+                "metadata": {
+                  "tokensPerSec": 207261.296875,
+                  "bandwidthPerSec": 34555133952,
+                  "loss": 2.773695945739746,
+                  "step": 68779
+                }
+              },
+              {
+                "ordering": "1759613364:642:770:000",
+                "metadata": {
+                  "tokensPerSec": 207261.296875,
+                  "bandwidthPerSec": 3264131072,
+                  "loss": 2.6702826023101807,
+                  "step": 68778
                 }
               }
             ],
             "sampled": {
-              "rate": 291.92926025390625,
+              "rate": 2216.8378200531006,
               "data": [
                 [
                   0.00023545266441216128,
@@ -436,35 +880,71 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "447519"
+          "nonce": "447655"
         },
-        "accountFetchedOrdering": "1759612487:576:000:000",
-        "accountRequestOrdering": "1759612487:576:000:000",
+        "accountFetchedOrdering": "1759612809:435:980:000",
+        "accountRequestOrdering": "1759613377:803:000:000",
         "witnessesPerUser": {
           "HUivAaHxb6E5hrYrrrL7jTdxYFB5L5YP3Cje1FxWFE6g": {
             "lastFew": [
               {
-                "ordering": "1759612485:316:000:000",
+                "ordering": "1759613374:513:000:000",
                 "metadata": {
-                  "tokensPerSec": 125182.125,
-                  "bandwidthPerSec": 10514926592,
-                  "loss": 2.5971710681915283,
-                  "step": 49316
+                  "tokensPerSec": 124589.5078125,
+                  "bandwidthPerSec": 17241724928,
+                  "loss": 2.565502405166626,
+                  "step": 49369
+                }
+              },
+              {
+                "ordering": "1759613364:642:980:000",
+                "metadata": {
+                  "tokensPerSec": 124559.4453125,
+                  "bandwidthPerSec": 12421919744,
+                  "loss": 2.5470285415649414,
+                  "step": 49368
+                }
+              },
+              {
+                "ordering": "1759613364:642:938:000",
+                "metadata": {
+                  "tokensPerSec": 124354.3828125,
+                  "bandwidthPerSec": 11700830208,
+                  "loss": 2.644408702850342,
+                  "step": 49367
+                }
+              },
+              {
+                "ordering": "1759613364:642:887:000",
+                "metadata": {
+                  "tokensPerSec": 124393.2734375,
+                  "bandwidthPerSec": 11972817920,
+                  "loss": 2.5500621795654297,
+                  "step": 49366
+                }
+              },
+              {
+                "ordering": "1759613364:642:845:000",
+                "metadata": {
+                  "tokensPerSec": 124058.078125,
+                  "bandwidthPerSec": 14376027136,
+                  "loss": 2.5078794956207275,
+                  "step": 49365
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 985.2612533569336,
               "data": [
                 [
-                  0.00371179998230442,
+                  0.0005076256480260888,
                   {
-                    "ordering": "1759612465:324:349:000",
+                    "ordering": "1759612465:214:202:000",
                     "metadata": {
-                      "tokensPerSec": 124851.546875,
-                      "bandwidthPerSec": 16603862016,
-                      "loss": 2.5772714614868164,
-                      "step": 49118
+                      "tokensPerSec": 125006.5390625,
+                      "bandwidthPerSec": 12195594240,
+                      "loss": 2.553377866744995,
+                      "step": 47213
                     }
                   }
                 ]
@@ -474,42 +954,101 @@
           "1257PEnV2hmFz3uFkB9ivLNWSUGysmWzD81RX9xFV6if": {
             "lastFew": [
               {
-                "ordering": "1759612485:315:999:000",
+                "ordering": "1759613364:642:979:000",
                 "metadata": {
-                  "tokensPerSec": 125163.46875,
-                  "bandwidthPerSec": 10420954112,
-                  "loss": 2.485976219177246,
-                  "step": 49316
+                  "tokensPerSec": 124559.8671875,
+                  "bandwidthPerSec": 12591044608,
+                  "loss": 2.591975688934326,
+                  "step": 49368
+                }
+              },
+              {
+                "ordering": "1759613364:642:886:000",
+                "metadata": {
+                  "tokensPerSec": 124390.625,
+                  "bandwidthPerSec": 11980014592,
+                  "loss": 2.6398887634277344,
+                  "step": 49366
+                }
+              },
+              {
+                "ordering": "1759613364:642:804:000",
+                "metadata": {
+                  "tokensPerSec": 124057.859375,
+                  "bandwidthPerSec": 11829172224,
+                  "loss": 2.5908002853393555,
+                  "step": 49364
+                }
+              },
+              {
+                "ordering": "1759613364:642:772:000",
+                "metadata": {
+                  "tokensPerSec": 124050.453125,
+                  "bandwidthPerSec": 11853981696,
+                  "loss": 2.6190571784973145,
+                  "step": 49363
+                }
+              },
+              {
+                "ordering": "1759613364:642:729:000",
+                "metadata": {
+                  "tokensPerSec": 124570.265625,
+                  "bandwidthPerSec": 12317020160,
+                  "loss": 2.5352277755737305,
+                  "step": 49362
                 }
               }
             ],
             "sampled": {
-              "rate": 57.6650390625,
-              "data": [
-                [
-                  0.006552363599374278,
-                  {
-                    "ordering": "1759612465:326:786:000",
-                    "metadata": {
-                      "tokensPerSec": 125038.5078125,
-                      "bandwidthPerSec": 9317175296,
-                      "loss": 2.5979597568511963,
-                      "step": 49168
-                    }
-                  }
-                ]
-              ]
+              "rate": 1477.8918800354004,
+              "data": []
             }
           },
           "3oztbnw2TNwP4iXnhH6Xh4azWPq6y7tHDdCNz25e21aY": {
             "lastFew": [
               {
-                "ordering": "1759612485:315:998:000",
+                "ordering": "1759613376:846:995:000",
                 "metadata": {
-                  "tokensPerSec": 125193.90625,
-                  "bandwidthPerSec": 16010273792,
-                  "loss": 2.482534170150757,
-                  "step": 49316
+                  "tokensPerSec": 124589.578125,
+                  "bandwidthPerSec": 10482895872,
+                  "loss": 2.555854320526123,
+                  "step": 49369
+                }
+              },
+              {
+                "ordering": "1759613364:642:978:000",
+                "metadata": {
+                  "tokensPerSec": 124559.4765625,
+                  "bandwidthPerSec": 7637800448,
+                  "loss": 2.5704002380371094,
+                  "step": 49368
+                }
+              },
+              {
+                "ordering": "1759613364:642:943:000",
+                "metadata": {
+                  "tokensPerSec": 124337.7890625,
+                  "bandwidthPerSec": 15308608512,
+                  "loss": 2.558407783508301,
+                  "step": 49367
+                }
+              },
+              {
+                "ordering": "1759613364:642:843:000",
+                "metadata": {
+                  "tokensPerSec": 124052.8203125,
+                  "bandwidthPerSec": 14837855232,
+                  "loss": 2.586225986480713,
+                  "step": 49365
+                }
+              },
+              {
+                "ordering": "1759613364:642:806:000",
+                "metadata": {
+                  "tokensPerSec": 124058.21875,
+                  "bandwidthPerSec": 11959611392,
+                  "loss": 2.6114327907562256,
+                  "step": 49364
                 }
               }
             ],
@@ -534,27 +1073,63 @@
           "5ZvHA2dBCXVZyaj2WZRxk4ve94aBaa6itvnbbGTfkVDK": {
             "lastFew": [
               {
-                "ordering": "1759612468:679:999:000",
+                "ordering": "1759613376:846:996:000",
                 "metadata": {
-                  "tokensPerSec": 125377.28125,
-                  "bandwidthPerSec": 11716674560,
-                  "loss": 2.6352458000183105,
-                  "step": 49315
+                  "tokensPerSec": 124568.390625,
+                  "bandwidthPerSec": 13092728832,
+                  "loss": 2.6018950939178467,
+                  "step": 49369
+                }
+              },
+              {
+                "ordering": "1759613364:642:942:000",
+                "metadata": {
+                  "tokensPerSec": 124329.1328125,
+                  "bandwidthPerSec": 11163510784,
+                  "loss": 2.5477962493896484,
+                  "step": 49367
+                }
+              },
+              {
+                "ordering": "1759613364:642:888:000",
+                "metadata": {
+                  "tokensPerSec": 124420.0546875,
+                  "bandwidthPerSec": 12083829760,
+                  "loss": 2.586113929748535,
+                  "step": 49366
+                }
+              },
+              {
+                "ordering": "1759613364:642:844:000",
+                "metadata": {
+                  "tokensPerSec": 124052.859375,
+                  "bandwidthPerSec": 14205048832,
+                  "loss": 2.5500264167785645,
+                  "step": 49365
+                }
+              },
+              {
+                "ordering": "1759613364:642:771:000",
+                "metadata": {
+                  "tokensPerSec": 124087.9296875,
+                  "bandwidthPerSec": 12322662400,
+                  "loss": 2.6846296787261963,
+                  "step": 49363
                 }
               }
             ],
             "sampled": {
-              "rate": 57.6650390625,
+              "rate": 656.8408355712891,
               "data": [
                 [
-                  0.013263865783876172,
+                  0.0010347109966044599,
                   {
-                    "ordering": "1759612465:330:892:000",
+                    "ordering": "1759612465:227:691:000",
                     "metadata": {
-                      "tokensPerSec": 124190.0234375,
-                      "bandwidthPerSec": 11529389056,
-                      "loss": 2.62341046333313,
-                      "step": 49252
+                      "tokensPerSec": 124699.7109375,
+                      "bandwidthPerSec": 10252844032,
+                      "loss": 2.593546152114868,
+                      "step": 47443
                     }
                   }
                 ]
@@ -599,65 +1174,124 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "596127"
+          "nonce": "596319"
         },
-        "accountFetchedOrdering": "1759612495:923:000:000",
-        "accountRequestOrdering": "1759612495:923:000:000",
+        "accountFetchedOrdering": "1759612809:435:996:000",
+        "accountRequestOrdering": "1759613390:808:000:000",
         "witnessesPerUser": {
           "F7fNMzRFABWZMqo6fxwjDs8Knt1ZCwKL7Rw2vqxwhofB": {
             "lastFew": [
               {
-                "ordering": "1759612495:923:000:000",
+                "ordering": "1759613380:237:999:000",
                 "metadata": {
-                  "tokensPerSec": 173150.125,
-                  "bandwidthPerSec": 10712180736,
-                  "loss": 2.434332847595215,
-                  "step": 59609
+                  "tokensPerSec": 173608.171875,
+                  "bandwidthPerSec": 10907298816,
+                  "loss": 2.4246010780334473,
+                  "step": 59682
+                }
+              },
+              {
+                "ordering": "1759613364:642:946:000",
+                "metadata": {
+                  "tokensPerSec": 174779.28125,
+                  "bandwidthPerSec": 10214589440,
+                  "loss": 2.3988444805145264,
+                  "step": 59679
+                }
+              },
+              {
+                "ordering": "1759613364:642:900:000",
+                "metadata": {
+                  "tokensPerSec": 175047.859375,
+                  "bandwidthPerSec": 11436713984,
+                  "loss": 2.4676578044891357,
+                  "step": 59678
+                }
+              },
+              {
+                "ordering": "1759613364:642:834:000",
+                "metadata": {
+                  "tokensPerSec": 174041.9375,
+                  "bandwidthPerSec": 10556466176,
+                  "loss": 2.3879847526550293,
+                  "step": 59676
+                }
+              },
+              {
+                "ordering": "1759613364:642:790:000",
+                "metadata": {
+                  "tokensPerSec": 173408.90625,
+                  "bandwidthPerSec": 10715748352,
+                  "loss": 2.443779230117798,
+                  "step": 59674
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
-              "data": [
-                [
-                  0.034256613292004134,
-                  {
-                    "ordering": "1759612465:333:683:000",
-                    "metadata": {
-                      "tokensPerSec": 174508.5,
-                      "bandwidthPerSec": 10112048128,
-                      "loss": 2.424592971801758,
-                      "step": 59598
-                    }
-                  }
-                ]
-              ]
+              "rate": 2216.8378200531006,
+              "data": []
             }
           },
           "DCj3N1m7xRaEqB8EufYv1MYAJKdUdBYcBfZhbce6apa4": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:880:000",
+                "ordering": "1759613390:251:000:000",
                 "metadata": {
-                  "tokensPerSec": 173183.421875,
-                  "bandwidthPerSec": 9881353216,
-                  "loss": 2.4477334022521973,
-                  "step": 59603
+                  "tokensPerSec": 174641.84375,
+                  "bandwidthPerSec": 10566073344,
+                  "loss": 2.383363962173462,
+                  "step": 59683
+                }
+              },
+              {
+                "ordering": "1759613364:642:904:000",
+                "metadata": {
+                  "tokensPerSec": 174975.84375,
+                  "bandwidthPerSec": 10739638272,
+                  "loss": 2.3929646015167236,
+                  "step": 59678
+                }
+              },
+              {
+                "ordering": "1759613364:642:865:000",
+                "metadata": {
+                  "tokensPerSec": 174335.921875,
+                  "bandwidthPerSec": 11167845376,
+                  "loss": 2.4099678993225098,
+                  "step": 59677
+                }
+              },
+              {
+                "ordering": "1759613364:642:835:000",
+                "metadata": {
+                  "tokensPerSec": 173970.640625,
+                  "bandwidthPerSec": 10621345792,
+                  "loss": 2.494762420654297,
+                  "step": 59676
+                }
+              },
+              {
+                "ordering": "1759613364:642:816:000",
+                "metadata": {
+                  "tokensPerSec": 173693.359375,
+                  "bandwidthPerSec": 10780680192,
+                  "loss": 2.457667350769043,
+                  "step": 59675
                 }
               }
             ],
             "sampled": {
-              "rate": 57.6650390625,
+              "rate": 437.8938903808594,
               "data": [
                 [
-                  0.0121657645488924,
+                  0.0014991618642703486,
                   {
-                    "ordering": "1759612465:328:475:000",
+                    "ordering": "1759612465:278:503:000",
                     "metadata": {
-                      "tokensPerSec": 172622.796875,
-                      "bandwidthPerSec": 12378531840,
-                      "loss": 2.3894286155700684,
-                      "step": 59450
+                      "tokensPerSec": 174593.578125,
+                      "bandwidthPerSec": 10015055872,
+                      "loss": 2.4605910778045654,
+                      "step": 58203
                     }
                   }
                 ]
@@ -667,27 +1301,63 @@
           "6BzT8UaGLmiPuWgZT72m4GW3asQ5LCh4nwUTB4LdjRmi": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:998:000",
+                "ordering": "1759613368:518:997:000",
                 "metadata": {
-                  "tokensPerSec": 173213.125,
-                  "bandwidthPerSec": 10625318912,
-                  "loss": 2.474670886993408,
-                  "step": 59609
+                  "tokensPerSec": 173707.1875,
+                  "bandwidthPerSec": 10418794496,
+                  "loss": 2.391511917114258,
+                  "step": 59681
+                }
+              },
+              {
+                "ordering": "1759613364:642:947:000",
+                "metadata": {
+                  "tokensPerSec": 174747.1875,
+                  "bandwidthPerSec": 10118250496,
+                  "loss": 2.492033004760742,
+                  "step": 59679
+                }
+              },
+              {
+                "ordering": "1759613364:642:815:000",
+                "metadata": {
+                  "tokensPerSec": 173692.453125,
+                  "bandwidthPerSec": 10746208256,
+                  "loss": 2.4538209438323975,
+                  "step": 59675
+                }
+              },
+              {
+                "ordering": "1759613364:642:761:000",
+                "metadata": {
+                  "tokensPerSec": 173878.171875,
+                  "bandwidthPerSec": 10589840384,
+                  "loss": 2.4866116046905518,
+                  "step": 59673
+                }
+              },
+              {
+                "ordering": "1759613364:642:678:000",
+                "metadata": {
+                  "tokensPerSec": 172623.84375,
+                  "bandwidthPerSec": 11363336192,
+                  "loss": 2.4158129692077637,
+                  "step": 59671
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 1477.8918800354004,
               "data": [
                 [
-                  0.0027374158367801105,
+                  0.0005173550128434456,
                   {
-                    "ordering": "1759612465:325:789:000",
+                    "ordering": "1759612713:255:475:000",
                     "metadata": {
-                      "tokensPerSec": 174503.828125,
-                      "bandwidthPerSec": 10283219968,
-                      "loss": 2.443021059036255,
-                      "step": 59373
+                      "tokensPerSec": 172556.921875,
+                      "bandwidthPerSec": 10284763136,
+                      "loss": 2.456024169921875,
+                      "step": 59611
                     }
                   }
                 ]
@@ -697,27 +1367,75 @@
           "GXBi6TxVGxRSQEPvmZmSyUWewaiHMdSyGbM2d7ZEAej2": {
             "lastFew": [
               {
-                "ordering": "1759612473:183:996:000",
+                "ordering": "1759613380:237:995:000",
                 "metadata": {
-                  "tokensPerSec": 173167.5,
-                  "bandwidthPerSec": 19995414528,
-                  "loss": 2.3962574005126953,
-                  "step": 59607
+                  "tokensPerSec": 173588.484375,
+                  "bandwidthPerSec": 11096765440,
+                  "loss": 2.485003709793091,
+                  "step": 59682
+                }
+              },
+              {
+                "ordering": "1759613368:518:996:000",
+                "metadata": {
+                  "tokensPerSec": 173674.890625,
+                  "bandwidthPerSec": 10841761792,
+                  "loss": 2.5021162033081055,
+                  "step": 59681
+                }
+              },
+              {
+                "ordering": "1759613364:642:948:000",
+                "metadata": {
+                  "tokensPerSec": 174792,
+                  "bandwidthPerSec": 9996526592,
+                  "loss": 2.468076705932617,
+                  "step": 59679
+                }
+              },
+              {
+                "ordering": "1759613364:642:788:000",
+                "metadata": {
+                  "tokensPerSec": 173408.828125,
+                  "bandwidthPerSec": 10707262464,
+                  "loss": 2.471740961074829,
+                  "step": 59674
+                }
+              },
+              {
+                "ordering": "1759613364:642:726:000",
+                "metadata": {
+                  "tokensPerSec": 173315.875,
+                  "bandwidthPerSec": 10638109696,
+                  "loss": 2.471442699432373,
+                  "step": 59672
                 }
               }
             ],
             "sampled": {
-              "rate": 291.92926025390625,
+              "rate": 437.8938903808594,
               "data": [
                 [
-                  0.002302875473219057,
+                  0.0021983314606148774,
                   {
-                    "ordering": "1759612465:332:251:000",
+                    "ordering": "1759612465:276:039:000",
                     "metadata": {
-                      "tokensPerSec": 174793.890625,
-                      "bandwidthPerSec": 11184093184,
-                      "loss": 2.353628635406494,
-                      "step": 59558
+                      "tokensPerSec": 174403.734375,
+                      "bandwidthPerSec": 9678710784,
+                      "loss": 2.442976236343384,
+                      "step": 58144
+                    }
+                  }
+                ],
+                [
+                  0.0007741707613948545,
+                  {
+                    "ordering": "1759612465:207:107:000",
+                    "metadata": {
+                      "tokensPerSec": 175573.046875,
+                      "bandwidthPerSec": 13644696576,
+                      "loss": 2.460838794708252,
+                      "step": 56525
                     }
                   }
                 ]
@@ -727,27 +1445,63 @@
           "4FvjrEDA9EQagFD9agwnNhsv7N98cHW9zhz5BayZNham": {
             "lastFew": [
               {
-                "ordering": "1759612484:608:996:000",
+                "ordering": "1759613390:808:000:000",
                 "metadata": {
-                  "tokensPerSec": 172918.75,
-                  "bandwidthPerSec": 10553751552,
-                  "loss": 2.42549467086792,
-                  "step": 59608
+                  "tokensPerSec": 174669.515625,
+                  "bandwidthPerSec": 10547451904,
+                  "loss": 2.416416645050049,
+                  "step": 59683
+                }
+              },
+              {
+                "ordering": "1759613364:642:970:000",
+                "metadata": {
+                  "tokensPerSec": 173245.5625,
+                  "bandwidthPerSec": 20694593536,
+                  "loss": 2.46724271774292,
+                  "step": 59680
+                }
+              },
+              {
+                "ordering": "1759613364:642:864:000",
+                "metadata": {
+                  "tokensPerSec": 174367.734375,
+                  "bandwidthPerSec": 11190179840,
+                  "loss": 2.476179361343384,
+                  "step": 59677
+                }
+              },
+              {
+                "ordering": "1759613364:642:661:000",
+                "metadata": {
+                  "tokensPerSec": 173229.421875,
+                  "bandwidthPerSec": 10590508032,
+                  "loss": 2.441512107849121,
+                  "step": 59670
+                }
+              },
+              {
+                "ordering": "1759613364:642:571:000",
+                "metadata": {
+                  "tokensPerSec": 171987.859375,
+                  "bandwidthPerSec": 10474512384,
+                  "loss": 2.476508140563965,
+                  "step": 59667
                 }
               }
             ],
             "sampled": {
-              "rate": 57.6650390625,
+              "rate": 656.8408355712891,
               "data": [
                 [
-                  0.010637032761875664,
+                  0.0012974634590399159,
                   {
-                    "ordering": "1759612465:332:081:000",
+                    "ordering": "1759612465:315:610:000",
                     "metadata": {
-                      "tokensPerSec": 173845.875,
-                      "bandwidthPerSec": 10685524992,
-                      "loss": 2.455684185028076,
-                      "step": 59553
+                      "tokensPerSec": 173408.140625,
+                      "bandwidthPerSec": 11237293056,
+                      "loss": 2.5155320167541504,
+                      "step": 59083
                     }
                   }
                 ]
@@ -757,27 +1511,63 @@
           "8w4QYn4GkE26fZoEN3irSMUWjgYNVSNiMiAgHTdEZRva": {
             "lastFew": [
               {
-                "ordering": "1759612484:609:000:000",
+                "ordering": "1759613390:250:999:000",
                 "metadata": {
-                  "tokensPerSec": 172971.1875,
-                  "bandwidthPerSec": 12515833856,
-                  "loss": 2.3282437324523926,
-                  "step": 59608
+                  "tokensPerSec": 174694.828125,
+                  "bandwidthPerSec": 10579149824,
+                  "loss": 2.402332305908203,
+                  "step": 59683
+                }
+              },
+              {
+                "ordering": "1759613380:237:996:000",
+                "metadata": {
+                  "tokensPerSec": 173608.046875,
+                  "bandwidthPerSec": 11077303296,
+                  "loss": 2.376164674758911,
+                  "step": 59682
+                }
+              },
+              {
+                "ordering": "1759613368:518:995:000",
+                "metadata": {
+                  "tokensPerSec": 173696.3125,
+                  "bandwidthPerSec": 10392310784,
+                  "loss": 2.4077391624450684,
+                  "step": 59681
+                }
+              },
+              {
+                "ordering": "1759613364:642:971:000",
+                "metadata": {
+                  "tokensPerSec": 173265.0625,
+                  "bandwidthPerSec": 9831999488,
+                  "loss": 2.459658145904541,
+                  "step": 59680
+                }
+              },
+              {
+                "ordering": "1759613364:642:905:000",
+                "metadata": {
+                  "tokensPerSec": 175047.734375,
+                  "bandwidthPerSec": 10734501888,
+                  "loss": 2.4621341228485107,
+                  "step": 59678
                 }
               }
             ],
             "sampled": {
-              "rate": 86.49755859375,
+              "rate": 2216.8378200531006,
               "data": [
                 [
-                  0.006549866537008064,
+                  0.00006643749028545365,
                   {
-                    "ordering": "1759612465:326:931:000",
+                    "ordering": "1759612465:293:342:000",
                     "metadata": {
-                      "tokensPerSec": 173888.328125,
-                      "bandwidthPerSec": 10914400256,
-                      "loss": 2.4202933311462402,
-                      "step": 59406
+                      "tokensPerSec": 174640.109375,
+                      "bandwidthPerSec": 10869482496,
+                      "loss": 2.4491965770721436,
+                      "step": 58553
                     }
                   }
                 ]
@@ -787,27 +1577,63 @@
           "A81SyZVogEBtG9TSLdByF6vESooNS5s67p1XCtYvWrHj": {
             "lastFew": [
               {
-                "ordering": "1759612495:922:999:000",
+                "ordering": "1759613364:642:972:000",
                 "metadata": {
-                  "tokensPerSec": 173152.34375,
-                  "bandwidthPerSec": 10683913216,
-                  "loss": 2.4225313663482666,
-                  "step": 59609
+                  "tokensPerSec": 173245.625,
+                  "bandwidthPerSec": 9866063872,
+                  "loss": 2.385544538497925,
+                  "step": 59680
+                }
+              },
+              {
+                "ordering": "1759613364:642:659:000",
+                "metadata": {
+                  "tokensPerSec": 173328.6875,
+                  "bandwidthPerSec": 10551397376,
+                  "loss": 2.413947820663452,
+                  "step": 59670
+                }
+              },
+              {
+                "ordering": "1759613364:642:570:000",
+                "metadata": {
+                  "tokensPerSec": 172016.625,
+                  "bandwidthPerSec": 10460857344,
+                  "loss": 2.5322446823120117,
+                  "step": 59667
+                }
+              },
+              {
+                "ordering": "1759613364:642:398:000",
+                "metadata": {
+                  "tokensPerSec": 172095,
+                  "bandwidthPerSec": 10371960832,
+                  "loss": 2.3883719444274902,
+                  "step": 59661
+                }
+              },
+              {
+                "ordering": "1759613364:642:369:000",
+                "metadata": {
+                  "tokensPerSec": 172894.859375,
+                  "bandwidthPerSec": 9961880576,
+                  "loss": 2.462324619293213,
+                  "step": 59660
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 1477.8918800354004,
               "data": [
                 [
-                  0.02067913675968902,
+                  0.0005210464538913939,
                   {
-                    "ordering": "1759612465:331:637:000",
+                    "ordering": "1759612465:256:916:000",
                     "metadata": {
-                      "tokensPerSec": 175150.9375,
-                      "bandwidthPerSec": 10650908672,
-                      "loss": 2.4025521278381348,
-                      "step": 59540
+                      "tokensPerSec": 172761.234375,
+                      "bandwidthPerSec": 11172269056,
+                      "loss": 2.4253787994384766,
+                      "step": 57691
                     }
                   }
                 ]
@@ -821,7 +1647,7 @@
           "runId": "dm-fwedu-dclm",
           "name": "",
           "description": "Datamix experiment: 50% FineWeb-Edu, 50% DCLM-Baseline",
-          "status": "RoundTrain",
+          "status": "RoundWitness",
           "epochClients": [
             {
               "signer": "4U8AezjFFPNMNkreFyDAVAvSVvAmL6xaXE2haKBJRZfS",
@@ -840,35 +1666,71 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "480393"
+          "nonce": "480543"
         },
-        "accountFetchedOrdering": "1759612486:696:994:000",
-        "accountRequestOrdering": "1759612486:696:994:000",
+        "accountFetchedOrdering": "1759612809:436:000:000",
+        "accountRequestOrdering": "1759613380:237:998:000",
         "witnessesPerUser": {
           "5wJxU9zFH22k5yKi7onchVMhDpFhgWFYJzp92aqAcaYd": {
             "lastFew": [
               {
-                "ordering": "1759612484:608:993:000",
+                "ordering": "1759613376:846:999:000",
                 "metadata": {
-                  "tokensPerSec": 129735.3671875,
-                  "bandwidthPerSec": 12257229824,
-                  "loss": 2.7183327674865723,
-                  "step": 48879
+                  "tokensPerSec": 129174.6484375,
+                  "bandwidthPerSec": 10133499904,
+                  "loss": 2.726792335510254,
+                  "step": 48934
+                }
+              },
+              {
+                "ordering": "1759613364:642:983:000",
+                "metadata": {
+                  "tokensPerSec": 128946.8671875,
+                  "bandwidthPerSec": 11192638464,
+                  "loss": 2.7030606269836426,
+                  "step": 48933
+                }
+              },
+              {
+                "ordering": "1759613364:642:853:000",
+                "metadata": {
+                  "tokensPerSec": 129278.828125,
+                  "bandwidthPerSec": 11008391168,
+                  "loss": 2.7231650352478027,
+                  "step": 48930
+                }
+              },
+              {
+                "ordering": "1759613364:642:808:000",
+                "metadata": {
+                  "tokensPerSec": 129880.3828125,
+                  "bandwidthPerSec": 10856582144,
+                  "loss": 2.685965061187744,
+                  "step": 48929
+                }
+              },
+              {
+                "ordering": "1759613364:642:777:000",
+                "metadata": {
+                  "tokensPerSec": 130035.453125,
+                  "bandwidthPerSec": 12568832000,
+                  "loss": 2.6802308559417725,
+                  "step": 48928
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 2216.8378200531006,
               "data": [
                 [
-                  0.010137984800925981,
+                  0.00037546712062441756,
                   {
-                    "ordering": "1759612465:325:753:000",
+                    "ordering": "1759612465:290:935:000",
                     "metadata": {
-                      "tokensPerSec": 127801.015625,
-                      "bandwidthPerSec": 13130864640,
-                      "loss": 2.6517908573150635,
-                      "step": 48704
+                      "tokensPerSec": 127755.53125,
+                      "bandwidthPerSec": 10204455936,
+                      "loss": 2.6261701583862305,
+                      "step": 48060
                     }
                   }
                 ]
@@ -878,27 +1740,63 @@
           "9XuNHmrzbonEq9Lo6ixhkyrqdCnHcxkri6L7NaRz1eNm": {
             "lastFew": [
               {
-                "ordering": "1759612484:608:992:000",
+                "ordering": "1759613376:846:998:000",
                 "metadata": {
-                  "tokensPerSec": 129743.046875,
-                  "bandwidthPerSec": 12822306816,
-                  "loss": 2.6820359230041504,
-                  "step": 48879
+                  "tokensPerSec": 129188.875,
+                  "bandwidthPerSec": 10176694272,
+                  "loss": 2.7077224254608154,
+                  "step": 48934
+                }
+              },
+              {
+                "ordering": "1759613364:642:982:000",
+                "metadata": {
+                  "tokensPerSec": 128991.1484375,
+                  "bandwidthPerSec": 10950084608,
+                  "loss": 2.6831789016723633,
+                  "step": 48933
+                }
+              },
+              {
+                "ordering": "1759613364:642:951:000",
+                "metadata": {
+                  "tokensPerSec": 129538.515625,
+                  "bandwidthPerSec": 11757361152,
+                  "loss": 2.7116758823394775,
+                  "step": 48932
+                }
+              },
+              {
+                "ordering": "1759613364:642:891:000",
+                "metadata": {
+                  "tokensPerSec": 129186.3203125,
+                  "bandwidthPerSec": 11399330816,
+                  "loss": 2.659210443496704,
+                  "step": 48931
+                }
+              },
+              {
+                "ordering": "1759613364:642:812:000",
+                "metadata": {
+                  "tokensPerSec": 129886.3828125,
+                  "bandwidthPerSec": 10818568192,
+                  "loss": 2.669330596923828,
+                  "step": 48929
                 }
               }
             ],
             "sampled": {
-              "rate": 86.49755859375,
+              "rate": 985.2612533569336,
               "data": [
                 [
-                  0.010636144354622568,
+                  0.00012913327481389736,
                   {
-                    "ordering": "1759612465:333:288:000",
+                    "ordering": "1759612465:307:558:000",
                     "metadata": {
-                      "tokensPerSec": 128403.5625,
-                      "bandwidthPerSec": 13431671808,
-                      "loss": 2.6509666442871094,
-                      "step": 48863
+                      "tokensPerSec": 128138.265625,
+                      "bandwidthPerSec": 11266787328,
+                      "loss": 2.6279914379119873,
+                      "step": 48350
                     }
                   }
                 ]
@@ -908,48 +1806,120 @@
           "8n7PMZSgvwFhrEUCzKvRnAUveVYf5Hbx2EWKWq5m5Q7f": {
             "lastFew": [
               {
-                "ordering": "1759612484:608:994:000",
+                "ordering": "1759613364:642:949:000",
                 "metadata": {
-                  "tokensPerSec": 129743.921875,
-                  "bandwidthPerSec": 12473050112,
-                  "loss": 2.7461767196655273,
-                  "step": 48879
+                  "tokensPerSec": 129537.125,
+                  "bandwidthPerSec": 11471240192,
+                  "loss": 2.6610445976257324,
+                  "step": 48932
+                }
+              },
+              {
+                "ordering": "1759613364:642:890:000",
+                "metadata": {
+                  "tokensPerSec": 129186.8984375,
+                  "bandwidthPerSec": 11136930816,
+                  "loss": 2.6204121112823486,
+                  "step": 48931
+                }
+              },
+              {
+                "ordering": "1759613364:642:856:000",
+                "metadata": {
+                  "tokensPerSec": 129277.5,
+                  "bandwidthPerSec": 11008329728,
+                  "loss": 2.690751552581787,
+                  "step": 48930
+                }
+              },
+              {
+                "ordering": "1759613364:642:780:000",
+                "metadata": {
+                  "tokensPerSec": 130038.4765625,
+                  "bandwidthPerSec": 12923596800,
+                  "loss": 2.6019527912139893,
+                  "step": 48928
+                }
+              },
+              {
+                "ordering": "1759613364:642:738:000",
+                "metadata": {
+                  "tokensPerSec": 129937.8671875,
+                  "bandwidthPerSec": 12470240256,
+                  "loss": 2.6315252780914307,
+                  "step": 48927
                 }
               }
             ],
             "sampled": {
-              "rate": 985.2612533569336,
-              "data": []
+              "rate": 4987.885095119476,
+              "data": [
+                [
+                  0.00010069840948667697,
+                  {
+                    "ordering": "1759612924:402:994:000",
+                    "metadata": {
+                      "tokensPerSec": 129094.71875,
+                      "bandwidthPerSec": 10701231104,
+                      "loss": 2.673762321472168,
+                      "step": 48906
+                    }
+                  }
+                ]
+              ]
             }
           },
           "4U8AezjFFPNMNkreFyDAVAvSVvAmL6xaXE2haKBJRZfS": {
             "lastFew": [
               {
-                "ordering": "1759612468:679:997:000",
+                "ordering": "1759613376:846:997:000",
                 "metadata": {
-                  "tokensPerSec": 129468.1796875,
-                  "bandwidthPerSec": 13397198848,
-                  "loss": 2.6360816955566406,
-                  "step": 48878
+                  "tokensPerSec": 129172.890625,
+                  "bandwidthPerSec": 10114413568,
+                  "loss": 2.672457218170166,
+                  "step": 48934
+                }
+              },
+              {
+                "ordering": "1759613364:642:981:000",
+                "metadata": {
+                  "tokensPerSec": 128972.4140625,
+                  "bandwidthPerSec": 11387667456,
+                  "loss": 2.663937568664551,
+                  "step": 48933
+                }
+              },
+              {
+                "ordering": "1759613364:642:950:000",
+                "metadata": {
+                  "tokensPerSec": 129523.40625,
+                  "bandwidthPerSec": 11513762816,
+                  "loss": 2.6410539150238037,
+                  "step": 48932
+                }
+              },
+              {
+                "ordering": "1759613364:642:889:000",
+                "metadata": {
+                  "tokensPerSec": 129224.21875,
+                  "bandwidthPerSec": 11701057536,
+                  "loss": 2.645143508911133,
+                  "step": 48931
+                }
+              },
+              {
+                "ordering": "1759613364:642:854:000",
+                "metadata": {
+                  "tokensPerSec": 129277.1875,
+                  "bandwidthPerSec": 11058054144,
+                  "loss": 2.724323034286499,
+                  "step": 48930
                 }
               }
             ],
             "sampled": {
-              "rate": 86.49755859375,
-              "data": [
-                [
-                  0.007206705112408951,
-                  {
-                    "ordering": "1759612465:331:886:000",
-                    "metadata": {
-                      "tokensPerSec": 128912.0078125,
-                      "bandwidthPerSec": 12071905280,
-                      "loss": 2.6622719764709473,
-                      "step": 48834
-                    }
-                  }
-                ]
-              ]
+              "rate": 656.8408355712891,
+              "data": []
             }
           }
         }
@@ -1058,35 +2028,83 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "101344"
+          "nonce": "101413"
         },
-        "accountFetchedOrdering": "1759612465:333:831:000",
-        "accountRequestOrdering": "1759612465:333:831:000",
+        "accountFetchedOrdering": "1759612781:245:000:000",
+        "accountRequestOrdering": "1759613364:642:945:000",
         "witnessesPerUser": {
           "94naSKMjPga3naRDL6joA4k5W36wHPSTaQJjocKaRrq6": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:811:000",
+                "ordering": "1759613364:642:917:000",
                 "metadata": {
-                  "tokensPerSec": 100842.46875,
-                  "bandwidthPerSec": 3669386854400,
-                  "loss": 0.609874963760376,
-                  "step": 1186
+                  "tokensPerSec": 100613.796875,
+                  "bandwidthPerSec": 2086426902528,
+                  "loss": 0.5306331515312195,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:458:000",
+                "metadata": {
+                  "tokensPerSec": 100814.90625,
+                  "bandwidthPerSec": 2354950701056,
+                  "loss": 0.5842006802558899,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759612713:255:662:000",
+                "metadata": {
+                  "tokensPerSec": 100184.9296875,
+                  "bandwidthPerSec": 1879484399616,
+                  "loss": 0.6336084008216858,
+                  "step": 1188
+                }
+              },
+              {
+                "ordering": "1759612465:213:626:000",
+                "metadata": {
+                  "tokensPerSec": 100464.78125,
+                  "bandwidthPerSec": 2514364399616,
+                  "loss": 0.5784478187561035,
+                  "step": 811
+                }
+              },
+              {
+                "ordering": "1759612465:213:298:000",
+                "metadata": {
+                  "tokensPerSec": 100699.96875,
+                  "bandwidthPerSec": 4875861622784,
+                  "loss": 0.5365979671478271,
+                  "step": 810
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
+              "rate": 86.49755859375,
               "data": [
                 [
-                  0.03392871300573996,
+                  0.0074128588122668315,
                   {
-                    "ordering": "1759612465:332:420:000",
+                    "ordering": "1759612465:285:095:000",
                     "metadata": {
-                      "tokensPerSec": 100640.7890625,
-                      "bandwidthPerSec": 2065354457088,
-                      "loss": 0.5201638340950012,
-                      "step": 1181
+                      "tokensPerSec": 100230.609375,
+                      "bandwidthPerSec": 2959543369728,
+                      "loss": 0.6421841979026794,
+                      "step": 1026
+                    }
+                  }
+                ],
+                [
+                  0.00144712669164071,
+                  {
+                    "ordering": "1759612465:210:706:000",
+                    "metadata": {
+                      "tokensPerSec": 100511.9296875,
+                      "bandwidthPerSec": 2346622386176,
+                      "loss": 0.5144767165184021,
+                      "step": 802
                     }
                   }
                 ]
@@ -1096,27 +2114,63 @@
           "EgiDc6jNH4DPmfLw5wztFEhC5RSbxk43RMmGpDCUFuBs": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:819:000",
+                "ordering": "1759613364:642:912:000",
                 "metadata": {
-                  "tokensPerSec": 100841.65625,
-                  "bandwidthPerSec": 3181002096640,
-                  "loss": 0.5580940842628479,
-                  "step": 1186
+                  "tokensPerSec": 100611.140625,
+                  "bandwidthPerSec": 1796035444736,
+                  "loss": 0.5954394340515137,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:452:000",
+                "metadata": {
+                  "tokensPerSec": 100810.1171875,
+                  "bandwidthPerSec": 2293970763776,
+                  "loss": 0.46794983744621277,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759612876:220:977:000",
+                "metadata": {
+                  "tokensPerSec": 100628.0625,
+                  "bandwidthPerSec": 3607301718016,
+                  "loss": 0.6138328909873962,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:212:655:000",
+                "metadata": {
+                  "tokensPerSec": 100410.15625,
+                  "bandwidthPerSec": 3810601205760,
+                  "loss": 0.5573276877403259,
+                  "step": 808
+                }
+              },
+              {
+                "ordering": "1759612465:212:327:000",
+                "metadata": {
+                  "tokensPerSec": 100735.234375,
+                  "bandwidthPerSec": 1795581935616,
+                  "loss": 0.6176621913909912,
+                  "step": 807
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 129.746337890625,
               "data": [
                 [
-                  0.014531321197281732,
+                  0.0027508220339513834,
                   {
-                    "ordering": "1759612465:327:009:000",
+                    "ordering": "1759612465:264:261:000",
                     "metadata": {
-                      "tokensPerSec": 100686.34375,
-                      "bandwidthPerSec": 3812735582208,
-                      "loss": 0.6445705890655518,
-                      "step": 1161
+                      "tokensPerSec": 100379.234375,
+                      "bandwidthPerSec": 2322967822336,
+                      "loss": 0.43955662846565247,
+                      "step": 964
                     }
                   }
                 ]
@@ -1126,27 +2180,63 @@
           "5eKLG5LH1b4QYnFVX6jo9itfgG7iedVz3ghTxfVu9siS": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:813:000",
+                "ordering": "1759613364:642:705:000",
                 "metadata": {
-                  "tokensPerSec": 100846.7890625,
-                  "bandwidthPerSec": 3422961008640,
-                  "loss": 0.5813412070274353,
-                  "step": 1186
+                  "tokensPerSec": 100551.5859375,
+                  "bandwidthPerSec": 4680721104896,
+                  "loss": 0.6428131461143494,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:461:000",
+                "metadata": {
+                  "tokensPerSec": 100813.78125,
+                  "bandwidthPerSec": 2597893177344,
+                  "loss": 0.5744350552558899,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:641:999:000",
+                "metadata": {
+                  "tokensPerSec": 100582.6328125,
+                  "bandwidthPerSec": 3020633931776,
+                  "loss": 0.6445815563201904,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612876:220:970:000",
+                "metadata": {
+                  "tokensPerSec": 100624.171875,
+                  "bandwidthPerSec": 3745642708992,
+                  "loss": 0.49202677607536316,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:960:000",
+                "metadata": {
+                  "tokensPerSec": 100912.2890625,
+                  "bandwidthPerSec": 3715057057792,
+                  "loss": 0.5850048661231995,
+                  "step": 812
                 }
               }
             ],
             "sampled": {
-              "rate": 11.390625,
+              "rate": 57.6650390625,
               "data": [
                 [
-                  0.07444564046671398,
+                  0.016173728384151653,
                   {
-                    "ordering": "1759612465:326:720:000",
+                    "ordering": "1759612465:304:531:000",
                     "metadata": {
-                      "tokensPerSec": 100274.796875,
-                      "bandwidthPerSec": 2291491143680,
-                      "loss": 0.5652890801429749,
-                      "step": 1160
+                      "tokensPerSec": 100030.984375,
+                      "bandwidthPerSec": 4634307461120,
+                      "loss": 0.546898603439331,
+                      "step": 1085
                     }
                   }
                 ]
@@ -1156,27 +2246,63 @@
           "7Y9v38s53TwGwRryQhYLFCPwoWBxT29Y2MzZttkeemhv": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:812:000",
+                "ordering": "1759613364:642:704:000",
                 "metadata": {
-                  "tokensPerSec": 100845.28125,
-                  "bandwidthPerSec": 3239260192768,
-                  "loss": 0.5072997212409973,
-                  "step": 1186
+                  "tokensPerSec": 100546.3046875,
+                  "bandwidthPerSec": 4595163594752,
+                  "loss": 0.5823394656181335,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:251:000",
+                "metadata": {
+                  "tokensPerSec": 100740.5390625,
+                  "bandwidthPerSec": 4270070956032,
+                  "loss": 0.5054640173912048,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759612876:220:966:000",
+                "metadata": {
+                  "tokensPerSec": 100624.4765625,
+                  "bandwidthPerSec": 3655101579264,
+                  "loss": 0.5066832900047302,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:630:000",
+                "metadata": {
+                  "tokensPerSec": 100463.71875,
+                  "bandwidthPerSec": 2601041788928,
+                  "loss": 0.6423364281654358,
+                  "step": 811
+                }
+              },
+              {
+                "ordering": "1759612465:213:301:000",
+                "metadata": {
+                  "tokensPerSec": 100703.265625,
+                  "bandwidthPerSec": 4485581111296,
+                  "loss": 0.48308447003364563,
+                  "step": 810
                 }
               }
             ],
             "sampled": {
-              "rate": 11.390625,
+              "rate": 57.6650390625,
               "data": [
                 [
-                  0.02286027657422718,
+                  0.001936477509913992,
                   {
-                    "ordering": "1759612465:332:709:000",
+                    "ordering": "1759612465:294:651:000",
                     "metadata": {
-                      "tokensPerSec": 101028.734375,
-                      "bandwidthPerSec": 3760650452992,
-                      "loss": 0.6003097891807556,
-                      "step": 1182
+                      "tokensPerSec": 101132.2265625,
+                      "bandwidthPerSec": 2667166564352,
+                      "loss": 0.4910363554954529,
+                      "step": 1055
                     }
                   }
                 ]
@@ -1186,29 +2312,126 @@
           "B3m2y2LZKARzjQcgiUtXY1qJQGqDcLRskRKJPrfVBEdc": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:810:000",
+                "ordering": "1759613364:642:457:000",
                 "metadata": {
-                  "tokensPerSec": 100846.171875,
-                  "bandwidthPerSec": 3490798632960,
-                  "loss": 0.41973331570625305,
-                  "step": 1186
+                  "tokensPerSec": 100813.765625,
+                  "bandwidthPerSec": 2596038770688,
+                  "loss": 0.4882684350013733,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:641:997:000",
+                "metadata": {
+                  "tokensPerSec": 100583.3203125,
+                  "bandwidthPerSec": 2796779208704,
+                  "loss": 0.6875582337379456,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612713:255:927:000",
+                "metadata": {
+                  "tokensPerSec": 100707.453125,
+                  "bandwidthPerSec": 4618489167872,
+                  "loss": 0.6196913719177246,
+                  "step": 1189
+                }
+              },
+              {
+                "ordering": "1759612465:213:296:000",
+                "metadata": {
+                  "tokensPerSec": 100708.3125,
+                  "bandwidthPerSec": 5031188758528,
+                  "loss": 0.5108673572540283,
+                  "step": 810
+                }
+              },
+              {
+                "ordering": "1759612465:212:949:000",
+                "metadata": {
+                  "tokensPerSec": 100240.890625,
+                  "bandwidthPerSec": 2456741478400,
+                  "loss": 0.4909200072288513,
+                  "step": 809
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
-              "data": []
+              "rate": 57.6650390625,
+              "data": [
+                [
+                  0.01358195081513891,
+                  {
+                    "ordering": "1759613364:641:997:000",
+                    "metadata": {
+                      "tokensPerSec": 100583.3203125,
+                      "bandwidthPerSec": 2796779208704,
+                      "loss": 0.6875582337379456,
+                      "step": 1192
+                    }
+                  }
+                ],
+                [
+                  0.01610359493065805,
+                  {
+                    "ordering": "1759612465:231:433:000",
+                    "metadata": {
+                      "tokensPerSec": 100982.828125,
+                      "bandwidthPerSec": 4235457462272,
+                      "loss": 0.4324379563331604,
+                      "step": 865
+                    }
+                  }
+                ]
+              ]
             }
           },
           "AzdqAy5QJTcyxGRvp7Pfoz5cUMjrNYG3jASTMoYEZWo4": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:814:000",
+                "ordering": "1759613364:642:920:000",
                 "metadata": {
-                  "tokensPerSec": 100844.8515625,
-                  "bandwidthPerSec": 3218433638400,
-                  "loss": 0.5182761549949646,
-                  "step": 1186
+                  "tokensPerSec": 100612.6015625,
+                  "bandwidthPerSec": 1793030094848,
+                  "loss": 0.5035780072212219,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:253:000",
+                "metadata": {
+                  "tokensPerSec": 100735.6796875,
+                  "bandwidthPerSec": 3798117122048,
+                  "loss": 0.5494344234466553,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759612876:220:971:000",
+                "metadata": {
+                  "tokensPerSec": 100624.4296875,
+                  "bandwidthPerSec": 3682630893568,
+                  "loss": 0.5007287859916687,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:963:000",
+                "metadata": {
+                  "tokensPerSec": 100912.296875,
+                  "bandwidthPerSec": 3418684653568,
+                  "loss": 0.5792178511619568,
+                  "step": 812
+                }
+              },
+              {
+                "ordering": "1759612465:212:647:000",
+                "metadata": {
+                  "tokensPerSec": 100409.421875,
+                  "bandwidthPerSec": 4053167767552,
+                  "loss": 0.5973460674285889,
+                  "step": 808
                 }
               }
             ],
@@ -1233,27 +2456,63 @@
           "EiFSuveduyyF6sf7Z27gBLLKXQBz6S6qq466ALcZQT23": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:817:000",
+                "ordering": "1759613364:642:245:000",
                 "metadata": {
-                  "tokensPerSec": 100842.4140625,
-                  "bandwidthPerSec": 3614596923392,
-                  "loss": 0.6200738549232483,
-                  "step": 1186
+                  "tokensPerSec": 100739.84375,
+                  "bandwidthPerSec": 3874079637504,
+                  "loss": 0.5949273705482483,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759613364:642:002:000",
+                "metadata": {
+                  "tokensPerSec": 100584.125,
+                  "bandwidthPerSec": 2682301710336,
+                  "loss": 0.6268152594566345,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612876:220:974:000",
+                "metadata": {
+                  "tokensPerSec": 100624.484375,
+                  "bandwidthPerSec": 3811034005504,
+                  "loss": 0.5723124146461487,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:619:000",
+                "metadata": {
+                  "tokensPerSec": 100461.109375,
+                  "bandwidthPerSec": 2684052307968,
+                  "loss": 0.5872415900230408,
+                  "step": 811
+                }
+              },
+              {
+                "ordering": "1759612465:213:290:000",
+                "metadata": {
+                  "tokensPerSec": 100702.640625,
+                  "bandwidthPerSec": 4460070830080,
+                  "loss": 0.6453688740730286,
+                  "step": 810
                 }
               }
             ],
             "sampled": {
-              "rate": 17.0859375,
+              "rate": 437.8938903808594,
               "data": [
                 [
-                  0.020712378482010463,
+                  0.0001953262578118231,
                   {
-                    "ordering": "1759612465:331:870:000",
+                    "ordering": "1759612465:320:991:000",
                     "metadata": {
-                      "tokensPerSec": 101252.4609375,
-                      "bandwidthPerSec": 3644346073088,
-                      "loss": 0.6198906898498535,
-                      "step": 1179
+                      "tokensPerSec": 100513.5390625,
+                      "bandwidthPerSec": 2284365021184,
+                      "loss": 0.5539130568504333,
+                      "step": 1139
                     }
                   }
                 ]
@@ -1263,27 +2522,63 @@
           "CqX3FUm4QNc1GLLXdL8NMwda8B4kjKAfFcvgjdGTb71o": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:524:000",
+                "ordering": "1759613364:642:916:000",
                 "metadata": {
-                  "tokensPerSec": 100867.9453125,
-                  "bandwidthPerSec": 2932600209408,
-                  "loss": 0.5955175757408142,
-                  "step": 1185
+                  "tokensPerSec": 100611.1328125,
+                  "bandwidthPerSec": 1802943463424,
+                  "loss": 0.4574994444847107,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:701:000",
+                "metadata": {
+                  "tokensPerSec": 100543.3359375,
+                  "bandwidthPerSec": 4084337213440,
+                  "loss": 0.5882001519203186,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:250:000",
+                "metadata": {
+                  "tokensPerSec": 100739.859375,
+                  "bandwidthPerSec": 3670081011712,
+                  "loss": 0.6024126410484314,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759613364:641:996:000",
+                "metadata": {
+                  "tokensPerSec": 100583.953125,
+                  "bandwidthPerSec": 2862847623168,
+                  "loss": 0.3878752887248993,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612713:255:928:000",
+                "metadata": {
+                  "tokensPerSec": 100707.0625,
+                  "bandwidthPerSec": 5399251517440,
+                  "loss": 0.542227566242218,
+                  "step": 1189
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
+              "rate": 194.6195068359375,
               "data": [
                 [
-                  0.0054336160571752945,
+                  0.002966782643928134,
                   {
-                    "ordering": "1759612465:330:789:000",
+                    "ordering": "1759612465:229:077:000",
                     "metadata": {
-                      "tokensPerSec": 101325.5703125,
-                      "bandwidthPerSec": 4506768113664,
-                      "loss": 0.5764420628547668,
-                      "step": 1175
+                      "tokensPerSec": 100854.9921875,
+                      "bandwidthPerSec": 4418136178688,
+                      "loss": 0.5337076783180237,
+                      "step": 858
                     }
                   }
                 ]
@@ -1293,44 +2588,129 @@
           "GGTQCxzRQpCiShk91q7Pzgpy4mmEDsqRRt6YRq1D2sGW": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:809:000",
+                "ordering": "1759613364:642:456:000",
                 "metadata": {
-                  "tokensPerSec": 100843.2578125,
-                  "bandwidthPerSec": 3600251617280,
-                  "loss": 0.559124231338501,
-                  "step": 1186
+                  "tokensPerSec": 100814.921875,
+                  "bandwidthPerSec": 2518356066304,
+                  "loss": 0.5455489754676819,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:641:994:000",
+                "metadata": {
+                  "tokensPerSec": 100585.125,
+                  "bandwidthPerSec": 2781806329856,
+                  "loss": 0.5396639704704285,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612713:255:926:000",
+                "metadata": {
+                  "tokensPerSec": 100710.2578125,
+                  "bandwidthPerSec": 4426598187008,
+                  "loss": 0.48288339376449585,
+                  "step": 1189
+                }
+              },
+              {
+                "ordering": "1759612465:213:957:000",
+                "metadata": {
+                  "tokensPerSec": 100914.546875,
+                  "bandwidthPerSec": 3917901725696,
+                  "loss": 0.5279619693756104,
+                  "step": 812
+                }
+              },
+              {
+                "ordering": "1759612465:213:624:000",
+                "metadata": {
+                  "tokensPerSec": 100467.2265625,
+                  "bandwidthPerSec": 2817976434688,
+                  "loss": 0.44040876626968384,
+                  "step": 811
                 }
               }
             ],
             "sampled": {
-              "rate": 17.0859375,
-              "data": []
+              "rate": 57.6650390625,
+              "data": [
+                [
+                  0.010557804020919548,
+                  {
+                    "ordering": "1759612465:216:948:000",
+                    "metadata": {
+                      "tokensPerSec": 99772.3671875,
+                      "bandwidthPerSec": 2469927059456,
+                      "loss": 0.5479293465614319,
+                      "step": 821
+                    }
+                  }
+                ]
+              ]
             }
           },
           "Fosi72YsJYbfvpuhygcEtXjCBEajdNJon6n7Ztzb1VAY": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:818:000",
+                "ordering": "1759613364:642:696:000",
                 "metadata": {
-                  "tokensPerSec": 100844.90625,
-                  "bandwidthPerSec": 3343281291264,
-                  "loss": 0.5802307724952698,
-                  "step": 1186
+                  "tokensPerSec": 100545.6640625,
+                  "bandwidthPerSec": 5081602195456,
+                  "loss": 0.5780687928199768,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:247:000",
+                "metadata": {
+                  "tokensPerSec": 100740.0078125,
+                  "bandwidthPerSec": 4211302989824,
+                  "loss": 0.388590544462204,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759612876:220:975:000",
+                "metadata": {
+                  "tokensPerSec": 100621.375,
+                  "bandwidthPerSec": 4018372608000,
+                  "loss": 0.5827279686927795,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:621:000",
+                "metadata": {
+                  "tokensPerSec": 100460.3359375,
+                  "bandwidthPerSec": 2743938056192,
+                  "loss": 0.5495057106018066,
+                  "step": 811
+                }
+              },
+              {
+                "ordering": "1759612465:212:654:000",
+                "metadata": {
+                  "tokensPerSec": 100409.515625,
+                  "bandwidthPerSec": 3694891368448,
+                  "loss": 0.6535535454750061,
+                  "step": 808
                 }
               }
             ],
             "sampled": {
-              "rate": 7.59375,
+              "rate": 86.49755859375,
               "data": [
                 [
-                  0.08750983837580817,
+                  0.005961554144580106,
                   {
-                    "ordering": "1759612465:328:365:000",
+                    "ordering": "1759612465:301:498:000",
                     "metadata": {
-                      "tokensPerSec": 101049.0703125,
-                      "bandwidthPerSec": 2886835372032,
-                      "loss": 0.595499575138092,
-                      "step": 1166
+                      "tokensPerSec": 100445.375,
+                      "bandwidthPerSec": 2360446025728,
+                      "loss": 0.47955676913261414,
+                      "step": 1076
                     }
                   }
                 ]
@@ -1340,57 +2720,116 @@
           "GMGE9gcwkeJAmG3H35rDt6Qq6HKa3JfSmknR8r2tHWvg": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:816:000",
+                "ordering": "1759613364:642:001:000",
                 "metadata": {
-                  "tokensPerSec": 100846.828125,
-                  "bandwidthPerSec": 3833533300736,
-                  "loss": 0.5750378966331482,
-                  "step": 1186
+                  "tokensPerSec": 100579.8984375,
+                  "bandwidthPerSec": 2927961309184,
+                  "loss": 0.56807941198349,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612779:003:992:000",
+                "metadata": {
+                  "tokensPerSec": 100575.578125,
+                  "bandwidthPerSec": 2825156296704,
+                  "loss": 0.45248275995254517,
+                  "step": 1190
+                }
+              },
+              {
+                "ordering": "1759612465:213:951:000",
+                "metadata": {
+                  "tokensPerSec": 100912.2734375,
+                  "bandwidthPerSec": 3628062736384,
+                  "loss": 0.5201694965362549,
+                  "step": 812
+                }
+              },
+              {
+                "ordering": "1759612465:212:943:000",
+                "metadata": {
+                  "tokensPerSec": 100240.9375,
+                  "bandwidthPerSec": 2272265764864,
+                  "loss": 0.5140469074249268,
+                  "step": 809
+                }
+              },
+              {
+                "ordering": "1759612465:212:651:000",
+                "metadata": {
+                  "tokensPerSec": 100408.5234375,
+                  "bandwidthPerSec": 4307893878784,
+                  "loss": 0.5930156111717224,
+                  "step": 808
                 }
               }
             ],
             "sampled": {
-              "rate": 7.59375,
-              "data": [
-                [
-                  0.016614944993507796,
-                  {
-                    "ordering": "1759612465:332:702:000",
-                    "metadata": {
-                      "tokensPerSec": 101034.09375,
-                      "bandwidthPerSec": 4167793639424,
-                      "loss": 0.4624025225639343,
-                      "step": 1182
-                    }
-                  }
-                ]
-              ]
+              "rate": 129.746337890625,
+              "data": []
             }
           },
           "811fHhJ2quwrbHu4e35WDnPhBJELoPmPkDxd8ppFqonT": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:820:000",
+                "ordering": "1759613364:642:910:000",
                 "metadata": {
-                  "tokensPerSec": 100844.7890625,
-                  "bandwidthPerSec": 3199284281344,
-                  "loss": 0.604760468006134,
-                  "step": 1186
+                  "tokensPerSec": 100611.125,
+                  "bandwidthPerSec": 1907843006464,
+                  "loss": 0.535707414150238,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:246:000",
+                "metadata": {
+                  "tokensPerSec": 100739.34375,
+                  "bandwidthPerSec": 3877666553856,
+                  "loss": 0.521199643611908,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759612779:003:994:000",
+                "metadata": {
+                  "tokensPerSec": 100568.2734375,
+                  "bandwidthPerSec": 2661142233088,
+                  "loss": 0.5553104281425476,
+                  "step": 1190
+                }
+              },
+              {
+                "ordering": "1759612465:213:952:000",
+                "metadata": {
+                  "tokensPerSec": 100913.140625,
+                  "bandwidthPerSec": 4026037698560,
+                  "loss": 0.6422989368438721,
+                  "step": 812
+                }
+              },
+              {
+                "ordering": "1759612465:213:620:000",
+                "metadata": {
+                  "tokensPerSec": 100463.359375,
+                  "bandwidthPerSec": 2767674933248,
+                  "loss": 0.6767445206642151,
+                  "step": 811
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 437.8938903808594,
               "data": [
                 [
-                  0.01868302668399946,
+                  0.00033079587108186814,
                   {
-                    "ordering": "1759612465:328:079:000",
+                    "ordering": "1759612465:303:517:000",
                     "metadata": {
-                      "tokensPerSec": 100890.671875,
-                      "bandwidthPerSec": 3581995646976,
-                      "loss": 0.509896993637085,
-                      "step": 1165
+                      "tokensPerSec": 99959.375,
+                      "bandwidthPerSec": 2098060197888,
+                      "loss": 0.4545050263404846,
+                      "step": 1082
                     }
                   }
                 ]
@@ -1400,17 +2839,53 @@
           "Dq7NM62DUQaoPzvPkK74vKwqsfV3jgnfaz4KBUAjfbm7": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:258:000",
+                "ordering": "1759613364:642:703:000",
                 "metadata": {
-                  "tokensPerSec": 101150.8828125,
-                  "bandwidthPerSec": 3905879801856,
-                  "loss": 0.5192642211914062,
-                  "step": 1184
+                  "tokensPerSec": 100550.4140625,
+                  "bandwidthPerSec": 4718666973184,
+                  "loss": 0.5826353430747986,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759612876:220:964:000",
+                "metadata": {
+                  "tokensPerSec": 100624.4765625,
+                  "bandwidthPerSec": 3581528768512,
+                  "loss": 0.638615071773529,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:625:000",
+                "metadata": {
+                  "tokensPerSec": 100463.875,
+                  "bandwidthPerSec": 2648119443456,
+                  "loss": 0.509498655796051,
+                  "step": 811
+                }
+              },
+              {
+                "ordering": "1759612465:213:297:000",
+                "metadata": {
+                  "tokensPerSec": 100705.8359375,
+                  "bandwidthPerSec": 4555047698432,
+                  "loss": 0.503290593624115,
+                  "step": 810
+                }
+              },
+              {
+                "ordering": "1759612465:212:661:000",
+                "metadata": {
+                  "tokensPerSec": 100417.421875,
+                  "bandwidthPerSec": 3758790803456,
+                  "loss": 0.6642717719078064,
+                  "step": 808
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
+              "rate": 57.6650390625,
               "data": [
                 [
                   0.005214763940004863,
@@ -1430,27 +2905,63 @@
           "82cHkfiWih9ZnAsCDNMxBkGistk1rjSWEeFxJLGEP7kL": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:815:000",
+                "ordering": "1759613364:642:921:000",
                 "metadata": {
-                  "tokensPerSec": 100846.046875,
-                  "bandwidthPerSec": 3229519708160,
-                  "loss": 0.6240995526313782,
-                  "step": 1186
+                  "tokensPerSec": 100611.078125,
+                  "bandwidthPerSec": 1878522593280,
+                  "loss": 0.5587716698646545,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:462:000",
+                "metadata": {
+                  "tokensPerSec": 100812.6796875,
+                  "bandwidthPerSec": 2470763036672,
+                  "loss": 0.6275463104248047,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:642:255:000",
+                "metadata": {
+                  "tokensPerSec": 100742.359375,
+                  "bandwidthPerSec": 4012305547264,
+                  "loss": 0.440732479095459,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759612876:220:973:000",
+                "metadata": {
+                  "tokensPerSec": 100623.3125,
+                  "bandwidthPerSec": 3856635265024,
+                  "loss": 0.5158533453941345,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:964:000",
+                "metadata": {
+                  "tokensPerSec": 100913.15625,
+                  "bandwidthPerSec": 3768049991680,
+                  "loss": 0.49462053179740906,
+                  "step": 812
                 }
               }
             ],
             "sampled": {
-              "rate": 5.0625,
+              "rate": 194.6195068359375,
               "data": [
                 [
-                  0.06464828337080064,
+                  0.004844005353326075,
                   {
-                    "ordering": "1759612465:328:076:000",
+                    "ordering": "1759612465:244:084:000",
                     "metadata": {
-                      "tokensPerSec": 100890.609375,
-                      "bandwidthPerSec": 3424897204224,
-                      "loss": 0.5673467516899109,
-                      "step": 1165
+                      "tokensPerSec": 100591.7421875,
+                      "bandwidthPerSec": 3167692783616,
+                      "loss": 0.6003007888793945,
+                      "step": 903
                     }
                   }
                 ]
@@ -1460,57 +2971,128 @@
           "DEqQEnogPSTSXHQ4aJPPRRqTdiih3voDFz1K6g6bGCic": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:530:000",
+                "ordering": "1759613364:642:451:000",
                 "metadata": {
-                  "tokensPerSec": 100867.9296875,
-                  "bandwidthPerSec": 2373866487808,
-                  "loss": 0.6053542494773865,
-                  "step": 1185
+                  "tokensPerSec": 100819.5,
+                  "bandwidthPerSec": 2736519643136,
+                  "loss": 0.5720576643943787,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:642:003:000",
+                "metadata": {
+                  "tokensPerSec": 100584.125,
+                  "bandwidthPerSec": 2902420357120,
+                  "loss": 0.4967947006225586,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612713:255:935:000",
+                "metadata": {
+                  "tokensPerSec": 100706.65625,
+                  "bandwidthPerSec": 4657245061120,
+                  "loss": 0.6171049475669861,
+                  "step": 1189
+                }
+              },
+              {
+                "ordering": "1759612465:213:953:000",
+                "metadata": {
+                  "tokensPerSec": 100917.4296875,
+                  "bandwidthPerSec": 3696491757568,
+                  "loss": 0.6361750960350037,
+                  "step": 812
+                }
+              },
+              {
+                "ordering": "1759612465:212:944:000",
+                "metadata": {
+                  "tokensPerSec": 100240.8515625,
+                  "bandwidthPerSec": 2153668411392,
+                  "loss": 0.612586498260498,
+                  "step": 809
                 }
               }
             ],
             "sampled": {
-              "rate": 11.390625,
-              "data": [
-                [
-                  0.04636632909574745,
-                  {
-                    "ordering": "1759612465:327:238:000",
-                    "metadata": {
-                      "tokensPerSec": 100669.2890625,
-                      "bandwidthPerSec": 2518110175232,
-                      "loss": 0.5899806618690491,
-                      "step": 1162
-                    }
-                  }
-                ]
-              ]
+              "rate": 129.746337890625,
+              "data": []
             }
           },
           "5RJdEcSRcXcgzWtJx3r8JDxq5HPciUctEiQ4yn7ptL3d": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:527:000",
+                "ordering": "1759613364:642:918:000",
                 "metadata": {
-                  "tokensPerSec": 100861.328125,
-                  "bandwidthPerSec": 2564833411072,
-                  "loss": 0.6275346279144287,
-                  "step": 1185
+                  "tokensPerSec": 100612.5859375,
+                  "bandwidthPerSec": 1844685963264,
+                  "loss": 0.4692244827747345,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:460:000",
+                "metadata": {
+                  "tokensPerSec": 100814.953125,
+                  "bandwidthPerSec": 2448842031104,
+                  "loss": 0.6197695136070251,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:642:252:000",
+                "metadata": {
+                  "tokensPerSec": 100740.390625,
+                  "bandwidthPerSec": 4633194397696,
+                  "loss": 0.5644224286079407,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759613364:641:998:000",
+                "metadata": {
+                  "tokensPerSec": 100581.3046875,
+                  "bandwidthPerSec": 2738160926720,
+                  "loss": 0.4638482928276062,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612876:220:968:000",
+                "metadata": {
+                  "tokensPerSec": 100621.40625,
+                  "bandwidthPerSec": 3784463613952,
+                  "loss": 0.5161214470863342,
+                  "step": 1191
                 }
               }
             ],
             "sampled": {
-              "rate": 11.390625,
+              "rate": 194.6195068359375,
               "data": [
                 [
-                  0.02540509592615492,
+                  0.003116420249017926,
                   {
-                    "ordering": "1759612465:327:530:000",
+                    "ordering": "1759612465:319:955:000",
                     "metadata": {
-                      "tokensPerSec": 100798.1171875,
-                      "bandwidthPerSec": 5050998980608,
-                      "loss": 0.5732207298278809,
-                      "step": 1163
+                      "tokensPerSec": 100707.546875,
+                      "bandwidthPerSec": 2381452148736,
+                      "loss": 0.6135504245758057,
+                      "step": 1135
+                    }
+                  }
+                ],
+                [
+                  0.0003650953471465712,
+                  {
+                    "ordering": "1759612465:209:729:000",
+                    "metadata": {
+                      "tokensPerSec": 100971.890625,
+                      "bandwidthPerSec": 3094692757504,
+                      "loss": 0.6364945769309998,
+                      "step": 799
                     }
                   }
                 ]
@@ -1520,27 +3102,63 @@
           "E8tvsgFAUGseQS7nTCD9jRUfCV3PScPRdvGSmcJXak9G": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:522:000",
+                "ordering": "1759613364:642:913:000",
                 "metadata": {
-                  "tokensPerSec": 100866.984375,
-                  "bandwidthPerSec": 2352098574336,
-                  "loss": 0.6149582266807556,
-                  "step": 1185
+                  "tokensPerSec": 100611.09375,
+                  "bandwidthPerSec": 1836718882816,
+                  "loss": 0.5590553879737854,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:699:000",
+                "metadata": {
+                  "tokensPerSec": 100550.4375,
+                  "bandwidthPerSec": 4233798877184,
+                  "loss": 0.6118354797363281,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:455:000",
+                "metadata": {
+                  "tokensPerSec": 100812.3203125,
+                  "bandwidthPerSec": 2276960239616,
+                  "loss": 0.6287359595298767,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:641:993:000",
+                "metadata": {
+                  "tokensPerSec": 100584.046875,
+                  "bandwidthPerSec": 2588396748800,
+                  "loss": 0.6146474480628967,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612713:255:925:000",
+                "metadata": {
+                  "tokensPerSec": 100698.359375,
+                  "bandwidthPerSec": 4354175401984,
+                  "loss": 0.5552302002906799,
+                  "step": 1189
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 129.746337890625,
               "data": [
                 [
-                  0.009547078506467965,
+                  0.0024710640012453045,
                   {
-                    "ordering": "1759612465:326:714:000",
+                    "ordering": "1759612465:255:388:000",
                     "metadata": {
-                      "tokensPerSec": 100277.25,
-                      "bandwidthPerSec": 2206687297536,
-                      "loss": 0.6250147223472595,
-                      "step": 1160
+                      "tokensPerSec": 101021.4140625,
+                      "bandwidthPerSec": 2916886249472,
+                      "loss": 0.5425190329551697,
+                      "step": 937
                     }
                   }
                 ]
@@ -1550,27 +3168,63 @@
           "55P42fCb5RXN56zC2RSqcdyXFXfmScHWRx8CumaiSBuy": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:529:000",
+                "ordering": "1759613364:642:695:000",
                 "metadata": {
-                  "tokensPerSec": 100861.3203125,
-                  "bandwidthPerSec": 2886174507008,
-                  "loss": 0.6044451594352722,
-                  "step": 1185
+                  "tokensPerSec": 100551.59375,
+                  "bandwidthPerSec": 3875914907648,
+                  "loss": 0.5642161965370178,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:256:000",
+                "metadata": {
+                  "tokensPerSec": 100740.4140625,
+                  "bandwidthPerSec": 3761270423552,
+                  "loss": 0.6288689970970154,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759613364:642:000:000",
+                "metadata": {
+                  "tokensPerSec": 100583.296875,
+                  "bandwidthPerSec": 2935732043776,
+                  "loss": 0.5762097835540771,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612779:003:989:000",
+                "metadata": {
+                  "tokensPerSec": 100570.3046875,
+                  "bandwidthPerSec": 2610131632128,
+                  "loss": 0.5451945662498474,
+                  "step": 1190
+                }
+              },
+              {
+                "ordering": "1759612465:213:287:000",
+                "metadata": {
+                  "tokensPerSec": 100709.828125,
+                  "bandwidthPerSec": 4897793638400,
+                  "loss": 0.5417675375938416,
+                  "step": 810
                 }
               }
             ],
             "sampled": {
-              "rate": 7.59375,
+              "rate": 985.2612533569336,
               "data": [
                 [
-                  0.037561831386947464,
+                  0.0003663490740244413,
                   {
-                    "ordering": "1759612465:328:363:000",
+                    "ordering": "1759612465:281:827:000",
                     "metadata": {
-                      "tokensPerSec": 101050.9921875,
-                      "bandwidthPerSec": 2893351223296,
-                      "loss": 0.42760515213012695,
-                      "step": 1166
+                      "tokensPerSec": 113932.2265625,
+                      "bandwidthPerSec": 3209033940992,
+                      "loss": 0.5613380074501038,
+                      "step": 1016
                     }
                   }
                 ]
@@ -1580,27 +3234,63 @@
           "3XLe6RCfDT9tjsDoSY7956KsEQ6VoLfZyLsdD2BdSm5B": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:251:000",
+                "ordering": "1759613364:642:911:000",
                 "metadata": {
-                  "tokensPerSec": 101150.828125,
-                  "bandwidthPerSec": 3847296909312,
-                  "loss": 0.4989633858203888,
-                  "step": 1184
+                  "tokensPerSec": 100611.078125,
+                  "bandwidthPerSec": 1872981262336,
+                  "loss": 0.5773733258247375,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:697:000",
+                "metadata": {
+                  "tokensPerSec": 100546.0703125,
+                  "bandwidthPerSec": 4463255879680,
+                  "loss": 0.6228026747703552,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:453:000",
+                "metadata": {
+                  "tokensPerSec": 100812.28125,
+                  "bandwidthPerSec": 2235511865344,
+                  "loss": 0.5505061745643616,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:642:248:000",
+                "metadata": {
+                  "tokensPerSec": 100741.890625,
+                  "bandwidthPerSec": 3901360963584,
+                  "loss": 0.643196165561676,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759612876:220:976:000",
+                "metadata": {
+                  "tokensPerSec": 100622.109375,
+                  "bandwidthPerSec": 3826557386752,
+                  "loss": 0.5860595703125,
+                  "step": 1191
                 }
               }
             ],
             "sampled": {
-              "rate": 17.0859375,
+              "rate": 291.92926025390625,
               "data": [
                 [
-                  0.032345192031544956,
+                  0.0024830676522125117,
                   {
-                    "ordering": "1759612465:328:913:000",
+                    "ordering": "1759612465:294:656:000",
                     "metadata": {
-                      "tokensPerSec": 100866.078125,
-                      "bandwidthPerSec": 3878703595520,
-                      "loss": 0.5867922306060791,
-                      "step": 1168
+                      "tokensPerSec": 101133.78125,
+                      "bandwidthPerSec": 2375631765504,
+                      "loss": 0.5707973837852478,
+                      "step": 1055
                     }
                   }
                 ]
@@ -1610,27 +3300,63 @@
           "DZv6So6xVhMPpFMA38GWLuBFUfYVCaWt43V5zjakkGfN": {
             "lastFew": [
               {
-                "ordering": "1759612465:333:254:000",
+                "ordering": "1759613364:642:915:000",
                 "metadata": {
-                  "tokensPerSec": 101155.2109375,
-                  "bandwidthPerSec": 4656708190208,
-                  "loss": 0.574913501739502,
-                  "step": 1184
+                  "tokensPerSec": 100612.65625,
+                  "bandwidthPerSec": 1823945261056,
+                  "loss": 0.5609773993492126,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:700:000",
+                "metadata": {
+                  "tokensPerSec": 100551.6875,
+                  "bandwidthPerSec": 4165247959040,
+                  "loss": 0.6347689032554626,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:641:995:000",
+                "metadata": {
+                  "tokensPerSec": 100583.6640625,
+                  "bandwidthPerSec": 2921748234240,
+                  "loss": 0.5424556136131287,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612779:003:983:000",
+                "metadata": {
+                  "tokensPerSec": 100573.140625,
+                  "bandwidthPerSec": 2588386787328,
+                  "loss": 0.5587028861045837,
+                  "step": 1190
+                }
+              },
+              {
+                "ordering": "1759612465:213:958:000",
+                "metadata": {
+                  "tokensPerSec": 100912.328125,
+                  "bandwidthPerSec": 3834967490560,
+                  "loss": 0.5756897926330566,
+                  "step": 812
                 }
               }
             ],
             "sampled": {
-              "rate": 11.390625,
+              "rate": 194.6195068359375,
               "data": [
                 [
-                  0.04772747390422727,
+                  0.002446182962685395,
                   {
-                    "ordering": "1759612465:330:011:000",
+                    "ordering": "1759612465:258:976:000",
                     "metadata": {
-                      "tokensPerSec": 101387.4921875,
-                      "bandwidthPerSec": 3238922813440,
-                      "loss": 0.5778971314430237,
-                      "step": 1172
+                      "tokensPerSec": 101728.1796875,
+                      "bandwidthPerSec": 3587063676928,
+                      "loss": 0.4572720527648926,
+                      "step": 948
                     }
                   }
                 ]
@@ -1640,17 +3366,53 @@
           "Bifs5ysYHm4Wye4qa3jrMMMThTBvbQqxK9mEnSCmPmiQ": {
             "lastFew": [
               {
-                "ordering": "1759612465:332:712:000",
+                "ordering": "1759613364:642:919:000",
                 "metadata": {
-                  "tokensPerSec": 101028.171875,
-                  "bandwidthPerSec": 5038906277888,
-                  "loss": 0.643059253692627,
-                  "step": 1182
+                  "tokensPerSec": 100611.3359375,
+                  "bandwidthPerSec": 1862997377024,
+                  "loss": 0.5479636192321777,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759613364:642:693:000",
+                "metadata": {
+                  "tokensPerSec": 100552.6796875,
+                  "bandwidthPerSec": 4802874966016,
+                  "loss": 0.6232598423957825,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:254:000",
+                "metadata": {
+                  "tokensPerSec": 100743.765625,
+                  "bandwidthPerSec": 3507776126976,
+                  "loss": 0.6093902587890625,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759612779:003:987:000",
+                "metadata": {
+                  "tokensPerSec": 100572.3046875,
+                  "bandwidthPerSec": 2770777145344,
+                  "loss": 0.5193026661872864,
+                  "step": 1190
+                }
+              },
+              {
+                "ordering": "1759612465:212:952:000",
+                "metadata": {
+                  "tokensPerSec": 100237.1171875,
+                  "bandwidthPerSec": 2421850898432,
+                  "loss": 0.6821570992469788,
+                  "step": 809
                 }
               }
             ],
             "sampled": {
-              "rate": 7.59375,
+              "rate": 57.6650390625,
               "data": [
                 [
                   0.016243343267150268,
@@ -1670,27 +3432,63 @@
           "HjeRpywSNDgLomF8hBtc2EeqMMDgaUavcrNXy8bMXaUR": {
             "lastFew": [
               {
-                "ordering": "1759612465:332:957:000",
+                "ordering": "1759613364:642:914:000",
                 "metadata": {
-                  "tokensPerSec": 100959.9296875,
-                  "bandwidthPerSec": 2315846680576,
-                  "loss": 0.5277510285377502,
-                  "step": 1183
+                  "tokensPerSec": 100613.171875,
+                  "bandwidthPerSec": 1647324823552,
+                  "loss": 0.6338443160057068,
+                  "step": 1196
+                }
+              },
+              {
+                "ordering": "1759612876:220:979:000",
+                "metadata": {
+                  "tokensPerSec": 100622.5703125,
+                  "bandwidthPerSec": 3829129543680,
+                  "loss": 0.5808742046356201,
+                  "step": 1191
+                }
+              },
+              {
+                "ordering": "1759612465:213:623:000",
+                "metadata": {
+                  "tokensPerSec": 100466.515625,
+                  "bandwidthPerSec": 2593519042560,
+                  "loss": 0.6562790274620056,
+                  "step": 811
+                }
+              },
+              {
+                "ordering": "1759612465:213:293:000",
+                "metadata": {
+                  "tokensPerSec": 100704.796875,
+                  "bandwidthPerSec": 4675248062464,
+                  "loss": 0.512131929397583,
+                  "step": 810
+                }
+              },
+              {
+                "ordering": "1759612465:212:659:000",
+                "metadata": {
+                  "tokensPerSec": 100411.1015625,
+                  "bandwidthPerSec": 4038308921344,
+                  "loss": 0.5766769051551819,
+                  "step": 808
                 }
               }
             ],
             "sampled": {
-              "rate": 11.390625,
+              "rate": 11222.741464018822,
               "data": [
                 [
-                  0.0532648463829648,
+                  0.00007812834593234896,
                   {
-                    "ordering": "1759612465:325:901:000",
+                    "ordering": "1759612465:242:030:000",
                     "metadata": {
-                      "tokensPerSec": 100760.8203125,
-                      "bandwidthPerSec": 2635230347264,
-                      "loss": 0.620365560054779,
-                      "step": 1157
+                      "tokensPerSec": 100453.1875,
+                      "bandwidthPerSec": 2949443223552,
+                      "loss": 0.4430122673511505,
+                      "step": 897
                     }
                   }
                 ]
@@ -1700,27 +3498,63 @@
           "J7XLLRiXs8yv9z7r32HrPhU4H2moJ3GjnCvcZmaBBe3M": {
             "lastFew": [
               {
-                "ordering": "1759612465:332:958:000",
+                "ordering": "1759613364:642:702:000",
                 "metadata": {
-                  "tokensPerSec": 100962.8359375,
-                  "bandwidthPerSec": 2665486221312,
-                  "loss": 0.6106624007225037,
-                  "step": 1183
+                  "tokensPerSec": 100552.5234375,
+                  "bandwidthPerSec": 4528540221440,
+                  "loss": 0.5816063284873962,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:459:000",
+                "metadata": {
+                  "tokensPerSec": 100810.96875,
+                  "bandwidthPerSec": 2538091315200,
+                  "loss": 0.4157485365867615,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759612713:255:401:000",
+                "metadata": {
+                  "tokensPerSec": 100698.6171875,
+                  "bandwidthPerSec": 3465245360128,
+                  "loss": 0.6222996115684509,
+                  "step": 1187
+                }
+              },
+              {
+                "ordering": "1759612465:213:959:000",
+                "metadata": {
+                  "tokensPerSec": 100913.578125,
+                  "bandwidthPerSec": 3668710260736,
+                  "loss": 0.6037291884422302,
+                  "step": 812
+                }
+              },
+              {
+                "ordering": "1759612465:213:627:000",
+                "metadata": {
+                  "tokensPerSec": 100463.2578125,
+                  "bandwidthPerSec": 2646975709184,
+                  "loss": 0.4574727714061737,
+                  "step": 811
                 }
               }
             ],
             "sampled": {
-              "rate": 86.49755859375,
+              "rate": 985.2612533569336,
               "data": [
                 [
-                  0.001189648769550189,
+                  0.0008745545351296347,
                   {
-                    "ordering": "1759612465:325:362:000",
+                    "ordering": "1759612465:215:636:000",
                     "metadata": {
-                      "tokensPerSec": 100940.6015625,
-                      "bandwidthPerSec": 2180044423168,
-                      "loss": 0.6482014060020447,
-                      "step": 1155
+                      "tokensPerSec": 100539.140625,
+                      "bandwidthPerSec": 4896476102656,
+                      "loss": 0.5834736227989197,
+                      "step": 817
                     }
                   }
                 ]
@@ -1730,27 +3564,341 @@
           "FYYqnMfCJTVMiQWX7BN6E7GNzE3gZ2ZvdqoUAtH7QMNL": {
             "lastFew": [
               {
-                "ordering": "1759612465:332:415:000",
+                "ordering": "1759613364:642:698:000",
                 "metadata": {
-                  "tokensPerSec": 100642.734375,
-                  "bandwidthPerSec": 2046865833984,
-                  "loss": 0.5624777674674988,
-                  "step": 1181
+                  "tokensPerSec": 100552.3984375,
+                  "bandwidthPerSec": 4795692220416,
+                  "loss": 0.5863632559776306,
+                  "step": 1195
+                }
+              },
+              {
+                "ordering": "1759613364:642:454:000",
+                "metadata": {
+                  "tokensPerSec": 100811.4375,
+                  "bandwidthPerSec": 2326338469888,
+                  "loss": 0.5890974402427673,
+                  "step": 1194
+                }
+              },
+              {
+                "ordering": "1759613364:642:249:000",
+                "metadata": {
+                  "tokensPerSec": 100740.390625,
+                  "bandwidthPerSec": 4360543141888,
+                  "loss": 0.5151919722557068,
+                  "step": 1193
+                }
+              },
+              {
+                "ordering": "1759613364:641:992:000",
+                "metadata": {
+                  "tokensPerSec": 100584.875,
+                  "bandwidthPerSec": 2756011360256,
+                  "loss": 0.6165302395820618,
+                  "step": 1192
+                }
+              },
+              {
+                "ordering": "1759612876:220:978:000",
+                "metadata": {
+                  "tokensPerSec": 100623.78125,
+                  "bandwidthPerSec": 3771878342656,
+                  "loss": 0.48807647824287415,
+                  "step": 1191
                 }
               }
             ],
             "sampled": {
-              "rate": 5.0625,
+              "rate": 194.6195068359375,
+              "data": []
+            }
+          }
+        }
+      },
+      "AJtYdJctVs6oLeNpTVbappgzjZeN3tKxJygJpKKiWVKi": {
+        "accountState": {
+          "runId": "dm-fwedu-dclm-fpdf",
+          "name": "",
+          "description": "Datamix experiment: 37.5% FineWeb-Edu, 37.5% DCLM-Baseline, 25% FinePDFs",
+          "status": "WaitingForMembers",
+          "epochClients": [
+            {
+              "signer": "Eyv43YWQQdDkeJN2r9fisbFxXaKJRr3fE8EyaHCsLZpR",
+              "state": "Healthy"
+            },
+            {
+              "signer": "TnhPaideFwovnbNjvGue3FNMeNEMyEMUfxYKgC4A6is",
+              "state": "Healthy"
+            },
+            {
+              "signer": "5CHyEJ9t4r1kcssF4UZd7yw3uv2XtxGpum1pXndzAD4t",
+              "state": "Healthy"
+            }
+          ],
+          "nonce": "260246"
+        },
+        "accountFetchedOrdering": "1759612465:318:198:000",
+        "accountRequestOrdering": "1759612465:318:198:000",
+        "witnessesPerUser": {
+          "TnhPaideFwovnbNjvGue3FNMeNEMyEMUfxYKgC4A6is": {
+            "lastFew": [
+              {
+                "ordering": "1759612465:318:102:000",
+                "metadata": {
+                  "tokensPerSec": 91975.5546875,
+                  "bandwidthPerSec": 778334464,
+                  "loss": 2.5646815299987793,
+                  "step": 28355
+                }
+              },
+              {
+                "ordering": "1759612465:213:966:000",
+                "metadata": {
+                  "tokensPerSec": 143088.03125,
+                  "bandwidthPerSec": 11594298368,
+                  "loss": 2.728039503097534,
+                  "step": 26404
+                }
+              },
+              {
+                "ordering": "1759612465:213:912:000",
+                "metadata": {
+                  "tokensPerSec": 143844.65625,
+                  "bandwidthPerSec": 4592022528,
+                  "loss": 2.7033867835998535,
+                  "step": 26403
+                }
+              },
+              {
+                "ordering": "1759612465:213:858:000",
+                "metadata": {
+                  "tokensPerSec": 143981.828125,
+                  "bandwidthPerSec": 12279886848,
+                  "loss": 2.6870856285095215,
+                  "step": 26402
+                }
+              },
+              {
+                "ordering": "1759612465:213:756:000",
+                "metadata": {
+                  "tokensPerSec": 144917.265625,
+                  "bandwidthPerSec": 4395855872,
+                  "loss": 2.612574577331543,
+                  "step": 26400
+                }
+              }
+            ],
+            "sampled": {
+              "rate": 2216.8378200531006,
               "data": [
                 [
-                  0.06749192644323498,
+                  0.00003671632497015409,
                   {
-                    "ordering": "1759612465:331:874:000",
+                    "ordering": "1759612465:263:094:000",
                     "metadata": {
-                      "tokensPerSec": 101244.6953125,
-                      "bandwidthPerSec": 3900229287936,
-                      "loss": 0.5470308661460876,
-                      "step": 1179
+                      "tokensPerSec": 142152.40625,
+                      "bandwidthPerSec": 14934019072,
+                      "loss": 2.7181458473205566,
+                      "step": 27348
+                    }
+                  }
+                ]
+              ]
+            }
+          },
+          "Eyv43YWQQdDkeJN2r9fisbFxXaKJRr3fE8EyaHCsLZpR": {
+            "lastFew": [
+              {
+                "ordering": "1759612465:318:104:000",
+                "metadata": {
+                  "tokensPerSec": 91996.96875,
+                  "bandwidthPerSec": 782216000,
+                  "loss": 2.5256717205047607,
+                  "step": 28355
+                }
+              },
+              {
+                "ordering": "1759612465:213:913:000",
+                "metadata": {
+                  "tokensPerSec": 143890.75,
+                  "bandwidthPerSec": 4572530688,
+                  "loss": 2.4154655933380127,
+                  "step": 26403
+                }
+              },
+              {
+                "ordering": "1759612465:213:859:000",
+                "metadata": {
+                  "tokensPerSec": 143981.78125,
+                  "bandwidthPerSec": 8051815424,
+                  "loss": 2.701052665710449,
+                  "step": 26402
+                }
+              },
+              {
+                "ordering": "1759612465:213:804:000",
+                "metadata": {
+                  "tokensPerSec": 144727.5,
+                  "bandwidthPerSec": 11466541056,
+                  "loss": 2.7182648181915283,
+                  "step": 26401
+                }
+              },
+              {
+                "ordering": "1759612465:213:755:000",
+                "metadata": {
+                  "tokensPerSec": 144914.984375,
+                  "bandwidthPerSec": 4388178944,
+                  "loss": 2.597163438796997,
+                  "step": 26400
+                }
+              }
+            ],
+            "sampled": {
+              "rate": 2216.8378200531006,
+              "data": [
+                [
+                  0.00027249516781058247,
+                  {
+                    "ordering": "1759612465:249:064:000",
+                    "metadata": {
+                      "tokensPerSec": 143675.890625,
+                      "bandwidthPerSec": 4581175296,
+                      "loss": 2.380190372467041,
+                      "step": 27078
+                    }
+                  }
+                ]
+              ]
+            }
+          },
+          "5CHyEJ9t4r1kcssF4UZd7yw3uv2XtxGpum1pXndzAD4t": {
+            "lastFew": [
+              {
+                "ordering": "1759612465:318:103:000",
+                "metadata": {
+                  "tokensPerSec": 91975.625,
+                  "bandwidthPerSec": 778842752,
+                  "loss": 2.5125393867492676,
+                  "step": 28355
+                }
+              },
+              {
+                "ordering": "1759612465:213:968:000",
+                "metadata": {
+                  "tokensPerSec": 143095.46875,
+                  "bandwidthPerSec": 11334903808,
+                  "loss": 2.546144723892212,
+                  "step": 26404
+                }
+              },
+              {
+                "ordering": "1759612465:213:803:000",
+                "metadata": {
+                  "tokensPerSec": 144729.328125,
+                  "bandwidthPerSec": 11268174848,
+                  "loss": 2.6340627670288086,
+                  "step": 26401
+                }
+              },
+              {
+                "ordering": "1759612465:213:754:000",
+                "metadata": {
+                  "tokensPerSec": 144939.21875,
+                  "bandwidthPerSec": 4381966848,
+                  "loss": 2.5515573024749756,
+                  "step": 26400
+                }
+              },
+              {
+                "ordering": "1759612465:213:701:000",
+                "metadata": {
+                  "tokensPerSec": 145709.140625,
+                  "bandwidthPerSec": 4545404928,
+                  "loss": 2.6868233680725098,
+                  "step": 26399
+                }
+              }
+            ],
+            "sampled": {
+              "rate": 656.8408355712891,
+              "data": [
+                [
+                  0.0006310911153477594,
+                  {
+                    "ordering": "1759612465:218:202:000",
+                    "metadata": {
+                      "tokensPerSec": 143989.78125,
+                      "bandwidthPerSec": 4513664000,
+                      "loss": 2.1834716796875,
+                      "step": 26486
+                    }
+                  }
+                ]
+              ]
+            }
+          },
+          "9bRa5HVP5bPaSpiP7TjXUX1KNY8ACCWnxN7Qnj4otTTo": {
+            "lastFew": [
+              {
+                "ordering": "1759612465:314:757:000",
+                "metadata": {
+                  "tokensPerSec": 124240.5078125,
+                  "bandwidthPerSec": 8534334976,
+                  "loss": 2.695096254348755,
+                  "step": 28351
+                }
+              },
+              {
+                "ordering": "1759612465:213:969:000",
+                "metadata": {
+                  "tokensPerSec": 143088.1875,
+                  "bandwidthPerSec": 11419038720,
+                  "loss": 2.543987512588501,
+                  "step": 26404
+                }
+              },
+              {
+                "ordering": "1759612465:213:914:000",
+                "metadata": {
+                  "tokensPerSec": 143841.515625,
+                  "bandwidthPerSec": 4612070400,
+                  "loss": 2.7471656799316406,
+                  "step": 26403
+                }
+              },
+              {
+                "ordering": "1759612465:213:857:000",
+                "metadata": {
+                  "tokensPerSec": 143982.015625,
+                  "bandwidthPerSec": 12179590144,
+                  "loss": 2.6011476516723633,
+                  "step": 26402
+                }
+              },
+              {
+                "ordering": "1759612465:213:801:000",
+                "metadata": {
+                  "tokensPerSec": 144729.34375,
+                  "bandwidthPerSec": 11205615616,
+                  "loss": 2.5991365909576416,
+                  "step": 26401
+                }
+              }
+            ],
+            "sampled": {
+              "rate": 1477.8918800354004,
+              "data": [
+                [
+                  0.0002477620828900129,
+                  {
+                    "ordering": "1759612465:231:136:000",
+                    "metadata": {
+                      "tokensPerSec": 142316.765625,
+                      "bandwidthPerSec": 4692204032,
+                      "loss": 2.6417267322540283,
+                      "step": 26738
                     }
                   }
                 ]

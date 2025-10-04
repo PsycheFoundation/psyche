@@ -26,8 +26,11 @@ export class MiningPoolDataStore {
         accountRequestOrdering: 0n,
         depositCollateralAmountPerUser: new Map<string, bigint>(),
         totalDepositCollateralAmount: 0n,
-        totalExtractCollateralAmount: 0n,
+        claimRedeemableAmountPerUser: new Map<string, bigint>(),
+        totalClaimRedeemableAmount: 0n,
         updates: [],
+        claimables: [],
+        totalExtractCollateralAmount: 0n,
       };
       this.poolsInfos.set(poolAddress, poolInfo);
     }
@@ -59,12 +62,38 @@ export class MiningPoolDataStore {
     poolInfo.totalDepositCollateralAmount += depositAmount;
   }
 
+  public savePoolClaim(
+    poolAddress: string,
+    userAddress: string,
+    redeemableAmount: bigint,
+  ) {
+    let poolInfo = this.getPoolInfo(poolAddress);
+    const redeemableAmountBefore =
+      poolInfo.claimRedeemableAmountPerUser.get(userAddress) ?? 0n;
+    const redeemableAmountAfter = redeemableAmountBefore + redeemableAmount;
+    poolInfo.claimRedeemableAmountPerUser.set(
+      userAddress,
+      redeemableAmountAfter,
+    );
+    poolInfo.totalClaimRedeemableAmount += redeemableAmount;
+  }
+
   public savePoolExtract(poolAddress: string, collateralAmount: bigint) {
     let poolInfo = this.getPoolInfo(poolAddress);
     poolInfo.totalExtractCollateralAmount += collateralAmount;
   }
 
   public savePoolUpdate(
+    poolAddress: string,
+    ordering: bigint,
+    payload: JsonValue,
+  ) {
+    let poolInfo = this.getPoolInfo(poolAddress);
+    poolInfo.updates.push({ ordering, payload });
+    poolInfo.updates.sort((a, b) => Number(b.ordering - a.ordering));
+  }
+
+  public savePoolClaimable(
     poolAddress: string,
     ordering: bigint,
     payload: JsonValue,

@@ -20,11 +20,17 @@ export interface MiningPoolDataPoolInfo {
   accountRequestOrdering: bigint;
   depositCollateralAmountPerUser: Map<string, bigint>;
   totalDepositCollateralAmount: bigint;
-  totalExtractCollateralAmount: bigint;
+  claimRedeemableAmountPerUser: Map<string, bigint>;
+  totalClaimRedeemableAmount: bigint;
   updates: Array<{
     ordering: bigint;
     payload: JsonValue;
   }>;
+  claimables: Array<{
+    ordering: bigint;
+    payload: JsonValue;
+  }>;
+  totalExtractCollateralAmount: bigint;
 }
 
 export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
@@ -34,11 +40,19 @@ export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
     accountRequestOrdering: utilsOrderingJsonType,
     depositCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
     totalDepositCollateralAmount: jsonTypeInteger,
-    totalExtractCollateralAmount: jsonTypeInteger,
+    claimRedeemableAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
+    totalClaimRedeemableAmount: jsonTypeInteger,
     updates: jsonTypeArray(
       jsonTypeObject({
         ordering: utilsOrderingJsonType,
         payload: jsonTypeValue,
       }),
     ),
+    claimables: jsonTypeArray(
+      jsonTypeObject({
+        ordering: utilsOrderingJsonType,
+        payload: jsonTypeValue,
+      }),
+    ),
+    totalExtractCollateralAmount: jsonTypeInteger,
   });
