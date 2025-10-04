@@ -8,6 +8,7 @@ export async function miningPoolIndexingInstruction(
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
+  processedTime: Date | undefined,
 ) {
   const poolAddress = instructionAddresses.get("pool");
   if (poolAddress === undefined) {
@@ -22,6 +23,7 @@ export async function miningPoolIndexingInstruction(
       instructionAddresses,
       instructionPayload,
       ordering,
+      processedTime,
     );
   }
   if (instructionName === "lender_claim") {
@@ -31,6 +33,7 @@ export async function miningPoolIndexingInstruction(
       instructionAddresses,
       instructionPayload,
       ordering,
+      processedTime,
     );
   }
   if (instructionName === "pool_extract") {
@@ -40,6 +43,7 @@ export async function miningPoolIndexingInstruction(
       instructionAddresses,
       instructionPayload,
       ordering,
+      processedTime,
     );
   }
   if (instructionName === "pool_update") {
@@ -49,6 +53,7 @@ export async function miningPoolIndexingInstruction(
       instructionAddresses,
       instructionPayload,
       ordering,
+      processedTime,
     );
   }
   if (instructionName === "pool_claimable") {
@@ -58,8 +63,10 @@ export async function miningPoolIndexingInstruction(
       instructionAddresses,
       instructionPayload,
       ordering,
+      processedTime,
     );
   }
+  dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
 export async function instructionPoolExtract(
@@ -67,12 +74,12 @@ export async function instructionPoolExtract(
   poolAddress: Pubkey,
   _instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
-  ordering: bigint,
+  _ordering: bigint,
+  processedTime: Date | undefined,
 ): Promise<void> {
   const instructionParams =
     poolExtractArgsJsonDecoder(instructionPayload).params;
   dataStore.savePoolExtract(poolAddress, instructionParams.collateralAmount);
-  dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
 export async function instructionPoolUpdate(
@@ -81,9 +88,14 @@ export async function instructionPoolUpdate(
   _instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
+  processedTime: Date | undefined,
 ): Promise<void> {
-  dataStore.savePoolUpdate(poolAddress, ordering, instructionPayload);
-  dataStore.setPoolRequestOrdering(poolAddress, ordering);
+  dataStore.savePoolUpdate(
+    poolAddress,
+    instructionPayload,
+    ordering,
+    processedTime,
+  );
 }
 
 export async function instructionPoolClaimable(
@@ -92,9 +104,14 @@ export async function instructionPoolClaimable(
   _instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
+  processedTime: Date | undefined,
 ): Promise<void> {
-  dataStore.savePoolClaimable(poolAddress, ordering, instructionPayload);
-  dataStore.setPoolRequestOrdering(poolAddress, ordering);
+  dataStore.savePoolClaimable(
+    poolAddress,
+    instructionPayload,
+    ordering,
+    processedTime,
+  );
 }
 
 export async function instructionLenderDeposit(
@@ -102,7 +119,8 @@ export async function instructionLenderDeposit(
   poolAddress: Pubkey,
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
-  ordering: bigint,
+  _ordering: bigint,
+  processedTime: Date | undefined,
 ): Promise<void> {
   const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {
@@ -117,7 +135,6 @@ export async function instructionLenderDeposit(
     userAddress,
     instructionParams.collateralAmount,
   );
-  dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
 export async function instructionLenderClaim(
@@ -125,7 +142,8 @@ export async function instructionLenderClaim(
   poolAddress: Pubkey,
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
-  ordering: bigint,
+  _ordering: bigint,
+  processedTime: Date | undefined,
 ): Promise<void> {
   const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {
@@ -140,7 +158,6 @@ export async function instructionLenderClaim(
     userAddress,
     instructionParams.redeemableAmount,
   );
-  dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
 const poolExtractArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({

@@ -70,14 +70,15 @@ export async function coordinatorServiceIndexing(
       instructionName,
       instructionAddresses,
       instructionPayload,
-      ordering,
+      context,
     ) => {
       await coordinatorIndexingInstruction(
         dataStore,
         instructionName,
         instructionAddresses,
         instructionPayload,
-        ordering,
+        context.ordering,
+        context.transaction.processedTime,
       );
     },
     async (checkpoint) => {

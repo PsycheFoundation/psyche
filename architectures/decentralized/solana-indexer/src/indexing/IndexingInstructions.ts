@@ -22,8 +22,8 @@ export async function indexingInstructionsLoop(
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
-    ordering: bigint,
-    source: Immutable<{
+    context: Immutable<{
+      ordering: bigint;
       transaction: Transaction;
       instruction: Instruction;
     }>,
@@ -69,8 +69,8 @@ async function indexingSignatureInstructions(
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
-    ordering: bigint,
-    source: Immutable<{
+    context: Immutable<{
+      ordering: bigint;
       transaction: Transaction;
       instruction: Instruction;
     }>,
@@ -103,8 +103,8 @@ async function indexingTransactionInstructions(
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
-    ordering: bigint,
-    source: Immutable<{
+    context: Immutable<{
+      ordering: bigint;
       transaction: Transaction;
       instruction: Instruction;
     }>,
@@ -135,8 +135,7 @@ async function indexingTransactionInstructions(
         instructionIdl.name,
         instructionAddresses,
         instructionPayload,
-        ordering,
-        { transaction, instruction },
+        { ordering, transaction, instruction },
       );
     },
   );

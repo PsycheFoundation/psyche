@@ -1,4 +1,5 @@
 import {
+  JsonType,
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeRemap,
@@ -40,6 +41,7 @@ export class CoordinatorDataStore {
     runAddress: string,
     userAddress: string,
     ordering: bigint,
+    processedTime: Date | undefined,
     metadata: {
       tokensPerSec: number;
       bandwidthPerSec: number;
@@ -54,7 +56,7 @@ export class CoordinatorDataStore {
     };
     const desiredLastFewCount = 5;
     const desiredSampledCount = 20;
-    const witness = { ordering, metadata };
+    const witness = { processedTime, ordering, metadata };
     userWitnesses.lastFew.push(witness);
     userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));
     userWitnesses.lastFew = userWitnesses.lastFew.slice(0, desiredLastFewCount);
@@ -82,10 +84,11 @@ export class CoordinatorDataStore {
   }
 }
 
-export const coordinatorDataStoreJsonType = jsonTypeRemap(
-  jsonTypeObject({
-    runsInfos: jsonTypeObjectToMap(coordinatorDataRunInfoJsonType),
-  }),
-  (unmapped) => new CoordinatorDataStore(unmapped.runsInfos),
-  (remapped) => ({ runsInfos: remapped.runsInfos }),
-);
+export const coordinatorDataStoreJsonType: JsonType<CoordinatorDataStore> =
+  jsonTypeRemap(
+    jsonTypeObject({
+      runsInfos: jsonTypeObjectToMap(coordinatorDataRunInfoJsonType),
+    }),
+    (unmapped) => new CoordinatorDataStore(unmapped.runsInfos),
+    (remapped) => ({ runsInfos: remapped.runsInfos }),
+  );

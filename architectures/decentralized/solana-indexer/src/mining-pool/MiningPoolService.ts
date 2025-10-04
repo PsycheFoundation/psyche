@@ -70,14 +70,15 @@ export async function miningPoolServiceIndexing(
       instructionName,
       instructionAddresses,
       instructionPayload,
-      ordering,
+      context,
     ) => {
       await miningPoolIndexingInstruction(
         dataStore,
         instructionName,
         instructionAddresses,
         instructionPayload,
-        ordering,
+        context.ordering,
+        context.transaction.processedTime,
       );
     },
     async (checkpoint) => {

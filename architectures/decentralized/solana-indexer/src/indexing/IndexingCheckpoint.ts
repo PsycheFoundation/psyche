@@ -1,4 +1,5 @@
 import {
+  JsonType,
   jsonTypeArray,
   jsonTypeNumber,
   jsonTypeObject,
@@ -16,17 +17,18 @@ export type IndexingCheckpointChunk = {
 };
 
 export type IndexingCheckpoint = {
-  indexedChunks: ReadonlyArray<Readonly<IndexingCheckpointChunk>>;
+  indexedChunks: Array<IndexingCheckpointChunk>;
 };
 
-export const indexingCheckpointJsonType = jsonTypeObject({
-  indexedChunks: jsonTypeArray(
-    jsonTypeObject({
-      orderingHigh: utilsOrderingJsonType,
-      orderingLow: utilsOrderingJsonType,
-      startedFrom: jsonTypeString,
-      rewindedUntil: jsonTypeString,
-      processedCounter: jsonTypeNumber,
-    }),
-  ),
-});
+export const indexingCheckpointJsonType: JsonType<IndexingCheckpoint> =
+  jsonTypeObject({
+    indexedChunks: jsonTypeArray(
+      jsonTypeObject({
+        orderingHigh: utilsOrderingJsonType,
+        orderingLow: utilsOrderingJsonType,
+        startedFrom: jsonTypeString,
+        rewindedUntil: jsonTypeString,
+        processedCounter: jsonTypeNumber,
+      }),
+    ),
+  });

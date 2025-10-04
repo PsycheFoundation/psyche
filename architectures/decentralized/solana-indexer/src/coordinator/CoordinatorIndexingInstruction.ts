@@ -11,12 +11,12 @@ export async function coordinatorIndexingInstruction(
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
+  processedTime: Date | undefined,
 ): Promise<void> {
   const runAddress = instructionAddresses.get("coordinator_account");
   if (runAddress === undefined) {
     throw new Error("Coordinator: Instruction: Missing run address");
   }
-  dataStore.setRunRequestOrdering(runAddress, ordering);
 
   if (instructionName === "witness") {
     await coordinatorIndexingInstructionWitness(
@@ -25,9 +25,11 @@ export async function coordinatorIndexingInstruction(
       instructionAddresses,
       instructionPayload,
       ordering,
+      processedTime,
     );
   }
-  //console.log(instructionName, instructionPayload);
+
+  dataStore.setRunRequestOrdering(runAddress, ordering);
 }
 
 async function coordinatorIndexingInstructionWitness(
@@ -36,13 +38,14 @@ async function coordinatorIndexingInstructionWitness(
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
+  processedTime: Date | undefined,
 ): Promise<void> {
   const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {
     throw new Error("Coordinator: Instruction: Witness: Missing user address");
   }
   const witnessMetadata = witnessArgsJsonDecoder(instructionPayload).metadata;
-  dataStore.saveRunWitness(runAddress, userAddress, ordering, {
+  dataStore.saveRunWitness(runAddress, userAddress, ordering, processedTime, {
     step: witnessMetadata.step,
     tokensPerSec: witnessMetadata.tokensPerSec,
     bandwidthPerSec: witnessMetadata.bandwidthPerSec,

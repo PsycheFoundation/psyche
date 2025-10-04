@@ -1,6 +1,7 @@
 import {
   JsonType,
   jsonTypeArray,
+  jsonTypeDate,
   jsonTypeInteger,
   jsonTypeObject,
   jsonTypeObjectToMap,
@@ -16,6 +17,7 @@ import {
 
 export interface MiningPoolDataPoolInfo {
   accountState: MiningPoolDataPoolState | undefined;
+  accountUpdatedAt: Date | undefined;
   accountFetchedOrdering: bigint;
   accountRequestOrdering: bigint;
   depositCollateralAmountPerUser: Map<string, bigint>;
@@ -23,10 +25,12 @@ export interface MiningPoolDataPoolInfo {
   claimRedeemableAmountPerUser: Map<string, bigint>;
   totalClaimRedeemableAmount: bigint;
   updates: Array<{
+    processedTime: Date | undefined;
     ordering: bigint;
     payload: JsonValue;
   }>;
   claimables: Array<{
+    processedTime: Date | undefined;
     ordering: bigint;
     payload: JsonValue;
   }>;
@@ -36,6 +40,7 @@ export interface MiningPoolDataPoolInfo {
 export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
   jsonTypeObject({
     accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
+    accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
     accountFetchedOrdering: utilsOrderingJsonType,
     accountRequestOrdering: utilsOrderingJsonType,
     depositCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
@@ -44,12 +49,14 @@ export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
     totalClaimRedeemableAmount: jsonTypeInteger,
     updates: jsonTypeArray(
       jsonTypeObject({
+        processedTime: jsonTypeOptional(jsonTypeDate),
         ordering: utilsOrderingJsonType,
         payload: jsonTypeValue,
       }),
     ),
     claimables: jsonTypeArray(
       jsonTypeObject({
+        processedTime: jsonTypeOptional(jsonTypeDate),
         ordering: utilsOrderingJsonType,
         payload: jsonTypeValue,
       }),

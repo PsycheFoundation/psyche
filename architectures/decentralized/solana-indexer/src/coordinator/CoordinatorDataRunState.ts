@@ -1,4 +1,5 @@
 import {
+  JsonType,
   jsonTypeArray,
   jsonTypeInteger,
   jsonTypeObject,
@@ -14,16 +15,17 @@ export interface CoordinatorDataRunState {
   nonce: bigint;
 }
 
-export const coordinatorDataRunStateJsonType = jsonTypeObject({
-  runId: jsonTypeString,
-  name: jsonTypeString,
-  description: jsonTypeString,
-  status: jsonTypeString,
-  epochClients: jsonTypeArray(
-    jsonTypeObject({
-      signer: jsonTypeString,
-      state: jsonTypeString,
-    }),
-  ),
-  nonce: jsonTypeInteger,
-});
+export const coordinatorDataRunStateJsonType: JsonType<CoordinatorDataRunState> =
+  jsonTypeObject({
+    runId: jsonTypeString,
+    name: jsonTypeString,
+    description: jsonTypeString,
+    status: jsonTypeString,
+    epochClients: jsonTypeArray(
+      jsonTypeObject({
+        signer: jsonTypeString,
+        state: jsonTypeString,
+      }),
+    ),
+    nonce: jsonTypeInteger,
+  });

@@ -22,6 +22,7 @@ export class MiningPoolDataStore {
     if (poolInfo === undefined) {
       poolInfo = {
         accountState: undefined,
+        accountUpdatedAt: undefined,
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
         depositCollateralAmountPerUser: new Map<string, bigint>(),
@@ -43,6 +44,7 @@ export class MiningPoolDataStore {
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
     poolInfo.accountState = poolState;
+    poolInfo.accountUpdatedAt = new Date();
     poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering;
   }
 
@@ -85,21 +87,23 @@ export class MiningPoolDataStore {
 
   public savePoolUpdate(
     poolAddress: string,
-    ordering: bigint,
     payload: JsonValue,
+    ordering: bigint,
+    processedTime: Date | undefined,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
-    poolInfo.updates.push({ ordering, payload });
+    poolInfo.updates.push({ processedTime, ordering, payload });
     poolInfo.updates.sort((a, b) => Number(b.ordering - a.ordering));
   }
 
   public savePoolClaimable(
     poolAddress: string,
-    ordering: bigint,
     payload: JsonValue,
+    ordering: bigint,
+    processedTime: Date | undefined,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
-    poolInfo.updates.push({ ordering, payload });
+    poolInfo.updates.push({ processedTime, ordering, payload });
     poolInfo.updates.sort((a, b) => Number(b.ordering - a.ordering));
   }
 

@@ -2,6 +2,7 @@ import {
   JsonType,
   jsonTypeArray,
   jsonTypeArrayToObject,
+  jsonTypeDate,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeObjectToMap,
@@ -14,6 +15,7 @@ import {
 } from "./CoordinatorDataRunState";
 
 export interface CoordinatorDataRunInfoWitness {
+  processedTime: Date | undefined;
   ordering: bigint;
   metadata: {
     tokensPerSec: number;
@@ -44,6 +46,7 @@ export interface CoordinatorDataRunInfo {
 
 const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
   {
+    processedTime: jsonTypeOptional(jsonTypeDate),
     ordering: utilsOrderingJsonType,
     metadata: jsonTypeObject({
       tokensPerSec: jsonTypeNumber,

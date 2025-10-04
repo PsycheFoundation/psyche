@@ -44,7 +44,6 @@ async function updateCoordinatorAccountState(
     const runState = runStateJsonDecoder(
       await utilsGetAndDecodeAccountState(rpcHttp, programIdl, runAddress),
     );
-    // console.log("Refreshed run state", runAddress, runState.nonce);
     dataStore.saveRunState(runAddress, {
       runId: runState.state.coordinator.runId,
       name: runState.state.metadata.name,
