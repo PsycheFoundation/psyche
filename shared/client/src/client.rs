@@ -1,28 +1,27 @@
 use crate::{
+    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
+    RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, RunInitConfig,
-    RunInitConfigAndIO, TrainingResult, NC,
 };
-use anyhow::{bail, Error, Result};
+use anyhow::{Error, Result, bail};
 use futures::future::join_all;
-use iroh_blobs::Hash;
 use iroh::protocol::Router;
+use iroh_blobs::Hash;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    allowlist, blob_ticket_param_request_task, raw_p2p_verify, router::Router,
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
-    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
-
-    GetMetaData, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState, Networkable,
-    NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
-    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+    GetMetaData, MAX_DOWNLOAD_RETRIES, MAX_DOWNLOAD_RETRIES, ModelRequestType, ModelRequestType,
+    NetworkConnection, NetworkConnection, NetworkEvent, NetworkEvent, NetworkTUIState,
+    NetworkTUIState, Networkable, Networkable, NodeAddr, NodeAddr, NodeId, NodeId,
+    PeerManagerHandle, PeerManagerHandle, RetriedDownloadsHandle, RetriedDownloadsHandle,
+    SharableModel, SharableModel, TransmittableDownload, TransmittableDownload, allowlist,
+    allowlist, blob_ticket_param_request_task, blob_ticket_param_request_task, raw_p2p_verify,
+    raw_p2p_verify, router::Router,
 };
 use psyche_watcher::{Backend, BackendWatcher};
-use rand::{seq::SliceRandom, thread_rng, RngCore};
+use rand::{RngCore, seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
@@ -32,7 +31,7 @@ use std::{
 use tokenizers::Tokenizer;
 use tokio::{
     select,
-    sync::{mpsc, watch, Notify},
+    sync::{Notify, mpsc, watch},
     task::JoinHandle,
     time::interval,
 };
@@ -61,7 +60,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
     Client<T, A, B>
 {
     #[allow(clippy::too_many_arguments)]
-    #[warn(clippy::future_not_send)]
     pub fn new(
         backend: B,
         allowlist: allowlist::AllowDynamic,
@@ -149,117 +147,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                 loop {
                     select! {
-                        _ = cancel.cancelled() => {
-                            info!("Got request to cancel main client loop");
-                            if run.doing_checkpoint() {
-                                wait_for_checkpoint = true;
-                            }
-                            break;
-                        }
-
-                         _ = req_tui_state.notified() => {
-                            let network_tui_state = NetworkTUIState::from_network_connection(&p2p).await?;
-                            let client_tui_state = (&run).into();
-                            tx_tui.send((client_tui_state, network_tui_state))?;
-                        },
-
-                        state = watcher.poll_next() => {
-                            let (old_state, new_state) = state?;
-                            let old_run_state = old_state
-                                .map(|s| s.run_state.to_string())
-                                .unwrap_or_else(|| String::from(" - "));
-
-                            if old_state.map(|s| s.run_state).unwrap_or_default() != new_state.run_state {
-                                info!(
-                                    integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
-                                    client_id = %identity,
-                                    old_state = old_run_state,
-                                    new_state = %new_state.run_state,
-                                    epoch = new_state.progress.epoch,
-                                    step = new_state.progress.step,
-                                    "applying state epoch {} step {} ({} -> {})",
-                                    new_state.progress.epoch,
-                                    new_state.progress.step,
-                                    old_run_state,
-                                    new_state.run_state
-                                );
-                            }
-
-                            let run_participating_node_ids = participating_node_ids(new_state);
-                            allowlist.set(run_participating_node_ids);
-                            ensure_gossip_connected(new_state, &mut p2p, &mut last_gossip_connection_time);
-
-                            if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
-
-                                trace!("Updating p2p");
-                                let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                if let Err(err) = p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs).await {
-                                    warn!("Error deleting blob tags less than {last_needed_step_blobs}: {err}");
-                                }
-                                let p2p_info = get_p2p_info(&p2p).await?;
-                                metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
-                                if let Err(e) = run.set_node_info(p2p_info) {
-                                    warn!("failed to set p2p info: {e}");
-                                }
-                                broadcasts.retain(|(_, step)| *step >= last_needed_step_blobs);
-                                sharable_model.clear_cache(); // IMPORTANT -- any cached blobs are now invalid
-                            }
-
-                            run.apply_state(*new_state).await?;
-                            {
-                                let current_step = run.coordinator_state().map(|s| s.progress.step).unwrap_or(0);
-                                let role = {
-                                    let client_index = new_state
-                                        .epoch_state
-                                        .clients
-                                        .iter()
-                                        .position(|x| x.id == identity);
-                                    let round = new_state.current_round();
-                                    let committee_selection = round.and_then(|round|
-                                        CommitteeSelection::new(
-                                            round.tie_breaker_tasks as usize,
-                                            new_state.config.witness_nodes as usize,
-                                            new_state.config.verification_percent,
-                                            new_state.epoch_state.clients.len(),
-                                            round.random_seed,
-                                        ).ok()
-                                    );
-                                    match (client_index, committee_selection) {
-                                        (Some(i), Some(s)) => if s.get_witness(i as u64).witness.into() {
-                                            ClientRoleInRound::Witness
-                                        } else {
-                                            ClientRoleInRound::Trainer
-                                        }
-                                        _ => ClientRoleInRound::NotInRound,
-                                    }
-                                };
-                                metrics.update_round_state(current_step, role);
-                            }
-                        }
-
-                        res = p2p.poll_next() => {
-                            if let Some(message) = res? {
-                                match message {
-                                    NetworkEvent::MessageReceived((from, broadcast)) => {
-                                        let _ = trace_span!("NetworkEvent::MessageReceived", from=%from).entered();
-                                        metrics.record_broadcast_seen();
-                                        let broadcast_step = broadcast.step;
-                                        let broadcast_kind = broadcast.data.kind();
-                                        if let Some(client) = watcher.get_client_for_p2p_public_key(from.as_bytes()) {
-                                            if raw_p2p_verify(from.as_bytes(), &broadcast.commitment.data_hash, &broadcast.commitment.signature) {
-                                                match &broadcast.data {
-                                                    BroadcastType::TrainingResult(training_result) => {
-                                                        trace!("Got training result gossip message from {from}: step {} batch id {}", broadcast.step, training_result.batch_id);
-                                                    }
-                                                    BroadcastType::Finished(_) => {
-                                                        trace!("Got finished gossip message from {from}: step {}", broadcast.step);
-                                                    }
+                                            _ = cancel.cancelled() => {
+                                                info!("Got request to cancel main client loop");
+                                                if run.doing_checkpoint() {
+                                                    wait_for_checkpoint = true;
                                                 }
                                                 break;
                                             }
 
                                              _ = req_tui_state.notified() => {
-                                                let network_tui_state = (&p2p).into();
+                                                let network_tui_state = NetworkTUIState::from_network_connection(&p2p).await?;
                                                 let client_tui_state = (&run).into();
                                                 tx_tui.send((client_tui_state, network_tui_state))?;
                                             },
@@ -270,19 +167,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     .map(|s| s.run_state.to_string())
                                                     .unwrap_or_else(|| String::from(" - "));
 
-                                                info!(
-                                                    integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
-                                                    client_id = %identity,
-                                                    old_state = old_run_state,
-                                                    new_state = %new_state.run_state,
-                                                    epoch = new_state.progress.epoch,
-                                                    step = new_state.progress.step,
-                                                    "applying state epoch {} step {} ({} -> {})",
-                                                    new_state.progress.epoch,
-                                                    new_state.progress.step,
-                                                    old_run_state,
-                                                    new_state.run_state
-                                                );
+                                                if old_state.map(|s| s.run_state).unwrap_or_default() != new_state.run_state {
+                                                    info!(
+                                                        integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
+                                                        client_id = %identity,
+                                                        old_state = old_run_state,
+                                                        new_state = %new_state.run_state,
+                                                        epoch = new_state.progress.epoch,
+                                                        step = new_state.progress.step,
+                                                        "applying state epoch {} step {} ({} -> {})",
+                                                        new_state.progress.epoch,
+                                                        new_state.progress.step,
+                                                        old_run_state,
+                                                        new_state.run_state
+                                                    );
+                                                }
 
                                                 let run_participating_node_ids = participating_node_ids(new_state);
                                                 allowlist.set(run_participating_node_ids);
@@ -292,7 +191,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                                     trace!("Updating p2p");
                                                     let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                                    p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
+                                                    if let Err(err) = p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs).await {
+                                                        warn!("Error deleting blob tags less than {last_needed_step_blobs}: {err}");
+                                                    }
                                                     let p2p_info = get_p2p_info(&p2p).await?;
                                                     metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
                                                     if let Err(e) = run.set_node_info(p2p_info) {
@@ -646,7 +547,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             }
 
                                             Some((download_ticket, tag)) = rx_request_download.recv() => {
+                                                let self_node_id = p2p.node_addr().await.node_id;
                                                 let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
+                                                let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| addr.node_id != self_node_id).collect();
                                                 let kind = DownloadType::DistroResult(other_possible_nodes);
                                                 metrics.record_download_started(download_ticket.hash(), kind.kind());
                                                 //p2p.start_download_big_blob(vec![(download_ticket.node_addr(), download_ticket.hash())]);
@@ -711,35 +614,33 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 let peer_manager = peer_manager.clone();
                                                 let param_requests_cancel_token = param_requests_cancel_token.clone();
 
-                                                                            let router = p2p.router();
 
-                                                let peer_manager = peer_manager.clone();
-                                                let param_requests_cancel_token = param_requests_cancel_token.clone();
                                                 let hashes = Arc::new(std::sync::Mutex::new(Vec::new()));
 
                                                 //todo: maybe just await this?
-                                                        let request_handle = tokio::spawn(
-                                                            blob_ticket_param_request_task(
-                                                                ModelRequestType::ModelHash(param_names.1),
-                                                                router,
-                                                                hashes.clone(),
-                                                                peer_manager.clone(),
-                                                                param_requests_cancel_token.clone()
-                                                            )
-                                                        );
-                                                let res = request_handle.await;
+                                                let request_handle = tokio::spawn(
+                                                    blob_ticket_param_request_task(
+                                                    ModelRequestType::ModelHash(param_names.1),
+                                                    router,
+                                                    hashes.clone(),
+                                                    peer_manager.clone(),
+                                                    param_requests_cancel_token.clone()
+                                                    )
+                                                    );
+                                                    let res = request_handle.await;
 
-                                                if let Ok(()) = res {
-                                                    let mut hashes_guard = hashes.lock().unwrap();
-                                                    let model_download_info = hashes_guard.drain(..).filter_map(|item| match item {
-                                                                    GetMetaData::HashAddr(info) => {
-                                                                        Some(info)
-                                                                    }
+                                                    if let Ok(()) = res {
+                                                        let mut hashes_guard = hashes.lock().unwrap();
+                                                        let model_download_info = hashes_guard.drain(..).filter_map(|item| match item {
+                                                                GetMetaData::HashAddr(info) => {
+                                                                    Some(info)
+                                                                                        }
                                                                     _ => {None}
-                                                                }).collect();
+                                                                     }).collect();
 
-                                                tx_model_download.send(model_download_info).unwrap();
-                                                }
+                                                        tx_model_download.send(model_download_info).unwrap();
+                                                    }
+
 
                     /*
                                                 let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
@@ -841,12 +742,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     p2p.start_download(ticket, 0, kind);
                                                 }
                                             }
-
                                             Some(config_blob_ticket) = rx_config_download.recv() => {
                                                 let kind = DownloadType::ModelSharing(ModelRequestType::Config);
                                                 metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
                                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                               // p2p.start_download_big_blob(vec![(config_blob_ticket.node_addr().clone(), config_blob_ticket.hash())]).await;
+                                                //p2p.start_download_big_blob(vec![(config_blob_ticket.node_addr().clone(), config_blob_ticket.hash())]).await;
                                                 p2p.start_download(config_blob_ticket, 0, kind);
                                             }
                                             Some(model_addrs_and_hashes) = rx_model_download.recv() => {
@@ -862,68 +762,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     } Err(err) => {
                                                         error!("Error downloading the model: {:?}, we'll not proceed with the download", err);
                                                     }
-                                                }
-                                            }
-                                        }
-                                    }
-                            }
-                        });
-                        }
-
-                        _ = opportunistic_witness_interval.tick() => {
-                            run.try_send_opportunistic_witness().await?;
-                        }
-
-                        Some((download_ticket, tag)) = rx_request_download.recv() => {
-                            let self_node_id = p2p.node_addr().await.node_id;
-                            let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
-                            let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| addr.node_id != self_node_id).collect();
-                            let kind = DownloadType::DistroResult(other_possible_nodes);
-                            metrics.record_download_started(download_ticket.hash(), kind.kind());
-                            //p2p.start_download_big_blob(vec![(download_ticket.node_addr(), download_ticket.hash())]);
-                            p2p.start_download(download_ticket, tag, kind);
-                        }
-                        Some(opportunistic_data) = rx_witness.recv() => {
-                            metrics.record_witness_send(opportunistic_data.kind());
-                            watcher.backend_mut().send_witness(opportunistic_data).await?;
-                        }
-                        Some(health_check) = rx_health_check.recv() => {
-                            watcher.backend_mut().send_health_check(health_check).await?;
-                        }
-                        Some(checkpoint) = rx_checkpoint.recv() => {
-                            watcher.backend_mut().send_checkpoint(checkpoint).await?;
-                        }
-                        Some(model) = rx_model.recv() => {
-                            sharable_model.update_parameters(model)?;
-                        },
-                        Some((config_string, tokenizer_string)) = rx_config.recv() => {
-                            let tokenizer: Tokenizer = serde_json::from_str(&tokenizer_string)?;
-                            sharable_model.update_config(config_string, tokenizer)?;
-                        }
-                        Some(model_name) = rx_model_name.recv() => {
-                            let router = p2p.router();
-
-                            let peer_manager = peer_manager.clone();
-                            let param_requests_cancel_token = param_requests_cancel_token.clone();
-                            let hashes = Arc::new(std::sync::Mutex::new(Vec::new()));
-
-                            //todo: maybe just await this?
-                                    let request_handle = tokio::spawn(
-                                        blob_ticket_param_request_task(
-                                            ModelRequestType::ModelHash(model_name),
-                                            router,
-                                            hashes.clone(),
-                                            peer_manager.clone(),
-                                            param_requests_cancel_token.clone()
-                                        )
-                                    );
-                            let res = request_handle.await;
-
-                            if let Ok(()) = res {
-                                let mut hashes_guard = hashes.lock().unwrap();
-                                let model_download_info = hashes_guard.drain(..).filter_map(|item| match item {
-                                                GetMetaData::HashAddr(info) => {
-                                                    Some(info)
                                                 }
                                             }
                                             _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
