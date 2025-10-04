@@ -12,9 +12,16 @@ export async function miningPoolIndexingInstruction(
   instructionPayload: JsonValue,
   ordering: bigint,
 ) {
-  console.log("instructionName", instructionName, instructionPayload);
   if (instructionName === "lender_deposit") {
-    await miningPoolIndexingInstructionLenderDeposit(
+    await instructionLenderDeposit(
+      dataStore,
+      instructionAddresses,
+      instructionPayload,
+      ordering,
+    );
+  }
+  if (instructionName === "pool_extract") {
+    await instructionPoolExtract(
       dataStore,
       instructionAddresses,
       instructionPayload,
@@ -23,7 +30,26 @@ export async function miningPoolIndexingInstruction(
   }
 }
 
-export async function miningPoolIndexingInstructionLenderDeposit(
+export async function instructionPoolExtract(
+  dataStore: MiningPoolDataStore,
+  instructionAddresses: Map<string, Pubkey>,
+  instructionPayload: JsonValue,
+  ordering: bigint,
+): Promise<void> {
+  console.log("PoolExtract", instructionAddresses, instructionPayload);
+  const poolAddress = instructionAddresses.get("pool");
+  if (poolAddress === undefined) {
+    throw new Error(
+      "MiningPool: Instruction: PoolExtract: Missing pool address",
+    );
+  }
+  const collateralAmount =
+    poolExtractArgsJsonDecoder(instructionPayload).params.collateralAmount;
+  dataStore.savePoolExtract(poolAddress, collateralAmount);
+  dataStore.setPoolRequestOrdering(poolAddress, ordering);
+}
+
+export async function instructionLenderDeposit(
   dataStore: MiningPoolDataStore,
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
@@ -46,6 +72,12 @@ export async function miningPoolIndexingInstructionLenderDeposit(
   dataStore.savePoolUserDeposit(poolAddress, userAddress, collateralAmount);
   dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
+
+const poolExtractArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+  params: utilsObjectSnakeCaseJsonDecoder({
+    collateralAmount: utilsBigintStringJsonType.decoder,
+  }),
+});
 
 const lenderDepositArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
   params: utilsObjectSnakeCaseJsonDecoder({

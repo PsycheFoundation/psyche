@@ -13,14 +13,18 @@ export interface MiningPoolDataPoolInfo {
   accountState: MiningPoolDataPoolState | undefined;
   accountFetchedOrdering: bigint;
   accountRequestOrdering: bigint;
-  depositAmountPerUser: Map<string, bigint>;
-  depositAmountTotal: bigint;
+  depositCollateralAmountPerUser: Map<string, bigint>;
+  totalDepositCollateralAmount: bigint;
+  totalExtractCollateralAmount: bigint;
 }
 
 export const miningPoolDataPoolInfoJsonType = jsonTypeObject({
   accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
   accountFetchedOrdering: utilsBigintStringJsonType,
   accountRequestOrdering: utilsBigintStringJsonType,
-  depositAmountPerUser: jsonTypeObjectToMap(utilsBigintStringJsonType),
-  depositAmountTotal: utilsBigintStringJsonType,
+  depositCollateralAmountPerUser: jsonTypeObjectToMap(
+    utilsBigintStringJsonType,
+  ),
+  totalDepositCollateralAmount: utilsBigintStringJsonType,
+  totalExtractCollateralAmount: utilsBigintStringJsonType,
 });

@@ -23,8 +23,9 @@ export class MiningPoolDataStore {
         accountState: undefined,
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
-        depositAmountPerUser: new Map<string, bigint>(),
-        depositAmountTotal: 0n,
+        depositCollateralAmountPerUser: new Map<string, bigint>(),
+        totalDepositCollateralAmount: 0n,
+        totalExtractCollateralAmount: 0n,
       };
       this.poolsInfos.set(poolAddress, poolInfo);
     }
@@ -47,10 +48,18 @@ export class MiningPoolDataStore {
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
     const depositAmountBefore =
-      poolInfo.depositAmountPerUser.get(userAddress) ?? 0n;
+      poolInfo.depositCollateralAmountPerUser.get(userAddress) ?? 0n;
     const depositAmountAfter = depositAmountBefore + depositAmount;
-    poolInfo.depositAmountPerUser.set(userAddress, depositAmountAfter);
-    poolInfo.depositAmountTotal += depositAmount;
+    poolInfo.depositCollateralAmountPerUser.set(
+      userAddress,
+      depositAmountAfter,
+    );
+    poolInfo.totalDepositCollateralAmount += depositAmount;
+  }
+
+  public savePoolExtract(poolAddress: string, collateralAmount: bigint) {
+    let poolInfo = this.getPoolInfo(poolAddress);
+    poolInfo.totalExtractCollateralAmount += collateralAmount;
   }
 
   public setPoolRequestOrdering(poolAddress: string, ordering: bigint) {
