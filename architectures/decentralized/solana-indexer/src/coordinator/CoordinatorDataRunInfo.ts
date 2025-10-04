@@ -34,7 +34,7 @@ export interface CoordinatorDataRunInfo {
       sampled: {
         rate: number;
         data: Array<{
-          luck: number;
+          selector: number;
           witness: CoordinatorDataRunInfoWitness;
         }>;
       };
@@ -54,22 +54,23 @@ const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
   },
 );
 
-export const coordinatorDataRunInfoJsonType = jsonTypeObject({
-  accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
-  accountFetchedOrdering: utilsOrderingJsonType,
-  accountRequestOrdering: utilsOrderingJsonType,
-  witnessesPerUser: jsonTypeObjectToMap(
-    jsonTypeObject({
-      lastFew: jsonTypeArray(witnessJsonType),
-      sampled: jsonTypeObject({
-        rate: jsonTypeNumber,
-        data: jsonTypeArray(
-          jsonTypeArrayToObject({
-            luck: jsonTypeNumber,
-            witness: witnessJsonType,
-          }),
-        ),
+export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
+  jsonTypeObject({
+    accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
+    accountFetchedOrdering: utilsOrderingJsonType,
+    accountRequestOrdering: utilsOrderingJsonType,
+    witnessesPerUser: jsonTypeObjectToMap(
+      jsonTypeObject({
+        lastFew: jsonTypeArray(witnessJsonType),
+        sampled: jsonTypeObject({
+          rate: jsonTypeNumber,
+          data: jsonTypeArray(
+            jsonTypeArrayToObject({
+              selector: jsonTypeNumber,
+              witness: witnessJsonType,
+            }),
+          ),
+        }),
       }),
-    }),
-  ),
-});
+    ),
+  });

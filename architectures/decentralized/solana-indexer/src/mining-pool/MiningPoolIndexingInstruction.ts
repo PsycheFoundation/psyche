@@ -9,9 +9,16 @@ export async function miningPoolIndexingInstruction(
   instructionPayload: JsonValue,
   ordering: bigint,
 ) {
+  const poolAddress = instructionAddresses.get("pool");
+  if (poolAddress === undefined) {
+    throw new Error(
+      "MiningPool: Instruction: PoolExtract: Missing pool address",
+    );
+  }
   if (instructionName === "lender_deposit") {
     await instructionLenderDeposit(
       dataStore,
+      poolAddress,
       instructionAddresses,
       instructionPayload,
       ordering,
@@ -20,6 +27,16 @@ export async function miningPoolIndexingInstruction(
   if (instructionName === "pool_extract") {
     await instructionPoolExtract(
       dataStore,
+      poolAddress,
+      instructionAddresses,
+      instructionPayload,
+      ordering,
+    );
+  }
+  if (instructionName === "pool_update") {
+    await instructionPoolUpdate(
+      dataStore,
+      poolAddress,
       instructionAddresses,
       instructionPayload,
       ordering,
@@ -29,34 +46,35 @@ export async function miningPoolIndexingInstruction(
 
 export async function instructionPoolExtract(
   dataStore: MiningPoolDataStore,
-  instructionAddresses: Map<string, Pubkey>,
+  poolAddress: Pubkey,
+  _instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
 ): Promise<void> {
-  const poolAddress = instructionAddresses.get("pool");
-  if (poolAddress === undefined) {
-    throw new Error(
-      "MiningPool: Instruction: PoolExtract: Missing pool address",
-    );
-  }
   const instructionParams =
     poolExtractArgsJsonDecoder(instructionPayload).params;
   dataStore.savePoolExtract(poolAddress, instructionParams.collateralAmount);
   dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
+export async function instructionPoolUpdate(
+  dataStore: MiningPoolDataStore,
+  poolAddress: Pubkey,
+  _instructionAddresses: Map<string, Pubkey>,
+  instructionPayload: JsonValue,
+  ordering: bigint,
+): Promise<void> {
+  dataStore.savePoolUpdate(poolAddress, ordering, instructionPayload);
+  dataStore.setPoolRequestOrdering(poolAddress, ordering);
+}
+
 export async function instructionLenderDeposit(
   dataStore: MiningPoolDataStore,
+  poolAddress: Pubkey,
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   ordering: bigint,
 ): Promise<void> {
-  const poolAddress = instructionAddresses.get("pool");
-  if (poolAddress === undefined) {
-    throw new Error(
-      "MiningPool: Instruction: LenderDeposit: Missing pool address",
-    );
-  }
   const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {
     throw new Error(
@@ -65,7 +83,7 @@ export async function instructionLenderDeposit(
   }
   const instructionParams =
     lenderDepositArgsJsonDecoder(instructionPayload).params;
-  dataStore.savePoolUserDeposit(
+  dataStore.savePoolDeposit(
     poolAddress,
     userAddress,
     instructionParams.collateralAmount,

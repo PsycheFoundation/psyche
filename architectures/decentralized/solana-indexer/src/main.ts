@@ -44,4 +44,4 @@ async function miningPoolMain() {
 }
 
 coordinatorMain();
-//miningPoolMain();
+miningPoolMain();

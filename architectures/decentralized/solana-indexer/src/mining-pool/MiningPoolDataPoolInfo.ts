@@ -1,8 +1,12 @@
 import {
+  JsonType,
+  jsonTypeArray,
   jsonTypeInteger,
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeOptional,
+  jsonTypeValue,
+  JsonValue,
 } from "solana-kiss-data";
 import { utilsOrderingJsonType } from "../utils";
 import {
@@ -17,13 +21,24 @@ export interface MiningPoolDataPoolInfo {
   depositCollateralAmountPerUser: Map<string, bigint>;
   totalDepositCollateralAmount: bigint;
   totalExtractCollateralAmount: bigint;
+  updates: Array<{
+    ordering: bigint;
+    payload: JsonValue;
+  }>;
 }
 
-export const miningPoolDataPoolInfoJsonType = jsonTypeObject({
-  accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
-  accountFetchedOrdering: utilsOrderingJsonType,
-  accountRequestOrdering: utilsOrderingJsonType,
-  depositCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
-  totalDepositCollateralAmount: jsonTypeInteger,
-  totalExtractCollateralAmount: jsonTypeInteger,
-});
+export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
+  jsonTypeObject({
+    accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
+    accountFetchedOrdering: utilsOrderingJsonType,
+    accountRequestOrdering: utilsOrderingJsonType,
+    depositCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
+    totalDepositCollateralAmount: jsonTypeInteger,
+    totalExtractCollateralAmount: jsonTypeInteger,
+    updates: jsonTypeArray(
+      jsonTypeObject({
+        ordering: utilsOrderingJsonType,
+        payload: jsonTypeValue,
+      }),
+    ),
+  });

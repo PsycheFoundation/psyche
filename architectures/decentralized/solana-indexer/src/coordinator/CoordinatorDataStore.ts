@@ -55,31 +55,24 @@ export class CoordinatorDataStore {
         data: [],
       },
     };
-    const witness = {
-      ordering,
-      metadata,
-    };
-
     const targetCount = 1;
-
+    const witness = { ordering, metadata };
     userWitnesses.lastFew.push(witness);
     userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));
     userWitnesses.lastFew = userWitnesses.lastFew.slice(0, targetCount);
-
-    const sampleLuck = Math.random();
-    if (sampleLuck < 1 / userWitnesses.sampled.rate) {
-      userWitnesses.sampled.data.push({ luck: sampleLuck, witness });
+    const selector = Math.random();
+    if (selector < 1 / userWitnesses.sampled.rate) {
+      userWitnesses.sampled.data.push({ selector, witness });
       userWitnesses.sampled.data.sort((a, b) =>
         Number(b.witness.ordering - a.witness.ordering),
       );
       while (userWitnesses.sampled.data.length >= targetCount * 1.5) {
         userWitnesses.sampled.rate *= 1.5;
         userWitnesses.sampled.data = userWitnesses.sampled.data.filter(
-          (item) => item.luck < 1 / userWitnesses.sampled.rate,
+          (item) => item.selector < 1 / userWitnesses.sampled.rate,
         );
       }
     }
-
     runInfo.witnessesPerUser.set(userAddress, userWitnesses);
   }
 

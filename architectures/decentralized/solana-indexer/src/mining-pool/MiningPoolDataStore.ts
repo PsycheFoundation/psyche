@@ -2,6 +2,7 @@ import {
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeRemap,
+  JsonValue,
 } from "solana-kiss-data";
 import {
   MiningPoolDataPoolInfo,
@@ -26,6 +27,7 @@ export class MiningPoolDataStore {
         depositCollateralAmountPerUser: new Map<string, bigint>(),
         totalDepositCollateralAmount: 0n,
         totalExtractCollateralAmount: 0n,
+        updates: [],
       };
       this.poolsInfos.set(poolAddress, poolInfo);
     }
@@ -41,7 +43,7 @@ export class MiningPoolDataStore {
     poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering;
   }
 
-  public savePoolUserDeposit(
+  public savePoolDeposit(
     poolAddress: string,
     userAddress: string,
     depositAmount: bigint,
@@ -60,6 +62,16 @@ export class MiningPoolDataStore {
   public savePoolExtract(poolAddress: string, collateralAmount: bigint) {
     let poolInfo = this.getPoolInfo(poolAddress);
     poolInfo.totalExtractCollateralAmount += collateralAmount;
+  }
+
+  public savePoolUpdate(
+    poolAddress: string,
+    ordering: bigint,
+    payload: JsonValue,
+  ) {
+    let poolInfo = this.getPoolInfo(poolAddress);
+    poolInfo.updates.push({ ordering, payload });
+    poolInfo.updates.sort((a, b) => Number(b.ordering - a.ordering));
   }
 
   public setPoolRequestOrdering(poolAddress: string, ordering: bigint) {
