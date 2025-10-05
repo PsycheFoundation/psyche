@@ -3,6 +3,7 @@ import {
   jsonTypeObjectToMap,
   jsonTypeRemap,
   JsonValue,
+  Pubkey,
 } from "solana-kiss-data";
 import {
   MiningPoolDataPoolInfo,
@@ -25,13 +26,12 @@ export class MiningPoolDataStore {
         accountUpdatedAt: undefined,
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
+        totalExtractCollateralAmount: 0n,
         depositCollateralAmountPerUser: new Map<string, bigint>(),
         totalDepositCollateralAmount: 0n,
         claimRedeemableAmountPerUser: new Map<string, bigint>(),
         totalClaimRedeemableAmount: 0n,
-        updates: [],
-        claimables: [],
-        totalExtractCollateralAmount: 0n,
+        adminHistory: [],
       };
       this.poolsInfos.set(poolAddress, poolInfo);
     }
@@ -46,6 +46,11 @@ export class MiningPoolDataStore {
     poolInfo.accountState = poolState;
     poolInfo.accountUpdatedAt = new Date();
     poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering;
+  }
+
+  public savePoolExtract(poolAddress: string, collateralAmount: bigint) {
+    let poolInfo = this.getPoolInfo(poolAddress);
+    poolInfo.totalExtractCollateralAmount += collateralAmount;
   }
 
   public savePoolDeposit(
@@ -80,31 +85,22 @@ export class MiningPoolDataStore {
     poolInfo.totalClaimRedeemableAmount += redeemableAmount;
   }
 
-  public savePoolExtract(poolAddress: string, collateralAmount: bigint) {
-    let poolInfo = this.getPoolInfo(poolAddress);
-    poolInfo.totalExtractCollateralAmount += collateralAmount;
-  }
-
-  public savePoolUpdate(
+  public savePoolAdminAction(
     poolAddress: string,
-    payload: JsonValue,
+    instructionName: string,
+    instructionAddresses: Map<string, Pubkey>,
+    instructionPayload: JsonValue,
     ordering: bigint,
     processedTime: Date | undefined,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
-    poolInfo.updates.push({ processedTime, ordering, payload });
-    poolInfo.updates.sort((a, b) => Number(b.ordering - a.ordering));
-  }
-
-  public savePoolClaimable(
-    poolAddress: string,
-    payload: JsonValue,
-    ordering: bigint,
-    processedTime: Date | undefined,
-  ) {
-    let poolInfo = this.getPoolInfo(poolAddress);
-    poolInfo.updates.push({ processedTime, ordering, payload });
-    poolInfo.updates.sort((a, b) => Number(b.ordering - a.ordering));
+    poolInfo.adminHistory.push({
+      processedTime,
+      ordering,
+      instructionName,
+      instructionAddresses,
+      instructionPayload,
+    });
   }
 
   public setPoolRequestOrdering(poolAddress: string, ordering: bigint) {

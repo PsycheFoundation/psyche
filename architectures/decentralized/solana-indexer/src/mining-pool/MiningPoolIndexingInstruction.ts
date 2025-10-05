@@ -2,6 +2,15 @@ import { jsonTypeInteger, JsonValue, Pubkey } from "solana-kiss-data";
 import { utilsObjectSnakeCaseJsonDecoder } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
+const processorsByInstructionName = new Map([
+  ["pool_create", [processAdminAction]],
+  ["pool_update", [processAdminAction]],
+  ["pool_extract", [processAdminAction, processPoolExtract]],
+  ["pool_claimable", [processAdminAction]],
+  ["lender_deposit", [processLenderDeposit]],
+  ["lender_claim", [processLenderClaim]],
+]);
+
 export async function miningPoolIndexingInstruction(
   dataStore: MiningPoolDataStore,
   instructionName: string,
@@ -16,62 +25,46 @@ export async function miningPoolIndexingInstruction(
       "MiningPool: Instruction: PoolExtract: Missing pool address",
     );
   }
-  if (instructionName === "lender_deposit") {
-    await instructionLenderDeposit(
-      dataStore,
-      poolAddress,
-      instructionAddresses,
-      instructionPayload,
-      ordering,
-      processedTime,
-    );
-  }
-  if (instructionName === "lender_claim") {
-    await instructionLenderClaim(
-      dataStore,
-      poolAddress,
-      instructionAddresses,
-      instructionPayload,
-      ordering,
-      processedTime,
-    );
-  }
-  if (instructionName === "pool_extract") {
-    await instructionPoolExtract(
-      dataStore,
-      poolAddress,
-      instructionAddresses,
-      instructionPayload,
-      ordering,
-      processedTime,
-    );
-  }
-  if (instructionName === "pool_update") {
-    await instructionPoolUpdate(
-      dataStore,
-      poolAddress,
-      instructionAddresses,
-      instructionPayload,
-      ordering,
-      processedTime,
-    );
-  }
-  if (instructionName === "pool_claimable") {
-    await instructionPoolClaimable(
-      dataStore,
-      poolAddress,
-      instructionAddresses,
-      instructionPayload,
-      ordering,
-      processedTime,
-    );
+  const processors = processorsByInstructionName.get(instructionName);
+  if (processors !== undefined) {
+    for (const processor of processors) {
+      await processor(
+        dataStore,
+        poolAddress,
+        instructionName,
+        instructionAddresses,
+        instructionPayload,
+        ordering,
+        processedTime,
+      );
+    }
   }
   dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
-export async function instructionPoolExtract(
+export async function processAdminAction(
   dataStore: MiningPoolDataStore,
   poolAddress: Pubkey,
+  instructionName: string,
+  instructionAddresses: Map<string, Pubkey>,
+  instructionPayload: JsonValue,
+  ordering: bigint,
+  processedTime: Date | undefined,
+) {
+  dataStore.savePoolAdminAction(
+    poolAddress,
+    instructionName,
+    instructionAddresses,
+    instructionPayload,
+    ordering,
+    processedTime,
+  );
+}
+
+export async function processPoolExtract(
+  dataStore: MiningPoolDataStore,
+  poolAddress: Pubkey,
+  _instructionName: string,
   _instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   _ordering: bigint,
@@ -82,45 +75,14 @@ export async function instructionPoolExtract(
   dataStore.savePoolExtract(poolAddress, instructionParams.collateralAmount);
 }
 
-export async function instructionPoolUpdate(
+export async function processLenderDeposit(
   dataStore: MiningPoolDataStore,
   poolAddress: Pubkey,
-  _instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: JsonValue,
-  ordering: bigint,
-  processedTime: Date | undefined,
-): Promise<void> {
-  dataStore.savePoolUpdate(
-    poolAddress,
-    instructionPayload,
-    ordering,
-    processedTime,
-  );
-}
-
-export async function instructionPoolClaimable(
-  dataStore: MiningPoolDataStore,
-  poolAddress: Pubkey,
-  _instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: JsonValue,
-  ordering: bigint,
-  processedTime: Date | undefined,
-): Promise<void> {
-  dataStore.savePoolClaimable(
-    poolAddress,
-    instructionPayload,
-    ordering,
-    processedTime,
-  );
-}
-
-export async function instructionLenderDeposit(
-  dataStore: MiningPoolDataStore,
-  poolAddress: Pubkey,
+  _instructionName: string,
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   _ordering: bigint,
-  processedTime: Date | undefined,
+  _processedTime: Date | undefined,
 ): Promise<void> {
   const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {
@@ -137,13 +99,14 @@ export async function instructionLenderDeposit(
   );
 }
 
-export async function instructionLenderClaim(
+export async function processLenderClaim(
   dataStore: MiningPoolDataStore,
   poolAddress: Pubkey,
+  _instructionName: string,
   instructionAddresses: Map<string, Pubkey>,
   instructionPayload: JsonValue,
   _ordering: bigint,
-  processedTime: Date | undefined,
+  _processedTime: Date | undefined,
 ): Promise<void> {
   const userAddress = instructionAddresses.get("user");
   if (userAddress === undefined) {

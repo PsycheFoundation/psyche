@@ -6,8 +6,10 @@ import {
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeOptional,
+  jsonTypeString,
   jsonTypeValue,
   JsonValue,
+  Pubkey,
 } from "solana-kiss-data";
 import { utilsOrderingJsonType } from "../utils";
 import {
@@ -20,21 +22,18 @@ export interface MiningPoolDataPoolInfo {
   accountUpdatedAt: Date | undefined;
   accountFetchedOrdering: bigint;
   accountRequestOrdering: bigint;
+  totalExtractCollateralAmount: bigint;
   depositCollateralAmountPerUser: Map<string, bigint>;
   totalDepositCollateralAmount: bigint;
   claimRedeemableAmountPerUser: Map<string, bigint>;
   totalClaimRedeemableAmount: bigint;
-  updates: Array<{
+  adminHistory: Array<{
     processedTime: Date | undefined;
     ordering: bigint;
-    payload: JsonValue;
+    instructionName: string;
+    instructionAddresses: Map<string, Pubkey>;
+    instructionPayload: JsonValue;
   }>;
-  claimables: Array<{
-    processedTime: Date | undefined;
-    ordering: bigint;
-    payload: JsonValue;
-  }>;
-  totalExtractCollateralAmount: bigint;
 }
 
 export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
@@ -43,23 +42,18 @@ export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
     accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
     accountFetchedOrdering: utilsOrderingJsonType,
     accountRequestOrdering: utilsOrderingJsonType,
+    totalExtractCollateralAmount: jsonTypeInteger,
     depositCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
     totalDepositCollateralAmount: jsonTypeInteger,
     claimRedeemableAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
     totalClaimRedeemableAmount: jsonTypeInteger,
-    updates: jsonTypeArray(
+    adminHistory: jsonTypeArray(
       jsonTypeObject({
         processedTime: jsonTypeOptional(jsonTypeDate),
         ordering: utilsOrderingJsonType,
-        payload: jsonTypeValue,
+        instructionName: jsonTypeString,
+        instructionAddresses: jsonTypeObjectToMap(jsonTypeString),
+        instructionPayload: jsonTypeValue,
       }),
     ),
-    claimables: jsonTypeArray(
-      jsonTypeObject({
-        processedTime: jsonTypeOptional(jsonTypeDate),
-        ordering: utilsOrderingJsonType,
-        payload: jsonTypeValue,
-      }),
-    ),
-    totalExtractCollateralAmount: jsonTypeInteger,
   });
