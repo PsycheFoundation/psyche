@@ -53,7 +53,7 @@ type ProcessingContent = {
   processedTime: Date | undefined;
 };
 
-export async function processAdminAction(
+async function processAdminAction(
   dataStore: MiningPoolDataStore,
   content: ProcessingContent,
 ): Promise<void> {
@@ -67,7 +67,7 @@ export async function processAdminAction(
   );
 }
 
-export async function processPoolExtract(
+async function processPoolExtract(
   dataStore: MiningPoolDataStore,
   content: ProcessingContent,
 ): Promise<void> {
@@ -80,7 +80,7 @@ export async function processPoolExtract(
   );
 }
 
-export async function processLenderDeposit(
+async function processLenderDeposit(
   dataStore: MiningPoolDataStore,
   content: ProcessingContent,
 ): Promise<void> {
@@ -100,7 +100,7 @@ export async function processLenderDeposit(
   );
 }
 
-export async function processLenderClaim(
+async function processLenderClaim(
   dataStore: MiningPoolDataStore,
   content: ProcessingContent,
 ): Promise<void> {

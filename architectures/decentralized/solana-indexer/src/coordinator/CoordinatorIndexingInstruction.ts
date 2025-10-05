@@ -58,7 +58,7 @@ type ProcessingContent = {
   processedTime: Date | undefined;
 };
 
-export async function processAdminAction(
+async function processAdminAction(
   dataStore: CoordinatorDataStore,
   content: ProcessingContent,
 ): Promise<void> {

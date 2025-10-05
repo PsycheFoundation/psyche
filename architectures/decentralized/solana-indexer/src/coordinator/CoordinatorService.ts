@@ -20,9 +20,9 @@ export async function coordinatorService(
   programAddress: Pubkey,
 ) {
   const saveName = `coordinator_${cluster}_${programAddress}`;
-  const { checkpoint, dataStore } = await coordinatorServiceLoader(saveName);
+  const { checkpoint, dataStore } = await serviceLoader(saveName);
   // TODO - add API calls here to serve data from dataStore
-  await coordinatorServiceIndexing(
+  await serviceIndexing(
     saveName,
     rpcHttp,
     programAddress,
@@ -31,7 +31,7 @@ export async function coordinatorService(
   );
 }
 
-export async function coordinatorServiceLoader(saveName: string) {
+async function serviceLoader(saveName: string) {
   let checkpoint: IndexingCheckpoint;
   let dataStore: CoordinatorDataStore;
   try {
@@ -50,7 +50,7 @@ export async function coordinatorServiceLoader(saveName: string) {
   return { checkpoint, dataStore };
 }
 
-export async function coordinatorServiceIndexing(
+async function serviceIndexing(
   saveName: string,
   rpcHttp: RpcHttp,
   programAddress: Pubkey,

@@ -20,9 +20,9 @@ export async function miningPoolService(
   programAddress: Pubkey,
 ): Promise<void> {
   const saveName = `mining_pool_${cluster}_${programAddress}`;
-  const { checkpoint, dataStore } = await miningPoolServiceLoader(saveName);
+  const { checkpoint, dataStore } = await serviceLoader(saveName);
   // TODO - add API calls here to serve data from dataStore
-  await miningPoolServiceIndexing(
+  await serviceIndexing(
     saveName,
     rpcHttp,
     programAddress,
@@ -31,7 +31,7 @@ export async function miningPoolService(
   );
 }
 
-export async function miningPoolServiceLoader(saveName: string) {
+async function serviceLoader(saveName: string) {
   let checkpoint: IndexingCheckpoint;
   let dataStore: MiningPoolDataStore;
   try {
@@ -50,7 +50,7 @@ export async function miningPoolServiceLoader(saveName: string) {
   return { checkpoint, dataStore };
 }
 
-export async function miningPoolServiceIndexing(
+async function serviceIndexing(
   saveName: string,
   rpcHttp: RpcHttp,
   programAddress: Pubkey,
