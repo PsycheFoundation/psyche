@@ -1,20 +1,13 @@
 {
-  "updatedAt": "2025-10-05T01:38:50.497Z",
+  "updatedAt": "2025-10-05T01:47:03.581Z",
   "checkpoint": {
     "indexedChunks": [
       {
-        "orderingHigh": "1759628309:869:000:000",
-        "orderingLow": "1759628275:868:000:000",
-        "startedFrom": "3sboLtH9RBF8JwCpMvUBvvDDKY7AFBjctHV7LwPFmSoFBa6V2H4uRrUBgEjueM1xfAFugqRiWoAf3Hr8g717pJkp",
-        "rewindedUntil": "5aZ1muvPiBmQ4gj3YZfUrWRKmeXeoU1ahJMhognNr38s3e4WT3k2cQEyjDmf7HrTU4gW2JDVcZmK2G3ES65Ddp4c",
-        "processedCounter": 4056
-      },
-      {
-        "orderingHigh": "1759623791:103:000:000",
-        "orderingLow": "1759621984:620:000:000",
-        "startedFrom": "3eSTUMeaThfoewD3y2h91CyodS5PhUf4H4PyCwikphBUXp9jeLudFE9ezoCJhpEZCttkiNFAikPRJ6ZPctoggGnr",
-        "rewindedUntil": "5hhnzuSz6jr5ibvHiLsTsRYasPhvX1LRqpQExYGzcXSKMCeBtH1qTFwV3Ms2iqTEnW6S3kDpC1KuPwFhGNyChthb",
-        "processedCounter": 102192
+        "orderingHigh": "1759628823:428:000:000",
+        "orderingLow": "1759621984:604:000:000",
+        "startedFrom": "xVexamh7i9efNwZ9pWrEveRp313MJ8C3Ac6kNg2PVQHtZA4SCTGMbhrnSvtDXJ1ztYBbGckf2ujLdariLXRpZCo",
+        "rewindedUntil": "4K7gx13dhZKy65VP4PejUxGWJ1jqNFnmNYePYArCVpSfEuxExqBEADGLt44EWDjnw71QxxgoDTqQbsi5J7a5K4Ds",
+        "processedCounter": 127179
       }
     ]
   },
@@ -60,41 +53,28 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "534380"
+          "nonce": "534758"
         },
-        "accountUpdatedAt": "2025-10-05T01:38:30.575Z",
-        "accountFetchedOrdering": "1759628309:869:000:000",
-        "accountRequestOrdering": "1759628309:869:000:000",
+        "accountUpdatedAt": "2025-10-05T01:47:01.579Z",
+        "accountFetchedOrdering": "1759628821:021:000:000",
+        "accountRequestOrdering": "1759628821:021:000:000",
         "witnessesPerUser": {
           "cEVQZYUeHomvWVCJ2cK7Cm3h1GMMFjJ5xAagXXsfdyZ": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:52.000Z",
-                "ordering": "1759628275:871:999:000",
+                "processedTime": "2025-10-05T01:46:32.000Z",
+                "ordering": "1759628798:228:989:000",
                 "metadata": {
-                  "tokensPerSec": 189598.578125,
-                  "bandwidthPerSec": 13602147328,
-                  "loss": 2.7761454582214355,
-                  "step": 70135
+                  "tokensPerSec": 190686.203125,
+                  "bandwidthPerSec": 12737014784,
+                  "loss": 2.6975855827331543,
+                  "step": 70182
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 291.92926025390625,
               "data": [
-                [
-                  0.003488033075061292,
-                  {
-                    "processedTime": "2025-10-04T22:48:17.000Z",
-                    "ordering": "1759621984:711:930:000",
-                    "metadata": {
-                      "tokensPerSec": 192973.25,
-                      "bandwidthPerSec": 13097239552,
-                      "loss": 2.692976951599121,
-                      "step": 69214
-                    }
-                  }
-                ],
                 [
                   0.00029302666733466154,
                   {
@@ -148,19 +128,6 @@
                   }
                 ],
                 [
-                  0.004186824311068538,
-                  {
-                    "processedTime": "2025-10-04T17:17:07.000Z",
-                    "ordering": "1759621984:651:954:000",
-                    "metadata": {
-                      "tokensPerSec": 189514.71875,
-                      "bandwidthPerSec": 14067679232,
-                      "loss": 2.694204807281494,
-                      "step": 67423
-                    }
-                  }
-                ],
-                [
                   0.0007389631360008586,
                   {
                     "processedTime": "2025-10-04T15:20:05.000Z",
@@ -172,6 +139,19 @@
                       "step": 66789
                     }
                   }
+                ],
+                [
+                  0.0015666521103958608,
+                  {
+                    "processedTime": "2025-10-04T14:12:14.000Z",
+                    "ordering": "1759621984:613:215:000",
+                    "metadata": {
+                      "tokensPerSec": 188817.234375,
+                      "bandwidthPerSec": 13382896640,
+                      "loss": 2.7020084857940674,
+                      "step": 66422
+                    }
+                  }
                 ]
               ]
             }
@@ -179,13 +159,13 @@
           "HC9oxWRnj6JetaeXhYb5YqqXeLh7XSiXsmga564eVnJA": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:36:58.000Z",
-                "ordering": "1759628275:871:903:000",
+                "processedTime": "2025-10-05T01:46:43.000Z",
+                "ordering": "1759628809:115:975:000",
                 "metadata": {
-                  "tokensPerSec": 189949.890625,
-                  "bandwidthPerSec": 18331920384,
-                  "loss": 2.8080437183380127,
-                  "step": 70130
+                  "tokensPerSec": 190282.65625,
+                  "bandwidthPerSec": 13088985088,
+                  "loss": 2.852081298828125,
+                  "step": 70183
                 }
               }
             ],
@@ -289,13 +269,13 @@
           "vzN8aUeMS4gmnbjCrhZih9RmUkWeW6awU4znTMLaxGE": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:26.000Z",
-                "ordering": "1759628309:868:991:000",
+                "processedTime": "2025-10-05T01:46:43.000Z",
+                "ordering": "1759628809:115:977:000",
                 "metadata": {
-                  "tokensPerSec": 189673.390625,
-                  "bandwidthPerSec": 13431433216,
-                  "loss": 2.8248682022094727,
-                  "step": 70138
+                  "tokensPerSec": 190252.171875,
+                  "bandwidthPerSec": 14748051456,
+                  "loss": 2.799607276916504,
+                  "step": 70183
                 }
               }
             ],
@@ -386,19 +366,32 @@
           "66U4829SMMHqF9N15VUq9SmKjQXX4RDU6rRV2vfFkXWr": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:15.000Z",
-                "ordering": "1759628309:868:976:000",
+                "processedTime": "2025-10-05T01:46:10.000Z",
+                "ordering": "1759628798:228:950:000",
                 "metadata": {
-                  "tokensPerSec": 190120.390625,
-                  "bandwidthPerSec": 17015801856,
-                  "loss": 2.785717487335205,
-                  "step": 70137
+                  "tokensPerSec": 189609.921875,
+                  "bandwidthPerSec": 12997318656,
+                  "loss": 2.762083053588867,
+                  "step": 70180
                 }
               }
             ],
             "sampled": {
               "rate": 194.6195068359375,
               "data": [
+                [
+                  0.004387623639674931,
+                  {
+                    "processedTime": "2025-10-05T00:59:57.000Z",
+                    "ordering": "1759628275:867:972:000",
+                    "metadata": {
+                      "tokensPerSec": 187793.96875,
+                      "bandwidthPerSec": 14049656832,
+                      "loss": 2.825354814529419,
+                      "step": 69929
+                    }
+                  }
+                ],
                 [
                   0.0024352293264031655,
                   {
@@ -463,6 +456,19 @@
                       "step": 67046
                     }
                   }
+                ],
+                [
+                  0.004513947393260942,
+                  {
+                    "processedTime": "2025-10-04T14:28:42.000Z",
+                    "ordering": "1759621984:616:696:000",
+                    "metadata": {
+                      "tokensPerSec": 192745.984375,
+                      "bandwidthPerSec": 15373204480,
+                      "loss": 2.7797560691833496,
+                      "step": 66512
+                    }
+                  }
                 ]
               ]
             }
@@ -470,19 +476,32 @@
           "HkqMQgbrs1ZBiJdyhGp1oiSNuDUYHxX1a9n4pgK2XtUx": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:25.000Z",
-                "ordering": "1759628309:868:990:000",
+                "processedTime": "2025-10-05T01:46:54.000Z",
+                "ordering": "1759628821:020:993:000",
                 "metadata": {
-                  "tokensPerSec": 189625.71875,
-                  "bandwidthPerSec": 14261808128,
-                  "loss": 2.8279457092285156,
-                  "step": 70138
+                  "tokensPerSec": 191200.578125,
+                  "bandwidthPerSec": 13564720128,
+                  "loss": 2.6539371013641357,
+                  "step": 70184
                 }
               }
             ],
             "sampled": {
               "rate": 291.92926025390625,
               "data": [
+                [
+                  0.00023562014130540376,
+                  {
+                    "processedTime": "2025-10-05T00:43:31.000Z",
+                    "ordering": "1759628275:866:212:000",
+                    "metadata": {
+                      "tokensPerSec": 190272.390625,
+                      "bandwidthPerSec": 13512708096,
+                      "loss": 2.6533713340759277,
+                      "step": 69840
+                    }
+                  }
+                ],
                 [
                   0.0022377425300053044,
                   {
@@ -567,19 +586,32 @@
           "FnpDQyGzi82BCsZT6JfsF2MrV9D6fGBzqSPmKEP2Cn8b": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:25.000Z",
-                "ordering": "1759628309:868:989:000",
+                "processedTime": "2025-10-05T01:46:54.000Z",
+                "ordering": "1759628821:020:992:000",
                 "metadata": {
-                  "tokensPerSec": 189614.234375,
-                  "bandwidthPerSec": 13360879616,
-                  "loss": 2.6725828647613525,
-                  "step": 70138
+                  "tokensPerSec": 191245.375,
+                  "bandwidthPerSec": 13562116096,
+                  "loss": 2.7643821239471436,
+                  "step": 70184
                 }
               }
             ],
             "sampled": {
               "rate": 129.746337890625,
               "data": [
+                [
+                  0.0011590124277223168,
+                  {
+                    "processedTime": "2025-10-05T00:41:30.000Z",
+                    "ordering": "1759628275:865:995:000",
+                    "metadata": {
+                      "tokensPerSec": 189299.328125,
+                      "bandwidthPerSec": 13799818240,
+                      "loss": 2.73720383644104,
+                      "step": 69829
+                    }
+                  }
+                ],
                 [
                   0.002569724735256518,
                   {
@@ -664,18 +696,18 @@
           "FRqTuG6Un6jzSya8bSVTs12Cs6xXK186Dxk2F66hVLnK": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:53.000Z",
-                "ordering": "1759628275:872:000:000",
+                "processedTime": "2025-10-05T01:45:59.000Z",
+                "ordering": "1759628761:759:998:000",
                 "metadata": {
-                  "tokensPerSec": 189519.109375,
-                  "bandwidthPerSec": 13400221696,
-                  "loss": 2.729886054992676,
-                  "step": 70135
+                  "tokensPerSec": 190423.671875,
+                  "bandwidthPerSec": 14188737536,
+                  "loss": 2.7483348846435547,
+                  "step": 70179
                 }
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 194.6195068359375,
               "data": [
                 [
                   0.0023393285853825496,
@@ -691,54 +723,41 @@
                   }
                 ],
                 [
-                  0.006322522977164402,
+                  0.004806147552276707,
                   {
-                    "processedTime": "2025-10-04T17:10:05.000Z",
-                    "ordering": "1759621984:650:448:000",
+                    "processedTime": "2025-10-05T00:40:24.000Z",
+                    "ordering": "1759628275:865:871:000",
                     "metadata": {
-                      "tokensPerSec": 189380.34375,
-                      "bandwidthPerSec": 13794217984,
-                      "loss": 2.7490484714508057,
-                      "step": 67385
+                      "tokensPerSec": 187564.90625,
+                      "bandwidthPerSec": 12955745280,
+                      "loss": 2.7102553844451904,
+                      "step": 69823
                     }
                   }
                 ],
                 [
-                  0.006279925237060224,
+                  0.00008618607538402046,
                   {
-                    "processedTime": "2025-10-04T15:59:53.000Z",
-                    "ordering": "1759621984:635:867:000",
+                    "processedTime": "2025-10-05T00:37:03.000Z",
+                    "ordering": "1759628275:865:508:000",
                     "metadata": {
-                      "tokensPerSec": 189662.03125,
-                      "bandwidthPerSec": 12921723904,
-                      "loss": 2.7989699840545654,
-                      "step": 67005
+                      "tokensPerSec": 187488.90625,
+                      "bandwidthPerSec": 13302619136,
+                      "loss": 2.794809103012085,
+                      "step": 69805
                     }
                   }
                 ],
                 [
-                  0.005372547249053117,
+                  0.0015095110144607293,
                   {
-                    "processedTime": "2025-10-04T15:26:46.000Z",
-                    "ordering": "1759621984:628:947:000",
+                    "processedTime": "2025-10-04T13:54:20.000Z",
+                    "ordering": "1759621984:609:260:000",
                     "metadata": {
-                      "tokensPerSec": 186664.125,
-                      "bandwidthPerSec": 13859909632,
-                      "loss": 2.780752420425415,
-                      "step": 66825
-                    }
-                  }
-                ],
-                [
-                  0.005261545468368878,
-                  {
-                    "processedTime": "2025-10-04T14:45:35.000Z",
-                    "ordering": "1759621984:620:220:000",
-                    "metadata": {
-                      "tokensPerSec": 190492.359375,
-                      "bandwidthPerSec": 16351065088,
-                      "loss": 2.8044686317443848,
-                      "step": 66603
+                      "tokensPerSec": 192417.90625,
+                      "bandwidthPerSec": 14108465152,
+                      "loss": 2.775912284851074,
+                      "step": 66326
                     }
                   }
                 ]
@@ -748,13 +767,13 @@
           "DKEXJjukrFzuZJRehJgWYGw4Du3dNkavrk5TQWGuL5XG": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:03.000Z",
-                "ordering": "1759628309:868:959:000",
+                "processedTime": "2025-10-05T01:46:54.000Z",
+                "ordering": "1759628821:020:991:000",
                 "metadata": {
-                  "tokensPerSec": 189922.140625,
-                  "bandwidthPerSec": 13745716224,
-                  "loss": 2.7927346229553223,
-                  "step": 70136
+                  "tokensPerSec": 191242.640625,
+                  "bandwidthPerSec": 13558818816,
+                  "loss": 2.7997477054595947,
+                  "step": 70184
                 }
               }
             ],
@@ -829,22 +848,22 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "487912"
+          "nonce": "488150"
         },
-        "accountUpdatedAt": "2025-10-05T01:38:30.663Z",
-        "accountFetchedOrdering": "1759628309:868:985:000",
-        "accountRequestOrdering": "1759628309:868:985:000",
+        "accountUpdatedAt": "2025-10-05T01:46:49.758Z",
+        "accountFetchedOrdering": "1759628809:116:000:000",
+        "accountRequestOrdering": "1759628823:428:000:000",
         "witnessesPerUser": {
           "4U8AezjFFPNMNkreFyDAVAvSVvAmL6xaXE2haKBJRZfS": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:00.000Z",
-                "ordering": "1759628309:868:951:000",
+                "processedTime": "2025-10-05T01:46:44.000Z",
+                "ordering": "1759628809:115:987:000",
                 "metadata": {
-                  "tokensPerSec": 129624.234375,
-                  "bandwidthPerSec": 11836212224,
-                  "loss": 2.656249761581421,
-                  "step": 49850
+                  "tokensPerSec": 127760.859375,
+                  "bandwidthPerSec": 15008366592,
+                  "loss": 2.6837894916534424,
+                  "step": 49882
                 }
               }
             ],
@@ -922,18 +941,18 @@
           "8n7PMZSgvwFhrEUCzKvRnAUveVYf5Hbx2EWKWq5m5Q7f": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:18.000Z",
-                "ordering": "1759628309:868:979:000",
+                "processedTime": "2025-10-05T01:47:00.000Z",
+                "ordering": "1759628822:085:000:000",
                 "metadata": {
-                  "tokensPerSec": 129396.328125,
-                  "bandwidthPerSec": 10193655808,
-                  "loss": 2.6862118244171143,
-                  "step": 49851
+                  "tokensPerSec": 128008.609375,
+                  "bandwidthPerSec": 12070791168,
+                  "loss": 2.7286875247955322,
+                  "step": 49883
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 437.8938903808594,
               "data": [
                 [
                   0.00024113977929807184,
@@ -945,19 +964,6 @@
                       "bandwidthPerSec": 9797441536,
                       "loss": 2.701218366622925,
                       "step": 49829
-                    }
-                  }
-                ],
-                [
-                  0.002844335528809916,
-                  {
-                    "processedTime": "2025-10-04T21:52:49.000Z",
-                    "ordering": "1759621984:703:792:000",
-                    "metadata": {
-                      "tokensPerSec": 129587.65625,
-                      "bandwidthPerSec": 12258098176,
-                      "loss": 2.675502300262451,
-                      "step": 49020
                     }
                   }
                 ],
@@ -975,54 +981,41 @@
                   }
                 ],
                 [
-                  0.004476390749163839,
+                  0.002177393869173816,
                   {
-                    "processedTime": "2025-10-04T19:10:24.000Z",
-                    "ordering": "1759621984:675:804:000",
+                    "processedTime": "2025-10-04T14:08:43.000Z",
+                    "ordering": "1759621984:612:458:000",
                     "metadata": {
-                      "tokensPerSec": 127764.5546875,
-                      "bandwidthPerSec": 12666999808,
-                      "loss": 2.6792054176330566,
-                      "step": 48424
+                      "tokensPerSec": 131109.765625,
+                      "bandwidthPerSec": 10943663104,
+                      "loss": 2.659919023513794,
+                      "step": 47318
                     }
                   }
                 ],
                 [
-                  0.0025690414453822807,
+                  0.0008770571938707672,
                   {
-                    "processedTime": "2025-10-04T16:44:25.000Z",
-                    "ordering": "1759621984:645:088:000",
+                    "processedTime": "2025-10-04T14:00:39.000Z",
+                    "ordering": "1759621984:610:629:000",
                     "metadata": {
-                      "tokensPerSec": 127017.8203125,
-                      "bandwidthPerSec": 10452677632,
-                      "loss": 2.7019004821777344,
-                      "step": 47888
+                      "tokensPerSec": 129544.5234375,
+                      "bandwidthPerSec": 15536057344,
+                      "loss": 2.637260913848877,
+                      "step": 47295
                     }
                   }
                 ],
                 [
-                  0.002603469913093237,
+                  0.0011365674655361424,
                   {
-                    "processedTime": "2025-10-04T16:26:25.000Z",
-                    "ordering": "1759621984:641:340:000",
+                    "processedTime": "2025-10-04T13:55:17.000Z",
+                    "ordering": "1759621984:609:466:000",
                     "metadata": {
-                      "tokensPerSec": 128338.890625,
-                      "bandwidthPerSec": 10291398656,
-                      "loss": 2.6479544639587402,
-                      "step": 47824
-                    }
-                  }
-                ],
-                [
-                  0.002292639974700972,
-                  {
-                    "processedTime": "2025-10-04T15:11:53.000Z",
-                    "ordering": "1759621984:625:798:000",
-                    "metadata": {
-                      "tokensPerSec": 126749.484375,
-                      "bandwidthPerSec": 13982920704,
-                      "loss": 2.7402377128601074,
-                      "step": 47550
+                      "tokensPerSec": 128972.4609375,
+                      "bandwidthPerSec": 13267898368,
+                      "loss": 2.642841100692749,
+                      "step": 47275
                     }
                   }
                 ]
@@ -1032,13 +1025,13 @@
           "9XuNHmrzbonEq9Lo6ixhkyrqdCnHcxkri6L7NaRz1eNm": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:18.000Z",
-                "ordering": "1759628309:868:980:000",
+                "processedTime": "2025-10-05T01:47:00.000Z",
+                "ordering": "1759628822:084:999:000",
                 "metadata": {
-                  "tokensPerSec": 129394.5,
-                  "bandwidthPerSec": 10058017792,
-                  "loss": 2.651622772216797,
-                  "step": 49851
+                  "tokensPerSec": 128009.1171875,
+                  "bandwidthPerSec": 13648633856,
+                  "loss": 2.6480164527893066,
+                  "step": 49883
                 }
               }
             ],
@@ -1122,6 +1115,19 @@
                       "step": 47567
                     }
                   }
+                ],
+                [
+                  0.0004044120305639609,
+                  {
+                    "processedTime": "2025-10-04T14:23:04.000Z",
+                    "ordering": "1759621984:615:524:000",
+                    "metadata": {
+                      "tokensPerSec": 128279.953125,
+                      "bandwidthPerSec": 11311588352,
+                      "loss": 2.679182529449463,
+                      "step": 47371
+                    }
+                  }
                 ]
               ]
             }
@@ -1129,19 +1135,32 @@
           "5wJxU9zFH22k5yKi7onchVMhDpFhgWFYJzp92aqAcaYd": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:17.000Z",
-                "ordering": "1759628309:868:978:000",
+                "processedTime": "2025-10-05T01:47:00.000Z",
+                "ordering": "1759628822:084:998:000",
                 "metadata": {
-                  "tokensPerSec": 129384.8125,
-                  "bandwidthPerSec": 10383865856,
-                  "loss": 2.648031711578369,
-                  "step": 49851
+                  "tokensPerSec": 128003.9296875,
+                  "bandwidthPerSec": 9698139136,
+                  "loss": 2.610008955001831,
+                  "step": 49883
                 }
               }
             ],
             "sampled": {
               "rate": 437.8938903808594,
               "data": [
+                [
+                  0.002193824891868701,
+                  {
+                    "processedTime": "2025-10-05T00:26:49.000Z",
+                    "ordering": "1759628275:864:404:000",
+                    "metadata": {
+                      "tokensPerSec": 127770.6484375,
+                      "bandwidthPerSec": 10328375296,
+                      "loss": 2.7190263271331787,
+                      "step": 49588
+                    }
+                  }
+                ],
                 [
                   0.0006381344294978941,
                   {
@@ -1249,22 +1268,22 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "454296"
+          "nonce": "454512"
         },
-        "accountUpdatedAt": "2025-10-05T01:38:30.579Z",
-        "accountFetchedOrdering": "1759628309:868:996:000",
-        "accountRequestOrdering": "1759628309:868:996:000",
+        "accountUpdatedAt": "2025-10-05T01:46:40.113Z",
+        "accountFetchedOrdering": "1759628798:229:000:000",
+        "accountRequestOrdering": "1759628821:020:990:000",
         "witnessesPerUser": {
           "5ZvHA2dBCXVZyaj2WZRxk4ve94aBaa6itvnbbGTfkVDK": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:25.000Z",
-                "ordering": "1759628309:868:987:000",
+                "processedTime": "2025-10-05T01:46:50.000Z",
+                "ordering": "1759628821:020:984:000",
                 "metadata": {
-                  "tokensPerSec": 125683.4609375,
-                  "bandwidthPerSec": 10253666304,
-                  "loss": 2.65555739402771,
-                  "step": 50260
+                  "tokensPerSec": 123641.796875,
+                  "bandwidthPerSec": 11206011904,
+                  "loss": 2.526479959487915,
+                  "step": 50290
                 }
               }
             ],
@@ -1348,6 +1367,19 @@
                       "step": 47971
                     }
                   }
+                ],
+                [
+                  0.003502457245159185,
+                  {
+                    "processedTime": "2025-10-04T13:30:25.000Z",
+                    "ordering": "1759621984:604:076:000",
+                    "metadata": {
+                      "tokensPerSec": 124848.8359375,
+                      "bandwidthPerSec": 11807984640,
+                      "loss": 2.5934321880340576,
+                      "step": 47653
+                    }
+                  }
                 ]
               ]
             }
@@ -1355,13 +1387,13 @@
           "HUivAaHxb6E5hrYrrrL7jTdxYFB5L5YP3Cje1FxWFE6g": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:25.000Z",
-                "ordering": "1759628309:868:986:000",
+                "processedTime": "2025-10-05T01:46:33.000Z",
+                "ordering": "1759628798:228:993:000",
                 "metadata": {
-                  "tokensPerSec": 125683.4765625,
-                  "bandwidthPerSec": 10358642688,
-                  "loss": 2.6370558738708496,
-                  "step": 50260
+                  "tokensPerSec": 124026.6953125,
+                  "bandwidthPerSec": 11993502720,
+                  "loss": 2.6839070320129395,
+                  "step": 50289
                 }
               }
             ],
@@ -1452,13 +1484,13 @@
           "1257PEnV2hmFz3uFkB9ivLNWSUGysmWzD81RX9xFV6if": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:49.000Z",
-                "ordering": "1759628275:871:992:000",
+                "processedTime": "2025-10-05T01:46:50.000Z",
+                "ordering": "1759628821:020:983:000",
                 "metadata": {
-                  "tokensPerSec": 125731.5859375,
-                  "bandwidthPerSec": 14227169280,
-                  "loss": 2.527404308319092,
-                  "step": 50258
+                  "tokensPerSec": 123638.640625,
+                  "bandwidthPerSec": 11539769344,
+                  "loss": 2.5796432495117188,
+                  "step": 50290
                 }
               }
             ],
@@ -1562,18 +1594,18 @@
           "3oztbnw2TNwP4iXnhH6Xh4azWPq6y7tHDdCNz25e21aY": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:38:25.000Z",
-                "ordering": "1759628309:868:988:000",
+                "processedTime": "2025-10-05T01:46:50.000Z",
+                "ordering": "1759628821:020:985:000",
                 "metadata": {
-                  "tokensPerSec": 125683.640625,
-                  "bandwidthPerSec": 10035167232,
-                  "loss": 2.593493938446045,
-                  "step": 50260
+                  "tokensPerSec": 123633.9296875,
+                  "bandwidthPerSec": 11396784128,
+                  "loss": 2.551931619644165,
+                  "step": 50290
                 }
               }
             ],
             "sampled": {
-              "rate": 194.6195068359375,
+              "rate": 291.92926025390625,
               "data": [
                 [
                   0.002622186311823649,
@@ -1589,28 +1621,15 @@
                   }
                 ],
                 [
-                  0.003998411955744574,
+                  0.0026832114338692925,
                   {
-                    "processedTime": "2025-10-04T22:31:42.000Z",
-                    "ordering": "1759621984:709:519:000",
+                    "processedTime": "2025-10-05T00:37:13.000Z",
+                    "ordering": "1759628275:865:519:000",
                     "metadata": {
-                      "tokensPerSec": 124791.90625,
-                      "bandwidthPerSec": 17195823104,
-                      "loss": 2.6957035064697266,
-                      "step": 49591
-                    }
-                  }
-                ],
-                [
-                  0.004559929181344957,
-                  {
-                    "processedTime": "2025-10-04T18:40:31.000Z",
-                    "ordering": "1759621984:669:535:000",
-                    "metadata": {
-                      "tokensPerSec": 125732.8359375,
-                      "bandwidthPerSec": 14429546496,
-                      "loss": 2.590986490249634,
-                      "step": 48765
+                      "tokensPerSec": 125224.5234375,
+                      "bandwidthPerSec": 11558518784,
+                      "loss": 2.562869071960449,
+                      "step": 50041
                     }
                   }
                 ],
@@ -1637,6 +1656,19 @@
                       "bandwidthPerSec": 12778862592,
                       "loss": 2.4666504859924316,
                       "step": 48034
+                    }
+                  }
+                ],
+                [
+                  0.0006111495611507145,
+                  {
+                    "processedTime": "2025-10-04T13:30:58.000Z",
+                    "ordering": "1759621984:604:179:000",
+                    "metadata": {
+                      "tokensPerSec": 124907.0703125,
+                      "bandwidthPerSec": 13344503808,
+                      "loss": 2.5870883464813232,
+                      "step": 47655
                     }
                   }
                 ]
@@ -1749,22 +1781,22 @@
               "state": "Healthy"
             }
           ],
-          "nonce": "104162"
+          "nonce": "104247"
         },
-        "accountUpdatedAt": "2025-10-05T01:38:07.515Z",
-        "accountFetchedOrdering": "1759628275:871:951:000",
-        "accountRequestOrdering": "1759628275:871:951:000",
+        "accountUpdatedAt": "2025-10-05T01:46:04.582Z",
+        "accountFetchedOrdering": "1759628761:759:915:000",
+        "accountRequestOrdering": "1759628809:115:986:000",
         "witnessesPerUser": {
           "J7XLLRiXs8yv9z7r32HrPhU4H2moJ3GjnCvcZmaBBe3M": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:32:44.000Z",
-                "ordering": "1759628275:871:460:000",
+                "processedTime": "2025-10-05T01:43:36.000Z",
+                "ordering": "1759628618:319:994:000",
                 "metadata": {
-                  "tokensPerSec": 100361.2265625,
-                  "bandwidthPerSec": 4308111196160,
-                  "loss": 0.6199306845664978,
-                  "step": 1352
+                  "tokensPerSec": 101382.328125,
+                  "bandwidthPerSec": 4788612235264,
+                  "loss": 0.5846925377845764,
+                  "step": 1359
                 }
               }
             ],
@@ -1822,6 +1854,19 @@
                       "step": 1004
                     }
                   }
+                ],
+                [
+                  0.03317395705907167,
+                  {
+                    "processedTime": "2025-10-04T14:11:54.000Z",
+                    "ordering": "1759621984:613:141:000",
+                    "metadata": {
+                      "tokensPerSec": 100831.3515625,
+                      "bandwidthPerSec": 3578702069760,
+                      "loss": 0.6354560852050781,
+                      "step": 918
+                    }
+                  }
                 ]
               ]
             }
@@ -1829,13 +1874,13 @@
           "811fHhJ2quwrbHu4e35WDnPhBJELoPmPkDxd8ppFqonT": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:34:13.000Z",
-                "ordering": "1759628275:871:616:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:967:000",
                 "metadata": {
-                  "tokensPerSec": 100362.765625,
-                  "bandwidthPerSec": 2815835504640,
-                  "loss": 0.5712676048278809,
-                  "step": 1353
+                  "tokensPerSec": 101430.265625,
+                  "bandwidthPerSec": 4698114883584,
+                  "loss": 0.5977394580841064,
+                  "step": 1361
                 }
               }
             ],
@@ -1906,6 +1951,19 @@
                       "step": 946
                     }
                   }
+                ],
+                [
+                  0.02145840045973957,
+                  {
+                    "processedTime": "2025-10-04T13:31:23.000Z",
+                    "ordering": "1759621984:604:286:000",
+                    "metadata": {
+                      "tokensPerSec": 100461.1171875,
+                      "bandwidthPerSec": 2257440735232,
+                      "loss": 0.4978170096874237,
+                      "step": 892
+                    }
+                  }
                 ]
               ]
             }
@@ -1913,18 +1971,18 @@
           "GGTQCxzRQpCiShk91q7Pzgpy4mmEDsqRRt6YRq1D2sGW": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:16.000Z",
-                "ordering": "1759628275:871:930:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:971:000",
                 "metadata": {
-                  "tokensPerSec": 100971.7421875,
-                  "bandwidthPerSec": 2809332236288,
-                  "loss": 0.5929800868034363,
-                  "step": 1355
+                  "tokensPerSec": 101418.8359375,
+                  "bandwidthPerSec": 4505079382016,
+                  "loss": 0.5010821223258972,
+                  "step": 1361
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 57.6650390625,
               "data": [
                 [
                   0.005650709933813003,
@@ -1936,6 +1994,19 @@
                       "bandwidthPerSec": 2374361415680,
                       "loss": 0.5714359879493713,
                       "step": 1346
+                    }
+                  }
+                ],
+                [
+                  0.007183626544176924,
+                  {
+                    "processedTime": "2025-10-05T00:34:53.000Z",
+                    "ordering": "1759628275:865:289:000",
+                    "metadata": {
+                      "tokensPerSec": 100485.5703125,
+                      "bandwidthPerSec": 3324245442560,
+                      "loss": 0.5817511081695557,
+                      "step": 1315
                     }
                   }
                 ],
@@ -1962,19 +2033,6 @@
                       "bandwidthPerSec": 3992226103296,
                       "loss": 0.5780702233314514,
                       "step": 1104
-                    }
-                  }
-                ],
-                [
-                  0.0237617561945882,
-                  {
-                    "processedTime": "2025-10-04T18:52:55.000Z",
-                    "ordering": "1759621984:672:148:000",
-                    "metadata": {
-                      "tokensPerSec": 99912.3984375,
-                      "bandwidthPerSec": 2061756661760,
-                      "loss": 0.5140594840049744,
-                      "step": 1096
                     }
                   }
                 ],
@@ -2010,13 +2068,13 @@
           "FYYqnMfCJTVMiQWX7BN6E7GNzE3gZ2ZvdqoUAtH7QMNL": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:34:13.000Z",
-                "ordering": "1759628275:871:620:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:969:000",
                 "metadata": {
-                  "tokensPerSec": 100360.4140625,
-                  "bandwidthPerSec": 2861801668608,
-                  "loss": 0.4812915325164795,
-                  "step": 1353
+                  "tokensPerSec": 101427.8203125,
+                  "bandwidthPerSec": 4261620482048,
+                  "loss": 0.5805928707122803,
+                  "step": 1361
                 }
               }
             ],
@@ -2100,6 +2158,19 @@
                       "step": 988
                     }
                   }
+                ],
+                [
+                  0.016276507136867346,
+                  {
+                    "processedTime": "2025-10-04T13:42:15.000Z",
+                    "ordering": "1759621984:606:675:000",
+                    "metadata": {
+                      "tokensPerSec": 100143.140625,
+                      "bandwidthPerSec": 2663096254464,
+                      "loss": 0.6217105984687805,
+                      "step": 899
+                    }
+                  }
                 ]
               ]
             }
@@ -2107,13 +2178,13 @@
           "55P42fCb5RXN56zC2RSqcdyXFXfmScHWRx8CumaiSBuy": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:35:49.000Z",
-                "ordering": "1759628275:871:789:000",
+                "processedTime": "2025-10-05T01:43:35.000Z",
+                "ordering": "1759628618:319:986:000",
                 "metadata": {
-                  "tokensPerSec": 100659.109375,
-                  "bandwidthPerSec": 4568694915072,
-                  "loss": 0.5416746735572815,
-                  "step": 1354
+                  "tokensPerSec": 101385.796875,
+                  "bandwidthPerSec": 4467441795072,
+                  "loss": 0.6125509142875671,
+                  "step": 1359
                 }
               }
             ],
@@ -2204,19 +2275,32 @@
           "CqX3FUm4QNc1GLLXdL8NMwda8B4kjKAfFcvgjdGTb71o": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:17.000Z",
-                "ordering": "1759628275:871:932:000",
+                "processedTime": "2025-10-05T01:41:57.000Z",
+                "ordering": "1759628520:739:990:000",
                 "metadata": {
-                  "tokensPerSec": 100970.7109375,
-                  "bandwidthPerSec": 2958789967872,
-                  "loss": 0.5541799068450928,
-                  "step": 1355
+                  "tokensPerSec": 100733.1328125,
+                  "bandwidthPerSec": 2970669285376,
+                  "loss": 0.4285762310028076,
+                  "step": 1358
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 57.6650390625,
               "data": [
+                [
+                  0.014731002962222517,
+                  {
+                    "processedTime": "2025-10-05T00:23:57.000Z",
+                    "ordering": "1759628275:864:101:000",
+                    "metadata": {
+                      "tokensPerSec": 100398.6171875,
+                      "bandwidthPerSec": 3137648721920,
+                      "loss": 0.6148681044578552,
+                      "step": 1308
+                    }
+                  }
+                ],
                 [
                   0.0066326862133370135,
                   {
@@ -2257,32 +2341,6 @@
                   }
                 ],
                 [
-                  0.021100742081414436,
-                  {
-                    "processedTime": "2025-10-04T21:22:37.000Z",
-                    "ordering": "1759621984:699:352:000",
-                    "metadata": {
-                      "tokensPerSec": 100583.953125,
-                      "bandwidthPerSec": 2862847623168,
-                      "loss": 0.3878752887248993,
-                      "step": 1192
-                    }
-                  }
-                ],
-                [
-                  0.0257141791151283,
-                  {
-                    "processedTime": "2025-10-04T18:29:24.000Z",
-                    "ordering": "1759621984:667:175:000",
-                    "metadata": {
-                      "tokensPerSec": 99885.0625,
-                      "bandwidthPerSec": 2531125624832,
-                      "loss": 0.6127148270606995,
-                      "step": 1081
-                    }
-                  }
-                ],
-                [
                   0.007438218304798738,
                   {
                     "processedTime": "2025-10-04T17:30:01.000Z",
@@ -2301,19 +2359,32 @@
           "94naSKMjPga3naRDL6joA4k5W36wHPSTaQJjocKaRrq6": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:32:44.000Z",
-                "ordering": "1759628275:871:461:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:972:000",
                 "metadata": {
-                  "tokensPerSec": 100359.8671875,
-                  "bandwidthPerSec": 4416086736896,
-                  "loss": 0.6300724148750305,
-                  "step": 1352
+                  "tokensPerSec": 101423.984375,
+                  "bandwidthPerSec": 4330137321472,
+                  "loss": 0.5245723128318787,
+                  "step": 1361
                 }
               }
             ],
             "sampled": {
               "rate": 57.6650390625,
               "data": [
+                [
+                  0.0027151475256150803,
+                  {
+                    "processedTime": "2025-10-05T00:31:43.000Z",
+                    "ordering": "1759628275:864:942:000",
+                    "metadata": {
+                      "tokensPerSec": 100694.4609375,
+                      "bandwidthPerSec": 2592640335872,
+                      "loss": 0.4159882664680481,
+                      "step": 1313
+                    }
+                  }
+                ],
                 [
                   0.011225102863316572,
                   {
@@ -2385,13 +2456,13 @@
           "5eKLG5LH1b4QYnFVX6jo9itfgG7iedVz3ghTxfVu9siS": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:17.000Z",
-                "ordering": "1759628275:871:936:000",
+                "processedTime": "2025-10-05T01:46:40.000Z",
+                "ordering": "1759628809:115:974:000",
                 "metadata": {
-                  "tokensPerSec": 100971.5,
-                  "bandwidthPerSec": 3044420878336,
-                  "loss": 0.5769028663635254,
-                  "step": 1355
+                  "tokensPerSec": 101427.9921875,
+                  "bandwidthPerSec": 4643952787456,
+                  "loss": 0.5390679836273193,
+                  "step": 1361
                 }
               }
             ],
@@ -2475,6 +2546,19 @@
                       "step": 1051
                     }
                   }
+                ],
+                [
+                  0.016052581706185842,
+                  {
+                    "processedTime": "2025-10-04T14:18:04.000Z",
+                    "ordering": "1759621984:614:456:000",
+                    "metadata": {
+                      "tokensPerSec": 101802.1640625,
+                      "bandwidthPerSec": 3741964566528,
+                      "loss": 0.6131198406219482,
+                      "step": 922
+                    }
+                  }
                 ]
               ]
             }
@@ -2482,19 +2566,45 @@
           "E8tvsgFAUGseQS7nTCD9jRUfCV3PScPRdvGSmcJXak9G": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:35:49.000Z",
-                "ordering": "1759628275:871:781:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:970:000",
                 "metadata": {
-                  "tokensPerSec": 100655.984375,
-                  "bandwidthPerSec": 4727152050176,
-                  "loss": 0.5531081557273865,
-                  "step": 1354
+                  "tokensPerSec": 101427.2421875,
+                  "bandwidthPerSec": 4686951219200,
+                  "loss": 0.6252415180206299,
+                  "step": 1361
                 }
               }
             ],
             "sampled": {
               "rate": 25.62890625,
               "data": [
+                [
+                  0.015181662164428067,
+                  {
+                    "processedTime": "2025-10-05T01:41:57.000Z",
+                    "ordering": "1759628520:739:987:000",
+                    "metadata": {
+                      "tokensPerSec": 100733.1015625,
+                      "bandwidthPerSec": 2725986435072,
+                      "loss": 0.41698864102363586,
+                      "step": 1358
+                    }
+                  }
+                ],
+                [
+                  0.01906292059975434,
+                  {
+                    "processedTime": "2025-10-05T00:42:44.000Z",
+                    "ordering": "1759628275:866:119:000",
+                    "metadata": {
+                      "tokensPerSec": 100385.6015625,
+                      "bandwidthPerSec": 2695762018304,
+                      "loss": 0.5800874829292297,
+                      "step": 1320
+                    }
+                  }
+                ],
                 [
                   0.010741087411616057,
                   {
@@ -2507,6 +2617,19 @@
                       "step": 1124
                     }
                   }
+                ],
+                [
+                  0.022764092563365645,
+                  {
+                    "processedTime": "2025-10-04T14:11:55.000Z",
+                    "ordering": "1759621984:613:148:000",
+                    "metadata": {
+                      "tokensPerSec": 100826.484375,
+                      "bandwidthPerSec": 3709955735552,
+                      "loss": 0.5857681632041931,
+                      "step": 918
+                    }
+                  }
                 ]
               ]
             }
@@ -2514,19 +2637,32 @@
           "HjeRpywSNDgLomF8hBtc2EeqMMDgaUavcrNXy8bMXaUR": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:35:49.000Z",
-                "ordering": "1759628275:871:782:000",
+                "processedTime": "2025-10-05T01:45:04.000Z",
+                "ordering": "1759628761:759:898:000",
                 "metadata": {
-                  "tokensPerSec": 100652.546875,
-                  "bandwidthPerSec": 4087756357632,
-                  "loss": 0.4776585102081299,
-                  "step": 1354
+                  "tokensPerSec": 101265.0078125,
+                  "bandwidthPerSec": 2358063136768,
+                  "loss": 0.6535826325416565,
+                  "step": 1360
                 }
               }
             ],
             "sampled": {
               "rate": 25.62890625,
               "data": [
+                [
+                  0.028860485709108152,
+                  {
+                    "processedTime": "2025-10-05T00:47:24.000Z",
+                    "ordering": "1759628275:866:627:000",
+                    "metadata": {
+                      "tokensPerSec": 100164.8984375,
+                      "bandwidthPerSec": 2546904072192,
+                      "loss": 0.5643516182899475,
+                      "step": 1323
+                    }
+                  }
+                ],
                 [
                   0.017167933479268926,
                   {
@@ -2572,13 +2708,13 @@
           "DEqQEnogPSTSXHQ4aJPPRRqTdiih3voDFz1K6g6bGCic": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:32:44.000Z",
-                "ordering": "1759628275:871:465:000",
+                "processedTime": "2025-10-05T01:45:04.000Z",
+                "ordering": "1759628761:759:892:000",
                 "metadata": {
-                  "tokensPerSec": 100363.5625,
-                  "bandwidthPerSec": 5846878650368,
-                  "loss": 0.6410136222839355,
-                  "step": 1352
+                  "tokensPerSec": 101268.0546875,
+                  "bandwidthPerSec": 2554008436736,
+                  "loss": 0.6260231137275696,
+                  "step": 1360
                 }
               }
             ],
@@ -2643,13 +2779,13 @@
           "7Y9v38s53TwGwRryQhYLFCPwoWBxT29Y2MzZttkeemhv": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:17.000Z",
-                "ordering": "1759628275:871:934:000",
+                "processedTime": "2025-10-05T01:41:58.000Z",
+                "ordering": "1759628520:739:993:000",
                 "metadata": {
-                  "tokensPerSec": 100969.1484375,
-                  "bandwidthPerSec": 2771702513664,
-                  "loss": 0.6197784543037415,
-                  "step": 1355
+                  "tokensPerSec": 100733.2109375,
+                  "bandwidthPerSec": 2785733509120,
+                  "loss": 0.5047141909599304,
+                  "step": 1358
                 }
               }
             ],
@@ -2733,6 +2869,19 @@
                       "step": 945
                     }
                   }
+                ],
+                [
+                  0.01292766356149766,
+                  {
+                    "processedTime": "2025-10-04T14:25:58.000Z",
+                    "ordering": "1759621984:616:132:000",
+                    "metadata": {
+                      "tokensPerSec": 101259.0390625,
+                      "bandwidthPerSec": 4553425027072,
+                      "loss": 0.5930361151695251,
+                      "step": 927
+                    }
+                  }
                 ]
               ]
             }
@@ -2740,18 +2889,18 @@
           "82cHkfiWih9ZnAsCDNMxBkGistk1rjSWEeFxJLGEP7kL": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:17.000Z",
-                "ordering": "1759628275:871:938:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:964:000",
                 "metadata": {
-                  "tokensPerSec": 100969.15625,
-                  "bandwidthPerSec": 3065788760064,
-                  "loss": 0.46286776661872864,
-                  "step": 1355
+                  "tokensPerSec": 101429.28125,
+                  "bandwidthPerSec": 4182075244544,
+                  "loss": 0.5238212943077087,
+                  "step": 1361
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
+              "rate": 38.443359375,
               "data": [
                 [
                   0.009561845262275215,
@@ -2793,19 +2942,6 @@
                   }
                 ],
                 [
-                  0.0381673285631039,
-                  {
-                    "processedTime": "2025-10-04T17:14:31.000Z",
-                    "ordering": "1759621984:651:378:000",
-                    "metadata": {
-                      "tokensPerSec": 100454.1640625,
-                      "bandwidthPerSec": 5383981105152,
-                      "loss": 0.503429651260376,
-                      "step": 1033
-                    }
-                  }
-                ],
-                [
                   0.017003433185075245,
                   {
                     "processedTime": "2025-10-04T16:24:33.000Z",
@@ -2819,15 +2955,15 @@
                   }
                 ],
                 [
-                  0.03168537047750952,
+                  0.0018193488567082028,
                   {
-                    "processedTime": "2025-10-04T15:01:41.000Z",
-                    "ordering": "1759621984:623:639:000",
+                    "processedTime": "2025-10-04T14:08:45.000Z",
+                    "ordering": "1759621984:612:482:000",
                     "metadata": {
-                      "tokensPerSec": 100985.015625,
-                      "bandwidthPerSec": 2254149517312,
-                      "loss": 0.5570468306541443,
-                      "step": 950
+                      "tokensPerSec": 100565.640625,
+                      "bandwidthPerSec": 3008979533824,
+                      "loss": 0.6642122864723206,
+                      "step": 916
                     }
                   }
                 ]
@@ -2837,19 +2973,32 @@
           "Dq7NM62DUQaoPzvPkK74vKwqsfV3jgnfaz4KBUAjfbm7": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:34:13.000Z",
-                "ordering": "1759628275:871:608:000",
+                "processedTime": "2025-10-05T01:46:40.000Z",
+                "ordering": "1759628809:115:973:000",
                 "metadata": {
-                  "tokensPerSec": 100356.1171875,
-                  "bandwidthPerSec": 2794190536704,
-                  "loss": 0.5435610413551331,
-                  "step": 1353
+                  "tokensPerSec": 101424.71875,
+                  "bandwidthPerSec": 16107269259264,
+                  "loss": 0.6472035050392151,
+                  "step": 1361
                 }
               }
             ],
             "sampled": {
               "rate": 25.62890625,
               "data": [
+                [
+                  0.013264228621926888,
+                  {
+                    "processedTime": "2025-10-05T01:46:40.000Z",
+                    "ordering": "1759628809:115:973:000",
+                    "metadata": {
+                      "tokensPerSec": 101424.71875,
+                      "bandwidthPerSec": 16107269259264,
+                      "loss": 0.6472035050392151,
+                      "step": 1361
+                    }
+                  }
+                ],
                 [
                   0.0024295657796387093,
                   {
@@ -2914,6 +3063,19 @@
                       "step": 962
                     }
                   }
+                ],
+                [
+                  0.03422567382915398,
+                  {
+                    "processedTime": "2025-10-04T13:39:13.000Z",
+                    "ordering": "1759621984:606:030:000",
+                    "metadata": {
+                      "tokensPerSec": 100449.8828125,
+                      "bandwidthPerSec": 2807053418496,
+                      "loss": 0.5983976721763611,
+                      "step": 897
+                    }
+                  }
                 ]
               ]
             }
@@ -2921,13 +3083,13 @@
           "5RJdEcSRcXcgzWtJx3r8JDxq5HPciUctEiQ4yn7ptL3d": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:17.000Z",
-                "ordering": "1759628275:871:933:000",
+                "processedTime": "2025-10-05T01:45:04.000Z",
+                "ordering": "1759628761:759:889:000",
                 "metadata": {
-                  "tokensPerSec": 100973.2578125,
-                  "bandwidthPerSec": 3048479653888,
-                  "loss": 0.6093682646751404,
-                  "step": 1355
+                  "tokensPerSec": 101264.578125,
+                  "bandwidthPerSec": 2228088209408,
+                  "loss": 0.5359672904014587,
+                  "step": 1360
                 }
               }
             ],
@@ -3031,71 +3193,19 @@
           "Fosi72YsJYbfvpuhygcEtXjCBEajdNJon6n7Ztzb1VAY": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:16.000Z",
-                "ordering": "1759628275:871:929:000",
+                "processedTime": "2025-10-05T01:45:04.000Z",
+                "ordering": "1759628761:759:894:000",
                 "metadata": {
-                  "tokensPerSec": 100974.234375,
-                  "bandwidthPerSec": 2572648710144,
-                  "loss": 0.5608892440795898,
-                  "step": 1355
+                  "tokensPerSec": 101264.859375,
+                  "bandwidthPerSec": 2330404061184,
+                  "loss": 0.5414853692054749,
+                  "step": 1360
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
+              "rate": 57.6650390625,
               "data": [
-                [
-                  0.02140999433319224,
-                  {
-                    "processedTime": "2025-10-04T22:28:25.000Z",
-                    "ordering": "1759621984:709:039:000",
-                    "metadata": {
-                      "tokensPerSec": 99966.4921875,
-                      "bandwidthPerSec": 1890442543104,
-                      "loss": 0.5052540898323059,
-                      "step": 1234
-                    }
-                  }
-                ],
-                [
-                  0.018379295581004262,
-                  {
-                    "processedTime": "2025-10-04T21:53:55.000Z",
-                    "ordering": "1759621984:703:921:000",
-                    "metadata": {
-                      "tokensPerSec": 101017.1875,
-                      "bandwidthPerSec": 2684919480320,
-                      "loss": 0.5889444351196289,
-                      "step": 1212
-                    }
-                  }
-                ],
-                [
-                  0.019944740580595033,
-                  {
-                    "processedTime": "2025-10-04T19:00:43.000Z",
-                    "ordering": "1759621984:673:787:000",
-                    "metadata": {
-                      "tokensPerSec": 100546.75,
-                      "bandwidthPerSec": 3690576478208,
-                      "loss": 0.6937937140464783,
-                      "step": 1101
-                    }
-                  }
-                ],
-                [
-                  0.01780947304292524,
-                  {
-                    "processedTime": "2025-10-04T18:51:21.000Z",
-                    "ordering": "1759621984:671:813:000",
-                    "metadata": {
-                      "tokensPerSec": 99931.265625,
-                      "bandwidthPerSec": 3008470188032,
-                      "loss": 0.6247067451477051,
-                      "step": 1095
-                    }
-                  }
-                ],
                 [
                   0.01652142784675159,
                   {
@@ -3110,15 +3220,28 @@
                   }
                 ],
                 [
-                  0.018231849774991815,
+                  0.001384598728541686,
                   {
-                    "processedTime": "2025-10-04T15:12:33.000Z",
-                    "ordering": "1759621984:625:940:000",
+                    "processedTime": "2025-10-04T13:57:53.000Z",
+                    "ordering": "1759621984:610:050:000",
                     "metadata": {
-                      "tokensPerSec": 100894.734375,
-                      "bandwidthPerSec": 2385733222400,
-                      "loss": 0.5125113129615784,
-                      "step": 957
+                      "tokensPerSec": 100807.390625,
+                      "bandwidthPerSec": 3581586964480,
+                      "loss": 0.6475391983985901,
+                      "step": 909
+                    }
+                  }
+                ],
+                [
+                  0.015247130105016549,
+                  {
+                    "processedTime": "2025-10-04T13:54:51.000Z",
+                    "ordering": "1759621984:609:374:000",
+                    "metadata": {
+                      "tokensPerSec": 100768.6015625,
+                      "bandwidthPerSec": 4269476151296,
+                      "loss": 0.4678831398487091,
+                      "step": 907
                     }
                   }
                 ]
@@ -3128,19 +3251,32 @@
           "GMGE9gcwkeJAmG3H35rDt6Qq6HKa3JfSmknR8r2tHWvg": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:16.000Z",
-                "ordering": "1759628275:871:927:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:965:000",
                 "metadata": {
-                  "tokensPerSec": 100974.171875,
-                  "bandwidthPerSec": 3346192400384,
-                  "loss": 0.379681795835495,
-                  "step": 1355
+                  "tokensPerSec": 101427.9453125,
+                  "bandwidthPerSec": 4498302959616,
+                  "loss": 0.6234834790229797,
+                  "step": 1361
                 }
               }
             ],
             "sampled": {
               "rate": 38.443359375,
               "data": [
+                [
+                  0.02463202911239848,
+                  {
+                    "processedTime": "2025-10-05T00:28:28.000Z",
+                    "ordering": "1759628275:864:583:000",
+                    "metadata": {
+                      "tokensPerSec": 100619.8046875,
+                      "bandwidthPerSec": 2800407281664,
+                      "loss": 0.4376932978630066,
+                      "step": 1311
+                    }
+                  }
+                ],
                 [
                   0.01359512418487041,
                   {
@@ -3192,6 +3328,32 @@
                       "step": 1041
                     }
                   }
+                ],
+                [
+                  0.004921354701346914,
+                  {
+                    "processedTime": "2025-10-04T14:05:40.000Z",
+                    "ordering": "1759621984:611:791:000",
+                    "metadata": {
+                      "tokensPerSec": 100754.0234375,
+                      "bandwidthPerSec": 2669843316736,
+                      "loss": 0.5793439745903015,
+                      "step": 914
+                    }
+                  }
+                ],
+                [
+                  0.01685146267670401,
+                  {
+                    "processedTime": "2025-10-04T13:32:59.000Z",
+                    "ordering": "1759621984:604:642:000",
+                    "metadata": {
+                      "tokensPerSec": 100563.78125,
+                      "bandwidthPerSec": 8818108923904,
+                      "loss": 0.597701370716095,
+                      "step": 893
+                    }
+                  }
                 ]
               ]
             }
@@ -3199,13 +3361,13 @@
           "B3m2y2LZKARzjQcgiUtXY1qJQGqDcLRskRKJPrfVBEdc": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:16.000Z",
-                "ordering": "1759628275:871:931:000",
+                "processedTime": "2025-10-05T01:40:28.000Z",
+                "ordering": "1759628520:739:816:000",
                 "metadata": {
-                  "tokensPerSec": 100974.21875,
-                  "bandwidthPerSec": 2981415616512,
-                  "loss": 0.7044320702552795,
-                  "step": 1355
+                  "tokensPerSec": 101116.15625,
+                  "bandwidthPerSec": 3092477378560,
+                  "loss": 0.5780448317527771,
+                  "step": 1357
                 }
               }
             ],
@@ -3289,6 +3451,19 @@
                       "step": 1028
                     }
                   }
+                ],
+                [
+                  0.025307362979165804,
+                  {
+                    "processedTime": "2025-10-04T14:11:54.000Z",
+                    "ordering": "1759621984:613:136:000",
+                    "metadata": {
+                      "tokensPerSec": 100833.109375,
+                      "bandwidthPerSec": 3487678595072,
+                      "loss": 0.6166744828224182,
+                      "step": 918
+                    }
+                  }
                 ]
               ]
             }
@@ -3296,13 +3471,13 @@
           "EgiDc6jNH4DPmfLw5wztFEhC5RSbxk43RMmGpDCUFuBs": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:35:49.000Z",
-                "ordering": "1759628275:871:780:000",
+                "processedTime": "2025-10-05T01:45:04.000Z",
+                "ordering": "1759628761:759:895:000",
                 "metadata": {
-                  "tokensPerSec": 100657.5078125,
-                  "bandwidthPerSec": 3959977148416,
-                  "loss": 0.6514648795127869,
-                  "step": 1354
+                  "tokensPerSec": 101266.25,
+                  "bandwidthPerSec": 2373955616768,
+                  "loss": 0.38507211208343506,
+                  "step": 1360
                 }
               }
             ],
@@ -3380,19 +3555,32 @@
           "Bifs5ysYHm4Wye4qa3jrMMMThTBvbQqxK9mEnSCmPmiQ": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:17.000Z",
-                "ordering": "1759628275:871:937:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:963:000",
                 "metadata": {
-                  "tokensPerSec": 100969.171875,
-                  "bandwidthPerSec": 2916415176704,
-                  "loss": 0.6190149188041687,
-                  "step": 1355
+                  "tokensPerSec": 101422.1875,
+                  "bandwidthPerSec": 4932553408512,
+                  "loss": 0.4937126636505127,
+                  "step": 1361
                 }
               }
             ],
             "sampled": {
               "rate": 17.0859375,
               "data": [
+                [
+                  0.03515489908864855,
+                  {
+                    "processedTime": "2025-10-05T01:38:54.000Z",
+                    "ordering": "1759628520:739:669:000",
+                    "metadata": {
+                      "tokensPerSec": 101129.5546875,
+                      "bandwidthPerSec": 3531552325632,
+                      "loss": 0.46822279691696167,
+                      "step": 1356
+                    }
+                  }
+                ],
                 [
                   0.05664358990512097,
                   {
@@ -3477,32 +3665,19 @@
           "AzdqAy5QJTcyxGRvp7Pfoz5cUMjrNYG3jASTMoYEZWo4": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:17.000Z",
-                "ordering": "1759628275:871:935:000",
+                "processedTime": "2025-10-05T01:45:04.000Z",
+                "ordering": "1759628761:759:890:000",
                 "metadata": {
-                  "tokensPerSec": 100974.25,
-                  "bandwidthPerSec": 3387617181696,
-                  "loss": 0.5961328148841858,
-                  "step": 1355
+                  "tokensPerSec": 101264.828125,
+                  "bandwidthPerSec": 2280047247360,
+                  "loss": 0.5899805426597595,
+                  "step": 1360
                 }
               }
             ],
             "sampled": {
-              "rate": 38.443359375,
+              "rate": 57.6650390625,
               "data": [
-                [
-                  0.022177991718804524,
-                  {
-                    "processedTime": "2025-10-04T23:47:58.000Z",
-                    "ordering": "1759621984:718:453:000",
-                    "metadata": {
-                      "tokensPerSec": 100783.140625,
-                      "bandwidthPerSec": 3732222246912,
-                      "loss": 0.5895542502403259,
-                      "step": 1285
-                    }
-                  }
-                ],
                 [
                   0.012048678099635168,
                   {
@@ -3513,19 +3688,6 @@
                       "bandwidthPerSec": 2585115230208,
                       "loss": 0.42602208256721497,
                       "step": 1272
-                    }
-                  }
-                ],
-                [
-                  0.020557141860420458,
-                  {
-                    "processedTime": "2025-10-04T23:18:17.000Z",
-                    "ordering": "1759621984:715:284:000",
-                    "metadata": {
-                      "tokensPerSec": 101069.3515625,
-                      "bandwidthPerSec": 3374645510144,
-                      "loss": 0.570307195186615,
-                      "step": 1266
                     }
                   }
                 ],
@@ -3556,15 +3718,15 @@
                   }
                 ],
                 [
-                  0.020469343887053792,
+                  0.003474780398259769,
                   {
-                    "processedTime": "2025-10-04T14:56:55.000Z",
-                    "ordering": "1759621984:622:647:000",
+                    "processedTime": "2025-10-04T13:39:13.000Z",
+                    "ordering": "1759621984:606:033:000",
                     "metadata": {
-                      "tokensPerSec": 101558.0390625,
-                      "bandwidthPerSec": 2555134345216,
-                      "loss": 0.6373105645179749,
-                      "step": 947
+                      "tokensPerSec": 100449.84375,
+                      "bandwidthPerSec": 2989594509312,
+                      "loss": 0.5224838256835938,
+                      "step": 897
                     }
                   }
                 ]
@@ -3574,13 +3736,13 @@
           "EiFSuveduyyF6sf7Z27gBLLKXQBz6S6qq466ALcZQT23": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:37:16.000Z",
-                "ordering": "1759628275:871:928:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:966:000",
                 "metadata": {
-                  "tokensPerSec": 100969.1796875,
-                  "bandwidthPerSec": 2898429214720,
-                  "loss": 0.533170759677887,
-                  "step": 1355
+                  "tokensPerSec": 101425.453125,
+                  "bandwidthPerSec": 4785502158848,
+                  "loss": 0.5968367457389832,
+                  "step": 1361
                 }
               }
             ],
@@ -3651,6 +3813,32 @@
                       "step": 1224
                     }
                   }
+                ],
+                [
+                  0.0049038909271963416,
+                  {
+                    "processedTime": "2025-10-04T13:59:29.000Z",
+                    "ordering": "1759621984:610:389:000",
+                    "metadata": {
+                      "tokensPerSec": 101063.1484375,
+                      "bandwidthPerSec": 3721382854656,
+                      "loss": 0.44282835721969604,
+                      "step": 910
+                    }
+                  }
+                ],
+                [
+                  0.011641700780212538,
+                  {
+                    "processedTime": "2025-10-04T13:32:59.000Z",
+                    "ordering": "1759621984:604:643:000",
+                    "metadata": {
+                      "tokensPerSec": 100561.8515625,
+                      "bandwidthPerSec": 4595396378624,
+                      "loss": 0.6539689898490906,
+                      "step": 893
+                    }
+                  }
                 ]
               ]
             }
@@ -3658,19 +3846,58 @@
           "DZv6So6xVhMPpFMA38GWLuBFUfYVCaWt43V5zjakkGfN": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:29:36.000Z",
-                "ordering": "1759628275:871:127:000",
+                "processedTime": "2025-10-05T01:41:57.000Z",
+                "ordering": "1759628520:739:989:000",
                 "metadata": {
-                  "tokensPerSec": 100580.2109375,
-                  "bandwidthPerSec": 3243489361920,
-                  "loss": 0.6174535155296326,
-                  "step": 1350
+                  "tokensPerSec": 100728.8203125,
+                  "bandwidthPerSec": 2760855519232,
+                  "loss": 0.4873192012310028,
+                  "step": 1358
                 }
               }
             ],
             "sampled": {
-              "rate": 25.62890625,
+              "rate": 38.443359375,
               "data": [
+                [
+                  0.0031280448543828943,
+                  {
+                    "processedTime": "2025-10-05T01:38:53.000Z",
+                    "ordering": "1759628520:739:662:000",
+                    "metadata": {
+                      "tokensPerSec": 101124.921875,
+                      "bandwidthPerSec": 3677315923968,
+                      "loss": 0.5112035870552063,
+                      "step": 1356
+                    }
+                  }
+                ],
+                [
+                  0.014437037710564482,
+                  {
+                    "processedTime": "2025-10-05T00:28:28.000Z",
+                    "ordering": "1759628275:864:577:000",
+                    "metadata": {
+                      "tokensPerSec": 100619.3515625,
+                      "bandwidthPerSec": 2635562221568,
+                      "loss": 0.5246163010597229,
+                      "step": 1311
+                    }
+                  }
+                ],
+                [
+                  0.018240840621651433,
+                  {
+                    "processedTime": "2025-10-05T00:27:01.000Z",
+                    "ordering": "1759628275:864:429:000",
+                    "metadata": {
+                      "tokensPerSec": 100949.515625,
+                      "bandwidthPerSec": 5173260320768,
+                      "loss": 0.6017170548439026,
+                      "step": 1310
+                    }
+                  }
+                ],
                 [
                   0.0004034539229684775,
                   {
@@ -3681,45 +3908,6 @@
                       "bandwidthPerSec": 3894298542080,
                       "loss": 0.6209554076194763,
                       "step": 1278
-                    }
-                  }
-                ],
-                [
-                  0.02978568202149079,
-                  {
-                    "processedTime": "2025-10-04T23:12:05.000Z",
-                    "ordering": "1759621984:714:604:000",
-                    "metadata": {
-                      "tokensPerSec": 100470.6875,
-                      "bandwidthPerSec": 6749366517760,
-                      "loss": 0.5480338931083679,
-                      "step": 1262
-                    }
-                  }
-                ],
-                [
-                  0.03596552455209401,
-                  {
-                    "processedTime": "2025-10-04T19:25:44.000Z",
-                    "ordering": "1759621984:679:018:000",
-                    "metadata": {
-                      "tokensPerSec": 99910.890625,
-                      "bandwidthPerSec": 2288431923200,
-                      "loss": 0.4754088521003723,
-                      "step": 1117
-                    }
-                  }
-                ],
-                [
-                  0.028727407712819897,
-                  {
-                    "processedTime": "2025-10-04T17:05:06.000Z",
-                    "ordering": "1759621984:649:418:000",
-                    "metadata": {
-                      "tokensPerSec": 100377.53125,
-                      "bandwidthPerSec": 2979356999680,
-                      "loss": 0.4953213334083557,
-                      "step": 1027
                     }
                   }
                 ],
@@ -3768,13 +3956,13 @@
           "3XLe6RCfDT9tjsDoSY7956KsEQ6VoLfZyLsdD2BdSm5B": {
             "lastFew": [
               {
-                "processedTime": "2025-10-05T01:32:44.000Z",
-                "ordering": "1759628275:871:455:000",
+                "processedTime": "2025-10-05T01:46:39.000Z",
+                "ordering": "1759628809:115:968:000",
                 "metadata": {
-                  "tokensPerSec": 100362.4765625,
-                  "bandwidthPerSec": 4147821674496,
-                  "loss": 0.6115384697914124,
-                  "step": 1352
+                  "tokensPerSec": 101423.6796875,
+                  "bandwidthPerSec": 4205389283328,
+                  "loss": 0.5170426368713379,
+                  "step": 1361
                 }
               }
             ],
@@ -4095,6 +4283,19 @@
                       "step": 57819
                     }
                   }
+                ],
+                [
+                  0.003752495073346518,
+                  {
+                    "processedTime": "2025-10-04T14:43:02.000Z",
+                    "ordering": "1759621984:619:684:000",
+                    "metadata": {
+                      "tokensPerSec": 172505.09375,
+                      "bandwidthPerSec": 11213769728,
+                      "loss": 2.368570327758789,
+                      "step": 57662
+                    }
+                  }
                 ]
               ]
             }
@@ -4192,6 +4393,19 @@
                       "step": 57836
                     }
                   }
+                ],
+                [
+                  0.001603207138509033,
+                  {
+                    "processedTime": "2025-10-04T14:38:23.000Z",
+                    "ordering": "1759621984:618:772:000",
+                    "metadata": {
+                      "tokensPerSec": 171711.875,
+                      "bandwidthPerSec": 10676606976,
+                      "loss": 2.4252331256866455,
+                      "step": 57639
+                    }
+                  }
                 ]
               ]
             }
@@ -4263,6 +4477,19 @@
                       "step": 58505
                     }
                   }
+                ],
+                [
+                  0.0008381310832199507,
+                  {
+                    "processedTime": "2025-10-04T14:40:36.000Z",
+                    "ordering": "1759621984:619:188:000",
+                    "metadata": {
+                      "tokensPerSec": 171826.15625,
+                      "bandwidthPerSec": 10643828736,
+                      "loss": 2.4913783073425293,
+                      "step": 57650
+                    }
+                  }
                 ]
               ]
             }
@@ -4281,47 +4508,8 @@
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 291.92926025390625,
               "data": [
-                [
-                  0.005135864197742146,
-                  {
-                    "processedTime": "2025-10-04T22:46:32.000Z",
-                    "ordering": "1759621984:711:697:000",
-                    "metadata": {
-                      "tokensPerSec": 171746.09375,
-                      "bandwidthPerSec": 10179861504,
-                      "loss": 2.4373385906219482,
-                      "step": 60065
-                    }
-                  }
-                ],
-                [
-                  0.00513797876230071,
-                  {
-                    "processedTime": "2025-10-04T21:11:03.000Z",
-                    "ordering": "1759621984:697:389:000",
-                    "metadata": {
-                      "tokensPerSec": 174826.4375,
-                      "bandwidthPerSec": 10457415680,
-                      "loss": 2.379347085952759,
-                      "step": 59590
-                    }
-                  }
-                ],
-                [
-                  0.006032096397003084,
-                  {
-                    "processedTime": "2025-10-04T20:27:27.000Z",
-                    "ordering": "1759621984:689:787:000",
-                    "metadata": {
-                      "tokensPerSec": 174503.828125,
-                      "bandwidthPerSec": 10283219968,
-                      "loss": 2.443021059036255,
-                      "step": 59373
-                    }
-                  }
-                ],
                 [
                   0.00022674431706848353,
                   {
@@ -4358,6 +4546,32 @@
                       "bandwidthPerSec": 11010950144,
                       "loss": 2.420452117919922,
                       "step": 57731
+                    }
+                  }
+                ],
+                [
+                  0.0033134570244990336,
+                  {
+                    "processedTime": "2025-10-04T13:51:07.000Z",
+                    "ordering": "1759621984:608:602:000",
+                    "metadata": {
+                      "tokensPerSec": 170784.21875,
+                      "bandwidthPerSec": 9976973312,
+                      "loss": 2.422905445098877,
+                      "step": 57405
+                    }
+                  }
+                ],
+                [
+                  0.0008391719760245664,
+                  {
+                    "processedTime": "2025-10-04T13:40:33.000Z",
+                    "ordering": "1759621984:606:307:000",
+                    "metadata": {
+                      "tokensPerSec": 171207.5625,
+                      "bandwidthPerSec": 10065395712,
+                      "loss": 2.2402138710021973,
+                      "step": 57353
                     }
                   }
                 ]
@@ -4683,7 +4897,7 @@
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 194.6195068359375,
               "data": [
                 [
                   0.0029852797485476756,
@@ -4695,45 +4909,6 @@
                       "bandwidthPerSec": 12158520320,
                       "loss": 2.9390869140625,
                       "step": 31120
-                    }
-                  }
-                ],
-                [
-                  0.007597010152427863,
-                  {
-                    "processedTime": "2025-10-04T17:48:41.000Z",
-                    "ordering": "1759621984:658:661:000",
-                    "metadata": {
-                      "tokensPerSec": 128375.09375,
-                      "bandwidthPerSec": 9737276416,
-                      "loss": 2.886427640914917,
-                      "step": 30944
-                    }
-                  }
-                ],
-                [
-                  0.005765211513881319,
-                  {
-                    "processedTime": "2025-10-04T17:19:20.000Z",
-                    "ordering": "1759621984:652:459:000",
-                    "metadata": {
-                      "tokensPerSec": 130435.453125,
-                      "bandwidthPerSec": 12322482176,
-                      "loss": 2.8177590370178223,
-                      "step": 30836
-                    }
-                  }
-                ],
-                [
-                  0.005906048530559094,
-                  {
-                    "processedTime": "2025-10-04T17:12:37.000Z",
-                    "ordering": "1759621984:650:955:000",
-                    "metadata": {
-                      "tokensPerSec": 129567.53125,
-                      "bandwidthPerSec": 8052162048,
-                      "loss": 2.9337456226348877,
-                      "step": 30811
                     }
                   }
                 ],
@@ -4775,6 +4950,32 @@
                       "step": 30611
                     }
                   }
+                ],
+                [
+                  0.001575446757189125,
+                  {
+                    "processedTime": "2025-10-04T13:43:11.000Z",
+                    "ordering": "1759621984:606:882:000",
+                    "metadata": {
+                      "tokensPerSec": 129699.046875,
+                      "bandwidthPerSec": 13633378304,
+                      "loss": 3.0472195148468018,
+                      "step": 30047
+                    }
+                  }
+                ],
+                [
+                  0.0024078679186003704,
+                  {
+                    "processedTime": "2025-10-04T13:38:36.000Z",
+                    "ordering": "1759621984:605:865:000",
+                    "metadata": {
+                      "tokensPerSec": 127707.3984375,
+                      "bandwidthPerSec": 12621049856,
+                      "loss": 2.93147611618042,
+                      "step": 30030
+                    }
+                  }
                 ]
               ]
             }
@@ -4793,7 +4994,7 @@
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 194.6195068359375,
               "data": [
                 [
                   0.0037160024481153187,
@@ -4835,54 +5036,15 @@
                   }
                 ],
                 [
-                  0.007294813262934019,
+                  0.0032737940912481722,
                   {
-                    "processedTime": "2025-10-04T18:06:15.000Z",
-                    "ordering": "1759621984:662:340:000",
+                    "processedTime": "2025-10-04T14:34:31.000Z",
+                    "ordering": "1759621984:617:955:000",
                     "metadata": {
-                      "tokensPerSec": 128954.7734375,
-                      "bandwidthPerSec": 13924361216,
-                      "loss": 2.897615432739258,
-                      "step": 31009
-                    }
-                  }
-                ],
-                [
-                  0.007637882876728952,
-                  {
-                    "processedTime": "2025-10-04T16:45:28.000Z",
-                    "ordering": "1759621984:645:320:000",
-                    "metadata": {
-                      "tokensPerSec": 129625.2890625,
-                      "bandwidthPerSec": 13357919232,
-                      "loss": 2.92991304397583,
-                      "step": 30711
-                    }
-                  }
-                ],
-                [
-                  0.005344405756447124,
-                  {
-                    "processedTime": "2025-10-04T16:25:38.000Z",
-                    "ordering": "1759621984:641:173:000",
-                    "metadata": {
-                      "tokensPerSec": 129747.4921875,
-                      "bandwidthPerSec": 11995105280,
-                      "loss": 2.848205327987671,
-                      "step": 30638
-                    }
-                  }
-                ],
-                [
-                  0.007206845077787127,
-                  {
-                    "processedTime": "2025-10-04T16:10:45.000Z",
-                    "ordering": "1759621984:638:119:000",
-                    "metadata": {
-                      "tokensPerSec": 125827.296875,
-                      "bandwidthPerSec": 13855073280,
-                      "loss": 2.8973143100738525,
-                      "step": 30584
+                      "tokensPerSec": 128051.6171875,
+                      "bandwidthPerSec": 16546184192,
+                      "loss": 2.8922693729400635,
+                      "step": 30230
                     }
                   }
                 ]
@@ -4903,7 +5065,7 @@
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 194.6195068359375,
               "data": [
                 [
                   0.004940869473569309,
@@ -4915,19 +5077,6 @@
                       "bandwidthPerSec": 10310103040,
                       "loss": 2.8472533226013184,
                       "step": 31574
-                    }
-                  }
-                ],
-                [
-                  0.007236163245495808,
-                  {
-                    "processedTime": "2025-10-04T20:37:54.000Z",
-                    "ordering": "1759621984:691:588:000",
-                    "metadata": {
-                      "tokensPerSec": 130430.8359375,
-                      "bandwidthPerSec": 12185565184,
-                      "loss": 2.857870101928711,
-                      "step": 31562
                     }
                   }
                 ],
@@ -4958,19 +5107,6 @@
                   }
                 ],
                 [
-                  0.0053566814953249775,
-                  {
-                    "processedTime": "2025-10-04T17:52:11.000Z",
-                    "ordering": "1759621984:659:390:000",
-                    "metadata": {
-                      "tokensPerSec": 129018.1015625,
-                      "bandwidthPerSec": 9260214272,
-                      "loss": 2.8430778980255127,
-                      "step": 30957
-                    }
-                  }
-                ],
-                [
                   0.00359565256558092,
                   {
                     "processedTime": "2025-10-04T15:58:14.000Z",
@@ -4980,6 +5116,32 @@
                       "bandwidthPerSec": 11287311360,
                       "loss": 2.961961030960083,
                       "step": 30538
+                    }
+                  }
+                ],
+                [
+                  0.003632539189301509,
+                  {
+                    "processedTime": "2025-10-04T14:43:36.000Z",
+                    "ordering": "1759621984:619:811:000",
+                    "metadata": {
+                      "tokensPerSec": 126377.3046875,
+                      "bandwidthPerSec": 13721951232,
+                      "loss": 2.850801944732666,
+                      "step": 30263
+                    }
+                  }
+                ],
+                [
+                  0.0028700183858931805,
+                  {
+                    "processedTime": "2025-10-04T14:34:49.000Z",
+                    "ordering": "1759621984:618:028:000",
+                    "metadata": {
+                      "tokensPerSec": 128555.46875,
+                      "bandwidthPerSec": 9628398592,
+                      "loss": 2.8938052654266357,
+                      "step": 30231
                     }
                   }
                 ]
@@ -5059,6 +5221,45 @@
                       "step": 27506
                     }
                   }
+                ],
+                [
+                  0.004591814404969696,
+                  {
+                    "processedTime": "2025-10-04T14:28:17.000Z",
+                    "ordering": "1759621984:616:619:000",
+                    "metadata": {
+                      "tokensPerSec": 141345.453125,
+                      "bandwidthPerSec": 9266143232,
+                      "loss": 2.5720460414886475,
+                      "step": 27146
+                    }
+                  }
+                ],
+                [
+                  0.003184371394832075,
+                  {
+                    "processedTime": "2025-10-04T14:22:36.000Z",
+                    "ordering": "1759621984:615:422:000",
+                    "metadata": {
+                      "tokensPerSec": 141937.078125,
+                      "bandwidthPerSec": 4371966976,
+                      "loss": 2.662102699279785,
+                      "step": 27123
+                    }
+                  }
+                ],
+                [
+                  0.00224260621947292,
+                  {
+                    "processedTime": "2025-10-04T13:48:14.000Z",
+                    "ordering": "1759621984:607:988:000",
+                    "metadata": {
+                      "tokensPerSec": 144803.1875,
+                      "bandwidthPerSec": 4944294912,
+                      "loss": 2.6356747150421143,
+                      "step": 26983
+                    }
+                  }
                 ]
               ]
             }
@@ -5130,6 +5331,45 @@
                       "step": 27246
                     }
                   }
+                ],
+                [
+                  0.001585906370528134,
+                  {
+                    "processedTime": "2025-10-04T13:56:03.000Z",
+                    "ordering": "1759621984:609:626:000",
+                    "metadata": {
+                      "tokensPerSec": 141742.765625,
+                      "bandwidthPerSec": 4892691968,
+                      "loss": 2.533473253250122,
+                      "step": 27015
+                    }
+                  }
+                ],
+                [
+                  0.004360432498480282,
+                  {
+                    "processedTime": "2025-10-04T13:38:27.000Z",
+                    "ordering": "1759621984:605:829:000",
+                    "metadata": {
+                      "tokensPerSec": 142330.125,
+                      "bandwidthPerSec": 10818166784,
+                      "loss": 2.6687560081481934,
+                      "step": 26943
+                    }
+                  }
+                ],
+                [
+                  0.005355238860819345,
+                  {
+                    "processedTime": "2025-10-04T13:31:03.000Z",
+                    "ordering": "1759621984:604:212:000",
+                    "metadata": {
+                      "tokensPerSec": 143124.265625,
+                      "bandwidthPerSec": 4705309184,
+                      "loss": 2.6727638244628906,
+                      "step": 26913
+                    }
+                  }
                 ]
               ]
             }
@@ -5148,21 +5388,8 @@
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 194.6195068359375,
               "data": [
-                [
-                  0.00637785337254404,
-                  {
-                    "processedTime": "2025-10-04T18:44:00.000Z",
-                    "ordering": "1759621984:670:261:000",
-                    "metadata": {
-                      "tokensPerSec": 145118.328125,
-                      "bandwidthPerSec": 4539722240,
-                      "loss": 2.584911584854126,
-                      "step": 28189
-                    }
-                  }
-                ],
                 [
                   0.0014328209252032487,
                   {
@@ -5227,6 +5454,19 @@
                       "step": 27404
                     }
                   }
+                ],
+                [
+                  0.0013689407679668975,
+                  {
+                    "processedTime": "2025-10-04T14:17:26.000Z",
+                    "ordering": "1759621984:614:332:000",
+                    "metadata": {
+                      "tokensPerSec": 143732.25,
+                      "bandwidthPerSec": 4506088960,
+                      "loss": 2.735990047454834,
+                      "step": 27102
+                    }
+                  }
                 ]
               ]
             }
@@ -5245,21 +5485,8 @@
               }
             ],
             "sampled": {
-              "rate": 129.746337890625,
+              "rate": 194.6195068359375,
               "data": [
-                [
-                  0.007025604811508046,
-                  {
-                    "processedTime": "2025-10-04T18:39:39.000Z",
-                    "ordering": "1759621984:669:352:000",
-                    "metadata": {
-                      "tokensPerSec": 143393,
-                      "bandwidthPerSec": 4623176704,
-                      "loss": 2.5660932064056396,
-                      "step": 28171
-                    }
-                  }
-                ],
                 [
                   0.004514162871004368,
                   {
@@ -5270,19 +5497,6 @@
                       "bandwidthPerSec": 10080944128,
                       "loss": 2.528454065322876,
                       "step": 27862
-                    }
-                  }
-                ],
-                [
-                  0.006242940299047373,
-                  {
-                    "processedTime": "2025-10-04T17:22:52.000Z",
-                    "ordering": "1759621984:653:201:000",
-                    "metadata": {
-                      "tokensPerSec": 141239.65625,
-                      "bandwidthPerSec": 12839496704,
-                      "loss": 2.687408924102783,
-                      "step": 27858
                     }
                   }
                 ],
@@ -5313,15 +5527,28 @@
                   }
                 ],
                 [
-                  0.006539898006072908,
+                  0.0029383993814049436,
                   {
-                    "processedTime": "2025-10-04T14:52:35.000Z",
-                    "ordering": "1759621984:621:742:000",
+                    "processedTime": "2025-10-04T14:23:21.000Z",
+                    "ordering": "1759621984:615:579:000",
                     "metadata": {
-                      "tokensPerSec": 143992.015625,
-                      "bandwidthPerSec": 11133580288,
-                      "loss": 2.636636734008789,
-                      "step": 27245
+                      "tokensPerSec": 142208.34375,
+                      "bandwidthPerSec": 6188020736,
+                      "loss": 2.6899261474609375,
+                      "step": 27126
+                    }
+                  }
+                ],
+                [
+                  0.0016661756657228022,
+                  {
+                    "processedTime": "2025-10-04T14:19:54.000Z",
+                    "ordering": "1759621984:614:845:000",
+                    "metadata": {
+                      "tokensPerSec": 143290.90625,
+                      "bandwidthPerSec": 11472937984,
+                      "loss": 2.692412853240967,
+                      "step": 27112
                     }
                   }
                 ]

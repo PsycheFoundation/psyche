@@ -22,11 +22,11 @@ export interface MiningPoolDataPoolInfo {
   accountUpdatedAt: Date | undefined;
   accountFetchedOrdering: bigint;
   accountRequestOrdering: bigint;
-  totalExtractCollateralAmount: bigint;
-  depositCollateralAmountPerUser: Map<string, bigint>;
-  totalDepositCollateralAmount: bigint;
-  claimRedeemableAmountPerUser: Map<string, bigint>;
-  totalClaimRedeemableAmount: bigint;
+  computedExtractedCollateralAmount: bigint;
+  depositedCollateralAmountPerUser: Map<string, bigint>;
+  computedDepositedCollateralAmount: bigint;
+  claimedRedeemableAmountPerUser: Map<string, bigint>;
+  computedClaimedRedeemableAmount: bigint;
   adminHistory: Array<{
     processedTime: Date | undefined;
     ordering: bigint;
@@ -42,11 +42,11 @@ export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
     accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
     accountFetchedOrdering: utilsOrderingJsonType,
     accountRequestOrdering: utilsOrderingJsonType,
-    totalExtractCollateralAmount: jsonTypeInteger,
-    depositCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
-    totalDepositCollateralAmount: jsonTypeInteger,
-    claimRedeemableAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
-    totalClaimRedeemableAmount: jsonTypeInteger,
+    computedExtractedCollateralAmount: jsonTypeInteger,
+    depositedCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
+    computedDepositedCollateralAmount: jsonTypeInteger,
+    claimedRedeemableAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
+    computedClaimedRedeemableAmount: jsonTypeInteger,
     adminHistory: jsonTypeArray(
       jsonTypeObject({
         processedTime: jsonTypeOptional(jsonTypeDate),
