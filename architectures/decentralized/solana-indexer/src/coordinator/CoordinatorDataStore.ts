@@ -3,6 +3,8 @@ import {
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeRemap,
+  JsonValue,
+  Pubkey,
 } from "solana-kiss-data";
 import {
   CoordinatorDataRunInfo,
@@ -26,6 +28,7 @@ export class CoordinatorDataStore {
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
         witnessesPerUser: new Map(),
+        adminHistory: [],
       };
       this.runsInfos.set(runAddress, runInfo);
     }
@@ -76,6 +79,24 @@ export class CoordinatorDataStore {
       }
     }
     runInfo.witnessesPerUser.set(userAddress, userWitnesses);
+  }
+
+  public saveRunAdminAction(
+    runAddress: string,
+    instructionName: string,
+    instructionAddresses: Map<string, Pubkey>,
+    instructionPayload: JsonValue,
+    ordering: bigint,
+    processedTime: Date | undefined,
+  ) {
+    const runInfo = this.getRunInfo(runAddress);
+    runInfo.adminHistory.push({
+      processedTime,
+      ordering,
+      instructionName,
+      instructionAddresses,
+      instructionPayload,
+    });
   }
 
   public setRunRequestOrdering(runAddress: string, ordering: bigint) {

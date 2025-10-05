@@ -11,7 +11,6 @@ import {
   JsonValue,
   Pubkey,
 } from "solana-kiss-data";
-import { utilsOrderingJsonType } from "../utils";
 import {
   MiningPoolDataPoolState,
   miningPoolDataPoolStateJsonType,
@@ -40,8 +39,8 @@ export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
   jsonTypeObject({
     accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
     accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
-    accountFetchedOrdering: utilsOrderingJsonType,
-    accountRequestOrdering: utilsOrderingJsonType,
+    accountFetchedOrdering: jsonTypeInteger,
+    accountRequestOrdering: jsonTypeInteger,
     totalExtractCollateralAmount: jsonTypeInteger,
     depositCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
     totalDepositCollateralAmount: jsonTypeInteger,
@@ -50,7 +49,7 @@ export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
     adminHistory: jsonTypeArray(
       jsonTypeObject({
         processedTime: jsonTypeOptional(jsonTypeDate),
-        ordering: utilsOrderingJsonType,
+        ordering: jsonTypeInteger,
         instructionName: jsonTypeString,
         instructionAddresses: jsonTypeObjectToMap(jsonTypeString),
         instructionPayload: jsonTypeValue,

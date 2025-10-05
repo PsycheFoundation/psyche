@@ -7,8 +7,6 @@ import {
   jsonDecoderRemap,
   jsonTypeInteger,
   jsonTypeNumber,
-  jsonTypeRemap,
-  jsonTypeString,
   Pubkey,
 } from "solana-kiss-data";
 import {
@@ -71,21 +69,4 @@ export function utilsRustFixedArrayJsonDecoder<T>(itemDecode: JsonDecoder<T>) {
 export const utilsRustSmallBooleanJsonDecoder = jsonDecoderRemap(
   jsonDecoderArrayToObject({ bit: jsonTypeNumber.decoder }),
   (unmapped) => unmapped.bit !== 0,
-);
-
-export const utilsOrderingJsonType = jsonTypeRemap(
-  jsonTypeString,
-  (encoded) => {
-    return BigInt(encoded.split(":").join(""));
-  },
-  (decoded) => {
-    return [
-      decoded / 1_000_000_000n,
-      (decoded / 1_000_000n) % 1_000n,
-      (decoded / 1_000n) % 1_000n,
-      decoded % 1_000n,
-    ]
-      .map((p) => p.toString().padStart(3, "0"))
-      .join(":");
-  },
 );

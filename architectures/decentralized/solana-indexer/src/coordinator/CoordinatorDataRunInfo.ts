@@ -3,12 +3,16 @@ import {
   jsonTypeArray,
   jsonTypeArrayToObject,
   jsonTypeDate,
+  jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeObjectToMap,
   jsonTypeOptional,
+  jsonTypeString,
+  jsonTypeValue,
+  JsonValue,
+  Pubkey,
 } from "solana-kiss-data";
-import { utilsOrderingJsonType } from "../utils";
 import {
   CoordinatorDataRunState,
   coordinatorDataRunStateJsonType,
@@ -43,12 +47,19 @@ export interface CoordinatorDataRunInfo {
       };
     }
   >;
+  adminHistory: Array<{
+    processedTime: Date | undefined;
+    ordering: bigint;
+    instructionName: string;
+    instructionAddresses: Map<string, Pubkey>;
+    instructionPayload: JsonValue;
+  }>;
 }
 
 const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
   {
     processedTime: jsonTypeOptional(jsonTypeDate),
-    ordering: utilsOrderingJsonType,
+    ordering: jsonTypeInteger,
     metadata: jsonTypeObject({
       tokensPerSec: jsonTypeNumber,
       bandwidthPerSec: jsonTypeNumber,
@@ -62,8 +73,8 @@ export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
   jsonTypeObject({
     accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
     accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
-    accountFetchedOrdering: utilsOrderingJsonType,
-    accountRequestOrdering: utilsOrderingJsonType,
+    accountFetchedOrdering: jsonTypeInteger,
+    accountRequestOrdering: jsonTypeInteger,
     witnessesPerUser: jsonTypeObjectToMap(
       jsonTypeObject({
         lastFew: jsonTypeArray(witnessJsonType),
@@ -76,6 +87,15 @@ export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
             }),
           ),
         }),
+      }),
+    ),
+    adminHistory: jsonTypeArray(
+      jsonTypeObject({
+        processedTime: jsonTypeOptional(jsonTypeDate),
+        ordering: jsonTypeInteger,
+        instructionName: jsonTypeString,
+        instructionAddresses: jsonTypeObjectToMap(jsonTypeString),
+        instructionPayload: jsonTypeValue,
       }),
     ),
   });
