@@ -76,7 +76,7 @@ python312Packages.buildPythonPackage rec {
       torch
       transformers
     ]
-    ++ (lib.optionals config.cudaSupport [
+    ++ (lib.optionals (config.cudaSupport && !(config.disableFlashAttn or false)) [
       (python312Packages.callPackage ./flash-attn.nix { })
     ]);
 
