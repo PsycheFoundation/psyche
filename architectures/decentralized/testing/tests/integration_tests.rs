@@ -213,7 +213,7 @@ async fn test_two_clients_three_epochs_run() {
 #[trace]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
-async fn test_client_join_and_get_model_p2p(#[values(1)] n_new_clients: u8) {
+async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
