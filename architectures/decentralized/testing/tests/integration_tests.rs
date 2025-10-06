@@ -1,3 +1,11 @@
+// Integration tests for decentralized Psyche.
+//
+// GPU Support:
+// By default, these tests run without GPU. To enable GPU support:
+// 1. Set the USE_GPU environment variable: `export USE_GPU=1`
+// 2. Or ensure nvidia-smi is available (GPU will be auto-detected)
+// The test infrastructure will automatically use docker-compose.gpu.yml when GPU is available.
+
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use bollard::container::StartContainerOptions;
