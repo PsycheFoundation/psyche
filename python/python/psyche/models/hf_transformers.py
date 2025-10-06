@@ -75,7 +75,6 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
 
 
 class HfTransformersAuto(CausalLM):
-
     def __init__(self, model, config, world_mesh: DeviceMesh, device: torch.device):
         self.model = model
         self.config = config
@@ -125,6 +124,15 @@ class HfTransformersAuto(CausalLM):
             raise ValueError(f"Unknown model_type {model_type}")
 
         config = config_class.from_dict(config)
+
+        # If n_routed_experts is None disable all MoE related features
+        if hasattr(config, "n_routed_experts") and config.n_routed_experts is None:
+            config.n_shared_experts = None
+            config.moe_layer_freq = None
+            config.num_experts_per_tok = None
+            config.moe_intermediate_size = None
+            # Set first_k_dense_replace to a very large number to force all layers to be dense
+            config.first_k_dense_replace = 999999
 
         if override_max_position_embeddings:
             config.max_position_embeddings = override_max_position_embeddings

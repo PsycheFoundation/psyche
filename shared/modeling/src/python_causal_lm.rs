@@ -13,7 +13,7 @@ use pyo3_tch::PyTensor;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info};
 
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {
@@ -22,14 +22,17 @@ pub struct PythonModelConfig {
 
 impl ModelConfig for PythonModelConfig {
     fn get_parameter_names(&self) -> Vec<String> {
-        let architecture = self.config["architectures"][0].as_str().unwrap_or("");
-        if architecture.to_lowercase().contains("llama") {
+        let architecture = self.config["architectures"][0]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
+        if architecture.contains("llama") || architecture.contains("oss") {
             if let Ok(config) = serde_json::from_value::<LlamaConfig>(self.config.clone()) {
                 return config.get_parameter_names();
             }
             error!("Failed to parse LlamaConfig from JSON");
             vec![]
-        } else if architecture.to_lowercase().contains("deepseek") {
+        } else if architecture.contains("deepseek") {
             if let Ok(config) = serde_json::from_value::<DeepseekConfig>(self.config.clone()) {
                 return config.get_parameter_names();
             }
