@@ -1,4 +1,4 @@
-name: Build and Test Solana two clients (Single Runner)
+name: Solana integration test one clients three epochs run
 
 on:
   push:
@@ -104,7 +104,7 @@ jobs:
           # Remove nix build result
           rm -f result
 
-          # Clean nix store garbage 
+          # Clean nix store garbage
           nix-collect-garbage -d
           nix store optimise
 

@@ -8,8 +8,8 @@ min_clients = 1
 init_min_clients = 1
 verification_percent = 0
 witness_nodes = 1
-global_batch_size_start = 1
-global_batch_size_end = 1
+global_batch_size_start = 4
+global_batch_size_end = 4
 global_batch_size_warmup_tokens = 0
 total_steps = 25000
 
