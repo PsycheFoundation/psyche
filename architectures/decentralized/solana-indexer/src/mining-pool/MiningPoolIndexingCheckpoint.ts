@@ -1,15 +1,14 @@
 import {
+  casingCamelToSnake,
   IdlProgram,
+  jsonDecoderObject,
   jsonTypeBoolean,
   jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeString,
   RpcHttp,
 } from "solana-kiss";
-import {
-  utilsGetAndDecodeAccountState,
-  utilsObjectSnakeCaseJsonDecoder,
-} from "../utils";
+import { utilsGetAndDecodeAccountState } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingCheckpoint(
@@ -35,7 +34,7 @@ export async function miningPoolIndexingCheckpoint(
   }
 }
 
-const poolStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+const poolStateJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
   bump: jsonTypeNumber.decoder,
   index: jsonTypeInteger.decoder,
   authority: jsonTypeString.decoder,

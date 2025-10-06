@@ -1,5 +1,4 @@
 import {
-  casingCamelToSnake,
   idlAccountDecode,
   IdlProgram,
   idlProgramGuessAccount,
@@ -35,7 +34,6 @@ export async function utilsGetProgramAnchorIdl(
   }
   return idlStoreAnchorParse(programIdlRecord.data);
 }
-
 export async function utilsGetAndDecodeAccountState<Content>(
   rpcHttp: RpcHttp,
   programIdl: IdlProgram,
@@ -50,16 +48,6 @@ export async function utilsGetAndDecodeAccountState<Content>(
     );
   }
   return accountDecoder(idlAccountDecode(accountIdl, accountInfo.data));
-}
-
-export function utilsObjectSnakeCaseJsonDecoder<
-  Shape extends { [key: string]: JsonDecoder<any> },
->(shape: Shape) {
-  const keysEncoding: { [K in keyof Shape]?: string } = {};
-  for (const keyDecoded in shape) {
-    keysEncoding[keyDecoded] = casingCamelToSnake(keyDecoded);
-  }
-  return jsonDecoderObject(keysEncoding, shape);
 }
 
 export function utilsObjectToPubkeyMapJsonType<T>(
@@ -102,7 +90,6 @@ export const utilsRustFixedStringJsonDecoder = jsonDecoderRemap(
     );
   },
 );
-
 export function utilsRustFixedArrayJsonDecoder<T>(itemDecode: JsonDecoder<T>) {
   return jsonDecoderRemap(
     jsonDecoderObject((key) => key, {
@@ -112,7 +99,6 @@ export function utilsRustFixedArrayJsonDecoder<T>(itemDecode: JsonDecoder<T>) {
     (unmapped) => unmapped.data.slice(0, Number(unmapped.len)),
   );
 }
-
 export const utilsRustSmallBooleanJsonDecoder = jsonDecoderRemap(
   jsonDecoderArrayToObject({ bit: jsonTypeNumber.decoder }),
   (unmapped) => unmapped.bit !== 0,

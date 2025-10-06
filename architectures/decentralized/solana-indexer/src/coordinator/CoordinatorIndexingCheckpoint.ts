@@ -1,5 +1,7 @@
 import {
+  casingCamelToSnake,
   IdlProgram,
+  jsonDecoderObject,
   jsonTypeInteger,
   jsonTypeNumber,
   jsonTypePubkey,
@@ -9,7 +11,6 @@ import {
 } from "solana-kiss";
 import {
   utilsGetAndDecodeAccountState,
-  utilsObjectSnakeCaseJsonDecoder,
   utilsRustFixedArrayJsonDecoder,
   utilsRustFixedStringJsonDecoder,
 } from "../utils";
@@ -67,27 +68,27 @@ async function updateCoordinatorAccountState(
   }
 }
 
-const runStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+const runStateJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
   nonce: jsonTypeInteger.decoder,
-  state: utilsObjectSnakeCaseJsonDecoder({
-    metadata: utilsObjectSnakeCaseJsonDecoder({
+  state: jsonDecoderObject(casingCamelToSnake, {
+    metadata: jsonDecoderObject(casingCamelToSnake, {
       name: utilsRustFixedStringJsonDecoder,
       description: utilsRustFixedStringJsonDecoder,
       numParameters: jsonTypeInteger.decoder,
       vocabSize: jsonTypeInteger.decoder,
     }),
-    coordinator: utilsObjectSnakeCaseJsonDecoder({
+    coordinator: jsonDecoderObject(casingCamelToSnake, {
       runId: utilsRustFixedStringJsonDecoder,
       runState: jsonTypeString.decoder,
-      progress: utilsObjectSnakeCaseJsonDecoder({
+      progress: jsonDecoderObject(casingCamelToSnake, {
         epoch: jsonTypeNumber.decoder,
         step: jsonTypeNumber.decoder,
         epochStartDataIndex: jsonTypeInteger.decoder,
       }),
-      epochState: utilsObjectSnakeCaseJsonDecoder({
+      epochState: jsonDecoderObject(casingCamelToSnake, {
         clients: utilsRustFixedArrayJsonDecoder(
-          utilsObjectSnakeCaseJsonDecoder({
-            id: utilsObjectSnakeCaseJsonDecoder({
+          jsonDecoderObject(casingCamelToSnake, {
+            id: jsonDecoderObject(casingCamelToSnake, {
               signer: jsonTypePubkey.decoder,
             }),
             state: jsonTypeString.decoder,

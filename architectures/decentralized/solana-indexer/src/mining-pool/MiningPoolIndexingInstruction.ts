@@ -1,5 +1,10 @@
-import { JsonValue, Pubkey, jsonTypeInteger } from "solana-kiss";
-import { utilsObjectSnakeCaseJsonDecoder } from "../utils";
+import {
+  JsonValue,
+  Pubkey,
+  casingCamelToSnake,
+  jsonDecoderObject,
+  jsonTypeInteger,
+} from "solana-kiss";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingInstruction(
@@ -116,20 +121,20 @@ async function processLenderClaim(
   );
 }
 
-const poolExtractArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
-  params: utilsObjectSnakeCaseJsonDecoder({
+const poolExtractArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
+  params: jsonDecoderObject(casingCamelToSnake, {
     collateralAmount: jsonTypeInteger.decoder,
   }),
 });
 
-const lenderDepositArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
-  params: utilsObjectSnakeCaseJsonDecoder({
+const lenderDepositArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
+  params: jsonDecoderObject(casingCamelToSnake, {
     collateralAmount: jsonTypeInteger.decoder,
   }),
 });
 
-const lenderClaimArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
-  params: utilsObjectSnakeCaseJsonDecoder({
+const lenderClaimArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
+  params: jsonDecoderObject(casingCamelToSnake, {
     redeemableAmount: jsonTypeInteger.decoder,
   }),
 });

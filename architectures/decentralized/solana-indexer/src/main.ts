@@ -13,7 +13,8 @@ function rpcHttpBuilder(url: string) {
       if (context.retryCounter >= 5 || context.totalTimeMs >= 10000) {
         return false;
       }
-      console.error("RPC HTTP error occurred", error);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      console.error("RPC HTTP error occurred, retrying", error);
       return true;
     },
   );

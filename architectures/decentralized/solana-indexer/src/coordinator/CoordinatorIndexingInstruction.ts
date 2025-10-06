@@ -1,11 +1,12 @@
 import {
   JsonValue,
   Pubkey,
+  casingCamelToSnake,
+  jsonDecoderObject,
   jsonTypeInteger,
   jsonTypeNumber,
 } from "solana-kiss";
 import {
-  utilsObjectSnakeCaseJsonDecoder,
   utilsRustFixedArrayJsonDecoder,
   utilsRustSmallBooleanJsonDecoder,
 } from "../utils";
@@ -112,13 +113,13 @@ async function processWitness(
   );
 }
 
-const witnessProofJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+const witnessProofJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
   position: jsonTypeInteger.decoder,
   index: jsonTypeInteger.decoder,
   witness: utilsRustSmallBooleanJsonDecoder,
 });
 
-const witnessMetadataJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+const witnessMetadataJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
   step: jsonTypeNumber.decoder,
   tokensPerSec: jsonTypeNumber.decoder,
   bandwidthPerSec: jsonTypeNumber.decoder,
@@ -127,7 +128,7 @@ const witnessMetadataJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
   promptIndex: jsonTypeNumber.decoder,
 });
 
-const witnessArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+const witnessArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
   proof: witnessProofJsonDecoder,
   metadata: witnessMetadataJsonDecoder,
 });
