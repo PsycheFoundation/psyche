@@ -86,40 +86,7 @@ jobs:
           echo "=== Disk usage after Anchor cleanup ==="
           df -h
 
-      # Step 2: Build Solana Test Validator Image
-      - name: Build Solana Test Validator Image
-        run: |
-          export PSYCHE_HOME=$(pwd)
-
-          echo "=== Disk space before validator build ==="
-          df -h
-
-          # Build and load in one command
-          nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
-
-          echo "=== Disk space after validator build ==="
-          df -h
-
-      # Memory cleanup after validator build
-      - name: Clean validator build artifacts
-        run: |
-          # Remove nix build result
-          rm -f result
-
-          # Clean nix store garbage 
-          nix-collect-garbage -d
-          nix store optimise
-
-          # Remove temp files
-          sudo rm -rf /tmp/* 2>/dev/null || true
-
-          echo "=== Docker images after validator build ==="
-          docker images
-
-          echo "=== Disk usage after validator cleanup ==="
-          df -h
-
-      # Step 3: Build Solana Test Client Image
+      # Step 2: Build Solana Test Client Image
       - name: Build Solana Test Client Image
         run: |
           echo "=== Disk space before client build ==="
@@ -154,6 +121,23 @@ jobs:
 
           echo "=== Disk space after cleanup ==="
           df -h
+
+      # Step 3: Build Solana Test Validator Image
+      - name: Build Solana Test Validator Image
+        run: |
+          export PSYCHE_HOME=$(pwd)
+
+          echo "=== Disk space before validator build ==="
+          df -h
+
+          # Build and load in one command
+          nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
+
+          echo "=== Disk space after validator build ==="
+          df -h
+
+          # Remove nix build result
+          rm -f result
 
       - name: Verify Docker images exist
         run: |
