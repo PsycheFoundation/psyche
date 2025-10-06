@@ -125,6 +125,16 @@ jobs:
           echo "=== Disk space before client build ==="
           df -h
 
+          # ========================================================= #
+          docker image prune -af || true
+          docker builder prune -af || true
+          sudo rm -rf /tmp/* 2>/dev/null || true
+
+          echo "=== Disk space after cleanup ==="
+          df -h
+          # ========================================================= #
+
+
           nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
           nix-results/docker-psyche-solana-test-client | docker load
           rm -rf nix-results/docker-psyche-solana-test-client
