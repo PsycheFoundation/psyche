@@ -70,6 +70,8 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
 
     // configurable dummy training time (in seconds) for this client - relevant just for testing
     pub dummy_training_delay_secs: Option<u64>,
+
+    pub sidecar_port: Option<u16>,
 }
 
 #[derive(Debug, Error)]
@@ -464,6 +466,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 attn_implementation.unwrap_or_default(),
                                                 psyche_modeling::ParallelismConfig { dp, tp },
                                                 Some(llm.max_seq_len as usize),
+                                                init_config.sidecar_port,
                                                 None,
                                             )
                                             .map(RawLoadedModelType::PythonDistributed)

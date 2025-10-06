@@ -110,7 +110,7 @@ run_docker_client *ARGS:
 
 # Setup clients assigning one available GPU to each of them.
 
-# There's no way to do this using the replicas from docker-compose file, so we have to do it manually.
+# There's no way to do this using the replicas from docker compose file, so we have to do it manually.
 setup_gpu_clients num_clients="1":
     ./scripts/coordinator-address-check.sh
     just nix build_docker_solana_test_client
