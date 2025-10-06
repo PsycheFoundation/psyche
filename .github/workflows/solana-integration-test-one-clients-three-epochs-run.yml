@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  test-one-clients-three-epochs-run:
     runs-on: ubuntu-latest
     permissions:
       contents: read

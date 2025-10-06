@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  test-client-join-and-get-model-p2p:
     runs-on: ubuntu-latest
     permissions:
       contents: read
