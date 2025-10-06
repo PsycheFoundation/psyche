@@ -310,6 +310,7 @@ async fn main() -> Result<()> {
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
                             None,
+                            None,
                         )?;
 
                         Ok(psyche_modeling::PythonDistributedTrainer::new(

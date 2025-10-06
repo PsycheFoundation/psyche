@@ -517,6 +517,7 @@ async fn async_main() -> Result<()> {
                 authorizer,
                 metrics_local_port: args.metrics_local_port,
                 device: args.device,
+                sidecar_port: args.sidecar_port,
             })
             .build()
             .await
