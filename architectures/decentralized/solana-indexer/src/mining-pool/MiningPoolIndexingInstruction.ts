@@ -1,4 +1,4 @@
-import { jsonTypeInteger, JsonValue, Pubkey } from "solana-kiss-data";
+import { JsonValue, Pubkey, jsonTypeInteger } from "solana-kiss";
 import { utilsObjectSnakeCaseJsonDecoder } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
@@ -16,11 +16,17 @@ export async function miningPoolIndexingInstruction(
       "MiningPool: Instruction: PoolExtract: Missing pool address",
     );
   }
+  const signerAddress =
+    instructionAddresses.get("authority") ?? instructionAddresses.get("user");
+  if (signerAddress === undefined) {
+    throw new Error("MiningPool: Instruction: Could not find signer address");
+  }
   const processors = processorsByInstructionName.get(instructionName);
   if (processors !== undefined) {
     for (const processor of processors) {
       await processor(dataStore, {
         poolAddress,
+        signerAddress,
         instructionName,
         instructionAddresses,
         instructionPayload,
@@ -46,6 +52,7 @@ const processorsByInstructionName = new Map([
 
 type ProcessingContent = {
   poolAddress: Pubkey;
+  signerAddress: Pubkey;
   instructionName: string;
   instructionAddresses: Map<string, Pubkey>;
   instructionPayload: JsonValue;
@@ -59,6 +66,7 @@ async function processAdminAction(
 ): Promise<void> {
   dataStore.savePoolAdminAction(
     content.poolAddress,
+    content.signerAddress,
     content.instructionName,
     content.instructionAddresses,
     content.instructionPayload,
@@ -84,18 +92,12 @@ async function processLenderDeposit(
   dataStore: MiningPoolDataStore,
   content: ProcessingContent,
 ): Promise<void> {
-  const userAddress = content.instructionAddresses.get("user");
-  if (userAddress === undefined) {
-    throw new Error(
-      "MiningPool: Instruction: LenderDeposit: Missing user address",
-    );
-  }
   const instructionParams = lenderDepositArgsJsonDecoder(
     content.instructionPayload,
   ).params;
   dataStore.savePoolDeposit(
     content.poolAddress,
-    userAddress,
+    content.signerAddress,
     instructionParams.collateralAmount,
   );
 }
@@ -104,18 +106,12 @@ async function processLenderClaim(
   dataStore: MiningPoolDataStore,
   content: ProcessingContent,
 ): Promise<void> {
-  const userAddress = content.instructionAddresses.get("user");
-  if (userAddress === undefined) {
-    throw new Error(
-      "MiningPool: Instruction: LenderDeposit: Missing user address",
-    );
-  }
   const instructionParams = lenderClaimArgsJsonDecoder(
     content.instructionPayload,
   ).params;
   dataStore.savePoolClaim(
     content.poolAddress,
-    userAddress,
+    content.signerAddress,
     instructionParams.redeemableAmount,
   );
 }

@@ -4,9 +4,9 @@ import {
   jsonTypeString,
   jsonTypeValue,
   JsonValue,
-} from "solana-kiss-data";
+} from "solana-kiss";
 
-const saveJsonType = jsonTypeObject({
+const saveJsonType = jsonTypeObject((key) => key, {
   updatedAt: jsonTypeString,
   checkpoint: jsonTypeValue,
   dataStore: jsonTypeValue,
@@ -30,7 +30,7 @@ export async function saveWrite(
     checkpoint: saveContent.checkpoint,
     dataStore: saveContent.dataStore,
   });
-  return fs.promises.writeFile(path, JSON.stringify(encoded, null, 2));
+  return fs.promises.writeFile(path, JSON.stringify(encoded));
 }
 
 export async function saveRead(saveName: string): Promise<{

@@ -1,11 +1,11 @@
 import {
+  IdlProgram,
   jsonTypeBoolean,
   jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeString,
-} from "solana-kiss-data";
-import { IdlProgram } from "solana-kiss-idl";
-import { RpcHttp } from "solana-kiss-rpc";
+  RpcHttp,
+} from "solana-kiss";
 import {
   utilsGetAndDecodeAccountState,
   utilsObjectSnakeCaseJsonDecoder,
@@ -22,8 +22,11 @@ export async function miningPoolIndexingCheckpoint(
       break;
     }
     try {
-      const poolState = poolStateJsonDecoder(
-        await utilsGetAndDecodeAccountState(rpcHttp, programIdl, poolAddress),
+      const poolState = await utilsGetAndDecodeAccountState(
+        rpcHttp,
+        programIdl,
+        poolAddress,
+        poolStateJsonDecoder,
       );
       dataStore.savePoolState(poolAddress, poolState);
     } catch (error) {

@@ -1,7 +1,13 @@
-import { jsonTypeNumber, JsonValue, Pubkey } from "solana-kiss-data";
+import {
+  JsonValue,
+  Pubkey,
+  jsonTypeInteger,
+  jsonTypeNumber,
+} from "solana-kiss";
 import {
   utilsObjectSnakeCaseJsonDecoder,
   utilsRustFixedArrayJsonDecoder,
+  utilsRustSmallBooleanJsonDecoder,
 } from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 
@@ -17,11 +23,19 @@ export async function coordinatorIndexingInstruction(
   if (runAddress === undefined) {
     throw new Error("Coordinator: Instruction: Missing run address");
   }
+  const signerAddress =
+    instructionAddresses.get("payer") ??
+    instructionAddresses.get("authority") ??
+    instructionAddresses.get("user");
+  if (signerAddress === undefined) {
+    throw new Error("Coordinator: Instruction: Could not find signer address");
+  }
   const processors = processorsByInstructionName.get(instructionName);
   if (processors !== undefined) {
     for (const processor of processors) {
       await processor(dataStore, {
         runAddress,
+        signerAddress,
         instructionName,
         instructionAddresses,
         instructionPayload,
@@ -37,20 +51,21 @@ export async function coordinatorIndexingInstruction(
 
 const processorsByInstructionName = new Map([
   ["init_coordinator", [processAdminAction]],
-  ["tick", []],
-  ["witness", [processWitness]],
-  ["warmup_witness", []], // TODO - how to handle warmup witness?
-  ["set_paused", [processAdminAction]],
   ["update", [processAdminAction]],
+  ["set_future_epoch_rates", [processAdminAction]],
+  ["set_paused", [processAdminAction]],
   ["join_run", []], // TODO - how to handle join run?
+  ["warmup_witness", []], // TODO - how to handle warmup witness?
+  ["witness", [processWitness]],
+  ["tick", []],
   ["checkpoint", []], // TODO - how to handle checkpoint?
   ["health_check", []], // TODO - how to handle health check?
-  ["set_future_epoch_rates", [processAdminAction]],
   ["free_coordinator", [processAdminAction]],
 ]);
 
 type ProcessingContent = {
   runAddress: Pubkey;
+  signerAddress: Pubkey;
   instructionName: string;
   instructionAddresses: Map<string, Pubkey>;
   instructionPayload: JsonValue;
@@ -64,6 +79,7 @@ async function processAdminAction(
 ): Promise<void> {
   dataStore.saveRunAdminAction(
     content.runAddress,
+    content.signerAddress,
     content.instructionName,
     content.instructionAddresses,
     content.instructionPayload,
@@ -76,37 +92,42 @@ async function processWitness(
   dataStore: CoordinatorDataStore,
   content: ProcessingContent,
 ): Promise<void> {
-  const userAddress = content.instructionAddresses.get("user");
-  if (userAddress === undefined) {
-    throw new Error("Coordinator: Instruction: Witness: Missing user address");
-  }
-  const witnessMetadata = witnessArgsJsonDecoder(
-    content.instructionPayload,
-  ).metadata;
-  if (witnessMetadata.loss === null) {
-    throw new Error("Coordinator: Instruction: Witness: Missing loss");
-  }
+  const witnessPayload = witnessArgsJsonDecoder(content.instructionPayload);
   dataStore.saveRunWitness(
     content.runAddress,
-    userAddress,
+    content.signerAddress,
     content.ordering,
     content.processedTime,
     {
-      step: witnessMetadata.step,
-      tokensPerSec: witnessMetadata.tokensPerSec,
-      bandwidthPerSec: witnessMetadata.bandwidthPerSec,
-      loss: witnessMetadata.loss,
+      position: witnessPayload.proof.position,
+      index: witnessPayload.proof.index,
+      witness: witnessPayload.proof.witness,
+    },
+    {
+      step: witnessPayload.metadata.step,
+      tokensPerSec: witnessPayload.metadata.tokensPerSec,
+      bandwidthPerSec: witnessPayload.metadata.bandwidthPerSec,
+      loss: witnessPayload.metadata.loss,
     },
   );
 }
 
+const witnessProofJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+  position: jsonTypeInteger.decoder,
+  index: jsonTypeInteger.decoder,
+  witness: utilsRustSmallBooleanJsonDecoder,
+});
+
+const witnessMetadataJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+  step: jsonTypeNumber.decoder,
+  tokensPerSec: jsonTypeNumber.decoder,
+  bandwidthPerSec: jsonTypeNumber.decoder,
+  loss: jsonTypeNumber.decoder,
+  promptResults: utilsRustFixedArrayJsonDecoder(jsonTypeNumber.decoder),
+  promptIndex: jsonTypeNumber.decoder,
+});
+
 const witnessArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
-  metadata: utilsObjectSnakeCaseJsonDecoder({
-    step: jsonTypeNumber.decoder,
-    tokensPerSec: jsonTypeNumber.decoder,
-    bandwidthPerSec: jsonTypeNumber.decoder,
-    loss: jsonTypeNumber.decoder,
-    promptResults: utilsRustFixedArrayJsonDecoder(jsonTypeNumber.decoder),
-    promptIndex: jsonTypeNumber.decoder,
-  }),
+  proof: witnessProofJsonDecoder,
+  metadata: witnessMetadataJsonDecoder,
 });

@@ -2,17 +2,22 @@ import {
   JsonType,
   jsonTypeArray,
   jsonTypeArrayToObject,
-  jsonTypeDate,
+  jsonTypeBoolean,
+  jsonTypeDateTime,
   jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeObject,
-  jsonTypeObjectToMap,
   jsonTypeOptional,
+  jsonTypePubkey,
   jsonTypeString,
   jsonTypeValue,
   JsonValue,
   Pubkey,
-} from "solana-kiss-data";
+} from "solana-kiss";
+import {
+  utilsObjectToPubkeyMapJsonType,
+  utilsObjectToStringMapJsonType,
+} from "../utils";
 import {
   CoordinatorDataRunState,
   coordinatorDataRunStateJsonType,
@@ -21,6 +26,11 @@ import {
 export interface CoordinatorDataRunInfoWitness {
   processedTime: Date | undefined;
   ordering: bigint;
+  proof: {
+    position: bigint;
+    index: bigint;
+    witness: boolean;
+  };
   metadata: {
     tokensPerSec: number;
     bandwidthPerSec: number;
@@ -35,7 +45,7 @@ export interface CoordinatorDataRunInfo {
   accountFetchedOrdering: bigint;
   accountRequestOrdering: bigint;
   witnessesPerUser: Map<
-    string,
+    Pubkey,
     {
       lastFew: Array<CoordinatorDataRunInfoWitness>;
       sampled: {
@@ -48,6 +58,7 @@ export interface CoordinatorDataRunInfo {
     }
   >;
   adminHistory: Array<{
+    signerAddress: Pubkey;
     processedTime: Date | undefined;
     ordering: bigint;
     instructionName: string;
@@ -57,10 +68,16 @@ export interface CoordinatorDataRunInfo {
 }
 
 const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
+  (key) => key,
   {
-    processedTime: jsonTypeOptional(jsonTypeDate),
+    processedTime: jsonTypeOptional(jsonTypeDateTime),
     ordering: jsonTypeInteger,
-    metadata: jsonTypeObject({
+    proof: jsonTypeObject((key) => key, {
+      position: jsonTypeInteger,
+      index: jsonTypeInteger,
+      witness: jsonTypeBoolean,
+    }),
+    metadata: jsonTypeObject((key) => key, {
       tokensPerSec: jsonTypeNumber,
       bandwidthPerSec: jsonTypeNumber,
       loss: jsonTypeNumber,
@@ -70,15 +87,15 @@ const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
 );
 
 export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
-  jsonTypeObject({
+  jsonTypeObject((key) => key, {
     accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
-    accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
+    accountUpdatedAt: jsonTypeOptional(jsonTypeDateTime),
     accountFetchedOrdering: jsonTypeInteger,
     accountRequestOrdering: jsonTypeInteger,
-    witnessesPerUser: jsonTypeObjectToMap(
-      jsonTypeObject({
+    witnessesPerUser: utilsObjectToPubkeyMapJsonType(
+      jsonTypeObject((key) => key, {
         lastFew: jsonTypeArray(witnessJsonType),
-        sampled: jsonTypeObject({
+        sampled: jsonTypeObject((key) => key, {
           rate: jsonTypeNumber,
           data: jsonTypeArray(
             jsonTypeArrayToObject({
@@ -90,11 +107,12 @@ export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
       }),
     ),
     adminHistory: jsonTypeArray(
-      jsonTypeObject({
-        processedTime: jsonTypeOptional(jsonTypeDate),
+      jsonTypeObject((key) => key, {
+        signerAddress: jsonTypePubkey,
+        processedTime: jsonTypeOptional(jsonTypeDateTime),
         ordering: jsonTypeInteger,
         instructionName: jsonTypeString,
-        instructionAddresses: jsonTypeObjectToMap(jsonTypeString),
+        instructionAddresses: utilsObjectToStringMapJsonType(jsonTypePubkey),
         instructionPayload: jsonTypeValue,
       }),
     ),

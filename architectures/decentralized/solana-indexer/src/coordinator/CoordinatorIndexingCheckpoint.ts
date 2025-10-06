@@ -1,10 +1,12 @@
 import {
+  IdlProgram,
   jsonTypeInteger,
   jsonTypeNumber,
+  jsonTypePubkey,
   jsonTypeString,
-} from "solana-kiss-data";
-import { IdlProgram } from "solana-kiss-idl";
-import { RpcHttp } from "solana-kiss-rpc";
+  Pubkey,
+  RpcHttp,
+} from "solana-kiss";
 import {
   utilsGetAndDecodeAccountState,
   utilsObjectSnakeCaseJsonDecoder,
@@ -38,11 +40,14 @@ async function updateCoordinatorAccountState(
   rpcHttp: RpcHttp,
   programIdl: IdlProgram,
   dataStore: CoordinatorDataStore,
-  runAddress: string,
+  runAddress: Pubkey,
 ) {
   try {
-    const runState = runStateJsonDecoder(
-      await utilsGetAndDecodeAccountState(rpcHttp, programIdl, runAddress),
+    const runState = await utilsGetAndDecodeAccountState(
+      rpcHttp,
+      programIdl,
+      runAddress,
+      runStateJsonDecoder,
     );
     dataStore.saveRunState(runAddress, {
       runId: runState.state.coordinator.runId,
@@ -83,7 +88,7 @@ const runStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
         clients: utilsRustFixedArrayJsonDecoder(
           utilsObjectSnakeCaseJsonDecoder({
             id: utilsObjectSnakeCaseJsonDecoder({
-              signer: jsonTypeString.decoder,
+              signer: jsonTypePubkey.decoder,
             }),
             state: jsonTypeString.decoder,
           }),

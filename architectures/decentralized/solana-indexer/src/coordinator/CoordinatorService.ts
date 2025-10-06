@@ -1,12 +1,11 @@
-import { Pubkey } from "solana-kiss-data";
-import { resolveProgramAnchorIdl } from "solana-kiss-resolve";
-import { RpcHttp } from "solana-kiss-rpc";
+import { Pubkey, RpcHttp } from "solana-kiss";
 import {
   IndexingCheckpoint,
   indexingCheckpointJsonType,
 } from "../indexing/IndexingCheckpoint";
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
 import { saveRead, saveWrite } from "../save";
+import { utilsGetProgramAnchorIdl } from "../utils";
 import {
   CoordinatorDataStore,
   coordinatorDataStoreJsonType,
@@ -57,10 +56,7 @@ async function serviceIndexing(
   startingCheckpoint: IndexingCheckpoint,
   dataStore: CoordinatorDataStore,
 ): Promise<void> {
-  const programIdl = await resolveProgramAnchorIdl(rpcHttp, programAddress);
-  if (programIdl === undefined) {
-    throw new Error(`Failed to resolve program IDL: ${programAddress}`);
-  }
+  const programIdl = await utilsGetProgramAnchorIdl(rpcHttp, programAddress);
   await indexingInstructionsLoop(
     rpcHttp,
     programAddress,

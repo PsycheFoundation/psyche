@@ -1,10 +1,5 @@
-import {
-  jsonTypeObject,
-  jsonTypeObjectToMap,
-  jsonTypeRemap,
-  JsonValue,
-  Pubkey,
-} from "solana-kiss-data";
+import { JsonValue, Pubkey, jsonTypeObject, jsonTypeRemap } from "solana-kiss";
+import { utilsObjectToPubkeyMapJsonType } from "../utils";
 import {
   MiningPoolDataPoolInfo,
   miningPoolDataPoolInfoJsonType,
@@ -12,13 +7,13 @@ import {
 import { MiningPoolDataPoolState } from "./MiningPoolDataPoolState";
 
 export class MiningPoolDataStore {
-  public poolsInfos: Map<string, MiningPoolDataPoolInfo>;
+  public poolsInfos: Map<Pubkey, MiningPoolDataPoolInfo>;
 
-  constructor(pools: Map<string, MiningPoolDataPoolInfo>) {
+  constructor(pools: Map<Pubkey, MiningPoolDataPoolInfo>) {
     this.poolsInfos = pools;
   }
 
-  public getPoolInfo(poolAddress: string): MiningPoolDataPoolInfo {
+  public getPoolInfo(poolAddress: Pubkey): MiningPoolDataPoolInfo {
     let poolInfo = this.poolsInfos.get(poolAddress);
     if (poolInfo === undefined) {
       poolInfo = {
@@ -27,9 +22,9 @@ export class MiningPoolDataStore {
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
         totalExtractCollateralAmount: 0n,
-        depositCollateralAmountPerUser: new Map<string, bigint>(),
+        depositCollateralAmountPerUser: new Map<Pubkey, bigint>(),
         totalDepositCollateralAmount: 0n,
-        claimRedeemableAmountPerUser: new Map<string, bigint>(),
+        claimRedeemableAmountPerUser: new Map<Pubkey, bigint>(),
         totalClaimRedeemableAmount: 0n,
         adminHistory: [],
       };
@@ -39,7 +34,7 @@ export class MiningPoolDataStore {
   }
 
   public savePoolState(
-    poolAddress: string,
+    poolAddress: Pubkey,
     poolState: MiningPoolDataPoolState,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
@@ -48,45 +43,46 @@ export class MiningPoolDataStore {
     poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering;
   }
 
-  public savePoolExtract(poolAddress: string, collateralAmount: bigint) {
+  public savePoolExtract(poolAddress: Pubkey, collateralAmount: bigint) {
     let poolInfo = this.getPoolInfo(poolAddress);
     poolInfo.totalExtractCollateralAmount += collateralAmount;
   }
 
   public savePoolDeposit(
-    poolAddress: string,
-    userAddress: string,
+    poolAddress: Pubkey,
+    signerAddress: Pubkey,
     depositAmount: bigint,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
     const depositAmountBefore =
-      poolInfo.depositCollateralAmountPerUser.get(userAddress) ?? 0n;
+      poolInfo.depositCollateralAmountPerUser.get(signerAddress) ?? 0n;
     const depositAmountAfter = depositAmountBefore + depositAmount;
     poolInfo.depositCollateralAmountPerUser.set(
-      userAddress,
+      signerAddress,
       depositAmountAfter,
     );
     poolInfo.totalDepositCollateralAmount += depositAmount;
   }
 
   public savePoolClaim(
-    poolAddress: string,
-    userAddress: string,
+    poolAddress: Pubkey,
+    signerAddress: Pubkey,
     redeemableAmount: bigint,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
     const redeemableAmountBefore =
-      poolInfo.claimRedeemableAmountPerUser.get(userAddress) ?? 0n;
+      poolInfo.claimRedeemableAmountPerUser.get(signerAddress) ?? 0n;
     const redeemableAmountAfter = redeemableAmountBefore + redeemableAmount;
     poolInfo.claimRedeemableAmountPerUser.set(
-      userAddress,
+      signerAddress,
       redeemableAmountAfter,
     );
     poolInfo.totalClaimRedeemableAmount += redeemableAmount;
   }
 
   public savePoolAdminAction(
-    poolAddress: string,
+    poolAddress: Pubkey,
+    signerAddress: Pubkey,
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
@@ -97,13 +93,15 @@ export class MiningPoolDataStore {
     poolInfo.adminHistory.push({
       processedTime,
       ordering,
+      signerAddress,
       instructionName,
       instructionAddresses,
       instructionPayload,
     });
+    poolInfo.adminHistory.sort((a, b) => Number(b.ordering - a.ordering));
   }
 
-  public setPoolRequestOrdering(poolAddress: string, ordering: bigint) {
+  public setPoolRequestOrdering(poolAddress: Pubkey, ordering: bigint) {
     const poolInfo = this.getPoolInfo(poolAddress);
     if (ordering > poolInfo.accountRequestOrdering) {
       poolInfo.accountRequestOrdering = ordering;
@@ -112,8 +110,8 @@ export class MiningPoolDataStore {
 }
 
 export const miningPoolDataStoreJsonType = jsonTypeRemap(
-  jsonTypeObject({
-    poolsInfos: jsonTypeObjectToMap(miningPoolDataPoolInfoJsonType),
+  jsonTypeObject((key) => key, {
+    poolsInfos: utilsObjectToPubkeyMapJsonType(miningPoolDataPoolInfoJsonType),
   }),
   (unmapped) => new MiningPoolDataStore(unmapped.poolsInfos),
   (remapped) => ({ poolsInfos: remapped.poolsInfos }),

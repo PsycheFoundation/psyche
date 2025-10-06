@@ -1,11 +1,11 @@
 import {
   JsonType,
   jsonTypeObject,
-  jsonTypeObjectToMap,
   jsonTypeRemap,
   JsonValue,
   Pubkey,
-} from "solana-kiss-data";
+} from "solana-kiss";
+import { utilsObjectToPubkeyMapJsonType } from "../utils";
 import {
   CoordinatorDataRunInfo,
   coordinatorDataRunInfoJsonType,
@@ -13,13 +13,13 @@ import {
 import { CoordinatorDataRunState } from "./CoordinatorDataRunState";
 
 export class CoordinatorDataStore {
-  public runsInfos: Map<string, CoordinatorDataRunInfo>;
+  public runsInfos: Map<Pubkey, CoordinatorDataRunInfo>;
 
-  constructor(runs: Map<string, CoordinatorDataRunInfo>) {
+  constructor(runs: Map<Pubkey, CoordinatorDataRunInfo>) {
     this.runsInfos = runs;
   }
 
-  public getRunInfo(runAddress: string): CoordinatorDataRunInfo {
+  public getRunInfo(runAddress: Pubkey): CoordinatorDataRunInfo {
     let runInfo = this.runsInfos.get(runAddress);
     if (runInfo === undefined) {
       runInfo = {
@@ -35,7 +35,7 @@ export class CoordinatorDataStore {
     return runInfo;
   }
 
-  public saveRunState(runAddress: string, runState: CoordinatorDataRunState) {
+  public saveRunState(runAddress: Pubkey, runState: CoordinatorDataRunState) {
     let runInfo = this.getRunInfo(runAddress);
     runInfo.accountState = runState;
     runInfo.accountUpdatedAt = new Date();
@@ -43,10 +43,15 @@ export class CoordinatorDataStore {
   }
 
   public saveRunWitness(
-    runAddress: string,
-    userAddress: string,
+    runAddress: Pubkey,
+    signerAddress: Pubkey,
     ordering: bigint,
     processedTime: Date | undefined,
+    proof: {
+      position: bigint;
+      index: bigint;
+      witness: boolean;
+    },
     metadata: {
       tokensPerSec: number;
       bandwidthPerSec: number;
@@ -55,13 +60,13 @@ export class CoordinatorDataStore {
     },
   ) {
     const runInfo = this.getRunInfo(runAddress);
-    const userWitnesses = runInfo.witnessesPerUser.get(userAddress) ?? {
+    const userWitnesses = runInfo.witnessesPerUser.get(signerAddress) ?? {
       lastFew: [],
       sampled: { rate: 1, data: [] },
     };
     const desiredLastFewCount = 1;
     const desiredSampledCount = 5;
-    const witness = { processedTime, ordering, metadata };
+    const witness = { processedTime, ordering, proof, metadata };
     userWitnesses.lastFew.push(witness);
     userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));
     userWitnesses.lastFew = userWitnesses.lastFew.slice(0, desiredLastFewCount);
@@ -78,11 +83,12 @@ export class CoordinatorDataStore {
         );
       }
     }
-    runInfo.witnessesPerUser.set(userAddress, userWitnesses);
+    runInfo.witnessesPerUser.set(signerAddress, userWitnesses);
   }
 
   public saveRunAdminAction(
-    runAddress: string,
+    runAddress: Pubkey,
+    signerAddress: Pubkey,
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
@@ -93,13 +99,15 @@ export class CoordinatorDataStore {
     runInfo.adminHistory.push({
       processedTime,
       ordering,
+      signerAddress,
       instructionName,
       instructionAddresses,
       instructionPayload,
     });
+    runInfo.adminHistory.sort((a, b) => Number(b.ordering - a.ordering));
   }
 
-  public setRunRequestOrdering(runAddress: string, ordering: bigint) {
+  public setRunRequestOrdering(runAddress: Pubkey, ordering: bigint) {
     const runInfo = this.getRunInfo(runAddress);
     if (ordering > runInfo.accountRequestOrdering) {
       runInfo.accountRequestOrdering = ordering;
@@ -109,8 +117,8 @@ export class CoordinatorDataStore {
 
 export const coordinatorDataStoreJsonType: JsonType<CoordinatorDataStore> =
   jsonTypeRemap(
-    jsonTypeObject({
-      runsInfos: jsonTypeObjectToMap(coordinatorDataRunInfoJsonType),
+    jsonTypeObject((key) => key, {
+      runsInfos: utilsObjectToPubkeyMapJsonType(coordinatorDataRunInfoJsonType),
     }),
     (unmapped) => new CoordinatorDataStore(unmapped.runsInfos),
     (remapped) => ({ runsInfos: remapped.runsInfos }),

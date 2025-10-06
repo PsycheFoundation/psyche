@@ -1,37 +1,55 @@
 import {
   casingCamelToSnake,
+  idlAccountDecode,
+  IdlProgram,
+  idlProgramGuessAccount,
+  idlStoreAnchorFind,
+  idlStoreAnchorParse,
   JsonDecoder,
   jsonDecoderArray,
   jsonDecoderArrayToObject,
   jsonDecoderObject,
   jsonDecoderRemap,
+  JsonType,
   jsonTypeInteger,
   jsonTypeNumber,
+  jsonTypeObjectToMap,
   Pubkey,
-} from "solana-kiss-data";
-import {
-  idlAccountDecode,
-  IdlProgram,
-  idlProgramGuessAccount,
-} from "solana-kiss-idl";
-import { RpcHttp, rpcHttpGetAccountWithData } from "solana-kiss-rpc";
+  pubkeyFromBase58,
+  pubkeyToBase58,
+  RpcHttp,
+  rpcHttpGetAccountWithData,
+} from "solana-kiss";
 
-export async function utilsGetAndDecodeAccountState(
+export async function utilsGetProgramAnchorIdl(
+  rpcHttp: RpcHttp,
+  programAddress: Pubkey,
+): Promise<IdlProgram> {
+  const programIdlAddress = idlStoreAnchorFind(programAddress);
+  const programIdlRecord = await rpcHttpGetAccountWithData(
+    rpcHttp,
+    programIdlAddress,
+  );
+  if (programIdlRecord.data.length === 0) {
+    throw new Error("Idl account has no data");
+  }
+  return idlStoreAnchorParse(programIdlRecord.data);
+}
+
+export async function utilsGetAndDecodeAccountState<Content>(
   rpcHttp: RpcHttp,
   programIdl: IdlProgram,
   accountAddress: Pubkey,
-) {
-  const accountRecord = await rpcHttpGetAccountWithData(
-    rpcHttp,
-    accountAddress,
-  );
-  const accountIdl = idlProgramGuessAccount(programIdl, accountRecord.data);
+  accountDecoder: JsonDecoder<Content>,
+): Promise<Content> {
+  const accountInfo = await rpcHttpGetAccountWithData(rpcHttp, accountAddress);
+  const accountIdl = idlProgramGuessAccount(programIdl, accountInfo.data);
   if (accountIdl === undefined) {
     throw new Error(
       `Failed to resolve Idl account type for: ${accountAddress}`,
     );
   }
-  return idlAccountDecode(accountIdl, accountRecord.data);
+  return accountDecoder(idlAccountDecode(accountIdl, accountInfo.data));
 }
 
 export function utilsObjectSnakeCaseJsonDecoder<
@@ -41,7 +59,30 @@ export function utilsObjectSnakeCaseJsonDecoder<
   for (const keyDecoded in shape) {
     keysEncoding[keyDecoded] = casingCamelToSnake(keyDecoded);
   }
-  return jsonDecoderObject(shape, keysEncoding);
+  return jsonDecoderObject(keysEncoding, shape);
+}
+
+export function utilsObjectToPubkeyMapJsonType<T>(
+  valueType: JsonType<T>,
+): JsonType<Map<Pubkey, T>> {
+  return jsonTypeObjectToMap(
+    {
+      keyDecoder: pubkeyFromBase58,
+      keyEncoder: pubkeyToBase58,
+    },
+    valueType,
+  );
+}
+export function utilsObjectToStringMapJsonType<T>(
+  valueType: JsonType<T>,
+): JsonType<Map<string, T>> {
+  return jsonTypeObjectToMap(
+    {
+      keyDecoder: (key) => key,
+      keyEncoder: (key) => key,
+    },
+    valueType,
+  );
 }
 
 export const utilsRustFixedStringJsonDecoder = jsonDecoderRemap(
@@ -49,16 +90,22 @@ export const utilsRustFixedStringJsonDecoder = jsonDecoderRemap(
     bytes: jsonDecoderArray(jsonTypeNumber.decoder),
   }),
   (unmapped) => {
-    const bytes = unmapped.bytes;
-    const nulIndex = bytes.indexOf(0);
-    const trimmed = nulIndex >= 0 ? bytes.slice(0, nulIndex) : bytes;
-    return new TextDecoder().decode(new Uint8Array(trimmed));
+    let lastNonNull = 0;
+    for (let index = unmapped.bytes.length - 1; index >= 0; index--) {
+      if (unmapped.bytes[index] !== 0) {
+        lastNonNull = index + 1;
+        break;
+      }
+    }
+    return new TextDecoder().decode(
+      new Uint8Array(unmapped.bytes.slice(0, lastNonNull)),
+    );
   },
 );
 
 export function utilsRustFixedArrayJsonDecoder<T>(itemDecode: JsonDecoder<T>) {
   return jsonDecoderRemap(
-    jsonDecoderObject({
+    jsonDecoderObject((key) => key, {
       data: jsonDecoderArray(itemDecode),
       len: jsonTypeInteger.decoder,
     }),
