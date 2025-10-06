@@ -25,7 +25,7 @@ WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
 RUN_ID=${RUN_ID:-"test"}
 
 # presets for a DGX or an HGX
-DP=8
+DP=${DP:-"8"}
 TP=${TP:-"1"}
 BATCH_SIZE=${BATCH_SIZE:-"1"}
 
@@ -35,7 +35,7 @@ solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || tru
 export RUST_LOG="info,psyche=debug"
 
 if [[ "$OTLP_METRICS_URL" == "" ]]; then
-    cargo run --release --features python,parallelism --bin psyche-solana-client -- \
+    cargo run --release --bin psyche-solana-client -- \
         train \
         --wallet-private-key-path ${WALLET_FILE} \
         --rpc ${RPC} \

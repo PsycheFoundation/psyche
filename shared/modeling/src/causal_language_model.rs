@@ -9,7 +9,6 @@ use tch::{
     Device, Kind, Tensor,
     nn::{self, Module},
 };
-use tracing::debug;
 
 #[cfg(feature = "parallelism")]
 use tch::CNCCL;
@@ -155,20 +154,6 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
                 config.vocab_size() as i64,
                 c,
             );
-
-            // Log layer 3 MLP parameter names to verify structure matches
-            let vars_lock = variables.variables_.lock().unwrap();
-            let layer3_mlp_params: Vec<_> = vars_lock
-                .named_variables
-                .keys()
-                .filter(|k| k.contains("layers.3.mlp"))
-                .cloned()
-                .collect();
-            debug!(
-                "Rust - Layer 3 MLP parameter names: {:?}",
-                layer3_mlp_params
-            );
-            drop(vars_lock);
 
             source.load(&mut variables)?;
 

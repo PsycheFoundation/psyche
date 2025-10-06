@@ -110,7 +110,7 @@ run_docker_client *ARGS:
 
 # Setup clients assigning one available GPU to each of them.
 
-# There's no way to do this using the replicas from docker-compose file, so we have to do it manually.
+# There's no way to do this using the replicas from docker compose file, so we have to do it manually.
 setup_gpu_clients num_clients="1":
     ./scripts/coordinator-address-check.sh
     just nix build_docker_solana_test_client
@@ -132,13 +132,13 @@ setup_test_infra:
     just nix build_docker_solana_test_validator
 
 run_test_infra num_clients="1":
-    cd docker/test && NUM_REPLICAS={{ num_clients }} docker-compose -f docker-compose.yml up -d --force-recreate
+    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
 
 run_test_infra_with_proxies_validator num_clients="1":
-    cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker-compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
+    cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
 
 run_test_infra_three_clients:
-    cd docker/test/three_clients_test && docker-compose -f docker-compose.yml up -d --force-recreate
+    cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
 
 stop_test_infra:
-    cd docker/test && docker-compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
+    cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down

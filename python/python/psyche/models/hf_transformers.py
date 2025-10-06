@@ -93,7 +93,6 @@ class HfTransformersAuto(CausalLM):
         reduce_dtype: torch.dtype = torch.float32,
         fsdp_modules: Optional[Iterable[str]] = None,
     ):
-        print("from_pretrained: start")
         if isinstance(source, PretrainedSourceStateDict):
             state_dict = source.state_dict
             config_json = source.config_json
@@ -255,12 +254,6 @@ class HfTransformersAuto(CausalLM):
 
         # compile the loss, greatly reduces mem usage for large vocabularies
         model.loss_function = torch.compile(model.loss_function)
-
-        # Log layer 3 MLP parameter names to verify structure matches
-        layer3_mlp_params = [
-            name for name in model.state_dict().keys() if "layers.3.mlp" in name
-        ]
-        print(f"Python - Layer 3 MLP parameter names: {layer3_mlp_params}")
 
         # for super large models, loading the entire model in RAM nproc times can CPU OOM
         # TODO: switch to use torch.distributed.checkpoint.state_dict_loader.load()

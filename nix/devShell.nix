@@ -58,7 +58,6 @@
 
                 # cargo stuff
                 cargo-watch
-                docker-compose
 
                 self'.packages.solana_toolbox_cli
 
