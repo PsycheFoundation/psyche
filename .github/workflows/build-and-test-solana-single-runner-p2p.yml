@@ -101,7 +101,7 @@ jobs:
           df -h
           # ========================================================= #
 
-          nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
+          nix build .#docker-psyche-solana-test-client --impure --out-link nix-results/docker-psyche-solana-test-client
           nix-results/docker-psyche-solana-test-client | docker load
           rm -rf nix-results/docker-psyche-solana-test-client
 
