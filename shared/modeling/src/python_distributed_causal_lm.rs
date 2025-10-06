@@ -18,7 +18,7 @@ use std::{
 };
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -132,6 +132,25 @@ impl TorchDistributedCommunicator {
         ret
     }
 
+    pub fn wait_for_all_ranks(&self) -> PyResult<()> {
+        // Wait for all other ranks to signal ready
+        Python::with_gil(|py| {
+            let distributed = Python::import(py, "torch.distributed")?;
+            let barrier = distributed.getattr("barrier")?;
+            barrier.call0()?; // This will block until all ranks join
+            Ok(())
+        })
+    }
+
+    pub fn delete(&self, key: &str) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let store = self.store.bind(py);
+            let delete = store.getattr("delete_key")?;
+            let _ = delete.call1((key,))?;
+            Ok(())
+        })
+    }
+
     pub fn size(&self) -> usize {
         self.world_size.expect("World size not specified")
     }
@@ -189,6 +208,7 @@ pub struct PythonDistributedCausalLM {
 unsafe impl Send for PythonDistributedCausalLM {}
 
 impl PythonDistributedCausalLM {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         architecture: String,
         source: PretrainedSource<PythonModelConfig>,
@@ -196,6 +216,7 @@ impl PythonDistributedCausalLM {
         attn_implementation: AttentionImplementation,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
+        port: Option<u16>,
         num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
         if !tch::Cuda::is_available() {
@@ -220,7 +241,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = "tcp://0.0.0.0:34567".to_string();
+        let init_method = format!("tcp://0.0.0.0:{}", port.unwrap_or(34567));
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();
@@ -242,7 +263,53 @@ impl PythonDistributedCausalLM {
                         let files = serde_json::to_string(&files).unwrap();
                         comm.set("files", &files)?;
                     }
-                    PretrainedSource::ConfigAndTensors(_, _hash_map) => todo!(),
+                    PretrainedSource::ConfigAndTensors(config, hash_map) => {
+                        let config = serde_json::to_string(&config).unwrap();
+                        comm.set("source", "config_and_tensors")?;
+                        comm.set("config", &config)?;
+
+                        // Send tensor metadata via store
+                        let mut tensors_vec: Vec<(String, Tensor)> = hash_map
+                            .iter()
+                            .map(|(name, tensor)| (name.clone(), tensor.shallow_clone()))
+                            .collect();
+
+                        tensors_vec.sort_by(|(a, _), (b, _)| a.cmp(b));
+                        let tensor_names: Vec<String> =
+                            tensors_vec.iter().map(|(name, _)| name.clone()).collect();
+                        comm.set(
+                            "tensor_names",
+                            &serde_json::to_string(&tensor_names).unwrap(),
+                        )?;
+
+                        // Wait for all ranks to be ready before broadcasting tensors
+                        comm.wait_for_all_ranks()?;
+                        info!("Sharing parameters with the other ranks");
+
+                        for (name, tensor) in tensors_vec.iter() {
+                            comm.set(
+                                &format!("tensor_shape_{}", name),
+                                &serde_json::to_string(&tensor.size()).unwrap(),
+                            )?;
+                            comm.set(
+                                &format!("tensor_dtype_{}", name),
+                                &format!("{:?}", tensor.kind()),
+                            )?;
+
+                            debug!("Broadcasting tensor {} to other ranks", name);
+
+                            // To broadcast we have to move the tensor to the GPU
+                            let tensor = tensor.to(device);
+
+                            if let Err(e) = comm.broadcast(&tensor.shallow_clone()) {
+                                error!("Error broadcasting tensor {}: {}", name, e);
+                                return Err(PythonDistributedCausalLMError::PythonError(e));
+                            }
+
+                            // Ensure all ranks have received the tensor before continuing
+                            comm.wait_for_all_ranks()?;
+                        }
+                    }
                 }
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
@@ -388,6 +455,8 @@ impl CausalLM for PythonDistributedCausalLM {
             num_logits_to_keep,
             loss_scale,
         );
+
+        self.comm.delete(&iteration.to_string()).unwrap();
 
         (logits, loss)
     }

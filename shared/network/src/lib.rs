@@ -8,7 +8,13 @@ use iroh::{
     endpoint::{RemoteInfo, TransportConfig},
     protocol::Router,
 };
-use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
+use iroh_blobs::{
+    BlobsProtocol,
+    store::{
+        fs::options::GcConfig,
+        mem::{MemStore, Options as MemStoreOptions},
+    },
+};
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
     net::Gossip,
@@ -228,7 +234,12 @@ where
         info!("Our join ticket: {}", PeerList(vec![node_addr]));
 
         trace!("creating blobs store...");
-        let store = MemStore::new();
+        let store = MemStore::new_with_opts(MemStoreOptions {
+            gc_config: Some(GcConfig {
+                interval: Duration::from_secs(10),
+                add_protected: None,
+            }),
+        });
         trace!("blobs store created!");
 
         trace!("creating gossip...");
@@ -409,7 +420,7 @@ where
             .blobs_store
             .blobs()
             .add_bytes(blob_data.clone())
-            .with_named_tag(tag.to_string())
+            .with_named_tag(tag.to_bytes())
             .await?;
         let addr = self.router.endpoint().node_addr().initialized().await;
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
@@ -454,10 +465,27 @@ where
                 }
             }
 
+            let mut deleted_tags = 0;
             for tag in to_delete {
-                if let Err(err) = store.tags().delete(tag.to_string()).await {
-                    warn!("Error deleting blob tag {tag}: {err}")
+                match store.tags().delete(tag.to_bytes()).await {
+                    Ok(_) => {
+                        deleted_tags += 1;
+                    }
+                    Err(err) => {
+                        warn!("Error deleting blob tag {tag}: {err}")
+                    }
                 }
+            }
+            match store.blobs().list().hashes().await {
+                Ok(blobs) => debug!(
+                    "Untagged {} old blobs from p2p, {} blobs remain",
+                    deleted_tags,
+                    blobs.len()
+                ),
+                Err(err) => debug!(
+                    "Untagged {} old blobs from p2p, but got error fetching list of blobs: {}",
+                    deleted_tags, err
+                ),
             }
         });
         Ok(())

@@ -463,7 +463,7 @@ async fn async_main() -> Result<()> {
                 }))
                 .with_service_info(ServiceInfo {
                     name: "psyche-solana-client".to_string(),
-                    instance_id: identity_secret_key.public().to_string(),
+                    instance_id: wallet_keypair.pubkey().to_string(),
                     namespace: "psyche".to_string(),
                     deployment_environment: std::env::var("DEPLOYMENT_ENV")
                         .unwrap_or("development".to_string()),
@@ -517,6 +517,7 @@ async fn async_main() -> Result<()> {
                 authorizer,
                 metrics_local_port: args.metrics_local_port,
                 device: args.device,
+                sidecar_port: args.sidecar_port,
             })
             .build()
             .await

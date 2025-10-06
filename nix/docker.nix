@@ -59,6 +59,10 @@ let
         Env = [
           "NVIDIA_DRIVER_CAPABILITIES=all"
           "LD_LIBRARY_PATH=/lib:/usr/lib"
+          "LOGNAME=root"
+          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
+          "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/train_entrypoint.sh" ];
       };
@@ -115,6 +119,10 @@ let
         Env = [
           "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
           "NVIDIA_VISIBLE_DEVICES=all"
+          "LOGNAME=root"
+          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
+          "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
       };
@@ -170,6 +178,10 @@ let
         Env = [
           "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
           "NVIDIA_VISIBLE_DEVICES=all"
+          "LOGNAME=root"
+          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
+          "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "PYTHONUNBUFFERED=1"
         ];
       };
     };

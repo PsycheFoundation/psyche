@@ -191,10 +191,12 @@ impl FromStr for Devices {
     }
 }
 
+#[cfg(feature = "python")]
 pub trait DevicePytorchStr {
     fn to_pytorch_device_string(&self) -> String;
 }
 
+#[cfg(feature = "python")]
 impl DevicePytorchStr for Device {
     fn to_pytorch_device_string(&self) -> String {
         match self {

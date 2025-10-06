@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use psyche_data_provider::{
-    TokenizedDataProvider,
+    TokenizedDataProvider, WeightedDataProvider, WeightedHttpProvidersConfig,
     http::{FileURLs, HttpDataProvider},
 };
 use std::path::PathBuf;
@@ -60,6 +60,11 @@ enum Commands {
         /// An optional directory to filter by
         directory: Option<String>,
     },
+    /// Use a weighted HTTP configuration from JSON
+    WeightedConfig {
+        /// Path or URL to WeightedHttpProvidersConfig JSON file
+        config: String,
+    },
 }
 
 #[tokio::main]
@@ -77,32 +82,75 @@ async fn main() -> Result<()> {
         anyhow::bail!("At least one batch ID must be specified");
     }
 
-    let urls = match cli.command {
+    enum ProviderType {
+        Single(HttpDataProvider),
+        Weighted(WeightedDataProvider<HttpDataProvider>),
+    }
+
+    let mut provider = match cli.command {
         Commands::Template {
             template,
             start,
             left_pad_zeros,
             end,
-        } => FileURLs::from_template(&template, start, left_pad_zeros, end - start).await?,
+        } => {
+            let urls =
+                FileURLs::from_template(&template, start, left_pad_zeros, end - start).await?;
+            ProviderType::Single(HttpDataProvider::new(
+                urls,
+                token_size,
+                cli.sequence_length,
+                Shuffle::DontShuffle,
+            )?)
+        }
         Commands::Urls { urls } => {
             if urls.is_empty() {
                 anyhow::bail!("at least one URL must be passed");
             }
-            FileURLs::from_list(&urls).await?
+            let urls = FileURLs::from_list(&urls).await?;
+            ProviderType::Single(HttpDataProvider::new(
+                urls,
+                token_size,
+                cli.sequence_length,
+                Shuffle::DontShuffle,
+            )?)
         }
         Commands::Gcp {
             bucket_name,
             directory,
-        } => FileURLs::from_gcp_bucket(&bucket_name, directory).await?,
+        } => {
+            let urls = FileURLs::from_gcp_bucket(&bucket_name, directory).await?;
+            ProviderType::Single(HttpDataProvider::new(
+                urls,
+                token_size,
+                cli.sequence_length,
+                Shuffle::DontShuffle,
+            )?)
+        }
+        Commands::WeightedConfig { config } => {
+            let weighted_provider =
+                if config.starts_with("http://") || config.starts_with("https://") {
+                    WeightedDataProvider::from_config_url(&config, cli.sequence_length).await?
+                } else {
+                    // Load from file
+                    let config_content = std::fs::read_to_string(&config)
+                        .with_context(|| format!("Failed to read config file: {}", config))?;
+                    let config: WeightedHttpProvidersConfig = serde_json::from_str(&config_content)
+                        .with_context(|| format!("Failed to parse config JSON: {}", config))?;
+                    WeightedDataProvider::from_config(config, cli.sequence_length).await?
+                };
+            ProviderType::Weighted(weighted_provider)
+        }
     };
-    let mut provider =
-        HttpDataProvider::new(urls, token_size, cli.sequence_length, Shuffle::DontShuffle)?;
 
     let tokenizer = cli.tokenizer.map(|tokenizer_path: PathBuf| {
         Tokenizer::from_file(tokenizer_path).expect("tokenizer exists")
     });
     for batch in batch_ids {
-        let samples = provider.get_samples(batch).await?;
+        let samples = match &mut provider {
+            ProviderType::Single(p) => p.get_samples(batch).await?,
+            ProviderType::Weighted(p) => p.get_samples(batch).await?,
+        };
 
         // Output handling
         if let Some(tokenizer) = &tokenizer {
