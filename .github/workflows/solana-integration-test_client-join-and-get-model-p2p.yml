@@ -1,4 +1,4 @@
-name: Solana integration test one clients three epochs run
+name: Solana integration test client join and get model p2p
 
 on:
   push:
