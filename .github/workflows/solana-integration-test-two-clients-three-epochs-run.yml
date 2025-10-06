@@ -51,10 +51,11 @@ jobs:
       # Step 1: Build Anchor Programs
       - name: Build Anchor Programs
         run: |
-          echo "Building Solana Coordinator and Authorizer in parallel"
-          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build" &
-          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build" &
-          wait
+          echo "Building Solana Coordinator"
+          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+
+          echo "Building Solana Authorizer"
+          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
 
           echo "=== Built Coordinator artifacts ==="
           ls -la architectures/decentralized/solana-coordinator/target/deploy/
