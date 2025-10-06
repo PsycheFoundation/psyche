@@ -13,7 +13,7 @@ use pyo3_tch::PyTensor;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::error;
 
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {

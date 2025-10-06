@@ -142,11 +142,11 @@ impl TorchDistributedCommunicator {
         })
     }
 
-    pub fn barrier(&self) -> PyResult<()> {
+    pub fn delete(&self, key: &str) -> PyResult<()> {
         Python::with_gil(|py| {
-            let distributed = Python::import(py, "torch.distributed")?;
-            let barrier = distributed.getattr("barrier")?;
-            barrier.call0()?;
+            let store = self.store.bind(py);
+            let delete = store.getattr("delete_key")?;
+            let _ = delete.call1((key,))?;
             Ok(())
         })
     }
@@ -455,6 +455,8 @@ impl CausalLM for PythonDistributedCausalLM {
             num_logits_to_keep,
             loss_scale,
         );
+
+        self.comm.delete(&iteration.to_string()).unwrap();
 
         (logits, loss)
     }
