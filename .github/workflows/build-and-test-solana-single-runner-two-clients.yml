@@ -12,6 +12,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      DISABLE_FLASH_ATTN: 1
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -123,9 +125,9 @@ jobs:
           echo "=== Disk space before client build ==="
           df -h
 
-          nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
-          nix-results/docker-psyche-solana-test-client-no-python | docker load
-          rm -rf nix-results/docker-psyche-solana-test-client-no-python
+          nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
+          nix-results/docker-psyche-solana-test-client | docker load
+          rm -rf nix-results/docker-psyche-solana-test-client
 
           echo "=== Disk space after client build ==="
           df -h
@@ -148,7 +150,7 @@ jobs:
           echo "=== Checking for required Docker images ==="
           docker images
           docker images | grep psyche-solana-test-validator || (echo "ERROR: psyche-solana-test-validator image not found" && exit 1)
-          docker images | grep psyche-solana-test-client-no-python || (echo "ERROR: psyche-solana-test-client-no-python image not found" && exit 1)
+          docker images | grep psyche-solana-test-client || (echo "ERROR: psyche-solana-test-client image not found" && exit 1)
           echo "All required images are present"
 
           echo "=== Final disk usage before tests ==="
