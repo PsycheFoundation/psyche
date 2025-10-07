@@ -45,7 +45,7 @@
                 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock
 
                 # start dockerd in rootless mode
-                ${pkgs.docker}/bin/dockerd-rootless.sh &
+                ${pkgs.docker}/bin/dockerd-rootless &
                 DOCKER_PID=$!
 
                 cleanup() {
