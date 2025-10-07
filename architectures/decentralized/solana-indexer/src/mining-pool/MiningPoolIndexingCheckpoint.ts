@@ -1,15 +1,14 @@
 import {
+  casingCamelToSnake,
+  IdlProgram,
+  jsonDecoderObject,
   jsonTypeBoolean,
   jsonTypeInteger,
   jsonTypeNumber,
   jsonTypeString,
-} from "solana-kiss-data";
-import { IdlProgram } from "solana-kiss-idl";
-import { RpcHttp } from "solana-kiss-rpc";
-import {
-  utilsGetAndDecodeAccountState,
-  utilsObjectSnakeCaseJsonDecoder,
-} from "../utils";
+  RpcHttp,
+} from "solana-kiss";
+import { utilsGetAndDecodeAccountState } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 
 export async function miningPoolIndexingCheckpoint(
@@ -17,13 +16,16 @@ export async function miningPoolIndexingCheckpoint(
   programIdl: IdlProgram,
   dataStore: MiningPoolDataStore,
 ) {
-  for (const [poolAddress, poolInfo] of dataStore.poolsInfos) {
+  for (const [poolAddress, poolInfo] of dataStore.poolInfoByAddress) {
     if (poolInfo.accountFetchedOrdering === poolInfo.accountRequestOrdering) {
       break;
     }
     try {
-      const poolState = poolStateJsonDecoder(
-        await utilsGetAndDecodeAccountState(rpcHttp, programIdl, poolAddress),
+      const poolState = await utilsGetAndDecodeAccountState(
+        rpcHttp,
+        programIdl,
+        poolAddress,
+        poolStateJsonDecoder,
       );
       dataStore.savePoolState(poolAddress, poolState);
     } catch (error) {
@@ -32,7 +34,7 @@ export async function miningPoolIndexingCheckpoint(
   }
 }
 
-const poolStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+const poolStateJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
   bump: jsonTypeNumber.decoder,
   index: jsonTypeInteger.decoder,
   authority: jsonTypeString.decoder,

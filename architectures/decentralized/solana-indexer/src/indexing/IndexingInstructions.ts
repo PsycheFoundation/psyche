@@ -1,15 +1,16 @@
-import { Immutable, Instruction, JsonValue, Pubkey } from "solana-kiss-data";
 import {
   idlInstructionDecode,
   IdlProgram,
   idlProgramGuessInstruction,
-} from "solana-kiss-idl";
-import {
-  Invocation,
+  Instruction,
+  JsonValue,
+  Pubkey,
   RpcHttp,
   rpcHttpWaitForTransaction,
+  Signature,
   Transaction,
-} from "solana-kiss-rpc";
+  TransactionInvocation,
+} from "solana-kiss";
 import { IndexingCheckpoint } from "./IndexingCheckpoint";
 import { indexingSignaturesLoop } from "./IndexingSignatures";
 
@@ -22,11 +23,11 @@ export async function indexingInstructionsLoop(
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
-    context: Immutable<{
+    context: {
       ordering: bigint;
       transaction: Transaction;
       instruction: Instruction;
-    }>,
+    },
   ) => Promise<void>,
   onCheckpoint: (checkpoint: IndexingCheckpoint) => Promise<void>,
 ): Promise<void> {
@@ -62,18 +63,18 @@ export async function indexingInstructionsLoop(
 async function indexingSignatureInstructions(
   rpcHttp: RpcHttp,
   programAddress: Pubkey,
-  signature: string,
+  signature: Signature,
   ordering: bigint,
   programIdl: IdlProgram,
   onInstruction: (
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
-    context: Immutable<{
+    context: {
       ordering: bigint;
       transaction: Transaction;
       instruction: Instruction;
-    }>,
+    },
   ) => Promise<void>,
 ): Promise<void> {
   try {
@@ -103,11 +104,11 @@ async function indexingTransactionInstructions(
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
-    context: Immutable<{
+    context: {
       ordering: bigint;
       transaction: Transaction;
       instruction: Instruction;
-    }>,
+    },
   ) => Promise<void>,
 ): Promise<void> {
   if (transaction.error !== null) {
@@ -142,7 +143,7 @@ async function indexingTransactionInstructions(
 }
 
 async function indexingInvocationsInstructions(
-  invocations: Array<Invocation>,
+  invocations: Array<TransactionInvocation>,
   ordering: bigint,
   visitor: (instruction: Instruction, ordering: bigint) => Promise<void>,
 ): Promise<bigint> {

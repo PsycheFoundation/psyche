@@ -1,5 +1,9 @@
-import { Pubkey, Signature } from "solana-kiss-data";
-import { RpcHttp, rpcHttpFindAccountPastSignatures } from "solana-kiss-rpc";
+import {
+  Pubkey,
+  RpcHttp,
+  Signature,
+  rpcHttpFindAccountPastSignatures,
+} from "solana-kiss";
 import {
   IndexingCheckpoint,
   IndexingCheckpointChunk,
@@ -51,8 +55,8 @@ async function indexingSignaturesChunk(
     programAddress,
     1000,
     {
-      startBeforeSignature: prevChunkInfo?.rewindedUntil,
-      rewindUntilSignature: nextChunkInfo?.startedFrom,
+      startBefore: prevChunkInfo?.rewindedUntil,
+      rewindUntil: nextChunkInfo?.startedFrom,
     },
   );
   if (signatures.length === 0) {

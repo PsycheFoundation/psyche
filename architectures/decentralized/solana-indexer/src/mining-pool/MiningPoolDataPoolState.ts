@@ -4,7 +4,7 @@ import {
   jsonTypeNumber,
   jsonTypeObject,
   jsonTypeString,
-} from "solana-kiss-data";
+} from "solana-kiss";
 
 export interface MiningPoolDataPoolState {
   bump: number;
@@ -20,7 +20,7 @@ export interface MiningPoolDataPoolState {
   freeze: boolean;
 }
 
-export const miningPoolDataPoolStateJsonType = jsonTypeObject({
+export const miningPoolDataPoolStateJsonType = jsonTypeObject((key) => key, {
   bump: jsonTypeNumber,
   index: jsonTypeInteger,
   authority: jsonTypeString,

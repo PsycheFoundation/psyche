@@ -1,13 +1,16 @@
 import {
+  casingCamelToSnake,
+  IdlProgram,
+  jsonDecoderObject,
   jsonTypeInteger,
   jsonTypeNumber,
+  jsonTypePubkey,
   jsonTypeString,
-} from "solana-kiss-data";
-import { IdlProgram } from "solana-kiss-idl";
-import { RpcHttp } from "solana-kiss-rpc";
+  Pubkey,
+  RpcHttp,
+} from "solana-kiss";
 import {
   utilsGetAndDecodeAccountState,
-  utilsObjectSnakeCaseJsonDecoder,
   utilsRustFixedArrayJsonDecoder,
   utilsRustFixedStringJsonDecoder,
 } from "../utils";
@@ -19,7 +22,7 @@ export async function coordinatorIndexingCheckpoint(
   dataStore: CoordinatorDataStore,
 ) {
   const promises = new Array<Promise<void>>();
-  for (const [runAddress, runInfo] of dataStore.runsInfos) {
+  for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
     if (runInfo.accountFetchedOrdering === runInfo.accountRequestOrdering) {
       break;
     }
@@ -38,11 +41,14 @@ async function updateCoordinatorAccountState(
   rpcHttp: RpcHttp,
   programIdl: IdlProgram,
   dataStore: CoordinatorDataStore,
-  runAddress: string,
+  runAddress: Pubkey,
 ) {
   try {
-    const runState = runStateJsonDecoder(
-      await utilsGetAndDecodeAccountState(rpcHttp, programIdl, runAddress),
+    const runState = await utilsGetAndDecodeAccountState(
+      rpcHttp,
+      programIdl,
+      runAddress,
+      runStateJsonDecoder,
     );
     dataStore.saveRunState(runAddress, {
       runId: runState.state.coordinator.runId,
@@ -62,28 +68,28 @@ async function updateCoordinatorAccountState(
   }
 }
 
-const runStateJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
+const runStateJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
   nonce: jsonTypeInteger.decoder,
-  state: utilsObjectSnakeCaseJsonDecoder({
-    metadata: utilsObjectSnakeCaseJsonDecoder({
+  state: jsonDecoderObject(casingCamelToSnake, {
+    metadata: jsonDecoderObject(casingCamelToSnake, {
       name: utilsRustFixedStringJsonDecoder,
       description: utilsRustFixedStringJsonDecoder,
       numParameters: jsonTypeInteger.decoder,
       vocabSize: jsonTypeInteger.decoder,
     }),
-    coordinator: utilsObjectSnakeCaseJsonDecoder({
+    coordinator: jsonDecoderObject(casingCamelToSnake, {
       runId: utilsRustFixedStringJsonDecoder,
       runState: jsonTypeString.decoder,
-      progress: utilsObjectSnakeCaseJsonDecoder({
+      progress: jsonDecoderObject(casingCamelToSnake, {
         epoch: jsonTypeNumber.decoder,
         step: jsonTypeNumber.decoder,
         epochStartDataIndex: jsonTypeInteger.decoder,
       }),
-      epochState: utilsObjectSnakeCaseJsonDecoder({
+      epochState: jsonDecoderObject(casingCamelToSnake, {
         clients: utilsRustFixedArrayJsonDecoder(
-          utilsObjectSnakeCaseJsonDecoder({
-            id: utilsObjectSnakeCaseJsonDecoder({
-              signer: jsonTypeString.decoder,
+          jsonDecoderObject(casingCamelToSnake, {
+            id: jsonDecoderObject(casingCamelToSnake, {
+              signer: jsonTypePubkey.decoder,
             }),
             state: jsonTypeString.decoder,
           }),

@@ -2,8 +2,12 @@ import {
   JsonType,
   jsonTypeObject,
   jsonTypeObjectToMap,
+  jsonTypePubkey,
   jsonTypeRemap,
-} from "solana-kiss-data";
+  JsonValue,
+  Pubkey,
+} from "solana-kiss";
+import { utilsObjectToPubkeyMapJsonType } from "../utils";
 import {
   CoordinatorDataRunInfo,
   coordinatorDataRunInfoJsonType,
@@ -11,14 +15,19 @@ import {
 import { CoordinatorDataRunState } from "./CoordinatorDataRunState";
 
 export class CoordinatorDataStore {
-  public runsInfos: Map<string, CoordinatorDataRunInfo>;
+  public runAddressByRunId: Map<string, Pubkey>;
+  public runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>;
 
-  constructor(runs: Map<string, CoordinatorDataRunInfo>) {
-    this.runsInfos = runs;
+  constructor(
+    runAddressByRunId: Map<string, Pubkey>,
+    runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>,
+  ) {
+    this.runAddressByRunId = runAddressByRunId;
+    this.runInfoByAddress = runInfoByAddress;
   }
 
-  public getRunInfo(runAddress: string): CoordinatorDataRunInfo {
-    let runInfo = this.runsInfos.get(runAddress);
+  public getRunInfo(runAddress: Pubkey): CoordinatorDataRunInfo {
+    let runInfo = this.runInfoByAddress.get(runAddress);
     if (runInfo === undefined) {
       runInfo = {
         accountState: undefined,
@@ -26,24 +35,31 @@ export class CoordinatorDataStore {
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
         witnessesPerUser: new Map(),
+        adminHistory: [],
       };
-      this.runsInfos.set(runAddress, runInfo);
+      this.runInfoByAddress.set(runAddress, runInfo);
     }
     return runInfo;
   }
 
-  public saveRunState(runAddress: string, runState: CoordinatorDataRunState) {
+  public saveRunState(runAddress: Pubkey, runState: CoordinatorDataRunState) {
     let runInfo = this.getRunInfo(runAddress);
     runInfo.accountState = runState;
     runInfo.accountUpdatedAt = new Date();
     runInfo.accountFetchedOrdering = runInfo.accountRequestOrdering;
+    this.runAddressByRunId.set(runState.runId, runAddress);
   }
 
   public saveRunWitness(
-    runAddress: string,
-    userAddress: string,
+    runAddress: Pubkey,
+    signerAddress: Pubkey,
     ordering: bigint,
     processedTime: Date | undefined,
+    proof: {
+      position: bigint;
+      index: bigint;
+      witness: boolean;
+    },
     metadata: {
       tokensPerSec: number;
       bandwidthPerSec: number;
@@ -52,13 +68,13 @@ export class CoordinatorDataStore {
     },
   ) {
     const runInfo = this.getRunInfo(runAddress);
-    const userWitnesses = runInfo.witnessesPerUser.get(userAddress) ?? {
+    const userWitnesses = runInfo.witnessesPerUser.get(signerAddress) ?? {
       lastFew: [],
       sampled: { rate: 1, data: [] },
     };
-    const desiredLastFewCount = 1;
-    const desiredSampledCount = 5;
-    const witness = { processedTime, ordering, metadata };
+    const desiredLastFewCount = 10;
+    const desiredSampledCount = 100;
+    const witness = { processedTime, ordering, proof, metadata };
     userWitnesses.lastFew.push(witness);
     userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));
     userWitnesses.lastFew = userWitnesses.lastFew.slice(0, desiredLastFewCount);
@@ -75,10 +91,31 @@ export class CoordinatorDataStore {
         );
       }
     }
-    runInfo.witnessesPerUser.set(userAddress, userWitnesses);
+    runInfo.witnessesPerUser.set(signerAddress, userWitnesses);
   }
 
-  public setRunRequestOrdering(runAddress: string, ordering: bigint) {
+  public saveRunAdminAction(
+    runAddress: Pubkey,
+    signerAddress: Pubkey,
+    instructionName: string,
+    instructionAddresses: Map<string, Pubkey>,
+    instructionPayload: JsonValue,
+    ordering: bigint,
+    processedTime: Date | undefined,
+  ) {
+    const runInfo = this.getRunInfo(runAddress);
+    runInfo.adminHistory.push({
+      processedTime,
+      signerAddress,
+      instructionName,
+      instructionAddresses,
+      instructionPayload,
+      ordering,
+    });
+    runInfo.adminHistory.sort((a, b) => Number(b.ordering - a.ordering));
+  }
+
+  public setRunRequestOrdering(runAddress: Pubkey, ordering: bigint) {
     const runInfo = this.getRunInfo(runAddress);
     if (ordering > runInfo.accountRequestOrdering) {
       runInfo.accountRequestOrdering = ordering;
@@ -88,9 +125,25 @@ export class CoordinatorDataStore {
 
 export const coordinatorDataStoreJsonType: JsonType<CoordinatorDataStore> =
   jsonTypeRemap(
-    jsonTypeObject({
-      runsInfos: jsonTypeObjectToMap(coordinatorDataRunInfoJsonType),
+    jsonTypeObject((key) => key, {
+      runAddressByRunId: jsonTypeObjectToMap(
+        {
+          keyEncoder: (key: string) => key,
+          keyDecoder: (key: string) => key,
+        },
+        jsonTypePubkey,
+      ),
+      runInfoByAddress: utilsObjectToPubkeyMapJsonType(
+        coordinatorDataRunInfoJsonType,
+      ),
     }),
-    (unmapped) => new CoordinatorDataStore(unmapped.runsInfos),
-    (remapped) => ({ runsInfos: remapped.runsInfos }),
+    (unmapped) =>
+      new CoordinatorDataStore(
+        unmapped.runAddressByRunId,
+        unmapped.runInfoByAddress,
+      ),
+    (remapped) => ({
+      runAddressByRunId: remapped.runAddressByRunId,
+      runInfoByAddress: remapped.runInfoByAddress,
+    }),
   );

@@ -1,10 +1,12 @@
 import {
-  jsonTypeObject,
-  jsonTypeObjectToMap,
-  jsonTypeRemap,
   JsonValue,
   Pubkey,
-} from "solana-kiss-data";
+  jsonTypeObject,
+  jsonTypeObjectToMap,
+  jsonTypePubkey,
+  jsonTypeRemap,
+} from "solana-kiss";
+import { utilsObjectToPubkeyMapJsonType } from "../utils";
 import {
   MiningPoolDataPoolInfo,
   miningPoolDataPoolInfoJsonType,
@@ -12,81 +14,88 @@ import {
 import { MiningPoolDataPoolState } from "./MiningPoolDataPoolState";
 
 export class MiningPoolDataStore {
-  public poolsInfos: Map<string, MiningPoolDataPoolInfo>;
+  public poolAddressByIndex: Map<bigint, Pubkey>;
+  public poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>;
 
-  constructor(pools: Map<string, MiningPoolDataPoolInfo>) {
-    this.poolsInfos = pools;
+  constructor(
+    poolAddressByIndex: Map<bigint, Pubkey>,
+    poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>,
+  ) {
+    this.poolAddressByIndex = poolAddressByIndex;
+    this.poolInfoByAddress = poolInfoByAddress;
   }
 
-  public getPoolInfo(poolAddress: string): MiningPoolDataPoolInfo {
-    let poolInfo = this.poolsInfos.get(poolAddress);
+  public getPoolInfo(poolAddress: Pubkey): MiningPoolDataPoolInfo {
+    let poolInfo = this.poolInfoByAddress.get(poolAddress);
     if (poolInfo === undefined) {
       poolInfo = {
         accountState: undefined,
         accountUpdatedAt: undefined,
         accountFetchedOrdering: 0n,
         accountRequestOrdering: 0n,
-        computedExtractedCollateralAmount: 0n,
-        depositedCollateralAmountPerUser: new Map<string, bigint>(),
-        computedDepositedCollateralAmount: 0n,
-        claimedRedeemableAmountPerUser: new Map<string, bigint>(),
-        computedClaimedRedeemableAmount: 0n,
+        totalExtractCollateralAmount: 0n,
+        depositCollateralAmountPerUser: new Map<Pubkey, bigint>(),
+        totalDepositCollateralAmount: 0n,
+        claimRedeemableAmountPerUser: new Map<Pubkey, bigint>(),
+        totalClaimRedeemableAmount: 0n,
         adminHistory: [],
       };
-      this.poolsInfos.set(poolAddress, poolInfo);
+      this.poolInfoByAddress.set(poolAddress, poolInfo);
     }
     return poolInfo;
   }
 
   public savePoolState(
-    poolAddress: string,
+    poolAddress: Pubkey,
     poolState: MiningPoolDataPoolState,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
     poolInfo.accountState = poolState;
     poolInfo.accountUpdatedAt = new Date();
     poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering;
+    this.poolAddressByIndex.set(poolState.index, poolAddress);
   }
 
-  public savePoolExtract(poolAddress: string, collateralAmount: bigint) {
+  public savePoolExtract(poolAddress: Pubkey, collateralAmount: bigint) {
     let poolInfo = this.getPoolInfo(poolAddress);
-    poolInfo.computedExtractedCollateralAmount += collateralAmount;
+    poolInfo.totalExtractCollateralAmount += collateralAmount;
   }
 
   public savePoolDeposit(
-    poolAddress: string,
-    userAddress: string,
+    poolAddress: Pubkey,
+    signerAddress: Pubkey,
     depositAmount: bigint,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
     const depositAmountBefore =
-      poolInfo.depositedCollateralAmountPerUser.get(userAddress) ?? 0n;
+      poolInfo.depositCollateralAmountPerUser.get(signerAddress) ?? 0n;
     const depositAmountAfter = depositAmountBefore + depositAmount;
-    poolInfo.depositedCollateralAmountPerUser.set(
-      userAddress,
+    poolInfo.depositCollateralAmountPerUser.set(
+      signerAddress,
       depositAmountAfter,
     );
-    poolInfo.computedDepositedCollateralAmount += depositAmount;
+    poolInfo.totalDepositCollateralAmount += depositAmount;
   }
 
   public savePoolClaim(
-    poolAddress: string,
-    userAddress: string,
+    poolAddress: Pubkey,
+    signerAddress: Pubkey,
     redeemableAmount: bigint,
   ) {
     let poolInfo = this.getPoolInfo(poolAddress);
     const redeemableAmountBefore =
-      poolInfo.claimedRedeemableAmountPerUser.get(userAddress) ?? 0n;
+      poolInfo.claimRedeemableAmountPerUser.get(signerAddress) ?? 0n;
     const redeemableAmountAfter = redeemableAmountBefore + redeemableAmount;
-    poolInfo.claimedRedeemableAmountPerUser.set(
-      userAddress,
+    poolInfo.claimRedeemableAmountPerUser.set(
+      signerAddress,
       redeemableAmountAfter,
     );
-    poolInfo.computedClaimedRedeemableAmount += redeemableAmount;
+    poolInfo.totalClaimRedeemableAmount += redeemableAmount;
   }
 
   public savePoolAdminAction(
-    poolAddress: string,
+    poolAddress: Pubkey,
+    signerAddress: Pubkey,
     instructionName: string,
     instructionAddresses: Map<string, Pubkey>,
     instructionPayload: JsonValue,
@@ -96,15 +105,16 @@ export class MiningPoolDataStore {
     let poolInfo = this.getPoolInfo(poolAddress);
     poolInfo.adminHistory.push({
       processedTime,
-      ordering,
+      signerAddress,
       instructionName,
       instructionAddresses,
       instructionPayload,
+      ordering,
     });
     poolInfo.adminHistory.sort((a, b) => Number(b.ordering - a.ordering));
   }
 
-  public setPoolRequestOrdering(poolAddress: string, ordering: bigint) {
+  public setPoolRequestOrdering(poolAddress: Pubkey, ordering: bigint) {
     const poolInfo = this.getPoolInfo(poolAddress);
     if (ordering > poolInfo.accountRequestOrdering) {
       poolInfo.accountRequestOrdering = ordering;
@@ -113,9 +123,25 @@ export class MiningPoolDataStore {
 }
 
 export const miningPoolDataStoreJsonType = jsonTypeRemap(
-  jsonTypeObject({
-    poolsInfos: jsonTypeObjectToMap(miningPoolDataPoolInfoJsonType),
+  jsonTypeObject((key) => key, {
+    poolAddressByIndex: jsonTypeObjectToMap(
+      {
+        keyEncoder: (key: bigint) => String(key),
+        keyDecoder: (key: string) => BigInt(key),
+      },
+      jsonTypePubkey,
+    ),
+    poolInfoByAddress: utilsObjectToPubkeyMapJsonType(
+      miningPoolDataPoolInfoJsonType,
+    ),
   }),
-  (unmapped) => new MiningPoolDataStore(unmapped.poolsInfos),
-  (remapped) => ({ poolsInfos: remapped.poolsInfos }),
+  (unmapped) =>
+    new MiningPoolDataStore(
+      unmapped.poolAddressByIndex,
+      unmapped.poolInfoByAddress,
+    ),
+  (remapped) => ({
+    poolAddressByIndex: remapped.poolAddressByIndex,
+    poolInfoByAddress: remapped.poolInfoByAddress,
+  }),
 );

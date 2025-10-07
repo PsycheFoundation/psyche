@@ -1,15 +1,11 @@
-import { jsonTypeInteger, JsonValue, Pubkey } from "solana-kiss-data";
-import { utilsObjectSnakeCaseJsonDecoder } from "../utils";
+import {
+  JsonValue,
+  Pubkey,
+  casingCamelToSnake,
+  jsonDecoderObject,
+  jsonTypeInteger,
+} from "solana-kiss";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
-
-const processorsByInstructionName = new Map([
-  ["pool_create", [processAdminAction]],
-  ["pool_update", [processAdminAction]],
-  ["pool_extract", [processAdminAction, processPoolExtract]],
-  ["pool_claimable", [processAdminAction]],
-  ["lender_deposit", [processLenderDeposit]],
-  ["lender_claim", [processLenderClaim]],
-]);
 
 export async function miningPoolIndexingInstruction(
   dataStore: MiningPoolDataStore,
@@ -25,118 +21,120 @@ export async function miningPoolIndexingInstruction(
       "MiningPool: Instruction: PoolExtract: Missing pool address",
     );
   }
+  const signerAddress =
+    instructionAddresses.get("authority") ?? instructionAddresses.get("user");
+  if (signerAddress === undefined) {
+    throw new Error("MiningPool: Instruction: Could not find signer address");
+  }
   const processors = processorsByInstructionName.get(instructionName);
   if (processors !== undefined) {
     for (const processor of processors) {
-      await processor(
-        dataStore,
+      await processor(dataStore, {
         poolAddress,
+        signerAddress,
         instructionName,
         instructionAddresses,
         instructionPayload,
         ordering,
         processedTime,
-      );
+      });
     }
+  } else {
+    console.warn("MiningPool: Unknown instruction:", instructionName);
   }
   dataStore.setPoolRequestOrdering(poolAddress, ordering);
 }
 
-export async function processAdminAction(
+const processorsByInstructionName = new Map([
+  ["pool_create", [processAdminAction]],
+  ["pool_update", [processAdminAction]],
+  ["pool_extract", [processAdminAction, processPoolExtract]],
+  ["pool_claimable", [processAdminAction]],
+  ["lender_create", []],
+  ["lender_deposit", [processLenderDeposit]],
+  ["lender_claim", [processLenderClaim]],
+]);
+
+type ProcessingContent = {
+  poolAddress: Pubkey;
+  signerAddress: Pubkey;
+  instructionName: string;
+  instructionAddresses: Map<string, Pubkey>;
+  instructionPayload: JsonValue;
+  ordering: bigint;
+  processedTime: Date | undefined;
+};
+
+async function processAdminAction(
   dataStore: MiningPoolDataStore,
-  poolAddress: Pubkey,
-  instructionName: string,
-  instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: JsonValue,
-  ordering: bigint,
-  processedTime: Date | undefined,
-) {
+  content: ProcessingContent,
+): Promise<void> {
   dataStore.savePoolAdminAction(
-    poolAddress,
-    instructionName,
-    instructionAddresses,
-    instructionPayload,
-    ordering,
-    processedTime,
+    content.poolAddress,
+    content.signerAddress,
+    content.instructionName,
+    content.instructionAddresses,
+    content.instructionPayload,
+    content.ordering,
+    content.processedTime,
   );
 }
 
-export async function processPoolExtract(
+async function processPoolExtract(
   dataStore: MiningPoolDataStore,
-  poolAddress: Pubkey,
-  _instructionName: string,
-  _instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: JsonValue,
-  _ordering: bigint,
-  processedTime: Date | undefined,
+  content: ProcessingContent,
 ): Promise<void> {
-  const instructionParams =
-    poolExtractArgsJsonDecoder(instructionPayload).params;
-  dataStore.savePoolExtract(poolAddress, instructionParams.collateralAmount);
-}
-
-export async function processLenderDeposit(
-  dataStore: MiningPoolDataStore,
-  poolAddress: Pubkey,
-  _instructionName: string,
-  instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: JsonValue,
-  _ordering: bigint,
-  _processedTime: Date | undefined,
-): Promise<void> {
-  const userAddress = instructionAddresses.get("user");
-  if (userAddress === undefined) {
-    throw new Error(
-      "MiningPool: Instruction: LenderDeposit: Missing user address",
-    );
-  }
-  const instructionParams =
-    lenderDepositArgsJsonDecoder(instructionPayload).params;
-  dataStore.savePoolDeposit(
-    poolAddress,
-    userAddress,
+  const instructionParams = poolExtractArgsJsonDecoder(
+    content.instructionPayload,
+  ).params;
+  dataStore.savePoolExtract(
+    content.poolAddress,
     instructionParams.collateralAmount,
   );
 }
 
-export async function processLenderClaim(
+async function processLenderDeposit(
   dataStore: MiningPoolDataStore,
-  poolAddress: Pubkey,
-  _instructionName: string,
-  instructionAddresses: Map<string, Pubkey>,
-  instructionPayload: JsonValue,
-  _ordering: bigint,
-  _processedTime: Date | undefined,
+  content: ProcessingContent,
 ): Promise<void> {
-  const userAddress = instructionAddresses.get("user");
-  if (userAddress === undefined) {
-    throw new Error(
-      "MiningPool: Instruction: LenderDeposit: Missing user address",
-    );
-  }
-  const instructionParams =
-    lenderClaimArgsJsonDecoder(instructionPayload).params;
+  const instructionParams = lenderDepositArgsJsonDecoder(
+    content.instructionPayload,
+  ).params;
+  dataStore.savePoolDeposit(
+    content.poolAddress,
+    content.signerAddress,
+    instructionParams.collateralAmount,
+  );
+}
+
+async function processLenderClaim(
+  dataStore: MiningPoolDataStore,
+  content: ProcessingContent,
+): Promise<void> {
+  const instructionParams = lenderClaimArgsJsonDecoder(
+    content.instructionPayload,
+  ).params;
   dataStore.savePoolClaim(
-    poolAddress,
-    userAddress,
+    content.poolAddress,
+    content.signerAddress,
     instructionParams.redeemableAmount,
   );
 }
 
-const poolExtractArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
-  params: utilsObjectSnakeCaseJsonDecoder({
+const poolExtractArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
+  params: jsonDecoderObject(casingCamelToSnake, {
     collateralAmount: jsonTypeInteger.decoder,
   }),
 });
 
-const lenderDepositArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
-  params: utilsObjectSnakeCaseJsonDecoder({
+const lenderDepositArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
+  params: jsonDecoderObject(casingCamelToSnake, {
     collateralAmount: jsonTypeInteger.decoder,
   }),
 });
 
-const lenderClaimArgsJsonDecoder = utilsObjectSnakeCaseJsonDecoder({
-  params: utilsObjectSnakeCaseJsonDecoder({
+const lenderClaimArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
+  params: jsonDecoderObject(casingCamelToSnake, {
     redeemableAmount: jsonTypeInteger.decoder,
   }),
 });

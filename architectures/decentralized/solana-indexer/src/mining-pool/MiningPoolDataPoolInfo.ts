@@ -1,17 +1,20 @@
 import {
   JsonType,
   jsonTypeArray,
-  jsonTypeDate,
+  jsonTypeDateTime,
   jsonTypeInteger,
   jsonTypeObject,
-  jsonTypeObjectToMap,
   jsonTypeOptional,
+  jsonTypePubkey,
   jsonTypeString,
   jsonTypeValue,
   JsonValue,
   Pubkey,
-} from "solana-kiss-data";
-import { utilsOrderingJsonType } from "../utils";
+} from "solana-kiss";
+import {
+  utilsObjectToPubkeyMapJsonType,
+  utilsObjectToStringMapJsonType,
+} from "../utils";
 import {
   MiningPoolDataPoolState,
   miningPoolDataPoolStateJsonType,
@@ -22,38 +25,42 @@ export interface MiningPoolDataPoolInfo {
   accountUpdatedAt: Date | undefined;
   accountFetchedOrdering: bigint;
   accountRequestOrdering: bigint;
-  computedExtractedCollateralAmount: bigint;
-  depositedCollateralAmountPerUser: Map<string, bigint>;
-  computedDepositedCollateralAmount: bigint;
-  claimedRedeemableAmountPerUser: Map<string, bigint>;
-  computedClaimedRedeemableAmount: bigint;
+  totalExtractCollateralAmount: bigint;
+  depositCollateralAmountPerUser: Map<Pubkey, bigint>;
+  totalDepositCollateralAmount: bigint;
+  claimRedeemableAmountPerUser: Map<Pubkey, bigint>;
+  totalClaimRedeemableAmount: bigint;
   adminHistory: Array<{
     processedTime: Date | undefined;
-    ordering: bigint;
+    signerAddress: Pubkey;
     instructionName: string;
     instructionAddresses: Map<string, Pubkey>;
     instructionPayload: JsonValue;
+    ordering: bigint;
   }>;
 }
 
 export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
-  jsonTypeObject({
+  jsonTypeObject((key) => key, {
     accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
-    accountUpdatedAt: jsonTypeOptional(jsonTypeDate),
-    accountFetchedOrdering: utilsOrderingJsonType,
-    accountRequestOrdering: utilsOrderingJsonType,
-    computedExtractedCollateralAmount: jsonTypeInteger,
-    depositedCollateralAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
-    computedDepositedCollateralAmount: jsonTypeInteger,
-    claimedRedeemableAmountPerUser: jsonTypeObjectToMap(jsonTypeInteger),
-    computedClaimedRedeemableAmount: jsonTypeInteger,
+    accountUpdatedAt: jsonTypeOptional(jsonTypeDateTime),
+    accountFetchedOrdering: jsonTypeInteger,
+    accountRequestOrdering: jsonTypeInteger,
+    totalExtractCollateralAmount: jsonTypeInteger,
+    depositCollateralAmountPerUser:
+      utilsObjectToPubkeyMapJsonType(jsonTypeInteger),
+    totalDepositCollateralAmount: jsonTypeInteger,
+    claimRedeemableAmountPerUser:
+      utilsObjectToPubkeyMapJsonType(jsonTypeInteger),
+    totalClaimRedeemableAmount: jsonTypeInteger,
     adminHistory: jsonTypeArray(
-      jsonTypeObject({
-        processedTime: jsonTypeOptional(jsonTypeDate),
-        ordering: utilsOrderingJsonType,
+      jsonTypeObject((key) => key, {
+        processedTime: jsonTypeOptional(jsonTypeDateTime),
+        signerAddress: jsonTypePubkey,
         instructionName: jsonTypeString,
-        instructionAddresses: jsonTypeObjectToMap(jsonTypeString),
+        instructionAddresses: utilsObjectToStringMapJsonType(jsonTypePubkey),
         instructionPayload: jsonTypeValue,
+        ordering: jsonTypeInteger,
       }),
     ),
   });
