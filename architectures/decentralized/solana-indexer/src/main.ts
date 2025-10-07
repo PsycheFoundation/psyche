@@ -7,6 +7,11 @@ import {
 import { coordinatorService } from "./coordinator/CoordinatorService";
 import { miningPoolService } from "./mining-pool/MiningPoolService";
 
+const heliusApiKey = process.env["API_KEY_HELIUS"];
+if (!heliusApiKey) {
+  throw new Error("Missing Helius API key in environment: API_KEY_HELIUS");
+}
+
 const expressApp = express();
 
 function rpcHttpBuilder(url: string) {
@@ -22,7 +27,7 @@ function rpcHttpBuilder(url: string) {
 
 const miningPoolCluster = "mainnet";
 const miningPoolRpcHttp = rpcHttpBuilder(
-  "https://mainnet.helius-rpc.com/?api-key=73970171-7c76-4e93-85f9-7042d1ab6722",
+  `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
 );
 const miningPoolProgramAddress = pubkeyFromBase58(
   "PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf",
@@ -30,7 +35,7 @@ const miningPoolProgramAddress = pubkeyFromBase58(
 
 const coordinatorCluster = "devnet";
 const coordinatorRpcHttp = rpcHttpBuilder(
-  "https://devnet.helius-rpc.com/?api-key=73970171-7c76-4e93-85f9-7042d1ab6722",
+  `https://devnet.helius-rpc.com/?api-key=${heliusApiKey}`,
 );
 const coordinatorProgramAddress = pubkeyFromBase58(
   "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y",
