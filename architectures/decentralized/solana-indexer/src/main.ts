@@ -57,7 +57,7 @@ async function miningPoolMain() {
 coordinatorMain();
 miningPoolMain();
 
-expressApp.set("json spaces", 2);
+// expressApp.set("json spaces", 2);
 expressApp.listen(3000, (error) => {
   if (error) {
     console.error("Error starting server:", error);

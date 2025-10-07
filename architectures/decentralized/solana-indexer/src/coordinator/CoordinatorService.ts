@@ -2,7 +2,6 @@ import { Application } from "express";
 import {
   jsonTypeArray,
   jsonTypeObject,
-  jsonTypeOptional,
   jsonTypePubkey,
   jsonTypeString,
   Pubkey,
@@ -68,13 +67,12 @@ async function serviceEndpoint(
 ) {
   expressApp.get(`/coordinator/${programAddress}/summaries`, (_, res) => {
     const runSummaries = [];
-    for (const [runRunId, runAddress] of dataStore.runAddressByRunId) {
-      const runInfo = dataStore.runInfoByAddress.get(runAddress);
-      runSummaries.push({
-        runId: runRunId,
-        address: runAddress,
-        state: runInfo?.accountState,
-      });
+    for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
+      const runState = runInfo?.accountState;
+      if (runState === undefined) {
+        continue;
+      }
+      runSummaries.push({ address: runAddress, state: runState });
     }
     return res.status(200).json(runSummariesJsonType.encoder(runSummaries));
   });
@@ -119,7 +117,7 @@ async function serviceIndexing(
         instructionAddresses,
         instructionPayload,
         context.ordering,
-        context.transaction.processedTime,
+        context.transaction.block.time,
       );
     },
     async (checkpoint) => {
@@ -134,8 +132,7 @@ async function serviceIndexing(
 
 const runSummariesJsonType = jsonTypeArray(
   jsonTypeObject((key) => key, {
-    runId: jsonTypeString,
     address: jsonTypePubkey,
-    state: jsonTypeOptional(coordinatorDataRunStateJsonType),
+    state: coordinatorDataRunStateJsonType,
   }),
 );

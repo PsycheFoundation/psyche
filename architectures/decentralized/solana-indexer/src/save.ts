@@ -30,7 +30,7 @@ export async function saveWrite(
     checkpoint: saveContent.checkpoint,
     dataStore: saveContent.dataStore,
   });
-  return fs.promises.writeFile(path, JSON.stringify(encoded, null, 2));
+  return fs.promises.writeFile(path, JSON.stringify(encoded));
 }
 
 export async function saveRead(saveName: string): Promise<{

@@ -2,7 +2,6 @@ import {
   jsonTypeArray,
   jsonTypeInteger,
   jsonTypeObject,
-  jsonTypeOptional,
   jsonTypePubkey,
   Pubkey,
   RpcHttp,
@@ -69,13 +68,12 @@ async function serviceEndpoint(
 ) {
   expressApp.get(`/mining-pool/${programAddress}/summaries`, (_, res) => {
     const poolsSummaries = [];
-    for (const [poolIndex, poolAddress] of dataStore.poolAddressByIndex) {
-      const poolInfo = dataStore.poolInfoByAddress.get(poolAddress);
-      poolsSummaries.push({
-        index: poolIndex,
-        address: poolAddress,
-        state: poolInfo?.accountState,
-      });
+    for (const [poolAddress, poolInfo] of dataStore.poolInfoByAddress) {
+      const poolState = poolInfo?.accountState;
+      if (poolState === undefined) {
+        continue;
+      }
+      poolsSummaries.push({ address: poolAddress, state: poolState });
     }
     return res.status(200).json(poolSummariesJsonType.encoder(poolsSummaries));
   });
@@ -120,7 +118,7 @@ async function serviceIndexing(
         instructionAddresses,
         instructionPayload,
         context.ordering,
-        context.transaction.processedTime,
+        context.transaction.block.time,
       );
     },
     async (checkpoint) => {
@@ -135,8 +133,7 @@ async function serviceIndexing(
 
 const poolSummariesJsonType = jsonTypeArray(
   jsonTypeObject((key) => key, {
-    index: jsonTypeInteger,
     address: jsonTypePubkey,
-    state: jsonTypeOptional(miningPoolDataPoolStateJsonType),
+    state: miningPoolDataPoolStateJsonType,
   }),
 );
