@@ -1,6 +1,8 @@
 import {
   JsonType,
   jsonTypeObject,
+  jsonTypeObjectToMap,
+  jsonTypePubkey,
   jsonTypeRemap,
   JsonValue,
   Pubkey,
@@ -13,14 +15,19 @@ import {
 import { CoordinatorDataRunState } from "./CoordinatorDataRunState";
 
 export class CoordinatorDataStore {
-  public runsInfos: Map<Pubkey, CoordinatorDataRunInfo>;
+  public runAddressByRunId: Map<string, Pubkey>;
+  public runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>;
 
-  constructor(runs: Map<Pubkey, CoordinatorDataRunInfo>) {
-    this.runsInfos = runs;
+  constructor(
+    runAddressByRunId: Map<string, Pubkey>,
+    runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>,
+  ) {
+    this.runAddressByRunId = runAddressByRunId;
+    this.runInfoByAddress = runInfoByAddress;
   }
 
   public getRunInfo(runAddress: Pubkey): CoordinatorDataRunInfo {
-    let runInfo = this.runsInfos.get(runAddress);
+    let runInfo = this.runInfoByAddress.get(runAddress);
     if (runInfo === undefined) {
       runInfo = {
         accountState: undefined,
@@ -30,7 +37,7 @@ export class CoordinatorDataStore {
         witnessesPerUser: new Map(),
         adminHistory: [],
       };
-      this.runsInfos.set(runAddress, runInfo);
+      this.runInfoByAddress.set(runAddress, runInfo);
     }
     return runInfo;
   }
@@ -40,6 +47,7 @@ export class CoordinatorDataStore {
     runInfo.accountState = runState;
     runInfo.accountUpdatedAt = new Date();
     runInfo.accountFetchedOrdering = runInfo.accountRequestOrdering;
+    this.runAddressByRunId.set(runState.runId, runAddress);
   }
 
   public saveRunWitness(
@@ -64,8 +72,8 @@ export class CoordinatorDataStore {
       lastFew: [],
       sampled: { rate: 1, data: [] },
     };
-    const desiredLastFewCount = 1;
-    const desiredSampledCount = 5;
+    const desiredLastFewCount = 10;
+    const desiredSampledCount = 100;
     const witness = { processedTime, ordering, proof, metadata };
     userWitnesses.lastFew.push(witness);
     userWitnesses.lastFew.sort((a, b) => Number(b.ordering - a.ordering));
@@ -98,11 +106,11 @@ export class CoordinatorDataStore {
     const runInfo = this.getRunInfo(runAddress);
     runInfo.adminHistory.push({
       processedTime,
-      ordering,
       signerAddress,
       instructionName,
       instructionAddresses,
       instructionPayload,
+      ordering,
     });
     runInfo.adminHistory.sort((a, b) => Number(b.ordering - a.ordering));
   }
@@ -118,8 +126,24 @@ export class CoordinatorDataStore {
 export const coordinatorDataStoreJsonType: JsonType<CoordinatorDataStore> =
   jsonTypeRemap(
     jsonTypeObject((key) => key, {
-      runsInfos: utilsObjectToPubkeyMapJsonType(coordinatorDataRunInfoJsonType),
+      runAddressByRunId: jsonTypeObjectToMap(
+        {
+          keyEncoder: (key: string) => key,
+          keyDecoder: (key: string) => key,
+        },
+        jsonTypePubkey,
+      ),
+      runInfoByAddress: utilsObjectToPubkeyMapJsonType(
+        coordinatorDataRunInfoJsonType,
+      ),
     }),
-    (unmapped) => new CoordinatorDataStore(unmapped.runsInfos),
-    (remapped) => ({ runsInfos: remapped.runsInfos }),
+    (unmapped) =>
+      new CoordinatorDataStore(
+        unmapped.runAddressByRunId,
+        unmapped.runInfoByAddress,
+      ),
+    (remapped) => ({
+      runAddressByRunId: remapped.runAddressByRunId,
+      runInfoByAddress: remapped.runInfoByAddress,
+    }),
   );

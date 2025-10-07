@@ -1,3 +1,4 @@
+import express from "express";
 import {
   pubkeyFromBase58,
   rpcHttpFromUrl,
@@ -6,14 +7,13 @@ import {
 import { coordinatorService } from "./coordinator/CoordinatorService";
 import { miningPoolService } from "./mining-pool/MiningPoolService";
 
+const expressApp = express();
+
 function rpcHttpBuilder(url: string) {
   return rpcHttpWithRetryOnError(
     rpcHttpFromUrl(url, { commitment: "confirmed" }),
-    async (error, context) => {
-      if (context.retryCounter >= 5 || context.totalTimeMs >= 10000) {
-        return false;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    async (error) => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
       console.error("RPC HTTP error occurred, retrying", error);
       return true;
     },
@@ -41,16 +41,27 @@ async function coordinatorMain() {
     coordinatorCluster,
     coordinatorRpcHttp,
     coordinatorProgramAddress,
+    expressApp,
   );
 }
 
 async function miningPoolMain() {
   miningPoolService(
     miningPoolCluster,
-    miningPoolRpcHttp,
     miningPoolProgramAddress,
+    miningPoolRpcHttp,
+    expressApp,
   );
 }
 
 coordinatorMain();
 miningPoolMain();
+
+expressApp.set("json spaces", 2);
+expressApp.listen(3000, (error) => {
+  if (error) {
+    console.error("Error starting server:", error);
+  } else {
+    console.log("Listening on port 3000");
+  }
+});

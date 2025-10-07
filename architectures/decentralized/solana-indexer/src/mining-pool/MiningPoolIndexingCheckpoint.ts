@@ -16,7 +16,7 @@ export async function miningPoolIndexingCheckpoint(
   programIdl: IdlProgram,
   dataStore: MiningPoolDataStore,
 ) {
-  for (const [poolAddress, poolInfo] of dataStore.poolsInfos) {
+  for (const [poolAddress, poolInfo] of dataStore.poolInfoByAddress) {
     if (poolInfo.accountFetchedOrdering === poolInfo.accountRequestOrdering) {
       break;
     }

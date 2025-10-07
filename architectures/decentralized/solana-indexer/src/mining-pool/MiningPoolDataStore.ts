@@ -1,4 +1,11 @@
-import { JsonValue, Pubkey, jsonTypeObject, jsonTypeRemap } from "solana-kiss";
+import {
+  JsonValue,
+  Pubkey,
+  jsonTypeObject,
+  jsonTypeObjectToMap,
+  jsonTypePubkey,
+  jsonTypeRemap,
+} from "solana-kiss";
 import { utilsObjectToPubkeyMapJsonType } from "../utils";
 import {
   MiningPoolDataPoolInfo,
@@ -7,14 +14,19 @@ import {
 import { MiningPoolDataPoolState } from "./MiningPoolDataPoolState";
 
 export class MiningPoolDataStore {
-  public poolsInfos: Map<Pubkey, MiningPoolDataPoolInfo>;
+  public poolAddressByIndex: Map<bigint, Pubkey>;
+  public poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>;
 
-  constructor(pools: Map<Pubkey, MiningPoolDataPoolInfo>) {
-    this.poolsInfos = pools;
+  constructor(
+    poolAddressByIndex: Map<bigint, Pubkey>,
+    poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>,
+  ) {
+    this.poolAddressByIndex = poolAddressByIndex;
+    this.poolInfoByAddress = poolInfoByAddress;
   }
 
   public getPoolInfo(poolAddress: Pubkey): MiningPoolDataPoolInfo {
-    let poolInfo = this.poolsInfos.get(poolAddress);
+    let poolInfo = this.poolInfoByAddress.get(poolAddress);
     if (poolInfo === undefined) {
       poolInfo = {
         accountState: undefined,
@@ -28,7 +40,7 @@ export class MiningPoolDataStore {
         totalClaimRedeemableAmount: 0n,
         adminHistory: [],
       };
-      this.poolsInfos.set(poolAddress, poolInfo);
+      this.poolInfoByAddress.set(poolAddress, poolInfo);
     }
     return poolInfo;
   }
@@ -41,6 +53,7 @@ export class MiningPoolDataStore {
     poolInfo.accountState = poolState;
     poolInfo.accountUpdatedAt = new Date();
     poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering;
+    this.poolAddressByIndex.set(poolState.index, poolAddress);
   }
 
   public savePoolExtract(poolAddress: Pubkey, collateralAmount: bigint) {
@@ -92,11 +105,11 @@ export class MiningPoolDataStore {
     let poolInfo = this.getPoolInfo(poolAddress);
     poolInfo.adminHistory.push({
       processedTime,
-      ordering,
       signerAddress,
       instructionName,
       instructionAddresses,
       instructionPayload,
+      ordering,
     });
     poolInfo.adminHistory.sort((a, b) => Number(b.ordering - a.ordering));
   }
@@ -111,8 +124,24 @@ export class MiningPoolDataStore {
 
 export const miningPoolDataStoreJsonType = jsonTypeRemap(
   jsonTypeObject((key) => key, {
-    poolsInfos: utilsObjectToPubkeyMapJsonType(miningPoolDataPoolInfoJsonType),
+    poolAddressByIndex: jsonTypeObjectToMap(
+      {
+        keyEncoder: (key: bigint) => String(key),
+        keyDecoder: (key: string) => BigInt(key),
+      },
+      jsonTypePubkey,
+    ),
+    poolInfoByAddress: utilsObjectToPubkeyMapJsonType(
+      miningPoolDataPoolInfoJsonType,
+    ),
   }),
-  (unmapped) => new MiningPoolDataStore(unmapped.poolsInfos),
-  (remapped) => ({ poolsInfos: remapped.poolsInfos }),
+  (unmapped) =>
+    new MiningPoolDataStore(
+      unmapped.poolAddressByIndex,
+      unmapped.poolInfoByAddress,
+    ),
+  (remapped) => ({
+    poolAddressByIndex: remapped.poolAddressByIndex,
+    poolInfoByAddress: remapped.poolInfoByAddress,
+  }),
 );

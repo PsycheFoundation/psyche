@@ -1,4 +1,13 @@
-import { Pubkey, RpcHttp } from "solana-kiss";
+import { Application } from "express";
+import {
+  jsonTypeArray,
+  jsonTypeObject,
+  jsonTypeOptional,
+  jsonTypePubkey,
+  jsonTypeString,
+  Pubkey,
+  RpcHttp,
+} from "solana-kiss";
 import {
   IndexingCheckpoint,
   indexingCheckpointJsonType,
@@ -6,6 +15,8 @@ import {
 import { indexingInstructionsLoop } from "../indexing/IndexingInstructions";
 import { saveRead, saveWrite } from "../save";
 import { utilsGetProgramAnchorIdl } from "../utils";
+import { coordinatorDataRunInfoJsonType } from "./CoordinatorDataRunInfo";
+import { coordinatorDataRunStateJsonType } from "./CoordinatorDataRunState";
 import {
   CoordinatorDataStore,
   coordinatorDataStoreJsonType,
@@ -17,10 +28,11 @@ export async function coordinatorService(
   cluster: string,
   rpcHttp: RpcHttp,
   programAddress: Pubkey,
+  expressApp: Application,
 ) {
   const saveName = `coordinator_${cluster}_${programAddress}`;
   const { checkpoint, dataStore } = await serviceLoader(saveName);
-  // TODO - add API calls here to serve data from dataStore
+  serviceEndpoint(programAddress, expressApp, dataStore);
   await serviceIndexing(
     saveName,
     rpcHttp,
@@ -40,13 +52,46 @@ async function serviceLoader(saveName: string) {
     console.log("Loaded coordinator state from:", saveContent.updatedAt);
   } catch (error) {
     checkpoint = { indexedChunks: [] };
-    dataStore = new CoordinatorDataStore(new Map());
+    dataStore = new CoordinatorDataStore(new Map(), new Map());
     console.warn(
       "Failed to read existing coordinator JSON, starting fresh",
       error,
     );
   }
   return { checkpoint, dataStore };
+}
+
+async function serviceEndpoint(
+  programAddress: Pubkey,
+  expressApp: Application,
+  dataStore: CoordinatorDataStore,
+) {
+  expressApp.get(`/coordinator/${programAddress}/summaries`, (_, res) => {
+    const runSummaries = [];
+    for (const [runRunId, runAddress] of dataStore.runAddressByRunId) {
+      const runInfo = dataStore.runInfoByAddress.get(runAddress);
+      runSummaries.push({
+        runId: runRunId,
+        address: runAddress,
+        state: runInfo?.accountState,
+      });
+    }
+    return res.status(200).json(runSummariesJsonType.encoder(runSummaries));
+  });
+  expressApp.get(`/coordinator/${programAddress}/run/:runId`, (req, res) => {
+    const runId = jsonTypeString.decoder(req.params.runId);
+    const runAddress = dataStore.runAddressByRunId.get(runId);
+    if (!runAddress) {
+      return res.status(404).json({ error: "Run address not found" });
+    }
+    const runInfo = dataStore.runInfoByAddress.get(runAddress);
+    if (!runInfo) {
+      return res.status(404).json({ error: "Run info not found" });
+    }
+    return res
+      .status(200)
+      .json(coordinatorDataRunInfoJsonType.encoder(runInfo));
+  });
 }
 
 async function serviceIndexing(
@@ -86,3 +131,11 @@ async function serviceIndexing(
     },
   );
 }
+
+const runSummariesJsonType = jsonTypeArray(
+  jsonTypeObject((key) => key, {
+    runId: jsonTypeString,
+    address: jsonTypePubkey,
+    state: jsonTypeOptional(coordinatorDataRunStateJsonType),
+  }),
+);

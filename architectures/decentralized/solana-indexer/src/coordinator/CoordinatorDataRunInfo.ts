@@ -58,12 +58,12 @@ export interface CoordinatorDataRunInfo {
     }
   >;
   adminHistory: Array<{
-    signerAddress: Pubkey;
     processedTime: Date | undefined;
-    ordering: bigint;
+    signerAddress: Pubkey;
     instructionName: string;
     instructionAddresses: Map<string, Pubkey>;
     instructionPayload: JsonValue;
+    ordering: bigint;
   }>;
 }
 
@@ -108,12 +108,12 @@ export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
     ),
     adminHistory: jsonTypeArray(
       jsonTypeObject((key) => key, {
-        signerAddress: jsonTypePubkey,
         processedTime: jsonTypeOptional(jsonTypeDateTime),
-        ordering: jsonTypeInteger,
+        signerAddress: jsonTypePubkey,
         instructionName: jsonTypeString,
         instructionAddresses: utilsObjectToStringMapJsonType(jsonTypePubkey),
         instructionPayload: jsonTypeValue,
+        ordering: jsonTypeInteger,
       }),
     ),
   });

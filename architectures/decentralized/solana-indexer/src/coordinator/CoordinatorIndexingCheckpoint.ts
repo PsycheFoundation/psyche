@@ -22,7 +22,7 @@ export async function coordinatorIndexingCheckpoint(
   dataStore: CoordinatorDataStore,
 ) {
   const promises = new Array<Promise<void>>();
-  for (const [runAddress, runInfo] of dataStore.runsInfos) {
+  for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
     if (runInfo.accountFetchedOrdering === runInfo.accountRequestOrdering) {
       break;
     }

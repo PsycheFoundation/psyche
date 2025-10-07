@@ -1,4 +1,12 @@
-import { Pubkey, RpcHttp } from "solana-kiss";
+import {
+  jsonTypeArray,
+  jsonTypeInteger,
+  jsonTypeObject,
+  jsonTypeOptional,
+  jsonTypePubkey,
+  Pubkey,
+  RpcHttp,
+} from "solana-kiss";
 import {
   IndexingCheckpoint,
   indexingCheckpointJsonType,
@@ -13,14 +21,19 @@ import {
 import { miningPoolIndexingCheckpoint } from "./MiningPoolIndexingCheckpoint";
 import { miningPoolIndexingInstruction } from "./MiningPoolIndexingInstruction";
 
+import { Application } from "express";
+import { miningPoolDataPoolInfoJsonType } from "./MiningPoolDataPoolInfo";
+import { miningPoolDataPoolStateJsonType } from "./MiningPoolDataPoolState";
+
 export async function miningPoolService(
   cluster: string,
-  rpcHttp: RpcHttp,
   programAddress: Pubkey,
+  rpcHttp: RpcHttp,
+  expressApp: Application,
 ): Promise<void> {
   const saveName = `mining_pool_${cluster}_${programAddress}`;
   const { checkpoint, dataStore } = await serviceLoader(saveName);
-  // TODO - add API calls here to serve data from dataStore
+  serviceEndpoint(programAddress, expressApp, dataStore);
   await serviceIndexing(
     saveName,
     rpcHttp,
@@ -40,13 +53,46 @@ async function serviceLoader(saveName: string) {
     console.log("Loaded mining pool state from:", saveContent.updatedAt);
   } catch (error) {
     checkpoint = { indexedChunks: [] };
-    dataStore = new MiningPoolDataStore(new Map());
+    dataStore = new MiningPoolDataStore(new Map(), new Map());
     console.warn(
       "Failed to read existing mining pool JSON, starting fresh",
       error,
     );
   }
   return { checkpoint, dataStore };
+}
+
+async function serviceEndpoint(
+  programAddress: Pubkey,
+  expressApp: Application,
+  dataStore: MiningPoolDataStore,
+) {
+  expressApp.get(`/mining-pool/${programAddress}/summaries`, (_, res) => {
+    const poolsSummaries = [];
+    for (const [poolIndex, poolAddress] of dataStore.poolAddressByIndex) {
+      const poolInfo = dataStore.poolInfoByAddress.get(poolAddress);
+      poolsSummaries.push({
+        index: poolIndex,
+        address: poolAddress,
+        state: poolInfo?.accountState,
+      });
+    }
+    return res.status(200).json(poolSummariesJsonType.encoder(poolsSummaries));
+  });
+  expressApp.get(`/mining-pool/${programAddress}/pool/:index`, (req, res) => {
+    const poolIndex = jsonTypeInteger.decoder(req.params.index);
+    const poolAddress = dataStore.poolAddressByIndex.get(poolIndex);
+    if (!poolAddress) {
+      return res.status(404).json({ error: "Pool address not found" });
+    }
+    const poolInfo = dataStore.poolInfoByAddress.get(poolAddress);
+    if (!poolInfo) {
+      return res.status(404).json({ error: "Pool info not found" });
+    }
+    return res
+      .status(200)
+      .json(miningPoolDataPoolInfoJsonType.encoder(poolInfo));
+  });
 }
 
 async function serviceIndexing(
@@ -86,3 +132,11 @@ async function serviceIndexing(
     },
   );
 }
+
+const poolSummariesJsonType = jsonTypeArray(
+  jsonTypeObject((key) => key, {
+    index: jsonTypeInteger,
+    address: jsonTypePubkey,
+    state: jsonTypeOptional(miningPoolDataPoolStateJsonType),
+  }),
+);

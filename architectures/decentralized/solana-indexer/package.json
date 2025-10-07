@@ -2,6 +2,7 @@
   "name": "psyche-solana-indexer",
   "version": "0.0.1",
   "devDependencies": {
+    "@types/node": "^24.7.0",
     "prettier": "^3.4.2",
     "prettier-plugin-organize-imports": "^4.1.0",
     "tsx": "^4.20.6"
@@ -11,6 +12,8 @@
     "dev": "tsx src/main.ts"
   },
   "dependencies": {
+    "@types/express": "^5.0.3",
+    "express": "^5.1.0",
     "solana-kiss": "0.1.3"
   }
 }
