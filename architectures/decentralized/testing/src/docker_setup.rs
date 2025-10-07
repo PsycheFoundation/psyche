@@ -15,6 +15,22 @@ use tokio::signal;
 
 use crate::docker_watcher::{DockerWatcher, DockerWatcherError};
 
+/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
+fn has_gpu_support() -> bool {
+    // Check if USE_GPU environment variable is set
+    if std::env::var("USE_GPU").is_ok() {
+        return true;
+    }
+
+    // Check if nvidia-smi command exists
+    Command::new("nvidia-smi")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
@@ -117,21 +133,32 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
     // Set the container name based on the ones that are already running.
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
 
-    // Setting nvidia usage parameters
-    let device_request = DeviceRequest {
-        driver: Some("nvidia".to_string()),
-        count: Some(1),
-        capabilities: Some(vec![vec!["gpu".to_string()]]),
-        ..Default::default()
-    };
+    // Check if GPU is available
+    let has_gpu = has_gpu_support();
 
-    // Setting extra hosts and nvidia request
+    // Setting extra hosts and optionally nvidia request
     let network_name = "test_psyche-test-network";
-    let host_config = HostConfig {
-        device_requests: Some(vec![device_request]),
-        extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
-        network_mode: Some(network_name.to_string()),
-        ..Default::default()
+    let host_config = if has_gpu {
+        // Setting nvidia usage parameters
+        let device_request = DeviceRequest {
+            driver: Some("nvidia".to_string()),
+            count: Some(1),
+            capabilities: Some(vec![vec!["gpu".to_string()]]),
+            ..Default::default()
+        };
+
+        HostConfig {
+            device_requests: Some(vec![device_request]),
+            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
+            network_mode: Some(network_name.to_string()),
+            ..Default::default()
+        }
+    } else {
+        HostConfig {
+            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
+            network_mode: Some(network_name.to_string()),
+            ..Default::default()
+        }
     };
 
     // Get env vars from config file
@@ -140,7 +167,11 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
         .lines()
         .map(|s| s.to_string())
         .collect::<Vec<String>>();
-    let envs = [env_vars, vec!["NVIDIA_DRIVER_CAPABILITIES=all".to_string()]].concat();
+    let envs = if has_gpu {
+        [env_vars, vec!["NVIDIA_DRIVER_CAPABILITIES=all".to_string()]].concat()
+    } else {
+        env_vars
+    };
 
     let options = Some(CreateContainerOptions {
         name: new_container_name.clone(),
