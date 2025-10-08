@@ -8113,6 +8113,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "run-manager"
+version = "0.1.0"
+dependencies = [
+ "anchor-client",
+ "anchor-lang",
+ "anyhow",
+ "clap",
+ "psyche-coordinator",
+ "psyche-solana-coordinator",
+ "solana-client",
+ "solana-sdk",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
