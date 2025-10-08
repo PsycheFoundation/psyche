@@ -92,6 +92,9 @@ async function indexingSignaturesChunk(
       processedCounter: processedCounter,
     });
   }
+  if (signatures.length === 0) {
+    return;
+  }
   await onChunk(
     signatures.map((signature, index) => ({
       signature,

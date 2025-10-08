@@ -43,6 +43,7 @@ export class CoordinatorDataStore {
   }
 
   public saveRunState(runAddress: Pubkey, runState: CoordinatorDataRunState) {
+    // TODO - handle fetch failure due to account being closed
     let runInfo = this.getRunInfo(runAddress);
     runInfo.accountState = runState;
     runInfo.accountUpdatedAt = new Date();

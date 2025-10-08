@@ -26,8 +26,8 @@ import { miningPoolDataPoolStateJsonType } from "./MiningPoolDataPoolState";
 
 export async function miningPoolService(
   cluster: string,
-  programAddress: Pubkey,
   rpcHttp: RpcHttp,
+  programAddress: Pubkey,
   expressApp: Application,
 ): Promise<void> {
   const saveName = `mining_pool_${cluster}_${programAddress}`;

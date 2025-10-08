@@ -41,6 +41,9 @@ export async function utilsGetAndDecodeAccountState<Content>(
   accountDecoder: JsonDecoder<Content>,
 ): Promise<Content> {
   const accountInfo = await rpcHttpGetAccountWithData(rpcHttp, accountAddress);
+  if (accountInfo.data.length === 0) {
+    throw new Error(`Failed to decode account with no data: ${accountAddress}`);
+  }
   const accountIdl = idlProgramGuessAccount(programIdl, accountInfo.data);
   if (accountIdl === undefined) {
     throw new Error(

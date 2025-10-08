@@ -51,6 +51,12 @@ export async function indexingInstructionsLoop(
         );
       }
       await Promise.all(promises);
+      console.log(
+        ">",
+        new Date().toISOString(),
+        programAddress,
+        foundHistory.length,
+      );
       try {
         await onCheckpoint(updatedCheckpoint);
       } catch (error) {

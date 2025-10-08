@@ -7,22 +7,23 @@ import {
 import { coordinatorService } from "./coordinator/CoordinatorService";
 import { miningPoolService } from "./mining-pool/MiningPoolService";
 
-const heliusApiKey = process.env["API_KEY_HELIUS"];
-if (!heliusApiKey) {
-  throw new Error("Missing Helius API key in environment: API_KEY_HELIUS");
-}
-
-const expressApp = express();
-
 function rpcHttpBuilder(url: string) {
   return rpcHttpWithRetryOnError(
     rpcHttpFromUrl(url, { commitment: "confirmed" }),
-    async (error) => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    async (error, context) => {
+      if (context.retriedCounter > 10) {
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       console.error("RPC HTTP error occurred, retrying", error);
       return true;
     },
   );
+}
+
+const heliusApiKey = process.env["API_KEY_HELIUS"];
+if (!heliusApiKey) {
+  throw new Error("Missing Helius API key in environment: API_KEY_HELIUS");
 }
 
 const miningPoolCluster = "mainnet";
@@ -41,6 +42,8 @@ const coordinatorProgramAddress = pubkeyFromBase58(
   "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y",
 );
 
+const expressApp = express();
+
 async function coordinatorMain() {
   coordinatorService(
     coordinatorCluster,
@@ -53,8 +56,8 @@ async function coordinatorMain() {
 async function miningPoolMain() {
   miningPoolService(
     miningPoolCluster,
-    miningPoolProgramAddress,
     miningPoolRpcHttp,
+    miningPoolProgramAddress,
     expressApp,
   );
 }
@@ -62,11 +65,11 @@ async function miningPoolMain() {
 coordinatorMain();
 miningPoolMain();
 
-// expressApp.set("json spaces", 2);
-expressApp.listen(3000, (error) => {
+const httpApiPort = process.env["HTTP_API_PORT"] ?? 3000;
+expressApp.listen(httpApiPort, (error) => {
   if (error) {
     console.error("Error starting server:", error);
   } else {
-    console.log("Listening on port 3000");
+    console.log(`Listening on port ${httpApiPort}`);
   }
 });

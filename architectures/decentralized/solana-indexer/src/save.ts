@@ -6,6 +6,8 @@ import {
   JsonValue,
 } from "solana-kiss";
 
+const saveFolder = process.env["SAVE_FOLDER"] ?? ".";
+
 const saveJsonType = jsonTypeObject((key) => key, {
   updatedAt: jsonTypeString,
   checkpoint: jsonTypeValue,
@@ -13,8 +15,7 @@ const saveJsonType = jsonTypeObject((key) => key, {
 });
 
 async function savePath(saveName: string): Promise<string> {
-  // TODO - env variable for data directory
-  return `./${saveName}.json`;
+  return `${saveFolder}/${saveName}.json`;
 }
 
 export async function saveWrite(
