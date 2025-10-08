@@ -982,6 +982,12 @@ async fn get_blob_ticket_to_download(
     .await;
 
     let blob_ticket_lock = blob_ticket.lock().unwrap();
+
+    if blob_ticket_lock.is_empty() {
+        return Err(anyhow::anyhow!(
+            "No blob ticket found trying to download {request_type:?}"
+        ));
+    }
     //todo: seriously fix T_T
     Ok(blob_ticket_lock[..].to_vec())
 }
