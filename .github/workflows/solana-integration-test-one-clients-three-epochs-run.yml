@@ -8,6 +8,9 @@ on:
 
 jobs:
   test-one-clients-three-epochs-run:
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/solana-integration-test-reusable.yml
     with:
       test-name: test_one_clients_three_epochs_run
