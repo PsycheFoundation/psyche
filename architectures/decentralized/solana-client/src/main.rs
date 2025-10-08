@@ -467,6 +467,7 @@ async fn async_main() -> Result<()> {
                     namespace: "psyche".to_string(),
                     deployment_environment: std::env::var("DEPLOYMENT_ENV")
                         .unwrap_or("development".to_string()),
+                    run_id: args.run_id.clone(),
                 })
                 .init()?;
 
