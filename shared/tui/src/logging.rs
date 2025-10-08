@@ -244,7 +244,7 @@ pub struct ServiceInfo {
     pub instance_id: String,
     pub namespace: String,
     pub deployment_environment: String,
-    pub run_id: String,
+    pub run_id: Option<String>,
 }
 
 impl ServiceInfo {
@@ -254,7 +254,7 @@ impl ServiceInfo {
             KeyValue::new("service.instance.id", self.instance_id),
             KeyValue::new("service.namespace", self.namespace),
             KeyValue::new("deployment.environment.name", self.deployment_environment),
-            KeyValue::new("run.id", self.run_id),
+            KeyValue::new("run.id", self.run_id.unwrap_or("".to_string())),
         ]
     }
 }
