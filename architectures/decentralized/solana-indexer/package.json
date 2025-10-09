@@ -1,19 +1,21 @@
 {
-  "name": "psyche-solana-indexer",
-  "version": "0.0.1",
-  "devDependencies": {
-    "@types/express": "^5.0.3",
-    "@types/node": "^24.7.0",
-    "prettier": "^3.4.2",
-    "prettier-plugin-organize-imports": "^4.1.0",
-    "tsx": "^4.20.6"
-  },
-  "scripts": {
-    "fmt": "prettier --write src",
-    "dev": "tsx src/main.ts"
-  },
-  "dependencies": {
-    "express": "^5.1.0",
-    "solana-kiss": "0.1.4"
-  }
+	"name": "psyche-solana-indexer",
+	"version": "0.0.1",
+	"devDependencies": {
+		"@types/express": "^5.0.3",
+		"@types/node": "^24.7.0",
+		"esbuild": "^0.25.10",
+		"prettier": "^3.4.2",
+		"prettier-plugin-organize-imports": "^4.1.0",
+		"tsx": "^4.20.6"
+	},
+	"scripts": {
+		"fmt": "prettier --write src",
+		"dev": "tsx src/main.ts",
+		"build": "rm -rf dist/ && node esbuild.js"
+	},
+	"dependencies": {
+		"express": "^5.1.0",
+		"solana-kiss": "0.1.4"
+	}
 }
