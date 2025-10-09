@@ -34,7 +34,10 @@ enum PeerCommand {
     GetPeer {
         reply: oneshot::Sender<Option<NodeId>>,
     },
-    ReportSuccess {
+    ReportSuccessOnGettingHash {
+        peer_id: NodeId,
+    },
+    ReportSuccessOnGettingParameter {
         peer_id: NodeId,
     },
     ReportModelDownloadError {
@@ -79,8 +82,17 @@ impl PeerManagerHandle {
     }
 
     /// Report that a peer has successfully shared the hash of a blob ticket for a parameter
-    pub fn report_success(&self, peer_id: NodeId) {
-        let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
+    pub fn report_success_on_getting_hash(&self, peer_id: NodeId) {
+        let _ = self
+            .peer_tx
+            .send(PeerCommand::ReportSuccessOnGettingHash { peer_id });
+    }
+
+    /// Report that a peer has successfully shared the model parameters
+    pub fn report_success_on_getting_model(&self, peer_id: NodeId) {
+        let _ = self
+            .peer_tx
+            .send(PeerCommand::ReportSuccessOnGettingParameter { peer_id });
     }
 
     /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
@@ -142,13 +154,15 @@ impl PeerManagerActor {
                 };
                 let _ = reply.send(peer);
             }
-            PeerCommand::ReportSuccess { peer_id } => {
+            PeerCommand::ReportSuccessOnGettingHash { peer_id } => {
                 if !self.available_peers.contains(&peer_id) {
                     self.available_peers.push_back(peer_id);
-                } else {
-                    warn!("Peer was already available but we tried to add it again");
                 }
                 info!("Peer {peer_id} correctly provided the blob ticket");
+            }
+            PeerCommand::ReportSuccessOnGettingParameter { peer_id } => {
+                self.errors_per_peers.remove(&peer_id);
+                info!("Peer {peer_id} correctly provided the model parameter");
             }
             PeerCommand::ReportModelDownloadError {
                 peer_id,
