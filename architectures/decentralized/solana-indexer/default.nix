@@ -1,13 +1,47 @@
 {
+  lib,
+  pnpm,
+  stdenv,
   nodejs,
   psycheLib,
+  ...
 }:
-psycheLib.mkWebsitePackage {
+let
+  workspaceSrc = ./.;
+  packageJson = lib.importJSON (workspaceSrc + "/package.json");
   package = "backend";
-  meta.mainProgram = "backend";
+  pname = "${packageJson.name}-${package}";
+  version = packageJson.version;
+in
+stdenv.mkDerivation {
+  inherit pname version;
+  src = workspaceSrc;
+
+  pnpmDeps = pnpm.fetchDeps {
+    inherit pname version;
+    fetcherVersion = 2;
+    src = workspaceSrc;
+    hash = "sha256-B86Fm8BTi3fMB6jR4TgEZKesPKgtaUNmPHQcDtHsIwo=";
+  };
+
+  nativeBuildInputs = [
+    pnpm.configHook
+    nodejs
+  ];
+
+  # pnpm stuff is a lilllll broken
+  dontCheckForBrokenSymlinks = true;
 
   preBuild = ''
     export GITCOMMIT=${psycheLib.gitcommit}
+  '';
+
+  buildPhase = ''
+    runHook preBuild
+
+    pnpm build
+
+    runHook postBuild
   '';
 
   installPhase = ''
@@ -16,7 +50,7 @@ psycheLib.mkWebsitePackage {
     mkdir -p $out/lib
     mkdir -p $out/bin
 
-    cp -r backend/dist/* $out/lib/
+    cp -r dist/* $out/lib/
 
     cat - <<EOF > $out/bin/backend
     #!/usr/bin/env bash
@@ -27,4 +61,7 @@ psycheLib.mkWebsitePackage {
 
     runHook postInstall
   '';
+
+  checkPhase = "pnpm exec tsc -p . --noEmit";
+  meta.mainProgram = "backend";
 }
