@@ -666,13 +666,20 @@ pub async fn request_model_blob_ticket(
     send.finish()?;
 
     // Receive parameter value blob ticket
-    let parameter_blob_ticket_bytes = recv.read_to_end(16384).await?;
+    let parameter_blob_ticket_bytes = recv.read_to_end(32000).await?;
     let parameter_blob_ticket: Result<ModelMetadataNetworkMessage, postcard::Error> =
         postcard::from_bytes(&parameter_blob_ticket_bytes);
-    let result = parameter_blob_ticket
+    match parameter_blob_ticket {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            //println!("Model parse debug: {:?}", err);
+            Err(err).with_context(|| "Error parsing model parameter blob ticket".to_string())?
+        }
+    }
+    /*let result = parameter_blob_ticket
         .with_context(|| "Error parsing model parameter blob ticket".to_string())?;
 
-    Ok(result)
+    Ok(result)*/
 }
 
 fn parse_gossip_event<BroadcastMessage: Networkable>(
@@ -851,6 +858,8 @@ pub async fn blob_ticket_param_request_task(
                         .lock()
                         .unwrap()
                         .push(GetMetaData::HashAddr(info));
+                    peer_manager.report_success(peer_id);
+                    return;
                 }
             },
             Ok(Ok(ModelMetadataNetworkMessage::Ticket(Err(err))))

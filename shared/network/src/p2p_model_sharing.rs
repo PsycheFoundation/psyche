@@ -832,18 +832,9 @@ impl ModelSharing {
             }
         };
 
-        match response {
-            ModelMetadataNetworkMessage::Ticket(blob_ticket) => {
-                let data = postcard::to_stdvec(&blob_ticket)?;
-                send.write_all(&data).await?;
-                send.finish()?;
-            }
-            ModelMetadataNetworkMessage::ModelInfo(info) => {
-                let data = postcard::to_stdvec(&info)?;
-                send.write_all(&data).await?;
-                send.finish()?;
-            }
-        }
+        let data = postcard::to_stdvec(&response)?;
+        send.write_all(&data).await?;
+        send.finish()?;
 
         // Wait until the remote closes the connection, which it does once it
         // received the response.
