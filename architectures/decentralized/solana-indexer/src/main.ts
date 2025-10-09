@@ -22,7 +22,7 @@ function rpcHttpBuilder(url: string) {
 }
 
 function getEnvVariable(name: string, description: string): string {
-	const val = process.env['COORDINATOR_RPC']
+	const val = process.env[name]
 	if (!val) {
 		throw new Error(`Missing ${description} in environment: ${name}`)
 	}
