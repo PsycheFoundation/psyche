@@ -68,7 +68,7 @@ async function miningPoolMain() {
 coordinatorMain()
 miningPoolMain()
 
-const httpApiPort = process.env['HTTP_API_PORT'] ?? 3000
+const httpApiPort = process.env['PORT'] ?? 3000
 expressApp.listen(httpApiPort, (error) => {
 	if (error) {
 		console.error('Error starting server:', error)
