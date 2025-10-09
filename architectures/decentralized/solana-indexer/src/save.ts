@@ -6,7 +6,7 @@ import {
 	JsonValue,
 } from 'solana-kiss'
 
-const saveFolder = process.env['SAVE_FOLDER'] ?? '.'
+const saveFolder = process.env['STATE_DIRECTORY'] ?? process.cwd()
 
 const saveJsonType = jsonTypeObject((key) => key, {
 	updatedAt: jsonTypeString,
