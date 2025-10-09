@@ -720,14 +720,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 let tx_config_download = tx_config_download.clone();
                                                 let param_requests_cancel_token = param_requests_cancel_token.clone();
                                                 tokio::spawn(async move {
-                                                    if let Ok(config_blob_ticket) = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager, param_requests_cancel_token).await {
-                                                        if let GetMetaData::Blob(blob_ticket, _) = config_blob_ticket[0].clone() {
-                                                        tx_config_download.send(blob_ticket).expect("Failed to send config blob ticket");
-                                                        } else {
-                                                            unreachable!("We should not get GetMetaData::ModelData in config requests")
+                                                    match get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager, param_requests_cancel_token).await {
+                                                        Ok(config_blob_ticket) => {
+                                                            if let GetMetaData::Blob(blob_ticket, _) = config_blob_ticket[0].clone() {
+                                                                tx_config_download.send(blob_ticket).expect("Failed to send config blob ticket");
+                                                            } else {
+                                                                unreachable!("We should not get GetMetaData::ModelData in config requests")
+                                                            }
+                                                        } Err(err) => {
+                                                            println!("Error getting config: {:?}", err);
+                                                            error!("Error getting the config blob ticket, we'll not proceed with the download");
                                                         }
-                                                    } else {
-                                                        error!("Error getting the config blob ticket, we'll not proceed with the download");
                                                     }
                                                 });
                                             }
