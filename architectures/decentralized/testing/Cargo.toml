@@ -20,3 +20,7 @@ psyche-client.workspace = true
 test-log.workspace = true
 serial_test.workspace = true
 rstest.workspace = true
+
+[features]
+parallelism = ["psyche-client/parallelism"]
+python = []

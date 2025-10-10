@@ -27,7 +27,7 @@ lib.makeScope pkgs.newScope (
         name:
         self.psycheLib.buildRustPackageWithPsychePythonEnvironment {
           inherit name;
-          isExample = lib.elem name rustExampleNames;
+          type = if lib.elem name rustExampleNames then "example" else "bin";
         }
       )
     );
@@ -37,7 +37,7 @@ lib.makeScope pkgs.newScope (
         name:
         self.psycheLib.buildRustPackageWithoutPython {
           inherit name;
-          isExample = lib.elem name rustExampleNames;
+          type = if lib.elem name rustExampleNames then "example" else "bin";
         }
       )
     );

@@ -3,7 +3,6 @@
   python312Packages,
   config,
   python312,
-  system,
   lib,
   stdenv,
 }:
@@ -17,7 +16,7 @@ let
   # build the extension .so file using Crane
   rustExtension = craneLib.buildPackage (
     rustWorkspaceArgs
-    // rec {
+    // {
       inherit cargoArtifacts;
       pname = "psyche-python-extension";
 

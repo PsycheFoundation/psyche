@@ -82,7 +82,8 @@ let
   buildRustPackageWithPsychePythonEnvironment =
     {
       name,
-      isExample ? false,
+      package ? null,
+      type ? "bin",
     }:
     let
       rustPackage = craneLib.buildPackage (
@@ -92,9 +93,13 @@ let
           pname = name;
           cargoExtraArgs =
             rustWorkspaceArgsWithPython.cargoExtraArgs
-            + (if isExample then " --example ${name}" else " --bin ${name}");
+            + "${lib.strings.optionalString (package != null) " -p ${package}"} --${type} ${name}";
           doCheck = false;
 
+          installPhase = lib.optionalString (type == "test") ''
+            mkdir -p $out/bin
+            find target/*/deps -name "${name}-*" -type f -executable -exec cp {} $out/bin/${name} \;
+          '';
           meta.mainProgram = name;
         }
       );
@@ -113,7 +118,8 @@ let
   buildRustPackageWithoutPython =
     {
       name,
-      isExample ? false,
+      package ? null,
+      type ? false,
     }:
     craneLib.buildPackage (
       rustWorkspaceArgs
@@ -122,7 +128,7 @@ let
         pname = name;
         cargoExtraArgs =
           (lib.optionalString (pkgs.config.cudaSupport) "--features parallelism")
-          + (if isExample then " --example ${name}" else " --bin ${name}");
+          + "${lib.strings.optionalString (package != null) " -p ${package}"} --${type} ${name}";
         doCheck = false;
 
         meta.mainProgram = name;
