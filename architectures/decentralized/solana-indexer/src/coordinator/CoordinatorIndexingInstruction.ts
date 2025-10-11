@@ -3,21 +3,22 @@ import {
 	Pubkey,
 	jsonCodecInteger,
 	jsonCodecNumber,
-	jsonDecoderObjectEncodedSnakeKeys,
+	jsonDecoderObjectWithKeysSnakeEncoded,
 } from 'solana-kiss'
 import {
 	utilsRustFixedArrayJsonDecoder,
+	utilsRustFixedStringJsonDecoder,
 	utilsRustSmallBooleanJsonDecoder,
 } from '../utils'
 import { CoordinatorDataStore } from './CoordinatorDataStore'
 
 export async function coordinatorIndexingInstruction(
 	dataStore: CoordinatorDataStore,
+	blockTime: Date | undefined,
+	instructionOrdinal: bigint,
 	instructionName: string,
 	instructionAddresses: Map<string, Pubkey>,
-	instructionPayload: JsonValue,
-	ordering: bigint,
-	processedTime: Date | undefined
+	instructionPayload: JsonValue
 ): Promise<void> {
 	const runAddress = instructionAddresses.get('coordinator_account')
 	if (runAddress === undefined) {
@@ -36,17 +37,20 @@ export async function coordinatorIndexingInstruction(
 			await processor(dataStore, {
 				runAddress,
 				signerAddress,
+				blockTime,
+				instructionOrdinal,
 				instructionName,
 				instructionAddresses,
 				instructionPayload,
-				ordering,
-				processedTime,
 			})
 		}
 	} else {
 		console.warn('Coordinator: Unknown instruction:', instructionName)
 	}
-	dataStore.setRunRequestOrdering(runAddress, ordering)
+	const runInfo = dataStore.getRunInfo(runAddress)
+	if (instructionOrdinal > runInfo.accountRequestOrdinal) {
+		runInfo.accountRequestOrdinal = instructionOrdinal
+	}
 }
 
 const processorsByInstructionName = new Map([
@@ -63,71 +67,93 @@ const processorsByInstructionName = new Map([
 	['free_coordinator', [processAdminAction]],
 ])
 
-type ProcessingContent = {
+type ProcessingContext = {
 	runAddress: Pubkey
 	signerAddress: Pubkey
+	blockTime: Date | undefined
+	instructionOrdinal: bigint
 	instructionName: string
 	instructionAddresses: Map<string, Pubkey>
 	instructionPayload: JsonValue
-	ordering: bigint
-	processedTime: Date | undefined
 }
 
 async function processAdminAction(
 	dataStore: CoordinatorDataStore,
-	content: ProcessingContent
+	context: ProcessingContext
 ): Promise<void> {
-	dataStore.saveRunAdminAction(
-		content.runAddress,
-		content.signerAddress,
-		content.instructionName,
-		content.instructionAddresses,
-		content.instructionPayload,
-		content.ordering,
-		content.processedTime
+	const runInfo = dataStore.getRunInfo(context.runAddress)
+	runInfo.adminHistory.push(context)
+	runInfo.adminHistory.sort((a, b) =>
+		Number(b.instructionOrdinal - a.instructionOrdinal)
 	)
 }
 
 async function processWitness(
 	dataStore: CoordinatorDataStore,
-	content: ProcessingContent
+	context: ProcessingContext
 ): Promise<void> {
-	const witnessPayload = witnessArgsJsonDecoder(content.instructionPayload)
-	dataStore.saveRunWitness(
-		content.runAddress,
-		content.signerAddress,
-		content.ordering,
-		content.processedTime,
-		{
-			position: witnessPayload.proof.position,
-			index: witnessPayload.proof.index,
-			witness: witnessPayload.proof.witness,
-		},
-		{
-			step: witnessPayload.metadata.step,
-			tokensPerSec: witnessPayload.metadata.tokensPerSec,
-			bandwidthPerSec: witnessPayload.metadata.bandwidthPerSec,
-			loss: witnessPayload.metadata.loss,
+	const witnessPayload = witnessArgsJsonDecoder(context.instructionPayload)
+	if (witnessPayload.metadata.evals !== undefined) {
+		console.warn(
+			'Coordinator: Ignoring metadata.evals in witness payload',
+			witnessPayload.metadata.evals
+		)
+	}
+	const runInfo = dataStore.getRunInfo(context.runAddress)
+	const userWitnesses = runInfo.witnessesPerUser.get(context.signerAddress) ?? {
+		lastFew: [],
+		sampled: { rate: 1, data: [] },
+	}
+	const desiredLastFewCount = 10
+	const desiredSampledCount = 100
+	const witness = {
+		blockTime: context.blockTime,
+		ordinal: context.instructionOrdinal,
+		proof: witnessPayload.proof,
+		metadata: witnessPayload.metadata,
+	}
+	userWitnesses.lastFew.push(witness)
+	userWitnesses.lastFew.sort((a, b) => Number(b.ordinal - a.ordinal))
+	userWitnesses.lastFew = userWitnesses.lastFew.slice(0, desiredLastFewCount)
+	const selector = Math.random()
+	if (selector < 1 / userWitnesses.sampled.rate) {
+		userWitnesses.sampled.data.push({ selector, witness })
+		userWitnesses.sampled.data.sort((a, b) =>
+			Number(b.witness.ordinal - a.witness.ordinal)
+		)
+		while (userWitnesses.sampled.data.length >= desiredSampledCount * 1.5) {
+			userWitnesses.sampled.rate *= 1.5
+			userWitnesses.sampled.data = userWitnesses.sampled.data.filter(
+				(item) => item.selector < 1 / userWitnesses.sampled.rate
+			)
 		}
-	)
+	}
+	runInfo.witnessesPerUser.set(context.signerAddress, userWitnesses)
 }
 
-const witnessProofJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+const witnessProofJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	position: jsonCodecInteger.decoder,
 	index: jsonCodecInteger.decoder,
 	witness: utilsRustSmallBooleanJsonDecoder,
 })
 
-const witnessMetadataJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+const witnessMetadataJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	step: jsonCodecNumber.decoder,
 	tokensPerSec: jsonCodecNumber.decoder,
 	bandwidthPerSec: jsonCodecNumber.decoder,
 	loss: jsonCodecNumber.decoder,
+	evals: utilsRustFixedArrayJsonDecoder(
+		jsonDecoderObjectWithKeysSnakeEncoded({
+			name: utilsRustFixedStringJsonDecoder,
+			value: jsonCodecNumber.decoder,
+		})
+	),
 	promptResults: utilsRustFixedArrayJsonDecoder(jsonCodecNumber.decoder),
 	promptIndex: jsonCodecNumber.decoder,
+	efficiency: jsonCodecNumber.decoder,
 })
 
-const witnessArgsJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+const witnessArgsJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	proof: witnessProofJsonDecoder,
 	metadata: witnessMetadataJsonDecoder,
 })

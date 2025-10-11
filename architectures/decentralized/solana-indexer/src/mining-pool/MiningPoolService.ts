@@ -25,12 +25,11 @@ import { miningPoolDataPoolInfoJsonCodec } from './MiningPoolDataPoolInfo'
 import { miningPoolDataPoolStateJsonCodec } from './MiningPoolDataPoolState'
 
 export async function miningPoolService(
-	cluster: string,
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
 	expressApp: Application
 ): Promise<void> {
-	const saveName = `mining_pool_${cluster}_${programAddress}`
+	const saveName = `mining_pool_${programAddress}`
 	const { checkpoint, dataStore } = await serviceLoader(saveName)
 	serviceEndpoint(programAddress, expressApp, dataStore)
 	await serviceIndexing(
@@ -51,7 +50,7 @@ async function serviceLoader(saveName: string) {
 		dataStore = miningPoolDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded mining pool state from:', saveContent.updatedAt)
 	} catch (error) {
-		checkpoint = { indexedChunks: [] }
+		checkpoint = { orderedIndexedChunks: [] }
 		dataStore = new MiningPoolDataStore(new Map(), new Map())
 		console.warn(
 			'Failed to read existing mining pool JSON, starting fresh',
@@ -106,19 +105,20 @@ async function serviceIndexing(
 		programAddress,
 		startingCheckpoint,
 		programIdl,
-		async (
+		async ({
+			blockTime,
 			instructionName,
 			instructionAddresses,
 			instructionPayload,
-			context
-		) => {
+			instructionOrdinal,
+		}) => {
 			await miningPoolIndexingInstruction(
 				dataStore,
+				blockTime,
 				instructionName,
 				instructionAddresses,
 				instructionPayload,
-				context.ordering,
-				context.transaction.execution.blockInfo.time
+				instructionOrdinal
 			)
 		},
 		async (checkpoint) => {

@@ -22,57 +22,33 @@ function rpcHttpBuilder(url: string) {
 }
 
 function getEnvVariable(name: string, description: string): string {
-	const val = process.env[name]
-	if (!val) {
+	const env = process.env[name]
+	if (!env) {
 		throw new Error(`Missing ${description} in environment: ${name}`)
 	}
-	return val
+	return env
 }
 
-const miningPoolRpc = getEnvVariable('MINING_POOL_RPC', 'Mining Pool RPC url')
-
-const miningPoolCluster = 'mainnet'
-const miningPoolRpcHttp = rpcHttpBuilder(miningPoolRpc)
-const miningPoolProgramAddress = pubkeyFromBase58(
-	'PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf'
-)
-
-const coordinatorRpc = getEnvVariable('COORDINATOR_RPC', 'Coordinator RPC url')
-
-const coordinatorCluster = 'devnet'
-const coordinatorRpcHttp = rpcHttpBuilder(coordinatorRpc)
-const coordinatorProgramAddress = pubkeyFromBase58(
-	'HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y'
-)
-
-const expressApp = express()
-
-async function coordinatorMain() {
-	coordinatorService(
-		coordinatorCluster,
-		coordinatorRpcHttp,
-		coordinatorProgramAddress,
-		expressApp
-	)
-}
-
-async function miningPoolMain() {
+async function main() {
+	const expressApp = express()
+	const httpApiPort = process.env['PORT'] ?? 3000
+	expressApp.listen(httpApiPort, (error) => {
+		if (error) {
+			console.error('Error starting server:', error)
+		} else {
+			console.log(`Listening on port ${httpApiPort}`)
+		}
+	})
 	miningPoolService(
-		miningPoolCluster,
-		miningPoolRpcHttp,
-		miningPoolProgramAddress,
+		rpcHttpBuilder(getEnvVariable('MINING_POOL_RPC', 'Mining Pool RPC url')),
+		pubkeyFromBase58('PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf'),
+		expressApp
+	)
+	coordinatorService(
+		rpcHttpBuilder(getEnvVariable('COORDINATOR_RPC', 'Coordinator RPC url')),
+		pubkeyFromBase58('HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y'),
 		expressApp
 	)
 }
 
-coordinatorMain()
-miningPoolMain()
-
-const httpApiPort = process.env['PORT'] ?? 3000
-expressApp.listen(httpApiPort, (error) => {
-	if (error) {
-		console.error('Error starting server:', error)
-	} else {
-		console.log(`Listening on port ${httpApiPort}`)
-	}
-})
+main()

@@ -23,20 +23,19 @@ import {
 export interface MiningPoolDataPoolInfo {
 	accountState: MiningPoolDataPoolState | undefined
 	accountUpdatedAt: Date | undefined
-	accountFetchedOrdering: bigint
-	accountRequestOrdering: bigint
+	accountFetchedOrdinal: bigint
+	accountRequestOrdinal: bigint
 	totalExtractCollateralAmount: bigint
 	depositCollateralAmountPerUser: Map<Pubkey, bigint>
 	totalDepositCollateralAmount: bigint
 	claimRedeemableAmountPerUser: Map<Pubkey, bigint>
 	totalClaimRedeemableAmount: bigint
 	adminHistory: Array<{
-		processedTime: Date | undefined
-		signerAddress: Pubkey
+		blockTime: Date | undefined
+		instructionOrdinal: bigint
 		instructionName: string
 		instructionAddresses: Map<string, Pubkey>
 		instructionPayload: JsonValue
-		ordering: bigint
 	}>
 }
 
@@ -44,8 +43,8 @@ export const miningPoolDataPoolInfoJsonCodec: JsonCodec<MiningPoolDataPoolInfo> 
 	jsonCodecObject({
 		accountState: jsonCodecOptional(miningPoolDataPoolStateJsonCodec),
 		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
-		accountFetchedOrdering: jsonCodecInteger,
-		accountRequestOrdering: jsonCodecInteger,
+		accountFetchedOrdinal: jsonCodecInteger,
+		accountRequestOrdinal: jsonCodecInteger,
 		totalExtractCollateralAmount: jsonCodecInteger,
 		depositCollateralAmountPerUser:
 			utilsObjectToPubkeyMapJsonCodec(jsonCodecInteger),
@@ -55,12 +54,11 @@ export const miningPoolDataPoolInfoJsonCodec: JsonCodec<MiningPoolDataPoolInfo> 
 		totalClaimRedeemableAmount: jsonCodecInteger,
 		adminHistory: jsonCodecArray(
 			jsonCodecObject({
-				processedTime: jsonCodecOptional(jsonCodecDateTime),
-				signerAddress: jsonCodecPubkey,
+				blockTime: jsonCodecOptional(jsonCodecDateTime),
+				instructionOrdinal: jsonCodecInteger,
 				instructionName: jsonCodecString,
 				instructionAddresses: utilsObjectToStringMapJsonCodec(jsonCodecPubkey),
 				instructionPayload: jsonCodecRaw,
-				ordering: jsonCodecInteger,
 			})
 		),
 	})

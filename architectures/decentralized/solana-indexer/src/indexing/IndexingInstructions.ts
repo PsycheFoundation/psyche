@@ -7,48 +7,44 @@ import {
 	Pubkey,
 	RpcHttp,
 	rpcHttpWaitForTransaction,
+	RpcTransactionCallStack,
 	RpcTransactionExecution,
-	RpcTransactionInvocation,
 	Signature,
 } from 'solana-kiss'
 import { IndexingCheckpoint } from './IndexingCheckpoint'
 import { indexingSignaturesLoop } from './IndexingSignatures'
+
+export type IndexingInstructionHandler = (indexed: {
+	blockTime: Date | undefined
+	instructionOrdinal: bigint
+	instructionName: string
+	instructionAddresses: Map<string, Pubkey>
+	instructionPayload: JsonValue
+}) => Promise<void>
 
 export async function indexingInstructionsLoop(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
 	startingCheckpoint: IndexingCheckpoint,
 	programIdl: IdlProgram,
-	onInstruction: (
-		instructionName: string,
-		instructionAddresses: Map<string, Pubkey>,
-		instructionPayload: JsonValue,
-		context: {
-			ordering: bigint
-			instruction: Instruction
-			transaction: {
-				execution: RpcTransactionExecution
-				invocations: Array<RpcTransactionInvocation> | undefined
-			}
-		}
-	) => Promise<void>,
+	onInstruction: IndexingInstructionHandler,
 	onCheckpoint: (checkpoint: IndexingCheckpoint) => Promise<void>
 ): Promise<void> {
 	await indexingSignaturesLoop(
 		rpcHttp,
 		programAddress,
 		startingCheckpoint,
-		async (foundHistory, updatedCheckpoint) => {
+		async (updatedCheckpoint, transactionsInfos) => {
 			const promises = new Array()
-			for (let index = 0; index < foundHistory.length; index++) {
-				const { signature, ordering } = foundHistory[index]!
+			for (let index = 0; index < transactionsInfos.length; index++) {
+				const { transactionId, transactionOrdinal } = transactionsInfos[index]!
 				promises.push(
 					indexingSignatureInstructions(
 						rpcHttp,
 						programAddress,
-						signature,
-						ordering,
 						programIdl,
+						transactionId,
+						transactionOrdinal,
 						onInstruction
 					)
 				)
@@ -58,7 +54,7 @@ export async function indexingInstructionsLoop(
 				'>',
 				new Date().toISOString(),
 				programAddress,
-				foundHistory.length
+				transactionsInfos.length
 			)
 			try {
 				await onCheckpoint(updatedCheckpoint)
@@ -72,70 +68,46 @@ export async function indexingInstructionsLoop(
 async function indexingSignatureInstructions(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
-	signature: Signature,
-	ordering: bigint,
 	programIdl: IdlProgram,
-	onInstruction: (
-		instructionName: string,
-		instructionAddresses: Map<string, Pubkey>,
-		instructionPayload: JsonValue,
-		context: {
-			ordering: bigint
-			instruction: Instruction
-			transaction: {
-				execution: RpcTransactionExecution
-				invocations: Array<RpcTransactionInvocation> | undefined
-			}
-		}
-	) => Promise<void>
+	transactionId: Signature,
+	transactionOrdrinal: bigint,
+	onInstruction: IndexingInstructionHandler
 ): Promise<void> {
 	try {
-		const transaction = await rpcHttpWaitForTransaction(
-			rpcHttp,
-			signature,
-			1000
-		)
+		const { transactionExecution, transactionCallStack } =
+			await rpcHttpWaitForTransaction(rpcHttp, transactionId, 1000)
 		await indexingTransactionInstructions(
 			programAddress,
 			programIdl,
-			transaction,
-			ordering,
+			transactionOrdrinal,
+			transactionExecution,
+			transactionCallStack,
 			onInstruction
 		)
 	} catch (error) {
-		console.error('Failed to index signature', signature, error)
+		console.error('Failed to index signature', transactionId, error)
 	}
 }
 
 async function indexingTransactionInstructions(
 	programAddress: Pubkey,
 	programIdl: IdlProgram,
-	transaction: {
-		execution: RpcTransactionExecution
-		invocations: Array<RpcTransactionInvocation> | undefined
-	},
-	ordering: bigint,
-	onInstruction: (
-		instructionName: string,
-		instructionAddresses: Map<string, Pubkey>,
-		instructionPayload: JsonValue,
-		context: {
-			ordering: bigint
-			transaction: {
-				execution: RpcTransactionExecution
-				invocations: Array<RpcTransactionInvocation> | undefined
-			}
-			instruction: Instruction
-		}
-	) => Promise<void>
+	transactionOrdinal: bigint,
+	transactionExecution: RpcTransactionExecution,
+	transactionCallStack: RpcTransactionCallStack | undefined,
+	onInstruction: IndexingInstructionHandler
 ): Promise<void> {
-	if (transaction.error !== null) {
+	if (transactionExecution.error !== null) {
 		return
 	}
+	if (transactionCallStack === undefined) {
+		return
+	}
+	const instructionOrdinal = transactionOrdinal
 	indexingInvocationsInstructions(
-		transaction.invocations,
-		ordering,
-		async (instruction, ordering) => {
+		transactionCallStack,
+		instructionOrdinal,
+		async (instructionOrdinal, instruction) => {
 			if (instruction.programAddress !== programAddress) {
 				return
 			}
@@ -147,38 +119,45 @@ async function indexingTransactionInstructions(
 				instructionIdl,
 				instruction
 			)
-			await onInstruction(
-				instructionIdl.name,
+			await onInstruction({
+				blockTime: transactionExecution.blockInfo.time,
+				instructionOrdinal,
+				instructionName: instructionIdl.name,
 				instructionAddresses,
 				instructionPayload,
-				{ ordering, transaction, instruction }
-			)
+			})
 		}
 	)
 }
 
 async function indexingInvocationsInstructions(
-	invocations: Array<TransactionInvocation>,
-	ordering: bigint,
-	visitor: (instruction: Instruction, ordering: bigint) => Promise<void>
+	transactionCallStack: RpcTransactionCallStack,
+	instructionOrdinal: bigint,
+	visitor: (
+		instructionOrdinal: bigint,
+		instruction: Instruction
+	) => Promise<void>
 ): Promise<bigint> {
 	for (
-		let invocationIndex = invocations.length - 1;
-		invocationIndex >= 0;
-		invocationIndex--
+		let transactionCallIndex = transactionCallStack.length - 1;
+		transactionCallIndex >= 0;
+		transactionCallIndex--
 	) {
-		const invocation = invocations[invocationIndex]!
+		const transactionCallEnum = transactionCallStack[transactionCallIndex]!
+		if (!('invoke' in transactionCallEnum)) {
+			continue
+		}
 		try {
-			await visitor(invocation.instruction, ordering)
+			await visitor(instructionOrdinal, transactionCallEnum.invoke.instruction)
 		} catch (error) {
 			console.error('Failed to process instruction', error)
 		}
-		ordering += 1n
-		ordering = await indexingInvocationsInstructions(
-			invocation.invocations,
-			ordering,
+		instructionOrdinal += 1n
+		instructionOrdinal = await indexingInvocationsInstructions(
+			transactionCallEnum.invoke.callStack,
+			instructionOrdinal,
 			visitor
 		)
 	}
-	return ordering
+	return instructionOrdinal
 }

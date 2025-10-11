@@ -4,7 +4,7 @@ import {
 	jsonCodecNumber,
 	jsonCodecPubkey,
 	jsonCodecString,
-	jsonDecoderObjectEncodedSnakeKeys,
+	jsonDecoderObjectWithKeysSnakeEncoded,
 	Pubkey,
 	RpcHttp,
 } from 'solana-kiss'
@@ -22,7 +22,7 @@ export async function coordinatorIndexingCheckpoint(
 ) {
 	const promises = new Array<Promise<void>>()
 	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
-		if (runInfo.accountFetchedOrdering === runInfo.accountRequestOrdering) {
+		if (runInfo.accountFetchedOrdinal === runInfo.accountRequestOrdinal) {
 			break
 		}
 		const promise = updateCoordinatorAccountState(
@@ -67,27 +67,27 @@ async function updateCoordinatorAccountState(
 	}
 }
 
-const runStateJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+const runStateJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	nonce: jsonCodecInteger.decoder,
-	state: jsonDecoderObjectEncodedSnakeKeys({
-		metadata: jsonDecoderObjectEncodedSnakeKeys({
+	state: jsonDecoderObjectWithKeysSnakeEncoded({
+		metadata: jsonDecoderObjectWithKeysSnakeEncoded({
 			name: utilsRustFixedStringJsonDecoder,
 			description: utilsRustFixedStringJsonDecoder,
 			numParameters: jsonCodecInteger.decoder,
 			vocabSize: jsonCodecInteger.decoder,
 		}),
-		coordinator: jsonDecoderObjectEncodedSnakeKeys({
+		coordinator: jsonDecoderObjectWithKeysSnakeEncoded({
 			runId: utilsRustFixedStringJsonDecoder,
 			runState: jsonCodecString.decoder,
-			progress: jsonDecoderObjectEncodedSnakeKeys({
+			progress: jsonDecoderObjectWithKeysSnakeEncoded({
 				epoch: jsonCodecNumber.decoder,
 				step: jsonCodecNumber.decoder,
 				epochStartDataIndex: jsonCodecInteger.decoder,
 			}),
-			epochState: jsonDecoderObjectEncodedSnakeKeys({
+			epochState: jsonDecoderObjectWithKeysSnakeEncoded({
 				clients: utilsRustFixedArrayJsonDecoder(
-					jsonDecoderObjectEncodedSnakeKeys({
-						id: jsonDecoderObjectEncodedSnakeKeys({
+					jsonDecoderObjectWithKeysSnakeEncoded({
+						id: jsonDecoderObjectWithKeysSnakeEncoded({
 							signer: jsonCodecPubkey.decoder,
 						}),
 						state: jsonCodecString.decoder,

@@ -1,5 +1,4 @@
 import {
-	JsonValue,
 	Pubkey,
 	jsonCodecObject,
 	jsonCodecObjectToMap,
@@ -14,8 +13,8 @@ import {
 import { MiningPoolDataPoolState } from './MiningPoolDataPoolState'
 
 export class MiningPoolDataStore {
-	public poolAddressByIndex: Map<bigint, Pubkey>
-	public poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>
+	poolAddressByIndex: Map<bigint, Pubkey>
+	poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>
 
 	constructor(
 		poolAddressByIndex: Map<bigint, Pubkey>,
@@ -31,8 +30,8 @@ export class MiningPoolDataStore {
 			poolInfo = {
 				accountState: undefined,
 				accountUpdatedAt: undefined,
-				accountFetchedOrdering: 0n,
-				accountRequestOrdering: 0n,
+				accountFetchedOrdinal: 0n,
+				accountRequestOrdinal: 0n,
 				totalExtractCollateralAmount: 0n,
 				depositCollateralAmountPerUser: new Map<Pubkey, bigint>(),
 				totalDepositCollateralAmount: 0n,
@@ -52,73 +51,8 @@ export class MiningPoolDataStore {
 		let poolInfo = this.getPoolInfo(poolAddress)
 		poolInfo.accountState = poolState
 		poolInfo.accountUpdatedAt = new Date()
-		poolInfo.accountFetchedOrdering = poolInfo.accountRequestOrdering
+		poolInfo.accountFetchedOrdinal = poolInfo.accountRequestOrdinal
 		this.poolAddressByIndex.set(poolState.index, poolAddress)
-	}
-
-	public savePoolExtract(poolAddress: Pubkey, collateralAmount: bigint) {
-		let poolInfo = this.getPoolInfo(poolAddress)
-		poolInfo.totalExtractCollateralAmount += collateralAmount
-	}
-
-	public savePoolDeposit(
-		poolAddress: Pubkey,
-		signerAddress: Pubkey,
-		depositAmount: bigint
-	) {
-		let poolInfo = this.getPoolInfo(poolAddress)
-		const depositAmountBefore =
-			poolInfo.depositCollateralAmountPerUser.get(signerAddress) ?? 0n
-		const depositAmountAfter = depositAmountBefore + depositAmount
-		poolInfo.depositCollateralAmountPerUser.set(
-			signerAddress,
-			depositAmountAfter
-		)
-		poolInfo.totalDepositCollateralAmount += depositAmount
-	}
-
-	public savePoolClaim(
-		poolAddress: Pubkey,
-		signerAddress: Pubkey,
-		redeemableAmount: bigint
-	) {
-		let poolInfo = this.getPoolInfo(poolAddress)
-		const redeemableAmountBefore =
-			poolInfo.claimRedeemableAmountPerUser.get(signerAddress) ?? 0n
-		const redeemableAmountAfter = redeemableAmountBefore + redeemableAmount
-		poolInfo.claimRedeemableAmountPerUser.set(
-			signerAddress,
-			redeemableAmountAfter
-		)
-		poolInfo.totalClaimRedeemableAmount += redeemableAmount
-	}
-
-	public savePoolAdminAction(
-		poolAddress: Pubkey,
-		signerAddress: Pubkey,
-		instructionName: string,
-		instructionAddresses: Map<string, Pubkey>,
-		instructionPayload: JsonValue,
-		ordering: bigint,
-		processedTime: Date | undefined
-	) {
-		let poolInfo = this.getPoolInfo(poolAddress)
-		poolInfo.adminHistory.push({
-			processedTime,
-			signerAddress,
-			instructionName,
-			instructionAddresses,
-			instructionPayload,
-			ordering,
-		})
-		poolInfo.adminHistory.sort((a, b) => Number(b.ordering - a.ordering))
-	}
-
-	public setPoolRequestOrdering(poolAddress: Pubkey, ordering: bigint) {
-		const poolInfo = this.getPoolInfo(poolAddress)
-		if (ordering > poolInfo.accountRequestOrdering) {
-			poolInfo.accountRequestOrdering = ordering
-		}
 	}
 }
 

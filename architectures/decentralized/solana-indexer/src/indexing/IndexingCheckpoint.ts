@@ -9,26 +9,26 @@ import {
 } from 'solana-kiss'
 
 export type IndexingCheckpointChunk = {
-	orderingHigh: bigint
-	orderingLow: bigint
-	startedFrom: Signature
-	rewindedUntil: Signature
-	processedCounter: number
+	newestTransactionId: Signature
+	oldestTransactionId: Signature
+	newestTransactionOrdinal: bigint
+	oldestTransactionOrdinal: bigint
+	transactionCounter: number
 }
 
 export type IndexingCheckpoint = {
-	indexedChunks: Array<IndexingCheckpointChunk>
+	orderedIndexedChunks: Array<IndexingCheckpointChunk>
 }
 
 export const indexingCheckpointJsonCodec: JsonCodec<IndexingCheckpoint> =
 	jsonCodecObject({
-		indexedChunks: jsonCodecArray(
+		orderedIndexedChunks: jsonCodecArray(
 			jsonCodecObject({
-				orderingHigh: jsonCodecInteger,
-				orderingLow: jsonCodecInteger,
-				startedFrom: jsonCodecSignature,
-				rewindedUntil: jsonCodecSignature,
-				processedCounter: jsonCodecNumber,
+				newestTransactionId: jsonCodecSignature,
+				oldestTransactionId: jsonCodecSignature,
+				newestTransactionOrdinal: jsonCodecInteger,
+				oldestTransactionOrdinal: jsonCodecInteger,
+				transactionCounter: jsonCodecNumber,
 			})
 		),
 	})

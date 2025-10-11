@@ -12,22 +12,24 @@ import {
 export async function indexingSignaturesLoop(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
-	startingCheckpoint: IndexingCheckpoint,
+	beginAtCheckpoint: IndexingCheckpoint,
 	onChunk: (
-		foundHistory: Array<{
-			signature: Signature
-			ordering: bigint
-		}>,
-		updatedCheckpoint: IndexingCheckpoint
+		updatedCheckpoint: IndexingCheckpoint,
+		transactionsInfos: Array<{
+			transactionId: Signature
+			transactionOrdinal: bigint
+		}>
 	) => Promise<void>
 ): Promise<never> {
-	const indexedChunks = startingCheckpoint.indexedChunks.map((c) => ({ ...c }))
+	const orderedIndexedChunks = beginAtCheckpoint.orderedIndexedChunks.map(
+		(c) => ({ ...c })
+	)
 	while (true) {
 		try {
 			await indexingSignaturesChunk(
 				rpcHttp,
 				programAddress,
-				indexedChunks,
+				orderedIndexedChunks,
 				onChunk
 			)
 		} catch (error) {
@@ -39,71 +41,78 @@ export async function indexingSignaturesLoop(
 async function indexingSignaturesChunk(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
-	indexedChunks: Array<IndexingCheckpointChunk>,
+	orderedIndexedChunks: Array<IndexingCheckpointChunk>,
 	onChunk: (
-		foundExecutions: Array<{ signature: Signature; ordering: bigint }>,
-		updatedCheckpoint: IndexingCheckpoint
+		updatedCheckpoint: IndexingCheckpoint,
+		transactionsInfos: Array<{
+			transactionId: Signature
+			transactionOrdinal: bigint
+		}>
 	) => Promise<void>
 ) {
-	const prevChunkIndex =
-		Math.floor(Math.random() * (indexedChunks.length + 1)) - 1
-	const nextChunkIndex = prevChunkIndex + 1
-	const prevChunkInfo = indexedChunks[prevChunkIndex]
-	const nextChunkInfo = indexedChunks[nextChunkIndex]
+	const newerChunkIndex =
+		Math.floor(Math.random() * (orderedIndexedChunks.length + 1)) - 1
+	const olderChunkIndex = newerChunkIndex + 1
+	const newerChunkInfo = orderedIndexedChunks[newerChunkIndex]
+	const olderChunkInfo = orderedIndexedChunks[olderChunkIndex]
 	const { backwardTransactionsIds } = await rpcHttpFindAccountTransactions(
 		rpcHttp,
 		programAddress,
 		1000,
 		{
-			startBeforeTransactionId: prevChunkInfo?.rewindedUntil,
-			rewindUntilTransactionId: nextChunkInfo?.startedFrom,
+			startBeforeTransactionId: newerChunkInfo?.oldestTransactionId,
+			rewindUntilTransactionId: olderChunkInfo?.newestTransactionId,
 		}
 	)
 	if (backwardTransactionsIds.length === 0) {
 		return
 	}
-	const orderingHigh = prevChunkInfo
-		? prevChunkInfo.orderingLow
+	const newerTransactionOrdinal = newerChunkInfo
+		? newerChunkInfo.oldestTransactionOrdinal
 		: BigInt(Math.floor(new Date().getTime())) *
 			maxTransactionPerMillisecond *
 			maxInstructionPerTransaction
-	let orderingLow =
-		orderingHigh -
+	let olderTransactionOrdinal =
+		newerTransactionOrdinal -
 		BigInt(backwardTransactionsIds.length) * maxInstructionPerTransaction
-	let processedCounter = backwardTransactionsIds.length
-	const startedFrom = backwardTransactionsIds[0]!
-	let rewindedUntil =
+	let transactionCounter = backwardTransactionsIds.length
+	const newerTransactionId = backwardTransactionsIds[0]!
+	let olderTransactionId =
 		backwardTransactionsIds[backwardTransactionsIds.length - 1]!
-	if (rewindedUntil === nextChunkInfo?.startedFrom) {
-		rewindedUntil = nextChunkInfo.rewindedUntil
-		orderingLow = nextChunkInfo.orderingLow
-		processedCounter += nextChunkInfo.processedCounter - 1
-		indexedChunks.splice(nextChunkIndex, 1)
+	if (olderTransactionId === olderChunkInfo?.newestTransactionId) {
+		olderTransactionId = olderChunkInfo.oldestTransactionId
+		olderTransactionOrdinal = olderChunkInfo.oldestTransactionOrdinal
+		transactionCounter += olderChunkInfo.transactionCounter - 1
+		orderedIndexedChunks.splice(olderChunkIndex, 1)
 		backwardTransactionsIds.pop()
 	}
-	if (prevChunkInfo !== undefined) {
-		prevChunkInfo.rewindedUntil = rewindedUntil
-		prevChunkInfo.orderingLow = orderingLow
-		prevChunkInfo.processedCounter += processedCounter
+	if (newerChunkInfo !== undefined) {
+		newerChunkInfo.oldestTransactionId = olderTransactionId
+		newerChunkInfo.oldestTransactionOrdinal = olderTransactionOrdinal
+		newerChunkInfo.transactionCounter += transactionCounter
 	} else {
-		indexedChunks.unshift({
-			orderingHigh: orderingHigh,
-			orderingLow: orderingLow,
-			startedFrom: startedFrom,
-			rewindedUntil: rewindedUntil,
-			processedCounter: processedCounter,
+		orderedIndexedChunks.unshift({
+			newestTransactionId: newerTransactionId,
+			oldestTransactionId: olderTransactionId,
+			newestTransactionOrdinal: newerTransactionOrdinal,
+			oldestTransactionOrdinal: olderTransactionOrdinal,
+			transactionCounter: transactionCounter,
 		})
 	}
 	if (backwardTransactionsIds.length === 0) {
 		return
 	}
-	await onChunk(
-		backwardTransactionsIds.map((signature, index) => ({
-			signature,
-			ordering: orderingHigh - BigInt(index) * maxInstructionPerTransaction,
-		})),
-		{ indexedChunks: indexedChunks.map((c) => ({ ...c })) }
+	const updatedCheckpoint = {
+		orderedIndexedChunks: orderedIndexedChunks.map((c) => ({ ...c })),
+	}
+	const transactionInfos = backwardTransactionsIds.map(
+		(transactionId, index) => ({
+			transactionId,
+			transactionOrdinal:
+				newerTransactionOrdinal - BigInt(index) * maxInstructionPerTransaction,
+		})
 	)
+	await onChunk(updatedCheckpoint, transactionInfos)
 }
 
 const maxInstructionPerTransaction = 1000n

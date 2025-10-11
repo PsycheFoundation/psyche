@@ -24,12 +24,11 @@ import { coordinatorIndexingCheckpoint } from './CoordinatorIndexingCheckpoint'
 import { coordinatorIndexingInstruction } from './CoordinatorIndexingInstruction'
 
 export async function coordinatorService(
-	cluster: string,
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
 	expressApp: Application
 ) {
-	const saveName = `coordinator_${cluster}_${programAddress}`
+	const saveName = `coordinator_${programAddress}`
 	const { checkpoint, dataStore } = await serviceLoader(saveName)
 	serviceEndpoint(programAddress, expressApp, dataStore)
 	await serviceIndexing(
@@ -50,7 +49,7 @@ async function serviceLoader(saveName: string) {
 		dataStore = coordinatorDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded coordinator state from:', saveContent.updatedAt)
 	} catch (error) {
-		checkpoint = { indexedChunks: [] }
+		checkpoint = { orderedIndexedChunks: [] }
 		dataStore = new CoordinatorDataStore(new Map(), new Map())
 		console.warn(
 			'Failed to read existing coordinator JSON, starting fresh',
@@ -105,19 +104,20 @@ async function serviceIndexing(
 		programAddress,
 		startingCheckpoint,
 		programIdl,
-		async (
+		async ({
+			blockTime,
+			instructionOrdinal,
 			instructionName,
 			instructionAddresses,
 			instructionPayload,
-			context
-		) => {
+		}) => {
 			await coordinatorIndexingInstruction(
 				dataStore,
+				blockTime,
+				instructionOrdinal,
 				instructionName,
 				instructionAddresses,
-				instructionPayload,
-				context.ordering,
-				context.transaction.execution.blockInfo.time
+				instructionPayload
 			)
 		},
 		async (checkpoint) => {

@@ -24,8 +24,8 @@ import {
 } from './CoordinatorDataRunState'
 
 export interface CoordinatorDataRunInfoWitness {
-	processedTime: Date | undefined
-	ordering: bigint
+	blockTime: Date | undefined
+	ordinal: bigint
 	proof: {
 		position: bigint
 		index: bigint
@@ -42,8 +42,8 @@ export interface CoordinatorDataRunInfoWitness {
 export interface CoordinatorDataRunInfo {
 	accountState: CoordinatorDataRunState | undefined
 	accountUpdatedAt: Date | undefined
-	accountFetchedOrdering: bigint
-	accountRequestOrdering: bigint
+	accountFetchedOrdinal: bigint
+	accountRequestOrdinal: bigint
 	witnessesPerUser: Map<
 		Pubkey,
 		{
@@ -58,19 +58,18 @@ export interface CoordinatorDataRunInfo {
 		}
 	>
 	adminHistory: Array<{
-		processedTime: Date | undefined
-		signerAddress: Pubkey
+		blockTime: Date | undefined
+		instructionOrdinal: bigint
 		instructionName: string
 		instructionAddresses: Map<string, Pubkey>
 		instructionPayload: JsonValue
-		ordering: bigint
 	}>
 }
 
 const witnessJsonCodec: JsonCodec<CoordinatorDataRunInfoWitness> =
-	jsonCodecObject((key) => key, {
-		processedTime: jsonCodecOptional(jsonCodecDateTime),
-		ordering: jsonCodecInteger,
+	jsonCodecObject({
+		blockTime: jsonCodecOptional(jsonCodecDateTime),
+		ordinal: jsonCodecInteger,
 		proof: jsonCodecObject({
 			position: jsonCodecInteger,
 			index: jsonCodecInteger,
@@ -88,8 +87,8 @@ export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> 
 	jsonCodecObject({
 		accountState: jsonCodecOptional(coordinatorDataRunStateJsonCodec),
 		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
-		accountFetchedOrdering: jsonCodecInteger,
-		accountRequestOrdering: jsonCodecInteger,
+		accountFetchedOrdinal: jsonCodecInteger,
+		accountRequestOrdinal: jsonCodecInteger,
 		witnessesPerUser: utilsObjectToPubkeyMapJsonCodec(
 			jsonCodecObject({
 				lastFew: jsonCodecArray(witnessJsonCodec),
@@ -106,12 +105,11 @@ export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> 
 		),
 		adminHistory: jsonCodecArray(
 			jsonCodecObject({
-				processedTime: jsonCodecOptional(jsonCodecDateTime),
-				signerAddress: jsonCodecPubkey,
+				blockTime: jsonCodecOptional(jsonCodecDateTime),
+				instructionOrdinal: jsonCodecInteger,
 				instructionName: jsonCodecString,
 				instructionAddresses: utilsObjectToStringMapJsonCodec(jsonCodecPubkey),
 				instructionPayload: jsonCodecRaw,
-				ordering: jsonCodecInteger,
 			})
 		),
 	})

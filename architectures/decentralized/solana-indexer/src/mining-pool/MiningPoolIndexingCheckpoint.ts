@@ -4,7 +4,7 @@ import {
 	jsonCodecInteger,
 	jsonCodecNumber,
 	jsonCodecString,
-	jsonDecoderObjectEncodedSnakeKeys,
+	jsonDecoderObjectWithKeysSnakeEncoded,
 	RpcHttp,
 } from 'solana-kiss'
 import { utilsGetAndDecodeAccountState } from '../utils'
@@ -16,7 +16,7 @@ export async function miningPoolIndexingCheckpoint(
 	dataStore: MiningPoolDataStore
 ) {
 	for (const [poolAddress, poolInfo] of dataStore.poolInfoByAddress) {
-		if (poolInfo.accountFetchedOrdering === poolInfo.accountRequestOrdering) {
+		if (poolInfo.accountFetchedOrdinal === poolInfo.accountRequestOrdinal) {
 			break
 		}
 		try {
@@ -33,7 +33,7 @@ export async function miningPoolIndexingCheckpoint(
 	}
 }
 
-const poolStateJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+const poolStateJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	bump: jsonCodecNumber.decoder,
 	index: jsonCodecInteger.decoder,
 	authority: jsonCodecString.decoder,
