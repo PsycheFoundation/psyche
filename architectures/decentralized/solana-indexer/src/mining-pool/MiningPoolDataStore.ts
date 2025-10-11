@@ -1,15 +1,15 @@
 import {
 	JsonValue,
 	Pubkey,
-	jsonTypeObject,
-	jsonTypeObjectToMap,
-	jsonTypePubkey,
-	jsonTypeRemap,
+	jsonCodecObject,
+	jsonCodecObjectToMap,
+	jsonCodecPubkey,
+	jsonCodecTransform,
 } from 'solana-kiss'
-import { utilsObjectToPubkeyMapJsonType } from '../utils'
+import { utilsObjectToPubkeyMapJsonCodec } from '../utils'
 import {
 	MiningPoolDataPoolInfo,
-	miningPoolDataPoolInfoJsonType,
+	miningPoolDataPoolInfoJsonCodec,
 } from './MiningPoolDataPoolInfo'
 import { MiningPoolDataPoolState } from './MiningPoolDataPoolState'
 
@@ -122,26 +122,28 @@ export class MiningPoolDataStore {
 	}
 }
 
-export const miningPoolDataStoreJsonType = jsonTypeRemap(
-	jsonTypeObject((key) => key, {
-		poolAddressByIndex: jsonTypeObjectToMap(
+export const miningPoolDataStoreJsonCodec = jsonCodecTransform(
+	jsonCodecObject({
+		poolAddressByIndex: jsonCodecObjectToMap(
 			{
 				keyEncoder: (key: bigint) => String(key),
 				keyDecoder: (key: string) => BigInt(key),
 			},
-			jsonTypePubkey
+			jsonCodecPubkey
 		),
-		poolInfoByAddress: utilsObjectToPubkeyMapJsonType(
-			miningPoolDataPoolInfoJsonType
+		poolInfoByAddress: utilsObjectToPubkeyMapJsonCodec(
+			miningPoolDataPoolInfoJsonCodec
 		),
 	}),
-	(unmapped) =>
-		new MiningPoolDataStore(
-			unmapped.poolAddressByIndex,
-			unmapped.poolInfoByAddress
-		),
-	(remapped) => ({
-		poolAddressByIndex: remapped.poolAddressByIndex,
-		poolInfoByAddress: remapped.poolInfoByAddress,
-	})
+	{
+		decoder: (encoded) =>
+			new MiningPoolDataStore(
+				encoded.poolAddressByIndex,
+				encoded.poolInfoByAddress
+			),
+		encoder: (decoded) => ({
+			poolAddressByIndex: decoded.poolAddressByIndex,
+			poolInfoByAddress: decoded.poolInfoByAddress,
+		}),
+	}
 )

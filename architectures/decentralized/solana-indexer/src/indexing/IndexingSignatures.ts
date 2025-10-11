@@ -1,8 +1,8 @@
 import {
 	Pubkey,
 	RpcHttp,
+	rpcHttpFindAccountTransactions,
 	Signature,
-	rpcHttpFindAccountPastSignatures,
 } from 'solana-kiss'
 import {
 	IndexingCheckpoint,
@@ -50,16 +50,16 @@ async function indexingSignaturesChunk(
 	const nextChunkIndex = prevChunkIndex + 1
 	const prevChunkInfo = indexedChunks[prevChunkIndex]
 	const nextChunkInfo = indexedChunks[nextChunkIndex]
-	const signatures = await rpcHttpFindAccountPastSignatures(
+	const { backwardTransactionsIds } = await rpcHttpFindAccountTransactions(
 		rpcHttp,
 		programAddress,
 		1000,
 		{
-			startBefore: prevChunkInfo?.rewindedUntil,
-			rewindUntil: nextChunkInfo?.startedFrom,
+			startBeforeTransactionId: prevChunkInfo?.rewindedUntil,
+			rewindUntilTransactionId: nextChunkInfo?.startedFrom,
 		}
 	)
-	if (signatures.length === 0) {
+	if (backwardTransactionsIds.length === 0) {
 		return
 	}
 	const orderingHigh = prevChunkInfo
@@ -68,16 +68,18 @@ async function indexingSignaturesChunk(
 			maxTransactionPerMillisecond *
 			maxInstructionPerTransaction
 	let orderingLow =
-		orderingHigh - BigInt(signatures.length) * maxInstructionPerTransaction
-	let processedCounter = signatures.length
-	const startedFrom = signatures[0]!
-	let rewindedUntil = signatures[signatures.length - 1]!
+		orderingHigh -
+		BigInt(backwardTransactionsIds.length) * maxInstructionPerTransaction
+	let processedCounter = backwardTransactionsIds.length
+	const startedFrom = backwardTransactionsIds[0]!
+	let rewindedUntil =
+		backwardTransactionsIds[backwardTransactionsIds.length - 1]!
 	if (rewindedUntil === nextChunkInfo?.startedFrom) {
 		rewindedUntil = nextChunkInfo.rewindedUntil
 		orderingLow = nextChunkInfo.orderingLow
 		processedCounter += nextChunkInfo.processedCounter - 1
 		indexedChunks.splice(nextChunkIndex, 1)
-		signatures.pop()
+		backwardTransactionsIds.pop()
 	}
 	if (prevChunkInfo !== undefined) {
 		prevChunkInfo.rewindedUntil = rewindedUntil
@@ -92,11 +94,11 @@ async function indexingSignaturesChunk(
 			processedCounter: processedCounter,
 		})
 	}
-	if (signatures.length === 0) {
+	if (backwardTransactionsIds.length === 0) {
 		return
 	}
 	await onChunk(
-		signatures.map((signature, index) => ({
+		backwardTransactionsIds.map((signature, index) => ({
 			signature,
 			ordering: orderingHigh - BigInt(index) * maxInstructionPerTransaction,
 		})),

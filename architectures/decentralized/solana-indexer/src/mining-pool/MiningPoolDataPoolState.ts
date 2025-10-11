@@ -1,9 +1,9 @@
 import {
-	jsonTypeBoolean,
-	jsonTypeInteger,
-	jsonTypeNumber,
-	jsonTypeObject,
-	jsonTypeString,
+	jsonCodecBoolean,
+	jsonCodecInteger,
+	jsonCodecNumber,
+	jsonCodecObject,
+	jsonCodecString,
 } from 'solana-kiss'
 
 export interface MiningPoolDataPoolState {
@@ -20,16 +20,16 @@ export interface MiningPoolDataPoolState {
 	freeze: boolean
 }
 
-export const miningPoolDataPoolStateJsonType = jsonTypeObject((key) => key, {
-	bump: jsonTypeNumber,
-	index: jsonTypeInteger,
-	authority: jsonTypeString,
-	collateralMint: jsonTypeString,
-	maxDepositCollateralAmount: jsonTypeInteger,
-	totalDepositedCollateralAmount: jsonTypeInteger,
-	totalExtractedCollateralAmount: jsonTypeInteger,
-	claimingEnabled: jsonTypeBoolean,
-	redeemableMint: jsonTypeString,
-	totalClaimedRedeemableAmount: jsonTypeInteger,
-	freeze: jsonTypeBoolean,
+export const miningPoolDataPoolStateJsonCodec = jsonCodecObject({
+	bump: jsonCodecNumber,
+	index: jsonCodecInteger,
+	authority: jsonCodecString,
+	collateralMint: jsonCodecString,
+	maxDepositCollateralAmount: jsonCodecInteger,
+	totalDepositedCollateralAmount: jsonCodecInteger,
+	totalExtractedCollateralAmount: jsonCodecInteger,
+	claimingEnabled: jsonCodecBoolean,
+	redeemableMint: jsonCodecString,
+	totalClaimedRedeemableAmount: jsonCodecInteger,
+	freeze: jsonCodecBoolean,
 })

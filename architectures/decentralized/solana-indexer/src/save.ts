@@ -1,17 +1,17 @@
 import fs from 'fs'
 import {
-	jsonTypeObject,
-	jsonTypeString,
-	jsonTypeValue,
+	jsonCodecObject,
+	jsonCodecRaw,
+	jsonCodecString,
 	JsonValue,
 } from 'solana-kiss'
 
 const saveFolder = process.env['STATE_DIRECTORY'] ?? process.cwd()
 
-const saveJsonType = jsonTypeObject((key) => key, {
-	updatedAt: jsonTypeString,
-	checkpoint: jsonTypeValue,
-	dataStore: jsonTypeValue,
+const saveJsonCodec = jsonCodecObject({
+	updatedAt: jsonCodecString,
+	checkpoint: jsonCodecRaw,
+	dataStore: jsonCodecRaw,
 })
 
 async function savePath(saveName: string): Promise<string> {
@@ -26,7 +26,7 @@ export async function saveWrite(
 	}
 ): Promise<void> {
 	const path = await savePath(saveName)
-	const encoded = saveJsonType.encoder({
+	const encoded = saveJsonCodec.encoder({
 		updatedAt: new Date().toISOString(),
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
@@ -43,5 +43,5 @@ export async function saveRead(saveName: string): Promise<{
 	const encoded = await fs.promises
 		.readFile(path, 'utf-8')
 		.then((data: string) => JSON.parse(data) as JsonValue)
-	return saveJsonType.decoder(encoded)
+	return saveJsonCodec.decoder(encoded)
 }

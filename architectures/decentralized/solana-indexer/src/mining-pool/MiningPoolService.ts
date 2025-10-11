@@ -1,28 +1,28 @@
 import {
-	jsonTypeArray,
-	jsonTypeInteger,
-	jsonTypeObject,
-	jsonTypePubkey,
+	jsonCodecArray,
+	jsonCodecInteger,
+	jsonCodecObject,
+	jsonCodecPubkey,
 	Pubkey,
 	RpcHttp,
 } from 'solana-kiss'
 import {
 	IndexingCheckpoint,
-	indexingCheckpointJsonType,
+	indexingCheckpointJsonCodec,
 } from '../indexing/IndexingCheckpoint'
 import { indexingInstructionsLoop } from '../indexing/IndexingInstructions'
 import { saveRead, saveWrite } from '../save'
 import { utilsGetProgramAnchorIdl } from '../utils'
 import {
 	MiningPoolDataStore,
-	miningPoolDataStoreJsonType,
+	miningPoolDataStoreJsonCodec,
 } from './MiningPoolDataStore'
 import { miningPoolIndexingCheckpoint } from './MiningPoolIndexingCheckpoint'
 import { miningPoolIndexingInstruction } from './MiningPoolIndexingInstruction'
 
 import { Application } from 'express'
-import { miningPoolDataPoolInfoJsonType } from './MiningPoolDataPoolInfo'
-import { miningPoolDataPoolStateJsonType } from './MiningPoolDataPoolState'
+import { miningPoolDataPoolInfoJsonCodec } from './MiningPoolDataPoolInfo'
+import { miningPoolDataPoolStateJsonCodec } from './MiningPoolDataPoolState'
 
 export async function miningPoolService(
 	cluster: string,
@@ -47,8 +47,8 @@ async function serviceLoader(saveName: string) {
 	let dataStore: MiningPoolDataStore
 	try {
 		const saveContent = await saveRead(saveName)
-		checkpoint = indexingCheckpointJsonType.decoder(saveContent.checkpoint)
-		dataStore = miningPoolDataStoreJsonType.decoder(saveContent.dataStore)
+		checkpoint = indexingCheckpointJsonCodec.decoder(saveContent.checkpoint)
+		dataStore = miningPoolDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded mining pool state from:', saveContent.updatedAt)
 	} catch (error) {
 		checkpoint = { indexedChunks: [] }
@@ -75,10 +75,10 @@ async function serviceEndpoint(
 			}
 			poolsSummaries.push({ address: poolAddress, state: poolState })
 		}
-		return res.status(200).json(poolSummariesJsonType.encoder(poolsSummaries))
+		return res.status(200).json(poolSummariesJsonCodec.encoder(poolsSummaries))
 	})
 	expressApp.get(`/mining-pool/${programAddress}/pool/:index`, (req, res) => {
-		const poolIndex = jsonTypeInteger.decoder(req.params.index)
+		const poolIndex = jsonCodecInteger.decoder(req.params.index)
 		const poolAddress = dataStore.poolAddressByIndex.get(poolIndex)
 		if (!poolAddress) {
 			return res.status(404).json({ error: 'Pool address not found' })
@@ -89,7 +89,7 @@ async function serviceEndpoint(
 		}
 		return res
 			.status(200)
-			.json(miningPoolDataPoolInfoJsonType.encoder(poolInfo))
+			.json(miningPoolDataPoolInfoJsonCodec.encoder(poolInfo))
 	})
 }
 
@@ -118,22 +118,22 @@ async function serviceIndexing(
 				instructionAddresses,
 				instructionPayload,
 				context.ordering,
-				context.transaction.block.time
+				context.transaction.execution.blockInfo.time
 			)
 		},
 		async (checkpoint) => {
 			await miningPoolIndexingCheckpoint(rpcHttp, programIdl, dataStore)
 			await saveWrite(saveName, {
-				checkpoint: indexingCheckpointJsonType.encoder(checkpoint),
-				dataStore: miningPoolDataStoreJsonType.encoder(dataStore),
+				checkpoint: indexingCheckpointJsonCodec.encoder(checkpoint),
+				dataStore: miningPoolDataStoreJsonCodec.encoder(dataStore),
 			})
 		}
 	)
 }
 
-const poolSummariesJsonType = jsonTypeArray(
-	jsonTypeObject((key) => key, {
-		address: jsonTypePubkey,
-		state: miningPoolDataPoolStateJsonType,
+const poolSummariesJsonCodec = jsonCodecArray(
+	jsonCodecObject({
+		address: jsonCodecPubkey,
+		state: miningPoolDataPoolStateJsonCodec,
 	})
 )

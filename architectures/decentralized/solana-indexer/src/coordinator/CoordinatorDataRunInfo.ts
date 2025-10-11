@@ -1,26 +1,26 @@
 import {
-	JsonType,
-	jsonTypeArray,
-	jsonTypeArrayToObject,
-	jsonTypeBoolean,
-	jsonTypeDateTime,
-	jsonTypeInteger,
-	jsonTypeNumber,
-	jsonTypeObject,
-	jsonTypeOptional,
-	jsonTypePubkey,
-	jsonTypeString,
-	jsonTypeValue,
+	JsonCodec,
+	jsonCodecArray,
+	jsonCodecArrayToObject,
+	jsonCodecBoolean,
+	jsonCodecDateTime,
+	jsonCodecInteger,
+	jsonCodecNumber,
+	jsonCodecObject,
+	jsonCodecOptional,
+	jsonCodecPubkey,
+	jsonCodecRaw,
+	jsonCodecString,
 	JsonValue,
 	Pubkey,
 } from 'solana-kiss'
 import {
-	utilsObjectToPubkeyMapJsonType,
-	utilsObjectToStringMapJsonType,
+	utilsObjectToPubkeyMapJsonCodec,
+	utilsObjectToStringMapJsonCodec,
 } from '../utils'
 import {
 	CoordinatorDataRunState,
-	coordinatorDataRunStateJsonType,
+	coordinatorDataRunStateJsonCodec,
 } from './CoordinatorDataRunState'
 
 export interface CoordinatorDataRunInfoWitness {
@@ -67,53 +67,51 @@ export interface CoordinatorDataRunInfo {
 	}>
 }
 
-const witnessJsonType: JsonType<CoordinatorDataRunInfoWitness> = jsonTypeObject(
-	(key) => key,
-	{
-		processedTime: jsonTypeOptional(jsonTypeDateTime),
-		ordering: jsonTypeInteger,
-		proof: jsonTypeObject((key) => key, {
-			position: jsonTypeInteger,
-			index: jsonTypeInteger,
-			witness: jsonTypeBoolean,
+const witnessJsonCodec: JsonCodec<CoordinatorDataRunInfoWitness> =
+	jsonCodecObject((key) => key, {
+		processedTime: jsonCodecOptional(jsonCodecDateTime),
+		ordering: jsonCodecInteger,
+		proof: jsonCodecObject({
+			position: jsonCodecInteger,
+			index: jsonCodecInteger,
+			witness: jsonCodecBoolean,
 		}),
-		metadata: jsonTypeObject((key) => key, {
-			tokensPerSec: jsonTypeNumber,
-			bandwidthPerSec: jsonTypeNumber,
-			loss: jsonTypeNumber,
-			step: jsonTypeNumber,
+		metadata: jsonCodecObject({
+			tokensPerSec: jsonCodecNumber,
+			bandwidthPerSec: jsonCodecNumber,
+			loss: jsonCodecNumber,
+			step: jsonCodecNumber,
 		}),
-	}
-)
+	})
 
-export const coordinatorDataRunInfoJsonType: JsonType<CoordinatorDataRunInfo> =
-	jsonTypeObject((key) => key, {
-		accountState: jsonTypeOptional(coordinatorDataRunStateJsonType),
-		accountUpdatedAt: jsonTypeOptional(jsonTypeDateTime),
-		accountFetchedOrdering: jsonTypeInteger,
-		accountRequestOrdering: jsonTypeInteger,
-		witnessesPerUser: utilsObjectToPubkeyMapJsonType(
-			jsonTypeObject((key) => key, {
-				lastFew: jsonTypeArray(witnessJsonType),
-				sampled: jsonTypeObject((key) => key, {
-					rate: jsonTypeNumber,
-					data: jsonTypeArray(
-						jsonTypeArrayToObject({
-							selector: jsonTypeNumber,
-							witness: witnessJsonType,
+export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> =
+	jsonCodecObject({
+		accountState: jsonCodecOptional(coordinatorDataRunStateJsonCodec),
+		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
+		accountFetchedOrdering: jsonCodecInteger,
+		accountRequestOrdering: jsonCodecInteger,
+		witnessesPerUser: utilsObjectToPubkeyMapJsonCodec(
+			jsonCodecObject({
+				lastFew: jsonCodecArray(witnessJsonCodec),
+				sampled: jsonCodecObject({
+					rate: jsonCodecNumber,
+					data: jsonCodecArray(
+						jsonCodecArrayToObject({
+							selector: jsonCodecNumber,
+							witness: witnessJsonCodec,
 						})
 					),
 				}),
 			})
 		),
-		adminHistory: jsonTypeArray(
-			jsonTypeObject((key) => key, {
-				processedTime: jsonTypeOptional(jsonTypeDateTime),
-				signerAddress: jsonTypePubkey,
-				instructionName: jsonTypeString,
-				instructionAddresses: utilsObjectToStringMapJsonType(jsonTypePubkey),
-				instructionPayload: jsonTypeValue,
-				ordering: jsonTypeInteger,
+		adminHistory: jsonCodecArray(
+			jsonCodecObject({
+				processedTime: jsonCodecOptional(jsonCodecDateTime),
+				signerAddress: jsonCodecPubkey,
+				instructionName: jsonCodecString,
+				instructionAddresses: utilsObjectToStringMapJsonCodec(jsonCodecPubkey),
+				instructionPayload: jsonCodecRaw,
+				ordering: jsonCodecInteger,
 			})
 		),
 	})

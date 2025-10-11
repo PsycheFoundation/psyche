@@ -1,10 +1,4 @@
-import {
-	JsonValue,
-	Pubkey,
-	casingCamelToSnake,
-	jsonDecoderObject,
-	jsonTypeInteger,
-} from 'solana-kiss'
+import { JsonValue, Pubkey, jsonCodecInteger } from 'solana-kiss'
 import { MiningPoolDataStore } from './MiningPoolDataStore'
 
 export async function miningPoolIndexingInstruction(
@@ -121,20 +115,20 @@ async function processLenderClaim(
 	)
 }
 
-const poolExtractArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
-	params: jsonDecoderObject(casingCamelToSnake, {
-		collateralAmount: jsonTypeInteger.decoder,
+const poolExtractArgsJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+	params: jsonDecoderObjectEncodedSnakeKeys({
+		collateralAmount: jsonCodecInteger.decoder,
 	}),
 })
 
-const lenderDepositArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
-	params: jsonDecoderObject(casingCamelToSnake, {
-		collateralAmount: jsonTypeInteger.decoder,
+const lenderDepositArgsJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+	params: jsonDecoderObjectEncodedSnakeKeys({
+		collateralAmount: jsonCodecInteger.decoder,
 	}),
 })
 
-const lenderClaimArgsJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
-	params: jsonDecoderObject(casingCamelToSnake, {
-		redeemableAmount: jsonTypeInteger.decoder,
+const lenderClaimArgsJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+	params: jsonDecoderObjectEncodedSnakeKeys({
+		redeemableAmount: jsonCodecInteger.decoder,
 	}),
 })

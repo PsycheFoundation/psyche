@@ -1,24 +1,24 @@
 import { Application } from 'express'
 import {
-	jsonTypeArray,
-	jsonTypeObject,
-	jsonTypePubkey,
-	jsonTypeString,
+	jsonCodecArray,
+	jsonCodecObject,
+	jsonCodecPubkey,
+	jsonCodecString,
 	Pubkey,
 	RpcHttp,
 } from 'solana-kiss'
 import {
 	IndexingCheckpoint,
-	indexingCheckpointJsonType,
+	indexingCheckpointJsonCodec,
 } from '../indexing/IndexingCheckpoint'
 import { indexingInstructionsLoop } from '../indexing/IndexingInstructions'
 import { saveRead, saveWrite } from '../save'
 import { utilsGetProgramAnchorIdl } from '../utils'
-import { coordinatorDataRunInfoJsonType } from './CoordinatorDataRunInfo'
-import { coordinatorDataRunStateJsonType } from './CoordinatorDataRunState'
+import { coordinatorDataRunInfoJsonCodec } from './CoordinatorDataRunInfo'
+import { coordinatorDataRunStateJsonCodec } from './CoordinatorDataRunState'
 import {
 	CoordinatorDataStore,
-	coordinatorDataStoreJsonType,
+	coordinatorDataStoreJsonCodec,
 } from './CoordinatorDataStore'
 import { coordinatorIndexingCheckpoint } from './CoordinatorIndexingCheckpoint'
 import { coordinatorIndexingInstruction } from './CoordinatorIndexingInstruction'
@@ -46,8 +46,8 @@ async function serviceLoader(saveName: string) {
 	let dataStore: CoordinatorDataStore
 	try {
 		const saveContent = await saveRead(saveName)
-		checkpoint = indexingCheckpointJsonType.decoder(saveContent.checkpoint)
-		dataStore = coordinatorDataStoreJsonType.decoder(saveContent.dataStore)
+		checkpoint = indexingCheckpointJsonCodec.decoder(saveContent.checkpoint)
+		dataStore = coordinatorDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded coordinator state from:', saveContent.updatedAt)
 	} catch (error) {
 		checkpoint = { indexedChunks: [] }
@@ -74,10 +74,10 @@ async function serviceEndpoint(
 			}
 			runSummaries.push({ address: runAddress, state: runState })
 		}
-		return res.status(200).json(runSummariesJsonType.encoder(runSummaries))
+		return res.status(200).json(runSummariesJsonCodec.encoder(runSummaries))
 	})
 	expressApp.get(`/coordinator/${programAddress}/run/:runId`, (req, res) => {
-		const runId = jsonTypeString.decoder(req.params.runId)
+		const runId = jsonCodecString.decoder(req.params.runId)
 		const runAddress = dataStore.runAddressByRunId.get(runId)
 		if (!runAddress) {
 			return res.status(404).json({ error: 'Run address not found' })
@@ -86,7 +86,9 @@ async function serviceEndpoint(
 		if (!runInfo) {
 			return res.status(404).json({ error: 'Run info not found' })
 		}
-		return res.status(200).json(coordinatorDataRunInfoJsonType.encoder(runInfo))
+		return res
+			.status(200)
+			.json(coordinatorDataRunInfoJsonCodec.encoder(runInfo))
 	})
 }
 
@@ -115,22 +117,22 @@ async function serviceIndexing(
 				instructionAddresses,
 				instructionPayload,
 				context.ordering,
-				context.transaction.block.time
+				context.transaction.execution.blockInfo.time
 			)
 		},
 		async (checkpoint) => {
 			await coordinatorIndexingCheckpoint(rpcHttp, programIdl, dataStore)
 			await saveWrite(saveName, {
-				checkpoint: indexingCheckpointJsonType.encoder(checkpoint),
-				dataStore: coordinatorDataStoreJsonType.encoder(dataStore),
+				checkpoint: indexingCheckpointJsonCodec.encoder(checkpoint),
+				dataStore: coordinatorDataStoreJsonCodec.encoder(dataStore),
 			})
 		}
 	)
 }
 
-const runSummariesJsonType = jsonTypeArray(
-	jsonTypeObject((key) => key, {
-		address: jsonTypePubkey,
-		state: coordinatorDataRunStateJsonType,
+const runSummariesJsonCodec = jsonCodecArray(
+	jsonCodecObject({
+		address: jsonCodecPubkey,
+		state: coordinatorDataRunStateJsonCodec,
 	})
 )

@@ -7,9 +7,9 @@ import {
 	Pubkey,
 	RpcHttp,
 	rpcHttpWaitForTransaction,
+	RpcTransactionExecution,
+	RpcTransactionInvocation,
 	Signature,
-	Transaction,
-	TransactionInvocation,
 } from 'solana-kiss'
 import { IndexingCheckpoint } from './IndexingCheckpoint'
 import { indexingSignaturesLoop } from './IndexingSignatures'
@@ -25,8 +25,11 @@ export async function indexingInstructionsLoop(
 		instructionPayload: JsonValue,
 		context: {
 			ordering: bigint
-			transaction: Transaction
 			instruction: Instruction
+			transaction: {
+				execution: RpcTransactionExecution
+				invocations: Array<RpcTransactionInvocation> | undefined
+			}
 		}
 	) => Promise<void>,
 	onCheckpoint: (checkpoint: IndexingCheckpoint) => Promise<void>
@@ -78,8 +81,11 @@ async function indexingSignatureInstructions(
 		instructionPayload: JsonValue,
 		context: {
 			ordering: bigint
-			transaction: Transaction
 			instruction: Instruction
+			transaction: {
+				execution: RpcTransactionExecution
+				invocations: Array<RpcTransactionInvocation> | undefined
+			}
 		}
 	) => Promise<void>
 ): Promise<void> {
@@ -104,7 +110,10 @@ async function indexingSignatureInstructions(
 async function indexingTransactionInstructions(
 	programAddress: Pubkey,
 	programIdl: IdlProgram,
-	transaction: Transaction,
+	transaction: {
+		execution: RpcTransactionExecution
+		invocations: Array<RpcTransactionInvocation> | undefined
+	},
 	ordering: bigint,
 	onInstruction: (
 		instructionName: string,
@@ -112,7 +121,10 @@ async function indexingTransactionInstructions(
 		instructionPayload: JsonValue,
 		context: {
 			ordering: bigint
-			transaction: Transaction
+			transaction: {
+				execution: RpcTransactionExecution
+				invocations: Array<RpcTransactionInvocation> | undefined
+			}
 			instruction: Instruction
 		}
 	) => Promise<void>

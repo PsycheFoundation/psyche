@@ -1,11 +1,10 @@
 import {
-	casingCamelToSnake,
 	IdlProgram,
-	jsonDecoderObject,
-	jsonTypeInteger,
-	jsonTypeNumber,
-	jsonTypePubkey,
-	jsonTypeString,
+	jsonCodecInteger,
+	jsonCodecNumber,
+	jsonCodecPubkey,
+	jsonCodecString,
+	jsonDecoderObjectEncodedSnakeKeys,
 	Pubkey,
 	RpcHttp,
 } from 'solana-kiss'
@@ -68,30 +67,30 @@ async function updateCoordinatorAccountState(
 	}
 }
 
-const runStateJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
-	nonce: jsonTypeInteger.decoder,
-	state: jsonDecoderObject(casingCamelToSnake, {
-		metadata: jsonDecoderObject(casingCamelToSnake, {
+const runStateJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+	nonce: jsonCodecInteger.decoder,
+	state: jsonDecoderObjectEncodedSnakeKeys({
+		metadata: jsonDecoderObjectEncodedSnakeKeys({
 			name: utilsRustFixedStringJsonDecoder,
 			description: utilsRustFixedStringJsonDecoder,
-			numParameters: jsonTypeInteger.decoder,
-			vocabSize: jsonTypeInteger.decoder,
+			numParameters: jsonCodecInteger.decoder,
+			vocabSize: jsonCodecInteger.decoder,
 		}),
-		coordinator: jsonDecoderObject(casingCamelToSnake, {
+		coordinator: jsonDecoderObjectEncodedSnakeKeys({
 			runId: utilsRustFixedStringJsonDecoder,
-			runState: jsonTypeString.decoder,
-			progress: jsonDecoderObject(casingCamelToSnake, {
-				epoch: jsonTypeNumber.decoder,
-				step: jsonTypeNumber.decoder,
-				epochStartDataIndex: jsonTypeInteger.decoder,
+			runState: jsonCodecString.decoder,
+			progress: jsonDecoderObjectEncodedSnakeKeys({
+				epoch: jsonCodecNumber.decoder,
+				step: jsonCodecNumber.decoder,
+				epochStartDataIndex: jsonCodecInteger.decoder,
 			}),
-			epochState: jsonDecoderObject(casingCamelToSnake, {
+			epochState: jsonDecoderObjectEncodedSnakeKeys({
 				clients: utilsRustFixedArrayJsonDecoder(
-					jsonDecoderObject(casingCamelToSnake, {
-						id: jsonDecoderObject(casingCamelToSnake, {
-							signer: jsonTypePubkey.decoder,
+					jsonDecoderObjectEncodedSnakeKeys({
+						id: jsonDecoderObjectEncodedSnakeKeys({
+							signer: jsonCodecPubkey.decoder,
 						}),
-						state: jsonTypeString.decoder,
+						state: jsonCodecString.decoder,
 					})
 				),
 			}),

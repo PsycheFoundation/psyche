@@ -1,10 +1,10 @@
 import {
-	JsonType,
-	jsonTypeArray,
-	jsonTypeInteger,
-	jsonTypeNumber,
-	jsonTypeObject,
-	jsonTypeSignature,
+	JsonCodec,
+	jsonCodecArray,
+	jsonCodecInteger,
+	jsonCodecNumber,
+	jsonCodecObject,
+	jsonCodecSignature,
 	Signature,
 } from 'solana-kiss'
 
@@ -20,15 +20,15 @@ export type IndexingCheckpoint = {
 	indexedChunks: Array<IndexingCheckpointChunk>
 }
 
-export const indexingCheckpointJsonType: JsonType<IndexingCheckpoint> =
-	jsonTypeObject((key) => key, {
-		indexedChunks: jsonTypeArray(
-			jsonTypeObject((key) => key, {
-				orderingHigh: jsonTypeInteger,
-				orderingLow: jsonTypeInteger,
-				startedFrom: jsonTypeSignature,
-				rewindedUntil: jsonTypeSignature,
-				processedCounter: jsonTypeNumber,
+export const indexingCheckpointJsonCodec: JsonCodec<IndexingCheckpoint> =
+	jsonCodecObject({
+		indexedChunks: jsonCodecArray(
+			jsonCodecObject({
+				orderingHigh: jsonCodecInteger,
+				orderingLow: jsonCodecInteger,
+				startedFrom: jsonCodecSignature,
+				rewindedUntil: jsonCodecSignature,
+				processedCounter: jsonCodecNumber,
 			})
 		),
 	})

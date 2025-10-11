@@ -1,16 +1,16 @@
 import {
-	JsonType,
-	jsonTypeObject,
-	jsonTypeObjectToMap,
-	jsonTypePubkey,
-	jsonTypeRemap,
+	JsonCodec,
+	jsonCodecObject,
+	jsonCodecObjectToMap,
+	jsonCodecPubkey,
+	jsonCodecTransform,
 	JsonValue,
 	Pubkey,
 } from 'solana-kiss'
-import { utilsObjectToPubkeyMapJsonType } from '../utils'
+import { utilsObjectToPubkeyMapJsonCodec } from '../utils'
 import {
 	CoordinatorDataRunInfo,
-	coordinatorDataRunInfoJsonType,
+	coordinatorDataRunInfoJsonCodec,
 } from './CoordinatorDataRunInfo'
 import { CoordinatorDataRunState } from './CoordinatorDataRunState'
 
@@ -124,27 +124,29 @@ export class CoordinatorDataStore {
 	}
 }
 
-export const coordinatorDataStoreJsonType: JsonType<CoordinatorDataStore> =
-	jsonTypeRemap(
-		jsonTypeObject((key) => key, {
-			runAddressByRunId: jsonTypeObjectToMap(
+export const coordinatorDataStoreJsonCodec: JsonCodec<CoordinatorDataStore> =
+	jsonCodecTransform(
+		jsonCodecObject({
+			runAddressByRunId: jsonCodecObjectToMap(
 				{
 					keyEncoder: (key: string) => key,
 					keyDecoder: (key: string) => key,
 				},
-				jsonTypePubkey
+				jsonCodecPubkey
 			),
-			runInfoByAddress: utilsObjectToPubkeyMapJsonType(
-				coordinatorDataRunInfoJsonType
+			runInfoByAddress: utilsObjectToPubkeyMapJsonCodec(
+				coordinatorDataRunInfoJsonCodec
 			),
 		}),
-		(unmapped) =>
-			new CoordinatorDataStore(
-				unmapped.runAddressByRunId,
-				unmapped.runInfoByAddress
-			),
-		(remapped) => ({
-			runAddressByRunId: remapped.runAddressByRunId,
-			runInfoByAddress: remapped.runInfoByAddress,
-		})
+		{
+			decoder: (encoded) =>
+				new CoordinatorDataStore(
+					encoded.runAddressByRunId,
+					encoded.runInfoByAddress
+				),
+			encoder: (decoded) => ({
+				runAddressByRunId: decoded.runAddressByRunId,
+				runInfoByAddress: decoded.runInfoByAddress,
+			}),
+		}
 	)

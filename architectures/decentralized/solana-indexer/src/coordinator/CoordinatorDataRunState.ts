@@ -1,10 +1,10 @@
 import {
-	JsonType,
-	jsonTypeArray,
-	jsonTypeInteger,
-	jsonTypeObject,
-	jsonTypePubkey,
-	jsonTypeString,
+	JsonCodec,
+	jsonCodecArray,
+	jsonCodecInteger,
+	jsonCodecObject,
+	jsonCodecPubkey,
+	jsonCodecString,
 	Pubkey,
 } from 'solana-kiss'
 
@@ -17,17 +17,17 @@ export interface CoordinatorDataRunState {
 	nonce: bigint
 }
 
-export const coordinatorDataRunStateJsonType: JsonType<CoordinatorDataRunState> =
-	jsonTypeObject((key) => key, {
-		runId: jsonTypeString,
-		name: jsonTypeString,
-		description: jsonTypeString,
-		status: jsonTypeString,
-		epochClients: jsonTypeArray(
-			jsonTypeObject((key) => key, {
-				signer: jsonTypePubkey,
-				state: jsonTypeString,
+export const coordinatorDataRunStateJsonCodec: JsonCodec<CoordinatorDataRunState> =
+	jsonCodecObject({
+		runId: jsonCodecString,
+		name: jsonCodecString,
+		description: jsonCodecString,
+		status: jsonCodecString,
+		epochClients: jsonCodecArray(
+			jsonCodecObject({
+				signer: jsonCodecPubkey,
+				state: jsonCodecString,
 			})
 		),
-		nonce: jsonTypeInteger,
+		nonce: jsonCodecInteger,
 	})

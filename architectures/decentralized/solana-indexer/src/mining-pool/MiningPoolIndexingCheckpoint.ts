@@ -1,11 +1,10 @@
 import {
-	casingCamelToSnake,
 	IdlProgram,
-	jsonDecoderObject,
-	jsonTypeBoolean,
-	jsonTypeInteger,
-	jsonTypeNumber,
-	jsonTypeString,
+	jsonCodecBoolean,
+	jsonCodecInteger,
+	jsonCodecNumber,
+	jsonCodecString,
+	jsonDecoderObjectEncodedSnakeKeys,
 	RpcHttp,
 } from 'solana-kiss'
 import { utilsGetAndDecodeAccountState } from '../utils'
@@ -34,16 +33,16 @@ export async function miningPoolIndexingCheckpoint(
 	}
 }
 
-const poolStateJsonDecoder = jsonDecoderObject(casingCamelToSnake, {
-	bump: jsonTypeNumber.decoder,
-	index: jsonTypeInteger.decoder,
-	authority: jsonTypeString.decoder,
-	collateralMint: jsonTypeString.decoder,
-	maxDepositCollateralAmount: jsonTypeInteger.decoder,
-	totalDepositedCollateralAmount: jsonTypeInteger.decoder,
-	totalExtractedCollateralAmount: jsonTypeInteger.decoder,
-	claimingEnabled: jsonTypeBoolean.decoder,
-	redeemableMint: jsonTypeString.decoder,
-	totalClaimedRedeemableAmount: jsonTypeInteger.decoder,
-	freeze: jsonTypeBoolean.decoder,
+const poolStateJsonDecoder = jsonDecoderObjectEncodedSnakeKeys({
+	bump: jsonCodecNumber.decoder,
+	index: jsonCodecInteger.decoder,
+	authority: jsonCodecString.decoder,
+	collateralMint: jsonCodecString.decoder,
+	maxDepositCollateralAmount: jsonCodecInteger.decoder,
+	totalDepositedCollateralAmount: jsonCodecInteger.decoder,
+	totalExtractedCollateralAmount: jsonCodecInteger.decoder,
+	claimingEnabled: jsonCodecBoolean.decoder,
+	redeemableMint: jsonCodecString.decoder,
+	totalClaimedRedeemableAmount: jsonCodecInteger.decoder,
+	freeze: jsonCodecBoolean.decoder,
 })

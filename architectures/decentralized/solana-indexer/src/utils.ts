@@ -1,18 +1,18 @@
 import {
 	idlAccountDecode,
+	idlOnchainAnchorAddress,
+	idlOnchainAnchorDecode,
 	IdlProgram,
 	idlProgramGuessAccount,
-	idlStoreAnchorFind,
-	idlStoreAnchorParse,
+	JsonCodec,
+	jsonCodecInteger,
+	jsonCodecNumber,
+	jsonCodecObjectToMap,
 	JsonDecoder,
 	jsonDecoderArray,
 	jsonDecoderArrayToObject,
 	jsonDecoderObject,
-	jsonDecoderRemap,
-	JsonType,
-	jsonTypeInteger,
-	jsonTypeNumber,
-	jsonTypeObjectToMap,
+	jsonDecoderTransform,
 	Pubkey,
 	pubkeyFromBase58,
 	pubkeyToBase58,
@@ -24,15 +24,15 @@ export async function utilsGetProgramAnchorIdl(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey
 ): Promise<IdlProgram> {
-	const programIdlAddress = idlStoreAnchorFind(programAddress)
-	const programIdlRecord = await rpcHttpGetAccountWithData(
+	const onchainAnchorAddress = idlOnchainAnchorAddress(programAddress)
+	const { accountInfo: onchainAnchorInfo } = await rpcHttpGetAccountWithData(
 		rpcHttp,
-		programIdlAddress
+		onchainAnchorAddress
 	)
-	if (programIdlRecord.data.length === 0) {
+	if (onchainAnchorInfo.data.length === 0) {
 		throw new Error('Idl account has no data')
 	}
-	return idlStoreAnchorParse(programIdlRecord.data)
+	return idlOnchainAnchorDecode(onchainAnchorInfo.data)
 }
 export async function utilsGetAndDecodeAccountState<Content>(
 	rpcHttp: RpcHttp,
@@ -40,7 +40,10 @@ export async function utilsGetAndDecodeAccountState<Content>(
 	accountAddress: Pubkey,
 	accountDecoder: JsonDecoder<Content>
 ): Promise<Content> {
-	const accountInfo = await rpcHttpGetAccountWithData(rpcHttp, accountAddress)
+	const { accountInfo } = await rpcHttpGetAccountWithData(
+		rpcHttp,
+		accountAddress
+	)
 	if (accountInfo.data.length === 0) {
 		throw new Error(`Failed to decode account with no data: ${accountAddress}`)
 	}
@@ -51,10 +54,10 @@ export async function utilsGetAndDecodeAccountState<Content>(
 	return accountDecoder(idlAccountDecode(accountIdl, accountInfo.data))
 }
 
-export function utilsObjectToPubkeyMapJsonType<T>(
-	valueType: JsonType<T>
-): JsonType<Map<Pubkey, T>> {
-	return jsonTypeObjectToMap(
+export function utilsObjectToPubkeyMapJsonCodec<T>(
+	valueType: JsonCodec<T>
+): JsonCodec<Map<Pubkey, T>> {
+	return jsonCodecObjectToMap(
 		{
 			keyDecoder: pubkeyFromBase58,
 			keyEncoder: pubkeyToBase58,
@@ -62,10 +65,10 @@ export function utilsObjectToPubkeyMapJsonType<T>(
 		valueType
 	)
 }
-export function utilsObjectToStringMapJsonType<T>(
-	valueType: JsonType<T>
-): JsonType<Map<string, T>> {
-	return jsonTypeObjectToMap(
+export function utilsObjectToStringMapJsonCodec<T>(
+	valueType: JsonCodec<T>
+): JsonCodec<Map<string, T>> {
+	return jsonCodecObjectToMap(
 		{
 			keyDecoder: (key) => key,
 			keyEncoder: (key) => key,
@@ -74,33 +77,33 @@ export function utilsObjectToStringMapJsonType<T>(
 	)
 }
 
-export const utilsRustFixedStringJsonDecoder = jsonDecoderRemap(
+export const utilsRustFixedStringJsonDecoder = jsonDecoderTransform(
 	jsonDecoderArrayToObject({
-		bytes: jsonDecoderArray(jsonTypeNumber.decoder),
+		bytes: jsonDecoderArray(jsonCodecNumber.decoder),
 	}),
-	(unmapped) => {
+	(encoded) => {
 		let lastNonNull = 0
-		for (let index = unmapped.bytes.length - 1; index >= 0; index--) {
-			if (unmapped.bytes[index] !== 0) {
+		for (let index = encoded.bytes.length - 1; index >= 0; index--) {
+			if (encoded.bytes[index] !== 0) {
 				lastNonNull = index + 1
 				break
 			}
 		}
 		return new TextDecoder().decode(
-			new Uint8Array(unmapped.bytes.slice(0, lastNonNull))
+			new Uint8Array(encoded.bytes.slice(0, lastNonNull))
 		)
 	}
 )
 export function utilsRustFixedArrayJsonDecoder<T>(itemDecode: JsonDecoder<T>) {
-	return jsonDecoderRemap(
-		jsonDecoderObject((key) => key, {
+	return jsonDecoderTransform(
+		jsonDecoderObject({
 			data: jsonDecoderArray(itemDecode),
-			len: jsonTypeInteger.decoder,
+			len: jsonCodecInteger.decoder,
 		}),
-		(unmapped) => unmapped.data.slice(0, Number(unmapped.len))
+		(encoded) => encoded.data.slice(0, Number(encoded.len))
 	)
 }
-export const utilsRustSmallBooleanJsonDecoder = jsonDecoderRemap(
-	jsonDecoderArrayToObject({ bit: jsonTypeNumber.decoder }),
-	(unmapped) => unmapped.bit !== 0
+export const utilsRustSmallBooleanJsonDecoder = jsonDecoderTransform(
+	jsonDecoderArrayToObject({ bit: jsonCodecNumber.decoder }),
+	(encoded) => encoded.bit !== 0
 )

@@ -1,23 +1,23 @@
 import {
-	JsonType,
-	jsonTypeArray,
-	jsonTypeDateTime,
-	jsonTypeInteger,
-	jsonTypeObject,
-	jsonTypeOptional,
-	jsonTypePubkey,
-	jsonTypeString,
-	jsonTypeValue,
+	JsonCodec,
+	jsonCodecArray,
+	jsonCodecDateTime,
+	jsonCodecInteger,
+	jsonCodecObject,
+	jsonCodecOptional,
+	jsonCodecPubkey,
+	jsonCodecRaw,
+	jsonCodecString,
 	JsonValue,
 	Pubkey,
 } from 'solana-kiss'
 import {
-	utilsObjectToPubkeyMapJsonType,
-	utilsObjectToStringMapJsonType,
+	utilsObjectToPubkeyMapJsonCodec,
+	utilsObjectToStringMapJsonCodec,
 } from '../utils'
 import {
 	MiningPoolDataPoolState,
-	miningPoolDataPoolStateJsonType,
+	miningPoolDataPoolStateJsonCodec,
 } from './MiningPoolDataPoolState'
 
 export interface MiningPoolDataPoolInfo {
@@ -40,27 +40,27 @@ export interface MiningPoolDataPoolInfo {
 	}>
 }
 
-export const miningPoolDataPoolInfoJsonType: JsonType<MiningPoolDataPoolInfo> =
-	jsonTypeObject((key) => key, {
-		accountState: jsonTypeOptional(miningPoolDataPoolStateJsonType),
-		accountUpdatedAt: jsonTypeOptional(jsonTypeDateTime),
-		accountFetchedOrdering: jsonTypeInteger,
-		accountRequestOrdering: jsonTypeInteger,
-		totalExtractCollateralAmount: jsonTypeInteger,
+export const miningPoolDataPoolInfoJsonCodec: JsonCodec<MiningPoolDataPoolInfo> =
+	jsonCodecObject({
+		accountState: jsonCodecOptional(miningPoolDataPoolStateJsonCodec),
+		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
+		accountFetchedOrdering: jsonCodecInteger,
+		accountRequestOrdering: jsonCodecInteger,
+		totalExtractCollateralAmount: jsonCodecInteger,
 		depositCollateralAmountPerUser:
-			utilsObjectToPubkeyMapJsonType(jsonTypeInteger),
-		totalDepositCollateralAmount: jsonTypeInteger,
+			utilsObjectToPubkeyMapJsonCodec(jsonCodecInteger),
+		totalDepositCollateralAmount: jsonCodecInteger,
 		claimRedeemableAmountPerUser:
-			utilsObjectToPubkeyMapJsonType(jsonTypeInteger),
-		totalClaimRedeemableAmount: jsonTypeInteger,
-		adminHistory: jsonTypeArray(
-			jsonTypeObject((key) => key, {
-				processedTime: jsonTypeOptional(jsonTypeDateTime),
-				signerAddress: jsonTypePubkey,
-				instructionName: jsonTypeString,
-				instructionAddresses: utilsObjectToStringMapJsonType(jsonTypePubkey),
-				instructionPayload: jsonTypeValue,
-				ordering: jsonTypeInteger,
+			utilsObjectToPubkeyMapJsonCodec(jsonCodecInteger),
+		totalClaimRedeemableAmount: jsonCodecInteger,
+		adminHistory: jsonCodecArray(
+			jsonCodecObject({
+				processedTime: jsonCodecOptional(jsonCodecDateTime),
+				signerAddress: jsonCodecPubkey,
+				instructionName: jsonCodecString,
+				instructionAddresses: utilsObjectToStringMapJsonCodec(jsonCodecPubkey),
+				instructionPayload: jsonCodecRaw,
+				ordering: jsonCodecInteger,
 			})
 		),
 	})
