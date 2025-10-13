@@ -32,10 +32,10 @@ export class MiningPoolDataStore {
 				accountUpdatedAt: undefined,
 				accountFetchedOrdinal: 0n,
 				accountRequestOrdinal: 0n,
-				totalExtractCollateralAmount: 0n,
 				depositCollateralAmountPerUser: new Map<Pubkey, bigint>(),
-				totalDepositCollateralAmount: 0n,
 				claimRedeemableAmountPerUser: new Map<Pubkey, bigint>(),
+				totalExtractCollateralAmount: 0n,
+				totalDepositCollateralAmount: 0n,
 				totalClaimRedeemableAmount: 0n,
 				adminHistory: [],
 			}

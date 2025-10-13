@@ -12,7 +12,7 @@ import {
 export async function indexingSignaturesLoop(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
-	beginAtCheckpoint: IndexingCheckpoint,
+	beginCheckpoint: IndexingCheckpoint,
 	onChunk: (
 		updatedCheckpoint: IndexingCheckpoint,
 		transactionsInfos: Array<{
@@ -21,7 +21,7 @@ export async function indexingSignaturesLoop(
 		}>
 	) => Promise<void>
 ): Promise<never> {
-	const orderedIndexedChunks = beginAtCheckpoint.orderedIndexedChunks.map(
+	const orderedIndexedChunks = beginCheckpoint.orderedIndexedChunks.map(
 		(c) => ({ ...c })
 	)
 	while (true) {

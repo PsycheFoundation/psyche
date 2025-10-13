@@ -6,18 +6,6 @@ import {
 	JsonValue,
 } from 'solana-kiss'
 
-const saveFolder = process.env['STATE_DIRECTORY'] ?? process.cwd()
-
-const saveJsonCodec = jsonCodecObject({
-	updatedAt: jsonCodecString,
-	checkpoint: jsonCodecRaw,
-	dataStore: jsonCodecRaw,
-})
-
-async function savePath(saveName: string): Promise<string> {
-	return `${saveFolder}/${saveName}.json`
-}
-
 export async function saveWrite(
 	saveName: string,
 	saveContent: {
@@ -25,8 +13,8 @@ export async function saveWrite(
 		dataStore: JsonValue
 	}
 ): Promise<void> {
-	const path = await savePath(saveName)
-	const encoded = saveJsonCodec.encoder({
+	const path = savePath(saveName)
+	const encoded = jsonCodec.encoder({
 		updatedAt: new Date().toISOString(),
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
@@ -39,9 +27,20 @@ export async function saveRead(saveName: string): Promise<{
 	checkpoint: JsonValue
 	dataStore: JsonValue
 }> {
-	const path = await savePath(saveName)
+	const path = savePath(saveName)
 	const encoded = await fs.promises
 		.readFile(path, 'utf-8')
 		.then((data: string) => JSON.parse(data) as JsonValue)
-	return saveJsonCodec.decoder(encoded)
+	return jsonCodec.decoder(encoded)
 }
+
+function savePath(saveName: string) {
+	const directory = process.env['STATE_DIRECTORY'] ?? process.cwd()
+	return `${directory}/${saveName}.json`
+}
+
+const jsonCodec = jsonCodecObject({
+	updatedAt: jsonCodecString,
+	checkpoint: jsonCodecRaw,
+	dataStore: jsonCodecRaw,
+})

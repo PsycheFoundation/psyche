@@ -103,10 +103,9 @@ async function processLenderDeposit(
 		context.instructionPayload
 	).params
 	let poolInfo = dataStore.getPoolInfo(context.poolAddress)
-	const depositAmountBefore =
-		poolInfo.depositCollateralAmountPerUser.get(context.signerAddress) ?? 0n
 	const depositAmountAfter =
-		depositAmountBefore + instructionParams.collateralAmount
+		(poolInfo.depositCollateralAmountPerUser.get(context.signerAddress) ?? 0n) +
+		instructionParams.collateralAmount
 	poolInfo.depositCollateralAmountPerUser.set(
 		context.signerAddress,
 		depositAmountAfter
@@ -122,10 +121,9 @@ async function processLenderClaim(
 		context.instructionPayload
 	).params
 	let poolInfo = dataStore.getPoolInfo(context.poolAddress)
-	const redeemableAmountBefore =
-		poolInfo.claimRedeemableAmountPerUser.get(context.signerAddress) ?? 0n
 	const redeemableAmountAfter =
-		redeemableAmountBefore + instructionParams.redeemableAmount
+		(poolInfo.claimRedeemableAmountPerUser.get(context.signerAddress) ?? 0n) +
+		instructionParams.redeemableAmount
 	poolInfo.claimRedeemableAmountPerUser.set(
 		context.signerAddress,
 		redeemableAmountAfter

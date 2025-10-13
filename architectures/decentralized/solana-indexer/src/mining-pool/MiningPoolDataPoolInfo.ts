@@ -25,11 +25,11 @@ export interface MiningPoolDataPoolInfo {
 	accountUpdatedAt: Date | undefined
 	accountFetchedOrdinal: bigint
 	accountRequestOrdinal: bigint
-	totalExtractCollateralAmount: bigint
 	depositCollateralAmountPerUser: Map<Pubkey, bigint>
-	totalDepositCollateralAmount: bigint
 	claimRedeemableAmountPerUser: Map<Pubkey, bigint>
+	totalDepositCollateralAmount: bigint
 	totalClaimRedeemableAmount: bigint
+	totalExtractCollateralAmount: bigint
 	adminHistory: Array<{
 		blockTime: Date | undefined
 		instructionOrdinal: bigint
@@ -45,13 +45,13 @@ export const miningPoolDataPoolInfoJsonCodec: JsonCodec<MiningPoolDataPoolInfo> 
 		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
 		accountFetchedOrdinal: jsonCodecInteger,
 		accountRequestOrdinal: jsonCodecInteger,
-		totalExtractCollateralAmount: jsonCodecInteger,
 		depositCollateralAmountPerUser:
 			utilsObjectToPubkeyMapJsonCodec(jsonCodecInteger),
-		totalDepositCollateralAmount: jsonCodecInteger,
 		claimRedeemableAmountPerUser:
 			utilsObjectToPubkeyMapJsonCodec(jsonCodecInteger),
+		totalDepositCollateralAmount: jsonCodecInteger,
 		totalClaimRedeemableAmount: jsonCodecInteger,
+		totalExtractCollateralAmount: jsonCodecInteger,
 		adminHistory: jsonCodecArray(
 			jsonCodecObject({
 				blockTime: jsonCodecOptional(jsonCodecDateTime),

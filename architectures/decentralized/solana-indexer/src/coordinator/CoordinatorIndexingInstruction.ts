@@ -4,6 +4,7 @@ import {
 	jsonCodecInteger,
 	jsonCodecNumber,
 	jsonDecoderObjectWithKeysSnakeEncoded,
+	jsonDecoderOptional,
 } from 'solana-kiss'
 import {
 	utilsRustFixedArrayJsonDecoder,
@@ -92,14 +93,8 @@ async function processWitness(
 	dataStore: CoordinatorDataStore,
 	context: ProcessingContext
 ): Promise<void> {
-	const witnessPayload = witnessArgsJsonDecoder(context.instructionPayload)
-	if (witnessPayload.metadata.evals !== undefined) {
-		console.warn(
-			'Coordinator: Ignoring metadata.evals in witness payload',
-			witnessPayload.metadata.evals
-		)
-	}
 	const runInfo = dataStore.getRunInfo(context.runAddress)
+	const witnessPayload = witnessArgsJsonDecoder(context.instructionPayload)
 	const userWitnesses = runInfo.witnessesPerUser.get(context.signerAddress) ?? {
 		lastFew: [],
 		sampled: { rate: 1, data: [] },
@@ -139,18 +134,22 @@ const witnessProofJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 
 const witnessMetadataJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	step: jsonCodecNumber.decoder,
-	tokensPerSec: jsonCodecNumber.decoder,
-	bandwidthPerSec: jsonCodecNumber.decoder,
-	loss: jsonCodecNumber.decoder,
-	evals: utilsRustFixedArrayJsonDecoder(
-		jsonDecoderObjectWithKeysSnakeEncoded({
-			name: utilsRustFixedStringJsonDecoder,
-			value: jsonCodecNumber.decoder,
-		})
+	tokensPerSec: jsonDecoderOptional(jsonCodecNumber.decoder),
+	bandwidthPerSec: jsonDecoderOptional(jsonCodecNumber.decoder),
+	efficiency: jsonDecoderOptional(jsonCodecNumber.decoder),
+	loss: jsonDecoderOptional(jsonCodecNumber.decoder),
+	promptIndex: jsonDecoderOptional(jsonCodecNumber.decoder),
+	promptResults: jsonDecoderOptional(
+		utilsRustFixedArrayJsonDecoder(jsonCodecNumber.decoder)
 	),
-	promptResults: utilsRustFixedArrayJsonDecoder(jsonCodecNumber.decoder),
-	promptIndex: jsonCodecNumber.decoder,
-	efficiency: jsonCodecNumber.decoder,
+	evals: jsonDecoderOptional(
+		utilsRustFixedArrayJsonDecoder(
+			jsonDecoderObjectWithKeysSnakeEncoded({
+				name: utilsRustFixedStringJsonDecoder,
+				value: jsonCodecNumber.decoder,
+			})
+		)
+	),
 })
 
 const witnessArgsJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
