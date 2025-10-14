@@ -6,6 +6,7 @@ use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::{Hash, ticket::BlobTicket};
 use psyche_core::BoxedFuture;
 use serde::{Deserialize, Serialize, de, ser};
+use sha256::digest;
 use std::collections::{BTreeMap, VecDeque};
 use std::collections::{HashMap, HashSet, btree_map::Entry};
 use std::io::{Cursor, Write};
@@ -657,6 +658,7 @@ impl SharableModel {
         }
 
         let handle = tokio::task::spawn_blocking(move || {
+            println!("Serialized model hash: {:}", digest(&data));
             postcard::from_bytes::<BTreeMap<String, Option<TensorWrapper>>>(&data)
         });
 

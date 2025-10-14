@@ -296,7 +296,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                                     }
                                                                     sharable_model.add_parameter(parameter).await?;
                                                                     if sharable_model.is_download_complete() {
-                                                                        sharable_model.send_init_parameters()?;
+                                                                        //sharable_model.send_init_parameters()?;
                                                                     }
                                                                 },
                                                                 TransmittableDownload::ModelConfig(config) => {
@@ -754,14 +754,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 match p2p.start_download_big_blob(model_addrs_and_hashes).await {
                                                     Ok((data, _)) => {
                                                         if let Err(err) = sharable_model.deserialize_params(data).await {
-                                                            error!("Error deserializing the model: {:?}, we'll not proceed", err);
+                                                            println!("Error deserializing the model: {:?}, we'll not proceed", err);
                                                         } else {
+                                                            println!("Sending model");
                                                             if let Err(err) = sharable_model.send_init_parameters() {
-                                                                error!("Error sending the model: {:?}, we'll not proceed", err);
+                                                                println!("Error sending the model: {:?}, we'll not proceed", err);
                                                             }
                                                         }
                                                     } Err(err) => {
-                                                        error!("Error downloading the model: {:?}, we'll not proceed with the download", err);
+                                                        println!("Error downloading the model: {:?}, we'll not proceed with the download", err);
                                                     }
                                                 }
                                             }
