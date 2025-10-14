@@ -184,7 +184,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                if let Err(err) = p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs).await {
+                                if let Err(err) = p2p.remove_staled_tags(last_needed_step_blobs).await {
                                     warn!("Error deleting blob tags less than {last_needed_step_blobs}: {err}");
                                 }
                                 let p2p_info = get_p2p_info(&p2p).await?;
@@ -373,7 +373,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
                                         // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
                                         trace!("NetworkEvent::ParameterRequest({parameter_name})");
-                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, 0).await {
+                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, &format!("model-{parameter_name}")).await {
                                             Err(e) => {
                                                 if let Err(e) = protocol_req_tx.send(Err(e)) {
                                                     warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
@@ -389,7 +389,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     },
                                     NetworkEvent::ModelConfigRequest(protocol_req_tx) => {
                                         trace!("NetworkEvent::ModelConfigRequest");
-                                        match sharable_model.get_transmittable_config(&mut p2p, 0).await {
+                                        match sharable_model.get_transmittable_config(&mut p2p, "model-config").await {
                                             Err(e) => {
                                                 if let Err(e) = protocol_req_tx.send(Err(e)) {
                                                     warn!("Could not send model config blob ticket. Error: {e:?}");
@@ -430,7 +430,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
 
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, step).await?;
+                            let ticket = p2p.add_downloadable(transmittable_distro_result, step.to_string().as_str()).await?;
                             let hash = ticket.hash();
                             info!(
                                 client_id = %identity, step = step,
