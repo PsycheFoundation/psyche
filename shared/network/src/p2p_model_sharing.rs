@@ -428,7 +428,7 @@ impl SharableModel {
         &mut self,
         param_name: &str,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
-        tag: u32,
+        tag: &str,
     ) -> Result<BlobTicket, SharableModelError> {
         let Some(loading_parameters) = self.serializing_parameters.as_mut() else {
             return Err(SharableModelError::ParametersNotInitialized);
@@ -468,7 +468,7 @@ impl SharableModel {
     pub async fn get_transmittable_config<B: Networkable>(
         &mut self,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
-        tag: u32,
+        tag: &str,
     ) -> Result<BlobTicket, SharableModelError> {
         match self.config_and_tokenizer_ticket.as_ref() {
             Some(ticket) => {

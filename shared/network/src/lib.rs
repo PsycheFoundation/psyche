@@ -414,17 +414,20 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
+    pub async fn add_downloadable(&mut self, data: Download, tag: &str) -> Result<BlobTicket> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
             .blobs()
             .add_bytes(blob_data.clone())
-            .with_named_tag(tag.to_bytes())
+            .with_named_tag(tag)
             .await?;
         let addr = self.router.endpoint().node_addr().initialized().await;
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
-
+        let mut tags = self.blobs_store.tags().list().await?;
+        while let Some(tag) = tags.next().await {
+            println!("TAG IN STORE: {:?}", tag);
+        }
         debug!(
             name: "blob_upload",
             hash = %blob_res.hash.fmt_short(),
@@ -452,7 +455,22 @@ where
                     }
                 };
 
-                let tag_value = match u32::from_bytes(tag.name.0.iter().as_slice()) {
+                println!("Tag name: {}", tag.name);
+                println!("Tag name bytes: {:?}", tag.name.0);
+                let tag_value_str = match std::str::from_utf8(&tag.name.0) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!("Failed converting tag bytes to UTF-8 string: {}", e);
+                        continue;
+                    }
+                };
+
+                if tag_value_str.starts_with("model-") {
+                    to_delete.push(tag_value_str.to_string());
+                    continue;
+                }
+
+                let tag_value = match tag_value_str.parse::<u32>() {
                     Ok(value) => value,
                     Err(e) => {
                         warn!("Failed parsing tag value: {}", e);
@@ -460,14 +478,17 @@ where
                     }
                 };
 
+                println!("Tag value: {}", tag_value);
+                println!("Target tag: {}", target_tag);
                 if tag_value < target_tag {
-                    to_delete.push(tag_value);
+                    info!("DELETING blob with tag {}", tag_value);
+                    to_delete.push(tag_value.to_string());
                 }
             }
 
             let mut deleted_tags = 0;
             for tag in to_delete {
-                match store.tags().delete(tag.to_bytes()).await {
+                match store.tags().delete(tag.clone().as_str()).await {
                     Ok(_) => {
                         deleted_tags += 1;
                     }
