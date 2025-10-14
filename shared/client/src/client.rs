@@ -184,7 +184,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                if let Err(err) = p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs).await {
+                                if let Err(err) = p2p.remove_staled_tags(last_needed_step_blobs).await {
                                     warn!("Error deleting blob tags less than {last_needed_step_blobs}: {err}");
                                 }
                                 let p2p_info = get_p2p_info(&p2p).await?;
