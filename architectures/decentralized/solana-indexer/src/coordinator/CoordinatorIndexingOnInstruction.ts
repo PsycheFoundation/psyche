@@ -13,7 +13,7 @@ import {
 } from '../utils'
 import { CoordinatorDataStore } from './CoordinatorDataStore'
 
-export async function coordinatorIndexingInstruction(
+export async function coordinatorIndexingOnInstruction(
 	dataStore: CoordinatorDataStore,
 	blockTime: Date | undefined,
 	instructionOrdinal: bigint,
@@ -95,10 +95,32 @@ async function processWitness(
 ): Promise<void> {
 	const runInfo = dataStore.getRunInfo(context.runAddress)
 	const witnessPayload = witnessArgsJsonDecoder(context.instructionPayload)
+
 	const userWitnesses = runInfo.witnessesPerUser.get(context.signerAddress) ?? {
 		lastFew: [],
 		sampled: { rate: 1, data: [] },
 	}
+
+	const witnessStep = witnessPayload.metadata.step
+	const witnessData = new Map<string, number>()
+	if (witnessPayload.metadata.bandwidthPerSec !== undefined) {
+		witnessData.set('bandwidthPerSec', witnessPayload.metadata.bandwidthPerSec)
+	}
+	if (witnessPayload.metadata.tokensPerSec !== undefined) {
+		witnessData.set('tokensPerSec', witnessPayload.metadata.tokensPerSec)
+	}
+	if (witnessPayload.metadata.efficiency !== undefined) {
+		witnessData.set('efficiency', witnessPayload.metadata.efficiency)
+	}
+	if (witnessPayload.metadata.loss !== undefined) {
+		witnessData.set('loss', witnessPayload.metadata.loss)
+	}
+	if (witnessPayload.metadata.evals !== undefined) {
+		for (const evalItem of witnessPayload.metadata.evals) {
+			witnessData.set(evalItem.name, evalItem.value)
+		}
+	}
+
 	const desiredLastFewCount = 10
 	const desiredSampledCount = 100
 	const witness = {

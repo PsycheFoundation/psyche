@@ -10,15 +10,15 @@ import {
 	IndexingCheckpoint,
 	indexingCheckpointJsonCodec,
 } from '../indexing/IndexingCheckpoint'
-import { indexingInstructionsLoop } from '../indexing/IndexingInstructions'
+import { indexingInstructions } from '../indexing/IndexingInstructions'
 import { saveRead, saveWrite } from '../save'
 import { utilsGetProgramAnchorIdl } from '../utils'
 import {
 	MiningPoolDataStore,
 	miningPoolDataStoreJsonCodec,
 } from './MiningPoolDataStore'
-import { miningPoolIndexingCheckpoint } from './MiningPoolIndexingCheckpoint'
-import { miningPoolIndexingInstruction } from './MiningPoolIndexingInstruction'
+import { miningPoolIndexingCheckpoint } from './MiningPoolIndexingOnCheckpoint'
+import { miningPoolIndexingOnInstruction } from './MiningPoolIndexingOnInstruction'
 
 import { Application } from 'express'
 import { miningPoolDataPoolInfoJsonCodec } from './MiningPoolDataPoolInfo'
@@ -100,7 +100,7 @@ async function serviceIndexing(
 	dataStore: MiningPoolDataStore
 ) {
 	const programIdl = await utilsGetProgramAnchorIdl(rpcHttp, programAddress)
-	await indexingInstructionsLoop(
+	await indexingInstructions(
 		rpcHttp,
 		programAddress,
 		startingCheckpoint,
@@ -112,7 +112,7 @@ async function serviceIndexing(
 			instructionPayload,
 			instructionOrdinal,
 		}) => {
-			await miningPoolIndexingInstruction(
+			await miningPoolIndexingOnInstruction(
 				dataStore,
 				blockTime,
 				instructionName,

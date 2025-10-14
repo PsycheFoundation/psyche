@@ -15,7 +15,7 @@ import {
 } from '../utils'
 import { CoordinatorDataStore } from './CoordinatorDataStore'
 
-export async function coordinatorIndexingCheckpoint(
+export async function coordinatorIndexingOnCheckpoint(
 	rpcHttp: RpcHttp,
 	programIdl: IdlProgram,
 	dataStore: CoordinatorDataStore
