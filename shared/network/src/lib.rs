@@ -10,7 +10,7 @@ use iroh::{
 };
 use iroh_blobs::{
     BlobsProtocol,
-    api::{Tag, tags::TagInfo},
+    api::tags::TagInfo,
     store::{
         fs::options::GcConfig,
         mem::{MemStore, Options as MemStoreOptions},
