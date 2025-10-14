@@ -236,7 +236,7 @@ where
         trace!("creating blobs store...");
         let store = MemStore::new_with_opts(MemStoreOptions {
             gc_config: Some(GcConfig {
-                interval: Duration::from_secs(5000),
+                interval: Duration::from_secs(10),
                 add_protected: None,
             }),
         });
