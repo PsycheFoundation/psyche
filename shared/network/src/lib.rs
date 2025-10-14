@@ -825,7 +825,7 @@ pub async fn blob_ticket_param_request_task(
                     .unwrap()
                     .push((blob_ticket, model_request_type));
 
-                peer_manager.report_success_on_getting_hash(peer_id);
+                peer_manager.report_success(peer_id);
                 return;
             }
             Ok(Err(e)) | Err(e) => {

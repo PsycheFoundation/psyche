@@ -272,7 +272,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
                                         metrics.record_download_completed(hash, from);
-                                        peer_manager.report_success_on_getting_model(from);
                                         if retried_downloads.remove(hash).await.is_some() {
                                             info!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
