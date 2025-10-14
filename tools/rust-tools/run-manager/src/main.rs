@@ -193,14 +193,11 @@ impl CoordinatorClient {
 
         let instance = self.fetch_coordinator_data(run_id)?;
         info!(
-            "Fetched CoordinatorInstance from chain: {{ run_id: {}, coordinator_account: {} }}",
-            instance.run_id, instance.coordinator_account
+            "Fetched CoordinatorInstance from chain: {{ run_id: {}, coordinator_account: {}, client_version: {} }}",
+            instance.run_id, instance.coordinator_account, instance.client_version
         );
 
-        // TODO: When version field is added to CoordinatorInstance, use it here:
-        // let docker_tag = format!("nousresearch/psyche-client:{}", instance.version);
-
-        let docker_tag = "nousresearch/psyche-client:latest".to_string();
+        let docker_tag = format!("nousresearch/psyche-client:{}", instance.client_version);
         Ok(docker_tag)
     }
 }

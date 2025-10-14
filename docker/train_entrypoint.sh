@@ -88,6 +88,12 @@ while true; do
     # Reset PID after client exits
     PSYCHE_CLIENT_PID=0
 
+    # Exit code 10 means version mismatch - exit container immediately (no retry)
+    if [[ $EXIT_STATUS -eq 10 ]]; then
+        echo -e "[!] Version mismatch detected. Exiting container without retry..."
+        exit 10
+    fi
+
     # Reset restart counter if client ran longer than RESET_TIME
     if [ $duration -ge $RESET_TIME ]; then
         num_restarts=0

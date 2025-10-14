@@ -172,6 +172,23 @@ impl App {
             .get_coordinator_instance(&coordinator_instance)
             .await?;
 
+        // Check client version compatibility before joining
+        let client_version =
+            std::env::var("PSYCHE_CLIENT_VERSION").unwrap_or_else(|_| "latest".to_string());
+        if client_version != coordinator_instance_state.client_version {
+            tracing::error!(
+                client_version = %client_version,
+                coordinator_version = %coordinator_instance_state.client_version,
+                "Version mismatch detected. Client version does not match coordinator version."
+            );
+            std::process::exit(10);
+        }
+        info!(
+            client_version = %client_version,
+            coordinator_version = %coordinator_instance_state.client_version,
+            "Version check passed"
+        );
+
         let coordinator_account = coordinator_instance_state.coordinator_account;
 
         let backend_runner = backend

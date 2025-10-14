@@ -133,6 +133,8 @@ pub struct CoordinatorInstance {
     pub coordinator_account: Pubkey,
     #[max_len(SOLANA_MAX_STRING_LEN)]
     pub run_id: String,
+    #[max_len(32)]
+    pub client_version: String,
 }
 
 impl CoordinatorInstance {
