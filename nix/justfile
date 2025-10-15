@@ -22,9 +22,8 @@ build_docker_solana_test_client:
 
 # Build the image for the solana client used for testing (without Python dependencies)
 build_docker_solana_test_client_no_python:
-    nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
-    nix-results/docker-psyche-solana-test-client-no-python | docker load
-    docker tag psyche-solana-test-client-no-python:latest psyche-solana-test-client:latest
+    nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client
+    nix-results/docker-psyche-solana-test-client | docker load
 
 # Build the image for the solana vaidator used for testing
 build_docker_solana_test_validator:
