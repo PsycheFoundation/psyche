@@ -1,4 +1,4 @@
-name: Solana integration test (reusable)
+name: Solana integration test base
 
 on:
   workflow_call:
