@@ -172,24 +172,31 @@ impl App {
             .get_coordinator_instance(&coordinator_instance)
             .await?;
 
+        let coordinator_account = coordinator_instance_state.coordinator_account;
+
         // Check client version compatibility before joining
+        let coordinator_account_state = backend
+            .get_coordinator_account(&coordinator_account)
+            .await?;
         let client_version =
             std::env::var("PSYCHE_CLIENT_VERSION").unwrap_or_else(|_| "latest".to_string());
-        if client_version != coordinator_instance_state.client_version {
+        let coordinator_version = String::from(&coordinator_account_state.state.client_version);
+        if client_version != coordinator_version {
             tracing::error!(
                 client_version = %client_version,
-                coordinator_version = %coordinator_instance_state.client_version,
+                coordinator_version = %coordinator_version,
                 "Version mismatch detected. Client version does not match coordinator version."
             );
             std::process::exit(10);
         }
         info!(
             client_version = %client_version,
-            coordinator_version = %coordinator_instance_state.client_version,
+            coordinator_version = %coordinator_version,
             "Version check passed"
         );
 
-        let coordinator_account = coordinator_instance_state.coordinator_account;
+        // Store the initial client version for monitoring during pause
+        let initial_client_version = coordinator_version.clone();
 
         let backend_runner = backend
             .start(self.run_id.clone(), coordinator_account)
@@ -306,7 +313,30 @@ impl App {
                                 }
                             }
                         }
-                        Err(CoordinatorError::Halted) => {}, // don't print anything when halted. it's an "error" but no need to spam logs
+                        Err(CoordinatorError::Halted) => {
+                            // If we're waiting to join and the run is halted (paused),
+                            // check if the client version has changed, and if it has exit with error code 10 (version mismatch)
+                            if joined_run_this_epoch.is_none() && !ever_joined_run {
+                                let current_coordinator_state = backend
+                                    .get_coordinator_account(&coordinator_account)
+                                    .await?;
+                                let current_version = String::from(&current_coordinator_state.state.client_version);
+                                tracing::debug!(
+                                    initial_version = %initial_client_version,
+                                    current_version = %current_version,
+                                    "Run is halted. Checking for client version changes."
+                                );
+
+                                if current_version != initial_client_version {
+                                    tracing::error!(
+                                        initial_version = %initial_client_version,
+                                        current_version = %current_version,
+                                        "Client version changed while waiting for run to unpause. Exiting."
+                                    );
+                                    std::process::exit(10);
+                                }
+                            }
+                        },
                         Err(err) => debug!("Tick simulation error: {err}")
                     };
                 }

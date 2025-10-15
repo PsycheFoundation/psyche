@@ -10,6 +10,9 @@ use std::process::{Command, Stdio};
 use tokio::signal;
 use tracing::{error, info};
 
+const MAX_RETRIES: u32 = 30;
+const RETRY_DELAY_SECS: u64 = 5;
+
 #[derive(Parser, Debug)]
 #[command(name = "run-manager")]
 #[command(about = "Manager to download client containers based on a run version")]
@@ -158,6 +161,60 @@ impl DockerManager {
 
         Ok(())
     }
+
+    fn wait_for_container(&self, container_id: &str) -> Result<i32> {
+        let output = Command::new("docker")
+            .arg("wait")
+            .arg(container_id)
+            .output()
+            .context("Failed to wait for container")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Docker wait failed: {}", stderr));
+        }
+
+        let exit_code_str = String::from_utf8(output.stdout)
+            .context("Failed to parse exit code")?
+            .trim()
+            .to_string();
+
+        let exit_code = exit_code_str
+            .parse::<i32>()
+            .context("Failed to parse exit code as integer")?;
+
+        Ok(exit_code)
+    }
+
+    fn stop_and_remove_container(&self, container_id: &str) -> Result<()> {
+        info!("Stopping and removing container: {}", container_id);
+
+        // Stop the container
+        let stop_output = Command::new("docker")
+            .arg("stop")
+            .arg(container_id)
+            .output()
+            .context("Failed to stop container")?;
+
+        if !stop_output.status.success() {
+            let stderr = String::from_utf8_lossy(&stop_output.stderr);
+            error!("Warning: Docker stop failed: {}", stderr);
+        }
+
+        // Remove the container
+        let rm_output = Command::new("docker")
+            .arg("rm")
+            .arg(container_id)
+            .output()
+            .context("Failed to remove container")?;
+
+        if !rm_output.status.success() {
+            let stderr = String::from_utf8_lossy(&rm_output.stderr);
+            error!("Warning: Docker rm failed: {}", stderr);
+        }
+
+        Ok(())
+    }
 }
 
 /// Coordinator client for querying Solana
@@ -206,19 +263,11 @@ impl CoordinatorClient {
     }
 }
 
-async fn run(args: Args) -> Result<()> {
-    let wallet_key = std::fs::read_to_string(args.wallet_path)
-        .context("Failed to read wallet file")?
-        .trim()
-        .to_string();
-
-    // Check if using local image before moving the value
-    let use_local = args.local.is_some();
-
-    // Determine which Docker image to use
-    let docker_tag = if let Some(local_image) = args.local {
+/// Determine which Docker image to use and pull it if necessary
+async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String> {
+    let docker_tag = if let Some(ref local_image) = args.local {
         info!("Using local Docker image: {}", local_image);
-        local_image
+        local_image.clone()
     } else {
         // Get required environment variables for coordinator query
         let run_id = get_env_var("RUN_ID")?;
@@ -236,23 +285,66 @@ async fn run(args: Args) -> Result<()> {
         docker_tag
     };
 
-    // Initialize Docker manager
-    let docker_mgr = DockerManager::new()?;
-
     // Only pull if not using local image
-    if !use_local {
+    if args.local.is_none() {
         docker_mgr.pull_image(&docker_tag)?;
     }
 
-    // Run the container
-    let container_id = docker_mgr.run_container(&docker_tag, &args.env_file, wallet_key)?;
+    Ok(docker_tag)
+}
 
-    if args.background {
-        println!("\nContainer is running in the background.");
-        println!("To view logs: docker logs -f {}", &container_id[..12]);
-        println!("To stop: docker stop {}", &container_id[..12]);
-    } else {
-        docker_mgr.stream_logs(&container_id)?;
+async fn run(args: Args) -> Result<()> {
+    let wallet_key = std::fs::read_to_string(&args.wallet_path)
+        .context("Failed to read wallet file")?
+        .trim()
+        .to_string();
+    let docker_mgr = DockerManager::new()?;
+    let mut docker_tag = prepare_image(&args, &docker_mgr).await?;
+
+    for attempt in 0..MAX_RETRIES {
+        info!("Container attempt {}/{}", attempt + 1, MAX_RETRIES);
+
+        let container_id =
+            docker_mgr.run_container(&docker_tag, &args.env_file, wallet_key.clone())?;
+
+        let exit_code = if args.background {
+            println!("\nContainer is running in the background.");
+            println!("To view logs: docker logs -f {}", &container_id[..12]);
+            println!("To stop: docker stop {}", &container_id[..12]);
+            docker_mgr.wait_for_container(&container_id)?
+        } else {
+            docker_mgr.stream_logs(&container_id)?;
+            docker_mgr.wait_for_container(&container_id)?
+        };
+
+        info!("Container exited with code: {}", exit_code);
+
+        docker_mgr.stop_and_remove_container(&container_id)?;
+
+        // Check if we should retry
+        if attempt + 1 < MAX_RETRIES {
+            // Exit code 10 means version mismatch, so we re-check the coordinator for a new version
+            if exit_code == 10 {
+                info!(
+                    "Version mismatch detected (exit code 10), re-checking coordinator for new version..."
+                );
+                docker_tag = prepare_image(&args, &docker_mgr).await?;
+            } else {
+                info!(
+                    "Container exited with code {}, retrying with same image...",
+                    exit_code
+                );
+            }
+
+            info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
+            tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+        } else {
+            error!(
+                "Maximum retries ({}) reached. Container keeps exiting.",
+                MAX_RETRIES
+            );
+            return Err(anyhow!("Container failed after {} attempts", MAX_RETRIES));
+        }
     }
 
     Ok(())

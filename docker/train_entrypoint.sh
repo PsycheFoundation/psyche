@@ -68,7 +68,7 @@ RESET_TIME=120  # Reset retries if the client runs for 2 minutes
 num_restarts=0
 
 while true; do
-    echo -e "\n[+] Starting to train in run ${RUN_ID}..."
+    echo -e "\n[+] Starting to train in run ${RUN_ID}... (Attempt $((num_restarts + 1))/5)"
 
     start_time=$SECONDS  # Record start time
 
@@ -79,10 +79,12 @@ while true; do
         --logs "console" &
 
     PSYCHE_CLIENT_PID=$!
-    wait "$PSYCHE_CLIENT_PID" || true  # Wait for the app to exit; continue on signal interrupt
+    set +e
+    wait "$PSYCHE_CLIENT_PID"
+    EXIT_STATUS=$?
+    set -e
 
     duration=$((SECONDS - start_time))  # Calculate runtime duration
-    EXIT_STATUS=$?
     echo -e "\n[!] Psyche client exited with status '$EXIT_STATUS'."
 
     # Reset PID after client exits
