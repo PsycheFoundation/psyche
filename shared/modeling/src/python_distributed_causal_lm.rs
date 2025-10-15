@@ -16,7 +16,7 @@ use std::{
     thread::JoinHandle,
     time::Duration,
 };
-use tch::{Device, Kind, Tensor};
+use tch::{Device, Tensor};
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
@@ -132,12 +132,19 @@ impl TorchDistributedCommunicator {
         ret
     }
 
-    pub fn wait_for_all_ranks(&self) -> PyResult<()> {
+    pub fn barrier(&self, device: Option<Device>) -> PyResult<()> {
         // Wait for all other ranks to signal ready
         Python::with_gil(|py| {
             let distributed = Python::import(py, "torch.distributed")?;
             let barrier = distributed.getattr("barrier")?;
-            barrier.call0()?; // This will block until all ranks join
+            match device {
+                Some(rank) => {
+                    let kwargs = PyDict::new(py);
+                    kwargs.set_item("device_ids", [rank.c_int()]).unwrap();
+                    barrier.call((), Some(&kwargs))
+                }
+                None => barrier.call0(),
+            }?; // This will block until all ranks join
             Ok(())
         })
     }
@@ -283,7 +290,7 @@ impl PythonDistributedCausalLM {
                         )?;
 
                         // Wait for all ranks to be ready before broadcasting tensors
-                        comm.wait_for_all_ranks()?;
+                        comm.barrier(Some(device))?;
                         info!("Sharing parameters with the other ranks");
 
                         for (name, tensor) in tensors_vec.iter() {
@@ -307,7 +314,7 @@ impl PythonDistributedCausalLM {
                             }
 
                             // Ensure all ranks have received the tensor before continuing
-                            comm.wait_for_all_ranks()?;
+                            comm.barrier(Some(device))?;
                         }
                     }
                 }
@@ -436,8 +443,7 @@ impl CausalLM for PythonDistributedCausalLM {
             .unwrap();
 
         // barrier to ensure everyone has seen the broadcast
-        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
-        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
+        self.comm.barrier(Some(self.device())).unwrap();
 
         self.comm.broadcast(&batch_data.input_ids).unwrap();
         if let Some(labels) = &batch_data.labels {
@@ -511,8 +517,7 @@ impl CausalLM for PythonDistributedCausalLM {
             .unwrap();
 
         // barrier to ensure everyone has seen the broadcast
-        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
-        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
+        self.comm.barrier(Some(self.device())).unwrap();
     }
 }
 
