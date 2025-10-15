@@ -145,6 +145,7 @@ impl CoordinatorInstance {
 pub mod psyche_solana_coordinator {
 
     use super::*;
+    use psyche_core::FixedString;
 
     pub fn init_coordinator(
         context: Context<InitCoordinatorAccounts>,
@@ -170,6 +171,17 @@ pub mod psyche_solana_coordinator {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
         account.state.update(metadata, config, model, progress)
+    }
+
+    pub fn update_version_tag(
+        ctx: Context<OwnerCoordinatorAccounts>,
+        new_tag: String,
+    ) -> Result<()> {
+        let mut account = ctx.accounts.coordinator_account.load_mut()?;
+        account.state.client_version =
+            FixedString::<32>::try_from(new_tag.as_str()).unwrap();
+        msg!("new tag: {}", account.state.client_version);
+        Ok(())
     }
 
     pub fn set_future_epoch_rates(
