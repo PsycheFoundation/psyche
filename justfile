@@ -23,18 +23,18 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-# run integration decentralized tests
-decentralized-integration-test test_name="" +flags="":
+decentralized-integration-tests test_name="" +flags="":
     if [[ " {{ flags }} " =~ " python " ]]; then \
-        just setup_python_test_infra; \
+            echo "Running tests with Python"; \
+            just setup_python_test_infra; \
     else \
-        just setup_test_infra; \
+            echo "Running tests without Python"; \
+            just setup_test_infra; \
     fi
-
     if [ "{{ test_name }}" = "" ]; then \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
+            cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
     else \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
+            cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
 # run integration decentralized chaos tests
