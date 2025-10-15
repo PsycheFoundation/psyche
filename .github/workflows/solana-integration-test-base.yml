@@ -24,7 +24,7 @@ jobs:
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: false
+          swap-storage: true
 
       - name: Check initial disk space
         run: |
