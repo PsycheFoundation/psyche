@@ -33,6 +33,7 @@ let
     {
       imageName,
       solanaClientPackage,
+      usePython ? false,
     }:
     pkgs.dockerTools.streamLayeredImage {
       name = imageName;
@@ -87,6 +88,7 @@ let
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
           "TRITON_LIBCUDA_PATH=/usr/lib64"
           "PYTHONUNBUFFERED=1"
+          "PYTHON_ENABLED=${usePython}"
         ];
         Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
       };
@@ -137,11 +139,13 @@ let
     docker-psyche-solana-test-client = mkSolanaTestClientImage {
       imageName = "psyche-solana-test-client";
       solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nixglhost";
+      usePython = true;
     };
 
     docker-psyche-solana-test-client-no-python = mkSolanaTestClientImage {
       imageName = "psyche-solana-test-client-no-python";
       solanaClientPackage = nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python";
+      usePython = false;
     };
 
     docker-psyche-solana-test-validator = pkgs.dockerTools.streamLayeredImage {
