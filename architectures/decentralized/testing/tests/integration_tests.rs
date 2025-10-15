@@ -49,7 +49,7 @@ async fn test_one_clients_three_epochs_run() {
         docker.clone(),
         1,
         Some(PathBuf::from(
-            "../../config/solana-test/light-one-min-clients.toml",
+            "../../config/solana-test/python-test-config.toml",
         )),
     )
     .await;
