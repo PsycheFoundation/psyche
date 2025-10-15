@@ -134,7 +134,7 @@ impl App {
 
         let blob_ticket = match self
             .network
-            .add_downloadable(DistroResultBlob { step, data }, step)
+            .add_downloadable(DistroResultBlob { step, data }, step.to_string().as_str())
             .await
         {
             Ok(bt) => {
