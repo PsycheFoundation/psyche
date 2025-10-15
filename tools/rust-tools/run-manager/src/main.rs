@@ -29,6 +29,10 @@ struct Args {
     /// Run container in background without streaming logs to console
     #[arg(long, default_value = "false")]
     background: bool,
+
+    /// Use a local Docker image instead of pulling from coordinator
+    #[arg(long)]
+    local: Option<String>,
 }
 
 /// Load environment variables from a file into host process
@@ -203,28 +207,42 @@ impl CoordinatorClient {
 }
 
 async fn run(args: Args) -> Result<()> {
-    // Get required environment variables
-    let run_id = get_env_var("RUN_ID")?;
-    let rpc = get_env_var("RPC")?;
-
     let wallet_key = std::fs::read_to_string(args.wallet_path)
         .context("Failed to read wallet file")?
         .trim()
         .to_string();
 
-    let coordinator_program_id = args
-        .coordinator_program_id
-        .parse::<Pubkey>()
-        .context("Failed to parse coordinator program ID")?;
-    info!("Using coordinator program ID: {}", coordinator_program_id);
+    // Check if using local image before moving the value
+    let use_local = args.local.is_some();
 
-    let coordinator = CoordinatorClient::new(rpc.clone(), coordinator_program_id);
-    let docker_tag = coordinator.get_docker_tag_for_run(&run_id)?;
-    info!("Docker tag for run '{}': {}", run_id, docker_tag);
+    // Determine which Docker image to use
+    let docker_tag = if let Some(local_image) = args.local {
+        info!("Using local Docker image: {}", local_image);
+        local_image
+    } else {
+        // Get required environment variables for coordinator query
+        let run_id = get_env_var("RUN_ID")?;
+        let rpc = get_env_var("RPC")?;
+
+        let coordinator_program_id = args
+            .coordinator_program_id
+            .parse::<Pubkey>()
+            .context("Failed to parse coordinator program ID")?;
+        info!("Using coordinator program ID: {}", coordinator_program_id);
+
+        let coordinator = CoordinatorClient::new(rpc.clone(), coordinator_program_id);
+        let docker_tag = coordinator.get_docker_tag_for_run(&run_id)?;
+        info!("Docker tag for run '{}': {}", run_id, docker_tag);
+        docker_tag
+    };
 
     // Initialize Docker manager
     let docker_mgr = DockerManager::new()?;
-    docker_mgr.pull_image(&docker_tag)?;
+
+    // Only pull if not using local image
+    if !use_local {
+        docker_mgr.pull_image(&docker_tag)?;
+    }
 
     // Run the container
     let container_id = docker_mgr.run_container(&docker_tag, &args.env_file, wallet_key)?;
