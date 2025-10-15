@@ -10,6 +10,7 @@ use iroh::{
 };
 use iroh_blobs::{
     BlobsProtocol,
+    api::tags::TagInfo,
     store::{
         fs::options::GcConfig,
         mem::{MemStore, Options as MemStoreOptions},
@@ -112,6 +113,41 @@ const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
 pub enum DiscoveryMode {
     Local,
     N0,
+}
+
+#[derive(Debug, Clone)]
+pub enum BlobTag {
+    // Tag for Distro result blobs containing the step as an u32 to check if it's safe to be deleted
+    DistroResult(u32),
+    // Tag for Parameter blobs with a specific format to identify them and remove them after warmup
+    Parameter(String),
+}
+
+impl TryFrom<TagInfo> for BlobTag {
+    type Error = String;
+
+    fn try_from(tag: TagInfo) -> Result<Self, Self::Error> {
+        let tag_value_str = match std::str::from_utf8(&tag.name.0) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("Failed parsing tag name: {}", e);
+                return Err("Failed parsing tag name".to_string());
+            }
+        };
+
+        if tag_value_str.starts_with("model-") {
+            return Ok(BlobTag::Parameter(tag_value_str.to_string()));
+        }
+
+        let tag_value = match tag_value_str.parse::<u32>() {
+            Ok(value) => value,
+            Err(e) => {
+                return Err(format!("Failed parsing tag value: {}", e));
+            }
+        };
+
+        Ok(BlobTag::DistroResult(tag_value))
+    }
 }
 
 pub struct NetworkConnection<BroadcastMessage, Download>
@@ -414,17 +450,16 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
+    pub async fn add_downloadable(&mut self, data: Download, tag: &str) -> Result<BlobTicket> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
             .blobs()
             .add_bytes(blob_data.clone())
-            .with_named_tag(tag.to_bytes())
+            .with_named_tag(tag)
             .await?;
         let addr = self.router.endpoint().node_addr().initialized().await;
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
-
         debug!(
             name: "blob_upload",
             hash = %blob_res.hash.fmt_short(),
@@ -437,7 +472,9 @@ where
         Ok(blob_ticket)
     }
 
-    pub async fn remove_blobs_with_tag_less_than(&mut self, target_tag: u32) -> anyhow::Result<()> {
+    /// Removes all the tags from the store that are lower than the target tag.
+    /// Also removes all the tags used for the parameter sharing since this will run only in the Train state
+    pub async fn remove_staled_tags(&mut self, target_tag: u32) -> anyhow::Result<()> {
         let store = self.blobs_store.as_ref().clone();
         let mut tags = store.tags().list().await?;
         let mut to_delete = Vec::new();
@@ -452,22 +489,29 @@ where
                     }
                 };
 
-                let tag_value = match u32::from_bytes(tag.name.0.iter().as_slice()) {
-                    Ok(value) => value,
+                let blob_tag: BlobTag = match BlobTag::try_from(tag) {
+                    Ok(tag) => tag,
                     Err(e) => {
-                        warn!("Failed parsing tag value: {}", e);
+                        warn!("Failed parsing blob tag: {}", e);
                         continue;
                     }
                 };
 
-                if tag_value < target_tag {
-                    to_delete.push(tag_value);
+                match blob_tag {
+                    BlobTag::Parameter(tag_name) => {
+                        to_delete.push(tag_name);
+                    }
+                    BlobTag::DistroResult(step) => {
+                        if step < target_tag {
+                            to_delete.push(step.to_string());
+                        }
+                    }
                 }
             }
 
             let mut deleted_tags = 0;
             for tag in to_delete {
-                match store.tags().delete(tag.to_bytes()).await {
+                match store.tags().delete(&tag).await {
                     Ok(_) => {
                         deleted_tags += 1;
                     }
