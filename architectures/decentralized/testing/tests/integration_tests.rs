@@ -49,7 +49,7 @@ async fn test_one_clients_three_epochs_run() {
         docker.clone(),
         1,
         Some(PathBuf::from(
-            "../../config/solana-test/light-one-min-clients.toml",
+            "../../config/solana-test/nano-one-min-clients.toml",
         )),
     )
     .await;
@@ -134,7 +134,7 @@ async fn test_two_clients_three_epochs_run() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
@@ -220,7 +220,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
         docker.clone(),
         1,
         Some(PathBuf::from(
-            "../../config/solana-test/light-one-min-clients.toml",
+            "../../config/solana-test/nano-one-min-clients.toml",
         )),
     )
     .await;
@@ -360,7 +360,7 @@ async fn disconnect_client() {
         docker.clone(),
         3,
         Some(PathBuf::from(
-            "../../config/solana-test/config-three-clients.toml",
+            "../../config/solana-test/nano-three-min-clients.toml",
         )),
     )
     .await;
@@ -522,7 +522,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
@@ -619,7 +619,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
@@ -731,7 +731,7 @@ async fn test_solana_subscriptions() {
         docker.clone(),
         2,
         Some(PathBuf::from(
-            "../../config/solana-test/light-two-min-clients.toml",
+            "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
