@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, ci-decentralized-integration-test]
+    branches: [main]
 
 jobs:
   test-one-clients-three-epochs-run:
