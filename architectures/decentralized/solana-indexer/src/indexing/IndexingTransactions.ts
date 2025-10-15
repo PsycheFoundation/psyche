@@ -9,7 +9,7 @@ import {
 	IndexingCheckpointChunk,
 } from './IndexingCheckpoint'
 
-export async function indexingSignaturesLoop(
+export async function indexingTransactionsIds(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
 	beginCheckpoint: IndexingCheckpoint,
@@ -26,7 +26,7 @@ export async function indexingSignaturesLoop(
 	)
 	while (true) {
 		try {
-			await indexingSignaturesChunk(
+			await indexingTransactionChunk(
 				rpcHttp,
 				programAddress,
 				orderedIndexedChunks,
@@ -38,7 +38,7 @@ export async function indexingSignaturesLoop(
 	}
 }
 
-async function indexingSignaturesChunk(
+async function indexingTransactionChunk(
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
 	orderedIndexedChunks: Array<IndexingCheckpointChunk>,

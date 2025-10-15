@@ -6,7 +6,7 @@ import {
 } from 'solana-kiss'
 import { MiningPoolDataStore } from './MiningPoolDataStore'
 
-export async function miningPoolIndexingInstruction(
+export async function miningPoolIndexingOnInstruction(
 	dataStore: MiningPoolDataStore,
 	blockTime: Date | undefined,
 	instructionName: string,

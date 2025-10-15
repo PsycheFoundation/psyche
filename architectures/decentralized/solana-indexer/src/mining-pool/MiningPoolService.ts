@@ -1,28 +1,19 @@
-import {
-	jsonCodecArray,
-	jsonCodecInteger,
-	jsonCodecObject,
-	jsonCodecPubkey,
-	Pubkey,
-	RpcHttp,
-} from 'solana-kiss'
+import { Application } from 'express'
+import { Pubkey, RpcHttp } from 'solana-kiss'
 import {
 	IndexingCheckpoint,
 	indexingCheckpointJsonCodec,
 } from '../indexing/IndexingCheckpoint'
-import { indexingInstructionsLoop } from '../indexing/IndexingInstructions'
+import { indexingInstructions } from '../indexing/IndexingInstructions'
 import { saveRead, saveWrite } from '../save'
 import { utilsGetProgramAnchorIdl } from '../utils'
 import {
 	MiningPoolDataStore,
 	miningPoolDataStoreJsonCodec,
 } from './MiningPoolDataStore'
-import { miningPoolIndexingCheckpoint } from './MiningPoolIndexingCheckpoint'
-import { miningPoolIndexingInstruction } from './MiningPoolIndexingInstruction'
-
-import { Application } from 'express'
-import { miningPoolDataPoolInfoJsonCodec } from './MiningPoolDataPoolInfo'
-import { miningPoolDataPoolStateJsonCodec } from './MiningPoolDataPoolState'
+import { miningPoolEndpoint } from './MiningPoolEndpoint'
+import { miningPoolIndexingCheckpoint } from './MiningPoolIndexingOnCheckpoint'
+import { miningPoolIndexingOnInstruction } from './MiningPoolIndexingOnInstruction'
 
 export async function miningPoolService(
 	rpcHttp: RpcHttp,
@@ -31,7 +22,7 @@ export async function miningPoolService(
 ): Promise<void> {
 	const saveName = `mining_pool_${programAddress}`
 	const { checkpoint, dataStore } = await serviceLoader(saveName)
-	serviceEndpoint(programAddress, expressApp, dataStore)
+	miningPoolEndpoint(programAddress, expressApp, dataStore)
 	await serviceIndexing(
 		saveName,
 		rpcHttp,
@@ -60,38 +51,6 @@ async function serviceLoader(saveName: string) {
 	return { checkpoint, dataStore }
 }
 
-async function serviceEndpoint(
-	programAddress: Pubkey,
-	expressApp: Application,
-	dataStore: MiningPoolDataStore
-) {
-	expressApp.get(`/mining-pool/${programAddress}/summaries`, (_, res) => {
-		const poolsSummaries = []
-		for (const [poolAddress, poolInfo] of dataStore.poolInfoByAddress) {
-			const poolState = poolInfo?.accountState
-			if (poolState === undefined) {
-				continue
-			}
-			poolsSummaries.push({ address: poolAddress, state: poolState })
-		}
-		return res.status(200).json(poolSummariesJsonCodec.encoder(poolsSummaries))
-	})
-	expressApp.get(`/mining-pool/${programAddress}/pool/:index`, (req, res) => {
-		const poolIndex = jsonCodecInteger.decoder(req.params.index)
-		const poolAddress = dataStore.poolAddressByIndex.get(poolIndex)
-		if (!poolAddress) {
-			return res.status(404).json({ error: 'Pool address not found' })
-		}
-		const poolInfo = dataStore.poolInfoByAddress.get(poolAddress)
-		if (!poolInfo) {
-			return res.status(404).json({ error: 'Pool info not found' })
-		}
-		return res
-			.status(200)
-			.json(miningPoolDataPoolInfoJsonCodec.encoder(poolInfo))
-	})
-}
-
 async function serviceIndexing(
 	saveName: string,
 	rpcHttp: RpcHttp,
@@ -100,7 +59,7 @@ async function serviceIndexing(
 	dataStore: MiningPoolDataStore
 ) {
 	const programIdl = await utilsGetProgramAnchorIdl(rpcHttp, programAddress)
-	await indexingInstructionsLoop(
+	await indexingInstructions(
 		rpcHttp,
 		programAddress,
 		startingCheckpoint,
@@ -112,7 +71,7 @@ async function serviceIndexing(
 			instructionPayload,
 			instructionOrdinal,
 		}) => {
-			await miningPoolIndexingInstruction(
+			await miningPoolIndexingOnInstruction(
 				dataStore,
 				blockTime,
 				instructionName,
@@ -130,10 +89,3 @@ async function serviceIndexing(
 		}
 	)
 }
-
-const poolSummariesJsonCodec = jsonCodecArray(
-	jsonCodecObject({
-		address: jsonCodecPubkey,
-		state: miningPoolDataPoolStateJsonCodec,
-	})
-)

@@ -1,27 +1,19 @@
 import { Application } from 'express'
-import {
-	jsonCodecArray,
-	jsonCodecObject,
-	jsonCodecPubkey,
-	jsonCodecString,
-	Pubkey,
-	RpcHttp,
-} from 'solana-kiss'
+import { Pubkey, RpcHttp } from 'solana-kiss'
 import {
 	IndexingCheckpoint,
 	indexingCheckpointJsonCodec,
 } from '../indexing/IndexingCheckpoint'
-import { indexingInstructionsLoop } from '../indexing/IndexingInstructions'
+import { indexingInstructions } from '../indexing/IndexingInstructions'
 import { saveRead, saveWrite } from '../save'
 import { utilsGetProgramAnchorIdl } from '../utils'
-import { coordinatorDataRunInfoJsonCodec } from './CoordinatorDataRunInfo'
-import { coordinatorDataRunStateJsonCodec } from './CoordinatorDataRunState'
 import {
 	CoordinatorDataStore,
 	coordinatorDataStoreJsonCodec,
 } from './CoordinatorDataStore'
-import { coordinatorIndexingCheckpoint } from './CoordinatorIndexingCheckpoint'
-import { coordinatorIndexingInstruction } from './CoordinatorIndexingInstruction'
+import { coordinatorEndpoint } from './CoordinatorEndpoint'
+import { coordinatorIndexingOnCheckpoint } from './CoordinatorIndexingOnCheckpoint'
+import { coordinatorIndexingOnInstruction } from './CoordinatorIndexingOnInstruction'
 
 export async function coordinatorService(
 	rpcHttp: RpcHttp,
@@ -30,7 +22,7 @@ export async function coordinatorService(
 ) {
 	const saveName = `coordinator_${programAddress}`
 	const { checkpoint, dataStore } = await serviceLoader(saveName)
-	serviceEndpoint(programAddress, expressApp, dataStore)
+	coordinatorEndpoint(programAddress, expressApp, dataStore)
 	await serviceIndexing(
 		saveName,
 		rpcHttp,
@@ -59,38 +51,6 @@ async function serviceLoader(saveName: string) {
 	return { checkpoint, dataStore }
 }
 
-async function serviceEndpoint(
-	programAddress: Pubkey,
-	expressApp: Application,
-	dataStore: CoordinatorDataStore
-) {
-	expressApp.get(`/coordinator/${programAddress}/summaries`, (_, res) => {
-		const runSummaries = []
-		for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
-			const runState = runInfo?.accountState
-			if (runState === undefined) {
-				continue
-			}
-			runSummaries.push({ address: runAddress, state: runState })
-		}
-		return res.status(200).json(runSummariesJsonCodec.encoder(runSummaries))
-	})
-	expressApp.get(`/coordinator/${programAddress}/run/:runId`, (req, res) => {
-		const runId = jsonCodecString.decoder(req.params.runId)
-		const runAddress = dataStore.runAddressByRunId.get(runId)
-		if (!runAddress) {
-			return res.status(404).json({ error: 'Run address not found' })
-		}
-		const runInfo = dataStore.runInfoByAddress.get(runAddress)
-		if (!runInfo) {
-			return res.status(404).json({ error: 'Run info not found' })
-		}
-		return res
-			.status(200)
-			.json(coordinatorDataRunInfoJsonCodec.encoder(runInfo))
-	})
-}
-
 async function serviceIndexing(
 	saveName: string,
 	rpcHttp: RpcHttp,
@@ -99,7 +59,7 @@ async function serviceIndexing(
 	dataStore: CoordinatorDataStore
 ): Promise<void> {
 	const programIdl = await utilsGetProgramAnchorIdl(rpcHttp, programAddress)
-	await indexingInstructionsLoop(
+	await indexingInstructions(
 		rpcHttp,
 		programAddress,
 		startingCheckpoint,
@@ -111,7 +71,7 @@ async function serviceIndexing(
 			instructionAddresses,
 			instructionPayload,
 		}) => {
-			await coordinatorIndexingInstruction(
+			await coordinatorIndexingOnInstruction(
 				dataStore,
 				blockTime,
 				instructionOrdinal,
@@ -121,7 +81,7 @@ async function serviceIndexing(
 			)
 		},
 		async (checkpoint) => {
-			await coordinatorIndexingCheckpoint(rpcHttp, programIdl, dataStore)
+			await coordinatorIndexingOnCheckpoint(rpcHttp, programIdl, dataStore)
 			await saveWrite(saveName, {
 				checkpoint: indexingCheckpointJsonCodec.encoder(checkpoint),
 				dataStore: coordinatorDataStoreJsonCodec.encoder(dataStore),
@@ -129,10 +89,3 @@ async function serviceIndexing(
 		}
 	)
 }
-
-const runSummariesJsonCodec = jsonCodecArray(
-	jsonCodecObject({
-		address: jsonCodecPubkey,
-		state: coordinatorDataRunStateJsonCodec,
-	})
-)
