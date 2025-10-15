@@ -10,3 +10,4 @@ pub mod tick;
 pub mod treasurer_claim_rewards;
 pub mod treasurer_top_up_rewards;
 pub mod update_config;
+pub mod update_version_tag;
