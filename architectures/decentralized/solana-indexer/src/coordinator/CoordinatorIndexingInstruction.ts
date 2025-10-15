@@ -95,7 +95,9 @@ async function processWitness(
 ): Promise<void> {
 	const runInfo = dataStore.getRunInfo(context.runAddress)
 	const witnessPayload = witnessArgsJsonDecoder(context.instructionPayload)
-	const userWitnesses = runInfo.witnessesPerUser.get(context.signerAddress) ?? {
+	const userWitnesses = runInfo.lastFewWitnessesPerUser.get(
+		context.signerAddress
+	) ?? {
 		lastFew: [],
 		sampled: { rate: 1, data: [] },
 	}
@@ -123,7 +125,7 @@ async function processWitness(
 			)
 		}
 	}
-	runInfo.witnessesPerUser.set(context.signerAddress, userWitnesses)
+	runInfo.lastFewWitnessesPerUser.set(context.signerAddress, userWitnesses)
 }
 
 const witnessProofJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({

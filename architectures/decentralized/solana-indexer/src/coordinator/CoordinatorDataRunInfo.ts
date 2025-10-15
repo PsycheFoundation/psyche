@@ -32,10 +32,8 @@ export interface CoordinatorDataRunInfoWitness {
 		witness: boolean
 	}
 	metadata: {
-		tokensPerSec: number
-		bandwidthPerSec: number
-		loss: number
 		step: number
+		stats: Map<string, number>
 	}
 }
 
@@ -44,25 +42,13 @@ export interface CoordinatorDataRunInfo {
 	accountUpdatedAt: Date | undefined
 	accountFetchedOrdinal: bigint
 	accountRequestOrdinal: bigint
-	witnessesPerUser: Map<
-		Pubkey,
-		{
-			lastFew: Array<CoordinatorDataRunInfoWitness>
-			sampled: {
-				rate: number
-				data: Array<{
-					selector: number
-					witness: CoordinatorDataRunInfoWitness
-				}>
-			}
-		}
-	>
+	lastFewWitnessesPerUser: Map<Pubkey, Array<CoordinatorDataRunInfoWitness>>
 	adminHistory: Array<{
 		blockTime: Date | undefined
-		instructionOrdinal: bigint
 		instructionName: string
 		instructionAddresses: Map<string, Pubkey>
 		instructionPayload: JsonValue
+		instructionOrdinal: bigint
 	}>
 }
 

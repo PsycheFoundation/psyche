@@ -33,7 +33,7 @@ export class CoordinatorDataStore {
 				accountUpdatedAt: undefined,
 				accountFetchedOrdinal: 0n,
 				accountRequestOrdinal: 0n,
-				witnessesPerUser: new Map(),
+				lastFewWitnessesPerUser: new Map(),
 				adminHistory: [],
 			}
 			this.runInfoByAddress.set(runAddress, runInfo)

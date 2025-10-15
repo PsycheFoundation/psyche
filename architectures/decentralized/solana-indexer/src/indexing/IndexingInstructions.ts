@@ -1,4 +1,5 @@
 import {
+	expectDefined,
 	idlInstructionDecode,
 	IdlProgram,
 	idlProgramGuessInstruction,
@@ -6,7 +7,7 @@ import {
 	JsonValue,
 	Pubkey,
 	RpcHttp,
-	rpcHttpWaitForTransaction,
+	rpcHttpGetTransaction,
 	RpcTransactionCallStack,
 	RpcTransactionExecution,
 	Signature,
@@ -74,8 +75,10 @@ async function indexingSignatureInstructions(
 	onInstruction: IndexingInstructionHandler
 ): Promise<void> {
 	try {
-		const { transactionExecution, transactionCallStack } =
-			await rpcHttpWaitForTransaction(rpcHttp, transactionId, 1000)
+		const { transactionExecution, transactionCallStack } = expectDefined(
+			await rpcHttpGetTransaction(rpcHttp, transactionId),
+			`Transaction:${transactionId}`
+		)
 		await indexingTransactionInstructions(
 			programAddress,
 			programIdl,
@@ -103,7 +106,7 @@ async function indexingTransactionInstructions(
 	if (transactionCallStack === undefined) {
 		return
 	}
-	const instructionOrdinal = transactionOrdinal
+	const instructionOrdinal = transactionOrdinal * 1000n
 	indexingInvocationsInstructions(
 		transactionCallStack,
 		instructionOrdinal,

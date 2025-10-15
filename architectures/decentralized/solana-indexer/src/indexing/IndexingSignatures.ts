@@ -69,12 +69,9 @@ async function indexingSignaturesChunk(
 	}
 	const newerTransactionOrdinal = newerChunkInfo
 		? newerChunkInfo.oldestTransactionOrdinal
-		: BigInt(Math.floor(new Date().getTime())) *
-			maxTransactionPerMillisecond *
-			maxInstructionPerTransaction
+		: BigInt(Math.floor(new Date().getTime())) * maxTransactionPerMillisecond
 	let olderTransactionOrdinal =
-		newerTransactionOrdinal -
-		BigInt(backwardTransactionsIds.length) * maxInstructionPerTransaction
+		newerTransactionOrdinal - BigInt(backwardTransactionsIds.length)
 	let transactionCounter = backwardTransactionsIds.length
 	const newerTransactionId = backwardTransactionsIds[0]!
 	let olderTransactionId =
@@ -108,12 +105,10 @@ async function indexingSignaturesChunk(
 	const transactionInfos = backwardTransactionsIds.map(
 		(transactionId, index) => ({
 			transactionId,
-			transactionOrdinal:
-				newerTransactionOrdinal - BigInt(index) * maxInstructionPerTransaction,
+			transactionOrdinal: newerTransactionOrdinal - BigInt(index),
 		})
 	)
 	await onChunk(updatedCheckpoint, transactionInfos)
 }
 
-const maxInstructionPerTransaction = 1000n
 const maxTransactionPerMillisecond = 1000n
