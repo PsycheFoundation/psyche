@@ -345,7 +345,6 @@ async fn test_rejoining_client_delay() {
 /// creates a run and spawns 3 clients
 /// Then we kill a client, and we verify that the other two clients are still alive and
 /// two healthchecks have been sent by those alive clients.
-#[ignore = "This test needs at least 3 GPUs to run since we are running 3 clients"]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
 async fn disconnect_client() {
@@ -357,10 +356,13 @@ async fn disconnect_client() {
     // initialize a Solana run with 2 client
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
-    let _cleanup = e2e_testing_setup_three_clients(
+
+    // Initialize a Solana run with 3 client
+    let _cleanup = e2e_testing_setup(
         docker.clone(),
+        3,
         Some(PathBuf::from(
-            "../../../config/solana-test/config-three-clients.toml",
+            "../../config/solana-test/config-three-clients.toml",
         )),
     )
     .await;
@@ -427,7 +429,7 @@ async fn disconnect_client() {
 
                 // kill client during step 2 in the RoundWitness state
                 if epoch == 1
-                    && step == 15
+                    && step == 35
                     && old_state == RunState::RoundTrain.to_string()
                     && !killed_client
                 {
@@ -482,11 +484,8 @@ async fn disconnect_client() {
 
             Response::Loss(client, epoch, step, loss) => {
                 println!(
-                    "client: {:?}, epoch: {}, step: {}, Loss: {}",
-                    client,
-                    epoch,
-                    step,
-                    loss.unwrap(),
+                    "client: {:?}, epoch: {}, step: {}, Loss: {:?}",
+                    client, epoch, step, loss,
                 );
             }
             _ => {}

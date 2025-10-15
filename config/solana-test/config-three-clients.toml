@@ -1,31 +1,34 @@
 [config]
-warmup_time = 30
+warmup_time = 50
 cooldown_time = 30
-rounds_per_epoch = 10
-max_round_train_time = 30
+rounds_per_epoch = 20
+max_round_train_time = 40
 round_witness_time = 1
 min_clients = 3
+init_min_clients = 3
 verification_percent = 0
 witness_nodes = 3
-global_batch_size = 8
+global_batch_size_start = 6
+global_batch_size_end = 6
+global_batch_size_warmup_tokens = 0
 total_steps = 25000
-checkpointers = []
 
 [model.LLM]
 architecture = "HfLlama"
 data_type = "Pretraining"
-max_seq_len = 2048
+max_seq_len = 64
+cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
+repo_id = "pefontana/Nano-Llama"
+revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
 
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"
 shuffle = "DontShuffle"
 
-[model.LLM.data_location.Http.location.Gcp]
-bucket_name = "nous-pretraining-public-us"
-filter_directory = "fineweb-edu-tokenized-llama2"
+[model.LLM.data_location.Http.location]
+SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds"
 
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4
