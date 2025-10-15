@@ -148,7 +148,7 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
         platform: None,
     });
     let config = Config {
-        image: Some("psyche-solana-test-client-no-python"),
+        image: Some("psyche-solana-test-client"),
         env: Some(envs.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()
