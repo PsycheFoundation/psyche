@@ -49,7 +49,8 @@ async function updateCoordinatorAccountState(
 			runAddress,
 			runStateJsonDecoder
 		)
-		dataStore.saveRunState(runAddress, {
+		const runInfo = dataStore.getRunInfo(runAddress)
+		runInfo.accountState = {
 			runId: runState.state.coordinator.runId,
 			name: runState.state.metadata.name,
 			description: runState.state.metadata.description,
@@ -61,7 +62,13 @@ async function updateCoordinatorAccountState(
 				})
 			),
 			nonce: runState.nonce,
-		})
+		}
+		runInfo.accountUpdatedAt = new Date()
+		runInfo.accountFetchedOrdinal = runInfo.accountRequestOrdinal
+		dataStore.runAddressByRunId.set(
+			runState.state.coordinator.runId,
+			runAddress
+		)
 	} catch (error) {
 		console.error('Failed to refresh run state', runAddress, error)
 	}

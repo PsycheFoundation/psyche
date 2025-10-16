@@ -26,7 +26,10 @@ export async function miningPoolIndexingCheckpoint(
 				poolAddress,
 				poolStateJsonDecoder
 			)
-			dataStore.savePoolState(poolAddress, poolState)
+			let poolInfo = dataStore.getPoolInfo(poolAddress)
+			poolInfo.accountState = poolState
+			poolInfo.accountUpdatedAt = new Date()
+			poolInfo.accountFetchedOrdinal = poolInfo.accountRequestOrdinal
 		} catch (error) {
 			console.error('Failed to refresh pool account state', poolAddress, error)
 		}

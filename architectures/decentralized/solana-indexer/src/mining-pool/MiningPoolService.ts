@@ -21,7 +21,10 @@ export async function miningPoolService(
 	expressApp: Application
 ): Promise<void> {
 	const saveName = `mining_pool_${programAddress}`
-	const { checkpoint, dataStore } = await serviceLoader(saveName)
+	const { checkpoint, dataStore } = await serviceLoader(
+		saveName,
+		programAddress
+	)
 	miningPoolEndpoint(programAddress, expressApp, dataStore)
 	await serviceIndexing(
 		saveName,
@@ -32,7 +35,7 @@ export async function miningPoolService(
 	)
 }
 
-async function serviceLoader(saveName: string) {
+async function serviceLoader(saveName: string, programAddress: Pubkey) {
 	let checkpoint: IndexingCheckpoint
 	let dataStore: MiningPoolDataStore
 	try {
@@ -42,7 +45,7 @@ async function serviceLoader(saveName: string) {
 		console.log('Loaded mining pool state from:', saveContent.updatedAt)
 	} catch (error) {
 		checkpoint = { orderedIndexedChunks: [] }
-		dataStore = new MiningPoolDataStore(new Map(), new Map())
+		dataStore = new MiningPoolDataStore(programAddress, new Map())
 		console.warn(
 			'Failed to read existing mining pool JSON, starting fresh',
 			error
@@ -66,18 +69,18 @@ async function serviceIndexing(
 		programIdl,
 		async ({
 			blockTime,
+			instructionOrdinal,
 			instructionName,
 			instructionAddresses,
 			instructionPayload,
-			instructionOrdinal,
 		}) => {
 			await miningPoolIndexingOnInstruction(
 				dataStore,
 				blockTime,
+				instructionOrdinal,
 				instructionName,
 				instructionAddresses,
-				instructionPayload,
-				instructionOrdinal
+				instructionPayload
 			)
 		},
 		async (checkpoint) => {

@@ -1,27 +1,33 @@
 import {
 	Pubkey,
 	jsonCodecObject,
-	jsonCodecObjectToMap,
 	jsonCodecPubkey,
 	jsonCodecTransform,
+	pubkeyFindPdaAddress,
+	utf8Encode,
 } from 'solana-kiss'
 import { utilsObjectToPubkeyMapJsonCodec } from '../utils'
 import {
 	MiningPoolDataPoolInfo,
 	miningPoolDataPoolInfoJsonCodec,
 } from './MiningPoolDataPoolInfo'
-import { MiningPoolDataPoolState } from './MiningPoolDataPoolState'
 
 export class MiningPoolDataStore {
-	poolAddressByIndex: Map<bigint, Pubkey>
+	programAddress: Pubkey,
 	poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>
 
-	constructor(
-		poolAddressByIndex: Map<bigint, Pubkey>,
-		poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>
-	) {
-		this.poolAddressByIndex = poolAddressByIndex
+	constructor(programAddress: Pubkey, poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>) {
+		this.programAddress = programAddress
 		this.poolInfoByAddress = poolInfoByAddress
+	}
+
+	public getPoolAddress(poolIndex: bigint): Pubkey {
+		const poolIndexSeedBytes = new Uint8Array(8);
+		new DataView(poolIndexSeedBytes.buffer).setBigUint64(0, poolIndex, true);
+		return pubkeyFindPdaAddress(
+			this.programAddress,
+			[utf8Encode("Pool"), poolIndexSeedBytes],
+		)
 	}
 
 	public getPoolInfo(poolAddress: Pubkey): MiningPoolDataPoolInfo {
@@ -43,28 +49,11 @@ export class MiningPoolDataStore {
 		}
 		return poolInfo
 	}
-
-	public savePoolState(
-		poolAddress: Pubkey,
-		poolState: MiningPoolDataPoolState
-	) {
-		let poolInfo = this.getPoolInfo(poolAddress)
-		poolInfo.accountState = poolState
-		poolInfo.accountUpdatedAt = new Date()
-		poolInfo.accountFetchedOrdinal = poolInfo.accountRequestOrdinal
-		this.poolAddressByIndex.set(poolState.index, poolAddress)
-	}
 }
 
 export const miningPoolDataStoreJsonCodec = jsonCodecTransform(
 	jsonCodecObject({
-		poolAddressByIndex: jsonCodecObjectToMap(
-			{
-				keyEncoder: (key: bigint) => String(key),
-				keyDecoder: (key: string) => BigInt(key),
-			},
-			jsonCodecPubkey
-		),
+		programAddress: jsonCodecPubkey,
 		poolInfoByAddress: utilsObjectToPubkeyMapJsonCodec(
 			miningPoolDataPoolInfoJsonCodec
 		),
@@ -72,11 +61,11 @@ export const miningPoolDataStoreJsonCodec = jsonCodecTransform(
 	{
 		decoder: (encoded) =>
 			new MiningPoolDataStore(
-				encoded.poolAddressByIndex,
+				encoded.programAddress,
 				encoded.poolInfoByAddress
 			),
 		encoder: (decoded) => ({
-			poolAddressByIndex: decoded.poolAddressByIndex,
+			programAddress: decoded.programAddress,
 			poolInfoByAddress: decoded.poolInfoByAddress,
 		}),
 	}

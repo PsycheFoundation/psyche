@@ -11,7 +11,6 @@ import {
 	CoordinatorDataRunInfo,
 	coordinatorDataRunInfoJsonCodec,
 } from './CoordinatorDataRunInfo'
-import { CoordinatorDataRunState } from './CoordinatorDataRunState'
 
 export class CoordinatorDataStore {
 	public runAddressByRunId: Map<string, Pubkey>
@@ -39,15 +38,6 @@ export class CoordinatorDataStore {
 			this.runInfoByAddress.set(runAddress, runInfo)
 		}
 		return runInfo
-	}
-
-	public saveRunState(runAddress: Pubkey, runState: CoordinatorDataRunState) {
-		// TODO - handle fetch failure due to account being closed
-		let runInfo = this.getRunInfo(runAddress)
-		runInfo.accountState = runState
-		runInfo.accountUpdatedAt = new Date()
-		runInfo.accountFetchedOrdinal = runInfo.accountRequestOrdinal
-		this.runAddressByRunId.set(runState.runId, runAddress)
 	}
 }
 

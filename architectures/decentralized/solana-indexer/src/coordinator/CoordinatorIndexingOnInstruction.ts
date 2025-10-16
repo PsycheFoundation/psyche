@@ -94,7 +94,7 @@ async function processWitness(
 	context: ProcessingContext
 ): Promise<void> {
 	const runInfo = dataStore.getRunInfo(context.runAddress)
-	const witnessPayload = witnessArgsJsonDecoder(context.instructionPayload)
+	const witnessPayload = witnessJsonDecoder(context.instructionPayload)
 	const userWitnesses = runInfo.lastFewWitnessesPerUser.get(
 		context.signerAddress
 	) ?? {
@@ -175,7 +175,7 @@ const witnessMetadataJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	),
 })
 
-const witnessArgsJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
+const witnessJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	proof: witnessProofJsonDecoder,
 	metadata: witnessMetadataJsonDecoder,
 })

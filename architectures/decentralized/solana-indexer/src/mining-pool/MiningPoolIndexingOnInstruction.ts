@@ -9,10 +9,10 @@ import { MiningPoolDataStore } from './MiningPoolDataStore'
 export async function miningPoolIndexingOnInstruction(
 	dataStore: MiningPoolDataStore,
 	blockTime: Date | undefined,
+	instructionOrdinal: bigint,
 	instructionName: string,
 	instructionAddresses: Map<string, Pubkey>,
-	instructionPayload: JsonValue,
-	instructionOrdinal: bigint
+	instructionPayload: JsonValue
 ) {
 	const poolAddress = instructionAddresses.get('pool')
 	if (poolAddress === undefined) {
@@ -31,11 +31,11 @@ export async function miningPoolIndexingOnInstruction(
 			await processor(dataStore, {
 				poolAddress,
 				signerAddress,
+				blockTime,
+				instructionOrdinal,
 				instructionName,
 				instructionAddresses,
 				instructionPayload,
-				instructionOrdinal,
-				blockTime,
 			})
 		}
 	} else {
@@ -60,11 +60,11 @@ const processorsByInstructionName = new Map([
 type ProcessingContext = {
 	poolAddress: Pubkey
 	signerAddress: Pubkey
+	blockTime: Date | undefined
+	instructionOrdinal: bigint
 	instructionName: string
 	instructionAddresses: Map<string, Pubkey>
 	instructionPayload: JsonValue
-	instructionOrdinal: bigint
-	blockTime: Date | undefined
 }
 
 async function processAdminAction(
@@ -74,10 +74,10 @@ async function processAdminAction(
 	let poolInfo = dataStore.getPoolInfo(context.poolAddress)
 	poolInfo.adminHistory.push({
 		blockTime: context.blockTime,
+		instructionOrdinal: context.instructionOrdinal,
 		instructionName: context.instructionName,
 		instructionAddresses: context.instructionAddresses,
 		instructionPayload: context.instructionPayload,
-		instructionOrdinal: context.instructionOrdinal,
 	})
 	poolInfo.adminHistory.sort((a, b) =>
 		Number(b.instructionOrdinal - a.instructionOrdinal)
@@ -88,62 +88,57 @@ async function processPoolExtract(
 	dataStore: MiningPoolDataStore,
 	context: ProcessingContext
 ): Promise<void> {
-	const instructionParams = poolExtractArgsJsonDecoder(
-		context.instructionPayload
-	).params
+	const poolExtractPayload = poolExtractJsonDecoder(context.instructionPayload)
 	let poolInfo = dataStore.getPoolInfo(context.poolAddress)
-	poolInfo.totalExtractCollateralAmount += instructionParams.collateralAmount
+	poolInfo.totalExtractCollateralAmount +=
+		poolExtractPayload.params.collateralAmount
 }
 
 async function processLenderDeposit(
 	dataStore: MiningPoolDataStore,
 	context: ProcessingContext
 ): Promise<void> {
-	const instructionParams = lenderDepositArgsJsonDecoder(
+	const lenderDepositPayload = lenderDepositJsonDecoder(
 		context.instructionPayload
-	).params
+	)
 	let poolInfo = dataStore.getPoolInfo(context.poolAddress)
-	const depositAmountAfter =
-		(poolInfo.depositCollateralAmountPerUser.get(context.signerAddress) ?? 0n) +
-		instructionParams.collateralAmount
 	poolInfo.depositCollateralAmountPerUser.set(
 		context.signerAddress,
-		depositAmountAfter
+		(poolInfo.depositCollateralAmountPerUser.get(context.signerAddress) ?? 0n) +
+			lenderDepositPayload.params.collateralAmount
 	)
-	poolInfo.totalDepositCollateralAmount += instructionParams.collateralAmount
+	poolInfo.totalDepositCollateralAmount +=
+		lenderDepositPayload.params.collateralAmount
 }
 
 async function processLenderClaim(
 	dataStore: MiningPoolDataStore,
 	context: ProcessingContext
 ): Promise<void> {
-	const instructionParams = lenderClaimArgsJsonDecoder(
-		context.instructionPayload
-	).params
+	const lenderClaimPayload = lenderClaimJsonDecoder(context.instructionPayload)
 	let poolInfo = dataStore.getPoolInfo(context.poolAddress)
-	const redeemableAmountAfter =
-		(poolInfo.claimRedeemableAmountPerUser.get(context.signerAddress) ?? 0n) +
-		instructionParams.redeemableAmount
 	poolInfo.claimRedeemableAmountPerUser.set(
 		context.signerAddress,
-		redeemableAmountAfter
+		(poolInfo.claimRedeemableAmountPerUser.get(context.signerAddress) ?? 0n) +
+			lenderClaimPayload.params.redeemableAmount
 	)
-	poolInfo.totalClaimRedeemableAmount += instructionParams.redeemableAmount
+	poolInfo.totalClaimRedeemableAmount +=
+		lenderClaimPayload.params.redeemableAmount
 }
 
-const poolExtractArgsJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
+const poolExtractJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	params: jsonDecoderObjectWithKeysSnakeEncoded({
 		collateralAmount: jsonCodecInteger.decoder,
 	}),
 })
 
-const lenderDepositArgsJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
+const lenderDepositJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	params: jsonDecoderObjectWithKeysSnakeEncoded({
 		collateralAmount: jsonCodecInteger.decoder,
 	}),
 })
 
-const lenderClaimArgsJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
+const lenderClaimJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	params: jsonDecoderObjectWithKeysSnakeEncoded({
 		redeemableAmount: jsonCodecInteger.decoder,
 	}),
