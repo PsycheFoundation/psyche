@@ -1,0 +1,100 @@
+[config]
+warmup_time = 50
+cooldown_time = 30
+rounds_per_epoch = 20
+<<<<<<<< HEAD:config/solana-test/nano-three-min-clients.toml
+max_round_train_time = 40
+|||||||| parent of f4ebe4cc (Improve config files for decentralized tests):config/solana-test/config-three-clients.toml
+rounds_per_epoch = 10
+max_round_train_time = 30
+========
+max_round_train_time = 30
+>>>>>>>> f4ebe4cc (Improve config files for decentralized tests):config/solana-test/test-config.toml
+round_witness_time = 1
+<<<<<<<< HEAD:config/solana-test/nano-three-min-clients.toml
+min_clients = 3
+init_min_clients = 3
+|||||||| parent of f4ebe4cc (Improve config files for decentralized tests):config/solana-test/config-three-clients.toml
+min_clients = 3
+========
+min_clients = 1
+init_min_clients = 1
+>>>>>>>> f4ebe4cc (Improve config files for decentralized tests):config/solana-test/test-config.toml
+verification_percent = 0
+<<<<<<<< HEAD:config/solana-test/nano-three-min-clients.toml
+witness_nodes = 3
+global_batch_size_start = 6
+global_batch_size_end = 6
+|||||||| parent of f4ebe4cc (Improve config files for decentralized tests):config/solana-test/config-three-clients.toml
+witness_nodes = 3
+global_batch_size = 8
+========
+witness_nodes = 1
+global_batch_size_start = 8
+global_batch_size_end = 8
+>>>>>>>> f4ebe4cc (Improve config files for decentralized tests):config/solana-test/test-config.toml
+global_batch_size_warmup_tokens = 0
+total_steps = 25000
+<<<<<<<< HEAD:config/solana-test/nano-three-min-clients.toml
+
+|||||||| parent of f4ebe4cc (Improve config files for decentralized tests):config/solana-test/config-three-clients.toml
+checkpointers = []
+
+========
+>>>>>>>> f4ebe4cc (Improve config files for decentralized tests):config/solana-test/test-config.toml
+[model.LLM]
+architecture = "HfAuto"
+data_type = "Pretraining"
+<<<<<<<< HEAD:config/solana-test/nano-three-min-clients.toml
+max_seq_len = 64
+cold_start_warmup_steps = 0
+
+|||||||| parent of f4ebe4cc (Improve config files for decentralized tests):config/solana-test/config-three-clients.toml
+max_seq_len = 2048
+
+========
+max_seq_len = 2048
+cold_start_warmup_steps = 0
+>>>>>>>> f4ebe4cc (Improve config files for decentralized tests):config/solana-test/test-config.toml
+[model.LLM.checkpoint.Hub]
+<<<<<<<< HEAD:config/solana-test/nano-three-min-clients.toml
+repo_id = "pefontana/Nano-Llama"
+revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
+
+|||||||| parent of f4ebe4cc (Improve config files for decentralized tests):config/solana-test/config-three-clients.toml
+repo_id = "emozilla/llama2-20m-init"
+
+========
+repo_id = "emozilla/llama2-20m-init"
+>>>>>>>> f4ebe4cc (Improve config files for decentralized tests):config/solana-test/test-config.toml
+[model.LLM.data_location.Http]
+token_size_in_bytes = "TwoBytes"
+shuffle = "DontShuffle"
+<<<<<<<< HEAD:config/solana-test/nano-three-min-clients.toml
+
+[model.LLM.data_location.Http.location]
+SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds"
+
+|||||||| parent of f4ebe4cc (Improve config files for decentralized tests):config/solana-test/config-three-clients.toml
+
+[model.LLM.data_location.Http.location.Gcp]
+bucket_name = "nous-pretraining-public-us"
+filter_directory = "fineweb-edu-tokenized-llama2"
+
+========
+[model.LLM.data_location.Http.location.Gcp]
+bucket_name = "nous-pretraining-public-us"
+filter_directory = "fineweb-edu-tokenized-llama2"
+>>>>>>>> f4ebe4cc (Improve config files for decentralized tests):config/solana-test/test-config.toml
+[model.LLM.lr_schedule.Cosine]
+base_lr = 4.0e-4
+warmup_steps = 250
+warmup_init_lr = 0.0
+total_steps = 25000
+final_lr = 4.0e-5
+[model.LLM.optimizer.Distro]
+clip_grad_norm = 1.0
+compression_decay = 0.999
+compression_chunk = 64
+compression_topk = 8
+quantize_1bit = true

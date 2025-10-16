@@ -3,7 +3,6 @@ set -o errexit
 solana config set --url "${RPC}"
 solana-keygen new --no-bip39-passphrase --force
 solana airdrop 10 "$(solana-keygen pubkey)"
-echo "Test ${TEST}"
 echo "Python enabled ${PYTHON_ENABLED}"
 
 
