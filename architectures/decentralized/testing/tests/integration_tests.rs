@@ -1017,7 +1017,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     Some(Response::LoadedModel(checkpoint)) => {
                         if spawned_second_client && first_client_killed {
                             // Assert checkpoint is Hub
-                            assert!(checkpoint.starts_with("emozilla/"), "The model should be obtained from Hub since the other client disconnected");
+                            assert!(checkpoint.starts_with("pefontana/"), "The model should be obtained from Hub since the other client disconnected");
                             println!("Model succesfuly obtained from Hub");
                             return;
                         }
