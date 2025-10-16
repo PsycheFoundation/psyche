@@ -8,12 +8,21 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_client::IntegrationTestLogMarker;
+use std::env;
+use std::fs;
+use std::io::Result as IoResult;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
 use tokio::signal;
 
 use crate::docker_watcher::{DockerWatcher, DockerWatcherError};
+
+pub enum ConfigTemplate {
+    NanoLlama,
+    Python,
+}
 
 /// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
 fn has_gpu_support() -> bool {
@@ -56,10 +65,9 @@ impl Drop for DockerTestCleanup {
 pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
-    config: Option<PathBuf>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
-    spawn_psyche_network(init_num_clients, config).unwrap();
+    spawn_psyche_network(init_num_clients, ConfigTemplate::Python).unwrap();
     spawn_ctrl_c_task();
 
     DockerTestCleanup {}
@@ -68,7 +76,6 @@ pub async fn e2e_testing_setup(
 pub async fn e2e_testing_setup_subscription(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
-    config: Option<PathBuf>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
     let mut command = Command::new("just");
@@ -79,10 +86,6 @@ pub async fn e2e_testing_setup_subscription(
         ])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
-
-    if let Some(config) = config {
-        command.env("CONFIG_PATH", config);
-    }
 
     let output = command
         .output()
@@ -99,20 +102,13 @@ pub async fn e2e_testing_setup_subscription(
     DockerTestCleanup {}
 }
 
-pub async fn e2e_testing_setup_three_clients(
-    docker_client: Arc<Docker>,
-    config: Option<PathBuf>,
-) -> DockerTestCleanup {
+pub async fn e2e_testing_setup_three_clients(docker_client: Arc<Docker>) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
     let mut command = Command::new("just");
     let command = command
         .args(["run_test_infra_three_clients"])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
-
-    if let Some(config) = config {
-        command.env("CONFIG_PATH", config);
-    }
 
     let output = command
         .output()
@@ -249,30 +245,34 @@ pub async fn spawn_new_client_with_monitoring(
     Ok(container_id)
 }
 
+// Updated spawn function
 pub fn spawn_psyche_network(
     init_num_clients: usize,
-    config: Option<PathBuf>,
+    config_template: ConfigTemplate,
 ) -> Result<(), DockerWatcherError> {
+    // Determine where to write the config
+    let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
+
+    // Write the config file with the specified number of clients
+    write_config_file(&config_file_path, config_template, init_num_clients)
+        .expect("Failed to write config file");
+
+    println!("[+] Config file written to: {}", config_file_path.display());
+
     let mut command = Command::new("just");
-    let command = command
+    let output = command
         .args(["run_test_infra", &format!("{init_num_clients}")])
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
-    if let Some(config) = config {
-        command.env("CONFIG_PATH", config);
-    }
-
-    let output = command
+        .stderr(Stdio::inherit())
         .output()
         .expect("Failed to spawn docker compose instances");
+
     if !output.status.success() {
         panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
     }
 
     println!("\n[+] Docker compose network spawned successfully!");
     println!();
-
     Ok(())
 }
 
@@ -360,4 +360,107 @@ pub async fn kill_all_clients(docker: &Docker, signal: &str) {
 
     // Small delay to ensure containers terminate
     tokio::time::sleep(Duration::from_secs(2)).await;
+}
+
+pub fn write_config_file<P: AsRef<Path>>(
+    path: P,
+    template: ConfigTemplate,
+    num_clients: usize,
+) -> IoResult<()> {
+    let config_content = match template {
+        ConfigTemplate::NanoLlama => generate_nano_llama_config(num_clients),
+        ConfigTemplate::Python => generate_llama2_20m_config(num_clients),
+    };
+
+    fs::write(path, config_content)
+}
+
+fn generate_nano_llama_config(num_clients: usize) -> String {
+    format!(
+        r#"[config]
+warmup_time = 50
+cooldown_time = 30
+rounds_per_epoch = 20
+max_round_train_time = 40
+round_witness_time = 1
+min_clients = {num_clients}
+init_min_clients = {num_clients}
+verification_percent = 0
+witness_nodes = 1
+global_batch_size_start = 4
+global_batch_size_end = 4
+global_batch_size_warmup_tokens = 0
+total_steps = 25000
+[model.LLM]
+architecture = "HfLlama"
+data_type = "Pretraining"
+max_seq_len = 64
+cold_start_warmup_steps = 0
+[model.LLM.checkpoint.Hub]
+repo_id = "pefontana/Nano-Llama"
+revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
+[model.LLM.data_location.Http]
+token_size_in_bytes = "TwoBytes"
+shuffle = "DontShuffle"
+[model.LLM.data_location.Http.location]
+SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds"
+[model.LLM.lr_schedule.Cosine]
+base_lr = 4.0e-4
+warmup_steps = 250
+warmup_init_lr = 0.0
+total_steps = 25000
+final_lr = 4.0e-5
+[model.LLM.optimizer.Distro]
+clip_grad_norm = 1.0
+compression_decay = 0.999
+compression_chunk = 64
+compression_topk = 8
+quantize_1bit = true
+"#
+    )
+}
+
+fn generate_llama2_20m_config(num_clients: usize) -> String {
+    format!(
+        r#"[config]
+warmup_time = 30
+cooldown_time = 30
+rounds_per_epoch = 20
+max_round_train_time = 30
+round_witness_time = 1
+min_clients = {num_clients}
+init_min_clients = {num_clients}
+verification_percent = 0
+witness_nodes = 1
+global_batch_size_start = 8
+global_batch_size_end = 8
+global_batch_size_warmup_tokens = 0
+total_steps = 25000
+[model.LLM]
+architecture = "HfAuto"
+data_type = "Pretraining"
+max_seq_len = 2048
+cold_start_warmup_steps = 0
+[model.LLM.checkpoint.Hub]
+repo_id = "emozilla/llama2-20m-init"
+[model.LLM.data_location.Http]
+token_size_in_bytes = "TwoBytes"
+shuffle = "DontShuffle"
+[model.LLM.data_location.Http.location.Gcp]
+bucket_name = "nous-pretraining-public-us"
+filter_directory = "fineweb-edu-tokenized-llama2"
+[model.LLM.lr_schedule.Cosine]
+base_lr = 4.0e-4
+warmup_steps = 250
+warmup_init_lr = 0.0
+total_steps = 25000
+final_lr = 4.0e-5
+[model.LLM.optimizer.Distro]
+clip_grad_norm = 1.0
+compression_decay = 0.999
+compression_chunk = 64
+compression_topk = 8
+quantize_1bit = true
+"#
+    )
 }
