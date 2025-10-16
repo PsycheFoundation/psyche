@@ -172,7 +172,7 @@ impl App {
             .get_coordinator_instance(&coordinator_instance_pubkey)
             .await?;
 
-        let coordinator_account = coordinator_instance_state.coordinator_account;
+        let coordinator_account = coordinator_instance.coordinator_account;
         let coordinator_account_pubkey = coordinator_instance.coordinator_account;
         let coordinator_client_version = String::from(
             &backend
@@ -183,13 +183,9 @@ impl App {
         );
 
         // Check client version compatibility before joining
-        let coordinator_account_state = backend
-            .get_coordinator_account(&coordinator_account)
-            .await?;
         let client_version =
             std::env::var("PSYCHE_CLIENT_VERSION").unwrap_or_else(|_| "latest".to_string());
-        let coordinator_client_version =
-            String::from(&coordinator_account_state.state.client_version);
+
         if client_version != coordinator_client_version {
             tracing::error!(
                 client_version = %client_version,

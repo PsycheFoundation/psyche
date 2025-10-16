@@ -2,7 +2,9 @@ use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_lang::AccountDeserialize;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
-use psyche_solana_coordinator::{CoordinatorInstance, find_coordinator_instance};
+use psyche_solana_coordinator::{
+    CoordinatorInstance, coordinator_account_from_bytes, find_coordinator_instance,
+};
 use solana_client::rpc_client::RpcClient;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -253,12 +255,24 @@ impl CoordinatorClient {
         info!("Querying coordinator for Run ID: {}", run_id);
 
         let instance = self.fetch_coordinator_data(run_id)?;
+
+        // Fetch the coordinator account to get the client version
+        let coordinator_account_data = self
+            .rpc_client
+            .get_account(&instance.coordinator_account)
+            .context("RPC error: failed to get coordinator account")?;
+
+        let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)
+            .context("Failed to deserialize CoordinatorAccount")?;
+
+        let client_version = String::from(&coordinator_account.state.client_version);
+
         info!(
             "Fetched CoordinatorInstance from chain: {{ run_id: {}, coordinator_account: {}, client_version: {} }}",
-            instance.run_id, instance.coordinator_account, instance.client_version
+            instance.run_id, instance.coordinator_account, client_version
         );
 
-        let docker_tag = format!("nousresearch/psyche-client:{}", instance.client_version);
+        let docker_tag = format!("nousresearch/psyche-client:{}", client_version);
         Ok(docker_tag)
     }
 }

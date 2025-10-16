@@ -81,7 +81,6 @@ pub fn init_coordinator_processor(
     // Setup the run_id const
     account.state.coordinator.run_id =
         FixedString::from_str_truncated(&params.run_id);
-    account.state.client_version = FixedString::from_str_truncated("latest");
     // Done
     Ok(())
 }
