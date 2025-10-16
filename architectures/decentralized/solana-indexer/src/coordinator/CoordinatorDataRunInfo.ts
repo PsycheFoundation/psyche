@@ -1,11 +1,8 @@
 import {
 	JsonCodec,
 	jsonCodecArray,
-	jsonCodecArrayToObject,
-	jsonCodecBoolean,
 	jsonCodecDateTime,
 	jsonCodecInteger,
-	jsonCodecNumber,
 	jsonCodecObject,
 	jsonCodecOptional,
 	jsonCodecPubkey,
@@ -14,10 +11,7 @@ import {
 	JsonValue,
 	Pubkey,
 } from 'solana-kiss'
-import {
-	utilsObjectToPubkeyMapJsonCodec,
-	utilsObjectToStringMapJsonCodec,
-} from '../utils'
+import { utilsObjectToStringMapJsonCodec } from '../utils'
 import {
 	CoordinatorDataRunState,
 	coordinatorDataRunStateJsonCodec,
@@ -42,7 +36,6 @@ export interface CoordinatorDataRunInfo {
 	accountUpdatedAt: Date | undefined
 	accountFetchedOrdinal: bigint
 	accountRequestOrdinal: bigint
-	lastFewWitnessesPerUser: Map<Pubkey, Array<CoordinatorDataRunInfoWitness>>
 	adminHistory: Array<{
 		blockTime: Date | undefined
 		instructionName: string
@@ -52,6 +45,7 @@ export interface CoordinatorDataRunInfo {
 	}>
 }
 
+/*
 const witnessJsonCodec: JsonCodec<CoordinatorDataRunInfoWitness> =
 	jsonCodecObject({
 		blockTime: jsonCodecOptional(jsonCodecDateTime),
@@ -68,6 +62,7 @@ const witnessJsonCodec: JsonCodec<CoordinatorDataRunInfoWitness> =
 			step: jsonCodecNumber,
 		}),
 	})
+		*/
 
 export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> =
 	jsonCodecObject({
@@ -75,20 +70,6 @@ export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> 
 		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
 		accountFetchedOrdinal: jsonCodecInteger,
 		accountRequestOrdinal: jsonCodecInteger,
-		witnessesPerUser: utilsObjectToPubkeyMapJsonCodec(
-			jsonCodecObject({
-				lastFew: jsonCodecArray(witnessJsonCodec),
-				sampled: jsonCodecObject({
-					rate: jsonCodecNumber,
-					data: jsonCodecArray(
-						jsonCodecArrayToObject({
-							selector: jsonCodecNumber,
-							witness: witnessJsonCodec,
-						})
-					),
-				}),
-			})
-		),
 		adminHistory: jsonCodecArray(
 			jsonCodecObject({
 				blockTime: jsonCodecOptional(jsonCodecDateTime),

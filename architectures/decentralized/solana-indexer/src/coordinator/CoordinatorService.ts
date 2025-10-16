@@ -21,7 +21,10 @@ export async function coordinatorService(
 	expressApp: Application
 ) {
 	const saveName = `coordinator_${programAddress}`
-	const { checkpoint, dataStore } = await serviceLoader(saveName)
+	const { checkpoint, dataStore } = await serviceLoader(
+		saveName,
+		programAddress
+	)
 	coordinatorEndpoint(programAddress, expressApp, dataStore)
 	await serviceIndexing(
 		saveName,
@@ -32,7 +35,7 @@ export async function coordinatorService(
 	)
 }
 
-async function serviceLoader(saveName: string) {
+async function serviceLoader(saveName: string, programAddress: Pubkey) {
 	let checkpoint: IndexingCheckpoint
 	let dataStore: CoordinatorDataStore
 	try {
@@ -42,7 +45,7 @@ async function serviceLoader(saveName: string) {
 		console.log('Loaded coordinator state from:', saveContent.updatedAt)
 	} catch (error) {
 		checkpoint = { orderedIndexedChunks: [] }
-		dataStore = new CoordinatorDataStore(new Map(), new Map())
+		dataStore = new CoordinatorDataStore(programAddress, new Map())
 		console.warn(
 			'Failed to read existing coordinator JSON, starting fresh',
 			error

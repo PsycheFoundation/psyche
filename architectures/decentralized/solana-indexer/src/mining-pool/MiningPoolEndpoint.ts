@@ -29,12 +29,9 @@ export async function miningPoolEndpoint(
 	expressApp.get(`/mining-pool/${programAddress}/pool/:index`, (req, res) => {
 		const poolIndex = jsonCodecInteger.decoder(req.params.index)
 		const poolAddress = dataStore.getPoolAddress(poolIndex)
-		if (!poolAddress) {
-			return res.status(404).json({ error: 'Pool address not found' })
-		}
 		const poolInfo = dataStore.poolInfoByAddress.get(poolAddress)
-		if (!poolInfo) {
-			return res.status(404).json({ error: 'Pool info not found' })
+		if (poolInfo === undefined) {
+			return res.status(404).json({ error: 'Pool not found' })
 		}
 		return res
 			.status(200)

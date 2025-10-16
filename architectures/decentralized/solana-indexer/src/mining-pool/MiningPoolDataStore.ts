@@ -13,21 +13,24 @@ import {
 } from './MiningPoolDataPoolInfo'
 
 export class MiningPoolDataStore {
-	programAddress: Pubkey,
+	programAddress: Pubkey
 	poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>
 
-	constructor(programAddress: Pubkey, poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>) {
+	constructor(
+		programAddress: Pubkey,
+		poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>
+	) {
 		this.programAddress = programAddress
 		this.poolInfoByAddress = poolInfoByAddress
 	}
 
 	public getPoolAddress(poolIndex: bigint): Pubkey {
-		const poolIndexSeedBytes = new Uint8Array(8);
-		new DataView(poolIndexSeedBytes.buffer).setBigUint64(0, poolIndex, true);
-		return pubkeyFindPdaAddress(
-			this.programAddress,
-			[utf8Encode("Pool"), poolIndexSeedBytes],
-		)
+		const poolIndexSeed = new Uint8Array(8)
+		new DataView(poolIndexSeed.buffer).setBigUint64(0, poolIndex, true)
+		return pubkeyFindPdaAddress(this.programAddress, [
+			utf8Encode('Pool'),
+			poolIndexSeed,
+		])
 	}
 
 	public getPoolInfo(poolAddress: Pubkey): MiningPoolDataPoolInfo {

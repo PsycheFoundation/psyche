@@ -95,12 +95,6 @@ async function processWitness(
 ): Promise<void> {
 	const runInfo = dataStore.getRunInfo(context.runAddress)
 	const witnessPayload = witnessJsonDecoder(context.instructionPayload)
-	const userWitnesses = runInfo.lastFewWitnessesPerUser.get(
-		context.signerAddress
-	) ?? {
-		lastFew: [],
-		sampled: { rate: 1, data: [] },
-	}
 
 	const witnessStep = witnessPayload.metadata.step
 	const witnessData = new Map<string, number>()
@@ -122,6 +116,7 @@ async function processWitness(
 		}
 	}
 
+	/*
 	const desiredLastFewCount = 10
 	const desiredSampledCount = 100
 	const witness = {
@@ -147,6 +142,7 @@ async function processWitness(
 		}
 	}
 	runInfo.lastFewWitnessesPerUser.set(context.signerAddress, userWitnesses)
+	*/
 }
 
 const witnessProofJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({

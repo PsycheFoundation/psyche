@@ -1,10 +1,11 @@
 import {
 	JsonCodec,
 	jsonCodecObject,
-	jsonCodecObjectToMap,
 	jsonCodecPubkey,
 	jsonCodecTransform,
 	Pubkey,
+	pubkeyFindPdaAddress,
+	utf8Encode,
 } from 'solana-kiss'
 import { utilsObjectToPubkeyMapJsonCodec } from '../utils'
 import {
@@ -13,15 +14,24 @@ import {
 } from './CoordinatorDataRunInfo'
 
 export class CoordinatorDataStore {
-	public runAddressByRunId: Map<string, Pubkey>
+	public programAddress: Pubkey
 	public runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>
 
 	constructor(
-		runAddressByRunId: Map<string, Pubkey>,
+		programAddress: Pubkey,
 		runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>
 	) {
-		this.runAddressByRunId = runAddressByRunId
+		this.programAddress = programAddress
 		this.runInfoByAddress = runInfoByAddress
+	}
+
+	public getRunAddress(runId: string): Pubkey {
+		const runIdSeed = new Uint8Array(32)
+		runIdSeed.set(utf8Encode(runId).slice(0, 32))
+		return pubkeyFindPdaAddress(this.programAddress, [
+			utf8Encode('coordinator'),
+			runIdSeed,
+		])
 	}
 
 	public getRunInfo(runAddress: Pubkey): CoordinatorDataRunInfo {
@@ -32,7 +42,6 @@ export class CoordinatorDataStore {
 				accountUpdatedAt: undefined,
 				accountFetchedOrdinal: 0n,
 				accountRequestOrdinal: 0n,
-				lastFewWitnessesPerUser: new Map(),
 				adminHistory: [],
 			}
 			this.runInfoByAddress.set(runAddress, runInfo)
@@ -44,13 +53,7 @@ export class CoordinatorDataStore {
 export const coordinatorDataStoreJsonCodec: JsonCodec<CoordinatorDataStore> =
 	jsonCodecTransform(
 		jsonCodecObject({
-			runAddressByRunId: jsonCodecObjectToMap(
-				{
-					keyEncoder: (key: string) => key,
-					keyDecoder: (key: string) => key,
-				},
-				jsonCodecPubkey
-			),
+			programAddress: jsonCodecPubkey,
 			runInfoByAddress: utilsObjectToPubkeyMapJsonCodec(
 				coordinatorDataRunInfoJsonCodec
 			),
@@ -58,11 +61,11 @@ export const coordinatorDataStoreJsonCodec: JsonCodec<CoordinatorDataStore> =
 		{
 			decoder: (encoded) =>
 				new CoordinatorDataStore(
-					encoded.runAddressByRunId,
+					encoded.programAddress,
 					encoded.runInfoByAddress
 				),
 			encoder: (decoded) => ({
-				runAddressByRunId: decoded.runAddressByRunId,
+				programAddress: decoded.programAddress,
 				runInfoByAddress: decoded.runInfoByAddress,
 			}),
 		}

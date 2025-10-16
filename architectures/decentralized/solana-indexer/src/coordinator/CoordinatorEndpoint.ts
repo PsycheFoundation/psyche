@@ -28,10 +28,8 @@ export async function coordinatorEndpoint(
 	})
 	expressApp.get(`/coordinator/${programAddress}/run/:runId`, (req, res) => {
 		const runId = jsonCodecString.decoder(req.params.runId)
-		const runAddress = dataStore.runAddressByRunId.get(runId)
-		if (!runAddress) {
-			return res.status(404).json({ error: 'Run address not found' })
-		}
+		const runAddress = dataStore.getRunAddress(runId)
+		// TODO - get proper address ?
 		const runInfo = dataStore.runInfoByAddress.get(runAddress)
 		if (!runInfo) {
 			return res.status(404).json({ error: 'Run info not found' })

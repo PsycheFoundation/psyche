@@ -43,38 +43,49 @@ async function updateCoordinatorAccountState(
 	runAddress: Pubkey
 ) {
 	try {
-		const runState = await utilsGetAndDecodeAccountState(
+		const runInstanceState = await utilsGetAndDecodeAccountState(
 			rpcHttp,
 			programIdl,
 			runAddress,
-			runStateJsonDecoder
+			runInstanceJsonDecoder
+		)
+		const runAccountAddress = runInstanceState.coordinatorAccount
+		const runAccountState = await utilsGetAndDecodeAccountState(
+			rpcHttp,
+			programIdl,
+			runAccountAddress,
+			runAccountJsonDecoder
 		)
 		const runInfo = dataStore.getRunInfo(runAddress)
 		runInfo.accountState = {
-			runId: runState.state.coordinator.runId,
-			name: runState.state.metadata.name,
-			description: runState.state.metadata.description,
-			status: runState.state.coordinator.runState,
-			epochClients: runState.state.coordinator.epochState.clients.map(
+			runId: runAccountState.state.coordinator.runId,
+			name: runAccountState.state.metadata.name,
+			description: runAccountState.state.metadata.description,
+			status: runAccountState.state.coordinator.runState,
+			epochClients: runAccountState.state.coordinator.epochState.clients.map(
 				(client) => ({
 					signer: client.id.signer,
 					state: client.state,
 				})
 			),
-			nonce: runState.nonce,
+			nonce: runAccountState.nonce,
 		}
 		runInfo.accountUpdatedAt = new Date()
 		runInfo.accountFetchedOrdinal = runInfo.accountRequestOrdinal
-		dataStore.runAddressByRunId.set(
-			runState.state.coordinator.runId,
-			runAddress
-		)
 	} catch (error) {
 		console.error('Failed to refresh run state', runAddress, error)
 	}
 }
 
-const runStateJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
+const runInstanceJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
+	bump: jsonCodecNumber.decoder,
+	mainAuthority: jsonCodecPubkey.decoder,
+	joinAuthority: jsonCodecPubkey.decoder,
+	coordinatorAccount: jsonCodecPubkey.decoder,
+	runId: utilsRustFixedStringJsonDecoder,
+})
+
+const runAccountJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	nonce: jsonCodecInteger.decoder,
 	state: jsonDecoderObjectWithKeysSnakeEncoded({
 		metadata: jsonDecoderObjectWithKeysSnakeEncoded({
