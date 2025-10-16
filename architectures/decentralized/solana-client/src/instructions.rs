@@ -261,6 +261,7 @@ pub fn coordinator_update_version_tag(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn treasurer_run_create(
     payer: &Pubkey,
     run_id: &str,
