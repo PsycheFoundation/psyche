@@ -285,14 +285,7 @@ async fn test_rejoining_client_delay() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(
-        docker.clone(),
-        1,
-        Some(PathBuf::from(
-            "../../config/solana-test/nano-one-min-clients.toml",
-        )),
-    )
-    .await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, None).await;
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
 
@@ -880,14 +873,7 @@ async fn test_everybody_leaves_in_warmup() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(
-        docker.clone(),
-        1,
-        Some(PathBuf::from(
-            "../../config/solana-test/nano-one-min-clients.toml",
-        )),
-    )
-    .await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, None).await;
     tokio::time::sleep(Duration::from_secs(20)).await;
 
     // initialize DockerWatcher
@@ -944,14 +930,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 1 client, minimum 1 client
-    let _cleanup = e2e_testing_setup(
-        docker.clone(),
-        1,
-        Some(PathBuf::from(
-            "../../config/solana-test/nano-one-min-clients.toml",
-        )),
-    )
-    .await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, None).await;
 
     // Monitor the original client container
     let _monitor_client_1 = watcher
