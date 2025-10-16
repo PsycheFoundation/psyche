@@ -6,14 +6,14 @@
 }:
 buildPythonPackage rec {
   pname = "liger-kernel";
-  version = "0.6.2";
+  version = "0.6.2-seed-oss";
   format = "setuptools";
 
   src = fetchFromGitHub {
-    owner = "linkedin";
+    owner = "NousResearch";
     repo = "Liger-Kernel";
-    rev = "v${version}";
-    hash = "sha256-Ys3P8V6qkIucOaROsevRgnGwq0NJAJsDs6dupgPMudQ=";
+    rev = "4a35a4fd87afa631715014f1678cac4f153ef806";
+    hash = "sha256-c3V9o4VR66V4O0lLOkavDWKoPzpHUXegvnDNjB7pwqQ=";
   };
 
   propagatedBuildInputs = [

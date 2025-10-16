@@ -384,7 +384,7 @@ impl CausalLM for PythonDistributedCausalLM {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         let world_size = self.comm.size();
         let original_batch_size = x.size()[0] as usize;
 
