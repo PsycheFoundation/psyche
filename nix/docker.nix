@@ -1,6 +1,7 @@
 {
   pkgs,
   nixglhostRustPackages,
+  nixglhostRustPackagesNoPython,
   inputs,
   externalRustPackages,
 }:
@@ -28,51 +29,13 @@ let
     ]
   '';
 
-  dockerPackages = {
-    docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
-      name = "psyche-solana-client";
-      tag = "latest";
-
-      contents = with pkgs; [
-        bashInteractive
-        cacert
-        coreutils
-        stdenv.cc
-        rdma-core
-        nixglhostRustPackages."psyche-solana-client-nixglhost"
-        nixglhostRustPackages."psyche-centralized-client-nixglhost"
-        nixglhostRustPackages."inference-nixglhost"
-        nixglhostRustPackages."train-nixglhost"
-        nixglhostRustPackages."bandwidth_test-nixglhost"
-        nixglhostRustPackages."psyche-sidecar-nixglhost"
-        python3Packages.huggingface-hub
-        (pkgs.runCommand "entrypoint" { } ''
-          mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
-          cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
-          cp ${../docker/sidecar_entrypoint.sh} $out/bin/sidecar_entrypoint.sh
-          chmod +x $out/bin/train_entrypoint.sh
-          chmod +x $out/bin/sidecar_entrypoint.sh
-        '')
-      ];
-
-      config = {
-        Env = [
-          "NVIDIA_DRIVER_CAPABILITIES=all"
-          "LD_LIBRARY_PATH=/lib:/usr/lib"
-          "LOGNAME=root"
-          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_LIBCUDA_PATH=/usr/lib64"
-          "TRITON_HOME=/tmp/triton"
-          "PYTHONUNBUFFERED=1"
-        ];
-        Entrypoint = [ "/bin/train_entrypoint.sh" ];
-      };
-
-      inherit layeringPipeline;
-    };
-
-    docker-psyche-solana-test-client = pkgs.dockerTools.streamLayeredImage {
-      name = "psyche-solana-test-client";
+  mkSolanaTestClientImage =
+    {
+      imageName,
+      solanaClientPackage,
+    }:
+    pkgs.dockerTools.streamLayeredImage {
+      name = imageName;
       tag = "latest";
 
       contents = with pkgs; [
@@ -80,7 +43,7 @@ let
         bashInteractive
         busybox
         cacert
-        nixglhostRustPackages."psyche-solana-client-nixglhost"
+        solanaClientPackage
         externalRustPackages.solana_toolbox_cli
         jq
 
@@ -128,6 +91,59 @@ let
         ];
         Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
       };
+    };
+
+  dockerPackages = {
+    docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
+      name = "psyche-solana-client";
+      tag = "latest";
+
+      contents = with pkgs; [
+        bashInteractive
+        cacert
+        coreutils
+        stdenv.cc
+        rdma-core
+        nixglhostRustPackages."psyche-solana-client-nixglhost"
+        nixglhostRustPackages."psyche-centralized-client-nixglhost"
+        nixglhostRustPackages."inference-nixglhost"
+        nixglhostRustPackages."train-nixglhost"
+        nixglhostRustPackages."bandwidth_test-nixglhost"
+        nixglhostRustPackages."psyche-sidecar-nixglhost"
+        python3Packages.huggingface-hub
+        (pkgs.runCommand "entrypoint" { } ''
+          mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
+          cp ${../docker/train_entrypoint.sh} $out/bin/train_entrypoint.sh
+          cp ${../docker/sidecar_entrypoint.sh} $out/bin/sidecar_entrypoint.sh
+          chmod +x $out/bin/train_entrypoint.sh
+          chmod +x $out/bin/sidecar_entrypoint.sh
+        '')
+      ];
+
+      config = {
+        Env = [
+          "NVIDIA_DRIVER_CAPABILITIES=all"
+          "LD_LIBRARY_PATH=/lib:/usr/lib"
+          "LOGNAME=root"
+          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
+          "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "TRITON_HOME=/tmp/triton"
+          "PYTHONUNBUFFERED=1"
+        ];
+        Entrypoint = [ "/bin/train_entrypoint.sh" ];
+      };
+
+      inherit layeringPipeline;
+    };
+
+    docker-psyche-solana-test-client = mkSolanaTestClientImage {
+      imageName = "psyche-solana-test-client";
+      solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nixglhost";
+    };
+
+    docker-psyche-solana-test-client-no-python = mkSolanaTestClientImage {
+      imageName = "psyche-solana-test-client-no-python";
+      solanaClientPackage = nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python";
     };
 
     docker-psyche-solana-test-validator = pkgs.dockerTools.streamLayeredImage {
@@ -182,8 +198,8 @@ let
           "NVIDIA_VISIBLE_DEVICES=all"
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_HOME=/tmp/triton"
           "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
         ];
       };
