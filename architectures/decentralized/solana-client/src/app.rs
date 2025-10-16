@@ -166,30 +166,39 @@ impl App {
             self.state_options.private_key.0.clone(),
             CommitmentConfig::confirmed(),
         )?;
-        let coordinator_instance =
+        let coordinator_instance_pubkey =
             psyche_solana_coordinator::find_coordinator_instance(&self.run_id);
-        let coordinator_instance_state = backend
-            .get_coordinator_instance(&coordinator_instance)
+        let coordinator_instance = backend
+            .get_coordinator_instance(&coordinator_instance_pubkey)
             .await?;
+
+        let coordinator_account_pubkey = coordinator_instance.coordinator_account;
+        let coordinator_client_version = String::from(
+            &backend
+                .get_coordinator_account(&coordinator_account_pubkey)
+                .await?
+                .state
+                .client_version,
+        );
 
         // Check client version compatibility before joining
         let client_version =
             std::env::var("PSYCHE_CLIENT_VERSION").unwrap_or_else(|_| "latest".to_string());
-        if client_version != coordinator_instance_state.client_version {
+        if client_version != coordinator_client_version {
             tracing::error!(
                 client_version = %client_version,
-                coordinator_version = %coordinator_instance_state.client_version,
+                coordinator_version = %coordinator_client_version,
                 "Version mismatch detected. Client version does not match coordinator version."
             );
             std::process::exit(10);
         }
         info!(
             client_version = %client_version,
-            coordinator_version = %coordinator_instance_state.client_version,
+            coordinator_version = %coordinator_client_version,
             "Version check passed"
         );
 
-        let coordinator_account = coordinator_instance_state.coordinator_account;
+        let coordinator_account = coordinator_instance.coordinator_account;
 
         let backend_runner = backend
             .start(self.run_id.clone(), coordinator_account)
@@ -219,7 +228,7 @@ impl App {
         if start_coordinator_state.run_state == RunState::WaitingForMembers {
             let join_signature = backend
                 .join_run(
-                    coordinator_instance,
+                    coordinator_instance_pubkey,
                     coordinator_account,
                     psyche_solana_coordinator::ClientId {
                         signer,
@@ -302,7 +311,7 @@ impl App {
                                     }
                                 };
                                 if send_tick {
-                                    backend.send_tick(coordinator_instance, coordinator_account);
+                                    backend.send_tick(coordinator_instance_pubkey, coordinator_account);
                                 }
                             }
                         }
@@ -317,7 +326,7 @@ impl App {
                             if joined_run_this_epoch.is_none() {
                                 let join_signature = backend
                                     .join_run(
-                                        coordinator_instance,
+                                        coordinator_instance_pubkey,
                                         coordinator_account,
                                         id,
                                         self.authorizer,

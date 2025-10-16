@@ -55,7 +55,6 @@ pub fn init_coordinator_processor(
     coordinator_instance.coordinator_account =
         context.accounts.coordinator_account.key();
     coordinator_instance.run_id = params.run_id.clone();
-    coordinator_instance.client_version = "latest".to_string();
     // Initialize the coordinator account
     let mut data =
         context.accounts.coordinator_account.try_borrow_mut_data()?;
