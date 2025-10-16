@@ -441,7 +441,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 model::LLMTrainingDataType::Finetuning => {
                                     #[cfg(feature = "parallelism")]
                                     {
-                                        info!("PARALLELISM ENABLED");
                                         // use varlen backend if available
                                         Some(AttentionImplementation::FlashAttention2)
                                     }
@@ -456,7 +455,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             if llm.architecture == model::LLMArchitecture::HfAuto {
                                 #[cfg(feature = "python")]
                                 {
-                                    info!("PYTHON ENABLED");
                                     let dp = init_config.data_parallelism;
                                     let tp = init_config.tensor_parallelism;
 
@@ -765,7 +763,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             }
             #[cfg(feature = "python")]
             RawLoadedModelType::PythonDistributed(model) => {
-                info!("PYTHON ENABLED");
                 vec![
                     psyche_modeling::PythonDistributedTrainer::new(
                         model,

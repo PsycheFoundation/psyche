@@ -3,9 +3,10 @@ set -o errexit
 solana config set --url "${RPC}"
 solana-keygen new --no-bip39-passphrase --force
 solana airdrop 10 "$(solana-keygen pubkey)"
-echo "Test ${TEST}"
 echo "Python enabled ${PYTHON_ENABLED}"
 
+SIDECAR_PORT=$(shuf -i 9000-9100 -n 1)
+echo "USING SIDECAR PORT: ${SIDECAR_PORT}"
 
 # Build the command based on environment variable
 if [ "${PYTHON_ENABLED}" = "true" ]; then
@@ -15,7 +16,8 @@ if [ "${PYTHON_ENABLED}" = "true" ]; then
         --rpc "${RPC}" \
         --ws-rpc "${WS_RPC}" \
         --run-id "${RUN_ID}" \
-        --data-parallelism "8" \
+        --data-parallelism 8 \
+        --sidecar-port "${SIDECAR_PORT}" \
         --logs "json"
 else
     echo "Starting client without Python features"
