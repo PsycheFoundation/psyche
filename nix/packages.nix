@@ -5,6 +5,7 @@
       system,
       pkgs,
       inputs',
+      pythonSet,
       ...
     }:
     let
@@ -14,7 +15,7 @@
     {
       _module.args.pkgs = import inputs.nixpkgs (
         import ./nixpkgs.nix {
-          inherit inputs system;
+          inherit inputs system pythonSet;
         }
       );
 

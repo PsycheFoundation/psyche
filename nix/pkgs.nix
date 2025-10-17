@@ -2,6 +2,7 @@
   pkgs,
   lib ? pkgs.lib,
   inputs,
+  pythonSet,
 }:
 lib.makeScope pkgs.newScope (
   self:
@@ -117,7 +118,7 @@ lib.makeScope pkgs.newScope (
   in
   {
     psycheLib = import ./lib.nix {
-      inherit pkgs inputs;
+      inherit pkgs inputs pythonSet;
     };
 
     inherit psychePackages;

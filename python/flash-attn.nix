@@ -11,7 +11,6 @@
   setuptools,
   torch,
   wheel,
-  callPackage,
 }:
 let
   inherit (cudaPackages)
@@ -91,7 +90,7 @@ buildPythonPackage rec {
     homepage = "https://github.com/Dao-AILab/flash-attention";
     license = lib.licenses.bsd3;
     platforms = lib.platforms.linux;
-    maintainers = with lib.maintainers; [ ];
+    maintainers = [ ];
     broken = !config.cudaSupport;
   };
 }

@@ -5,6 +5,7 @@
       system,
       pkgs,
       self',
+      pythonSet,
       ...
     }:
     let

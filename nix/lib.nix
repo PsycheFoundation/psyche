@@ -1,6 +1,7 @@
 {
   pkgs,
   inputs,
+  pythonSet,
   lib ? pkgs.lib,
   gitcommit ? inputs.self.rev or inputs.self.dirtyRev or "unknown",
   system ? pkgs.stdenv.hostPlatform.system,
@@ -30,15 +31,19 @@ let
     LIBTORCH_USE_PYTORCH = 1;
   };
 
+  # build-time python environment with all uv2nix deps + nixpkgs pytorch
+  basePythonEnv = pythonSet.mkVirtualEnv "psyche-build-env" {
+    psyche = [ ];
+  };
+
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
       pkg-config
       perl
-      python312
     ];
 
     buildInputs = [
-      pkgs.python312Packages.torch
+      basePythonEnv
     ]
     ++ (with pkgs; [
       openssl
@@ -81,11 +86,35 @@ let
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
   cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
-  pythonWithPsycheExtension = (
-    pkgs.python312.withPackages (ps: [
-      (pkgs.callPackage ../python { })
-    ])
+  # Build the rust extension separately
+  rustExtension = craneLib.buildPackage (
+    rustWorkspaceArgs
+    // {
+      inherit cargoArtifacts;
+      pname = "psyche-python-extension";
+      cargoExtraArgs =
+        " --package psyche-python-extension"
+        + lib.optionalString (pkgs.config.cudaSupport) " --features parallelism";
+      doCheck = false;
+    }
   );
+
+  # Runtime python environment = build-time env + rust extension
+  pythonWithPsycheExtension =
+    let
+      ext = if pkgs.stdenv.isDarwin then "dylib" else "so";
+
+      # Package that just provides the rust extension .so file
+      psycheExtensionPackage = pkgs.runCommand "psyche-extension" { } ''
+        mkdir -p $out/${basePythonEnv}/lib/python3.12/site-packages/psyche
+        cp ${rustExtension}/lib/lib${builtins.replaceStrings [ "-" ] [ "_" ] rustExtension.pname}.${ext} \
+           $out/${basePythonEnv}/lib/python3.12/site-packages/psyche/_psyche_ext.so
+
+        # Create __init__.py to make it importable
+        echo 'from ._psyche_ext import *' > $out/${basePythonEnv}/lib/python3.12/site-packages/psyche/__init__.py
+      '';
+    in
+    basePythonEnv;
 
   buildRustPackageWithPsychePythonEnvironment =
     {
@@ -114,9 +143,10 @@ let
       ''
         mkdir -p $out/bin
         makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-          --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
           --prefix PATH : "${pythonWithPsycheExtension}/bin"
       '';
+
+  # --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
 
   buildRustPackageWithoutPython =
     {
@@ -295,6 +325,7 @@ in
     src
     gitcommit
     pythonWithPsycheExtension
+    basePythonEnv
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

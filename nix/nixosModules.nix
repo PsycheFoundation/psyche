@@ -316,7 +316,7 @@
     };
 
   perSystem =
-    { pkgs, ... }:
+    { pkgs, pythonSet, ... }:
     {
       checks =
         let

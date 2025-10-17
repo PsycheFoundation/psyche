@@ -59,6 +59,18 @@
       url = "github:arilotter/garnix-cli";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -86,5 +98,63 @@
         ./nix/checks.nix
         ./nix/nixosModules.nix
       ];
+
+      perSystem =
+        {
+          pkgs,
+          lib,
+          ...
+        }:
+        let
+          # Setup uv2nix workspace per system
+          workspace = inputs.uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./python; };
+
+          overlay = workspace.mkPyprojectOverlay {
+            sourcePreference = "wheel";
+          };
+
+          pythonSet =
+            (pkgs.callPackage inputs.pyproject-nix.build.packages {
+              python = pkgs.python312;
+            }).overrideScope
+              (
+                lib.composeManyExtensions [
+                  inputs.pyproject-build-systems.overlays.wheel
+                  overlay
+                  (
+                    let
+                      prebuilt =
+                        packageNames: final: _prev:
+                        let
+                          inherit (final) pkgs;
+                          hacks = pkgs.callPackage inputs.pyproject-nix.build.hacks { };
+
+                          makePrebuilt = name: {
+                            inherit name;
+                            value = hacks.nixpkgsPrebuilt {
+                              from = pkgs.python312Packages.${name};
+                            };
+                          };
+                        in
+                        builtins.listToAttrs (map makePrebuilt packageNames);
+                    in
+                    prebuilt [
+                      "torch"
+                      "liger-kernel"
+                      "flash-attn"
+                    ]
+                  )
+                ]
+              );
+        in
+        {
+          _module.args = {
+            inherit pythonSet;
+          };
+
+          legacyPackages = {
+            inherit pythonSet;
+          };
+        };
     };
 }
