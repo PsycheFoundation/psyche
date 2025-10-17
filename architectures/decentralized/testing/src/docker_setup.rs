@@ -99,36 +99,6 @@ pub async fn e2e_testing_setup_subscription(
     DockerTestCleanup {}
 }
 
-pub async fn e2e_testing_setup_three_clients(
-    docker_client: Arc<Docker>,
-    config: Option<PathBuf>,
-) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client).await;
-    let mut command = Command::new("just");
-    let command = command
-        .args(["run_test_infra_three_clients"])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
-    if let Some(config) = config {
-        command.env("CONFIG_PATH", config);
-    }
-
-    let output = command
-        .output()
-        .expect("Failed to spawn docker compose instances");
-    if !output.status.success() {
-        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
-    }
-
-    println!("\n[+] Docker compose network spawned successfully!");
-    println!();
-
-    spawn_ctrl_c_task();
-
-    DockerTestCleanup {}
-}
-
 pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
     // Set the container name based on the ones that are already running.
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
