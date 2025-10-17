@@ -10,7 +10,22 @@ jobs:
   build-validator-image:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Check if validator image cache already exists (fast check first)
+      - name: Check validator image cache
+        id: cache-validator
+        uses: actions/cache@v4
+        with:
+          path: validator-image.tar.gz
+          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          lookup-only: true
+
+      # Only free disk space if we need to build (cache miss)
       - name: Free Disk Space (Ubuntu)
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -21,26 +36,14 @@ jobs:
           docker-images: true
           swap-storage: false
 
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
       - uses: nixbuild/nix-quick-install-action@v31
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         with:
           nix_conf: |
             download-buffer-size = 524288000
             accept-flake-config = true
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
-
-      # Check if validator image cache already exists
-      - name: Check validator image cache
-        id: cache-validator
-        uses: actions/cache@v4
-        with:
-          path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
-          lookup-only: true
 
       # Only build if cache doesn't exist
       - name: Build Anchor Programs
