@@ -2,12 +2,7 @@
 name = "psyche"
 version = "0.1.0"
 requires-python = "==3.12.*"
-dependencies = [
-  "transformers==4.56.1",
-  "liger-kernel @ git+https://github.com/NousResearch/Liger-Kernel.git@4a35a4fd87afa631715014f1678cac4f153ef806",
-  "flash-attn==2.8.2",
-  # torch will be provided by nixpkgs
-]
+dependencies = ["transformers==4.56.1"]
 
 [project.optional-dependencies]
 tests = ["pytest"]

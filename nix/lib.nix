@@ -1,12 +1,48 @@
 {
   pkgs,
   inputs,
-  pythonSet,
   lib ? pkgs.lib,
   gitcommit ? inputs.self.rev or inputs.self.dirtyRev or "unknown",
   system ? pkgs.stdenv.hostPlatform.system,
 }:
 let
+  # Setup uv2nix workspace
+  workspace = inputs.uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ../python; };
+  
+  overlay = workspace.mkPyprojectOverlay {
+    sourcePreference = "wheel";
+  };
+  
+  pythonSet =
+    (pkgs.callPackage inputs.pyproject-nix.build.packages {
+      python = pkgs.python312;
+    }).overrideScope
+      (
+        lib.composeManyExtensions [
+          inputs.pyproject-build-systems.overlays.wheel
+          overlay
+          (
+            let
+              prebuilt =
+                packageNames: final: _prev:
+                let
+                  inherit (final) pkgs;
+                  hacks = pkgs.callPackage inputs.pyproject-nix.build.hacks { };
+
+                  makePrebuilt = name: {
+                    inherit name;
+                    value = hacks.nixpkgsPrebuilt {
+                      from = pkgs.python312Packages.${name};
+                    };
+                  };
+                in
+                builtins.listToAttrs (map makePrebuilt packageNames);
+            in
+            prebuilt nixProvidedPythonPkgs
+          )
+        ]
+      );
+
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
     extensions = [ "rust-src" ];
     targets = [ "wasm32-unknown-unknown" ];
@@ -31,10 +67,23 @@ let
     LIBTORCH_USE_PYTORCH = 1;
   };
 
+  nixProvidedPythonPkgs = [
+    "torch"
+    "liger-kernel"
+    "flash-attn"
+  ];
+
   # build-time python environment with all uv2nix deps + nixpkgs pytorch
-  basePythonEnv = pythonSet.mkVirtualEnv "psyche-build-env" {
-    psyche = [ ];
-  };
+  basePythonEnv =
+    pythonSet.mkVirtualEnv "psyche-build-env" {
+      psyche = [ ];
+    }
+    // builtins.listToAttrs (
+      map (name: {
+        inherit name;
+        value = [ ];
+      }) nixProvidedPythonPkgs
+    );
 
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
@@ -311,6 +360,7 @@ let
 in
 {
   inherit
+    pythonSet
     rustToolchain
     craneLib
     buildSolanaIdl
@@ -326,6 +376,7 @@ in
     gitcommit
     pythonWithPsycheExtension
     basePythonEnv
+    nixProvidedPythonPkgs
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

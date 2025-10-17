@@ -1,7 +1,6 @@
 {
   inputs,
   system ? null,
-  pythonSet,
   lib ? inputs.nixpkgs.lib,
 }:
 
@@ -64,7 +63,7 @@ in
         final: prev:
         import ./pkgs.nix {
           pkgs = prev;
-          inherit inputs pythonSet;
+          inherit inputs;
         }
       )
     ];

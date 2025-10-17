@@ -1,13 +1,11 @@
 {
   perSystem =
     {
-      system,
       config,
       pkgs,
       lib,
       inputs',
       self',
-      pythonSet,
       ...
     }:
     let
@@ -16,7 +14,6 @@
         craneLib
         env
         pythonWithPsycheExtension
-        basePythonEnv
         ;
     in
     {
@@ -93,7 +90,7 @@
               export PYTORCH_ENABLE_MPS_FALLBACK=1
 
               # Set up PyTorch library path for test execution
-              export DYLD_LIBRARY_PATH="${pythonSet.torch}/lib/python3.12/site-packages/torch/lib"
+              export DYLD_LIBRARY_PATH="${pkgs.psycheLib.pythonSet.torch}/lib/python3.12/site-packages/torch/lib"
             ''
             + ''
               echo "Welcome to the Psyche development shell.";

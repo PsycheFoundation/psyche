@@ -1,11 +1,9 @@
-{ lib, ... }:
+{ ... }:
 {
   perSystem =
     {
-      system,
       pkgs,
       self',
-      pythonSet,
       ...
     }:
     let
