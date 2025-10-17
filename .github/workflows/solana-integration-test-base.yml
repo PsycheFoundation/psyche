@@ -50,74 +50,32 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
-      # Step 1: Build Anchor Programs
-      - name: Build Anchor Programs
+      # Step 1: Restore Validator Image from cache
+      - name: Restore Validator Image from cache
+        id: cache-validator
+        uses: actions/cache/restore@v4
+        with:
+          path: validator-image.tar.gz
+          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          fail-on-cache-miss: true
+
+      - name: Load Validator Image
         run: |
-          echo "Building Solana Coordinator"
-          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+          echo "=== Loading validator image from cache ==="
+          docker load < validator-image.tar.gz
+          docker images | grep psyche-solana-test-validator
 
-          echo "Building Solana Authorizer"
-          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
-
-          echo "=== Built Coordinator artifacts ==="
-          ls -la architectures/decentralized/solana-coordinator/target/deploy/
-
-          echo "=== Built Authorizer artifacts ==="
-          ls -la architectures/decentralized/solana-authorizer/target/deploy/
-
-      # Memory cleanup after Anchor build
-      - name: Clean Anchor build
-        run: |
-          # Keep only the deploy artifacts we need, remove intermediate build files
-          echo "=== Cleaning Anchor build artifacts (keeping deploy and idl folders) ==="
-
-          # For coordinator - keep entire deploy folder but remove intermediate builds
-          find architectures/decentralized/solana-coordinator/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
-
-          # For authorizer - keep entire deploy folder but remove intermediate builds
-          find architectures/decentralized/solana-authorizer/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
-
-          # Clean nix store garbage aggressively
-          nix-collect-garbage -d
-          nix store optimise
-
-          echo "=== Disk usage after Anchor cleanup ==="
+          echo "=== Disk usage after loading validator ==="
           df -h
 
-      # Step 2: Build Solana Test Validator Image
-      - name: Build Solana Test Validator Image
+      - name: Clean up validator tar file
         run: |
-          export PSYCHE_HOME=$(pwd)
-
-          echo "=== Disk space before validator build ==="
+          # Remove the compressed validator image to free up disk space
+          rm -f validator-image.tar.gz
+          echo "=== Disk usage after removing validator tar ==="
           df -h
 
-          # Build and load in one command
-          nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
-
-          echo "=== Disk space after validator build ==="
-          df -h
-
-      # Memory cleanup after validator build
-      - name: Clean validator build artifacts
-        run: |
-          # Remove nix build result
-          rm -f result
-
-          # Clean nix store garbage
-          nix-collect-garbage -d
-          nix store optimise
-
-          # Remove temp files
-          sudo rm -rf /tmp/* 2>/dev/null || true
-
-          echo "=== Docker images after validator build ==="
-          docker images
-
-          echo "=== Disk usage after validator cleanup ==="
-          df -h
-
-      # Step 3: Download Solana Test Client Image from Garnix cache
+      # Step 2: Download Solana Test Client Image from Garnix cache
       - name: Download Solana Test Client Image from Garnix cache
         run: |
           echo "=== Disk space before client download ==="
