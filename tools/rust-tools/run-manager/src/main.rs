@@ -144,19 +144,23 @@ impl DockerManager {
         Ok(container_id)
     }
 
-    fn stream_logs(&self, container_id: &str) -> Result<()> {
+    async fn stream_logs(&self, container_id: &str) -> Result<()> {
         info!("Streaming logs for container: {}", container_id);
 
-        let mut child = Command::new("docker")
+        let mut child = tokio::process::Command::new("docker")
             .arg("logs")
             .arg("-f")
             .arg(container_id)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
+            .kill_on_drop(true)
             .spawn()
             .context("Failed to start docker logs")?;
 
-        let status = child.wait().context("Failed to wait for docker logs")?;
+        let status = child
+            .wait()
+            .await
+            .context("Failed to wait for docker logs")?;
         if !status.success() {
             return Err(anyhow!("Docker logs failed with status: {}", status));
         }
@@ -321,14 +325,27 @@ async fn run(args: Args) -> Result<()> {
         let container_id =
             docker_mgr.run_container(&docker_tag, &args.env_file, wallet_key.clone())?;
 
-        let exit_code = if args.background {
-            println!("\nContainer is running in the background.");
-            println!("To view logs: docker logs -f {}", &container_id[..12]);
-            println!("To stop: docker stop {}", &container_id[..12]);
-            docker_mgr.wait_for_container(&container_id)?
-        } else {
-            docker_mgr.stream_logs(&container_id)?;
-            docker_mgr.wait_for_container(&container_id)?
+        // Race between container completion and Ctrl+C
+        let exit_code = tokio::select! {
+            result = async {
+                if args.background {
+                    println!("\nContainer is running in the background.");
+                    println!("To view logs: docker logs -f {}", &container_id[..12]);
+                    println!("To stop: docker stop {}", &container_id[..12]);
+                    docker_mgr.wait_for_container(&container_id)
+                } else {
+                    docker_mgr.stream_logs(&container_id).await?;
+                    docker_mgr.wait_for_container(&container_id)
+                }
+            } => {
+                result?
+            },
+            _ = signal::ctrl_c() => {
+                info!("\nReceived interrupt signal, cleaning up container...");
+                docker_mgr.stop_and_remove_container(&container_id)?;
+                info!("Container stopped successfully");
+                return Ok(());
+            }
         };
 
         info!("Container exited with code: {}", exit_code);
@@ -376,13 +393,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     load_and_apply_env_file(&args.env_file.clone())?;
 
-    let result = tokio::select! {
-        res = run(args) => res,
-        _ = signal::ctrl_c() => {
-            info!("\nReceived interrupt signal, shutting down...");
-            Ok(())
-        }
-    };
+    let result = run(args).await;
 
     if let Err(e) = &result {
         error!("Error: {}", e);
