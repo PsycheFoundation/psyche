@@ -86,6 +86,7 @@ let
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
           "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
@@ -126,6 +127,7 @@ let
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
           "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/train_entrypoint.sh" ];
@@ -197,6 +199,7 @@ let
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
           "TRITON_LIBCUDA_PATH=/usr/lib64"
+          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
         ];
       };

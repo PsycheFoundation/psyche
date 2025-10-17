@@ -114,7 +114,7 @@ impl PromptTask {
         // Run forward pass
         let (logits, _) = trainer.forward(&input, None, None, None, Some(1), None);
 
-        let logits = logits.squeeze();
+        let logits = logits.unwrap().squeeze();
 
         // sample next token
         let mut logits_processor =
