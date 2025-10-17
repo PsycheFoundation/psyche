@@ -3,22 +3,8 @@ name: Build Solana Anchor Programs and Validator Image
 on:
   push:
     branches: [main]
-    paths:
-      - 'architectures/decentralized/solana-coordinator/**'
-      - 'architectures/decentralized/solana-authorizer/**'
-      - 'docker/test/psyche_solana_validator_entrypoint.sh'
-      - 'nix/docker.nix'
-      - 'flake.lock'
-      - 'flake.nix'
   pull_request:
     branches: [main, '**']
-    paths:
-      - 'architectures/decentralized/solana-coordinator/**'
-      - 'architectures/decentralized/solana-authorizer/**'
-      - 'docker/test/psyche_solana_validator_entrypoint.sh'
-      - 'nix/docker.nix'
-      - 'flake.lock'
-      - 'flake.nix'
 
 jobs:
   build-validator-image:
