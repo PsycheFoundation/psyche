@@ -38,7 +38,7 @@ jobs:
         id: cache-validator
         uses: actions/cache@v4
         with:
-          path: validator-image.tar
+          path: validator-image.tar.gz
           key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
           lookup-only: true
 
@@ -84,16 +84,16 @@ jobs:
           nix build .#docker-psyche-solana-test-validator --impure --out-link result
           ./result | docker load
 
-          echo "=== Saving validator image to tar ==="
-          docker save psyche-solana-test-validator:latest -o validator-image.tar
-          ls -lh validator-image.tar
+          echo "=== Saving validator image to tar.gz ==="
+          docker save psyche-solana-test-validator:latest | gzip > validator-image.tar.gz
+          ls -lh validator-image.tar.gz
 
       # Save validator image to cache
       - name: Save Validator Image to cache
         if: steps.cache-validator.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: validator-image.tar
+          path: validator-image.tar.gz
           key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
 
       - name: Cache status
