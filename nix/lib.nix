@@ -6,6 +6,7 @@
   system ? pkgs.stdenv.hostPlatform.system,
 }:
 let
+
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
     extensions = [ "rust-src" ];
     targets = [ "wasm32-unknown-unknown" ];
@@ -32,29 +33,28 @@ let
 
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
+      python312
       pkg-config
       perl
-      python312
     ];
 
-    buildInputs = [
-      pkgs.python312Packages.torch
-    ]
-    ++ (with pkgs; [
-      openssl
-      fontconfig # for lr plot
-    ])
-    ++ lib.optionals pkgs.config.cudaSupport (
-      with pkgs.cudaPackages;
-      [
-        cudatoolkit
-        cuda_cudart
-        nccl
-      ]
-      ++ (with pkgs; [
-        rdma-core
+    buildInputs =
+      (with pkgs; [
+        openssl
+        python312Packages.torch
+        fontconfig # for lr plot
       ])
-    );
+      ++ lib.optionals pkgs.config.cudaSupport (
+        with pkgs.cudaPackages;
+        [
+          cudatoolkit
+          cuda_cudart
+          nccl
+        ]
+        ++ (with pkgs; [
+          rdma-core
+        ])
+      );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
@@ -66,9 +66,9 @@ let
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
-      pythonWithPsycheExtension
+      psychePythonVenv
     ];
-    NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
+    NIX_LDFLAGS = "-L${psychePythonVenv}/lib -lpython3.12";
   };
 
   rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
@@ -81,11 +81,10 @@ let
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
   cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
-  pythonWithPsycheExtension = (
-    pkgs.python312.withPackages (ps: [
-      (pkgs.callPackage ../python { })
-    ])
-  );
+  # Runtime python environment = build-time env + rust extension
+  psychePythonVenv = pkgs.callPackage ../python {
+    inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
+  };
 
   buildRustPackageWithPsychePythonEnvironment =
     {
@@ -114,8 +113,8 @@ let
       ''
         mkdir -p $out/bin
         makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-          --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
-          --prefix PATH : "${pythonWithPsycheExtension}/bin"
+          --set PYTHONPATH "${psychePythonVenv}/${pkgs.python312.sitePackages}" \
+          --prefix PATH : "${psychePythonVenv}/bin"
       '';
 
   buildRustPackageWithoutPython =
@@ -294,7 +293,7 @@ in
     env
     src
     gitcommit
-    pythonWithPsycheExtension
+    psychePythonVenv
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

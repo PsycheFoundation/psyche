@@ -20,9 +20,11 @@ This shell provides:
 - The `psyche` Python module (built from Rust using PyO3)
 - PyTorch
 - Transformers library
-- Other required Python dependencies
+- Other required Python dependencies via `pyproject.toml` / `uv.lock`
 
 ### Development Workflow
+
+You can use `uv pip` to install arbitrary packages. Dependencies are tracked via `uv.lock`, so if you don't have `direnv` set up, you must exit and re-enter the development shell with `nix develop`.
 
 When you enter the dev shell, it compiles the Rust extension that provides the `psyche` Python module. **If you modify any Rust code in the Python extension or its dependencies, you must exit and re-enter the dev shell** to recompile the extension.
 
@@ -39,13 +41,13 @@ nix develop .#dev-python --command cargo run --features python --example train -
   --python
 ```
 
-Alternatively, you can enter the shell with
+Alternatively, you _could_ enter the shell with
 
 ```bash
 nix develop .#dev-python
 ```
 
-but this is likely to be a footgun as it's easy to forget to exit and re-enter the shell.
+but **this is likely to be a footgun** as it's easy to forget to exit and re-enter the shell.
 
 ## Architecture
 

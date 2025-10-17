@@ -1,7 +1,6 @@
 {
   perSystem =
     {
-      system,
       config,
       pkgs,
       lib,
@@ -14,7 +13,7 @@
         rustWorkspaceArgs
         craneLib
         env
-        pythonWithPsycheExtension
+        psychePythonVenv
         ;
     in
     {
@@ -61,7 +60,11 @@
 
                 self'.packages.solana_toolbox_cli
 
+                # for ci emulation
                 inputs'.garnix-cli.packages.default
+
+                # python stuff
+                uv
               ]
               ++ (with inputs'.solana-pkgs.packages; [
                 solana
@@ -73,6 +76,9 @@
             shellHook = ''
               source ${lib.getExe config.agenix-shell.installationScript}
               ${config.pre-commit.installationScript}
+              export UV_NO_MANAGED_PYTHON=1
+              export UV_PYTHON=$(which python)
+              export UV_CACHE_DIR=$PWD/.uv-cache
             ''
             + lib.optionalString pkgs.config.cudaSupport ''
               # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
@@ -84,7 +90,7 @@
               export PYTORCH_ENABLE_MPS_FALLBACK=1
 
               # Set up PyTorch library path for test execution
-              export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch}/lib/python3.12/site-packages/torch/lib"
+              export DYLD_LIBRARY_PATH="${pkgs.psycheLib.pythonSet.torch}/lib/python3.12/site-packages/torch/lib"
             ''
             + ''
               echo "Welcome to the Psyche development shell.";
@@ -97,7 +103,7 @@
             defaultShell
             // {
               packages = defaultShell.packages ++ [
-                pythonWithPsycheExtension
+                psychePythonVenv
               ];
               shellHook = defaultShell.shellHook + ''
                 echo "This shell has the 'psyche' module available in its python interpreter.";
