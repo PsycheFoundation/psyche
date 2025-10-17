@@ -8,13 +8,16 @@ import {
 	jsonCodecInteger,
 	jsonCodecNumber,
 	jsonCodecObjectToMap,
+	jsonCodecPubkey,
 	JsonDecoder,
 	jsonDecoderArray,
 	jsonDecoderArrayToObject,
 	jsonDecoderObject,
+	jsonDecoderObjectWithKeysSnakeEncoded,
 	jsonDecoderTransform,
 	Pubkey,
 	pubkeyFromBase58,
+	pubkeyFromBytes,
 	pubkeyToBase58,
 	RpcHttp,
 	rpcHttpGetAccountWithData,
@@ -107,3 +110,11 @@ export const utilsRustSmallBooleanJsonDecoder = jsonDecoderTransform(
 	jsonDecoderArrayToObject({ bit: jsonCodecNumber.decoder }),
 	(encoded) => encoded.bit !== 0
 )
+export const utilsRustClientIdJsonDecoder =
+	jsonDecoderObjectWithKeysSnakeEncoded({
+		p2pIdentity: jsonDecoderTransform(
+			jsonDecoderArray(jsonCodecNumber.decoder),
+			(encoded) => pubkeyFromBytes(new Uint8Array(encoded))
+		),
+		signer: jsonCodecPubkey.decoder,
+	})

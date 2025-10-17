@@ -21,10 +21,10 @@ import {
 } from './MiningPoolDataPoolState'
 
 export interface MiningPoolDataPoolInfo {
-	lastState: MiningPoolDataPoolState | undefined
-	lastUpdatedAt: Date | undefined
-	lastFetchedOrdinal: bigint
-	lastRequestOrdinal: bigint
+	accountState: MiningPoolDataPoolState | undefined
+	accountUpdatedAt: Date | undefined
+	accountFetchedOrdinal: bigint
+	accountRequestOrdinal: bigint
 	depositCollateralAmountPerUser: Map<Pubkey, bigint>
 	claimRedeemableAmountPerUser: Map<Pubkey, bigint>
 	totalDepositCollateralAmount: bigint

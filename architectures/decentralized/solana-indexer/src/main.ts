@@ -11,11 +11,11 @@ function rpcHttpBuilder(url: string) {
 	return rpcHttpWithRetryOnError(
 		rpcHttpFromUrl(url, { commitment: 'confirmed' }),
 		async (error, context) => {
-			if (context.retriedCounter > 10) {
+			if (context.totalDurationMs > 10_000) {
+				console.error('Rpc failed to reply for too long, giving up', error)
 				return false
 			}
-			await new Promise((resolve) => setTimeout(resolve, 1000))
-			console.error('RPC HTTP error occurred, retrying', error)
+			await new Promise((resolve) => setTimeout(resolve, 100))
 			return true
 		}
 	)

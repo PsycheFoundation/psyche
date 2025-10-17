@@ -1,5 +1,4 @@
 import {
-	expectDefined,
 	idlInstructionDecode,
 	IdlProgram,
 	idlProgramGuessInstruction,
@@ -7,7 +6,7 @@ import {
 	JsonValue,
 	Pubkey,
 	RpcHttp,
-	rpcHttpGetTransaction,
+	rpcHttpWaitForTransaction,
 	RpcTransactionCallStack,
 	Signature,
 } from 'solana-kiss'
@@ -74,10 +73,8 @@ async function indexingTransaction(
 	onInstruction: IndexingInstructionHandler
 ): Promise<void> {
 	try {
-		const { transactionExecution, transactionCallStack } = expectDefined(
-			await rpcHttpGetTransaction(rpcHttp, transactionId),
-			`Transaction:${transactionId}`
-		)
+		const { transactionExecution, transactionCallStack } =
+			await rpcHttpWaitForTransaction(rpcHttp, transactionId, 10_000)
 		if (transactionExecution.error !== null) {
 			return
 		}

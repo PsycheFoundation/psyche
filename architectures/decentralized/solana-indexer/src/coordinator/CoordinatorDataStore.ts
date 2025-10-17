@@ -42,6 +42,7 @@ export class CoordinatorDataStore {
 				accountUpdatedAt: undefined,
 				accountFetchedOrdinal: 0n,
 				accountRequestOrdinal: 0n,
+				witnessHistory: [],
 				adminHistory: [],
 			}
 			this.runInfoByAddress.set(runAddress, runInfo)

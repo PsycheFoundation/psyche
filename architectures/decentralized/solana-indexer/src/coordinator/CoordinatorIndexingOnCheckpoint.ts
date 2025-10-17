@@ -3,6 +3,7 @@ import {
 	jsonCodecInteger,
 	jsonCodecNumber,
 	jsonCodecPubkey,
+	jsonCodecRaw,
 	jsonCodecString,
 	jsonDecoderObjectWithKeysSnakeEncoded,
 	Pubkey,
@@ -10,8 +11,10 @@ import {
 } from 'solana-kiss'
 import {
 	utilsGetAndDecodeAccountState,
+	utilsRustClientIdJsonDecoder,
 	utilsRustFixedArrayJsonDecoder,
 	utilsRustFixedStringJsonDecoder,
+	utilsRustSmallBooleanJsonDecoder,
 } from '../utils'
 import { CoordinatorDataStore } from './CoordinatorDataStore'
 
@@ -56,18 +59,27 @@ async function updateCoordinatorAccountState(
 			runAccountAddress,
 			runAccountJsonDecoder
 		)
+		console.log('Fetched run state', runAccountState)
 		const runInfo = dataStore.getRunInfo(runAddress)
 		runInfo.accountState = {
 			runId: runAccountState.state.coordinator.runId,
+			mainAuthority: runInstanceState.mainAuthority,
+			joinAuthority: runInstanceState.joinAuthority,
 			name: runAccountState.state.metadata.name,
 			description: runAccountState.state.metadata.description,
+			numParameters: runAccountState.state.metadata.numParameters,
 			status: runAccountState.state.coordinator.runState,
+			model: runAccountState.state.coordinator.model,
 			epochClients: runAccountState.state.coordinator.epochState.clients.map(
 				(client) => ({
 					signer: client.id.signer,
 					state: client.state,
 				})
 			),
+			progress: {
+				epoch: runAccountState.state.coordinator.progress.epoch,
+				step: runAccountState.state.coordinator.progress.step,
+			},
 			nonce: runAccountState.nonce,
 		}
 		runInfo.accountUpdatedAt = new Date()
@@ -82,7 +94,7 @@ const runInstanceJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 	mainAuthority: jsonCodecPubkey.decoder,
 	joinAuthority: jsonCodecPubkey.decoder,
 	coordinatorAccount: jsonCodecPubkey.decoder,
-	runId: utilsRustFixedStringJsonDecoder,
+	runId: jsonCodecString.decoder,
 })
 
 const runAccountJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
@@ -97,21 +109,72 @@ const runAccountJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
 		coordinator: jsonDecoderObjectWithKeysSnakeEncoded({
 			runId: utilsRustFixedStringJsonDecoder,
 			runState: jsonCodecString.decoder,
+			model: jsonCodecRaw.decoder,
+			config: jsonDecoderObjectWithKeysSnakeEncoded({
+				warmupTime: jsonCodecInteger.decoder,
+				cooldownTime: jsonCodecInteger.decoder,
+				maxRoundTrainTime: jsonCodecInteger.decoder,
+				roundWitnessTime: jsonCodecInteger.decoder,
+				globalBatchSizeWarmupTokens: jsonCodecInteger.decoder,
+				roundsPerEpoch: jsonCodecNumber.decoder,
+				totalSteps: jsonCodecNumber.decoder,
+				initMinClients: jsonCodecNumber.decoder,
+				minClients: jsonCodecNumber.decoder,
+				witnessNodes: jsonCodecNumber.decoder,
+				globalBatchSizeStart: jsonCodecNumber.decoder,
+				globalBatchSizeEnd: jsonCodecNumber.decoder,
+				verificationPercent: jsonCodecNumber.decoder,
+			}),
 			progress: jsonDecoderObjectWithKeysSnakeEncoded({
 				epoch: jsonCodecNumber.decoder,
 				step: jsonCodecNumber.decoder,
 				epochStartDataIndex: jsonCodecInteger.decoder,
 			}),
 			epochState: jsonDecoderObjectWithKeysSnakeEncoded({
+				rounds: jsonCodecRaw.decoder,
 				clients: utilsRustFixedArrayJsonDecoder(
 					jsonDecoderObjectWithKeysSnakeEncoded({
-						id: jsonDecoderObjectWithKeysSnakeEncoded({
-							signer: jsonCodecPubkey.decoder,
-						}),
+						id: utilsRustClientIdJsonDecoder,
+						exitedHeight: jsonCodecNumber.decoder,
 						state: jsonCodecString.decoder,
 					})
 				),
+				exitedClients: utilsRustFixedArrayJsonDecoder(
+					jsonDecoderObjectWithKeysSnakeEncoded({
+						id: utilsRustClientIdJsonDecoder,
+						exitedHeight: jsonCodecNumber.decoder,
+						state: jsonCodecString.decoder,
+					})
+				),
+				roundsHead: jsonCodecNumber.decoder,
+				startStep: jsonCodecNumber.decoder,
+				firstRound: utilsRustSmallBooleanJsonDecoder,
+				checkpointed: utilsRustSmallBooleanJsonDecoder,
+				coldStartEpoch: utilsRustSmallBooleanJsonDecoder,
+			}),
+			runStateStartUnixTimestamp: jsonCodecInteger.decoder,
+			pendingPause: utilsRustSmallBooleanJsonDecoder,
+		}),
+		clientsState: jsonDecoderObjectWithKeysSnakeEncoded({
+			nextActive: jsonCodecInteger.decoder,
+			clients: utilsRustFixedArrayJsonDecoder(
+				jsonDecoderObjectWithKeysSnakeEncoded({
+					active: jsonCodecInteger.decoder,
+					earned: jsonCodecInteger.decoder,
+					slashed: jsonCodecInteger.decoder,
+					id: utilsRustClientIdJsonDecoder,
+				})
+			),
+			currentEpochRates: jsonDecoderObjectWithKeysSnakeEncoded({
+				earningRate: jsonCodecInteger.decoder,
+				slashingRate: jsonCodecInteger.decoder,
+			}),
+			futureEpochRates: jsonDecoderObjectWithKeysSnakeEncoded({
+				earningRate: jsonCodecInteger.decoder,
+				slashingRate: jsonCodecInteger.decoder,
 			}),
 		}),
+		isWarmupFirstTick: utilsRustSmallBooleanJsonDecoder,
+		isTrainingFirstTick: utilsRustSmallBooleanJsonDecoder,
 	}),
 })

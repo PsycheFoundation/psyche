@@ -21,7 +21,7 @@ export async function coordinatorIndexingOnInstruction(
 	instructionAddresses: Map<string, Pubkey>,
 	instructionPayload: JsonValue
 ): Promise<void> {
-	const runAddress = instructionAddresses.get('coordinator_account')
+	const runAddress = instructionAddresses.get('coordinator_instance')
 	if (runAddress === undefined) {
 		throw new Error('Coordinator: Instruction: Missing run address')
 	}
@@ -65,7 +65,7 @@ const processorsByInstructionName = new Map([
 	['tick', []],
 	['checkpoint', []], // TODO - how to handle checkpoint?
 	['health_check', []], // TODO - how to handle health check?
-	['free_coordinator', [processAdminAction]],
+	['free_coordinator', [processAdminAction, processFinish]],
 ])
 
 type ProcessingContext = {
@@ -89,13 +89,22 @@ async function processAdminAction(
 	)
 }
 
+async function processFinish(
+	dataStore: CoordinatorDataStore,
+	context: ProcessingContext
+): Promise<void> {
+	// TODO - implement finish processing
+}
+
 async function processWitness(
 	dataStore: CoordinatorDataStore,
 	context: ProcessingContext
 ): Promise<void> {
 	const runInfo = dataStore.getRunInfo(context.runAddress)
 	const witnessPayload = witnessJsonDecoder(context.instructionPayload)
-
+	if (!witnessPayload.proof.witness) {
+		return
+	}
 	const witnessStep = witnessPayload.metadata.step
 	const witnessData = new Map<string, number>()
 	if (witnessPayload.metadata.bandwidthPerSec !== undefined) {
@@ -115,6 +124,22 @@ async function processWitness(
 			witnessData.set(evalItem.name, evalItem.value)
 		}
 	}
+	console.log(
+		'Witness for',
+		context.runAddress,
+		witnessStep,
+		witnessPayload.metadata.promptIndex,
+		witnessPayload.metadata.promptResults,
+		runInfo.witnessHistory.length
+	)
+	runInfo.witnessHistory.push({
+		blockTime: context.blockTime,
+		ordinal: context.instructionOrdinal,
+		position: witnessPayload.proof.position,
+		index: witnessPayload.proof.index,
+		step: witnessStep,
+		stats: witnessData,
+	})
 
 	/*
 	const desiredLastFewCount = 10

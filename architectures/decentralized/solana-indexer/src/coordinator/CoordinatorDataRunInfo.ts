@@ -3,6 +3,7 @@ import {
 	jsonCodecArray,
 	jsonCodecDateTime,
 	jsonCodecInteger,
+	jsonCodecNumber,
 	jsonCodecObject,
 	jsonCodecOptional,
 	jsonCodecPubkey,
@@ -20,15 +21,10 @@ import {
 export interface CoordinatorDataRunInfoWitness {
 	blockTime: Date | undefined
 	ordinal: bigint
-	proof: {
-		position: bigint
-		index: bigint
-		witness: boolean
-	}
-	metadata: {
-		step: number
-		stats: Map<string, number>
-	}
+	position: bigint
+	index: bigint
+	step: number
+	stats: Map<string, number>
 }
 
 export interface CoordinatorDataRunInfo {
@@ -36,33 +32,26 @@ export interface CoordinatorDataRunInfo {
 	accountUpdatedAt: Date | undefined
 	accountFetchedOrdinal: bigint
 	accountRequestOrdinal: bigint
+	witnessHistory: Array<CoordinatorDataRunInfoWitness>
+	slicesOrdinals: Array<bigint>
 	adminHistory: Array<{
 		blockTime: Date | undefined
+		instructionOrdinal: bigint
 		instructionName: string
 		instructionAddresses: Map<string, Pubkey>
 		instructionPayload: JsonValue
-		instructionOrdinal: bigint
 	}>
 }
 
-/*
-const witnessJsonCodec: JsonCodec<CoordinatorDataRunInfoWitness> =
+const coordinatorDataRunInfoWitnessJsonCodec: JsonCodec<CoordinatorDataRunInfoWitness> =
 	jsonCodecObject({
 		blockTime: jsonCodecOptional(jsonCodecDateTime),
 		ordinal: jsonCodecInteger,
-		proof: jsonCodecObject({
-			position: jsonCodecInteger,
-			index: jsonCodecInteger,
-			witness: jsonCodecBoolean,
-		}),
-		metadata: jsonCodecObject({
-			tokensPerSec: jsonCodecNumber,
-			bandwidthPerSec: jsonCodecNumber,
-			loss: jsonCodecNumber,
-			step: jsonCodecNumber,
-		}),
+		position: jsonCodecInteger,
+		index: jsonCodecInteger,
+		step: jsonCodecNumber,
+		stats: utilsObjectToStringMapJsonCodec(jsonCodecNumber),
 	})
-		*/
 
 export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> =
 	jsonCodecObject({
@@ -70,6 +59,7 @@ export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> 
 		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
 		accountFetchedOrdinal: jsonCodecInteger,
 		accountRequestOrdinal: jsonCodecInteger,
+		witnessHistory: jsonCodecArray(coordinatorDataRunInfoWitnessJsonCodec),
 		adminHistory: jsonCodecArray(
 			jsonCodecObject({
 				blockTime: jsonCodecOptional(jsonCodecDateTime),
