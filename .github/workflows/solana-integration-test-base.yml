@@ -98,7 +98,7 @@ jobs:
           }
 
           # Load the image into Docker
-          cat $OUT_PATH | docker load
+          $OUT_PATH | docker load
 
           echo "=== Disk space after client download ==="
           df -h

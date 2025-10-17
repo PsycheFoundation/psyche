@@ -51,7 +51,7 @@ jobs:
 
           # Load the image into Docker
           echo "=== Loading image into Docker ==="
-          cat $OUT_PATH | docker load
+          $OUT_PATH | docker load
 
           echo "=== Verify image loaded ==="
           docker images | grep psyche-solana-test-client-no-python || (echo "ERROR: Image not found" && exit 1)
