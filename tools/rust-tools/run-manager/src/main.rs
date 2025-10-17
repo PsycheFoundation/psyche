@@ -35,8 +35,10 @@ struct Args {
     #[arg(long, default_value = "false")]
     background: bool,
 
-    /// Use a local Docker image instead of pulling from coordinator
-    #[arg(long)]
+    /// Use a local Docker image instead of pulling from registry.
+    /// If a version is provided, use that specific version. If no version is provided,
+    /// query coordinator for the version but skip pulling.
+    #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "VERSION")]
     local: Option<String>,
 }
 
@@ -283,29 +285,36 @@ impl CoordinatorClient {
 
 /// Determine which Docker image to use and pull it if necessary
 async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String> {
-    let docker_tag = if let Some(ref local_image) = args.local {
-        info!("Using local Docker image: {}", local_image);
-        local_image.clone()
-    } else {
-        // Get required environment variables for coordinator query
-        let run_id = get_env_var("RUN_ID")?;
-        let rpc = get_env_var("RPC")?;
+    let docker_tag = match &args.local {
+        // --local=version: use explicit version passed by parameter
+        Some(version) if !version.is_empty() => {
+            let tag = format!("nousresearch/psyche-client:{}", version);
+            info!("Using explicit local version: {}", tag);
+            tag
+        }
+        // No --local or --local with no argument: query coordinator
+        _ => {
+            let run_id = get_env_var("RUN_ID")?;
+            let rpc = get_env_var("RPC")?;
 
-        let coordinator_program_id = args
-            .coordinator_program_id
-            .parse::<Pubkey>()
-            .context("Failed to parse coordinator program ID")?;
-        info!("Using coordinator program ID: {}", coordinator_program_id);
+            let coordinator_program_id = args
+                .coordinator_program_id
+                .parse::<Pubkey>()
+                .context("Failed to parse coordinator program ID")?;
+            info!("Using coordinator program ID: {}", coordinator_program_id);
 
-        let coordinator = CoordinatorClient::new(rpc.clone(), coordinator_program_id);
-        let docker_tag = coordinator.get_docker_tag_for_run(&run_id)?;
-        info!("Docker tag for run '{}': {}", run_id, docker_tag);
-        docker_tag
+            let coordinator = CoordinatorClient::new(rpc.clone(), coordinator_program_id);
+            let docker_tag = coordinator.get_docker_tag_for_run(&run_id)?;
+            info!("Docker tag for run '{}': {}", run_id, docker_tag);
+            docker_tag
+        }
     };
 
-    // Only pull if not using local image
+    // Pull image unless --local flag is present
     if args.local.is_none() {
         docker_mgr.pull_image(&docker_tag)?;
+    } else {
+        info!("Using local image (skipping pull): {}", docker_tag);
     }
 
     Ok(docker_tag)
