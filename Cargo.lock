@@ -7131,6 +7131,7 @@ dependencies = [
  "thiserror 2.0.16",
  "tokio",
  "tokio-util 0.7.16",
+ "toml 0.8.23",
 ]
 
 [[package]]

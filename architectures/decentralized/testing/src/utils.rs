@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fs, sync::Arc, time::Duration};
 
 use anchor_client::{
     Cluster, Program,
@@ -10,6 +10,8 @@ use psyche_coordinator::{
 };
 use psyche_core::FixedVec;
 use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
+use std::env;
+use std::path::PathBuf;
 
 pub struct SolanaTestClient {
     program: Program<Arc<Keypair>>,
@@ -120,5 +122,70 @@ impl SolanaTestClient {
 
         println!("Timeout waiting for state: {target_state:?}");
         false
+    }
+}
+
+pub enum ConfigTemplate {
+    NanoLlama,
+    PythonLlama,
+}
+
+pub struct ConfigBuilder {
+    base_config: toml::Value,
+    num_clients: usize,
+    config: ConfigTemplate,
+}
+
+impl ConfigBuilder {
+    pub fn from_template(template: ConfigTemplate) -> Self {
+        let path = env::current_dir().unwrap();
+        println!("The current directory is {}", path.display());
+        let base_path = match template {
+            ConfigTemplate::NanoLlama => "../../../config/solana-test/nano-config.toml",
+            ConfigTemplate::PythonLlama => "../../../config/solana-test/python-test-config.toml",
+        };
+
+        let base_config: toml::Value = fs::read_to_string(base_path)
+            .expect("Failed to read base config")
+            .parse()
+            .expect("Failed to parse TOML");
+
+        Self {
+            base_config,
+            num_clients: 1,
+            config: template,
+        }
+    }
+
+    pub fn with_num_clients(mut self, num: usize) -> Self {
+        self.num_clients = num;
+        self
+    }
+
+    pub fn build(mut self) -> PathBuf {
+        // Apply runtime overrides
+        self.set_value("config.min_clients", self.num_clients as u32);
+        self.set_value("config.init_min_clients", self.num_clients as u32);
+
+        let config_content = toml::to_string(&self.base_config).unwrap();
+
+        // Determine the output path
+        let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
+
+        // Write the config file
+        fs::write(&config_file_path, config_content).unwrap();
+
+        config_file_path
+    }
+
+    fn set_value(&mut self, path: &str, value: impl Into<toml::Value>) {
+        let parts: Vec<&str> = path.split('.').collect();
+        let mut current = &mut self.base_config;
+
+        for part in &parts[..parts.len() - 1] {
+            current = current.get_mut(part).unwrap();
+        }
+
+        current[parts.last().unwrap()] = value.into();
     }
 }
