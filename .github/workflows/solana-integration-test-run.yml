@@ -7,10 +7,18 @@ on:
     branches: [main, '**']
 
 jobs:
+  # First, build the validator image and cache it
+  build-validator:
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/solana-build-anchor-programs.yml
+
+  # Then run all tests in parallel, using the cached validator image
   test:
+    needs: build-validator
     strategy:
       fail-fast: false
-      max-parallel: 3
       matrix:
         test-name:
           - test_one_clients_three_epochs_run
