@@ -64,6 +64,7 @@ pub struct RunCreateAccounts<'info> {
 pub struct RunCreateParams {
     pub index: u64,
     pub run_id: String,
+    pub version_tag: String,
     pub main_authority: Pubkey,
     pub join_authority: Pubkey,
 }
@@ -113,6 +114,7 @@ pub fn run_create_processor(
             main_authority: context.accounts.run.key(),
             join_authority: params.join_authority,
             run_id: params.run_id.clone(),
+            version_tag: params.version_tag.clone(),
         },
     )?;
 
