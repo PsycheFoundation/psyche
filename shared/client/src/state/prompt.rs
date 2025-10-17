@@ -46,9 +46,9 @@ impl PromptTask {
 
     fn reset_with_new_prompt(&self) {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let prompt_texts = get_prompt_texts();
-        let new_prompt_index = rng.gen_range(0..prompt_texts.len());
+        let new_prompt_index = rng.random_range(0..prompt_texts.len());
 
         let old_prompt_index = *self.selected_prompt.read().unwrap();
         debug!(

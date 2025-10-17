@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use futures_util::future::select_all;
-use iroh::{NodeAddr, PublicKey};
+use iroh::PublicKey;
 use iroh_blobs::ticket::BlobTicket;
 use iroh_blobs::{Hash, api::downloader::DownloadProgressItem};
 use serde::{Deserialize, Serialize};
@@ -229,7 +229,7 @@ pub enum TransmittableDownload {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DownloadType {
     // Distro result variant with the list of possible peers that we might ask for the blob in case of failure with the original
-    DistroResult(Vec<NodeAddr>),
+    DistroResult(Vec<PublicKey>),
     // Model sharing variant containing the specific type wether be the model config or a parameter
     ModelSharing(ModelRequestType),
 }
