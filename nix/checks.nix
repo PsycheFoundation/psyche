@@ -1,8 +1,7 @@
-{ lib, ... }:
+{ ... }:
 {
   perSystem =
     {
-      system,
       pkgs,
       self',
       ...
@@ -50,7 +49,7 @@
           workspace-test-parallelism = testWithProfile "parallelism";
 
           validate-all-configs =
-            pkgs.runCommandNoCC "validate-configs"
+            pkgs.runCommand "validate-configs"
               { nativeBuildInputs = [ self'.packages.psyche-centralized-server ]; }
               ''
                 dir="${../config}"

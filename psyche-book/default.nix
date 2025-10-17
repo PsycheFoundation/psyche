@@ -35,6 +35,8 @@ let
   );
 in
 stdenvNoCC.mkDerivation {
+  __structuredAttrs = true;
+
   name = "psyche-book";
   src = ./.;
 

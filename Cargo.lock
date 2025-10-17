@@ -7656,8 +7656,8 @@ dependencies = [
 
 [[package]]
 name = "pyo3-tch"
-version = "0.21.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1#a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1"
+version = "0.22.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496#11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496"
 dependencies = [
  "pyo3",
  "tch",
@@ -11989,8 +11989,8 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.21.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1#a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1"
+version = "0.22.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496#11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496"
 dependencies = [
  "half",
  "lazy_static",
@@ -12490,8 +12490,8 @@ dependencies = [
 
 [[package]]
 name = "torch-sys"
-version = "0.21.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1#a7ad43a4c0ca62674f07b14786ed42b5c2ccdea1"
+version = "0.22.0"
+source = "git+https://github.com/jquesnelle/tch-rs.git?rev=11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496#11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496"
 dependencies = [
  "anyhow",
  "cc",
