@@ -58,6 +58,24 @@ jobs:
           echo "=== Built Authorizer artifacts ==="
           ls -la architectures/decentralized/solana-authorizer/target/deploy/
 
+      - name: Clean Anchor build artifacts
+        if: steps.cache-validator.outputs.cache-hit != 'true'
+        run: |
+          echo "=== Cleaning Anchor build artifacts (keeping deploy and idl folders) ==="
+
+          # For coordinator - keep entire deploy folder but remove intermediate builds
+          find architectures/decentralized/solana-coordinator/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
+
+          # For authorizer - keep entire deploy folder but remove intermediate builds
+          find architectures/decentralized/solana-authorizer/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
+
+          # Clean nix store garbage aggressively
+          nix-collect-garbage -d
+          nix store optimise
+
+          echo "=== Disk usage after Anchor cleanup ==="
+          df -h
+
       - name: Build Validator Docker Image
         if: steps.cache-validator.outputs.cache-hit != 'true'
         run: |
