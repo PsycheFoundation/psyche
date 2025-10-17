@@ -38,22 +38,6 @@ fn has_gpu_support() -> bool {
         .unwrap_or(false)
 }
 
-/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
-fn has_gpu_support() -> bool {
-    // Check if USE_GPU environment variable is set
-    if std::env::var("USE_GPU").is_ok() {
-        return true;
-    }
-
-    // Check if nvidia-smi command exists
-    Command::new("nvidia-smi")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
 pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
@@ -170,7 +154,7 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
         platform: None,
     });
     let config = Config {
-        image: Some("psyche-solana-test-client-no-python"),
+        image: Some("psyche-solana-test-client"),
         env: Some(envs.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()

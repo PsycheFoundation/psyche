@@ -166,6 +166,17 @@ impl ConfigBuilder {
         // Apply runtime overrides
         self.set_value("config.min_clients", self.num_clients as u32);
         self.set_value("config.init_min_clients", self.num_clients as u32);
+        self.set_value("config.witness_nodes", self.num_clients as u32);
+
+        if let ConfigTemplate::PythonLlama = self.config {
+            if self.num_clients > 1 {
+                self.set_value(
+                    "config.global_batch_size_start",
+                    8 * self.num_clients as u32,
+                );
+                self.set_value("config.global_batch_size_end", 8 * self.num_clients as u32);
+            }
+        }
 
         let config_content = toml::to_string(&self.base_config).unwrap();
 

@@ -23,8 +23,8 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-decentralized-integration-tests test_name="" +flags="":
-    if [[ " {{ flags }} " =~ " python " ]]; then \
+decentralized-integration-tests python="" test_name="":
+    if [[ " {{ python }} " =~ " python " ]]; then \
             echo "Running tests with Python"; \
             just setup_python_test_infra; \
     else \
