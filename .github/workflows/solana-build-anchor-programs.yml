@@ -1,10 +1,6 @@
 name: Build Solana Anchor Programs and Validator Image
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main, '**']
   workflow_call:
 
 jobs:
@@ -23,14 +19,10 @@ jobs:
           key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
           lookup-only: true
 
-      - name: Exit if cache hit
-        if: steps.cache-validator.outputs.cache-hit == 'true'
-        run: |
-          echo "Using cached validator image, skipping build"
-          exit 0
-
       # Build validator image if cache fails
       - name: Free Disk Space (Ubuntu)
+        if: steps.cache-validator.outputs.cache-hit != 'true'
+
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -42,6 +34,7 @@ jobs:
           swap-storage: false
 
       - uses: nixbuild/nix-quick-install-action@v31
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         with:
           nix_conf: |
             download-buffer-size = 524288000
@@ -50,6 +43,7 @@ jobs:
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
       - name: Build Anchor Programs
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         run: |
           echo "Building Solana Coordinator"
           nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
@@ -64,6 +58,7 @@ jobs:
           ls -la architectures/decentralized/solana-authorizer/target/deploy/
 
       - name: Clean Anchor build artifacts
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         run: |
           echo "Cleaning Anchor build artifacts (keeping deploy and idl folders)"
 
@@ -81,6 +76,7 @@ jobs:
           df -h
 
       - name: Build Validator Docker Image
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         run: |
           export PSYCHE_HOME=$(pwd)
           echo "Building validator image"
@@ -92,10 +88,12 @@ jobs:
           ls -lh validator-image.tar.gz
 
       - name: Save Validator Image to cache
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: validator-image.tar.gz
           key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
 
       - name: Build complete
+        if: steps.cache-validator.outputs.cache-hit != 'true'
         run: echo "Built and cached validator image successfully"
