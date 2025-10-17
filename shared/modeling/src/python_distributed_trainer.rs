@@ -397,7 +397,7 @@ impl CausalLM for PythonDistributedTrainer {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         self.model.forward(
             x,
             labels,

@@ -236,7 +236,7 @@ fn build_weighted_index(
 fn shuffle<T: Rng>(dataset_index: &mut [usize], dataset_sample_index: &mut [u64], rng: &mut T) {
     let n = dataset_index.len();
     for i in (1..n).rev() {
-        let j = rng.gen_range(0..=i);
+        let j = rng.random_range(0..=i);
         dataset_index.swap(i, j);
         dataset_sample_index.swap(i, j);
     }

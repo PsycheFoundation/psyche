@@ -4,14 +4,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iroh::{NodeId, PublicKey, endpoint::ConnectionType};
+use iroh::NodeId;
 
-use crate::{download_manager::DownloadUpdate, peer_list::PeerList};
+use crate::{P2PNodeInfo, download_manager::DownloadUpdate};
 
 #[derive(Debug)]
 pub struct State {
-    pub join_ticket: PeerList,
-    pub last_seen: HashMap<PublicKey, (ConnectionType, Instant)>,
+    pub node_id: Option<NodeId>,
+    pub node_connections: Vec<P2PNodeInfo>,
     pub bandwidth_tracker: BandwidthTracker,
     pub bandwidth_history: VecDeque<f64>,
     pub download_progesses: HashMap<iroh_blobs::Hash, DownloadUpdate>,
@@ -20,8 +20,8 @@ pub struct State {
 impl State {
     pub fn new(bandwidth_average_period: u64) -> Self {
         Self {
-            join_ticket: Default::default(),
-            last_seen: Default::default(),
+            node_id: Default::default(),
+            node_connections: Default::default(),
             bandwidth_tracker: BandwidthTracker::new(bandwidth_average_period),
             bandwidth_history: Default::default(),
             download_progesses: Default::default(),

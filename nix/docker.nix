@@ -33,7 +33,7 @@ let
     {
       imageName,
       solanaClientPackage,
-      usePython ? false, # Changed from "false" string to boolean
+      usePython ? false,
     }:
     pkgs.dockerTools.streamLayeredImage {
       name = imageName;
@@ -147,64 +147,6 @@ let
       imageName = "psyche-solana-test-client";
       solanaClientPackage = nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python";
       usePython = false;
-    };
-
-    docker-psyche-solana-test-validator = pkgs.dockerTools.streamLayeredImage {
-      name = "psyche-solana-test-validator";
-      tag = "latest";
-
-      contents = with pkgs; [
-        bashInteractive
-        bzip2
-        gnutar
-        solana
-        gnugrep
-        coreutils
-
-        (pkgs.runCommand "copy-solana-programs" { } ''
-          mkdir -p $out/bin
-          mkdir -p $out/local
-          chmod 755 $out/local
-          cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
-          cp -r ${coordinatorSrc} $out/local
-          cp -r ${authorizerSrc} $out/local
-          mv $out/local/*solana-coordinator $out/local/solana-coordinator
-          mv $out/local/*solana-authorizer $out/local/solana-authorizer
-          chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
-        '')
-      ];
-
-      config = {
-        WorkingDir = "/tmp";
-        Entrypoint = [ "/bin/psyche_solana_validator_entrypoint.sh" ];
-        ExposedPorts = {
-          "8899/tcp" = { };
-          "8900/tcp" = { };
-        };
-      };
-    };
-
-    docker-psyche-centralized-client = pkgs.dockerTools.streamLayeredImage {
-      name = "psyche-centralized-client";
-      tag = "latest";
-
-      # Copy the binary and the entrypoint script into the image
-
-      contents = [
-        pkgs.bashInteractive
-        nixglhostRustPackages."psyche-centralized-client-nixglhost"
-      ];
-
-      config = {
-        Env = [
-          "NVIDIA_DRIVER_CAPABILITIES=compute,utility"
-          "NVIDIA_VISIBLE_DEVICES=all"
-          "LOGNAME=root"
-          "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_LIBCUDA_PATH=/usr/lib64"
-          "PYTHONUNBUFFERED=1"
-        ];
-      };
     };
   };
 in

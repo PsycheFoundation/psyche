@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             _ = interval.tick() => {
-                let prng_num = rand::thread_rng().next_u64();
+                let prng_num = rand::rng().next_u64();
                 tx.send(prng_num).await.expect("sending works!");
 
                 info!("foo");

@@ -333,7 +333,7 @@ fn main() -> Result<()> {
                                 .filter(allowed_to_kill)
                                 .collect();
 
-                            client_nums.shuffle(&mut rand::thread_rng());
+                            client_nums.shuffle(&mut rand::rng());
 
                             client_nums.truncate(kill_num);
                             client_nums

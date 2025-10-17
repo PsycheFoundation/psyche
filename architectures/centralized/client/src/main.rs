@@ -68,7 +68,7 @@ async fn async_main() -> Result<()> {
 
             let identity_secret_key: SecretKey =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
-                    .unwrap_or_else(|| SecretKey::generate(&mut rand::rngs::OsRng));
+                    .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)

@@ -19,7 +19,7 @@ use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
 use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
-use rand::{Rng, RngCore, thread_rng};
+use rand::{Rng, RngCore};
 use std::{path::PathBuf, time::Duration};
 use std::{
     sync::Arc,
@@ -273,14 +273,14 @@ impl App {
                         .as_ref()
                         .map(|state| state.clients_state.get_active_clients_ids());
 
-                    match ticked.tick(pending_clients_ids, timestamp, rand::thread_rng().next_u64()) {
+                    match ticked.tick(pending_clients_ids, timestamp, rand::rng().next_u64()) {
                         Ok(_) => {
                             if ticked.run_state != latest_update.run_state {
                                 // to avoid *everyone* sending a tick, we probabilisticly send it
                                 // targeting having two clients send it per interval
                                 let send_tick = match ticked.epoch_state.clients.len() {
                                     0..=2 => true,
-                                    len => { let rand: f32 = thread_rng().r#gen();
+                                    len => { let rand: f32 = rand::rng().random();
                                         rand <= 2.0 / len as f32
                                     }
                                 };

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use iroh::{NodeAddr, Watcher};
+use iroh::NodeAddr;
 use iroh_blobs::ticket::BlobTicket;
 use psyche_metrics::ClientMetrics;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-use crate::{DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, PeerList, allowlist};
+use crate::{DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, allowlist};
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Message {
@@ -36,7 +36,6 @@ struct App {
     cancel: CancellationToken,
     current_step: u32,
     network: NC,
-    our_id: NodeAddr,
     should_wait_before: bool,
     sender: bool,
     tx_waiting_for_download: Option<UnboundedSender<String>>,
@@ -75,17 +74,10 @@ impl App {
     async fn on_network_event(&mut self, event: NetworkEvent<Message, DistroResultBlob>) {
         match event {
             NetworkEvent::MessageReceived((from, Message::Message { text })) => {
-                info!(name:"message_recv_text", from=from.fmt_short(), text=text)
+                info!(name:"message_recv_text", from=from.fmt_short().to_string(), text=text)
             }
             NetworkEvent::MessageReceived((_, Message::DistroResult { step, blob_ticket })) => {
-                let peers: Vec<NodeAddr> = self
-                    .network
-                    .get_all_peers()
-                    .await
-                    .iter()
-                    .map(|(peer, _)| peer.clone())
-                    .filter(|peer| peer.clone() != self.our_id)
-                    .collect();
+                let peers = self.network.endpoint.connections();
 
                 if self.should_wait_before {
                     println!("Waiting to download");
@@ -162,13 +154,13 @@ impl App {
 
 async fn spawn_new_node(
     is_sender: bool,
-    peer_list: Option<PeerList>,
+    peers: Vec<NodeAddr>,
     should_wait_to_download: bool,
     cancel_token: CancellationToken,
 ) -> Result<(
     Option<UnboundedReceiver<String>>,
     Option<UnboundedReceiver<String>>,
-    PeerList,
+    Vec<NodeAddr>,
     JoinHandle<()>,
 )> {
     let (tx_waiting_for_download, rx_waiting_for_download) = if !is_sender {
@@ -185,8 +177,6 @@ async fn spawn_new_node(
         (None, None)
     };
 
-    let PeerList(peers) = peer_list.unwrap_or_default();
-
     println!("joining gossip room");
 
     let network = NC::init(
@@ -201,21 +191,13 @@ async fn spawn_new_node(
     )
     .await?;
 
-    let node_addr = network.router().endpoint().node_addr().initialized().await;
-    let join_id = PeerList(vec![node_addr]);
-
-    let our_id = network
-        .get_all_peers()
-        .await
-        .first()
-        .map(|(addr, _)| addr.clone())
-        .ok_or_else(|| anyhow::anyhow!("No peers found"))?;
+    let node_addr = network.router().endpoint().node_addr();
+    let join_id = vec![node_addr.clone()];
 
     let mut app = App {
         cancel: cancel_token,
         current_step: 0,
         network,
-        our_id,
         should_wait_before: should_wait_to_download,
         tx_waiting_for_download,
         sender: is_sender,
@@ -240,8 +222,8 @@ async fn test_retry_connection() -> Result<()> {
     println!("Spawning first node (sender)");
     let sender_cancel = CancellationToken::new();
     let (_, _, join_id, handle_1) = spawn_new_node(
-        true,  // is_sender
-        None,  // peer_list
+        true, // is_sender
+        vec![],
         false, // wait
         sender_cancel.clone(),
     )
@@ -255,7 +237,7 @@ async fn test_retry_connection() -> Result<()> {
     let receiver_cancel = CancellationToken::new();
     let (rx_waiting, rx_retrying, _, handle_2) = spawn_new_node(
         false, // is_sender
-        Some(join_id),
+        join_id,
         true, // wait
         receiver_cancel.clone(),
     )
@@ -324,8 +306,8 @@ async fn test_retry_connection_mid_download() -> Result<()> {
 
     let sender_cancel = CancellationToken::new();
     let (_, _, join_id, handle_1) = spawn_new_node(
-        true,  // is_sender
-        None,  // peer_list
+        true, // is_sender
+        vec![],
         false, // wait
         sender_cancel.clone(),
     )
@@ -339,7 +321,7 @@ async fn test_retry_connection_mid_download() -> Result<()> {
     let receiver_cancel = CancellationToken::new();
     let (rx_waiting, rx_retrying, _, handle_2) = spawn_new_node(
         false, // is_sender
-        Some(join_id),
+        join_id,
         false, // wait
         receiver_cancel.clone(),
     )

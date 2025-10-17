@@ -1,16 +1,16 @@
 use crate::{
     Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker,
-    client::P2PNodeInfo,
     state::{train::FinishedTrainers, types::DeserializeError},
 };
 
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
-use psyche_network::{AuthenticatableIdentity, BlobTicket, Hash, TransmittableDistroResult};
+use psyche_network::{
+    AuthenticatableIdentity, BlobTicket, Hash, P2PNodeInfo, TransmittableDistroResult,
+};
 use psyche_watcher::OpportunisticData;
 use std::{
-    collections::HashMap,
     fmt,
     sync::{Arc, Mutex},
     time::Instant,
@@ -857,7 +857,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub fn set_node_info(&mut self, node_info: HashMap<String, P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
         self.stats_logger
             .lock()
             .map_err(|_| anyhow::anyhow!("stats logger mutex poisoned"))?
@@ -1061,7 +1061,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub fn set_node_info(&mut self, node_info: HashMap<String, P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
         if let InitStage::Running(run) = &mut self.0 {
             run.set_node_info(node_info)?;
         }

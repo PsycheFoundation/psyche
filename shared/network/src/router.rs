@@ -55,20 +55,21 @@ mod tests {
     use std::time::Duration;
 
     use futures_util::future::join_all;
-    use iroh::{Endpoint, SecretKey, Watcher};
+    use iroh::{Endpoint, SecretKey, discovery::static_provider::StaticProvider};
     use iroh_blobs::store::mem::MemStore;
     use iroh_gossip::{
         api::{Event, Message},
         net::Gossip,
         proto::TopicId,
     };
+    use rand::Fill;
     use tokio_stream::StreamExt;
 
     use crate::allowlist::{self, AllowDynamic};
 
     use super::*;
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn test_shutdown() -> Result<()> {
         let endpoint = Endpoint::builder().bind().await?;
         let blobs = MemStore::new();
@@ -78,7 +79,7 @@ mod tests {
         let (tx_model_config_req, _rx_model_config_req) = tokio::sync::mpsc::unbounded_channel();
         let p2p_model_sharing = ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
         let allowlist = allowlist::AllowAll;
-        let blobs_protocol = BlobsProtocol::new(&blobs.clone(), endpoint.clone(), None);
+        let blobs_protocol = BlobsProtocol::new(&blobs, None);
         let router = spawn_router_with_allowlist(
             allowlist.clone(),
             endpoint.clone(),
@@ -100,27 +101,22 @@ mod tests {
     /// 1. Setting up N_CLIENTS routers where only N_ALLOWED are whitelisted
     /// 2. Having each client broadcast a message
     /// 3. Verifying that only messages from allowed clients are received
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn test_allowlist() -> Result<()> {
         const N_CLIENTS: u8 = 4;
         const N_ALLOWED: u8 = 3;
 
         // randomly initialized topic ID bytes.
-        const GOSSIP_TOPIC: TopicId = TopicId::from_bytes([
-            0x92, 0x41, 0xf9, 0xdd, 0xbd, 0x2d, 0xb1, 0xf0, 0xeb, 0xd0, 0xfd, 0xb1, 0xf5, 0x5a,
-            0xaf, 0x73, 0xa5, 0xa0, 0x3b, 0x9e, 0xec, 0xe6, 0x92, 0x05, 0x9b, 0x45, 0x77, 0xe6,
-            0x99, 0x45, 0x21, 62,
-        ]);
+        let gossip_topic: TopicId = TopicId::from_bytes({
+            let mut bytes: [_; _] = [0; _];
+            bytes.fill(&mut rand::rng());
+            bytes
+        });
 
         const _: () = assert!(N_ALLOWED < N_CLIENTS);
 
         let keys: Vec<SecretKey> = (0..N_CLIENTS)
-            .map(|i| {
-                SecretKey::from_bytes(&[
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, i,
-                ])
-            })
+            .map(|_| SecretKey::generate(&mut rand::rng()))
             .collect();
 
         let pubkeys: Vec<_> = keys
@@ -134,7 +130,12 @@ mod tests {
             keys.into_iter()
                 .map(|k| async {
                     let allowlist = AllowDynamic::with_nodes(pubkeys.clone());
-                    let endpoint = Endpoint::builder().secret_key(k).bind().await?;
+                    let static_discovery = StaticProvider::new();
+                    let endpoint = Endpoint::builder()
+                        .secret_key(k)
+                        .discovery(static_discovery.clone())
+                        .bind()
+                        .await?;
                     let blobs = MemStore::new();
                     let gossip = Gossip::builder().spawn(endpoint.clone());
                     let (tx_model_parameter_req, _rx_model_parameter_req) =
@@ -143,7 +144,7 @@ mod tests {
                         tokio::sync::mpsc::unbounded_channel();
                     let p2p_model_sharing =
                         ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
-                    let blobs_protocol = BlobsProtocol::new(&blobs.clone(), endpoint.clone(), None);
+                    let blobs_protocol = BlobsProtocol::new(&blobs.clone(), None);
 
                     let allowlist_clone = allowlist.clone();
                     let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |node_id| {
@@ -166,11 +167,7 @@ mod tests {
                             .spawn(),
                     );
 
-                    Ok((
-                        gossip.clone(),
-                        router,
-                        endpoint.node_addr().initialized().await,
-                    ))
+                    Ok((gossip.clone(), router, static_discovery))
                 })
                 .collect::<Vec<_>>(),
         )
@@ -178,22 +175,33 @@ mod tests {
         .into_iter()
         .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let node_addrs: Vec<_> = routers.iter().map(|(_, _, node_addr)| node_addr).collect();
-
         // Set up gossip subscriptions for all routers
         let mut subscriptions = Vec::new();
-        for (i, (gossip, router, _)) in routers.iter().enumerate() {
-            for (j, a) in node_addrs.iter().enumerate() {
-                if i != j {
-                    router.endpoint().add_node_addr((*a).clone())?;
-                }
+        for (i, (gossip, router, static_discovery)) in routers.iter().enumerate() {
+            for (_, router, _) in routers.iter() {
+                static_discovery.add_node_info(router.endpoint().node_addr());
             }
-            let mut sub = gossip.subscribe(GOSSIP_TOPIC, pubkeys.clone()).await?;
-            println!("subscribing {i} to topic..");
+            let mut sub = gossip
+                .subscribe(
+                    gossip_topic,
+                    pubkeys
+                        .iter()
+                        .filter(|k| **k != router.endpoint().node_id())
+                        .cloned()
+                        .collect(),
+                )
+                .await?;
+            println!(
+                "subscribing {i} ({}) to topic..",
+                router.endpoint().node_id()
+            );
 
             subscriptions.push(async move {
                 if i < N_ALLOWED as usize {
-                    println!("waiting for {i} to get at least 1 peer..");
+                    println!(
+                        "waiting for {i} ({}) to get at least 1 peer..",
+                        router.endpoint().node_id()
+                    );
                     sub.joined().await.unwrap();
                     println!("gossip connections {i} ready");
                 }
