@@ -17,7 +17,7 @@ export async function miningPoolIndexingCheckpoint(
 ) {
 	for (const [poolAddress, poolInfo] of dataStore.poolInfoByAddress) {
 		if (poolInfo.accountFetchedOrdinal === poolInfo.accountRequestOrdinal) {
-			break
+			continue
 		}
 		try {
 			const poolState = await utilsGetAndDecodeAccountState(

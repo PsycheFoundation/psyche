@@ -4,6 +4,7 @@ import {
 	jsonCodecInteger,
 	jsonDecoderObjectWithKeysSnakeEncoded,
 } from 'solana-kiss'
+import { utilsBigintArraySortAscending } from '../utils'
 import { MiningPoolDataStore } from './MiningPoolDataStore'
 
 export async function miningPoolIndexingOnInstruction(
@@ -79,9 +80,11 @@ async function processAdminAction(
 		instructionAddresses: context.instructionAddresses,
 		instructionPayload: context.instructionPayload,
 	})
-	poolInfo.adminHistory.sort((a, b) =>
-		Number(b.instructionOrdinal - a.instructionOrdinal)
+	utilsBigintArraySortAscending(
+		poolInfo.adminHistory,
+		(adminAction) => adminAction.instructionOrdinal
 	)
+	poolInfo.adminHistory.reverse()
 }
 
 async function processPoolExtract(

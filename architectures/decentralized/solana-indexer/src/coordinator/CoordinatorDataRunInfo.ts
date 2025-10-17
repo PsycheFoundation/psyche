@@ -12,19 +12,26 @@ import {
 	JsonValue,
 	Pubkey,
 } from 'solana-kiss'
-import { utilsObjectToStringMapJsonCodec } from '../utils'
+import {
+	utilsObjectToPubkeyMapJsonCodec,
+	utilsObjectToStringMapJsonCodec,
+} from '../utils'
 import {
 	CoordinatorDataRunState,
 	coordinatorDataRunStateJsonCodec,
 } from './CoordinatorDataRunState'
 
-export interface CoordinatorDataRunInfoWitness {
-	blockTime: Date | undefined
-	ordinal: bigint
-	position: bigint
-	index: bigint
-	step: number
-	stats: Map<string, number>
+export interface CoordinatorDataRunInfoSample {
+	minTime: Date | undefined
+	maxTime: Date | undefined
+	minOrdinal: bigint
+	maxOrdinal: bigint
+	minStep: number
+	maxStep: number
+	minValue: number
+	maxValue: number
+	sumValue: number
+	numValue: number
 }
 
 export interface CoordinatorDataRunInfo {
@@ -32,8 +39,9 @@ export interface CoordinatorDataRunInfo {
 	accountUpdatedAt: Date | undefined
 	accountFetchedOrdinal: bigint
 	accountRequestOrdinal: bigint
-	witnessHistory: Array<CoordinatorDataRunInfoWitness>
-	slicesOrdinals: Array<bigint>
+	lastWitnessByUser: Map<Pubkey, { ordinal: bigint; step: number }>
+	samplesByStatName: Map<string, Array<CoordinatorDataRunInfoSample>>
+	finishesOrdinals: Array<bigint>
 	adminHistory: Array<{
 		blockTime: Date | undefined
 		instructionOrdinal: bigint
@@ -43,14 +51,18 @@ export interface CoordinatorDataRunInfo {
 	}>
 }
 
-const coordinatorDataRunInfoWitnessJsonCodec: JsonCodec<CoordinatorDataRunInfoWitness> =
+const coordinatorDataRunInfoSampleJsonCodec: JsonCodec<CoordinatorDataRunInfoSample> =
 	jsonCodecObject({
-		blockTime: jsonCodecOptional(jsonCodecDateTime),
-		ordinal: jsonCodecInteger,
-		position: jsonCodecInteger,
-		index: jsonCodecInteger,
-		step: jsonCodecNumber,
-		stats: utilsObjectToStringMapJsonCodec(jsonCodecNumber),
+		minTime: jsonCodecOptional(jsonCodecDateTime),
+		maxTime: jsonCodecOptional(jsonCodecDateTime),
+		minOrdinal: jsonCodecInteger,
+		maxOrdinal: jsonCodecInteger,
+		minStep: jsonCodecNumber,
+		maxStep: jsonCodecNumber,
+		minValue: jsonCodecNumber,
+		maxValue: jsonCodecNumber,
+		sumValue: jsonCodecNumber,
+		numValue: jsonCodecNumber,
 	})
 
 export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> =
@@ -59,7 +71,13 @@ export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> 
 		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
 		accountFetchedOrdinal: jsonCodecInteger,
 		accountRequestOrdinal: jsonCodecInteger,
-		witnessHistory: jsonCodecArray(coordinatorDataRunInfoWitnessJsonCodec),
+		lastWitnessByUser: utilsObjectToPubkeyMapJsonCodec(
+			jsonCodecObject({ ordinal: jsonCodecInteger, step: jsonCodecNumber })
+		),
+		samplesByStatName: utilsObjectToStringMapJsonCodec(
+			jsonCodecArray(coordinatorDataRunInfoSampleJsonCodec)
+		),
+		finishesOrdinals: jsonCodecArray(jsonCodecInteger),
 		adminHistory: jsonCodecArray(
 			jsonCodecObject({
 				blockTime: jsonCodecOptional(jsonCodecDateTime),

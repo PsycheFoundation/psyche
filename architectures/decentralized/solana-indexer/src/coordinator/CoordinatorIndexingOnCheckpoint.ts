@@ -10,12 +10,16 @@ import {
 	RpcHttp,
 } from 'solana-kiss'
 import {
+	utilsBigintArraySortAscending,
+	utilsBigIntMax,
+	utilsBigIntMin,
 	utilsGetAndDecodeAccountState,
 	utilsRustClientIdJsonDecoder,
 	utilsRustFixedArrayJsonDecoder,
 	utilsRustFixedStringJsonDecoder,
 	utilsRustSmallBooleanJsonDecoder,
 } from '../utils'
+import { CoordinatorDataRunInfoSample } from './CoordinatorDataRunInfo'
 import { CoordinatorDataStore } from './CoordinatorDataStore'
 
 export async function coordinatorIndexingOnCheckpoint(
@@ -25,8 +29,16 @@ export async function coordinatorIndexingOnCheckpoint(
 ) {
 	const promises = new Array<Promise<void>>()
 	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
+		for (const [statName, statSamples] of runInfo.samplesByStatName) {
+			cleanupSamples(
+				runAddress,
+				statName,
+				statSamples,
+				runInfo.finishesOrdinals
+			)
+		}
 		if (runInfo.accountFetchedOrdinal === runInfo.accountRequestOrdinal) {
-			break
+			continue
 		}
 		const promise = updateCoordinatorAccountState(
 			rpcHttp,
@@ -37,6 +49,81 @@ export async function coordinatorIndexingOnCheckpoint(
 		promises.push(promise)
 	}
 	await Promise.all(promises)
+}
+
+function cleanupSamples(
+	runAddress: Pubkey,
+	statName: string,
+	statSamples: Array<CoordinatorDataRunInfoSample>,
+	_finishesOrdinals: Array<bigint>
+) {
+	utilsBigintArraySortAscending(statSamples, (sample) => sample.maxOrdinal)
+	// TODO - split samples arrays by finishes ordinals (which allows discarding rewritten samples?)
+	mergeSamples(runAddress, statName, statSamples)
+}
+
+function mergeSamples(
+	_runAddress: Pubkey,
+	_statName: string,
+	statSamples: Array<CoordinatorDataRunInfoSample>
+) {
+	let mergeChunkSteps = 1
+	while (true) {
+		for (
+			let sampleIndex = statSamples.length - 2;
+			sampleIndex >= 0;
+			sampleIndex--
+		) {
+			const prevIndex = sampleIndex
+			const nextIndex = sampleIndex + 1
+			const prevSample = statSamples[prevIndex]!
+			const nextSample = statSamples[nextIndex]!
+			const prevSampleChunk = Math.floor(prevSample.maxStep / mergeChunkSteps)
+			const nextSampleChunk = Math.floor(nextSample.maxStep / mergeChunkSteps)
+			if (
+				prevSampleChunk === nextSampleChunk &&
+				prevSample.maxStep <= nextSample.maxStep
+			) {
+				prevSample.minTime = prevSample.minTime
+				prevSample.maxTime = nextSample.maxTime
+				prevSample.minOrdinal = utilsBigIntMin(
+					prevSample.minOrdinal,
+					nextSample.minOrdinal
+				)
+				prevSample.maxOrdinal = utilsBigIntMax(
+					prevSample.maxOrdinal,
+					nextSample.maxOrdinal
+				)
+				prevSample.minStep = Math.min(prevSample.minStep, nextSample.minStep)
+				prevSample.maxStep = Math.max(prevSample.maxStep, nextSample.maxStep)
+				prevSample.minValue = Math.min(prevSample.minValue, nextSample.minValue)
+				prevSample.maxValue = Math.max(prevSample.maxValue, nextSample.maxValue)
+				prevSample.sumValue += nextSample.sumValue
+				prevSample.numValue += nextSample.numValue
+				statSamples.splice(nextIndex, 1)
+			}
+		}
+		if (statSamples.length < 20) {
+			if (
+				_runAddress === 'BKDGHzM1ZvaVk4fgpATRcQCDaEctG3VFENp2TsPi2NDr' &&
+				_statName === 'loss'
+			) {
+				console.log(
+					'Final samples',
+					_runAddress,
+					_statName,
+					statSamples.length,
+					statSamples.map((s) => ({
+						steps: `${s.minStep} -> ${s.maxStep} (x${s.maxStep - s.minStep})`,
+						num: s.numValue,
+						avg: s.sumValue / s.numValue,
+					}))
+				)
+			}
+			return
+		}
+		mergeChunkSteps *= 2
+	}
 }
 
 async function updateCoordinatorAccountState(
@@ -59,17 +146,19 @@ async function updateCoordinatorAccountState(
 			runAccountAddress,
 			runAccountJsonDecoder
 		)
-		console.log('Fetched run state', runAccountState)
+		// console.log('Fetched run state', runAccountState)
 		const runInfo = dataStore.getRunInfo(runAddress)
 		runInfo.accountState = {
 			runId: runAccountState.state.coordinator.runId,
+			coordinatorInstanceAddress: runAddress,
+			coordinatorAccountAddress: runAccountAddress,
 			mainAuthority: runInstanceState.mainAuthority,
 			joinAuthority: runInstanceState.joinAuthority,
 			name: runAccountState.state.metadata.name,
 			description: runAccountState.state.metadata.description,
-			numParameters: runAccountState.state.metadata.numParameters,
 			status: runAccountState.state.coordinator.runState,
 			model: runAccountState.state.coordinator.model,
+			numParameters: runAccountState.state.metadata.numParameters,
 			epochClients: runAccountState.state.coordinator.epochState.clients.map(
 				(client) => ({
 					signer: client.id.signer,

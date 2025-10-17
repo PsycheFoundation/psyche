@@ -118,3 +118,28 @@ export const utilsRustClientIdJsonDecoder =
 		),
 		signer: jsonCodecPubkey.decoder,
 	})
+
+export function utilsBigIntMax(a: bigint, b: bigint): bigint {
+	return a > b ? a : b
+}
+
+export function utilsBigIntMin(a: bigint, b: bigint): bigint {
+	return a < b ? a : b
+}
+
+export function utilsBigintArraySortAscending<Content>(
+	array: Array<Content>,
+	getKey: (item: Content) => bigint
+) {
+	array.sort((a, b) => {
+		const aKey = getKey(a)
+		const bKey = getKey(b)
+		if (aKey < bKey) {
+			return -1
+		}
+		if (aKey > bKey) {
+			return 1
+		}
+		return 0
+	})
+}

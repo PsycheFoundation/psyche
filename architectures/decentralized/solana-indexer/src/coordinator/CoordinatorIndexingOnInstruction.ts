@@ -7,6 +7,7 @@ import {
 	jsonDecoderOptional,
 } from 'solana-kiss'
 import {
+	utilsBigintArraySortAscending,
 	utilsRustFixedArrayJsonDecoder,
 	utilsRustFixedStringJsonDecoder,
 	utilsRustSmallBooleanJsonDecoder,
@@ -84,16 +85,21 @@ async function processAdminAction(
 ): Promise<void> {
 	const runInfo = dataStore.getRunInfo(context.runAddress)
 	runInfo.adminHistory.push(context)
-	runInfo.adminHistory.sort((a, b) =>
-		Number(b.instructionOrdinal - a.instructionOrdinal)
+	utilsBigintArraySortAscending(
+		runInfo.adminHistory,
+		(adminAction) => adminAction.instructionOrdinal
 	)
+	runInfo.adminHistory.reverse()
 }
 
 async function processFinish(
 	dataStore: CoordinatorDataStore,
 	context: ProcessingContext
 ): Promise<void> {
-	// TODO - implement finish processing
+	const runInfo = dataStore.getRunInfo(context.runAddress)
+	runInfo.finishesOrdinals.push(context.instructionOrdinal)
+	utilsBigintArraySortAscending(runInfo.finishesOrdinals, (ordinal) => ordinal)
+	console.log('slicesOrdinals', context.runAddress, runInfo.finishesOrdinals)
 }
 
 async function processWitness(
@@ -105,69 +111,57 @@ async function processWitness(
 	if (!witnessPayload.proof.witness) {
 		return
 	}
+	const witnessUser = context.signerAddress
+	const witnessTime = context.blockTime
+	const witnessOrdinal = context.instructionOrdinal
 	const witnessStep = witnessPayload.metadata.step
-	const witnessData = new Map<string, number>()
+	const lastWitnessForUser = runInfo.lastWitnessByUser.get(witnessUser)
+	if (
+		lastWitnessForUser === undefined ||
+		lastWitnessForUser.ordinal < witnessOrdinal
+	) {
+		runInfo.lastWitnessByUser.set(witnessUser, {
+			ordinal: witnessOrdinal,
+			step: witnessStep,
+		})
+	}
+	const witnessStats = new Map<string, number>()
 	if (witnessPayload.metadata.bandwidthPerSec !== undefined) {
-		witnessData.set('bandwidthPerSec', witnessPayload.metadata.bandwidthPerSec)
+		witnessStats.set('bandwidthPerSec', witnessPayload.metadata.bandwidthPerSec)
 	}
 	if (witnessPayload.metadata.tokensPerSec !== undefined) {
-		witnessData.set('tokensPerSec', witnessPayload.metadata.tokensPerSec)
+		witnessStats.set('tokensPerSec', witnessPayload.metadata.tokensPerSec)
 	}
 	if (witnessPayload.metadata.efficiency !== undefined) {
-		witnessData.set('efficiency', witnessPayload.metadata.efficiency)
+		witnessStats.set('efficiency', witnessPayload.metadata.efficiency)
 	}
 	if (witnessPayload.metadata.loss !== undefined) {
-		witnessData.set('loss', witnessPayload.metadata.loss)
+		witnessStats.set('loss', witnessPayload.metadata.loss)
 	}
 	if (witnessPayload.metadata.evals !== undefined) {
 		for (const evalItem of witnessPayload.metadata.evals) {
-			witnessData.set(evalItem.name, evalItem.value)
+			witnessStats.set(evalItem.name, evalItem.value)
 		}
 	}
-	console.log(
-		'Witness for',
-		context.runAddress,
-		witnessStep,
-		witnessPayload.metadata.promptIndex,
-		witnessPayload.metadata.promptResults,
-		runInfo.witnessHistory.length
-	)
-	runInfo.witnessHistory.push({
-		blockTime: context.blockTime,
-		ordinal: context.instructionOrdinal,
-		position: witnessPayload.proof.position,
-		index: witnessPayload.proof.index,
-		step: witnessStep,
-		stats: witnessData,
-	})
-
-	/*
-	const desiredLastFewCount = 10
-	const desiredSampledCount = 100
-	const witness = {
-		blockTime: context.blockTime,
-		ordinal: context.instructionOrdinal,
-		proof: witnessPayload.proof,
-		metadata: witnessPayload.metadata,
-	}
-	userWitnesses.lastFew.push(witness)
-	userWitnesses.lastFew.sort((a, b) => Number(b.ordinal - a.ordinal))
-	userWitnesses.lastFew = userWitnesses.lastFew.slice(0, desiredLastFewCount)
-	const selector = Math.random()
-	if (selector < 1 / userWitnesses.sampled.rate) {
-		userWitnesses.sampled.data.push({ selector, witness })
-		userWitnesses.sampled.data.sort((a, b) =>
-			Number(b.witness.ordinal - a.witness.ordinal)
-		)
-		while (userWitnesses.sampled.data.length >= desiredSampledCount * 1.5) {
-			userWitnesses.sampled.rate *= 1.5
-			userWitnesses.sampled.data = userWitnesses.sampled.data.filter(
-				(item) => item.selector < 1 / userWitnesses.sampled.rate
-			)
+	for (const [statName, statValue] of witnessStats.entries()) {
+		let statSamples = runInfo.samplesByStatName.get(statName)
+		if (statSamples === undefined) {
+			statSamples = []
+			runInfo.samplesByStatName.set(statName, statSamples)
 		}
+		statSamples.push({
+			minTime: witnessTime,
+			maxTime: witnessTime,
+			minOrdinal: witnessOrdinal,
+			maxOrdinal: witnessOrdinal,
+			minStep: witnessStep,
+			maxStep: witnessStep,
+			minValue: statValue,
+			maxValue: statValue,
+			sumValue: statValue,
+			numValue: 1,
+		})
 	}
-	runInfo.lastFewWitnessesPerUser.set(context.signerAddress, userWitnesses)
-	*/
 }
 
 const witnessProofJsonDecoder = jsonDecoderObjectWithKeysSnakeEncoded({
