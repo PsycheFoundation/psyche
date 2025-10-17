@@ -19,6 +19,7 @@ jobs:
     needs: build-validator
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         test-name:
           - test_one_clients_three_epochs_run
