@@ -75,10 +75,10 @@ jobs:
           echo "=== Disk usage after removing validator tar ==="
           df -h
 
-      # Step 2: Download Solana Test Client Image from Garnix cache
-      - name: Download Solana Test Client Image from Garnix cache
+      # Step 2: Build or Download Solana Test Client Image
+      - name: Build or Download Solana Test Client Image
         run: |
-          echo "=== Disk space before client download ==="
+          echo "=== Disk space before client build ==="
           df -h
 
           # Calculate the derivation hash
@@ -89,7 +89,7 @@ jobs:
           OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
           echo "Output path: $OUT_PATH"
 
-          # Try to substitute (download) from cache first
+          # Try to download from Garnix cache first, build locally if not available
           echo "=== Attempting to fetch from Garnix cache ==="
           nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0 || {
             echo "Cache miss, building locally..."
@@ -100,11 +100,11 @@ jobs:
           # Load the image into Docker
           $OUT_PATH | docker load
 
-          echo "=== Disk space after client download ==="
+          echo "=== Disk space after client build ==="
           df -h
 
-      # Clean Nix store after client download
-      - name: Clean after client download
+      # Clean Nix store after client build
+      - name: Clean after client build
         run: |
           # Clean up the path file
           rm -f client-image-path.txt
