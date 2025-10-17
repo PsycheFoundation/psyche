@@ -81,11 +81,24 @@ jobs:
           echo "=== Disk space before client download ==="
           df -h
 
-          # Download from Garnix cache without building (--max-jobs 0)
-          nix build --max-jobs 0 .#docker-psyche-solana-test-client-no-python --no-link --print-out-paths > client-image-path.txt
+          # Calculate the derivation hash
+          echo "=== Calculating derivation path ==="
+          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client-no-python.drvPath)
+          echo "Derivation path: $DRV_PATH"
+
+          OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
+          echo "Output path: $OUT_PATH"
+
+          # Try to substitute (download) from cache first
+          echo "=== Attempting to fetch from Garnix cache ==="
+          nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0 || {
+            echo "Cache miss, building locally..."
+            nix build .#docker-psyche-solana-test-client-no-python --no-link --print-out-paths > client-image-path.txt
+            OUT_PATH=$(cat client-image-path.txt)
+          }
 
           # Load the image into Docker
-          cat client-image-path.txt | xargs cat | docker load
+          cat $OUT_PATH | docker load
 
           echo "=== Disk space after client download ==="
           df -h

@@ -1,0 +1,60 @@
+name: Test Client Image Download
+
+on:
+  push:
+    branches: [optimize-ci-integration-test]
+  pull_request:
+    branches: [optimize-ci-integration-test]
+  workflow_dispatch:
+
+jobs:
+  test-client-download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check initial disk space
+        run: |
+          echo "=== Initial disk usage ==="
+          df -h
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Test download client image from Garnix cache
+        run: |
+          echo "=== Disk space before client download ==="
+          df -h
+
+          # Calculate the derivation hash
+          echo "=== Calculating derivation path ==="
+          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client-no-python.drvPath)
+          echo "Derivation path: $DRV_PATH"
+
+          OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
+          echo "Output path: $OUT_PATH"
+
+          # Try to substitute (download) from cache first
+          echo "=== Attempting to fetch from Garnix cache ==="
+          nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0 || {
+            echo "Cache miss, building locally..."
+            nix build .#docker-psyche-solana-test-client-no-python --no-link --print-out-paths > client-image-path.txt
+            OUT_PATH=$(cat client-image-path.txt)
+          }
+
+          # Load the image into Docker
+          echo "=== Loading image into Docker ==="
+          cat $OUT_PATH | docker load
+
+          echo "=== Verify image loaded ==="
+          docker images | grep psyche-solana-test-client-no-python || (echo "ERROR: Image not found" && exit 1)
+
+          echo "=== SUCCESS: Client image downloaded and loaded ==="
+          df -h
