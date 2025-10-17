@@ -9,6 +9,9 @@ on:
 jobs:
   # First, build the validator image and cache it
   build-validator:
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/solana-build-anchor-programs.yml
 
   # Then run all tests in parallel, using the cached validator image
