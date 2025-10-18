@@ -34,6 +34,7 @@ export async function indexingInstructions(
 		programAddress,
 		startingCheckpoint,
 		async (updatedCheckpoint, transactionsInfos) => {
+			const startIndexChunkTime = Date.now()
 			const promises = new Array()
 			for (let index = 0; index < transactionsInfos.length; index++) {
 				const { transactionId, transactionOrdinal } = transactionsInfos[index]!
@@ -49,18 +50,27 @@ export async function indexingInstructions(
 				)
 			}
 			await Promise.all(promises)
-			console.log(
-				'>',
-				new Date().toISOString(),
-				programAddress,
-				'indexed:',
-				transactionsInfos.length
-			)
 			try {
+				const startCheckpointTime = Date.now()
 				await onCheckpoint(updatedCheckpoint)
+				console.log(
+					new Date().toISOString(),
+					'>>',
+					'Processed checkpoint',
+					programAddress,
+					`in ${Date.now() - startCheckpointTime}ms`
+				)
 			} catch (error) {
 				console.error('Failed to save checkpoint', error)
 			}
+			console.log(
+				new Date().toISOString(),
+				'>',
+				'Indexed chunk',
+				programAddress,
+				`in ${Date.now() - startIndexChunkTime}ms`,
+				`(x${transactionsInfos.length})`
+			)
 		}
 	)
 }

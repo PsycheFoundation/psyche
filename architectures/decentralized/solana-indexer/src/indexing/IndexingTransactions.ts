@@ -69,7 +69,7 @@ async function indexingTransactionChunk(
 	}
 	const newerTransactionOrdinal = newerChunkInfo
 		? newerChunkInfo.oldestTransactionOrdinal
-		: BigInt(Math.floor(new Date().getTime())) * maxTransactionPerMillisecond
+		: BigInt(Math.floor(Date.now())) * maxTransactionPerMillisecond
 	let olderTransactionOrdinal =
 		newerTransactionOrdinal - BigInt(backwardTransactionsIds.length)
 	let transactionCounter = backwardTransactionsIds.length

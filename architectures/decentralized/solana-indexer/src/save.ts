@@ -19,7 +19,13 @@ export async function saveWrite(
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
 	})
-	return fs.promises.writeFile(path, JSON.stringify(encoded))
+	const startTime = Date.now()
+	await fs.promises.writeFile(path, JSON.stringify(encoded))
+	console.log(
+		new Date().toISOString(),
+		'>>>',
+		`Saved ${saveName} in ${Date.now() - startTime}ms`
+	)
 }
 
 export async function saveRead(saveName: string): Promise<{
