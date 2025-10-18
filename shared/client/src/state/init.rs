@@ -412,6 +412,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 );
 
                                 let (tx_params_response, rx_params_response) = oneshot::channel();
+                                info!("Requesting params");
                                 tx_parameters_req
                                     .send((parameter_names, tx_params_response))
                                     .unwrap();
@@ -463,9 +464,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 model::LLMTrainingDataType::Pretraining => None,
                             };
 
-                        let raw_loaded_model_type: RawLoadedModelType = if llm.architecture
-                            == model::LLMArchitecture::HfAuto
-                            {
+                        let raw_loaded_model_type: RawLoadedModelType =
+                            if llm.architecture == model::LLMArchitecture::HfAuto {
                                 #[cfg(feature = "python")]
                                 {
                                     let dp = init_config.data_parallelism;
@@ -552,22 +552,22 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 ModelLoadError::NoDeviceForRank(rank, devices)
                                             })?;
                                             if is_dummy_model {
-                                            if let Some(training_delay) =
-                                                init_config.dummy_training_delay_secs
-                                            {
-                                                return Ok(Box::new(
-                                                    psyche_modeling::DummyModel::new(
-                                                        training_delay,
-                                                    ),
-                                                )
-                                                    as Box<dyn psyche_modeling::CausalLM>);
-                                            } else {
-                                                return Ok(Box::new(
-                                                    psyche_modeling::DummyModel::default(),
-                                                )
-                                                    as Box<dyn psyche_modeling::CausalLM>);
+                                                if let Some(training_delay) =
+                                                    init_config.dummy_training_delay_secs
+                                                {
+                                                    return Ok(Box::new(
+                                                        psyche_modeling::DummyModel::new(
+                                                            training_delay,
+                                                        ),
+                                                    )
+                                                        as Box<dyn psyche_modeling::CausalLM>);
+                                                } else {
+                                                    return Ok(Box::new(
+                                                        psyche_modeling::DummyModel::default(),
+                                                    )
+                                                        as Box<dyn psyche_modeling::CausalLM>);
+                                                }
                                             }
-                                        }
                                             match llm.architecture {
                                                 model::LLMArchitecture::HfLlama => {
                                                     LlamaForCausalLM::from_pretrained(

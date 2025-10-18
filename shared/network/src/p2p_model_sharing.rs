@@ -658,7 +658,7 @@ impl SharableModel {
         }
 
         let handle = tokio::task::spawn_blocking(move || {
-            println!("Serialized model hash: {:}", digest(&data));
+            info!("Serialized model hash: {:}", digest(&data));
             postcard::from_bytes::<BTreeMap<String, Option<TensorWrapper>>>(&data)
         });
 

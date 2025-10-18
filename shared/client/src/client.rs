@@ -751,18 +751,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 p2p.start_download(config_blob_ticket, 0, kind);
                                             }
                                             Some(model_addrs_and_hashes) = rx_model_download.recv() => {
+                                                info!("Starting big blob download");
                                                 match p2p.start_download_big_blob(model_addrs_and_hashes).await {
                                                     Ok((data, _)) => {
                                                         if let Err(err) = sharable_model.deserialize_params(data).await {
-                                                            println!("Error deserializing the model: {:?}, we'll not proceed", err);
+                                                            error!("Error deserializing the model: {:?}, we'll not proceed", err);
                                                         } else {
-                                                            println!("Sending model");
+                                                            info!("finished start_download_big_blob sending model");
                                                             if let Err(err) = sharable_model.send_init_parameters() {
-                                                                println!("Error sending the model: {:?}, we'll not proceed", err);
+                                                                error!("Error sending the model: {:?}, we'll not proceed", err);
                                                             }
                                                         }
                                                     } Err(err) => {
-                                                        println!("Error downloading the model: {:?}, we'll not proceed with the download", err);
+                                                        error!("Error downloading the model: {:?}, we'll not proceed with the download", err);
                                                     }
                                                 }
                                             }
