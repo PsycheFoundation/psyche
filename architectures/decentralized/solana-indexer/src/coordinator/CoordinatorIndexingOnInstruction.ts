@@ -50,8 +50,8 @@ export async function coordinatorIndexingOnInstruction(
 		console.warn('Coordinator: Unknown instruction:', instructionName)
 	}
 	const runInfo = dataStore.getRunInfo(runAddress)
-	if (instructionOrdinal > runInfo.accountRequestOrdinal) {
-		runInfo.accountRequestOrdinal = instructionOrdinal
+	if (instructionOrdinal > runInfo.changeNotificationOrdinal) {
+		runInfo.changeNotificationOrdinal = instructionOrdinal
 	}
 }
 

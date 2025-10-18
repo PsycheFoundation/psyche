@@ -40,8 +40,8 @@ export class CoordinatorDataStore {
 			runInfo = {
 				accountState: undefined,
 				accountUpdatedAt: undefined,
-				accountFetchedOrdinal: 0n,
-				accountRequestOrdinal: 0n,
+				changeAcknowledgedOrdinal: 0n,
+				changeNotificationOrdinal: 0n,
 				lastWitnessByUser: new Map(),
 				samplesByStatName: new Map(),
 				finishesOrdinals: [],

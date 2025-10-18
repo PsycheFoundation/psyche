@@ -37,8 +37,8 @@ export interface CoordinatorDataRunInfoSample {
 export interface CoordinatorDataRunInfo {
 	accountState: CoordinatorDataRunState | undefined
 	accountUpdatedAt: Date | undefined
-	accountFetchedOrdinal: bigint
-	accountRequestOrdinal: bigint
+	changeAcknowledgedOrdinal: bigint
+	changeNotificationOrdinal: bigint
 	lastWitnessByUser: Map<Pubkey, { ordinal: bigint; step: number }>
 	samplesByStatName: Map<string, Array<CoordinatorDataRunInfoSample>>
 	finishesOrdinals: Array<bigint>
@@ -69,8 +69,8 @@ export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> 
 	jsonCodecObject({
 		accountState: jsonCodecOptional(coordinatorDataRunStateJsonCodec),
 		accountUpdatedAt: jsonCodecOptional(jsonCodecDateTime),
-		accountFetchedOrdinal: jsonCodecInteger,
-		accountRequestOrdinal: jsonCodecInteger,
+		changeAcknowledgedOrdinal: jsonCodecInteger,
+		changeNotificationOrdinal: jsonCodecInteger,
 		lastWitnessByUser: utilsObjectToPubkeyMapJsonCodec(
 			jsonCodecObject({ ordinal: jsonCodecInteger, step: jsonCodecNumber })
 		),

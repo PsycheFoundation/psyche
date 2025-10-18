@@ -16,9 +16,12 @@ export async function miningPoolIndexingCheckpoint(
 	dataStore: MiningPoolDataStore
 ) {
 	for (const [poolAddress, poolInfo] of dataStore.poolInfoByAddress) {
-		if (poolInfo.accountFetchedOrdinal === poolInfo.accountRequestOrdinal) {
+		if (
+			poolInfo.changeAcknowledgedOrdinal === poolInfo.changeNotificationOrdinal
+		) {
 			continue
 		}
+		poolInfo.changeAcknowledgedOrdinal = poolInfo.changeNotificationOrdinal
 		try {
 			const poolState = await utilsGetAndDecodeAccountState(
 				rpcHttp,
@@ -27,9 +30,8 @@ export async function miningPoolIndexingCheckpoint(
 				poolStateJsonDecoder
 			)
 			let poolInfo = dataStore.getPoolInfo(poolAddress)
-			poolInfo.accountState = poolState
 			poolInfo.accountUpdatedAt = new Date()
-			poolInfo.accountFetchedOrdinal = poolInfo.accountRequestOrdinal
+			poolInfo.accountState = poolState
 		} catch (error) {
 			console.error('Failed to refresh pool account state', poolAddress, error)
 		}

@@ -37,9 +37,12 @@ export async function coordinatorIndexingOnCheckpoint(
 				runInfo.finishesOrdinals
 			)
 		}
-		if (runInfo.accountFetchedOrdinal === runInfo.accountRequestOrdinal) {
+		if (
+			runInfo.changeAcknowledgedOrdinal === runInfo.changeNotificationOrdinal
+		) {
 			continue
 		}
+		runInfo.changeAcknowledgedOrdinal = runInfo.changeNotificationOrdinal
 		const promise = updateCoordinatorAccountState(
 			rpcHttp,
 			programIdl,
@@ -148,6 +151,7 @@ async function updateCoordinatorAccountState(
 		)
 		// console.log('Fetched run state', runAccountState)
 		const runInfo = dataStore.getRunInfo(runAddress)
+		runInfo.accountUpdatedAt = new Date()
 		runInfo.accountState = {
 			runId: runAccountState.state.coordinator.runId,
 			coordinatorInstanceAddress: runAddress,
@@ -171,8 +175,6 @@ async function updateCoordinatorAccountState(
 			},
 			nonce: runAccountState.nonce,
 		}
-		runInfo.accountUpdatedAt = new Date()
-		runInfo.accountFetchedOrdinal = runInfo.accountRequestOrdinal
 	} catch (error) {
 		console.error('Failed to refresh run state', runAddress, error)
 	}

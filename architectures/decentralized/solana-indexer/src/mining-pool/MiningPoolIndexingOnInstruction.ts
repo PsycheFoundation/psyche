@@ -43,8 +43,8 @@ export async function miningPoolIndexingOnInstruction(
 		console.warn('MiningPool: Unknown instruction:', instructionName)
 	}
 	const poolInfo = dataStore.getPoolInfo(poolAddress)
-	if (instructionOrdinal > poolInfo.accountRequestOrdinal) {
-		poolInfo.accountRequestOrdinal = instructionOrdinal
+	if (instructionOrdinal > poolInfo.changeNotificationOrdinal) {
+		poolInfo.changeNotificationOrdinal = instructionOrdinal
 	}
 }
 

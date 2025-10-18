@@ -39,8 +39,8 @@ export class MiningPoolDataStore {
 			poolInfo = {
 				accountState: undefined,
 				accountUpdatedAt: undefined,
-				accountFetchedOrdinal: 0n,
-				accountRequestOrdinal: 0n,
+				changeAcknowledgedOrdinal: 0n,
+				changeNotificationOrdinal: 0n,
 				depositCollateralAmountPerUser: new Map<Pubkey, bigint>(),
 				claimRedeemableAmountPerUser: new Map<Pubkey, bigint>(),
 				totalExtractCollateralAmount: 0n,
