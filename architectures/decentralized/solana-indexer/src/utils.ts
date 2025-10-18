@@ -164,18 +164,29 @@ export function utilsPlotPoints(
 			y: Math.round(((point.y - minY) / (maxY - minY)) * (size.y - 1)),
 		}
 	}
-	const grid: string[][] = Array.from({ length: size.y }, () =>
-		Array(size.x).fill(' ')
+	const grid: number[][] = Array.from({ length: size.y }, () =>
+		Array(size.x).fill(0)
 	)
 	for (const pointClean of pointsClean) {
 		const pos = gridPos(pointClean)
-		grid[pos.y]![pos.x] = '*'
+		grid[pos.y]![pos.x]! += 1
 	}
+	const peak = Math.max(...grid.flat())
+	const header = `> ${title}`
+	const counter = `x${points.length.toString()} <`
+	const phead = size.x - header.length
+	const intensities = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@']
 	console.log('')
-	console.log(`# ${title}`)
+	console.log(`#${header}${counter.padStart(phead, ' ')}#`)
 	console.log(`+${'-'.repeat(size.x)}+ --`)
 	for (let rowIndex = grid.length - 1; rowIndex >= 0; rowIndex--) {
-		const data = `|${grid[rowIndex]!.join('')}|`
+		const pixels = []
+		for (let colIndex = 0; colIndex < grid[rowIndex]!.length; colIndex++) {
+			const value = grid[rowIndex]![colIndex]!
+			const pixel = Math.round((value / peak) * (intensities.length - 1))
+			pixels.push(intensities[pixel])
+		}
+		const data = `|${pixels.join('')}|`
 		if (rowIndex === grid.length - 1) {
 			console.log(`${data} ${maxY.toPrecision(6)}`)
 		} else if (rowIndex === 0) {

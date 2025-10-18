@@ -80,7 +80,7 @@ function aggregateStatSamples(
 	}
 	utilsPlotPoints(
 		`${_runId ? _runId : _runAddress} (${_statName})`,
-		{ x: 80, y: 8 },
+		{ x: 90, y: 10 },
 		statSamples.map((sample, _index) => ({
 			x: sample.step,
 			y: sample.sumValue / sample.numValue,

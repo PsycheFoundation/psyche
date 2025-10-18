@@ -20,7 +20,9 @@ export async function saveWrite(
 		dataStore: saveContent.dataStore,
 	})
 	const startTime = Date.now()
-	await fs.promises.writeFile(path, JSON.stringify(encoded))
+	await fs.promises.writeFile(path, JSON.stringify(encoded), {
+		flush: true,
+	})
 	console.log(
 		new Date().toISOString(),
 		'>>>',
