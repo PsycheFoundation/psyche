@@ -30,7 +30,7 @@ export interface MiningPoolDataPoolInfo {
 	totalDepositCollateralAmount: bigint
 	totalClaimRedeemableAmount: bigint
 	totalExtractCollateralAmount: bigint
-	adminHistory: Array<{
+	importantHistory: Array<{
 		blockTime: Date | undefined
 		instructionOrdinal: bigint
 		instructionName: string
@@ -52,7 +52,7 @@ export const miningPoolDataPoolInfoJsonCodec: JsonCodec<MiningPoolDataPoolInfo> 
 		totalDepositCollateralAmount: jsonCodecInteger,
 		totalClaimRedeemableAmount: jsonCodecInteger,
 		totalExtractCollateralAmount: jsonCodecInteger,
-		adminHistory: jsonCodecArray(
+		importantHistory: jsonCodecArray(
 			jsonCodecObject({
 				blockTime: jsonCodecOptional(jsonCodecDateTime),
 				instructionOrdinal: jsonCodecInteger,

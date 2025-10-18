@@ -53,6 +53,7 @@ export async function indexingInstructions(
 				'>',
 				new Date().toISOString(),
 				programAddress,
+				'indexed:',
 				transactionsInfos.length
 			)
 			try {

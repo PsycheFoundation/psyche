@@ -145,11 +145,15 @@ export function utilsBigintArraySortAscending<Content>(
 export function utilsPlotPoints(
 	title: string,
 	size: { x: number; y: number },
-	points: { x: number; y: number }[]
+	points: { x: number | undefined; y: number | undefined }[]
 ) {
 	const pointsClean = points.filter(
-		(p) => Number.isFinite(p.x) && Number.isFinite(p.y)
-	)
+		(p) =>
+			p.x !== undefined &&
+			p.y !== undefined &&
+			Number.isFinite(p.x) &&
+			Number.isFinite(p.y)
+	) as { x: number; y: number }[]
 	const minX = Math.min(...pointsClean.map((p) => p.x))
 	const minY = Math.min(...pointsClean.map((p) => p.y))
 	const maxX = Math.max(...pointsClean.map((p) => p.x))
@@ -163,21 +167,27 @@ export function utilsPlotPoints(
 	const grid: string[][] = Array.from({ length: size.y }, () =>
 		Array(size.x).fill(' ')
 	)
-	for (const point of pointsClean) {
-		const pos = gridPos(point)
+	for (const pointClean of pointsClean) {
+		const pos = gridPos(pointClean)
 		grid[pos.y]![pos.x] = '*'
 	}
-	const hx = size.x / 2
 	console.log('')
-	console.log(`> ${title}`)
-	console.log('+' + '-'.repeat(size.x) + '+' + ` ${maxY}`)
+	console.log(`# ${title}`)
+	console.log(`+${'-'.repeat(size.x)}+ --`)
 	for (let rowIndex = grid.length - 1; rowIndex >= 0; rowIndex--) {
-		console.log('|' + grid[rowIndex]!.join('') + '|')
+		const data = `|${grid[rowIndex]!.join('')}|`
+		if (rowIndex === grid.length - 1) {
+			console.log(`${data} ${maxY.toPrecision(6)}`)
+		} else if (rowIndex === 0) {
+			console.log(`${data} ${minY.toPrecision(6)}`)
+		} else {
+			console.log(data)
+		}
 	}
-	console.log('+' + '-'.repeat(size.x) + '+' + ` ${minY}`)
+	console.log(`+${'-'.repeat(size.x)}+ --`)
+	const hx = size.x / 2 - 1
 	console.log(
-		`${minX.toString().padEnd(hx + 1, ' ')}`,
-		`${maxX.toString().padStart(hx, ' ')}`
+		`| ${minX.toString().padEnd(hx, ' ')}${maxX.toString().padStart(hx, ' ')} |`
 	)
 	console.log('')
 }

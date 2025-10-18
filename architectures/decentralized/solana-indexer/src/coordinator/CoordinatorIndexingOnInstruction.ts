@@ -56,17 +56,17 @@ export async function coordinatorIndexingOnInstruction(
 }
 
 const processorsByInstructionName = new Map([
-	['init_coordinator', [processAdminAction]],
-	['update', [processAdminAction]],
-	['set_future_epoch_rates', [processAdminAction]],
-	['set_paused', [processAdminAction]],
-	['join_run', []], // TODO - how to handle join run?
+	['init_coordinator', [processImportantAction]],
+	['update', [processImportantAction]],
+	['set_future_epoch_rates', [processImportantAction]],
+	['set_paused', [processImportantAction]],
+	['join_run', [processImportantAction]],
 	['warmup_witness', []], // TODO - how to handle warmup witness?
 	['witness', [processWitness]],
 	['tick', []],
 	['checkpoint', []], // TODO - how to handle checkpoint?
 	['health_check', []], // TODO - how to handle health check?
-	['free_coordinator', [processAdminAction, processFinish]],
+	['free_coordinator', [processImportantAction, processFinish]],
 ])
 
 type ProcessingContext = {
@@ -79,17 +79,17 @@ type ProcessingContext = {
 	instructionPayload: JsonValue
 }
 
-async function processAdminAction(
+async function processImportantAction(
 	dataStore: CoordinatorDataStore,
 	context: ProcessingContext
 ): Promise<void> {
 	const runInfo = dataStore.getRunInfo(context.runAddress)
-	runInfo.adminHistory.push(context)
+	runInfo.importantHistory.push(context)
 	utilsBigintArraySortAscending(
-		runInfo.adminHistory,
-		(adminAction) => adminAction.instructionOrdinal
+		runInfo.importantHistory,
+		(importantAction) => importantAction.instructionOrdinal
 	)
-	runInfo.adminHistory.reverse()
+	runInfo.importantHistory.reverse()
 }
 
 async function processFinish(
@@ -99,7 +99,6 @@ async function processFinish(
 	const runInfo = dataStore.getRunInfo(context.runAddress)
 	runInfo.finishesOrdinals.push(context.instructionOrdinal)
 	utilsBigintArraySortAscending(runInfo.finishesOrdinals, (ordinal) => ordinal)
-	console.log('slicesOrdinals', context.runAddress, runInfo.finishesOrdinals)
 }
 
 async function processWitness(

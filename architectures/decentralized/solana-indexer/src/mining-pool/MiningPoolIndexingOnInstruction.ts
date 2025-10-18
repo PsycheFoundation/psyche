@@ -73,18 +73,12 @@ async function processAdminAction(
 	context: ProcessingContext
 ): Promise<void> {
 	let poolInfo = dataStore.getPoolInfo(context.poolAddress)
-	poolInfo.adminHistory.push({
-		blockTime: context.blockTime,
-		instructionOrdinal: context.instructionOrdinal,
-		instructionName: context.instructionName,
-		instructionAddresses: context.instructionAddresses,
-		instructionPayload: context.instructionPayload,
-	})
+	poolInfo.importantHistory.push(context)
 	utilsBigintArraySortAscending(
-		poolInfo.adminHistory,
-		(adminAction) => adminAction.instructionOrdinal
+		poolInfo.importantHistory,
+		(importantAction) => importantAction.instructionOrdinal
 	)
-	poolInfo.adminHistory.reverse()
+	poolInfo.importantHistory.reverse()
 }
 
 async function processPoolExtract(

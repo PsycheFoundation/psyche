@@ -45,7 +45,7 @@ export class CoordinatorDataStore {
 				lastWitnessByUser: new Map(),
 				samplesByStatName: new Map(),
 				finishesOrdinals: [],
-				adminHistory: [],
+				importantHistory: [],
 			}
 			this.runInfoByAddress.set(runAddress, runInfo)
 		}

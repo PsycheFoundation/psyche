@@ -46,7 +46,7 @@ export class MiningPoolDataStore {
 				totalExtractCollateralAmount: 0n,
 				totalDepositCollateralAmount: 0n,
 				totalClaimRedeemableAmount: 0n,
-				adminHistory: [],
+				importantHistory: [],
 			}
 			this.poolInfoByAddress.set(poolAddress, poolInfo)
 		}

@@ -80,7 +80,7 @@ function aggregateStatSamples(
 	}
 	utilsPlotPoints(
 		`${_runId ? _runId : _runAddress} (${_statName})`,
-		{ x: 80, y: 10 },
+		{ x: 80, y: 8 },
 		statSamples.map((sample, _index) => ({
 			x: sample.step,
 			y: sample.sumValue / sample.numValue,
@@ -108,7 +108,6 @@ async function updateCoordinatorAccountState(
 			runAccountAddress,
 			runAccountJsonDecoder
 		)
-		// console.log('Fetched run state', runAccountState)
 		const runInfo = dataStore.getRunInfo(runAddress)
 		runInfo.accountUpdatedAt = new Date()
 		runInfo.accountState = {

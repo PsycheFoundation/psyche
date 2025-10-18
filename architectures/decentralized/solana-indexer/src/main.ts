@@ -2,6 +2,7 @@ import express from 'express'
 import {
 	pubkeyFromBase58,
 	rpcHttpFromUrl,
+	rpcHttpWithMaxConcurrentRequests,
 	rpcHttpWithRetryOnError,
 } from 'solana-kiss'
 import { coordinatorService } from './coordinator/CoordinatorService'
@@ -9,7 +10,10 @@ import { miningPoolService } from './mining-pool/MiningPoolService'
 
 function rpcHttpBuilder(url: string) {
 	return rpcHttpWithRetryOnError(
-		rpcHttpFromUrl(url, { commitment: 'confirmed' }),
+		rpcHttpWithMaxConcurrentRequests(
+			rpcHttpFromUrl(url, { commitment: 'confirmed' }),
+			100
+		),
 		async (error, context) => {
 			if (context.totalDurationMs > 10_000) {
 				console.error('Rpc failed to reply for too long, giving up', error)
