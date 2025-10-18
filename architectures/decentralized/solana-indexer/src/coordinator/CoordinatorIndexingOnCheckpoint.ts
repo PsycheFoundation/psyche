@@ -36,9 +36,6 @@ export async function coordinatorIndexingOnCheckpoint(
 				statSamples
 			)
 		}
-		if (runInfo.finishesOrdinals.length > 0) {
-			console.log('Finishes ordinals:', runAddress, runInfo.finishesOrdinals)
-		}
 		if (
 			runInfo.changeAcknowledgedOrdinal === runInfo.changeNotificationOrdinal
 		) {
@@ -54,6 +51,26 @@ export async function coordinatorIndexingOnCheckpoint(
 		promises.push(promise)
 	}
 	await Promise.all(promises)
+	let totalWitnesses = new Map<Pubkey, number>()
+	let totalImportants = new Map<string, number>()
+	let totalSamples = new Map<string, number>()
+	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
+		for (const important of runInfo.importantHistory) {
+			const importantCount = totalImportants.get(important.instructionName) ?? 0
+			totalImportants.set(important.instructionName, importantCount + 1)
+		}
+		for (const [statName, statSamples] of runInfo.samplesByStatName) {
+			const statCount = totalSamples.get(statName) ?? 0
+			totalSamples.set(statName, statCount + statSamples.length)
+		}
+		const runCount = totalWitnesses.get(runAddress) ?? 0
+		for (const [_statName, statSamples] of runInfo.samplesByStatName) {
+			totalWitnesses.set(runAddress, runCount + statSamples.length)
+		}
+	}
+	console.log('Total importants actions:', totalImportants)
+	console.log('Total samples per stat:', totalSamples)
+	console.log('Total samples per run:', totalWitnesses)
 }
 
 function aggregateStatSamples(

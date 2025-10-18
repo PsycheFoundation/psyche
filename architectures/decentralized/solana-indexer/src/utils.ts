@@ -147,17 +147,17 @@ export function utilsPlotPoints(
 	size: { x: number; y: number },
 	points: { x: number | undefined; y: number | undefined }[]
 ) {
-	const pointsClean = points.filter(
+	const pointsCleaned = points.filter(
 		(p) =>
 			p.x !== undefined &&
 			p.y !== undefined &&
 			Number.isFinite(p.x) &&
 			Number.isFinite(p.y)
 	) as { x: number; y: number }[]
-	const minX = Math.min(...pointsClean.map((p) => p.x))
-	const minY = Math.min(...pointsClean.map((p) => p.y))
-	const maxX = Math.max(...pointsClean.map((p) => p.x))
-	const maxY = Math.max(...pointsClean.map((p) => p.y))
+	const minX = Math.min(...pointsCleaned.map((p) => p.x))
+	const minY = Math.min(...pointsCleaned.map((p) => p.y))
+	const maxX = Math.max(...pointsCleaned.map((p) => p.x))
+	const maxY = Math.max(...pointsCleaned.map((p) => p.y))
 	function gridPos(point: { x: number; y: number }) {
 		return {
 			x: Math.round(((point.x - minX) / (maxX - minX)) * (size.x - 1)),
@@ -167,8 +167,8 @@ export function utilsPlotPoints(
 	const grid: number[][] = Array.from({ length: size.y }, () =>
 		Array(size.x).fill(0)
 	)
-	for (const pointClean of pointsClean) {
-		const pos = gridPos(pointClean)
+	for (const pointCleaned of pointsCleaned) {
+		const pos = gridPos(pointCleaned)
 		grid[pos.y]![pos.x]! += 1
 	}
 	const peak = Math.max(...grid.flat())

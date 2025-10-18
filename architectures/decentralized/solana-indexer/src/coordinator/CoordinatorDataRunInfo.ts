@@ -23,7 +23,6 @@ import {
 } from './CoordinatorDataRunState'
 
 export interface CoordinatorDataRunInfoSample {
-	maxTime: Date | undefined
 	maxOrdinal: bigint
 	step: number
 	sumValue: number
@@ -37,7 +36,6 @@ export interface CoordinatorDataRunInfo {
 	changeNotificationOrdinal: bigint
 	lastWitnessByUser: Map<Pubkey, { ordinal: bigint; step: number }>
 	samplesByStatName: Map<string, Array<CoordinatorDataRunInfoSample>>
-	finishesOrdinals: Array<bigint>
 	importantHistory: Array<{
 		blockTime: Date | undefined
 		instructionOrdinal: bigint
@@ -49,7 +47,6 @@ export interface CoordinatorDataRunInfo {
 
 const coordinatorDataRunInfoSampleJsonCodec: JsonCodec<CoordinatorDataRunInfoSample> =
 	jsonCodecArrayToObject({
-		maxTime: jsonCodecOptional(jsonCodecDateTime),
 		maxOrdinal: jsonCodecInteger,
 		step: jsonCodecNumber,
 		sumValue: jsonCodecNumber,
@@ -68,7 +65,6 @@ export const coordinatorDataRunInfoJsonCodec: JsonCodec<CoordinatorDataRunInfo> 
 		samplesByStatName: utilsObjectToStringMapJsonCodec(
 			jsonCodecArray(coordinatorDataRunInfoSampleJsonCodec)
 		),
-		finishesOrdinals: jsonCodecArray(jsonCodecInteger),
 		importantHistory: jsonCodecArray(
 			jsonCodecObject({
 				blockTime: jsonCodecOptional(jsonCodecDateTime),

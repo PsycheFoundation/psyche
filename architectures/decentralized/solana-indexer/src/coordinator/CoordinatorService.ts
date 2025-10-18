@@ -44,6 +44,11 @@ async function serviceLoader(saveName: string, programAddress: Pubkey) {
 		dataStore = coordinatorDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded coordinator state from:', saveContent.updatedAt)
 	} catch (error) {
+		if (!process.env['ALLOW_NEW_STATE_COORDINATOR']) {
+			throw new Error(
+				'Failed to read existing coordinator JSON, and ALLOW_NEW_STATE_COORDINATOR is not set'
+			)
+		}
 		checkpoint = { orderedIndexedChunks: [] }
 		dataStore = new CoordinatorDataStore(programAddress, new Map())
 		console.warn(

@@ -64,9 +64,9 @@ const processorsByInstructionName = new Map([
 	['warmup_witness', []], // TODO - how to handle warmup witness?
 	['witness', [processWitness]],
 	['tick', []],
-	['checkpoint', []], // TODO - how to handle checkpoint?
+	['checkpoint', [processImportantAction]],
 	['health_check', []], // TODO - how to handle health check?
-	['free_coordinator', [processImportantAction, processFinish]],
+	['free_coordinator', [processImportantAction]],
 ])
 
 type ProcessingContext = {
@@ -92,15 +92,6 @@ async function processImportantAction(
 	runInfo.importantHistory.reverse()
 }
 
-async function processFinish(
-	dataStore: CoordinatorDataStore,
-	context: ProcessingContext
-): Promise<void> {
-	const runInfo = dataStore.getRunInfo(context.runAddress)
-	runInfo.finishesOrdinals.push(context.instructionOrdinal)
-	utilsBigintArraySortAscending(runInfo.finishesOrdinals, (ordinal) => ordinal)
-}
-
 async function processWitness(
 	dataStore: CoordinatorDataStore,
 	context: ProcessingContext
@@ -111,7 +102,6 @@ async function processWitness(
 		return
 	}
 	const witnessUser = context.signerAddress
-	const witnessTime = context.blockTime
 	const witnessOrdinal = context.instructionOrdinal
 	const witnessStep = witnessPayload.metadata.step
 	const lastWitnessForUser = runInfo.lastWitnessByUser.get(witnessUser)
@@ -149,7 +139,6 @@ async function processWitness(
 			runInfo.samplesByStatName.set(statName, statSamples)
 		}
 		statSamples.push({
-			maxTime: witnessTime,
 			maxOrdinal: witnessOrdinal,
 			step: witnessStep,
 			sumValue: statValue,

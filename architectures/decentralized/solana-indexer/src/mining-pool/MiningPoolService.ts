@@ -44,6 +44,11 @@ async function serviceLoader(saveName: string, programAddress: Pubkey) {
 		dataStore = miningPoolDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded mining pool state from:', saveContent.updatedAt)
 	} catch (error) {
+		if (!process.env['ALLOW_NEW_STATE_MINING_POOL']) {
+			throw new Error(
+				'Failed to read existing mining pool JSON, and ALLOW_NEW_STATE_MINING_POOL is not set'
+			)
+		}
 		checkpoint = { orderedIndexedChunks: [] }
 		dataStore = new MiningPoolDataStore(programAddress, new Map())
 		console.warn(

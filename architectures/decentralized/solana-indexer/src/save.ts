@@ -14,19 +14,19 @@ export async function saveWrite(
 	}
 ): Promise<void> {
 	const path = savePath(saveName)
+	const startTime = Date.now()
+	const pathTemp = `${path}.${new Date().toISOString()}.tmp`
 	const encoded = jsonCodec.encoder({
 		updatedAt: new Date().toISOString(),
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
 	})
-	const startTime = Date.now()
-	await fs.promises.writeFile(path, JSON.stringify(encoded), {
-		flush: true,
-	})
+	await fs.promises.writeFile(pathTemp, JSON.stringify(encoded))
+	await fs.promises.rename(pathTemp, path)
 	console.log(
 		new Date().toISOString(),
 		'>>>',
-		`Saved ${saveName} in ${Date.now() - startTime}ms`
+		`Written ${saveName} in ${Date.now() - startTime}ms`
 	)
 }
 
@@ -36,10 +36,16 @@ export async function saveRead(saveName: string): Promise<{
 	dataStore: JsonValue
 }> {
 	const path = savePath(saveName)
+	const startTime = Date.now()
 	const encoded = await fs.promises
 		.readFile(path, 'utf-8')
 		.then((data: string) => JSON.parse(data) as JsonValue)
-	return jsonCodec.decoder(encoded)
+	const decoded = jsonCodec.decoder(encoded)
+	console.log(
+		new Date().toISOString(),
+		`Read ${saveName} in ${Date.now() - startTime}ms`
+	)
+	return decoded
 }
 
 function savePath(saveName: string) {
