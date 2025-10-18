@@ -1,6 +1,7 @@
 import {
 	JsonCodec,
 	jsonCodecArray,
+	jsonCodecArrayToObject,
 	jsonCodecDateTime,
 	jsonCodecInteger,
 	jsonCodecNumber,
@@ -22,14 +23,9 @@ import {
 } from './CoordinatorDataRunState'
 
 export interface CoordinatorDataRunInfoSample {
-	minTime: Date | undefined
 	maxTime: Date | undefined
-	minOrdinal: bigint
 	maxOrdinal: bigint
-	minStep: number
-	maxStep: number
-	minValue: number
-	maxValue: number
+	step: number
 	sumValue: number
 	numValue: number
 }
@@ -52,15 +48,10 @@ export interface CoordinatorDataRunInfo {
 }
 
 const coordinatorDataRunInfoSampleJsonCodec: JsonCodec<CoordinatorDataRunInfoSample> =
-	jsonCodecObject({
-		minTime: jsonCodecOptional(jsonCodecDateTime),
+	jsonCodecArrayToObject({
 		maxTime: jsonCodecOptional(jsonCodecDateTime),
-		minOrdinal: jsonCodecInteger,
 		maxOrdinal: jsonCodecInteger,
-		minStep: jsonCodecNumber,
-		maxStep: jsonCodecNumber,
-		minValue: jsonCodecNumber,
-		maxValue: jsonCodecNumber,
+		step: jsonCodecNumber,
 		sumValue: jsonCodecNumber,
 		numValue: jsonCodecNumber,
 	})

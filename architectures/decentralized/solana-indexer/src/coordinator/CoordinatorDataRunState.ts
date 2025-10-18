@@ -43,10 +43,7 @@ export const coordinatorDataRunStateJsonCodec: JsonCodec<CoordinatorDataRunState
 		model: jsonCodecRaw,
 		numParameters: jsonCodecInteger,
 		epochClients: jsonCodecArray(
-			jsonCodecObject({
-				signer: jsonCodecPubkey,
-				state: jsonCodecString,
-			})
+			jsonCodecObject({ signer: jsonCodecPubkey, state: jsonCodecString })
 		),
 		progress: jsonCodecObject({
 			epoch: jsonCodecNumber,

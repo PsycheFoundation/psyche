@@ -11,9 +11,8 @@ import {
 } from 'solana-kiss'
 import {
 	utilsBigintArraySortAscending,
-	utilsBigIntMax,
-	utilsBigIntMin,
 	utilsGetAndDecodeAccountState,
+	utilsPlotPoints,
 	utilsRustClientIdJsonDecoder,
 	utilsRustFixedArrayJsonDecoder,
 	utilsRustFixedStringJsonDecoder,
@@ -30,12 +29,15 @@ export async function coordinatorIndexingOnCheckpoint(
 	const promises = new Array<Promise<void>>()
 	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
 		for (const [statName, statSamples] of runInfo.samplesByStatName) {
-			cleanupSamples(
+			aggregateStatSamples(
+				runInfo.accountState?.runId,
 				runAddress,
 				statName,
-				statSamples,
-				runInfo.finishesOrdinals
+				statSamples
 			)
+		}
+		if (runInfo.finishesOrdinals.length > 0) {
+			console.log('Finishes ordinals:', runAddress, runInfo.finishesOrdinals)
 		}
 		if (
 			runInfo.changeAcknowledgedOrdinal === runInfo.changeNotificationOrdinal
@@ -54,79 +56,36 @@ export async function coordinatorIndexingOnCheckpoint(
 	await Promise.all(promises)
 }
 
-function cleanupSamples(
-	runAddress: Pubkey,
-	statName: string,
-	statSamples: Array<CoordinatorDataRunInfoSample>,
-	_finishesOrdinals: Array<bigint>
-) {
-	utilsBigintArraySortAscending(statSamples, (sample) => sample.maxOrdinal)
-	// TODO - split samples arrays by finishes ordinals (which allows discarding rewritten samples?)
-	mergeSamples(runAddress, statName, statSamples)
-}
-
-function mergeSamples(
+function aggregateStatSamples(
+	_runId: string | undefined,
 	_runAddress: Pubkey,
 	_statName: string,
 	statSamples: Array<CoordinatorDataRunInfoSample>
 ) {
-	let mergeChunkSteps = 1
-	while (true) {
-		for (
-			let sampleIndex = statSamples.length - 2;
-			sampleIndex >= 0;
-			sampleIndex--
-		) {
-			const prevIndex = sampleIndex
-			const nextIndex = sampleIndex + 1
-			const prevSample = statSamples[prevIndex]!
-			const nextSample = statSamples[nextIndex]!
-			const prevSampleChunk = Math.floor(prevSample.maxStep / mergeChunkSteps)
-			const nextSampleChunk = Math.floor(nextSample.maxStep / mergeChunkSteps)
-			if (
-				prevSampleChunk === nextSampleChunk &&
-				prevSample.maxStep <= nextSample.maxStep
-			) {
-				prevSample.minTime = prevSample.minTime
-				prevSample.maxTime = nextSample.maxTime
-				prevSample.minOrdinal = utilsBigIntMin(
-					prevSample.minOrdinal,
-					nextSample.minOrdinal
-				)
-				prevSample.maxOrdinal = utilsBigIntMax(
-					prevSample.maxOrdinal,
-					nextSample.maxOrdinal
-				)
-				prevSample.minStep = Math.min(prevSample.minStep, nextSample.minStep)
-				prevSample.maxStep = Math.max(prevSample.maxStep, nextSample.maxStep)
-				prevSample.minValue = Math.min(prevSample.minValue, nextSample.minValue)
-				prevSample.maxValue = Math.max(prevSample.maxValue, nextSample.maxValue)
-				prevSample.sumValue += nextSample.sumValue
-				prevSample.numValue += nextSample.numValue
-				statSamples.splice(nextIndex, 1)
-			}
+	utilsBigintArraySortAscending(statSamples, (sample) => sample.maxOrdinal)
+	for (
+		let sampleIndex = statSamples.length - 2;
+		sampleIndex >= 0;
+		sampleIndex--
+	) {
+		const prevIndex = sampleIndex
+		const nextIndex = sampleIndex + 1
+		const prevSample = statSamples[prevIndex]!
+		const nextSample = statSamples[nextIndex]!
+		if (prevSample.step === nextSample.step) {
+			nextSample.sumValue += prevSample.sumValue
+			nextSample.numValue += prevSample.numValue
+			statSamples.splice(prevIndex, 1)
 		}
-		if (statSamples.length < 20) {
-			if (
-				_runAddress === 'BKDGHzM1ZvaVk4fgpATRcQCDaEctG3VFENp2TsPi2NDr' &&
-				_statName === 'loss'
-			) {
-				console.log(
-					'Final samples',
-					_runAddress,
-					_statName,
-					statSamples.length,
-					statSamples.map((s) => ({
-						steps: `${s.minStep} -> ${s.maxStep} (x${s.maxStep - s.minStep})`,
-						num: s.numValue,
-						avg: s.sumValue / s.numValue,
-					}))
-				)
-			}
-			return
-		}
-		mergeChunkSteps *= 2
 	}
+	utilsPlotPoints(
+		`${_runId ? _runId : _runAddress} (${_statName})`,
+		{ x: 80, y: 10 },
+		statSamples.map((sample, _index) => ({
+			x: sample.step,
+			y: sample.sumValue / sample.numValue,
+		}))
+	)
 }
 
 async function updateCoordinatorAccountState(

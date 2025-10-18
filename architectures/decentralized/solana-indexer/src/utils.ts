@@ -122,11 +122,9 @@ export const utilsRustClientIdJsonDecoder =
 export function utilsBigIntMax(a: bigint, b: bigint): bigint {
 	return a > b ? a : b
 }
-
 export function utilsBigIntMin(a: bigint, b: bigint): bigint {
 	return a < b ? a : b
 }
-
 export function utilsBigintArraySortAscending<Content>(
 	array: Array<Content>,
 	getKey: (item: Content) => bigint
@@ -142,4 +140,44 @@ export function utilsBigintArraySortAscending<Content>(
 		}
 		return 0
 	})
+}
+
+export function utilsPlotPoints(
+	title: string,
+	size: { x: number; y: number },
+	points: { x: number; y: number }[]
+) {
+	const pointsClean = points.filter(
+		(p) => Number.isFinite(p.x) && Number.isFinite(p.y)
+	)
+	const minX = Math.min(...pointsClean.map((p) => p.x))
+	const minY = Math.min(...pointsClean.map((p) => p.y))
+	const maxX = Math.max(...pointsClean.map((p) => p.x))
+	const maxY = Math.max(...pointsClean.map((p) => p.y))
+	function gridPos(point: { x: number; y: number }) {
+		return {
+			x: Math.round(((point.x - minX) / (maxX - minX)) * (size.x - 1)),
+			y: Math.round(((point.y - minY) / (maxY - minY)) * (size.y - 1)),
+		}
+	}
+	const grid: string[][] = Array.from({ length: size.y }, () =>
+		Array(size.x).fill(' ')
+	)
+	for (const point of pointsClean) {
+		const pos = gridPos(point)
+		grid[pos.y]![pos.x] = '*'
+	}
+	const hx = size.x / 2
+	console.log('')
+	console.log(`> ${title}`)
+	console.log('+' + '-'.repeat(size.x) + '+' + ` ${maxY}`)
+	for (let rowIndex = grid.length - 1; rowIndex >= 0; rowIndex--) {
+		console.log('|' + grid[rowIndex]!.join('') + '|')
+	}
+	console.log('+' + '-'.repeat(size.x) + '+' + ` ${minY}`)
+	console.log(
+		`${minX.toString().padEnd(hx + 1, ' ')}`,
+		`${maxX.toString().padStart(hx, ' ')}`
+	)
+	console.log('')
 }

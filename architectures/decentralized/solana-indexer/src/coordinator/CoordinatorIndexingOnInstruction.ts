@@ -150,14 +150,9 @@ async function processWitness(
 			runInfo.samplesByStatName.set(statName, statSamples)
 		}
 		statSamples.push({
-			minTime: witnessTime,
 			maxTime: witnessTime,
-			minOrdinal: witnessOrdinal,
 			maxOrdinal: witnessOrdinal,
-			minStep: witnessStep,
-			maxStep: witnessStep,
-			minValue: statValue,
-			maxValue: statValue,
+			step: witnessStep,
 			sumValue: statValue,
 			numValue: 1,
 		})
