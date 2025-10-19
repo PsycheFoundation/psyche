@@ -146,7 +146,7 @@ function aggregateStatSamplesSlice(
 	indexMax: number
 ) {
 	let maxStep = 0
-	for (let sampleIndex = indexMax - 2; sampleIndex >= indexMin; sampleIndex--) {
+	for (let sampleIndex = indexMax - 1; sampleIndex >= indexMin; sampleIndex--) {
 		const prevIndex = sampleIndex
 		const nextIndex = sampleIndex + 1
 		const prevSample = statSamples[prevIndex]!

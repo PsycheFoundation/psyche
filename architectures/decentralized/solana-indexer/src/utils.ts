@@ -192,7 +192,9 @@ export function utilsPlotPoints(
 	const title = `${subject} - ${category}`
 	const metaLeft = `@ ${new Date().toISOString()}`
 	const metaRight = `Sx ${points.length.toString()}`
-	const intensities = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@']
+	const intensities = true
+		? [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@']
+		: [' ', '░', '▒', '▓', '█']
 	const lines: Array<string> = []
 	lines.push(
 		`${metaLeft.padEnd(size.x - metaRight.length + 2, ' ')}${metaRight}`
