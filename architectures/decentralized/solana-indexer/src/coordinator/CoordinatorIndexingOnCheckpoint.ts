@@ -7,6 +7,7 @@ import {
 	jsonCodecString,
 	jsonDecoderObjectWithKeysSnakeEncoded,
 	Pubkey,
+	pubkeyToBase58,
 	RpcHttp,
 } from 'solana-kiss'
 import {
@@ -31,8 +32,9 @@ export async function coordinatorIndexingOnCheckpoint(
 		for (const [statName, statSamples] of runInfo.samplesByStatName) {
 			aggregateStatSamples(
 				dataStore.programAddress,
-				runInfo.accountState?.runId,
-				runAddress,
+				runInfo.accountState?.runId
+					? runInfo.accountState.runId
+					: pubkeyToBase58(runAddress),
 				statName,
 				statSamples,
 				runInfo.finishesOrdinals
@@ -74,8 +76,7 @@ export async function coordinatorIndexingOnCheckpoint(
 
 function aggregateStatSamples(
 	programAddress: Pubkey,
-	runName: string | undefined,
-	runAddress: Pubkey,
+	runName: string,
 	statName: string,
 	statSamples: Array<CoordinatorDataRunInfoSample>,
 	finishesOrdinals: Array<bigint>
@@ -113,7 +114,6 @@ function aggregateStatSamples(
 		aggregateStatSamplesSlice(
 			programAddress,
 			runName,
-			runAddress,
 			statName,
 			statSamples,
 			sliceIndex,
@@ -124,7 +124,7 @@ function aggregateStatSamples(
 	if (statSamples.length > 1000) {
 		utilsPlotPoints(
 			`${programAddress}`,
-			`${runName ? runName : runAddress}`,
+			runName,
 			`history (${statName})`,
 			statSamples.map((sample) => ({
 				x: sample.time?.getTime() ?? NaN,
@@ -137,8 +137,7 @@ function aggregateStatSamples(
 
 function aggregateStatSamplesSlice(
 	programAddress: Pubkey,
-	runName: string | undefined,
-	runAddress: Pubkey,
+	runName: string,
 	statName: string,
 	statSamples: Array<CoordinatorDataRunInfoSample>,
 	sliceIndex: number,
@@ -147,6 +146,7 @@ function aggregateStatSamplesSlice(
 ) {
 	let minStep = Infinity
 	let maxStep = 0
+	let numStep = 0
 	for (
 		let sampleIndex = sampleIndexMax - 1;
 		sampleIndex >= sampleIndexMin;
@@ -158,6 +158,7 @@ function aggregateStatSamplesSlice(
 		const nextSample = statSamples[nextIndex]!
 		minStep = Math.min(minStep, nextSample.step)
 		maxStep = Math.max(maxStep, nextSample.step)
+		numStep++
 		if (prevSample.step === nextSample.step) {
 			nextSample.sumValue += prevSample.sumValue
 			nextSample.numValue += prevSample.numValue
@@ -165,8 +166,11 @@ function aggregateStatSamplesSlice(
 			sampleIndexMax--
 		}
 	}
+	if (numStep <= 10) {
+		return
+	}
 	let chunkSize = 1
-	while (chunkSize * 10000 < maxStep - minStep) {
+	while (chunkSize * 2000 < maxStep - minStep) {
 		chunkSize *= 2
 	}
 	for (
@@ -182,7 +186,7 @@ function aggregateStatSamplesSlice(
 	if (statSamples.length > 1000) {
 		utilsPlotPoints(
 			`${programAddress}`,
-			`${runName ? runName : runAddress}`,
+			runName,
 			`slice${sliceIndex} (${statName})`,
 			statSamples.slice(sampleIndexMin, sampleIndexMax + 1).map((sample) => ({
 				x: sample.step,

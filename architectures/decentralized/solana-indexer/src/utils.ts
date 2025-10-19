@@ -165,7 +165,7 @@ export function utilsPlotPoints(
 	}[],
 	xLabel?: (x: number) => string
 ) {
-	const size = { x: 64, y: 16 }
+	const size = { x: 64, y: 14 }
 	const pointsCleaned = points.filter(
 		(p) =>
 			p.x !== undefined &&
@@ -191,10 +191,12 @@ export function utilsPlotPoints(
 	const peak = Math.max(...grid.flat())
 	const title = `${subject} - ${category}`
 	const metaLeft = `@ ${new Date().toISOString()}`
-	const metaRight = `Sx ${points.length.toString()}`
-	const intensities = true
-		? [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@']
-		: [' ', '░', '▒', '▓', '█']
+	const metaRight = `${points.length.toString()} X`
+	const intensities = [
+		[' ', '.', ':', '-', '=', '+', '*', 'x', 'X', '#', '%', '@'],
+		[' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'],
+		[' ', '░', '▒', '▓', '█'],
+	][Math.round(Math.random() * 2)]!
 	const lines: Array<string> = []
 	lines.push(
 		`${metaLeft.padEnd(size.x - metaRight.length + 2, ' ')}${metaRight}`
