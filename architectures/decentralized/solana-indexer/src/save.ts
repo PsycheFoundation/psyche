@@ -6,6 +6,7 @@ import {
 	jsonCodecString,
 	JsonValue,
 } from 'solana-kiss'
+import { utilsGetStateDirectory } from './utils'
 
 export async function saveWrite(
 	saveName: string,
@@ -50,10 +51,7 @@ export async function saveRead(saveName: string): Promise<{
 }
 
 function savePath(saveName: string) {
-	return join(
-		process.env['STATE_DIRECTORY'] ?? process.cwd(),
-		`${saveName}.json`
-	)
+	return join(utilsGetStateDirectory(), `${saveName}.json`)
 }
 
 const jsonCodec = jsonCodecObject({

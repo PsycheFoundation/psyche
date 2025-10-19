@@ -33,7 +33,8 @@ export async function coordinatorIndexingOnCheckpoint(
 				runInfo.accountState?.runId,
 				runAddress,
 				statName,
-				statSamples
+				statSamples,
+				runInfo.finishesOrdinals
 			)
 		}
 		if (
@@ -51,58 +52,126 @@ export async function coordinatorIndexingOnCheckpoint(
 		promises.push(promise)
 	}
 	await Promise.all(promises)
-	let totalWitnesses = new Map<Pubkey, number>()
-	let totalImportants = new Map<string, number>()
-	let totalSamples = new Map<string, number>()
+	let dataSize = new Map<Pubkey, Map<string, number>>()
 	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
-		for (const important of runInfo.importantHistory) {
-			const importantCount = totalImportants.get(important.instructionName) ?? 0
-			totalImportants.set(important.instructionName, importantCount + 1)
-		}
+		const runDataSize = new Map<string, number>()
 		for (const [statName, statSamples] of runInfo.samplesByStatName) {
-			const statCount = totalSamples.get(statName) ?? 0
-			totalSamples.set(statName, statCount + statSamples.length)
+			const dataKey = `stat_samples:${statName}`
+			runDataSize.set(dataKey, statSamples.length)
 		}
-		const runCount = totalWitnesses.get(runAddress) ?? 0
-		for (const [_statName, statSamples] of runInfo.samplesByStatName) {
-			totalWitnesses.set(runAddress, runCount + statSamples.length)
+		for (const importantAction of runInfo.importantHistory) {
+			const dataKey = `important_action:${importantAction.instructionName}`
+			const currentSize = runDataSize.get(dataKey) ?? 0
+			runDataSize.set(dataKey, currentSize + 1)
 		}
+		dataSize.set(runAddress, runDataSize)
 	}
-	console.log('Total importants actions:', totalImportants)
-	console.log('Total samples per stat:', totalSamples)
-	console.log('Total samples per run:', totalWitnesses)
+	console.log('Total collected data:', dataSize)
 }
 
 function aggregateStatSamples(
-	_runId: string | undefined,
-	_runAddress: Pubkey,
-	_statName: string,
-	statSamples: Array<CoordinatorDataRunInfoSample>
+	runName: string | undefined,
+	runAddress: Pubkey,
+	statName: string,
+	statSamples: Array<CoordinatorDataRunInfoSample>,
+	finishesOrdinals: Array<bigint>
 ) {
 	utilsBigintArraySortAscending(statSamples, (sample) => sample.maxOrdinal)
+	utilsBigintArraySortAscending(
+		finishesOrdinals,
+		(finishOrdinal) => finishOrdinal
+	)
 	for (
-		let sampleIndex = statSamples.length - 2;
-		sampleIndex >= 0;
-		sampleIndex--
+		let sliceIndex = 0;
+		sliceIndex <= finishesOrdinals.length;
+		sliceIndex++
 	) {
+		const prevOrdinal = finishesOrdinals[sliceIndex - 1]
+		const nextOrdinal = finishesOrdinals[sliceIndex]
+		let sampleIndexMin = 0
+		if (prevOrdinal !== undefined) {
+			while (
+				sampleIndexMin < statSamples.length &&
+				statSamples[sampleIndexMin]!.maxOrdinal < prevOrdinal
+			) {
+				sampleIndexMin++
+			}
+		}
+		let sampleIndexMax = statSamples.length - 1
+		if (nextOrdinal !== undefined) {
+			while (
+				sampleIndexMax >= sampleIndexMin &&
+				statSamples[sampleIndexMax]!.maxOrdinal > nextOrdinal
+			) {
+				sampleIndexMax--
+			}
+		}
+		aggregateStatSamplesSlice(
+			runName,
+			runAddress,
+			statName,
+			sliceIndex,
+			statSamples,
+			sampleIndexMin,
+			sampleIndexMax
+		)
+	}
+	if (statSamples.length > 100) {
+		utilsPlotPoints(
+			`${runName ? runName : runAddress} history (${statName})`,
+			statSamples.map((sample) => ({
+				x: sample.time?.getTime() ?? NaN,
+				y: sample.sumValue / sample.numValue,
+			})),
+			(x) => new Date(x).toISOString()
+		)
+	}
+}
+
+function aggregateStatSamplesSlice(
+	runName: string | undefined,
+	runAddress: Pubkey,
+	statName: string,
+	statSlice: number,
+	statSamples: Array<CoordinatorDataRunInfoSample>,
+	indexMin: number,
+	indexMax: number
+) {
+	let maxStep = 0
+	for (let sampleIndex = indexMax - 2; sampleIndex >= indexMin; sampleIndex--) {
 		const prevIndex = sampleIndex
 		const nextIndex = sampleIndex + 1
 		const prevSample = statSamples[prevIndex]!
 		const nextSample = statSamples[nextIndex]!
+		maxStep = Math.max(maxStep, nextSample.step)
 		if (prevSample.step === nextSample.step) {
 			nextSample.sumValue += prevSample.sumValue
 			nextSample.numValue += prevSample.numValue
 			statSamples.splice(prevIndex, 1)
+			indexMax--
 		}
 	}
-	utilsPlotPoints(
-		`${_runId ? _runId : _runAddress} (${_statName})`,
-		{ x: 90, y: 10 },
-		statSamples.map((sample, _index) => ({
-			x: sample.step,
-			y: sample.sumValue / sample.numValue,
-		}))
-	)
+	let chunkSize = 1
+	while (chunkSize * 1000 < maxStep) {
+		chunkSize *= 2
+	}
+	for (let sampleIndex = indexMax - 1; sampleIndex >= indexMin; sampleIndex--) {
+		if (statSamples[sampleIndex]!.step % chunkSize !== 0) {
+			statSamples.splice(sampleIndex, 1)
+			indexMax--
+		}
+	}
+	const statSamplesSlice = statSamples.slice(indexMin, indexMax + 1)
+	if (statSamplesSlice.length > 100) {
+		utilsPlotPoints(
+			`${runName ? runName : runAddress} slice${statSlice} (${statName})`,
+			statSamplesSlice.map((sample) => ({
+				x: sample.step,
+				y: sample.sumValue / sample.numValue,
+			})),
+			(x) => `Step ${x}`
+		)
+	}
 }
 
 async function updateCoordinatorAccountState(
@@ -138,12 +207,23 @@ async function updateCoordinatorAccountState(
 			status: runAccountState.state.coordinator.runState,
 			model: runAccountState.state.coordinator.model,
 			numParameters: runAccountState.state.metadata.numParameters,
+			joinedClients: runAccountState.state.clientsState.clients.map(
+				(client) => ({
+					signer: client.id.signer,
+					earned: client.earned,
+					slashed: client.slashed,
+				})
+			),
 			epochClients: runAccountState.state.coordinator.epochState.clients.map(
 				(client) => ({
 					signer: client.id.signer,
 					state: client.state,
 				})
 			),
+			epochRates: {
+				current: runAccountState.state.clientsState.currentEpochRates,
+				future: runAccountState.state.clientsState.futureEpochRates,
+			},
 			progress: {
 				epoch: runAccountState.state.coordinator.progress.epoch,
 				step: runAccountState.state.coordinator.progress.step,

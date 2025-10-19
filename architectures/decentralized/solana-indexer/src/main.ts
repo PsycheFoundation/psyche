@@ -7,6 +7,7 @@ import {
 } from 'solana-kiss'
 import { coordinatorService } from './coordinator/CoordinatorService'
 import { miningPoolService } from './mining-pool/MiningPoolService'
+import { utilsGetEnv } from './utils'
 
 function rpcHttpBuilder(url: string) {
 	return rpcHttpWithRetryOnError(
@@ -25,14 +26,6 @@ function rpcHttpBuilder(url: string) {
 	)
 }
 
-function getEnvVariable(name: string, description: string): string {
-	const env = process.env[name]
-	if (!env) {
-		throw new Error(`Missing ${description} in environment: ${name}`)
-	}
-	return env
-}
-
 async function main() {
 	const expressApp = express()
 	const httpApiPort = process.env['PORT'] ?? 3000
@@ -44,12 +37,12 @@ async function main() {
 		}
 	})
 	miningPoolService(
-		rpcHttpBuilder(getEnvVariable('MINING_POOL_RPC', 'Mining Pool RPC url')),
+		rpcHttpBuilder(utilsGetEnv('MINING_POOL_RPC', 'Mining Pool RPC url')),
 		pubkeyFromBase58('PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf'),
 		expressApp
 	)
 	coordinatorService(
-		rpcHttpBuilder(getEnvVariable('COORDINATOR_RPC', 'Coordinator RPC url')),
+		rpcHttpBuilder(utilsGetEnv('COORDINATOR_RPC', 'Coordinator RPC url')),
 		pubkeyFromBase58('HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y'),
 		expressApp
 	)

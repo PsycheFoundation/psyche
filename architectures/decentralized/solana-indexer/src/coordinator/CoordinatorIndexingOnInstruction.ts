@@ -66,7 +66,7 @@ const processorsByInstructionName = new Map([
 	['tick', []],
 	['checkpoint', [processImportantAction]],
 	['health_check', []], // TODO - how to handle health check?
-	['free_coordinator', [processImportantAction]],
+	['free_coordinator', [processImportantAction, processFinish]],
 ])
 
 type ProcessingContext = {
@@ -90,6 +90,14 @@ async function processImportantAction(
 		(importantAction) => importantAction.instructionOrdinal
 	)
 	runInfo.importantHistory.reverse()
+}
+
+async function processFinish(
+	dataStore: CoordinatorDataStore,
+	context: ProcessingContext
+): Promise<void> {
+	const runInfo = dataStore.getRunInfo(context.runAddress)
+	runInfo.finishesOrdinals.push(context.instructionOrdinal)
 }
 
 async function processWitness(
@@ -133,6 +141,9 @@ async function processWitness(
 		}
 	}
 	for (const [statName, statValue] of witnessStats.entries()) {
+		if (!isFinite(statValue)) {
+			continue
+		}
 		let statSamples = runInfo.samplesByStatName.get(statName)
 		if (statSamples === undefined) {
 			statSamples = []
@@ -143,6 +154,7 @@ async function processWitness(
 			step: witnessStep,
 			sumValue: statValue,
 			numValue: 1,
+			time: context.blockTime,
 		})
 	}
 }

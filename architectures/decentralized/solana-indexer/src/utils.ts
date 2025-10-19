@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import {
 	idlAccountDecode,
 	idlOnchainAnchorAddress,
@@ -22,6 +24,17 @@ import {
 	RpcHttp,
 	rpcHttpGetAccountWithData,
 } from 'solana-kiss'
+
+export function utilsGetStateDirectory() {
+	return process.env['STATE_DIRECTORY'] ?? process.cwd()
+}
+export function utilsGetEnv(name: string, description: string) {
+	const value = process.env[name]
+	if (!value) {
+		throw new Error(`Missing ${description} in environment: ${name}`)
+	}
+	return value
+}
 
 export async function utilsGetProgramAnchorIdl(
 	rpcHttp: RpcHttp,
@@ -144,19 +157,23 @@ export function utilsBigintArraySortAscending<Content>(
 
 export function utilsPlotPoints(
 	title: string,
-	size: { x: number; y: number },
-	points: { x: number | undefined; y: number | undefined }[]
+	points: {
+		x: number | undefined
+		y: number | undefined
+	}[],
+	xLabel?: (x: number) => string
 ) {
+	const size = { x: 64, y: 16 }
 	const pointsCleaned = points.filter(
 		(p) =>
 			p.x !== undefined &&
 			p.y !== undefined &&
 			Number.isFinite(p.x) &&
 			Number.isFinite(p.y)
-	) as { x: number; y: number }[]
+	) as Array<{ x: number; y: number }>
 	const minX = Math.min(...pointsCleaned.map((p) => p.x))
-	const minY = Math.min(...pointsCleaned.map((p) => p.y))
 	const maxX = Math.max(...pointsCleaned.map((p) => p.x))
+	const minY = Math.min(...pointsCleaned.map((p) => p.y))
 	const maxY = Math.max(...pointsCleaned.map((p) => p.y))
 	function gridPos(point: { x: number; y: number }) {
 		return {
@@ -164,21 +181,24 @@ export function utilsPlotPoints(
 			y: Math.round(((point.y - minY) / (maxY - minY)) * (size.y - 1)),
 		}
 	}
-	const grid: number[][] = Array.from({ length: size.y }, () =>
-		Array(size.x).fill(0)
-	)
+	const grid = Array.from({ length: size.y }, () => Array(size.x).fill(0))
 	for (const pointCleaned of pointsCleaned) {
 		const pos = gridPos(pointCleaned)
 		grid[pos.y]![pos.x]! += 1
 	}
 	const peak = Math.max(...grid.flat())
-	const header = `> ${title}`
-	const counter = `x${points.length.toString()} <`
-	const phead = size.x - header.length
+	const metaLeft = `@ ${new Date().toISOString()}`
+	const metaRight = `Sx ${points.length.toString()}`
 	const intensities = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@']
-	console.log('')
-	console.log(`#${header}${counter.padStart(phead, ' ')}#`)
-	console.log(`+${'-'.repeat(size.x)}+ --`)
+	const lines: Array<string> = []
+	lines.push(
+		`${metaLeft.padEnd(size.x - metaRight.length + 2, ' ')}${metaRight}`
+	)
+	lines.push(`+${'-'.repeat(size.x)}+`)
+	lines.push(
+		`|${title.padStart(size.x / 2 + title.length / 2, ' ').padEnd(size.x)}|`
+	)
+	lines.push(`+${'-'.repeat(size.x)}+ --`)
 	for (let rowIndex = grid.length - 1; rowIndex >= 0; rowIndex--) {
 		const pixels = []
 		for (let colIndex = 0; colIndex < grid[rowIndex]!.length; colIndex++) {
@@ -188,17 +208,21 @@ export function utilsPlotPoints(
 		}
 		const data = `|${pixels.join('')}|`
 		if (rowIndex === grid.length - 1) {
-			console.log(`${data} ${maxY.toPrecision(6)}`)
+			lines.push(`${data} ${maxY.toPrecision(6)}`)
 		} else if (rowIndex === 0) {
-			console.log(`${data} ${minY.toPrecision(6)}`)
+			lines.push(`${data} ${minY.toPrecision(6)}`)
 		} else {
-			console.log(data)
+			lines.push(data)
 		}
 	}
-	console.log(`+${'-'.repeat(size.x)}+ --`)
+	lines.push(`+${'-'.repeat(size.x)}+ --`)
 	const hx = size.x / 2 - 1
-	console.log(
-		`| ${minX.toString().padEnd(hx, ' ')}${maxX.toString().padStart(hx, ' ')} |`
-	)
-	console.log('')
+	const labelMinX = xLabel ? xLabel(minX) : minX.toString()
+	const labelMaxX = xLabel ? xLabel(maxX) : maxX.toString()
+	lines.push(`| ${labelMinX.padEnd(hx, ' ')}${labelMaxX.padStart(hx, ' ')} |`)
+	const plotContent = lines.join('\n') + '\n'
+	const plotFolder = join(utilsGetStateDirectory(), `plot`)
+	const plotPath = join(plotFolder, `${title}.txt`)
+	mkdirSync(plotFolder, { recursive: true })
+	writeFileSync(plotPath, plotContent)
 }
