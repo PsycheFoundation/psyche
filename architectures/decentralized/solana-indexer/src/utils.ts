@@ -193,7 +193,7 @@ export function utilsPlotPoints(
 	const metaLeft = `@ ${new Date().toISOString()}`
 	const metaRight = `${points.length.toString()} X`
 	const intensities = [
-		[' ', '.', ':', '-', '=', '+', '*', 'x', 'X', '#', '%', '@'],
+		[' ', '.', ':', '-', '=', '+', '*', 'x', 'X', '#', '§', '$', '%', '@'],
 		[' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'],
 		[' ', '░', '▒', '▓', '█'],
 	][Math.round(Math.random() * 2)]!

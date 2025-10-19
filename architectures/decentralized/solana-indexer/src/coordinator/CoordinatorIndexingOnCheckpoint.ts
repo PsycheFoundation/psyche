@@ -46,32 +46,11 @@ export async function coordinatorIndexingOnCheckpoint(
 			continue
 		}
 		runInfo.changeAcknowledgedOrdinal = runInfo.changeNotificationOrdinal
-		const promise = updateCoordinatorAccountState(
-			rpcHttp,
-			programIdl,
-			dataStore,
-			runAddress
+		promises.push(
+			updateCoordinatorAccountState(rpcHttp, programIdl, dataStore, runAddress)
 		)
-		promises.push(promise)
 	}
 	await Promise.all(promises)
-	/*
-	let dataSize = new Map<Pubkey, Map<string, number>>()
-	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
-		const runDataSize = new Map<string, number>()
-		for (const [statName, statSamples] of runInfo.samplesByStatName) {
-			const dataKey = `stat_samples:${statName}`
-			runDataSize.set(dataKey, statSamples.length)
-		}
-		for (const importantAction of runInfo.importantHistory) {
-			const dataKey = `important_action:${importantAction.instructionName}`
-			const currentSize = runDataSize.get(dataKey) ?? 0
-			runDataSize.set(dataKey, currentSize + 1)
-		}
-		dataSize.set(runAddress, runDataSize)
-	}
-	console.log('Total collected data:', dataSize)
-	*/
 }
 
 function aggregateStatSamples(
@@ -187,7 +166,7 @@ function aggregateStatSamplesSlice(
 		utilsPlotPoints(
 			`${programAddress}`,
 			runName,
-			`slice${sliceIndex} (${statName})`,
+			`run_${sliceIndex} (${statName})`,
 			statSamples.slice(sampleIndexMin, sampleIndexMax + 1).map((sample) => ({
 				x: sample.step,
 				y: sample.sumValue / sample.numValue,
