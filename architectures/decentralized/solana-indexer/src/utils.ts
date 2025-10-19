@@ -156,7 +156,7 @@ export function utilsBigintArraySortAscending<Content>(
 }
 
 export function utilsPlotPoints(
-	folder: string,
+	directory: string,
 	subject: string,
 	category: string,
 	points: {
@@ -227,7 +227,7 @@ export function utilsPlotPoints(
 	const plotPath = join(
 		utilsGetStateDirectory(),
 		`plots`,
-		folder,
+		directory,
 		subject,
 		`${title}.txt`
 	)

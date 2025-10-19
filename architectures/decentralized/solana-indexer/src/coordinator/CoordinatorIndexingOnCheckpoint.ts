@@ -115,13 +115,13 @@ function aggregateStatSamples(
 			runName,
 			runAddress,
 			statName,
-			sliceIndex,
 			statSamples,
+			sliceIndex,
 			sampleIndexMin,
 			sampleIndexMax
 		)
 	}
-	if (statSamples.length > 100) {
+	if (statSamples.length > 1000) {
 		utilsPlotPoints(
 			`${programAddress}`,
 			`${runName ? runName : runAddress}`,
@@ -140,44 +140,51 @@ function aggregateStatSamplesSlice(
 	runName: string | undefined,
 	runAddress: Pubkey,
 	statName: string,
-	statSlice: number,
 	statSamples: Array<CoordinatorDataRunInfoSample>,
-	indexMin: number,
-	indexMax: number
+	sliceIndex: number,
+	sampleIndexMin: number,
+	sampleIndexMax: number
 ) {
+	let minStep = Infinity
 	let maxStep = 0
-	for (let sampleIndex = indexMax - 2; sampleIndex >= indexMin; sampleIndex--) {
+	for (
+		let sampleIndex = sampleIndexMax - 1;
+		sampleIndex >= sampleIndexMin;
+		sampleIndex--
+	) {
 		const prevIndex = sampleIndex
 		const nextIndex = sampleIndex + 1
 		const prevSample = statSamples[prevIndex]!
 		const nextSample = statSamples[nextIndex]!
+		minStep = Math.min(minStep, nextSample.step)
 		maxStep = Math.max(maxStep, nextSample.step)
 		if (prevSample.step === nextSample.step) {
 			nextSample.sumValue += prevSample.sumValue
 			nextSample.numValue += prevSample.numValue
 			statSamples.splice(prevIndex, 1)
-			indexMax--
+			sampleIndexMax--
 		}
 	}
 	let chunkSize = 1
-	let estimatedSliceCount = indexMax - indexMin
-	while (chunkSize * 1000 < maxStep && estimatedSliceCount > 200) {
+	while (chunkSize * 10000 < maxStep - minStep) {
 		chunkSize *= 2
-		estimatedSliceCount /= 2
 	}
-	for (let sampleIndex = indexMax - 1; sampleIndex >= indexMin; sampleIndex--) {
+	for (
+		let sampleIndex = sampleIndexMax - 1;
+		sampleIndex >= sampleIndexMin;
+		sampleIndex--
+	) {
 		if (statSamples[sampleIndex]!.step % chunkSize !== 0) {
 			statSamples.splice(sampleIndex, 1)
-			indexMax--
+			sampleIndexMax--
 		}
 	}
-	const statSamplesSlice = statSamples.slice(indexMin, indexMax + 1)
-	if (statSamplesSlice.length > 100) {
+	if (statSamples.length > 1000) {
 		utilsPlotPoints(
 			`${programAddress}`,
 			`${runName ? runName : runAddress}`,
-			`slice${statSlice} (${statName})`,
-			statSamplesSlice.map((sample) => ({
+			`slice${sliceIndex} (${statName})`,
+			statSamples.slice(sampleIndexMin, sampleIndexMax + 1).map((sample) => ({
 				x: sample.step,
 				y: sample.sumValue / sample.numValue,
 			})),
