@@ -12,7 +12,7 @@ function rpcHttpBuilder(url: string) {
 	return rpcHttpWithRetryOnError(
 		rpcHttpWithMaxConcurrentRequests(
 			rpcHttpFromUrl(url, { commitment: 'confirmed' }),
-			100
+			200
 		),
 		async (error, context) => {
 			if (context.totalDurationMs > 10_000) {

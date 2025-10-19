@@ -1,4 +1,5 @@
-import fs from 'fs'
+import { promises as fsp } from 'fs'
+import { join } from 'path'
 import {
 	jsonCodecObject,
 	jsonCodecRaw,
@@ -13,16 +14,16 @@ export async function saveWrite(
 		dataStore: JsonValue
 	}
 ): Promise<void> {
-	const path = savePath(saveName)
 	const startTime = Date.now()
-	const pathTemp = `${path}.${new Date().toISOString()}.tmp`
+	const path = savePath(saveName)
+	const pathTemp = `${path}.${new Date().getTime()}.tmp`
 	const encoded = jsonCodec.encoder({
 		updatedAt: new Date().toISOString(),
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
 	})
-	await fs.promises.writeFile(pathTemp, JSON.stringify(encoded))
-	await fs.promises.rename(pathTemp, path)
+	await fsp.writeFile(pathTemp, JSON.stringify(encoded), { flush: true })
+	await fsp.rename(pathTemp, path)
 	console.log(
 		new Date().toISOString(),
 		'>>>',
@@ -35,9 +36,9 @@ export async function saveRead(saveName: string): Promise<{
 	checkpoint: JsonValue
 	dataStore: JsonValue
 }> {
-	const path = savePath(saveName)
 	const startTime = Date.now()
-	const encoded = await fs.promises
+	const path = savePath(saveName)
+	const encoded = await fsp
 		.readFile(path, 'utf-8')
 		.then((data: string) => JSON.parse(data) as JsonValue)
 	const decoded = jsonCodec.decoder(encoded)
@@ -49,8 +50,10 @@ export async function saveRead(saveName: string): Promise<{
 }
 
 function savePath(saveName: string) {
-	const directory = process.env['STATE_DIRECTORY'] ?? process.cwd()
-	return `${directory}/${saveName}.json`
+	return join(
+		process.env['STATE_DIRECTORY'] ?? process.cwd(),
+		`${saveName}.json`
+	)
 }
 
 const jsonCodec = jsonCodecObject({
