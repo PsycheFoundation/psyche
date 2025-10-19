@@ -20,7 +20,7 @@ export async function miningPoolService(
 	programAddress: Pubkey,
 	expressApp: Application
 ): Promise<void> {
-	const saveName = `mining_pool_${programAddress}`
+	const saveName = `${programAddress}_mining_pool`
 	const { checkpoint, dataStore } = await serviceLoader(
 		saveName,
 		programAddress

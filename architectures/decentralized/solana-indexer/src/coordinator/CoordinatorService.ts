@@ -20,7 +20,7 @@ export async function coordinatorService(
 	programAddress: Pubkey,
 	expressApp: Application
 ) {
-	const saveName = `coordinator_${programAddress}`
+	const saveName = `${programAddress}_coordinator`
 	const { checkpoint, dataStore } = await serviceLoader(
 		saveName,
 		programAddress

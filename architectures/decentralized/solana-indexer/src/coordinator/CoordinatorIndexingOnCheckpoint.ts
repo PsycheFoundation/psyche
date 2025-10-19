@@ -30,6 +30,7 @@ export async function coordinatorIndexingOnCheckpoint(
 	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
 		for (const [statName, statSamples] of runInfo.samplesByStatName) {
 			aggregateStatSamples(
+				dataStore.programAddress,
 				runInfo.accountState?.runId,
 				runAddress,
 				statName,
@@ -52,6 +53,7 @@ export async function coordinatorIndexingOnCheckpoint(
 		promises.push(promise)
 	}
 	await Promise.all(promises)
+	/*
 	let dataSize = new Map<Pubkey, Map<string, number>>()
 	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
 		const runDataSize = new Map<string, number>()
@@ -67,9 +69,11 @@ export async function coordinatorIndexingOnCheckpoint(
 		dataSize.set(runAddress, runDataSize)
 	}
 	console.log('Total collected data:', dataSize)
+	*/
 }
 
 function aggregateStatSamples(
+	programAddress: Pubkey,
 	runName: string | undefined,
 	runAddress: Pubkey,
 	statName: string,
@@ -107,6 +111,7 @@ function aggregateStatSamples(
 			}
 		}
 		aggregateStatSamplesSlice(
+			programAddress,
 			runName,
 			runAddress,
 			statName,
@@ -118,7 +123,9 @@ function aggregateStatSamples(
 	}
 	if (statSamples.length > 100) {
 		utilsPlotPoints(
-			`${runName ? runName : runAddress} history (${statName})`,
+			`${programAddress}`,
+			`${runName ? runName : runAddress}`,
+			`history (${statName})`,
 			statSamples.map((sample) => ({
 				x: sample.time?.getTime() ?? NaN,
 				y: sample.sumValue / sample.numValue,
@@ -129,6 +136,7 @@ function aggregateStatSamples(
 }
 
 function aggregateStatSamplesSlice(
+	programAddress: Pubkey,
 	runName: string | undefined,
 	runAddress: Pubkey,
 	statName: string,
@@ -152,8 +160,10 @@ function aggregateStatSamplesSlice(
 		}
 	}
 	let chunkSize = 1
-	while (chunkSize * 1000 < maxStep) {
+	let estimatedSliceCount = indexMax - indexMin
+	while (chunkSize * 1000 < maxStep && estimatedSliceCount > 200) {
 		chunkSize *= 2
+		estimatedSliceCount /= 2
 	}
 	for (let sampleIndex = indexMax - 1; sampleIndex >= indexMin; sampleIndex--) {
 		if (statSamples[sampleIndex]!.step % chunkSize !== 0) {
@@ -164,7 +174,9 @@ function aggregateStatSamplesSlice(
 	const statSamplesSlice = statSamples.slice(indexMin, indexMax + 1)
 	if (statSamplesSlice.length > 100) {
 		utilsPlotPoints(
-			`${runName ? runName : runAddress} slice${statSlice} (${statName})`,
+			`${programAddress}`,
+			`${runName ? runName : runAddress}`,
+			`slice${statSlice} (${statName})`,
 			statSamplesSlice.map((sample) => ({
 				x: sample.step,
 				y: sample.sumValue / sample.numValue,

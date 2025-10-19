@@ -1,5 +1,5 @@
 import { promises as fsp } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import {
 	jsonCodecObject,
 	jsonCodecRaw,
@@ -23,7 +23,9 @@ export async function saveWrite(
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
 	})
+	await fsp.mkdir(dirname(pathTemp), { recursive: true })
 	await fsp.writeFile(pathTemp, JSON.stringify(encoded), { flush: true })
+	await fsp.mkdir(dirname(path), { recursive: true })
 	await fsp.rename(pathTemp, path)
 	console.log(
 		new Date().toISOString(),
@@ -51,7 +53,7 @@ export async function saveRead(saveName: string): Promise<{
 }
 
 function savePath(saveName: string) {
-	return join(utilsGetStateDirectory(), `${saveName}.json`)
+	return join(utilsGetStateDirectory(), 'saves', `${saveName}.json`)
 }
 
 const jsonCodec = jsonCodecObject({

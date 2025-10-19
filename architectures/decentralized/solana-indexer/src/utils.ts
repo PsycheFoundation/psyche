@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import {
 	idlAccountDecode,
 	idlOnchainAnchorAddress,
@@ -156,7 +156,9 @@ export function utilsBigintArraySortAscending<Content>(
 }
 
 export function utilsPlotPoints(
-	title: string,
+	folder: string,
+	subject: string,
+	category: string,
 	points: {
 		x: number | undefined
 		y: number | undefined
@@ -187,6 +189,7 @@ export function utilsPlotPoints(
 		grid[pos.y]![pos.x]! += 1
 	}
 	const peak = Math.max(...grid.flat())
+	const title = `${subject} - ${category}`
 	const metaLeft = `@ ${new Date().toISOString()}`
 	const metaRight = `Sx ${points.length.toString()}`
 	const intensities = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@']
@@ -221,8 +224,13 @@ export function utilsPlotPoints(
 	const labelMaxX = xLabel ? xLabel(maxX) : maxX.toString()
 	lines.push(`| ${labelMinX.padEnd(hx, ' ')}${labelMaxX.padStart(hx, ' ')} |`)
 	const plotContent = lines.join('\n') + '\n'
-	const plotFolder = join(utilsGetStateDirectory(), `plot`)
-	const plotPath = join(plotFolder, `${title}.txt`)
-	mkdirSync(plotFolder, { recursive: true })
+	const plotPath = join(
+		utilsGetStateDirectory(),
+		`plots`,
+		folder,
+		subject,
+		`${title}.txt`
+	)
+	mkdirSync(dirname(plotPath), { recursive: true })
 	writeFileSync(plotPath, plotContent)
 }
