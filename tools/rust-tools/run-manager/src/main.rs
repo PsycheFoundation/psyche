@@ -257,7 +257,7 @@ impl CoordinatorClient {
         Ok(instance)
     }
 
-    fn get_docker_tag_for_run(&self, run_id: &str) -> Result<String> {
+    fn get_docker_tag_for_run(&self, local: bool, run_id: &str) -> Result<String> {
         info!("Querying coordinator for Run ID: {}", run_id);
 
         let instance = self.fetch_coordinator_data(run_id)?;
@@ -278,7 +278,12 @@ impl CoordinatorClient {
             instance.run_id, instance.coordinator_account, client_version
         );
 
-        let docker_tag = format!("nousresearch/psyche-client:{}", client_version);
+        let image_name = if local {
+            "psyche-solana-client".to_string()
+        } else {
+            "psyche-client".to_string()
+        };
+        let docker_tag = format!("{}:{}", image_name, client_version);
         Ok(docker_tag)
     }
 }
@@ -288,7 +293,7 @@ async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String
     let docker_tag = match &args.local {
         // --local=version: use explicit version passed by parameter
         Some(version) if !version.is_empty() => {
-            let tag = format!("nousresearch/psyche-client:{}", version);
+            let tag = format!("psyche-solana-client:{}", version);
             info!("Using explicit local version: {}", tag);
             tag
         }
@@ -304,7 +309,7 @@ async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String
             info!("Using coordinator program ID: {}", coordinator_program_id);
 
             let coordinator = CoordinatorClient::new(rpc.clone(), coordinator_program_id);
-            let docker_tag = coordinator.get_docker_tag_for_run(&run_id)?;
+            let docker_tag = coordinator.get_docker_tag_for_run(args.local.is_some(), &run_id)?;
             info!("Docker tag for run '{}': {}", run_id, docker_tag);
             docker_tag
         }
