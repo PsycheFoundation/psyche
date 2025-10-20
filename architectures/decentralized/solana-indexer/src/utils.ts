@@ -165,7 +165,7 @@ export function utilsPlotPoints(
 	}[],
 	xLabel?: (x: number) => string
 ) {
-	const size = { x: 64, y: 14 }
+	const size = { x: 66, y: 14 }
 	const pointsCleaned = points.filter(
 		(p) =>
 			p.x !== undefined &&
@@ -192,11 +192,7 @@ export function utilsPlotPoints(
 	const title = `${subject} - ${category}`
 	const metaLeft = `@ ${new Date().toISOString()}`
 	const metaRight = `${points.length.toString()} X`
-	const intensities = [
-		[' ', '.', ':', '-', '=', '+', '*', 'x', 'X', '#', '§', '$', '%', '@'],
-		[' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'],
-		[' ', '░', '▒', '▓', '█'],
-	][Math.round(Math.random() * 2)]!
+	const intensities = [' .:-=+*#%@', ' ░▒▓█'][Math.round(Math.random())]!
 	const lines: Array<string> = []
 	lines.push(
 		`${metaLeft.padEnd(size.x - metaRight.length + 2, ' ')}${metaRight}`
@@ -205,8 +201,8 @@ export function utilsPlotPoints(
 	lines.push(
 		`|${title.padStart(size.x / 2 + title.length / 2, ' ').padEnd(size.x)}|`
 	)
-	lines.push(`+${'-'.repeat(size.x)}+ --`)
-	for (let rowIndex = grid.length - 1; rowIndex >= 0; rowIndex--) {
+	lines.push(`+${'-'.repeat(size.x)}+ ---`)
+	for (let rowIndex = size.y - 1; rowIndex >= 0; rowIndex--) {
 		const pixels = []
 		for (let colIndex = 0; colIndex < grid[rowIndex]!.length; colIndex++) {
 			const value = grid[rowIndex]![colIndex]!
@@ -214,15 +210,10 @@ export function utilsPlotPoints(
 			pixels.push(intensities[pixel])
 		}
 		const data = `|${pixels.join('')}|`
-		if (rowIndex === grid.length - 1) {
-			lines.push(`${data} ${maxY.toPrecision(6)}`)
-		} else if (rowIndex === 0) {
-			lines.push(`${data} ${minY.toPrecision(6)}`)
-		} else {
-			lines.push(data)
-		}
+		const label = (rowIndex / (size.y - 1)) * (maxY - minY) + minY
+		lines.push(`${data} ${label.toPrecision(5)}`)
 	}
-	lines.push(`+${'-'.repeat(size.x)}+ --`)
+	lines.push(`+${'-'.repeat(size.x)}+ ---`)
 	const hx = size.x / 2 - 1
 	const labelMinX = xLabel ? xLabel(minX) : minX.toString()
 	const labelMaxX = xLabel ? xLabel(maxX) : maxX.toString()
