@@ -75,7 +75,7 @@ jobs:
 
           # Calculate the derivation hash
           echo "Calculating derivation path"
-          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client-no-python.drvPath)
+          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client.drvPath)
           echo "Derivation path: $DRV_PATH"
 
           OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
@@ -112,7 +112,7 @@ jobs:
           echo "Checking for required Docker images"
           docker images
           docker images | grep psyche-solana-test-validator || (echo "ERROR: psyche-solana-test-validator image not found" && exit 1)
-          docker images | grep psyche-solana-test-client-no-python || (echo "ERROR: psyche-solana-test-client-no-python image not found" && exit 1)
+          docker images | grep psyche-solana-test-client || (echo "ERROR: psyche-solana-test-client image not found" && exit 1)
           echo "All required images are present"
 
           echo "Final disk usage before tests"

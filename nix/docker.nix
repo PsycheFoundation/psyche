@@ -139,11 +139,6 @@ let
       solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nixglhost";
     };
 
-    docker-psyche-solana-test-client-no-python = mkSolanaTestClientImage {
-      imageName = "psyche-solana-test-client-no-python";
-      solanaClientPackage = nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python";
-    };
-
     docker-psyche-solana-test-validator = pkgs.dockerTools.streamLayeredImage {
       name = "psyche-solana-test-validator";
       tag = "latest";
