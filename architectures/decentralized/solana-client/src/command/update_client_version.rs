@@ -37,7 +37,6 @@ pub async fn command_update_client_version_execute(
     let signature = backend
         .send_and_retry("Update client version", &[instruction], &[])
         .await?;
-    // println!("Set pause state to {paused} on run {run_id} with transaction {signature}");
 
     println!("\n===== Logs =====");
     for log in backend.get_logs(&signature).await? {

@@ -336,6 +336,8 @@ impl App {
                                         current_version = %current_version,
                                         "Client version changed while waiting for run to unpause. Exiting."
                                     );
+                                    client.shutdown();
+                                    let _ = client.finished().await;
                                     std::process::exit(10);
                                 }
                             }
