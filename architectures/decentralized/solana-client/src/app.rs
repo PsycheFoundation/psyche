@@ -185,6 +185,7 @@ impl App {
         // Check client version compatibility before joining
         let client_version =
             std::env::var("PSYCHE_CLIENT_VERSION").unwrap_or_else(|_| "latest".to_string());
+        info!("Psyche Client version: {}", client_version);
 
         if client_version != coordinator_client_version {
             tracing::error!(
