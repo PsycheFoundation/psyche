@@ -17,14 +17,15 @@ export async function saveWrite(
 ): Promise<void> {
 	const startTime = Date.now()
 	const path = savePath(saveName)
-	const pathTemp = `${path}.${new Date().getTime()}.tmp`
+	const pathTemp = `${path}.${saveDateTime()}.tmp`
 	const encoded = jsonCodec.encoder({
 		updatedAt: new Date().toISOString(),
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
 	})
+	const content = JSON.stringify(encoded)
 	await fsp.mkdir(dirname(pathTemp), { recursive: true })
-	await fsp.writeFile(pathTemp, JSON.stringify(encoded), { flush: true })
+	await fsp.writeFile(pathTemp, content, { flush: true })
 	await fsp.mkdir(dirname(path), { recursive: true })
 	await fsp.rename(pathTemp, path)
 	console.log(
@@ -41,9 +42,10 @@ export async function saveRead(saveName: string): Promise<{
 }> {
 	const startTime = Date.now()
 	const path = savePath(saveName)
-	const encoded = await fsp
-		.readFile(path, 'utf-8')
-		.then((data: string) => JSON.parse(data) as JsonValue)
+	const pathBackup = `${path}.${saveDateTime()}.backup`
+	const content = await fsp.readFile(path, 'utf-8')
+	await fsp.writeFile(pathBackup, content, { flush: true })
+	const encoded = JSON.parse(content) as JsonValue
 	const decoded = jsonCodec.decoder(encoded)
 	console.log(
 		new Date().toISOString(),
@@ -54,6 +56,11 @@ export async function saveRead(saveName: string): Promise<{
 
 function savePath(saveName: string) {
 	return join(utilsGetStateDirectory(), 'saves', `${saveName}.json`)
+}
+
+function saveDateTime() {
+	const now = new Date()
+	return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`
 }
 
 const jsonCodec = jsonCodecObject({

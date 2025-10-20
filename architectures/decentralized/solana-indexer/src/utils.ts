@@ -192,7 +192,7 @@ export function utilsPlotPoints(
 	const title = `${subject} - ${category}`
 	const metaLeft = `@ ${new Date().toISOString()}`
 	const metaRight = `${points.length.toString()} X`
-	const intensities = [' .:-=+*#%@', ' ░▒▓█'][Math.round(Math.random())]!
+	const instensities = ' .:-=+*#%@'
 	const lines: Array<string> = []
 	lines.push(
 		`${metaLeft.padEnd(size.x - metaRight.length + 2, ' ')}${metaRight}`
@@ -206,12 +206,12 @@ export function utilsPlotPoints(
 		const pixels = []
 		for (let colIndex = 0; colIndex < grid[rowIndex]!.length; colIndex++) {
 			const value = grid[rowIndex]![colIndex]!
-			const pixel = Math.round((value / peak) * (intensities.length - 1))
-			pixels.push(intensities[pixel])
+			const pixel = Math.round((value / peak) * (instensities.length - 1))
+			pixels.push(instensities[pixel])
 		}
 		const data = `|${pixels.join('')}|`
-		const label = (rowIndex / (size.y - 1)) * (maxY - minY) + minY
-		lines.push(`${data} ${label.toPrecision(5)}`)
+		const labelY = (rowIndex / (size.y - 1)) * (maxY - minY) + minY
+		lines.push(`${data} ${labelY.toPrecision(5)}`)
 	}
 	lines.push(`+${'-'.repeat(size.x)}+ ---`)
 	const hx = size.x / 2 - 1
