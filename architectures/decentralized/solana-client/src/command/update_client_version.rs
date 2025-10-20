@@ -5,18 +5,21 @@ use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
 #[command()]
-pub struct CommandUpdateVersionTagParams {
+pub struct CommandUpdateClientVersionParams {
     #[clap(short, long, env)]
     run_id: String,
     #[clap(long, env)]
-    new_tag: String,
+    new_version: String,
 }
 
-pub async fn command_update_version_tag_execute(
+pub async fn command_update_client_version_execute(
     backend: SolanaBackend,
-    params: CommandUpdateVersionTagParams,
+    params: CommandUpdateClientVersionParams,
 ) -> Result<()> {
-    let CommandUpdateVersionTagParams { run_id, new_tag } = params;
+    let CommandUpdateClientVersionParams {
+        run_id,
+        new_version,
+    } = params;
     let main_authority = backend.get_payer();
 
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
@@ -24,15 +27,15 @@ pub async fn command_update_version_tag_execute(
         .get_coordinator_instance(&coordinator_instance)
         .await?;
     let coordinator_account = coordinator_instance_state.coordinator_account;
-    let instruction = instructions::coordinator_update_version_tag(
+    let instruction = instructions::coordinator_update_client_version(
         &run_id,
         &coordinator_account,
         &main_authority,
-        &new_tag,
+        &new_version,
     );
 
     let signature = backend
-        .send_and_retry("Update version tag", &[instruction], &[])
+        .send_and_retry("Update client version", &[instruction], &[])
         .await?;
     // println!("Set pause state to {paused} on run {run_id} with transaction {signature}");
 

@@ -20,10 +20,10 @@ use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
 use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
 use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
 use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
+use crate::command::update_client_version::CommandUpdateClientVersionParams;
+use crate::command::update_client_version::command_update_client_version_execute;
 use crate::command::update_config::CommandUpdateConfigParams;
 use crate::command::update_config::command_update_config_execute;
-use crate::command::update_version_tag::CommandUpdateVersionTagParams;
-use crate::command::update_version_tag::command_update_version_tag_execute;
 use crate::{
     app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
@@ -125,13 +125,13 @@ enum Commands {
         #[clap(flatten)]
         params: CommandUpdateConfigParams,
     },
-    UpdateVersionTag {
+    UpdateClientVersion {
         #[clap(flatten)]
         wallet: WalletArgs,
         #[clap(flatten)]
         cluster: ClusterArgs,
         #[clap(flatten)]
-        params: CommandUpdateVersionTagParams,
+        params: CommandUpdateClientVersionParams,
     },
     Tick {
         #[clap(flatten)]
@@ -380,7 +380,7 @@ async fn async_main() -> Result<()> {
             .unwrap();
             command_treasurer_claim_rewards_execute(backend, params).await
         }
-        Commands::UpdateVersionTag {
+        Commands::UpdateClientVersion {
             cluster,
             wallet,
             params,
@@ -393,7 +393,7 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            command_update_version_tag_execute(backend, params).await
+            command_update_client_version_execute(backend, params).await
         }
         Commands::TreasurerTopUpRewards {
             cluster,

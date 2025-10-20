@@ -90,7 +90,7 @@ pub async fn run() {
             run_id: "This is my run's dummy run_id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
-            version_tag: "latest".to_string(),
+            client_version: "latest".to_string(),
         },
     )
     .await

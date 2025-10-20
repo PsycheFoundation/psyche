@@ -40,7 +40,7 @@ pub struct InitCoordinatorParams {
     pub main_authority: Pubkey,
     pub join_authority: Pubkey,
     pub run_id: String,
-    pub version_tag: String,
+    pub client_version: String,
 }
 
 pub fn init_coordinator_processor(
@@ -76,7 +76,7 @@ pub fn init_coordinator_processor(
     account.nonce = 0;
 
     account.state.client_version =
-        FixedString::from_str_truncated(&params.version_tag);
+        FixedString::from_str_truncated(&params.client_version);
 
     // Setup the run_id const
     account.state.coordinator.run_id =

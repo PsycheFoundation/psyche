@@ -18,7 +18,7 @@ pub struct CommandCreateRunParams {
     #[clap(short, long, env)]
     run_id: String,
     #[clap(short, long, env)]
-    version_tag: String,
+    client_version: String,
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
@@ -33,7 +33,7 @@ pub async fn command_create_run_execute(
 ) -> Result<()> {
     let CommandCreateRunParams {
         run_id,
-        version_tag,
+        client_version,
         treasurer_index,
         treasurer_collateral_mint,
         join_authority,
@@ -73,7 +73,7 @@ pub async fn command_create_run_execute(
         instructions::treasurer_run_create(
             &payer,
             &run_id,
-            &version_tag,
+            &client_version,
             treasurer_index,
             &treasurer_collateral_mint,
             &coordinator_account,
@@ -84,7 +84,7 @@ pub async fn command_create_run_execute(
         instructions::coordinator_init_coordinator(
             &payer,
             &run_id,
-            &version_tag,
+            &client_version,
             &coordinator_account,
             &main_authority,
             &join_authority,

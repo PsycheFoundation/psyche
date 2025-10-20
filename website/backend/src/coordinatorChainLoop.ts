@@ -342,7 +342,7 @@ export async function startWatchCoordinatorChainLoop(
 						})
 						break
 					}
-					case 'update_version_tag': {
+					case 'update_client_version': {
 						const runPdaAddr = i.accounts[1].toString()
 						const coordinatorAddr = i.accounts[2].toString()
 						runUpdates.getAndTouchCurrentRun({

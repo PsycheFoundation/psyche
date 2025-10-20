@@ -171,14 +171,14 @@ pub mod psyche_solana_coordinator {
         account.state.update(metadata, config, model, progress)
     }
 
-    pub fn update_version_tag(
+    pub fn update_client_version(
         ctx: Context<OwnerCoordinatorAccounts>,
-        new_tag: String,
+        new_version: String,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.state.client_version =
-            FixedString::<32>::try_from(new_tag.as_str()).unwrap();
-        msg!("new tag: {}", account.state.client_version);
+            FixedString::<32>::try_from(new_version.as_str()).unwrap();
+        msg!("new version: {}", account.state.client_version);
         Ok(())
     }
 
