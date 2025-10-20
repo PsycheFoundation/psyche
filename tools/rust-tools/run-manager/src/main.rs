@@ -10,10 +10,11 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tokio::signal;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-const MAX_RETRIES: u32 = 30;
+const MAX_REPEATED_FAILURES: u32 = 5;
 const RETRY_DELAY_SECS: u64 = 5;
+const RESET_TIME_SECS: u64 = 120;
 
 #[derive(Parser, Debug)]
 #[command(name = "run-manager")]
@@ -332,10 +333,15 @@ async fn run(args: Args) -> Result<()> {
         .to_string();
     let docker_mgr = DockerManager::new()?;
     let mut docker_tag = prepare_image(&args, &docker_mgr).await?;
+    let mut repeated_failures = 0;
 
-    for attempt in 0..MAX_RETRIES {
-        info!("Container attempt {}/{}", attempt + 1, MAX_RETRIES);
+    loop {
+        info!(
+            "Starting container (repeated failures: {}/{})",
+            repeated_failures, MAX_REPEATED_FAILURES
+        );
 
+        let start_time = tokio::time::Instant::now();
         let container_id =
             docker_mgr.run_container(&docker_tag, &args.env_file, wallet_key.clone())?;
 
@@ -362,37 +368,47 @@ async fn run(args: Args) -> Result<()> {
             }
         };
 
-        info!("Container exited with code: {}", exit_code);
+        let duration = start_time.elapsed().as_secs();
+        info!(
+            "Container exited with code: {} after {} seconds",
+            exit_code, duration
+        );
 
         docker_mgr.stop_and_remove_container(&container_id)?;
 
-        // Check if we should retry
-        if attempt + 1 < MAX_RETRIES {
-            // Exit code 10 means version mismatch, so we re-check the coordinator for a new version
-            if exit_code == 10 {
-                info!(
-                    "Version mismatch detected (exit code 10), re-checking coordinator for new version..."
-                );
-                docker_tag = prepare_image(&args, &docker_mgr).await?;
-            } else {
-                info!(
-                    "Container exited with code {}, retrying with same image...",
-                    exit_code
-                );
-            }
-
-            info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
-            tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
-        } else {
-            error!(
-                "Maximum retries ({}) reached. Container keeps exiting.",
-                MAX_RETRIES
+        // Reset repeated failures counter if container ran long enough
+        if duration >= RESET_TIME_SECS {
+            repeated_failures = 0;
+            info!(
+                "Container ran successfully for {}+ seconds - resetting repeated failure counter",
+                RESET_TIME_SECS
             );
-            return Err(anyhow!("Container failed after {} attempts", MAX_RETRIES));
+        } else {
+            repeated_failures += 1;
         }
-    }
 
-    Ok(())
+        // Check if we've exceeded max repeated failures and exit if so
+        if repeated_failures >= MAX_REPEATED_FAILURES {
+            return Err(anyhow!(
+                "Container failed {} times repeatedly",
+                MAX_REPEATED_FAILURES
+            ));
+        }
+
+        // Exit code 10 means version mismatch, so we re-check the coordinator for a new version
+        if exit_code == 10 {
+            warn!("Version mismatch detected, re-checking coordinator for new version...");
+            docker_tag = prepare_image(&args, &docker_mgr).await?;
+        } else {
+            warn!(
+                "Container exited with code {}, retrying with same image...",
+                exit_code
+            );
+        }
+
+        info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
+        tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+    }
 }
 
 #[tokio::main]
