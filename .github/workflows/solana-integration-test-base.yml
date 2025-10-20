@@ -17,20 +17,12 @@ jobs:
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
 
       - name: Check initial disk space
         run: |
-          echo "=== Initial disk usage ==="
+          echo "Initial disk usage"
           df -h
-          echo "=== Docker info ==="
+          echo "Docker info"
           docker info | grep -i "docker root dir" || true
 
       - uses: actions/checkout@v4
@@ -50,89 +42,61 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
-      # Step 1: Build Anchor Programs
-      - name: Build Anchor Programs
+      # Step 1: Get Validator Image from cache
+      - name: Get Validator Image from cache
+        id: cache-validator
+        uses: actions/cache/restore@v4
+        with:
+          path: validator-image.tar.gz
+          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          fail-on-cache-miss: true
+
+      - name: Load Validator Image
         run: |
-          echo "Building Solana Coordinator"
-          nix develop --command bash -c "cd architectures/decentralized/solana-coordinator && anchor build"
+          echo "Loading validator image from cache"
+          docker load < validator-image.tar.gz
+          docker images | grep psyche-solana-test-validator
 
-          echo "Building Solana Authorizer"
-          nix develop --command bash -c "cd architectures/decentralized/solana-authorizer && anchor build"
-
-          echo "=== Built Coordinator artifacts ==="
-          ls -la architectures/decentralized/solana-coordinator/target/deploy/
-
-          echo "=== Built Authorizer artifacts ==="
-          ls -la architectures/decentralized/solana-authorizer/target/deploy/
-
-      # Memory cleanup after Anchor build
-      - name: Clean Anchor build
-        run: |
-          # Keep only the deploy artifacts we need, remove intermediate build files
-          echo "=== Cleaning Anchor build artifacts (keeping deploy and idl folders) ==="
-
-          # For coordinator - keep entire deploy folder but remove intermediate builds
-          find architectures/decentralized/solana-coordinator/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
-
-          # For authorizer - keep entire deploy folder but remove intermediate builds
-          find architectures/decentralized/solana-authorizer/target -mindepth 1 -maxdepth 1 ! -name 'deploy' ! -name 'idl' -exec rm -rf {} + 2>/dev/null || true
-
-          # Clean nix store garbage aggressively
-          nix-collect-garbage -d
-          nix store optimise
-
-          echo "=== Disk usage after Anchor cleanup ==="
+          echo "Disk usage after loading validator"
           df -h
 
-      # Step 2: Build Solana Test Validator Image
-      - name: Build Solana Test Validator Image
+      - name: Clean up validator tar file
         run: |
-          export PSYCHE_HOME=$(pwd)
-
-          echo "=== Disk space before validator build ==="
+          # Remove the compressed validator image to free up disk space
+          rm -f validator-image.tar.gz
+          echo "Disk usage after removing validator tar"
           df -h
 
-          # Build and load in one command
-          nix build .#docker-psyche-solana-test-validator --impure --out-link result && ./result | docker load
-
-          echo "=== Disk space after validator build ==="
-          df -h
-
-      # Memory cleanup after validator build
-      - name: Clean validator build artifacts
+      # Step 2: Download Solana Test Client No Python Image
+      - name: Download Solana Test Client No Python Image
         run: |
-          # Remove nix build result
-          rm -f result
-
-          # Clean nix store garbage
-          nix-collect-garbage -d
-          nix store optimise
-
-          # Remove temp files
-          sudo rm -rf /tmp/* 2>/dev/null || true
-
-          echo "=== Docker images after validator build ==="
-          docker images
-
-          echo "=== Disk usage after validator cleanup ==="
+          echo "Disk space before client build"
           df -h
 
-      # Step 3: Build Solana Test Client Image
-      - name: Build Solana Test Client Image
-        run: |
-          echo "=== Disk space before client build ==="
-          df -h
+          # Calculate the derivation hash
+          echo "Calculating derivation path"
+          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client-no-python.drvPath)
+          echo "Derivation path: $DRV_PATH"
 
-          nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client-no-python
-          nix-results/docker-psyche-solana-test-client-no-python | docker load
-          rm -rf nix-results/docker-psyche-solana-test-client-no-python
+          OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
+          echo "Output path: $OUT_PATH"
 
-          echo "=== Disk space after client build ==="
+          # download from Garnix cache first
+          echo "Attempting to fetch from Garnix cache"
+          nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0
+
+          # Load the image into Docker
+          $OUT_PATH | docker load
+
+          echo "Disk space after client build"
           df -h
 
       # Clean Nix store after client build
       - name: Clean after client build
         run: |
+          # Clean up the path file
+          rm -f client-image-path.txt
+
           # Clean nix store garbage
           nix-collect-garbage -d
           nix store optimise
@@ -140,18 +104,18 @@ jobs:
           # Remove temp files
           sudo rm -rf /tmp/* 2>/dev/null || true
 
-          echo "=== Disk space after cleanup ==="
+          echo "Disk space after cleanup"
           df -h
 
       - name: Verify Docker images exist
         run: |
-          echo "=== Checking for required Docker images ==="
+          echo "Checking for required Docker images"
           docker images
           docker images | grep psyche-solana-test-validator || (echo "ERROR: psyche-solana-test-validator image not found" && exit 1)
           docker images | grep psyche-solana-test-client-no-python || (echo "ERROR: psyche-solana-test-client-no-python image not found" && exit 1)
           echo "All required images are present"
 
-          echo "=== Final disk usage before tests ==="
+          echo "Final disk usage before tests"
           df -h
 
       # Step 4: Run Integration Tests
