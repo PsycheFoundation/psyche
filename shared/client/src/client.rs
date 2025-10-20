@@ -3,24 +3,25 @@ use crate::{
     RunInitConfig, RunInitConfigAndIO, TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
 };
+use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use futures::future::join_all;
+use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    Networkable, NodeAddr, NodeId, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
-    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
-    router::Router,
+    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState, NodeId,
+    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload, allowlist,
+    blob_ticket_param_request_task, raw_p2p_verify,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
-use rand::{RngCore, seq::SliceRandom, thread_rng};
+use rand::{Rng, RngCore, seq::SliceRandom};
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::BTreeSet,
     marker::PhantomData,
     sync::Arc,
     time::{Duration, SystemTime},
@@ -148,7 +149,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                          _ = req_tui_state.notified() => {
-                            let network_tui_state = (&p2p).into();
+                            let network_tui_state = NetworkTUIState::from_network_connection(&p2p).await?;
                             let client_tui_state = (&run).into();
                             tx_tui.send((client_tui_state, network_tui_state))?;
                         },
@@ -159,31 +160,34 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 .map(|s| s.run_state.to_string())
                                 .unwrap_or_else(|| String::from(" - "));
 
-                            info!(
-                                integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
-                                client_id = %identity,
-                                old_state = old_run_state,
-                                new_state = %new_state.run_state,
-                                epoch = new_state.progress.epoch,
-                                step = new_state.progress.step,
-                                "applying state epoch {} step {} ({} -> {})",
-                                new_state.progress.epoch,
-                                new_state.progress.step,
-                                old_run_state,
-                                new_state.run_state
-                            );
+                            if old_state.map(|s| s.run_state).unwrap_or_default() != new_state.run_state {
+                                info!(
+                                    integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
+                                    client_id = %identity,
+                                    old_state = old_run_state,
+                                    new_state = %new_state.run_state,
+                                    epoch = new_state.progress.epoch,
+                                    step = new_state.progress.step,
+                                    "applying state epoch {} step {} ({} -> {})",
+                                    new_state.progress.epoch,
+                                    new_state.progress.step,
+                                    old_run_state,
+                                    new_state.run_state
+                                );
+                            }
 
                             let run_participating_node_ids = participating_node_ids(new_state);
                             allowlist.set(run_participating_node_ids);
                             ensure_gossip_connected(new_state, &mut p2p, &mut last_gossip_connection_time);
 
                             if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
-
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
-                                p2p.remove_blobs_with_tag_less_than(last_needed_step_blobs);
-                                let p2p_info = get_p2p_info(&p2p).await?;
-                                metrics.update_bandwidth(p2p_info.values().map(|v| v.bandwidth).sum());
+                                if let Err(err) = p2p.remove_staled_tags(last_needed_step_blobs).await {
+                                    warn!("Error deleting blob tags less than {last_needed_step_blobs}: {err}");
+                                }
+                                let p2p_info = p2p.remote_infos();
+                                metrics.update_bandwidth(p2p_info.iter().map(|v| v.bandwidth).sum());
                                 if let Err(e) = run.set_node_info(p2p_info) {
                                     warn!("failed to set p2p info: {e}");
                                 }
@@ -254,7 +258,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     }
                                                 }
                                             } else {
-                                                warn!(from=from.fmt_short(), "Invalid signature on commitment from {}", from.fmt_short());
+                                                warn!(from=from.fmt_short().to_string(), "Invalid signature on commitment from {}", from.fmt_short());
                                                 metrics.record_apply_message_failure(broadcast_step, from, broadcast_kind);
                                             }
                                         } else {
@@ -368,7 +372,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
                                         // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
                                         trace!("NetworkEvent::ParameterRequest({parameter_name})");
-                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, 0).await {
+                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, &format!("model-{parameter_name}")).await {
                                             Err(e) => {
                                                 if let Err(e) = protocol_req_tx.send(Err(e)) {
                                                     warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
@@ -384,7 +388,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     },
                                     NetworkEvent::ModelConfigRequest(protocol_req_tx) => {
                                         trace!("NetworkEvent::ModelConfigRequest");
-                                        match sharable_model.get_transmittable_config(&mut p2p, 0).await {
+                                        match sharable_model.get_transmittable_config(&mut p2p, "model-config").await {
                                             Err(e) => {
                                                 if let Err(e) = protocol_req_tx.send(Err(e)) {
                                                     warn!("Could not send model config blob ticket. Error: {e:?}");
@@ -411,7 +415,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
-                            let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::Finished(Finished {
+                            let training_result = Broadcast { step, proof, nonce: rand::rng().next_u32(), commitment, data: BroadcastType::Finished(Finished {
                                 broadcast_merkle: merkle, warmup
                             })};
 
@@ -425,7 +429,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
 
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, step).await?;
+                            let ticket = p2p.add_downloadable(transmittable_distro_result, step.to_string().as_str()).await?;
                             let hash = ticket.hash();
                             info!(
                                 client_id = %identity, step = step,
@@ -435,7 +439,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
-                            let training_result = Broadcast { step, proof, nonce: thread_rng().next_u32(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
+                            let training_result = Broadcast { step, proof, nonce: rand::rng().random(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
 
                             p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
@@ -509,7 +513,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
-                            let other_possible_nodes = run.coordinator_state().map(all_node_addrs_shuffled).unwrap_or_default();
+                            let self_node_id = p2p.node_id();
+                            let other_possible_nodes = run.coordinator_state().map(all_node_ids_shuffled).unwrap_or_default();
+                            let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| *addr != self_node_id).collect();
                             let kind = DownloadType::DistroResult(other_possible_nodes);
                             metrics.record_download_started(download_ticket.hash(), kind.kind());
                             p2p.start_download(download_ticket, tag, kind);
@@ -642,17 +648,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let remote_infos: Vec<_> = p2p
                                     .remote_infos()
                                     .into_iter()
-                                    .filter(|info| !matches!(info.0.conn_type, psyche_network::ConnectionType::None))
+                                    .filter(|info| !matches!(info.path, psyche_network::ConnectionType::None))
                                     .map(|info| {
                                         PeerConnection {
-                                            node_id: info.0.node_id.to_string(),
-                                            connection_type: match info.0.conn_type {
+                                            node_id: info.node_id.to_string(),
+                                            connection_type: match info.path {
+                                                psyche_network::ConnectionType::None => unreachable!(),
                                                 psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
                                                 psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
                                                 psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
-                                                psyche_network::ConnectionType::None => unreachable!(),
                                             },
-                                            latency: info.0.latency.map(|l| l.as_secs_f32()).unwrap_or(0.0)
+                                            latency: info.latency as f32
                                         }
                                     })
                                     .collect();
@@ -676,7 +682,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     info!("Checkpoint finished, exiting main client loop");
                 }
 
-                p2p_shutdown.await
+                p2p_shutdown
+                    .await
+                    .map_err(|e| anyhow!("Error shutting down p2p: {}", e))
             }
         });
 
@@ -756,7 +764,7 @@ fn ensure_gossip_connected<T: NodeIdentity>(
         .filter(|node_id| *node_id != &my_node_id)
         .filter(|node_id| !gossip_neighbors.contains(*node_id))
         .collect::<Vec<_>>();
-    to_connect.shuffle(&mut thread_rng());
+    to_connect.shuffle(&mut rand::rng());
     let to_connect = to_connect
         .into_iter()
         .take(num_peers_to_add)
@@ -769,49 +777,6 @@ fn ensure_gossip_connected<T: NodeIdentity>(
     }
 }
 
-pub struct P2PNodeInfo {
-    pub ips: Vec<String>,
-    pub bandwidth: f64,
-}
-
-async fn get_p2p_info<B, D>(
-    p2p: &NetworkConnection<B, D>,
-) -> anyhow::Result<HashMap<String, P2PNodeInfo>>
-where
-    B: Networkable,
-    D: Networkable,
-{
-    let remotes = p2p.remote_infos();
-    let node_addr = p2p.node_addr().await?;
-    Ok(remotes
-        .into_iter()
-        .map(|(x, bandwidth)| {
-            (
-                x.node_id.to_string(),
-                P2PNodeInfo {
-                    ips: x
-                        .addrs
-                        .into_iter()
-                        .map(|y| y.addr.to_string())
-                        .collect::<Vec<_>>(),
-                    bandwidth,
-                },
-            )
-        })
-        .chain(std::iter::once((
-            node_addr.node_id.to_string(),
-            P2PNodeInfo {
-                ips: node_addr
-                    .direct_addresses
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>(),
-                bandwidth: 0.0,
-            },
-        )))
-        .collect())
-}
-
 fn participating_node_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId> {
     state
         .epoch_state
@@ -821,12 +786,9 @@ fn participating_node_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId
         .collect()
 }
 
-fn all_node_addrs_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeAddr> {
-    let mut addrs = participating_node_ids(state)
-        .into_iter()
-        .map(|node_id| node_id.into())
-        .collect::<Vec<_>>();
-    addrs.shuffle(&mut thread_rng());
+fn all_node_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId> {
+    let mut addrs = participating_node_ids(state);
+    addrs.shuffle(&mut rand::rng());
     addrs
 }
 

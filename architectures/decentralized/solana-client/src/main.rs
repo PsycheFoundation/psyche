@@ -259,7 +259,7 @@ async fn async_main() -> Result<()> {
             identity_secret_key_path,
         } => print_identity_keys(identity_secret_key_path.as_ref()),
         Commands::CreateStaticP2PIdentity { save_path } => {
-            let identity_secret_key = SecretKey::generate(&mut rand::rngs::OsRng);
+            let identity_secret_key = SecretKey::generate(&mut rand::rng());
             std::fs::write(&save_path, identity_secret_key.secret().as_bytes())?;
             print_identity_keys(Some(&save_path))?;
             println!("Wrote secret key to {}", save_path.display());
@@ -463,10 +463,11 @@ async fn async_main() -> Result<()> {
                 }))
                 .with_service_info(ServiceInfo {
                     name: "psyche-solana-client".to_string(),
-                    instance_id: identity_secret_key.public().to_string(),
+                    instance_id: wallet_keypair.pubkey().to_string(),
                     namespace: "psyche".to_string(),
                     deployment_environment: std::env::var("DEPLOYMENT_ENV")
                         .unwrap_or("development".to_string()),
+                    run_id: Some(args.run_id.clone()),
                 })
                 .init()?;
 
@@ -514,10 +515,10 @@ async fn async_main() -> Result<()> {
                 grad_accum_in_fp32: args.grad_accum_in_fp32,
                 dummy_training_delay_secs: args.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
-                max_concurrent_downloads: args.max_concurrent_downloads,
                 authorizer,
                 metrics_local_port: args.metrics_local_port,
                 device: args.device,
+                sidecar_port: args.sidecar_port,
             })
             .build()
             .await

@@ -3,37 +3,41 @@ use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
-use iroh::endpoint::{RemoteInfo, TransportConfig};
+use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::{
-    downloader::{ConcurrencyLimits, RetryConfig},
-    net_protocol::{Blobs, DownloadMode},
-    rpc::client::blobs::DownloadOptions,
-    store::mem::Store,
-    util::SetTagOption,
+    BlobsProtocol,
+    api::downloader::Downloader,
+    api::tags::TagInfo,
+    store::{
+        fs::options::GcConfig,
+        mem::{MemStore, Options as MemStoreOptions},
+    },
 };
 use iroh_gossip::{
-    net::{Gossip, GossipEvent, GossipReceiver, GossipSender},
+    api::{GossipReceiver, GossipSender},
+    net::Gossip,
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
-use psyche_metrics::{ClientMetrics, IrohMetricsCollector, IrohMetricsRegistry};
-use router::Router;
+use psyche_metrics::{ClientMetrics, PeerConnection};
+use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::{
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
-    ops::Sub,
-    sync::{Arc, RwLock},
-    time::{Duration, Instant},
+    sync::Arc,
+    time::Duration,
 };
 use tokio::{
+    io::AsyncReadExt,
     select,
     sync::{mpsc::UnboundedReceiver, oneshot},
+    task::JoinError,
     time::timeout,
 };
 use tokio::{
@@ -51,9 +55,9 @@ pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 pub mod allowlist;
 mod authenticable_identity;
 mod download_manager;
+mod latency_sorted;
 mod local_discovery;
 mod p2p_model_sharing;
-mod peer_list;
 pub mod router;
 mod serde;
 mod serializable_kind;
@@ -73,14 +77,12 @@ pub use download_manager::{
     DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
     RetriedDownloadsHandle, TransmittableDownload,
 };
-use iroh::defaults::DEFAULT_STUN_PORT;
 pub use iroh::{Endpoint, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
+pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
-    ALPN, ModelRequestType, ModelSharing, SharableModel, SharableModelError,
-    TransmittableModelConfig,
+    ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
 };
-pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
     SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
@@ -92,9 +94,10 @@ pub use tui::{NetworkTUIState, NetworkTui};
 use url::Url;
 pub use util::fmt_bytes;
 
-const USE_RELAY_HOSTNAME: &str = "use1-1.relay.psyche.iroh.link";
-const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.psyche.iroh.link";
-const EUC_RELAY_HOSTNAME: &str = "euc1-1.relay.psyche.iroh.link";
+use crate::p2p_model_sharing::ModelSharing;
+
+const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
+const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
 
 /// How should this node discover other nodes?
 ///
@@ -106,13 +109,72 @@ pub enum DiscoveryMode {
     N0,
 }
 
+#[derive(Debug, Clone)]
+pub enum BlobTag {
+    // Tag for Distro result blobs containing the step as an u32 to check if it's safe to be deleted
+    DistroResult(u32),
+    // Tag for Parameter blobs with a specific format to identify them and remove them after warmup
+    Parameter(String),
+}
+
+impl TryFrom<TagInfo> for BlobTag {
+    type Error = String;
+
+    fn try_from(tag: TagInfo) -> Result<Self, Self::Error> {
+        let tag_value_str = match std::str::from_utf8(&tag.name.0) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("Failed parsing tag name: {}", e);
+                return Err("Failed parsing tag name".to_string());
+            }
+        };
+
+        if tag_value_str.starts_with("model-") {
+            return Ok(BlobTag::Parameter(tag_value_str.to_string()));
+        }
+
+        let tag_value = match tag_value_str.parse::<u32>() {
+            Ok(value) => value,
+            Err(e) => {
+                return Err(format!("Failed parsing tag value: {}", e));
+            }
+        };
+
+        Ok(BlobTag::DistroResult(tag_value))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct P2PNodeInfo {
+    pub node_id: NodeId,
+    pub path: ConnectionType,
+    pub bandwidth: f64,
+    pub latency: f64,
+}
+
+impl From<P2PNodeInfo> for PeerConnection {
+    fn from(value: P2PNodeInfo) -> Self {
+        Self {
+            node_id: value.node_id.to_string(),
+            connection_type: match value.path {
+                ConnectionType::None => psyche_metrics::ConnectionType::None,
+                ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
+                ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
+                ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
+            },
+            latency: value.latency as f32,
+        }
+    }
+}
+
 pub struct NetworkConnection<BroadcastMessage, Download>
 where
     BroadcastMessage: Networkable,
     Download: Networkable,
 {
     router: Arc<Router>,
-    blobs: Blobs<Store>,
+    blobs_store: MemStore,
+    downloader: Downloader,
     state: State,
     gossip_tx: GossipSender,
     gossip_rx: GossipReceiver,
@@ -123,7 +185,7 @@ where
     _download: PhantomData<Download>,
     update_stats_interval: Interval,
     metrics: Arc<ClientMetrics>,
-    _iroh_metrics: IrohMetricsCollector,
+    endpoint: Endpoint,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -134,7 +196,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NetworkConnection")
             .field("router", &self.router)
-            .field("blobs", &self.blobs)
+            .field("blobs_store", &self.blobs_store)
             .field("gossip_tx", &self.gossip_tx)
             .field("gossip_rx", &self.gossip_rx)
             .field("state", &self.state)
@@ -150,26 +212,22 @@ where
     Download: Networkable,
 {
     #[allow(clippy::too_many_arguments)]
-    pub async fn init<A: Allowlist + 'static + Send>(
+    pub async fn init<A: Allowlist + 'static + Send + std::marker::Sync>(
         run_id: &str,
         port: Option<u16>,
         interface: Option<String>,
-        relay_mode: RelayMode,
         discovery_mode: DiscoveryMode,
         bootstrap_peers: Vec<NodeAddr>,
         secret_key: Option<SecretKey>,
         allowlist: A,
-        max_concurrent_downloads: usize,
         metrics: Arc<ClientMetrics>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
-            None => SecretKey::generate(&mut rand::rngs::OsRng),
+            None => SecretKey::generate(&mut rand::rng()),
             Some(key) => key,
         };
 
         let public_key = secret_key.public();
-
-        debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
         let ipv4 = if let Some(if_name) = interface {
             let (wildcard, if_name) = if if_name.ends_with("*") {
@@ -198,47 +256,50 @@ where
             Ipv4Addr::new(0, 0, 0, 0)
         };
 
+        let bootstrap_node_ids = bootstrap_peers.iter().map(|p| p.node_id).collect();
+
         let endpoint = {
             let mut transport_config = TransportConfig::default();
             transport_config
-                .max_idle_timeout(Some(Duration::from_secs(5).try_into()?))
+                .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Some(Duration::from_secs(1)));
+
+            let relay_mode = RelayMode::Custom(psyche_relay_map());
+            debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
             let endpoint = Endpoint::builder()
                 .secret_key(secret_key)
-                .relay_mode(RelayMode::Custom(psyche_relay_map()))
+                .relay_mode(relay_mode)
                 .transport_config(transport_config)
                 .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)));
 
-            let e = match discovery_mode {
-                DiscoveryMode::Local => endpoint.discovery(Box::new(
-                    local_discovery::LocalTestDiscovery::new(public_key),
-                )),
+            let endpoint = match discovery_mode {
+                DiscoveryMode::Local => {
+                    endpoint.discovery(local_discovery::LocalTestDiscovery::new(public_key))
+                }
                 DiscoveryMode::N0 => endpoint.discovery_n0(),
             };
 
-            e.bind().await?
+            endpoint.bind().await?
         };
 
-        let node_addr = endpoint.node_addr().await?;
+        if matches!(discovery_mode, DiscoveryMode::N0) {
+            endpoint.online().await;
+        }
 
-        info!("Our node addr: {}", node_addr.node_id);
-        info!("Our join ticket: {}", PeerList(vec![node_addr]));
+        let node_addr = endpoint.node_addr();
 
-        trace!("creating blobs...");
-        let blobs = Blobs::memory()
-            .concurrency_limits(ConcurrencyLimits {
-                max_concurrent_requests_per_node: 1,
-                max_concurrent_requests: max_concurrent_downloads,
-                max_open_connections: 512,
-                max_concurrent_dials_per_hash: 2,
-            })
-            .retry_config(RetryConfig {
-                max_retries_per_node: 0,
-                ..Default::default()
-            })
-            .build(&endpoint);
-        trace!("blobs created!");
+        info!("Our node id: {}", node_addr.node_id);
+
+        trace!("creating blobs store...");
+        let store = MemStore::new_with_opts(MemStoreOptions {
+            gc_config: Some(GcConfig {
+                interval: Duration::from_secs(10),
+                add_protected: None,
+            }),
+        });
+        let downloader = Downloader::new(&store, &endpoint);
+        trace!("blobs store created!");
 
         trace!("creating gossip...");
         let gossip = Gossip::builder()
@@ -255,8 +316,7 @@ where
                 message_id_retention: Duration::from_secs(2 * 60),
                 ..PlumtreeConfig::default()
             })
-            .spawn(endpoint.clone())
-            .await?;
+            .spawn(endpoint.clone());
         trace!("gossip created!");
 
         trace!("creating model parameter sharing...");
@@ -266,51 +326,18 @@ where
             ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
         trace!("model parameter sharing created!");
 
-        // init metrics
-        let iroh_metrics = {
-            let registry = Arc::new(RwLock::new(IrohMetricsRegistry::default()));
-            {
-                let mut locked_registry = registry
-                    .write()
-                    .map_err(|_| anyhow!("failed to lock metrics registry"))?;
-                locked_registry.register_all_prefixed(endpoint.metrics());
-                locked_registry.register(gossip.metrics().clone());
-                locked_registry.register(blobs.metrics().clone());
-            }
-            IrohMetricsCollector::new(registry.clone())
-        };
-
         trace!("creating router...");
-        let router = Arc::new(
-            Router::spawn(
-                endpoint,
-                gossip.clone(),
-                blobs.clone(),
-                model_parameter_sharing.clone(),
-                allowlist,
-            )
-            .await?,
-        );
+        let blobs_protocol = BlobsProtocol::new(&store.clone(), None);
+        let router = spawn_router_with_allowlist(
+            allowlist.clone(),
+            endpoint.clone(),
+            SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
+        )?;
         trace!("router created!");
 
-        // add any bootstrap peers
-        {
-            if bootstrap_peers.is_empty() {
-                info!("Waiting for peers to join us...");
-            } else {
-                info!("Trying to connect to {} peers...", bootstrap_peers.len());
-                // add the peer addrs from the ticket to our endpoint's addressbook so that they can be dialed
-                for peer in &bootstrap_peers {
-                    router.endpoint().add_node_addr(peer.clone())?;
-                }
-            };
-        }
-
         let (gossip_tx, gossip_rx) = gossip
-            .subscribe(
-                gossip_topic(run_id),
-                bootstrap_peers.iter().map(|p| p.node_id).collect(),
-            )?
+            .subscribe(gossip_topic(run_id), bootstrap_node_ids)
+            .await?
             .split();
         info!("Connected!");
 
@@ -318,7 +345,8 @@ where
         let update_stats_interval = interval(Duration::from_secs(1));
 
         Ok(Self {
-            blobs,
+            blobs_store: store,
+            downloader,
             gossip_rx,
             gossip_tx,
             rx_model_parameter_req,
@@ -326,17 +354,17 @@ where
 
             router,
             metrics,
-            _iroh_metrics: iroh_metrics,
 
             update_stats_interval,
             state: State::new(15),
             download_manager: DownloadManager::new()?,
             _broadcast_message: Default::default(),
             _download: Default::default(),
+            endpoint,
         })
     }
 
-    pub async fn shutdown(&self) -> Result<()> {
+    pub async fn shutdown(&self) -> Result<(), JoinError> {
         self.router.shutdown().await
     }
 
@@ -344,12 +372,16 @@ where
         self.router.endpoint().node_id()
     }
 
+    pub fn is_allowlisted<A: Allowlist>(node_id: &NodeId, allowlist: &A) -> bool {
+        allowlist.allowed(*node_id)
+    }
+
     /// Don't call this often / with many peers!
     /// It can force disconnection of other gossip peers if we have too many.
     pub fn add_peers(&self, peers: Vec<NodeId>) {
         let peer_list = peers
             .iter()
-            .map(|n| n.fmt_short())
+            .map(|n| n.fmt_short().to_string())
             .collect::<Vec<_>>()
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
@@ -394,32 +426,25 @@ where
         };
         let (tx, rx) = mpsc::unbounded_channel();
 
-        self.state.currently_sharing_blobs.insert(ticket_hash);
-        self.state.blob_tags.insert((tag, ticket_hash));
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
 
-        info!(name: "blob_download_start", hash = ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
+        debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
-        let blobs_client = self.blobs.client().clone();
+        let latency_sorted = LatencySorted::new(
+            std::iter::once(provider_node_id.node_id)
+                .chain(additional_peers_to_try.iter().cloned())
+                .collect(),
+            self.endpoint.clone(),
+        );
+        let download = self.downloader.download(ticket_hash, latency_sorted);
         tokio::spawn(async move {
-            let download_opts = DownloadOptions {
-                format: BlobFormat::Raw,
-                nodes: std::iter::once(provider_node_id)
-                    .chain(additional_peers_to_try.iter().cloned())
-                    .collect(),
-                tag: SetTagOption::Auto,
-                mode: DownloadMode::Queued,
-            };
+            let progress = download.stream().await;
 
-            let download_start_result = blobs_client
-                .download_with_opts(ticket_hash, download_opts)
-                .await;
-
-            match download_start_result {
+            match progress {
                 Ok(mut progress) => {
                     while let Some(val) = progress.next().await {
-                        if let Err(err) = tx.send(val) {
+                        if let Err(err) = tx.send(Ok(val)) {
                             panic!("Failed to send download progress: {err:?} {:?}", err.0);
                         }
                     }
@@ -429,86 +454,124 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
+    pub async fn add_downloadable(&mut self, data: Download, tag: &str) -> Result<BlobTicket> {
+        let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
-            .blobs
-            .client()
-            .add_bytes(postcard::to_allocvec(&data)?)
+            .blobs_store
+            .blobs()
+            .add_bytes(blob_data.clone())
+            .with_named_tag(tag)
             .await?;
-        let addr = self.router.endpoint().node_addr().await?;
-        let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format)?;
-
+        let addr = self.router.endpoint().node_addr();
+        let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
         debug!(
             name: "blob_upload",
-            hash = blob_res.hash.fmt_short(),
-            size = blob_res.size,
-            "blob added for upload with hash {} and size {}",
+            hash = %blob_res.hash.fmt_short(),
+            size = blob_data.len(),
+            "blob added for upload with hash {:?} with size {:?}",
             blob_res.hash.fmt_short(),
-            blob_res.size
+            blob_data.len()
         );
-
-        let hash = blob_ticket.hash();
-        self.state.currently_sharing_blobs.insert(hash);
-        self.state.blob_tags.insert((tag, hash));
 
         Ok(blob_ticket)
     }
 
-    // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
-    pub fn remove_blobs_with_tag_less_than(&mut self, tag: u32) {
-        self.state.blob_tags.retain(|(t, _)| *t >= tag);
-        self.cleanup_untagged_blogs();
-    }
-    pub fn cleanup_untagged_blogs(&mut self) {
-        let expired_blobs: Vec<_> = self
-            .state
-            .currently_sharing_blobs
-            .iter()
-            .filter(|a| !self.state.blob_tags.iter().any(|(_, b)| *a == b))
-            .copied()
-            .collect();
-        for hash in expired_blobs.iter() {
-            self.state.currently_sharing_blobs.remove(hash);
-        }
-        let client = self.blobs.client().clone();
+    /// Removes all the tags from the store that are lower than the target tag.
+    /// Also removes all the tags used for the parameter sharing since this will run only in the Train state
+    pub async fn remove_staled_tags(&mut self, target_tag: u32) -> anyhow::Result<()> {
+        let store = self.blobs_store.as_ref().clone();
+        let mut tags = store.tags().list().await?;
+        let mut to_delete = Vec::new();
+
         tokio::task::spawn(async move {
-            for hash in expired_blobs {
-                if let Err(err) = client.delete_blob(hash).await {
-                    warn!("error deleting blob {hash}: {err}")
+            while let Some(tag_result) = tags.next().await {
+                let tag = match tag_result {
+                    Ok(tag) => tag,
+                    Err(e) => {
+                        warn!("Failed getting blob tag to delete: {}", e);
+                        continue;
+                    }
+                };
+
+                let blob_tag: BlobTag = match BlobTag::try_from(tag) {
+                    Ok(tag) => tag,
+                    Err(e) => {
+                        warn!("Failed parsing blob tag: {}", e);
+                        continue;
+                    }
+                };
+
+                match blob_tag {
+                    BlobTag::Parameter(tag_name) => {
+                        to_delete.push(tag_name);
+                    }
+                    BlobTag::DistroResult(step) => {
+                        if step < target_tag {
+                            to_delete.push(step.to_string());
+                        }
+                    }
                 }
             }
+
+            let mut deleted_tags = 0;
+            for tag in to_delete {
+                match store.tags().delete(&tag).await {
+                    Ok(_) => {
+                        deleted_tags += 1;
+                    }
+                    Err(err) => {
+                        warn!("Error deleting blob tag {tag}: {err}")
+                    }
+                }
+            }
+            match store.blobs().list().hashes().await {
+                Ok(blobs) => debug!(
+                    "Untagged {} old blobs from p2p, {} blobs remain",
+                    deleted_tags,
+                    blobs.len()
+                ),
+                Err(err) => debug!(
+                    "Untagged {} old blobs from p2p, but got error fetching list of blobs: {}",
+                    deleted_tags, err
+                ),
+            }
         });
+        Ok(())
     }
 
-    // TODO: there must be some clever way to do this using Iroh-blobs' built-in tagging system & GC.
-    pub fn remove_blobs_with_tag_equal_to(&mut self, tag: u32) {
-        self.state.blob_tags.retain(|(t, _)| *t != tag);
-        self.cleanup_untagged_blogs();
+    pub async fn node_addr(&self) -> NodeAddr {
+        self.router.endpoint().node_addr()
     }
 
-    pub async fn node_addr(&self) -> Result<NodeAddr> {
-        self.router.endpoint().node_addr().await
-    }
-
-    pub async fn join_ticket(&self) -> Result<String> {
-        let me = self.router.endpoint().node_addr().await?;
-        Ok(PeerList(vec![me]).to_string())
-    }
-
-    /// RemoteInfo and bandwidth in bytes/s for a node
-    pub fn remote_infos(&self) -> Vec<(RemoteInfo, f64)> {
-        self.router
-            .endpoint()
-            .remote_info_iter()
-            .map(|node_info| {
-                let bandwidth = self
-                    .state
-                    .bandwidth_tracker
-                    .get_bandwidth_by_node(&node_info.node_id)
-                    .unwrap_or_default();
-                (node_info, bandwidth)
-            })
-            .collect()
+    pub fn remote_infos(&self) -> Vec<P2PNodeInfo> {
+        std::iter::once(P2PNodeInfo {
+            node_id: self.endpoint.node_id(),
+            bandwidth: 0.0,
+            path: ConnectionType::None,
+            latency: 0.0,
+        })
+        .chain(self.endpoint.connections().into_iter().map(|node_id| {
+            let bandwidth = self
+                .state
+                .bandwidth_tracker
+                .get_bandwidth_by_node(&node_id)
+                .unwrap_or_default();
+            P2PNodeInfo {
+                node_id,
+                path: self
+                    .endpoint
+                    .conn_type(node_id)
+                    .map(|mut c| c.get())
+                    .unwrap_or(ConnectionType::None),
+                bandwidth,
+                latency: self
+                    .endpoint
+                    .latency(node_id)
+                    .unwrap_or(Duration::MAX)
+                    .as_secs_f64(),
+            }
+        }))
+        .collect()
     }
 
     pub async fn poll_next(&mut self) -> Result<Option<NetworkEvent<BroadcastMessage, Download>>> {
@@ -543,7 +606,7 @@ where
                 Ok(Some(NetworkEvent::ModelConfigRequest(protocol_req_tx)))
             }
             _ = self.update_stats_interval.tick() => {
-                on_update_stats(self.router.endpoint(), &mut self.state).await?;
+                on_update_stats(&self.endpoint, self.remote_infos(), &mut self.state).await?;
                 Ok(None)
             }
             else => { Ok(None) }
@@ -564,20 +627,18 @@ where
         if update.all_done {
             self.state.download_progesses.remove(&hash);
 
-            let blobs = self.blobs.client().clone();
+            let blobs = self.blobs_store.blobs().clone();
             let (send, recv) = oneshot::channel();
-            trace!(name: "blob_download_read_start", hash = hash.fmt_short());
+            trace!(name: "blob_download_read_start", hash = %hash.fmt_short());
             tokio::spawn(async move {
-                let blob_bytes = match blobs.read_to_bytes(hash).await {
-                    Ok(b) => b,
-                    Err(err) => {
-                        error!("Failed to read bytes: {err:#}");
-                        return;
-                    }
-                };
-                let size = blob_bytes.len();
-                let res = send.send(blob_bytes);
-                debug!(name: "blob_download_finish", hash = hash.fmt_short(), "downloaded blob {}, {} bytes", hash.fmt_short(), size);
+                let mut buf = Vec::new();
+                if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
+                    error!("Failed to read bytes: {err:#}");
+                    return;
+                }
+                let size = buf.len();
+                let res = send.send(Bytes::from(buf));
+                debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
                 if res.is_err() {
                     error!("Failed to send read bytes result.");
                 }
@@ -590,23 +651,6 @@ where
         }
         None
     }
-
-    pub async fn get_all_peers(&self) -> Vec<(NodeAddr, ConnectionType)> {
-        std::iter::once((
-            self.router
-                .endpoint()
-                .node_addr()
-                .await
-                .expect("node addr exists"),
-            ConnectionType::None,
-        ))
-        .chain(self.router.endpoint().remote_info_iter().map(|i| {
-            let c = i.conn_type.clone();
-            (i.into(), c)
-        }))
-        .collect()
-    }
-
     pub fn router(&self) -> Arc<Router> {
         self.router.clone()
     }
@@ -643,12 +687,12 @@ pub async fn request_model_blob_ticket(
 }
 
 fn parse_gossip_event<BroadcastMessage: Networkable>(
-    event: Result<iroh_gossip::net::Event>,
+    event: Result<iroh_gossip::api::Event>,
     gossip: &GossipReceiver,
     metrics: &ClientMetrics,
 ) -> Option<(PublicKey, BroadcastMessage)> {
     match event {
-        Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Received(msg))) => {
+        Ok(iroh_gossip::api::Event::Received(msg)) => {
             let message_hash = hash_bytes(&msg.content);
             match SignedMessage::<BroadcastMessage>::verify_and_decode(&msg.content) {
                 Ok(result) => {
@@ -668,21 +712,17 @@ fn parse_gossip_event<BroadcastMessage: Networkable>(
                 }
             }
         }
-        Ok(iroh_gossip::net::Event::Gossip(GossipEvent::Joined(peers))) => {
-            debug!(name: "gossip_init", peers = ?peers, "gossip initialized with peers {peers:?}");
-            metrics.update_p2p_gossip_neighbors(&peers);
-        }
-        Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborUp(node_id))) => {
+        Ok(iroh_gossip::api::Event::NeighborUp(node_id)) => {
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_new_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip connected to new peer {node_id}, we now have {} peers", peers.len());
             metrics.update_p2p_gossip_neighbors(&peers);
         }
-        Ok(iroh_gossip::net::Event::Gossip(GossipEvent::NeighborDown(node_id))) => {
+        Ok(iroh_gossip::api::Event::NeighborDown(node_id)) => {
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_lost_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip disconnected from peer {node_id}, we now have {} peers", peers.len());
             metrics.update_p2p_gossip_neighbors(&peers);
         }
-        Ok(iroh_gossip::net::Event::Lagged) => {
+        Ok(iroh_gossip::api::Event::Lagged) => {
             error!(name: "gossip_lagged","Gossip lagged. We missed some events.")
         }
         Err(err) => {
@@ -709,27 +749,14 @@ where
     ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
 }
 
-async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
-    let ticket = {
-        let me = endpoint.node_addr().await?;
-        PeerList(vec![me])
-    };
+async fn on_update_stats(
+    endpoint: &Endpoint,
+    remote_infos: Vec<P2PNodeInfo>,
+    stats: &mut State,
+) -> Result<()> {
+    stats.node_id = Some(endpoint.node_id());
 
-    stats.join_ticket = ticket;
-
-    for (peer_id, conn_type, last_recvd) in endpoint
-        .remote_info_iter()
-        .filter_map(|i| i.last_received().map(|r| (i.node_id, i.conn_type, r)))
-    {
-        // after 2 minutes with no comms, assume a client is disconnected.
-        if last_recvd.as_secs() < 120 {
-            stats
-                .last_seen
-                .insert(peer_id, (conn_type, Instant::now().sub(last_recvd)));
-        } else {
-            stats.last_seen.remove(&peer_id);
-        }
-    }
+    stats.node_connections = remote_infos;
 
     stats
         .bandwidth_history
@@ -744,11 +771,7 @@ async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
 
 /// Get the Psyche [`RelayMap`].
 pub fn psyche_relay_map() -> RelayMap {
-    RelayMap::from_iter([
-        psyche_use_relay_node(),
-        psyche_usw_relay_node(),
-        psyche_euc_relay_node(),
-    ])
+    RelayMap::from_iter([psyche_use_relay_node(), psyche_usw_relay_node()])
 }
 
 /// Get the Psyche [`RelayNode`] for US East.
@@ -758,8 +781,6 @@ pub fn psyche_use_relay_node() -> RelayNode {
         .expect("default url");
     RelayNode {
         url: url.into(),
-        stun_only: false,
-        stun_port: DEFAULT_STUN_PORT,
         quic: Some(RelayQuicConfig::default()),
     }
 }
@@ -771,21 +792,6 @@ pub fn psyche_usw_relay_node() -> RelayNode {
         .expect("default_url");
     RelayNode {
         url: url.into(),
-        stun_only: false,
-        stun_port: DEFAULT_STUN_PORT,
-        quic: Some(RelayQuicConfig::default()),
-    }
-}
-
-/// Get the Psyche [`RelayNode`] for Europe
-pub fn psyche_euc_relay_node() -> RelayNode {
-    let url: Url = format!("https://{EUC_RELAY_HOSTNAME}")
-        .parse()
-        .expect("default_url");
-    RelayNode {
-        url: url.into(),
-        stun_only: false,
-        stun_port: DEFAULT_STUN_PORT,
         quic: Some(RelayQuicConfig::default()),
     }
 }

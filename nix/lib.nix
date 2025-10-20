@@ -19,7 +19,7 @@ let
     || (builtins.match ".*tests/fixtures/.*$" path != null)
     || (builtins.match ".*.config/.*$" path != null)
     || (builtins.match ".*local-dev-keypair.json$" path != null)
-    || (builtins.match ".*shared/client/src/state/prompt_texts/.*\\.txt$" path != null);
+    || (builtins.match ".*shared/client/src/state/prompt_texts/index\\.json$" path != null);
 
   src = lib.cleanSourceWith {
     src = ../.;
@@ -51,6 +51,9 @@ let
         cuda_cudart
         nccl
       ]
+      ++ (with pkgs; [
+        rdma-core
+      ])
     );
   };
 
@@ -68,7 +71,15 @@ let
     NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
   };
 
+  rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
+    inherit env src;
+    strictDeps = true;
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = lib.optionalString (pkgs.config.cudaSupport) "--features parallelism";
+  };
+
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
+  cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
   pythonWithPsycheExtension = (
     pkgs.python312.withPackages (ps: [
@@ -76,7 +87,7 @@ let
     ])
   );
 
-  buildRustPackageWithPythonSidecar =
+  buildRustPackageWithPsychePythonEnvironment =
     {
       name,
       isExample ? false,
@@ -91,19 +102,40 @@ let
             rustWorkspaceArgsWithPython.cargoExtraArgs
             + (if isExample then " --example ${name}" else " --bin ${name}");
           doCheck = false;
+
+          meta.mainProgram = name;
         }
       );
     in
-    pkgs.runCommand "${name}-wrapped"
+    pkgs.runCommand "${name}"
       {
         buildInputs = [ pkgs.makeWrapper ];
       }
       ''
         mkdir -p $out/bin
-        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name}-wrapped \
+        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
           --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
           --prefix PATH : "${pythonWithPsycheExtension}/bin"
       '';
+
+  buildRustPackageWithoutPython =
+    {
+      name,
+      isExample ? false,
+    }:
+    craneLib.buildPackage (
+      rustWorkspaceArgsNoPython
+      // {
+        cargoArtifacts = cargoArtifactsNoPython;
+        pname = name;
+        cargoExtraArgs =
+          rustWorkspaceArgsNoPython.cargoExtraArgs
+          + (if isExample then " --example ${name}" else " --bin ${name}");
+        doCheck = false;
+
+        meta.mainProgram = name;
+      }
+    );
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
@@ -255,7 +287,8 @@ in
     rustWorkspaceArgs
     rustWorkspaceArgsWithPython
     cargoArtifacts
-    buildRustPackageWithPythonSidecar
+    buildRustPackageWithPsychePythonEnvironment
+    buildRustPackageWithoutPython
     buildRustWasmTsPackage
     useHostGpuDrivers
     env

@@ -28,6 +28,7 @@ async fn main() {
             instance_id: "local".to_string(),
             namespace: "psyche".to_string(),
             deployment_environment: "development".to_string(),
+            run_id: Some("run_id_test".to_string()),
         })
         .with_metrics_destination(Some(MetricsDestination::OpenTelemetry(OpenTelemetry {
             endpoint: metrics_endpoint,

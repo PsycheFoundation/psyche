@@ -13,6 +13,7 @@ lib.makeScope pkgs.newScope (
       "psyche-centralized-local-testnet"
       "expand-distro"
       "preview-lr"
+      "psyche-sidecar"
     ];
 
     rustExampleNames = [
@@ -24,7 +25,17 @@ lib.makeScope pkgs.newScope (
     rustPackages = lib.mapAttrs (_: lib.id) (
       lib.genAttrs (rustPackageNames ++ rustExampleNames) (
         name:
-        self.psycheLib.buildRustPackageWithPythonSidecar {
+        self.psycheLib.buildRustPackageWithPsychePythonEnvironment {
+          inherit name;
+          isExample = lib.elem name rustExampleNames;
+        }
+      )
+    );
+
+    rustPackagesNoPython = lib.mapAttrs (_: lib.id) (
+      lib.genAttrs (rustPackageNames ++ rustExampleNames) (
+        name:
+        self.psycheLib.buildRustPackageWithoutPython {
           inherit name;
           isExample = lib.elem name rustExampleNames;
         }
@@ -60,11 +71,27 @@ lib.makeScope pkgs.newScope (
       ) rustExampleNames)
     );
 
+    nixglhostRustPackagesNoPython = lib.listToAttrs (
+      (map (
+        name:
+        lib.nameValuePair "${name}-nixglhost-no-python" (
+          self.psycheLib.useHostGpuDrivers rustPackagesNoPython.${name}
+        )
+      ) rustPackageNames)
+      ++ (map (
+        name:
+        lib.nameValuePair "${name}-nixglhost-no-python" (
+          self.psycheLib.useHostGpuDrivers rustPackagesNoPython.${name}
+        )
+      ) rustExampleNames)
+    );
+
     # Import Docker configurations
     dockerPackages = import ./docker.nix {
       inherit
         pkgs
         nixglhostRustPackages
+        nixglhostRustPackagesNoPython
         inputs
         externalRustPackages
         ;
@@ -82,8 +109,10 @@ lib.makeScope pkgs.newScope (
       psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
     }
     // rustPackages
+    // rustPackagesNoPython
     // externalRustPackages
     // nixglhostRustPackages
+    // nixglhostRustPackagesNoPython
     // dockerPackages;
   in
   {

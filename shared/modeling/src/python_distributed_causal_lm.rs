@@ -16,9 +16,9 @@ use std::{
     thread::JoinHandle,
     time::Duration,
 };
-use tch::{Device, Kind, Tensor};
+use tch::{Device, Tensor};
 use thiserror::Error;
-use tracing::{debug, trace};
+use tracing::{debug, error, info, trace};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -36,6 +36,9 @@ pub enum PythonDistributedCausalLMError {
 
     #[error("Local load error: {0}")]
     LocalLoadError(#[from] PythonCausalLMError),
+
+    #[error("Calculated world size \"{0}\" is less than number of total GPU processes \"{1}\"")]
+    IncompatibleWorldSize(usize, usize),
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +132,32 @@ impl TorchDistributedCommunicator {
         ret
     }
 
+    pub fn barrier(&self, device: Option<Device>) -> PyResult<()> {
+        // Wait for all other ranks to signal ready
+        Python::with_gil(|py| {
+            let distributed = Python::import(py, "torch.distributed")?;
+            let barrier = distributed.getattr("barrier")?;
+            match device {
+                Some(rank) => {
+                    let kwargs = PyDict::new(py);
+                    kwargs.set_item("device_ids", [rank.c_int()]).unwrap();
+                    barrier.call((), Some(&kwargs))
+                }
+                None => barrier.call0(),
+            }?; // This will block until all ranks join
+            Ok(())
+        })
+    }
+
+    pub fn delete(&self, key: &str) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let store = self.store.bind(py);
+            let delete = store.getattr("delete_key")?;
+            let _ = delete.call1((key,))?;
+            Ok(())
+        })
+    }
+
     pub fn size(&self) -> usize {
         self.world_size.expect("World size not specified")
     }
@@ -186,6 +215,7 @@ pub struct PythonDistributedCausalLM {
 unsafe impl Send for PythonDistributedCausalLM {}
 
 impl PythonDistributedCausalLM {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         architecture: String,
         source: PretrainedSource<PythonModelConfig>,
@@ -193,8 +223,21 @@ impl PythonDistributedCausalLM {
         attn_implementation: AttentionImplementation,
         parallelism: ParallelismConfig,
         override_max_position_embeddings: Option<usize>,
+        port: Option<u16>,
+        num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
+        if !tch::Cuda::is_available() {
+            return Err(PythonDistributedCausalLMError::NonCUDADevice);
+        }
+        let num_local_ranks = num_local_ranks.unwrap_or_else(tch::Cuda::device_count);
         let world_size = parallelism.dp * parallelism.tp;
+        if world_size < (num_local_ranks as usize) {
+            return Err(PythonDistributedCausalLMError::IncompatibleWorldSize(
+                world_size,
+                num_local_ranks as usize,
+            ));
+        }
+
         let rank = match device {
             Device::Cuda(0) => 0,
             Device::Cuda(rank) => {
@@ -205,7 +248,7 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
         };
         let backend = "nccl".to_string();
-        let init_method = "tcp://127.0.0.1:34567".to_string();
+        let init_method = format!("tcp://0.0.0.0:{}", port.unwrap_or(34567));
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();
@@ -222,12 +265,58 @@ impl PythonDistributedCausalLM {
                         comm.set("source", "files")?;
                         let files = path_bufs
                             .iter()
-                            .map(|x| x.to_str().unwrap())
+                            .map(|x| contract_home_path(x))
                             .collect::<Vec<_>>();
                         let files = serde_json::to_string(&files).unwrap();
                         comm.set("files", &files)?;
                     }
-                    PretrainedSource::ConfigAndTensors(_, _hash_map) => todo!(),
+                    PretrainedSource::ConfigAndTensors(config, hash_map) => {
+                        let config = serde_json::to_string(&config).unwrap();
+                        comm.set("source", "config_and_tensors")?;
+                        comm.set("config", &config)?;
+
+                        // Send tensor metadata via store
+                        let mut tensors_vec: Vec<(String, Tensor)> = hash_map
+                            .iter()
+                            .map(|(name, tensor)| (name.clone(), tensor.shallow_clone()))
+                            .collect();
+
+                        tensors_vec.sort_by(|(a, _), (b, _)| a.cmp(b));
+                        let tensor_names: Vec<String> =
+                            tensors_vec.iter().map(|(name, _)| name.clone()).collect();
+                        comm.set(
+                            "tensor_names",
+                            &serde_json::to_string(&tensor_names).unwrap(),
+                        )?;
+
+                        // Wait for all ranks to be ready before broadcasting tensors
+                        comm.barrier(Some(device))?;
+                        info!("Sharing parameters with the other ranks");
+
+                        for (name, tensor) in tensors_vec.iter() {
+                            comm.set(
+                                &format!("tensor_shape_{}", name),
+                                &serde_json::to_string(&tensor.size()).unwrap(),
+                            )?;
+                            comm.set(
+                                &format!("tensor_dtype_{}", name),
+                                &format!("{:?}", tensor.kind()),
+                            )?;
+
+                            debug!("Broadcasting tensor {} to other ranks", name);
+
+                            // To broadcast we have to move the tensor to the GPU
+                            let tensor = tensor.to(device);
+
+                            if let Err(e) = comm.broadcast(&tensor.shallow_clone()) {
+                                error!("Error broadcasting tensor {}: {}", name, e);
+                                return Err(PythonDistributedCausalLMError::PythonError(e));
+                            }
+
+                            // Ensure all ranks have received the tensor before continuing
+                            comm.barrier(Some(device))?;
+                        }
+                    }
                 }
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
@@ -243,8 +332,8 @@ impl PythonDistributedCausalLM {
             })
         };
         let pid = format!("{}", std::process::id());
-        tracing::debug!("Spawned local model load, pid is {pid}");
-        let children: Result<Vec<Child>, _> = (1..world_size)
+        debug!("Spawned local model load, pid is {pid}");
+        let children: Result<Vec<Child>, _> = (1..num_local_ranks)
             .map(|rank| {
                 let res = Command::new("python")
                     .arg("-m")
@@ -259,10 +348,12 @@ impl PythonDistributedCausalLM {
                     .arg(format!("{world_size}"))
                     .arg("--rank")
                     .arg(format!("{rank}"))
+                    .arg("--device")
+                    .arg(format!("{rank}"))
                     .spawn();
                 match res.as_ref() {
-                    Ok(child) => tracing::debug!("Spawned sidecar process {}", child.id()),
-                    Err(err) => tracing::error!("{err}"),
+                    Ok(child) => debug!("Spawned sidecar process {}", child.id()),
+                    Err(err) => error!("{err}"),
                 };
                 res
             })
@@ -293,7 +384,7 @@ impl CausalLM for PythonDistributedCausalLM {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         let world_size = self.comm.size();
         let original_batch_size = x.size()[0] as usize;
 
@@ -318,7 +409,7 @@ impl CausalLM for PythonDistributedCausalLM {
 
             let new_size = batch.data.size();
             if new_size != original_batch_size {
-                debug!(
+                trace!(
                     "FSDP: Padded batch from {} to {} samples (world_size={})",
                     original_batch_size, new_size, world_size
                 );
@@ -352,8 +443,7 @@ impl CausalLM for PythonDistributedCausalLM {
             .unwrap();
 
         // barrier to ensure everyone has seen the broadcast
-        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
-        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
+        self.comm.barrier(Some(self.device())).unwrap();
 
         self.comm.broadcast(&batch_data.input_ids).unwrap();
         if let Some(labels) = &batch_data.labels {
@@ -371,6 +461,8 @@ impl CausalLM for PythonDistributedCausalLM {
             num_logits_to_keep,
             loss_scale,
         );
+
+        self.comm.delete(&iteration.to_string()).unwrap();
 
         (logits, loss)
     }
@@ -425,7 +517,22 @@ impl CausalLM for PythonDistributedCausalLM {
             .unwrap();
 
         // barrier to ensure everyone has seen the broadcast
-        let dummy = Tensor::zeros([], (Kind::Float, self.device()));
-        self.comm.all_reduce(&dummy, ReduceType::Sum).unwrap();
+        self.comm.barrier(Some(self.device())).unwrap();
     }
+}
+
+use std::path::Path;
+
+fn contract_home_path(path: &Path) -> String {
+    if let Ok(home_dir) = std::env::var("HOME") {
+        if let Some(path_str) = path.to_str() {
+            let home_str = home_dir.to_string();
+            if path_str.starts_with(&home_str) {
+                // Replace the home directory part with ~/
+                return format!("~/{}", &path_str[home_str.len()..]);
+            }
+        }
+    }
+    // If we can't contract it, return as is
+    path.to_str().unwrap_or_default().to_string()
 }

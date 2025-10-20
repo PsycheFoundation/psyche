@@ -102,6 +102,7 @@ generate_cli_docs:
     cargo run -p psyche-centralized-client print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-client.md
     cargo run -p psyche-centralized-server print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-server.md
     cargo run -p psyche-centralized-local-testnet print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-local-testnet.md
+    cargo run -p psyche-sidecar print-all-help --markdown > psyche-book/generated/cli/psyche-sidecar.md
 
 run_docker_client *ARGS:
     just nix build_docker_solana_client
@@ -109,7 +110,7 @@ run_docker_client *ARGS:
 
 # Setup clients assigning one available GPU to each of them.
 
-# There's no way to do this using the replicas from docker-compose file, so we have to do it manually.
+# There's no way to do this using the replicas from docker compose file, so we have to do it manually.
 setup_gpu_clients num_clients="1":
     ./scripts/coordinator-address-check.sh
     just nix build_docker_solana_test_client
@@ -127,11 +128,19 @@ docker_push_centralized_client:
 setup_test_infra:
     cd architectures/decentralized/solana-coordinator && anchor build
     cd architectures/decentralized/solana-authorizer && anchor build
-    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_client_no_python
     just nix build_docker_solana_test_validator
 
 run_test_infra num_clients="1":
-    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+    #!/usr/bin/env bash
+    cd docker/test
+    if [ -n "${USE_GPU}" ] || command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected or USE_GPU set, enabling GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --force-recreate
+    else
+        echo "No GPU detected, running without GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+    fi
 
 run_test_infra_with_proxies_validator num_clients="1":
     cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate

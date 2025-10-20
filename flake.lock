@@ -144,11 +144,11 @@
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
-        "lastModified": 1757604236,
-        "narHash": "sha256-LAlknL3zrXUVS+rbPxH5qkRht92h9X4u8eKxPlVdxFY=",
+        "lastModified": 1758139805,
+        "narHash": "sha256-O3IjRj4FWvg2Nozk6k9Qr3hKBdMxqzJzjJsT5Pzt/QA=",
         "owner": "arilotter",
         "repo": "garnix-cli",
-        "rev": "00c538217acfec3e3f6a16bece574492df3d4cfc",
+        "rev": "9251c250f9ab66449537f26da03196412d8f80b4",
         "type": "github"
       },
       "original": {

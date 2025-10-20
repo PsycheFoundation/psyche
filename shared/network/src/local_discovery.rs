@@ -1,5 +1,6 @@
 use futures_util::{Stream, stream};
 use iroh::NodeId;
+use iroh::discovery::{DiscoveryError, DiscoveryItem};
 use iroh::node_info::{NodeData, NodeInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -7,6 +8,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
+use tracing::error;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
 
@@ -52,12 +54,12 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
 
     fn resolve(
         &self,
-        _endpoint: iroh::Endpoint,
         node_id: iroh::NodeId,
-    ) -> Option<BoxStream<anyhow::Result<iroh::discovery::DiscoveryItem>>> {
+    ) -> Option<BoxStream<anyhow::Result<DiscoveryItem, DiscoveryError>>> {
         let file_path = Self::get_node_file_path(&node_id);
 
         if !file_path.exists() {
+            error!("no local node filepath found for node id {node_id} at {file_path:?}");
             return None;
         }
 
@@ -95,9 +97,5 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
 
         // Return a single-item stream
         Some(Box::pin(stream::once(async move { Ok(discovery_item) })))
-    }
-
-    fn subscribe(&self) -> Option<BoxStream<iroh::discovery::DiscoveryItem>> {
-        None
     }
 }

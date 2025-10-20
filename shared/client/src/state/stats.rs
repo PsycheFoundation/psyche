@@ -4,15 +4,13 @@ use psyche_coordinator::{
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
+use psyche_network::P2PNodeInfo;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use wandb::{DataValue, LogData};
 
-use crate::{
-    client::P2PNodeInfo,
-    state::evals::{EnumModelTask, PROMPT_TASK_NAME},
-};
+use crate::state::evals::{EnumModelTask, PROMPT_TASK_NAME};
 
 use super::evals::ModelTaskRunner;
 
@@ -30,7 +28,7 @@ pub struct StatsLogger {
     eval_history: HashMap<String, Vec<f64>>,
     lr_schedule: LearningRateSchedule,
 
-    pub node_info: HashMap<String, P2PNodeInfo>,
+    pub node_info: Vec<P2PNodeInfo>,
 }
 
 impl StatsLogger {
@@ -51,7 +49,7 @@ impl StatsLogger {
             lr_schedule,
             eval_history: HashMap::new(),
             last_optim_stats: HashMap::new(),
-            node_info: HashMap::new(),
+            node_info: Vec::new(),
             metrics,
         }
     }
@@ -143,16 +141,24 @@ impl StatsLogger {
         let p2p_nodes: HashMap<String, DataValue> = self
             .node_info
             .iter()
-            .map(|(node_id, P2PNodeInfo { ips, bandwidth })| {
-                (
-                    node_id.to_string(),
-                    HashMap::from([
-                        ("ips", DataValue::from(ips.join(","))),
-                        ("bandwidth", DataValue::from(*bandwidth)),
-                    ])
-                    .into(),
-                )
-            })
+            .map(
+                |P2PNodeInfo {
+                     node_id,
+                     path,
+                     bandwidth,
+                     latency,
+                 }| {
+                    (
+                        node_id.to_string(),
+                        HashMap::from([
+                            ("path", DataValue::from(path.to_string())),
+                            ("bandwidth", DataValue::from(*bandwidth)),
+                            ("latency", DataValue::from(*latency)),
+                        ])
+                        .into(),
+                    )
+                },
+            )
             .collect();
 
         round_log.insert("p2p/nodes", p2p_nodes);
@@ -166,7 +172,7 @@ impl StatsLogger {
     }
 
     pub fn get_witness_metadata<T: NodeIdentity>(&self, state: &Coordinator<T>) -> WitnessMetadata {
-        let bandwidth_total: f64 = self.node_info.values().map(|v| v.bandwidth).sum();
+        let bandwidth_total: f64 = self.node_info.iter().map(|v| v.bandwidth).sum();
 
         let evals = {
             let mut evals: FixedVec<WitnessEvalResult, 8> = Default::default();
@@ -310,10 +316,16 @@ impl StatsLogger {
                     let tokens = prompt_task.tokens_to_send.read().unwrap();
                     results.extend(tokens.iter().cloned()).unwrap();
                 }
+                if let Ok(decoded) = prompt_task
+                    .tokenizer
+                    .decode(&results.iter().map(|x| *x as u32).collect::<Vec<_>>(), true)
+                {
+                    debug!("Prompt result: {}", decoded);
+                }
                 prompt_task.tokens_to_send.write().unwrap().clear();
             }
         }
-        debug!(
+        trace!(
             "Final witness prompt results: {:?}",
             results.iter().collect::<Vec<_>>()
         );

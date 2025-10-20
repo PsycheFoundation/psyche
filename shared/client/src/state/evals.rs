@@ -2,7 +2,7 @@ use futures::future::try_join_all;
 use psyche_core::RunningAverage;
 use psyche_eval::{EvalTaskOptions, Task};
 use psyche_modeling::Trainer;
-use rand::{Rng, seq::SliceRandom, thread_rng};
+use rand::{Rng, seq::SliceRandom};
 use std::sync::Arc;
 use thiserror::Error;
 use tokenizers::Tokenizer;
@@ -70,6 +70,7 @@ impl EvalTask {
                 live_results: Some(self.results.clone()),
                 cancel: Some(cancel),
                 limit,
+                shared_progress_bar: None,
             },
             false,
         );
@@ -136,10 +137,10 @@ impl ModelTaskRunner {
                     .collect::<Vec<_>>();
 
                 if prompt_task {
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
                     let prompt_texts = get_prompt_texts();
 
-                    let prompt_index = rng.gen_range(0..prompt_texts.len());
+                    let prompt_index = rng.random_range(0..prompt_texts.len());
                     tracing::info!(
                         "Loading prompt task, selected prompt index {}",
                         prompt_index
@@ -250,7 +251,10 @@ impl ModelTaskRunner {
 
                         tokio::task::spawn_blocking(move || {
                             'eval_loop: while !cancel.is_cancelled() {
-                                model_tasks.shuffle(&mut thread_rng());
+                                if !trainer.can_do_inference() {
+                                    return trainer;
+                                };
+                                model_tasks.shuffle(&mut rand::rng());
                                 let span = span!(Level::TRACE, "eval_task").entered();
                                 for model_task in &model_tasks {
                                     if cancel.is_cancelled() {

@@ -1,4 +1,5 @@
-from typing import List
+import torch
+from typing import Iterable, List
 from torch import Tensor
 from torch.distributed.tensor import DTensor, distribute_tensor, zeros
 

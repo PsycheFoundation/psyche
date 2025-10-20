@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use psyche_tui::{CustomWidget, TabbedWidget, logging, start_render_loop};
-use rand::{Rng, seq::SliceRandom};
+use rand::{Rng, seq::IndexedRandom};
 use ratatui::widgets::{Paragraph, Widget};
 use tokio::{select, time::interval};
 use tracing::{error, info, warn};
@@ -56,8 +56,8 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             _ = interval.tick() => {
-                let mut rng = rand::thread_rng();
-                let random_num = rng.gen::<u64>();
+                let mut rng = rand::rng();
+                let random_num = rng.random::<u64>();
                 let bark = BARKS.choose(&mut rng).unwrap().to_string();
                 let states = (bark, random_num);
                 tx.send(states).await.expect("sending works!");

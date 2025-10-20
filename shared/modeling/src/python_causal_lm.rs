@@ -4,6 +4,7 @@ use crate::{
     device_utils::DevicePytorchStr,
 };
 
+use crate::{DeepseekConfig, LlamaConfig};
 use pyo3::{
     prelude::*,
     types::{IntoPyDict, PyDict, PyList, PyString, PyTuple},
@@ -12,6 +13,7 @@ use pyo3_tch::PyTensor;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
+use tracing::error;
 
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {
@@ -20,7 +22,25 @@ pub struct PythonModelConfig {
 
 impl ModelConfig for PythonModelConfig {
     fn get_parameter_names(&self) -> Vec<String> {
-        todo!()
+        let architecture = self.config["architectures"][0]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
+        if architecture.contains("llama") || architecture.contains("oss") {
+            if let Ok(config) = serde_json::from_value::<LlamaConfig>(self.config.clone()) {
+                return config.get_parameter_names();
+            }
+            error!("Failed to parse LlamaConfig from JSON");
+            vec![]
+        } else if architecture.contains("deepseek") {
+            if let Ok(config) = serde_json::from_value::<DeepseekConfig>(self.config.clone()) {
+                return config.get_parameter_names();
+            }
+            error!("Failed to parse DeepseekConfig from JSON");
+            vec![]
+        } else {
+            vec![]
+        }
     }
 }
 
@@ -124,6 +144,7 @@ pub struct PythonCausalLM {
     bos_token_id: Option<i64>,
     eos_token_id: Option<EosToks>,
     max_context_length: usize,
+    pure_fsdp: Option<bool>,
 }
 
 unsafe impl Send for PythonCausalLM {}
@@ -188,6 +209,7 @@ impl PythonCausalLM {
         let max_context_length = override_max_position_embeddings
             .or(config.max_position_embeddings())
             .unwrap_or(2048); // Default fallback
+        let pure_fsdp = parallelism.map(|x| x.dp >= 1 && x.tp == 1);
         Ok(Self {
             causal_lm,
             device,
@@ -195,6 +217,7 @@ impl PythonCausalLM {
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
             max_context_length,
+            pure_fsdp,
         })
     }
 
@@ -207,6 +230,7 @@ impl PythonCausalLM {
             bos_token_id: config.bos_token_id(),
             eos_token_id: config.eos_token_ids(),
             max_context_length: config.max_position_embeddings().unwrap_or(2048),
+            pure_fsdp: None,
         }
     }
 
@@ -224,8 +248,8 @@ impl CausalLM for PythonCausalLM {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
-        let result: PyResult<(Tensor, Option<Tensor>)> = Python::with_gil(|py| {
+    ) -> (Option<Tensor>, Option<Tensor>) {
+        let result: PyResult<(Option<Tensor>, Option<Tensor>)> = Python::with_gil(|py| {
             let causal_lm = self.causal_lm.bind(py);
             let forward = causal_lm.getattr("forward")?;
             let input_ids = PyTensor(input_ids.shallow_clone());
@@ -241,14 +265,18 @@ impl CausalLM for PythonCausalLM {
             );
             let result: Bound<PyTuple> = forward.call1(args)?.downcast_into()?;
             let logits = result.get_item(0)?;
-            let logits: PyTensor = logits.extract()?;
+            let logits: Option<Tensor> = match logits.is_none() {
+                true => None,
+                false => Some(logits.extract::<PyTensor>()?),
+            }
+            .map(|x| x.0);
             let loss = result.get_item(1)?;
             let loss: Option<Tensor> = match loss.is_none() {
                 true => None,
                 false => Some(loss.extract::<PyTensor>()?),
             }
             .map(|x| x.0);
-            Ok((logits.0, loss))
+            Ok((logits, loss))
         });
         match result {
             Ok(result) => result,
@@ -283,25 +311,20 @@ impl CausalLM for PythonCausalLM {
     }
 
     fn clip_grad_norm(&self, max_grad_norm: f64) {
+        assert!(
+            self.pure_fsdp.unwrap_or(true),
+            "Only pure FSDP supports `clip_grad_norm`"
+        );
         let result: PyResult<()> = Python::with_gil(|py| {
             let module = py.import("torch.nn.utils")?;
             let clip_grad_norm = module.getattr("clip_grad_norm_")?;
-            let tensors: Result<Vec<_>, _> = self
+            let tensors: Vec<_> = self
                 .order
                 .entries
                 .iter()
-                .map(|x| match x.sharded {
-                    true => x
-                        .dtensor_references
-                        .gather_full_tensor
-                        .bind(py)
-                        .call1((x.python.clone_ref(py),))
-                        .map(|x| x.unbind()),
-                    false => Ok(x.python.clone_ref(py)),
-                })
+                .map(|x| x.python.clone_ref(py))
                 .collect();
-            // println!("pid={}, clip_grad_norm", std::process::id());
-            clip_grad_norm.call1((tensors.unwrap(), max_grad_norm))?;
+            clip_grad_norm.call1((tensors, max_grad_norm))?;
             Ok(())
         });
         result.unwrap();
@@ -569,7 +592,7 @@ impl CausalLM for WrappedPythonCausalLM {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         self.local.forward(
             x,
             labels,

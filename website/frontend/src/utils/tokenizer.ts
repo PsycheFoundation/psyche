@@ -7,7 +7,9 @@ let tokenizer: {
 
 async function loadTokenizerForModel(modelType: 'llama2' | 'llama3') {
 	const tokenizerFile =
-		modelType === 'llama3' ? '/llama3_tokenizer.json' : '/llama2_tokenizer.json'
+		modelType === 'llama3'
+			? '/tokenizers/llama3_tokenizer.json'
+			: '/tokenizers/llama2_tokenizer.json'
 
 	try {
 		const response = await fetch(tokenizerFile)

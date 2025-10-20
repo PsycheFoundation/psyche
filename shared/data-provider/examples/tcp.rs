@@ -117,7 +117,7 @@ struct DummyDataProvider;
 impl TokenizedDataProvider for DummyDataProvider {
     async fn get_samples(&mut self, _data_ids: BatchId) -> anyhow::Result<Vec<TokenizedData>> {
         let mut data: [i32; 1024] = [0; 1024];
-        rand::thread_rng().fill(&mut data);
+        rand::rng().fill(&mut data);
         Ok(vec![TokenizedData::from_input_ids(data.to_vec())])
     }
 }
