@@ -405,8 +405,6 @@ async fn disconnect_client() {
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
                 IntegrationTestLogMarker::UntrainedBatches,
-                IntegrationTestLogMarker::WitnessElected,
-                IntegrationTestLogMarker::Loss,
             ],
         )
         .unwrap();
@@ -423,6 +421,11 @@ async fn disconnect_client() {
             Response::StateChange(_timestamp, client_id, old_state, new_state, epoch, step) => {
                 println!("step: {step} state change client {client_id} - {old_state}=>{new_state}");
                 let epoch_clients = solana_client.get_current_epoch_clients().await;
+
+                if epoch == num_of_epochs_to_run {
+                    println!("NUMBER OF EPOCHS REACHED");
+                    break;
+                }
 
                 if old_state == RunState::WaitingForMembers.to_string() {
                     println!(
@@ -455,12 +458,6 @@ async fn disconnect_client() {
                     assert_eq!(epoch_clients.len(), 2, "Client 2 should have been kicked");
                     break;
                 }
-
-                // In case we never see the health_checks, run up to max epochs
-                if epoch == num_of_epochs_to_run {
-                    println!("NUMBER OF EPOCHS REACHED");
-                    break;
-                }
             }
 
             // track HealthChecks send
@@ -483,16 +480,6 @@ async fn disconnect_client() {
                 untrained_batches.push(untrained_batch_ids);
             }
 
-            Response::WitnessElected(container_name) => {
-                println!("Found witness client in: {container_name}");
-            }
-
-            Response::Loss(client, epoch, step, loss) => {
-                println!(
-                    "client: {:?}, epoch: {}, step: {}, Loss: {:?}",
-                    client, epoch, step, loss,
-                );
-            }
             _ => {}
         }
     }
