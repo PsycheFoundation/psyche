@@ -49,7 +49,7 @@ async fn test_one_clients_three_epochs_run() {
         docker.clone(),
         1,
         Some(PathBuf::from(
-            "../../config/solana-test/nano-one-min-clients.toml",
+            "../../config/solana-test/light-one-min-clients.toml",
         )),
     )
     .await;
@@ -220,7 +220,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
         docker.clone(),
         1,
         Some(PathBuf::from(
-            "../../config/solana-test/nano-one-min-clients.toml",
+            "../../config/solana-test/light-one-min-clients.toml",
         )),
     )
     .await;
