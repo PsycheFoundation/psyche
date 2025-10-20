@@ -42,6 +42,26 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
+      - name: Additional cleanup before client download
+        run: |
+          echo "Additional cleanup to maximize available space"
+
+          # Clean any remaining Docker artifacts
+          docker system df
+          docker builder prune -af || true
+
+          # Clean system package cache
+          sudo apt-get clean || true
+          sudo apt-get autoclean || true
+
+          # Remove unnecessary system files
+          sudo rm -rf /var/cache/apt/archives/* 2>/dev/null || true
+          sudo rm -rf /usr/share/dotnet 2>/dev/null || true
+          sudo rm -rf /usr/local/lib/android 2>/dev/null || true
+
+          echo "Disk space before client download"
+          df -h
+
       # Step 2: Download Solana Test Client Image
       - name: Download Solana Test Client Image
         run: |
@@ -67,20 +87,32 @@ jobs:
           echo "Disk space after client build"
           df -h
 
-      # Clean Nix store after client build
-      - name: Clean after client build
+      # Aggressive cleanup after client build to free space for validator
+      - name: Aggressive cleanup after client build
         run: |
+          echo "Starting aggressive cleanup after client build"
+
           # Clean up the path file
           rm -f client-image-path.txt
 
-          # Clean nix store garbage
+          # Clean nix store garbage (this removes all the build dependencies)
           nix-collect-garbage -d
           nix store optimise
 
+          # Clean Docker build cache (but keep the client image we just loaded)
+          docker builder prune -af || true
+
           # Remove temp files
           sudo rm -rf /tmp/* 2>/dev/null || true
+          sudo rm -rf /var/tmp/* 2>/dev/null || true
 
-          echo "Disk space after cleanup"
+          # Clean apt cache
+          sudo apt-get clean || true
+
+          # Remove old logs
+          sudo journalctl --vacuum-time=1s 2>/dev/null || true
+
+          echo "Disk space after aggressive cleanup"
           df -h
 
       # Step 1: Get Validator Image from cache
