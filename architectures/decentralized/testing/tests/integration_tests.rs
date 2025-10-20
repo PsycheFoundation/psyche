@@ -355,8 +355,6 @@ async fn test_rejoining_client_delay() {
 async fn disconnect_client() {
     // set test variables
     let run_id = "test".to_string();
-    // epochs the test will run
-    let num_of_epochs_to_run = 3;
 
     // initialize a Solana run with 2 client
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
@@ -419,10 +417,12 @@ async fn disconnect_client() {
     while let Some(response) = watcher.log_rx.recv().await {
         match response {
             Response::StateChange(_timestamp, client_id, old_state, new_state, epoch, step) => {
-                println!("step: {step} state change client {client_id} - {old_state}=>{new_state}");
+                println!(
+                    "epoch: {epoch} step: {step} state change client {client_id} - {old_state}=>{new_state}"
+                );
                 let epoch_clients = solana_client.get_current_epoch_clients().await;
 
-                if epoch == num_of_epochs_to_run {
+                if step == 40 {
                     println!("NUMBER OF EPOCHS REACHED");
                     break;
                 }
