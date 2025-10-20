@@ -1,5 +1,5 @@
 import { Application } from 'express'
-import { Pubkey, RpcHttp } from 'solana-kiss'
+import { Pubkey, pubkeyToBase58, RpcHttp } from 'solana-kiss'
 import {
 	IndexingCheckpoint,
 	indexingCheckpointJsonCodec,
@@ -20,26 +20,16 @@ export async function miningPoolService(
 	programAddress: Pubkey,
 	expressApp: Application
 ): Promise<void> {
-	const saveName = `${programAddress}_mining_pool`
-	const { checkpoint, dataStore } = await serviceLoader(
-		saveName,
-		programAddress
-	)
+	const { checkpoint, dataStore } = await serviceLoader(programAddress)
 	miningPoolEndpoint(programAddress, expressApp, dataStore)
-	await serviceIndexing(
-		saveName,
-		rpcHttp,
-		programAddress,
-		checkpoint,
-		dataStore
-	)
+	await serviceIndexing(rpcHttp, programAddress, checkpoint, dataStore)
 }
 
-async function serviceLoader(saveName: string, programAddress: Pubkey) {
+async function serviceLoader(programAddress: Pubkey) {
 	let checkpoint: IndexingCheckpoint
 	let dataStore: MiningPoolDataStore
 	try {
-		const saveContent = await saveRead(saveName)
+		const saveContent = await saveRead(pubkeyToBase58(programAddress), saveName)
 		checkpoint = indexingCheckpointJsonCodec.decoder(saveContent.checkpoint)
 		dataStore = miningPoolDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded mining pool state from:', saveContent.updatedAt)
@@ -60,7 +50,6 @@ async function serviceLoader(saveName: string, programAddress: Pubkey) {
 }
 
 async function serviceIndexing(
-	saveName: string,
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
 	startingCheckpoint: IndexingCheckpoint,
@@ -90,10 +79,12 @@ async function serviceIndexing(
 		},
 		async (checkpoint) => {
 			await miningPoolIndexingCheckpoint(rpcHttp, programIdl, dataStore)
-			await saveWrite(saveName, {
+			await saveWrite(pubkeyToBase58(programAddress), saveName, {
 				checkpoint: indexingCheckpointJsonCodec.encoder(checkpoint),
 				dataStore: miningPoolDataStoreJsonCodec.encoder(dataStore),
 			})
 		}
 	)
 }
+
+const saveName = `mining_pool`

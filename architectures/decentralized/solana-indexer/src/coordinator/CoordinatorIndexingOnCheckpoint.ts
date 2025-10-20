@@ -28,16 +28,6 @@ export async function coordinatorIndexingOnCheckpoint(
 ) {
 	const promises = new Array<Promise<void>>()
 	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
-		for (const [statName, statSamples] of runInfo.samplesByStatName) {
-			aggregateStatSamples(
-				dataStore.programAddress,
-				runAddress,
-				runInfo.accountState?.runId,
-				statName,
-				statSamples,
-				runInfo.finishesOrdinals
-			)
-		}
 		if (
 			runInfo.changeAcknowledgedOrdinal === runInfo.changeNotificationOrdinal
 		) {
@@ -49,6 +39,18 @@ export async function coordinatorIndexingOnCheckpoint(
 		)
 	}
 	await Promise.all(promises)
+	for (const [runAddress, runInfo] of dataStore.runInfoByAddress) {
+		for (const [statName, statSamples] of runInfo.samplesByStatName) {
+			aggregateStatSamples(
+				dataStore.programAddress,
+				runAddress,
+				runInfo.accountState?.runId,
+				statName,
+				statSamples,
+				runInfo.finishesOrdinals
+			)
+		}
+	}
 }
 
 function aggregateStatSamples(
@@ -103,7 +105,7 @@ function aggregateStatSamples(
 	if (runId || statSamples.length > 1000) {
 		utilsPlotPoints(
 			`${programAddress}`,
-			runId ? `${runId}` : `${runAddress}`,
+			runId ? `run ${runId}` : `run ${runAddress}`,
 			`history (${statName})`,
 			statSamples.map((sample) => ({
 				x: sample.time?.getTime() ?? NaN,
@@ -161,8 +163,8 @@ function aggregateStatSamplesSlice(
 	if (runId || statSamples.length > 1000) {
 		utilsPlotPoints(
 			`${programAddress}`,
-			runId ? `${runId}` : `${runAddress}`,
-			`run_${sliceIndex} (${statName})`,
+			runId ? `run ${runId}` : `run ${runAddress}`,
+			`s${sliceIndex} (${statName})`,
 			statSamples.slice(sampleIndexMin, sampleIndexMax + 1).map((sample) => ({
 				x: sample.step,
 				y: sample.sumValue / sample.numValue,

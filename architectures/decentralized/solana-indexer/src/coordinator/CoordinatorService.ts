@@ -1,5 +1,5 @@
 import { Application } from 'express'
-import { Pubkey, RpcHttp } from 'solana-kiss'
+import { Pubkey, pubkeyToBase58, RpcHttp } from 'solana-kiss'
 import {
 	IndexingCheckpoint,
 	indexingCheckpointJsonCodec,
@@ -20,26 +20,16 @@ export async function coordinatorService(
 	programAddress: Pubkey,
 	expressApp: Application
 ) {
-	const saveName = `${programAddress}_coordinator`
-	const { checkpoint, dataStore } = await serviceLoader(
-		saveName,
-		programAddress
-	)
+	const { checkpoint, dataStore } = await serviceLoader(programAddress)
 	coordinatorEndpoint(programAddress, expressApp, dataStore)
-	await serviceIndexing(
-		saveName,
-		rpcHttp,
-		programAddress,
-		checkpoint,
-		dataStore
-	)
+	await serviceIndexing(rpcHttp, programAddress, checkpoint, dataStore)
 }
 
-async function serviceLoader(saveName: string, programAddress: Pubkey) {
+async function serviceLoader(programAddress: Pubkey) {
 	let checkpoint: IndexingCheckpoint
 	let dataStore: CoordinatorDataStore
 	try {
-		const saveContent = await saveRead(saveName)
+		const saveContent = await saveRead(pubkeyToBase58(programAddress), saveName)
 		checkpoint = indexingCheckpointJsonCodec.decoder(saveContent.checkpoint)
 		dataStore = coordinatorDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded coordinator state from:', saveContent.updatedAt)
@@ -60,7 +50,6 @@ async function serviceLoader(saveName: string, programAddress: Pubkey) {
 }
 
 async function serviceIndexing(
-	saveName: string,
 	rpcHttp: RpcHttp,
 	programAddress: Pubkey,
 	startingCheckpoint: IndexingCheckpoint,
@@ -90,10 +79,12 @@ async function serviceIndexing(
 		},
 		async (checkpoint) => {
 			await coordinatorIndexingOnCheckpoint(rpcHttp, programIdl, dataStore)
-			await saveWrite(saveName, {
+			await saveWrite(pubkeyToBase58(programAddress), saveName, {
 				checkpoint: indexingCheckpointJsonCodec.encoder(checkpoint),
 				dataStore: coordinatorDataStoreJsonCodec.encoder(dataStore),
 			})
 		}
 	)
 }
+
+const saveName = `coordinator`

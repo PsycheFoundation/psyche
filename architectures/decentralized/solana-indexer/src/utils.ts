@@ -177,6 +177,9 @@ export function utilsPlotPoints(
 	const maxX = Math.max(...pointsCleaned.map((p) => p.x))
 	const minY = Math.min(...pointsCleaned.map((p) => p.y))
 	const maxY = Math.max(...pointsCleaned.map((p) => p.y))
+	if (minX === maxX || minY === maxY) {
+		return
+	}
 	function gridPos(point: { x: number; y: number }) {
 		return {
 			x: Math.round(((point.x - minX) / (maxX - minX)) * (size.x - 1)),

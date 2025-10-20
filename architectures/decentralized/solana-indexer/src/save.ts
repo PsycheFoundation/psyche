@@ -9,6 +9,7 @@ import {
 import { utilsGetStateDirectory } from './utils'
 
 export async function saveWrite(
+	saveSubject: string,
 	saveName: string,
 	saveContent: {
 		checkpoint: JsonValue
@@ -16,14 +17,17 @@ export async function saveWrite(
 	}
 ): Promise<void> {
 	const startTime = Date.now()
-	const path = savePath(saveName)
-	const pathTemp = `${path}.${saveDateTime()}.tmp`
+	const path = savePath(saveSubject, saveName, 'latest')
+	const pathTemp = savePath(saveSubject, saveName, `tmp_${fileDateTime()}`)
+	const pathBackup = savePath(saveSubject, saveName, `backup_${fileDateOnly()}`)
 	const encoded = jsonCodec.encoder({
 		updatedAt: new Date().toISOString(),
 		checkpoint: saveContent.checkpoint,
 		dataStore: saveContent.dataStore,
 	})
 	const content = JSON.stringify(encoded)
+	await fsp.mkdir(dirname(pathBackup), { recursive: true })
+	await fsp.writeFile(pathBackup, content, { flush: true })
 	await fsp.mkdir(dirname(pathTemp), { recursive: true })
 	await fsp.writeFile(pathTemp, content, { flush: true })
 	await fsp.mkdir(dirname(path), { recursive: true })
@@ -35,30 +39,48 @@ export async function saveWrite(
 	)
 }
 
-export async function saveRead(saveName: string): Promise<{
+export async function saveRead(
+	saveSubject: string,
+	saveName: string
+): Promise<{
 	updatedAt: string
 	checkpoint: JsonValue
 	dataStore: JsonValue
 }> {
 	const startTime = Date.now()
-	const path = savePath(saveName)
-	const pathBackup = `${path}.${saveDateTime()}.backup`
+	const path = savePath(saveSubject, saveName, 'latest')
+	const pathStarter = savePath(
+		saveSubject,
+		saveName,
+		`started_${fileDateTime()}`
+	)
 	const content = await fsp.readFile(path, 'utf-8')
-	await fsp.writeFile(pathBackup, content, { flush: true })
+	await fsp.mkdir(dirname(pathStarter), { recursive: true })
+	await fsp.writeFile(pathStarter, content, { flush: true })
 	const encoded = JSON.parse(content) as JsonValue
 	const decoded = jsonCodec.decoder(encoded)
 	console.log(
 		new Date().toISOString(),
-		`Read ${saveName} in ${Date.now() - startTime}ms`
+		`Read ${saveSubject} ${saveName} in ${Date.now() - startTime}ms`
 	)
 	return decoded
 }
 
-function savePath(saveName: string) {
-	return join(utilsGetStateDirectory(), 'saves', `${saveName}.json`)
+function savePath(saveSubject: string, saveName: string, kind: string): string {
+	return join(
+		utilsGetStateDirectory(),
+		'saves',
+		saveSubject,
+		`${saveName}.${kind}.json`
+	)
 }
 
-function saveDateTime() {
+function fileDateOnly() {
+	const now = new Date()
+	return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`
+}
+
+function fileDateTime() {
 	const now = new Date()
 	return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`
 }
