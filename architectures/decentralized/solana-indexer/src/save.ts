@@ -17,9 +17,9 @@ export async function saveWrite(
 	}
 ): Promise<void> {
 	const startTime = Date.now()
-	const path = savePath(saveSubject, saveName, 'latest')
-	const pathTemp = savePath(saveSubject, saveName, `tmp_${fileDateTime()}`)
 	const pathBackup = savePath(saveSubject, saveName, `backup_${fileDateOnly()}`)
+	const pathTemp = savePath(saveSubject, saveName, `tmp_${fileDateTime()}`)
+	const path = savePath(saveSubject, saveName, 'latest')
 	const encoded = jsonCodec.encoder({
 		updatedAt: new Date().toISOString(),
 		checkpoint: saveContent.checkpoint,
@@ -48,20 +48,16 @@ export async function saveRead(
 	dataStore: JsonValue
 }> {
 	const startTime = Date.now()
+	const pathStart = savePath(saveSubject, saveName, `start_${fileDateTime()}`)
 	const path = savePath(saveSubject, saveName, 'latest')
-	const pathStarter = savePath(
-		saveSubject,
-		saveName,
-		`started_${fileDateTime()}`
-	)
 	const content = await fsp.readFile(path, 'utf-8')
-	await fsp.mkdir(dirname(pathStarter), { recursive: true })
-	await fsp.writeFile(pathStarter, content, { flush: true })
+	await fsp.mkdir(dirname(pathStart), { recursive: true })
+	await fsp.writeFile(pathStart, content, { flush: true })
 	const encoded = JSON.parse(content) as JsonValue
 	const decoded = jsonCodec.decoder(encoded)
 	console.log(
 		new Date().toISOString(),
-		`Read ${saveSubject} ${saveName} in ${Date.now() - startTime}ms`
+		`Read ${saveSubject}-${saveName} in ${Date.now() - startTime}ms`
 	)
 	return decoded
 }

@@ -83,6 +83,7 @@ async function processImportantAction(
 	dataStore: CoordinatorDataStore,
 	context: ProcessingContext
 ): Promise<void> {
+	// TODO - later on we may want to dedup important actions that are identical
 	const runInfo = dataStore.getRunInfo(context.runAddress)
 	runInfo.importantHistory.push(context)
 	utilsBigintArraySortAscending(
@@ -123,6 +124,7 @@ async function processWitness(
 		})
 	}
 	const witnessStats = new Map<string, number>()
+	witnessStats.set('step', witnessStep)
 	if (witnessPayload.metadata.bandwidthPerSec !== undefined) {
 		witnessStats.set('bandwidthPerSec', witnessPayload.metadata.bandwidthPerSec)
 	}
