@@ -42,33 +42,8 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
-      # Step 1: Get Validator Image from cache
-      - name: Get Validator Image from cache
-        id: cache-validator
-        uses: actions/cache/restore@v4
-        with:
-          path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
-          fail-on-cache-miss: true
-
-      - name: Load Validator Image
-        run: |
-          echo "Loading validator image from cache"
-          docker load < validator-image.tar.gz
-          docker images | grep psyche-solana-test-validator
-
-          echo "Disk usage after loading validator"
-          df -h
-
-      - name: Clean up validator tar file
-        run: |
-          # Remove the compressed validator image to free up disk space
-          rm -f validator-image.tar.gz
-          echo "Disk usage after removing validator tar"
-          df -h
-
-      # Step 2: Download Solana Test Client No Python Image
-      - name: Download Solana Test Client No Python Image
+      # Step 2: Download Solana Test Client Image
+      - name: Download Solana Test Client Image
         run: |
           echo "Disk space before client build"
           df -h
@@ -106,6 +81,31 @@ jobs:
           sudo rm -rf /tmp/* 2>/dev/null || true
 
           echo "Disk space after cleanup"
+          df -h
+
+      # Step 1: Get Validator Image from cache
+      - name: Get Validator Image from cache
+        id: cache-validator
+        uses: actions/cache/restore@v4
+        with:
+          path: validator-image.tar.gz
+          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          fail-on-cache-miss: true
+
+      - name: Load Validator Image
+        run: |
+          echo "Loading validator image from cache"
+          docker load < validator-image.tar.gz
+          docker images | grep psyche-solana-test-validator
+
+          echo "Disk usage after loading validator"
+          df -h
+
+      - name: Clean up validator tar file
+        run: |
+          # Remove the compressed validator image to free up disk space
+          rm -f validator-image.tar.gz
+          echo "Disk usage after removing validator tar"
           df -h
 
       - name: Verify Docker images exist
