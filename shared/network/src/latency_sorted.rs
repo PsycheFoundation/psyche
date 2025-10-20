@@ -37,11 +37,7 @@ impl ContentDiscovery for LatencySorted {
             .nodes
             .iter()
             .map(|&node| {
-                let latency = self
-                    .endpoint
-                    .remote_info(node)
-                    .and_then(|info| info.latency)
-                    .unwrap_or(Duration::MAX); // Unknown nodes get max latency
+                let latency = self.endpoint.latency(node).unwrap_or(Duration::MAX); // Unknown nodes get max latency
 
                 debug!(
                     "[ContentDiscovery] Node {} latency: {}ms",
