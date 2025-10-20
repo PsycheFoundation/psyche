@@ -55,7 +55,7 @@ fn load_and_apply_env_file(path: &PathBuf) -> Result<()> {
             continue;
         }
         if let Some((key, value)) = line.split_once('=') {
-            std::env::set_var(key.trim(), value.trim());
+            std::env::set_var(key.trim().trim_matches('"'), value.trim().trim_matches('"'));
         }
     }
     Ok(())
