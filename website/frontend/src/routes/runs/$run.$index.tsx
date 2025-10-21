@@ -36,7 +36,9 @@ function RouteComponent() {
 	const run = runData?.run
 	const isOnlyRun = runData?.isOnlyRun
 
-	const [checkpointValidity, setCheckpointValidity] = useState({})
+	const [checkpointValidity, setCheckpointValidity] = useState<
+		Record<string, boolean>
+	>({})
 
 	const backButton = (
 		<Button
@@ -87,8 +89,12 @@ function RouteComponent() {
 
 	const [fullscreen, setFullscreen] = useState(false)
 
-	const CheckpointButton = ({ checkpoint }) => {
-		const checkpointKey = `${checkpoint.repo_id}-${checkpoint.revision || ''}`
+	const CheckpointButton = ({
+		checkpoint,
+	}: {
+		checkpoint: { repo_id: string; revision?: string }
+	}) => {
+		const checkpointKey = `${checkpoint.repo_id}-${checkpoint.revision || 'main'}`
 		const isValid = checkpointValidity[checkpointKey]
 
 		if (isValid === undefined) {
