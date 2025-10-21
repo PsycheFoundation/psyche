@@ -10,7 +10,6 @@ use iroh_blobs::Hash;
 
 use crate::{P2PNodeInfo, download_manager::DownloadUpdate};
 
-#[derive(Clone)]
 pub struct State {
     pub node_id: Option<NodeId>,
     pub node_connections: Vec<P2PNodeInfo>,

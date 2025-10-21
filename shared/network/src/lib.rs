@@ -301,13 +301,13 @@ where
         let store = MemStore::new_with_opts(MemStoreOptions {
             gc_config: Some(GcConfig {
                 interval: Duration::from_secs(10),
-                add_protected: Some(Box::new(move |protected_set: &mut HashSet<IrohHash>| {
+                add_protected: Some(Arc::new(move |protected_set: &mut HashSet<IrohHash>| {
                     // Protect all blobs currently being downloaded or processed
                     if let Ok(blobs) = protected_blobs_for_gc.lock() {
                         protected_set.extend(blobs.iter().copied());
                         trace!("GC protecting {} active download blobs", blobs.len());
                     }
-                    ProtectOutcome::Continue
+                    Box::pin(async { ProtectOutcome::Continue })
                 })),
             }),
         });
@@ -564,6 +564,19 @@ where
 
     pub async fn node_addr(&self) -> NodeAddr {
         self.router.endpoint().node_addr()
+    }
+
+    /// Unprotect a blob from garbage collection after it has been fully processed
+    pub fn unprotect_blob(&mut self, hash: IrohHash) {
+        if let Ok(mut protected) = self.state.protected_blobs.lock() {
+            if protected.remove(&hash) {
+                trace!(
+                    "Unprotected blob {} from GC (now {} protected)",
+                    hash.fmt_short(),
+                    protected.len()
+                );
+            }
+        }
     }
 
     pub fn remote_infos(&self) -> Vec<P2PNodeInfo> {

@@ -299,6 +299,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 sharable_model.send_config()?;
                                             },
                                         }
+                                        // Unprotect blob from GC now that it's fully processed
+                                        p2p.unprotect_blob(hash);
                                     }
                                     NetworkEvent::DownloadFailed(dl) => {
                                         let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
@@ -321,6 +323,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     backoff_duration,
                                                     dl.error
                                                 );
+                                                // Unprotect the failed blob - it will be re-protected if retried
+                                                p2p.unprotect_blob(hash);
+
                                                 let router = p2p.router().clone();
                                                 let peer_manager = peer_manager.clone();
                                                 let retried_downloads = retried_downloads.clone();
@@ -348,6 +353,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     metrics.record_download_perma_failed();
                                                     warn!("Distro result download failed (not retrying): {}", dl.error);
                                                     retried_downloads.remove(hash).await;
+                                                    // Unprotect the permanently failed blob
+                                                    p2p.unprotect_blob(hash);
                                                 } else {
                                                     metrics.record_download_failed();
                                                     let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
@@ -358,6 +365,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         backoff_duration,
                                                         dl.error
                                                     );
+                                                    // Unprotect the failed blob - it will be re-protected when retried
+                                                    p2p.unprotect_blob(hash);
+
                                                     retried_downloads.insert(DownloadRetryInfo {
                                                         retries: retries + 1,
                                                         retry_time,
