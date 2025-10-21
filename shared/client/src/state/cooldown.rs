@@ -129,6 +129,7 @@ impl CooldownStepMetadata {
                 let Some(CheckpointConfig {
                     hub_upload,
                     checkpoint_dir,
+                    keep_steps,
                 }) = checkpoint_info
                 else {
                     // If there was no HF checkpointing configuration, return immediately
@@ -145,6 +146,21 @@ impl CooldownStepMetadata {
                     })
                     .await
                     .map_err(|_| CheckpointError::WriteThreadCrashed)??;
+
+                    if let Some(keep_steps) = keep_steps {
+                        if step > keep_steps {
+                            let delete_step = step
+                                .checked_sub(keep_steps)
+                                .unwrap()
+                                .checked_sub(1)
+                                .unwrap();
+                            let delete_path =
+                                checkpoint_dir.join(format!("{run_id}-step{delete_step}"));
+                            if let Err(err) = tokio::fs::remove_dir_all(delete_path.clone()).await {
+                                info!("Error removing {} : {}", delete_path.display(), err);
+                            }
+                        }
+                    }
 
                     for extra in checkpoint_extra_files {
                         let to = path.join(extra.file_name().unwrap());
