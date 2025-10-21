@@ -297,7 +297,9 @@ async function main() {
 	fastify.get(
 		'/run/:runId/:indexStr',
 		(
-			req: FastifyRequest<{ Params: { runId?: string; indexStr?: string } }>,
+			req: FastifyRequest<{
+				Params: { runId?: string; indexStr?: string }
+			}>,
 			res
 		) => {
 			const isStreamingRequest = req.headers.accept?.includes(
@@ -365,6 +367,17 @@ async function main() {
 		}
 	)
 
+	fastify.get('/check-checkpoint', async (request, reply) => {
+		const { owner, repo, revision } = request.query // Changed from request.params
+		const url = `https://huggingface.co/${owner}/${repo}${revision ? `/tree/${revision}` : ''}`
+		try {
+			const response = await fetch(url, { method: 'HEAD' })
+			return { isValid: response.ok, description: response.statusText }
+		} catch (error) {
+			return { isValid: false, description: error.message }
+		}
+	})
+
 	fastify.get('/status', async (_, res) => {
 		const data = {
 			commit: process.env.GITCOMMIT ?? '???',
@@ -372,9 +385,11 @@ async function main() {
 			coordinator: {
 				status: coordinatorCrashed ? coordinatorCrashed.toString() : 'ok',
 				errors: coordinator.errors,
-				trackedRuns: coordinator.dataStore
-					.getRunSummaries()
-					.runs.map((r) => ({ id: r.id, index: r.index, status: r.status })),
+				trackedRuns: coordinator.dataStore.getRunSummaries().runs.map((r) => ({
+					id: r.id,
+					index: r.index,
+					status: r.status,
+				})),
 				chain: {
 					chainSlotHeight: await coordinatorRpc.getSlot('confirmed'),
 					indexedSlot:
