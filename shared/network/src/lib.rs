@@ -5,11 +5,11 @@ use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::{
-    BlobsProtocol,
+    BlobsProtocol, Hash as IrohHash,
     api::downloader::Downloader,
     api::tags::TagInfo,
     store::{
-        fs::options::GcConfig,
+        fs::options::{GcConfig, ProtectOutcome},
         mem::{MemStore, Options as MemStoreOptions},
     },
 };
@@ -26,11 +26,12 @@ use psyche_metrics::{ClientMetrics, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::{
+    collections::HashSet,
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tokio::{
@@ -292,10 +293,22 @@ where
         info!("Our node id: {}", node_addr.node_id);
 
         trace!("creating blobs store...");
+
+        // Create shared set of protected blobs for GC
+        let protected_blobs = Arc::new(Mutex::new(HashSet::<IrohHash>::new()));
+        let protected_blobs_for_gc = protected_blobs.clone();
+
         let store = MemStore::new_with_opts(MemStoreOptions {
             gc_config: Some(GcConfig {
                 interval: Duration::from_secs(10),
-                add_protected: None,
+                add_protected: Some(Box::new(move |protected_set: &mut HashSet<IrohHash>| {
+                    // Protect all blobs currently being downloaded or processed
+                    if let Ok(blobs) = protected_blobs_for_gc.lock() {
+                        protected_set.extend(blobs.iter().copied());
+                        trace!("GC protecting {} active download blobs", blobs.len());
+                    }
+                    ProtectOutcome::Continue
+                })),
             }),
         });
         let downloader = Downloader::new(&store, &endpoint);
@@ -356,7 +369,7 @@ where
             metrics,
 
             update_stats_interval,
-            state: State::new(15),
+            state: State::new(15, protected_blobs),
             download_manager: DownloadManager::new()?,
             _broadcast_message: Default::default(),
             _download: Default::default(),
@@ -428,6 +441,16 @@ where
 
         self.download_manager
             .add(ticket, tag, rx, download_type.clone());
+
+        // Protect blob from GC while downloading and processing
+        if let Ok(mut protected) = self.state.protected_blobs.lock() {
+            protected.insert(ticket_hash);
+            trace!(
+                "Protected blob {} from GC (now {} protected)",
+                ticket_hash.fmt_short(),
+                protected.len()
+            );
+        }
 
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
@@ -586,6 +609,13 @@ where
             update = self.download_manager.poll_next() => {
                 match update {
                     Some(DownloadManagerEvent::Complete(result)) => {
+                        // Unprotect blob from GC after successful processing
+                        if let Ok(mut protected) = self.state.protected_blobs.lock() {
+                            if protected.remove(&result.hash) {
+                                trace!("Unprotected blob {} from GC after completion (now {} protected)",
+                                    result.hash.fmt_short(), protected.len());
+                            }
+                        }
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
@@ -594,6 +624,14 @@ where
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
                         self.state.download_progesses.remove(&result.blob_ticket.hash());
+                        // Unprotect blob from GC after failure
+                        let hash = result.blob_ticket.hash();
+                        if let Ok(mut protected) = self.state.protected_blobs.lock() {
+                            if protected.remove(&hash) {
+                                trace!("Unprotected blob {} from GC after failure (now {} protected)",
+                                    hash.fmt_short(), protected.len());
+                            }
+                        }
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),

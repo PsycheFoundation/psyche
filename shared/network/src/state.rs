@@ -1,30 +1,48 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use iroh::NodeId;
+use iroh_blobs::Hash;
 
 use crate::{P2PNodeInfo, download_manager::DownloadUpdate};
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct State {
     pub node_id: Option<NodeId>,
     pub node_connections: Vec<P2PNodeInfo>,
     pub bandwidth_tracker: BandwidthTracker,
     pub bandwidth_history: VecDeque<f64>,
-    pub download_progesses: HashMap<iroh_blobs::Hash, DownloadUpdate>,
+    pub download_progesses: HashMap<Hash, DownloadUpdate>,
+    /// Blobs currently being downloaded or processed, protected from GC
+    pub protected_blobs: Arc<Mutex<HashSet<Hash>>>,
+}
+
+impl Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("State")
+            .field("node_id", &self.node_id)
+            .field("node_connections", &self.node_connections)
+            .field("bandwidth_tracker", &self.bandwidth_tracker)
+            .field("bandwidth_history", &self.bandwidth_history)
+            .field("download_progesses", &self.download_progesses)
+            .field("protected_blobs", &self.protected_blobs.lock().unwrap())
+            .finish()
+    }
 }
 
 impl State {
-    pub fn new(bandwidth_average_period: u64) -> Self {
+    pub fn new(bandwidth_average_period: u64, protected_blobs: Arc<Mutex<HashSet<Hash>>>) -> Self {
         Self {
             node_id: Default::default(),
             node_connections: Default::default(),
             bandwidth_tracker: BandwidthTracker::new(bandwidth_average_period),
             bandwidth_history: Default::default(),
             download_progesses: Default::default(),
+            protected_blobs,
         }
     }
 }
