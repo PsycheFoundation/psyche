@@ -12,10 +12,7 @@ use std::process::{Command, Stdio};
 use tokio::signal;
 use tracing::{error, info, warn};
 
-const MAX_REPEATED_FAILURES: u32 = 5;
 const RETRY_DELAY_SECS: u64 = 5;
-const RESET_TIME_SECS: u64 = 120;
-
 const VERSION_MISMATCH_EXIT_CODE: i32 = 10;
 
 #[derive(Parser, Debug)]
@@ -287,7 +284,7 @@ impl CoordinatorClient {
         let docker_tag = if local {
             format!("psyche-solana-client:{}", client_version)
         } else {
-            format!("psyche-client:{}", client_version)
+            format!("nousresearch/psyche-client:{}", client_version)
         };
         Ok(docker_tag)
     }
@@ -334,13 +331,9 @@ async fn run(args: Args) -> Result<()> {
         .to_string();
     let docker_mgr = DockerManager::new()?;
     let mut docker_tag = prepare_image(&args, &docker_mgr).await?;
-    let mut repeated_failures = 0;
 
     loop {
-        info!(
-            "Starting container (repeated failures: {}/{})",
-            repeated_failures, MAX_REPEATED_FAILURES
-        );
+        info!("Starting container");
 
         let start_time = tokio::time::Instant::now();
         let container_id =
@@ -377,38 +370,16 @@ async fn run(args: Args) -> Result<()> {
 
         docker_mgr.stop_and_remove_container(&container_id)?;
 
-        // Reset repeated failures counter if container ran long enough
-        if duration >= RESET_TIME_SECS {
-            repeated_failures = 0;
-            info!(
-                "Container ran successfully for {}+ seconds - resetting repeated failure counter",
-                RESET_TIME_SECS
-            );
-        } else {
-            repeated_failures += 1;
-        }
-
-        // Check if we've exceeded max repeated failures and exit if so
-        if repeated_failures >= MAX_REPEATED_FAILURES {
-            return Err(anyhow!(
-                "Container failed {} times repeatedly",
-                MAX_REPEATED_FAILURES
-            ));
-        }
-
-        // Exit code 10 means version mismatch, so we re-check the coordinator for a new version
+        // Only retry on version mismatch (exit code 10)
         if exit_code == VERSION_MISMATCH_EXIT_CODE {
             warn!("Version mismatch detected, re-checking coordinator for new version...");
             docker_tag = prepare_image(&args, &docker_mgr).await?;
+            info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
+            tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
         } else {
-            warn!(
-                "Container exited with code {}, retrying with same image...",
-                exit_code
-            );
+            info!("Container exited with code {}, shutting down", exit_code);
+            return Ok(());
         }
-
-        info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
-        tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
     }
 }
 
@@ -422,7 +393,7 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
-    load_and_apply_env_file(&args.env_file.clone())?;
+    load_and_apply_env_file(&args.env_file)?;
 
     let result = run(args).await;
 

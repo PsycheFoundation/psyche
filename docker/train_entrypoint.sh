@@ -68,7 +68,7 @@ RESET_TIME=120  # Reset retries if the client runs for 2 minutes
 num_restarts=0
 
 while true; do
-    echo -e "\n[+] Starting to train in run ${RUN_ID}... (Attempt $((num_restarts + 1))/5)"
+    echo -e "\n[+] Starting to train in run ${RUN_ID}..."
 
     start_time=$SECONDS  # Record start time
 
