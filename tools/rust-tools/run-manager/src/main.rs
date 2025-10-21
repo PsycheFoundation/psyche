@@ -16,6 +16,8 @@ const MAX_REPEATED_FAILURES: u32 = 5;
 const RETRY_DELAY_SECS: u64 = 5;
 const RESET_TIME_SECS: u64 = 120;
 
+const VERSION_MISMATCH_EXIT_CODE: i32 = 10;
+
 #[derive(Parser, Debug)]
 #[command(name = "run-manager")]
 #[command(about = "Manager to download client containers based on a run version")]
@@ -282,24 +284,23 @@ impl CoordinatorClient {
             instance.run_id, instance.coordinator_account, client_version
         );
 
-        let image_name = if local {
-            "psyche-solana-client".to_string()
+        let docker_tag = if local {
+            format!("psyche-solana-client:{}", client_version)
         } else {
-            "psyche-client".to_string()
+            format!("psyche-client:{}", client_version)
         };
-        let docker_tag = format!("{}:{}", image_name, client_version);
         Ok(docker_tag)
     }
 }
 
 /// Determine which Docker image to use and pull it if necessary
 async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String> {
-    let docker_tag = match &args.local {
+    match &args.local {
         // --local=version: use explicit version passed by parameter
         Some(version) if !version.is_empty() => {
             let tag = format!("psyche-solana-client:{}", version);
-            info!("Using explicit local version: {}", tag);
-            tag
+            info!("Using local image (skipping pull): {}", tag);
+            Ok(tag)
         }
         // No --local or --local with no argument: query coordinator
         _ => {
@@ -312,21 +313,18 @@ async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String
                 .context("Failed to parse coordinator program ID")?;
             info!("Using coordinator program ID: {}", coordinator_program_id);
 
-            let coordinator = CoordinatorClient::new(rpc.clone(), coordinator_program_id);
+            let coordinator = CoordinatorClient::new(rpc, coordinator_program_id);
             let docker_tag = coordinator.get_docker_tag_for_run(args.local.is_some(), &run_id)?;
             info!("Docker tag for run '{}': {}", run_id, docker_tag);
-            docker_tag
+            if args.local.is_some() {
+                info!("Using local image (skipping pull): {}", docker_tag);
+            } else {
+                info!("Pulling image from registry: {}", docker_tag);
+                docker_mgr.pull_image(&docker_tag)?;
+            }
+            Ok(docker_tag)
         }
-    };
-
-    // Pull image unless --local flag is present
-    if args.local.is_none() {
-        docker_mgr.pull_image(&docker_tag)?;
-    } else {
-        info!("Using local image (skipping pull): {}", docker_tag);
     }
-
-    Ok(docker_tag)
 }
 
 async fn run(args: Args) -> Result<()> {
@@ -399,7 +397,7 @@ async fn run(args: Args) -> Result<()> {
         }
 
         // Exit code 10 means version mismatch, so we re-check the coordinator for a new version
-        if exit_code == 10 {
+        if exit_code == VERSION_MISMATCH_EXIT_CODE {
             warn!("Version mismatch detected, re-checking coordinator for new version...");
             docker_tag = prepare_image(&args, &docker_mgr).await?;
         } else {
