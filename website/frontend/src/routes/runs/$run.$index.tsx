@@ -92,7 +92,7 @@ function RouteComponent() {
 	const CheckpointButton = ({
 		checkpoint,
 	}: {
-		checkpoint: { repo_id: string; revision?: string }
+		checkpoint: { repo_id: string; revision?: string | null }
 	}) => {
 		const checkpointKey = `${checkpoint.repo_id}-${checkpoint.revision || 'main'}`
 		const isValid = checkpointValidity[checkpointKey]
@@ -100,7 +100,7 @@ function RouteComponent() {
 		if (isValid === undefined) {
 			const [owner, repo] = checkpoint.repo_id.split('/')
 
-			fetchCheckpointStatus(owner, repo, checkpoint.revision)
+			fetchCheckpointStatus(owner, repo, checkpoint.revision || undefined)
 				.then((data) => {
 					setCheckpointValidity((prev) => ({
 						...prev,
