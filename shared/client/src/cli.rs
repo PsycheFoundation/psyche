@@ -176,6 +176,9 @@ pub struct TrainArgs {
 
     #[clap(long, env)]
     pub sidecar_port: Option<u16>,
+
+    #[clap(long, env)]
+    pub keep_steps: Option<u32>,
 }
 
 impl TrainArgs {
@@ -210,25 +213,28 @@ impl TrainArgs {
             &hub_read_token,
             self.hub_repo.clone(),
             self.checkpoint_dir.clone(),
+            self.keep_steps,
         ) {
-            (Some(token), Some(repo), Some(dir)) => Some(CheckpointConfig {
+            (Some(token), Some(repo), Some(dir), keep_steps) => Some(CheckpointConfig {
                 checkpoint_dir: dir,
                 hub_upload: Some(HubUploadInfo {
                     hub_repo: repo,
                     hub_token: token.to_string(),
                 }),
+                keep_steps,
             }),
-            (None, Some(_), Some(_)) => {
+            (None, Some(_), Some(_), _) => {
                 bail!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
             }
-            (_, Some(_), None) => {
+            (_, Some(_), None, _) => {
                 bail!("--hub-repo was set, but no --checkpoint-dir was passed!")
             }
-            (_, None, Some(dir)) => Some(CheckpointConfig {
+            (_, None, Some(dir), keep_steps) => Some(CheckpointConfig {
                 checkpoint_dir: dir,
                 hub_upload: None,
+                keep_steps,
             }),
-            (_, None, _) => None,
+            (_, None, _, _) => None,
         };
 
         Ok(checkpoint_upload_info)
