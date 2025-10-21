@@ -6,42 +6,6 @@
   system ? pkgs.stdenv.hostPlatform.system,
 }:
 let
-  # Setup uv2nix workspace
-  workspace = inputs.uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ../python; };
-  
-  overlay = workspace.mkPyprojectOverlay {
-    sourcePreference = "wheel";
-  };
-  
-  pythonSet =
-    (pkgs.callPackage inputs.pyproject-nix.build.packages {
-      python = pkgs.python312;
-    }).overrideScope
-      (
-        lib.composeManyExtensions [
-          inputs.pyproject-build-systems.overlays.wheel
-          overlay
-          (
-            let
-              prebuilt =
-                packageNames: final: _prev:
-                let
-                  inherit (final) pkgs;
-                  hacks = pkgs.callPackage inputs.pyproject-nix.build.hacks { };
-
-                  makePrebuilt = name: {
-                    inherit name;
-                    value = hacks.nixpkgsPrebuilt {
-                      from = pkgs.python312Packages.${name};
-                    };
-                  };
-                in
-                builtins.listToAttrs (map makePrebuilt packageNames);
-            in
-            prebuilt nixProvidedPythonPkgs
-          )
-        ]
-      );
 
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
     extensions = [ "rust-src" ];
@@ -67,48 +31,30 @@ let
     LIBTORCH_USE_PYTORCH = 1;
   };
 
-  nixProvidedPythonPkgs = [
-    "torch"
-    "liger-kernel"
-    "flash-attn"
-  ];
-
-  # build-time python environment with all uv2nix deps + nixpkgs pytorch
-  basePythonEnv =
-    pythonSet.mkVirtualEnv "psyche-build-env" {
-      psyche = [ ];
-    }
-    // builtins.listToAttrs (
-      map (name: {
-        inherit name;
-        value = [ ];
-      }) nixProvidedPythonPkgs
-    );
-
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
+      python312
       pkg-config
       perl
     ];
 
-    buildInputs = [
-      basePythonEnv
-    ]
-    ++ (with pkgs; [
-      openssl
-      fontconfig # for lr plot
-    ])
-    ++ lib.optionals pkgs.config.cudaSupport (
-      with pkgs.cudaPackages;
-      [
-        cudatoolkit
-        cuda_cudart
-        nccl
-      ]
-      ++ (with pkgs; [
-        rdma-core
+    buildInputs =
+      (with pkgs; [
+        openssl
+        python312Packages.torch
+        fontconfig # for lr plot
       ])
-    );
+      ++ lib.optionals pkgs.config.cudaSupport (
+        with pkgs.cudaPackages;
+        [
+          cudatoolkit
+          cuda_cudart
+          nccl
+        ]
+        ++ (with pkgs; [
+          rdma-core
+        ])
+      );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
@@ -120,9 +66,9 @@ let
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
-      pythonWithPsycheExtension
+      psychePythonVenv
     ];
-    NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
+    NIX_LDFLAGS = "-L${psychePythonVenv}/lib -lpython3.12";
   };
 
   rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
@@ -135,35 +81,10 @@ let
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
   cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
-  # Build the rust extension separately
-  rustExtension = craneLib.buildPackage (
-    rustWorkspaceArgs
-    // {
-      inherit cargoArtifacts;
-      pname = "psyche-python-extension";
-      cargoExtraArgs =
-        " --package psyche-python-extension"
-        + lib.optionalString (pkgs.config.cudaSupport) " --features parallelism";
-      doCheck = false;
-    }
-  );
-
   # Runtime python environment = build-time env + rust extension
-  pythonWithPsycheExtension =
-    let
-      ext = if pkgs.stdenv.isDarwin then "dylib" else "so";
-
-      # Package that just provides the rust extension .so file
-      psycheExtensionPackage = pkgs.runCommand "psyche-extension" { } ''
-        mkdir -p $out/${basePythonEnv}/lib/python3.12/site-packages/psyche
-        cp ${rustExtension}/lib/lib${builtins.replaceStrings [ "-" ] [ "_" ] rustExtension.pname}.${ext} \
-           $out/${basePythonEnv}/lib/python3.12/site-packages/psyche/_psyche_ext.so
-
-        # Create __init__.py to make it importable
-        echo 'from ._psyche_ext import *' > $out/${basePythonEnv}/lib/python3.12/site-packages/psyche/__init__.py
-      '';
-    in
-    basePythonEnv;
+  psychePythonVenv = pkgs.callPackage ../python {
+    inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
+  };
 
   buildRustPackageWithPsychePythonEnvironment =
     {
@@ -192,10 +113,9 @@ let
       ''
         mkdir -p $out/bin
         makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-          --prefix PATH : "${pythonWithPsycheExtension}/bin"
+          --prefix PATH : "${psychePythonVenv}/bin"
       '';
-
-  # --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
+  # --set PYTHONPATH "${psychePythonVenv}/${psychePythonVenv.sitePackages}" \
 
   buildRustPackageWithoutPython =
     {
@@ -360,7 +280,6 @@ let
 in
 {
   inherit
-    pythonSet
     rustToolchain
     craneLib
     buildSolanaIdl
@@ -374,9 +293,7 @@ in
     env
     src
     gitcommit
-    pythonWithPsycheExtension
-    basePythonEnv
-    nixProvidedPythonPkgs
+    psychePythonVenv
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

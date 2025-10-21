@@ -2,7 +2,7 @@
 name = "psyche"
 version = "0.1.0"
 requires-python = "==3.12.*"
-dependencies = ["transformers==4.56.1"]
+dependencies = ["transformers==4.56.1", "torch", "flash-attn", "liger-kernel"]
 
 [project.optional-dependencies]
 tests = ["pytest"]
