@@ -17,7 +17,7 @@ import {
 	runHasState,
 	RunStateIndicator,
 } from '../../components/RunStateIndicator.js'
-import { fetchRunStreaming } from '../../fetchRuns.js'
+import { fetchRunStreaming, fetchCheckpointStatus } from '../../fetchRuns.js'
 import { PromptResults } from '../../components/PromptResults.js'
 import { useStreamingLoaderData } from '../../useStreamingData.js'
 import { RunBox } from '../../components/RunBox.js'
@@ -35,6 +35,8 @@ function RouteComponent() {
 	})
 	const run = runData?.run
 	const isOnlyRun = runData?.isOnlyRun
+
+	const [checkpointValidity, setCheckpointValidity] = useState({})
 
 	const backButton = (
 		<Button
@@ -84,6 +86,45 @@ function RouteComponent() {
 	}, [run?.metrics.summary.evals])
 
 	const [fullscreen, setFullscreen] = useState(false)
+
+	const CheckpointButton = ({ checkpoint }) => {
+		const checkpointKey = `${checkpoint.repo_id}-${checkpoint.revision || ''}`
+		const isValid = checkpointValidity[checkpointKey]
+
+		if (isValid === undefined) {
+			const [owner, repo] = checkpoint.repo_id.split('/')
+
+			fetchCheckpointStatus(owner, repo, checkpoint.revision)
+				.then((data) => {
+					setCheckpointValidity((prev) => ({
+						...prev,
+						[checkpointKey]: data.isValid,
+					}))
+				})
+				.catch(() => {
+					setCheckpointValidity((prev) => ({ ...prev, [checkpointKey]: false }))
+				})
+			return null
+		}
+
+		if (!isValid) return null
+
+		return (
+			<Button
+				style="secondary"
+				center
+				icon={{
+					side: 'left',
+					svg: HuggingfaceIcon,
+					autoColor: false,
+				}}
+				href={`https://huggingface.co/${checkpoint.repo_id}${checkpoint.revision ? `/tree/${checkpoint.revision}` : ''}`}
+				target="_blank"
+			>
+				latest checkpoint: {checkpoint.repo_id.split('/')[1]}
+			</Button>
+		)
+	}
 
 	if (import.meta.env.VITE_DISABLE) {
 		return (
@@ -201,20 +242,7 @@ function RouteComponent() {
 									</div>
 								)}
 								{run.state?.checkpoint && (
-									<Button
-										style="secondary"
-										center
-										icon={{
-											side: 'left',
-											svg: HuggingfaceIcon,
-											autoColor: false,
-										}}
-										href={`https://huggingface.co/${run.state.checkpoint.repo_id}/${run.state.checkpoint.revision ? `tree/${run.state.checkpoint.revision}` : ''}`}
-										target="_blank"
-									>
-										latest checkpoint:{' '}
-										{run.state.checkpoint.repo_id.split('/')[1]}
-									</Button>
+									<CheckpointButton checkpoint={run.state.checkpoint} />
 								)}
 
 								<PromptResults
