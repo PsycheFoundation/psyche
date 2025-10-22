@@ -90,7 +90,7 @@ impl App {
 
                 self.network.start_download(
                     blob_ticket,
-                    step.to_string(),
+                    &step.to_string(),
                     DownloadType::DistroResult(peers),
                 );
 
