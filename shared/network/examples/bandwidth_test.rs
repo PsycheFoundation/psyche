@@ -169,7 +169,7 @@ impl App {
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network.start_download(
                     blob_ticket,
-                    step,
+                    step.to_string(),
                     DownloadType::DistroResult(Vec::new()),
                 )
             }

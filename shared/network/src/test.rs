@@ -88,8 +88,11 @@ impl App {
                     println!("Downloading");
                 }
 
-                self.network
-                    .start_download(blob_ticket, step, DownloadType::DistroResult(peers));
+                self.network.start_download(
+                    blob_ticket,
+                    step.to_string(),
+                    DownloadType::DistroResult(peers),
+                );
 
                 if !self.should_wait_before {
                     println!("Waiting to kill sender");
