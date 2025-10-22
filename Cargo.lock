@@ -8286,6 +8286,7 @@ dependencies = [
  "anchor-lang",
  "anyhow",
  "clap",
+ "clap-markdown",
  "psyche-coordinator",
  "psyche-solana-coordinator",
  "solana-client",

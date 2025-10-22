@@ -19,27 +19,44 @@ const VERSION_MISMATCH_EXIT_CODE: i32 = 10;
 #[command(name = "run-manager")]
 #[command(about = "Manager to download client containers based on a run version")]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Path to wallet private key file
-    #[arg(long)]
-    wallet_path: PathBuf,
+    #[arg(long, global = true)]
+    wallet_path: Option<PathBuf>,
 
     /// Path to .env file with environment variables
-    #[arg(long)]
-    env_file: PathBuf,
+    #[arg(long, global = true)]
+    env_file: Option<PathBuf>,
 
     /// Coordinator program ID
-    #[arg(long, default_value = "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y")]
+    #[arg(
+        long,
+        global = true,
+        default_value = "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y"
+    )]
     coordinator_program_id: String,
 
     /// Run container in background without streaming logs to console
-    #[arg(long, default_value = "false")]
+    #[arg(long, global = true, default_value = "false")]
     background: bool,
 
     /// Use a local Docker image instead of pulling from registry.
     /// If a version is provided, use that specific version. If no version is provided,
     /// query coordinator for the version but skip pulling.
-    #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "VERSION")]
+    #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", value_name = "VERSION")]
     local: Option<String>,
+}
+
+#[derive(Parser, Debug)]
+enum Commands {
+    /// Prints the help, optionally as markdown. Used for docs generation.
+    #[clap(hide = true)]
+    PrintAllHelp {
+        #[arg(long, required = true)]
+        markdown: bool,
+    },
 }
 
 /// Load environment variables from a file into host process
@@ -291,8 +308,12 @@ impl CoordinatorClient {
 }
 
 /// Determine which Docker image to use and pull it if necessary
-async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String> {
-    match &args.local {
+async fn prepare_image(
+    local: &Option<String>,
+    coordinator_program_id: &str,
+    docker_mgr: &DockerManager,
+) -> Result<String> {
+    match local {
         // --local=version: use explicit version passed by parameter
         Some(version) if !version.is_empty() => {
             let tag = format!("psyche-solana-client:{}", version);
@@ -304,16 +325,15 @@ async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String
             let run_id = get_env_var("RUN_ID")?;
             let rpc = get_env_var("RPC")?;
 
-            let coordinator_program_id = args
-                .coordinator_program_id
+            let coordinator_program_id = coordinator_program_id
                 .parse::<Pubkey>()
                 .context("Failed to parse coordinator program ID")?;
             info!("Using coordinator program ID: {}", coordinator_program_id);
 
             let coordinator = CoordinatorClient::new(rpc, coordinator_program_id);
-            let docker_tag = coordinator.get_docker_tag_for_run(args.local.is_some(), &run_id)?;
+            let docker_tag = coordinator.get_docker_tag_for_run(local.is_some(), &run_id)?;
             info!("Docker tag for run '{}': {}", run_id, docker_tag);
-            if args.local.is_some() {
+            if local.is_some() {
                 info!("Using local image (skipping pull): {}", docker_tag);
             } else {
                 info!("Pulling image from registry: {}", docker_tag);
@@ -324,25 +344,30 @@ async fn prepare_image(args: &Args, docker_mgr: &DockerManager) -> Result<String
     }
 }
 
-async fn run(args: Args) -> Result<()> {
-    let wallet_key = std::fs::read_to_string(&args.wallet_path)
+async fn run(
+    wallet_path: PathBuf,
+    env_file: PathBuf,
+    coordinator_program_id: String,
+    background: bool,
+    local: Option<String>,
+) -> Result<()> {
+    let wallet_key = std::fs::read_to_string(&wallet_path)
         .context("Failed to read wallet file")?
         .trim()
         .to_string();
     let docker_mgr = DockerManager::new()?;
-    let mut docker_tag = prepare_image(&args, &docker_mgr).await?;
+    let mut docker_tag = prepare_image(&local, &coordinator_program_id, &docker_mgr).await?;
 
     loop {
         info!("Starting container");
 
         let start_time = tokio::time::Instant::now();
-        let container_id =
-            docker_mgr.run_container(&docker_tag, &args.env_file, wallet_key.clone())?;
+        let container_id = docker_mgr.run_container(&docker_tag, &env_file, wallet_key.clone())?;
 
         // Race between container completion and Ctrl+C
         let exit_code = tokio::select! {
             result = async {
-                if args.background {
+                if background {
                     println!("\nContainer is running in the background.");
                     println!("To view logs: docker logs -f {}", &container_id[..12]);
                     println!("To stop: docker stop {}", &container_id[..12]);
@@ -373,7 +398,7 @@ async fn run(args: Args) -> Result<()> {
         // Only retry on version mismatch (exit code 10)
         if exit_code == VERSION_MISMATCH_EXIT_CODE {
             warn!("Version mismatch detected, re-checking coordinator for new version...");
-            docker_tag = prepare_image(&args, &docker_mgr).await?;
+            docker_tag = prepare_image(&local, &coordinator_program_id, &docker_mgr).await?;
             info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
             tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
         } else {
@@ -385,22 +410,46 @@ async fn run(args: Args) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
-
     let args = Args::parse();
-    load_and_apply_env_file(&args.env_file)?;
 
-    let result = run(args).await;
+    match args.command {
+        Some(Commands::PrintAllHelp { markdown }) => {
+            // This is a required argument for the time being.
+            assert!(markdown);
 
-    if let Err(e) = &result {
-        error!("Error: {}", e);
-        std::process::exit(1);
+            let () = clap_markdown::print_help_markdown::<Args>();
+
+            Ok(())
+        }
+        None => {
+            // Default behavior: run the manager
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                )
+                .init();
+
+            let wallet_path = args.wallet_path.context("--wallet-path is required")?;
+            let env_file = args.env_file.context("--env-file is required")?;
+
+            load_and_apply_env_file(&env_file)?;
+
+            let result = run(
+                wallet_path,
+                env_file,
+                args.coordinator_program_id,
+                args.background,
+                args.local,
+            )
+            .await;
+
+            if let Err(e) = &result {
+                error!("Error: {}", e);
+                std::process::exit(1);
+            }
+
+            Ok(())
+        }
     }
-
-    Ok(())
 }
