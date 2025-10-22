@@ -13,7 +13,7 @@
         rustWorkspaceArgs
         craneLib
         env
-        pythonWithPsycheExtension
+        psychePythonVenv
         ;
     in
     {
@@ -103,7 +103,7 @@
             defaultShell
             // {
               packages = defaultShell.packages ++ [
-                pythonWithPsycheExtension
+                psychePythonVenv
               ];
               shellHook = defaultShell.shellHook + ''
                 echo "This shell has the 'psyche' module available in its python interpreter.";

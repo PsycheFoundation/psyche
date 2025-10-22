@@ -106,6 +106,7 @@ let
 in
 pythonSet.mkVirtualEnv "psyche-runtime-env" (
   {
+    psyche-deps = [ ];
     psyche = [ ];
   }
   // builtins.listToAttrs (
