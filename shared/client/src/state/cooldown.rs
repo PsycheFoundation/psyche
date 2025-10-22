@@ -47,10 +47,12 @@ pub struct CooldownStepMetadata {
     checkpoint_extra_files: Vec<PathBuf>,
 
     model_task_runner: ModelTaskRunner,
-    // use a heap here to as a best-effort attempt to ensure we get rid of the lowest step number dir even if we spawn multiple tasks
+    // use a heap here as a best-effort attempt to ensure we get rid of the lowest step number dir even if we spawn multiple tasks
     // which may not finish writing their dirs in order. We note that even if we were to take the more complicated
     // route of actually enumerating the checkpoint_dir there would still be a race condition, unless we took a lockfile
     // or the like on the entire checkpoint_dir which probably isn't worth it just to support disk cleanup
+    // we don't really expect there to be contention on this lock or real race conditions in practice though
+    // as by the time one task spawns after a training round the previous write/upload task(s) should (hopefully) be long done
     delete_queue: Arc<Mutex<BinaryHeap<Reverse<u32>>>>,
 }
 
