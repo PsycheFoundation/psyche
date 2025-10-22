@@ -44,7 +44,7 @@ let
     name = "psyche";
     version = "0.1.0";
 
-    src = ./python;
+    src = ./python/psyche;
 
     installPhase = ''
       runHook preInstall
