@@ -1,32 +1,26 @@
 services:
   psyche-run-owner:
-    image: psyche-solana-test-client:latest
+    image: psyche-solana-test-client-no-python:latest
     depends_on:
       psyche-solana-test-validator:
-        condition: service_started
+        condition: service_healthy
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file:
       - '../../config/client/.env.local'
     volumes:
       - ${CONFIG_PATH:-../../config/solana-test/light-config.toml}:/usr/local/config.toml
-    entrypoint: ['/bin/sh', '-c', 'sleep 15 && /bin/run_owner_entrypoint.sh']
+    entrypoint: ['/bin/sh', '-c', '/bin/run_owner_entrypoint.sh']
     networks:
       - psyche-test-network
 
   psyche-test-client:
-    image: psyche-solana-test-client:latest
+    image: psyche-solana-test-client-no-python:latest
     depends_on:
       psyche-run-owner:
         condition: service_completed_successfully
     deploy:
       replicas: ${NUM_REPLICAS:-1}
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file:
@@ -39,6 +33,16 @@ services:
     ports:
       - '8899:8899'
       - '8900:8900'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'solana account PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw --url http://localhost:8899 | grep -q "Executable: true" && solana account HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y --url http://localhost:8899 | grep -q "Executable: true" || exit 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     networks:
       - psyche-test-network
 

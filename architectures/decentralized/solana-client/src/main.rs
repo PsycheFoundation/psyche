@@ -269,7 +269,7 @@ async fn async_main() -> Result<()> {
             identity_secret_key_path,
         } => print_identity_keys(identity_secret_key_path.as_ref()),
         Commands::CreateStaticP2PIdentity { save_path } => {
-            let identity_secret_key = SecretKey::generate(&mut rand::rngs::OsRng);
+            let identity_secret_key = SecretKey::generate(&mut rand::rng());
             std::fs::write(&save_path, identity_secret_key.secret().as_bytes())?;
             print_identity_keys(Some(&save_path))?;
             println!("Wrote secret key to {}", save_path.display());
@@ -492,6 +492,7 @@ async fn async_main() -> Result<()> {
                     namespace: "psyche".to_string(),
                     deployment_environment: std::env::var("DEPLOYMENT_ENV")
                         .unwrap_or("development".to_string()),
+                    run_id: Some(args.run_id.clone()),
                 })
                 .init()?;
 

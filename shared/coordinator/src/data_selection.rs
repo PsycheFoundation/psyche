@@ -204,7 +204,7 @@ mod tests {
         coordinator.config.total_steps = total_steps;
         coordinator.config.global_batch_size_start = global_batch_size;
         coordinator.config.global_batch_size_end = global_batch_size;
-        coordinator.epoch_state.clients = FixedVec::from_iter(clients.into_iter());
+        coordinator.epoch_state.clients = FixedVec::from_iter(clients);
 
         coordinator.current_round_mut().unwrap().clients_len =
             coordinator.epoch_state.clients.len() as u16;
@@ -223,7 +223,7 @@ mod tests {
         );
         assert_eq!(assignments.len(), 4);
 
-        for (batch_id, _) in &assignments {
+        for batch_id in assignments.keys() {
             let size = batch_id.0.end - batch_id.0.start + 1;
             assert_eq!(size, 25);
         }

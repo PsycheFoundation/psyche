@@ -3,13 +3,11 @@ use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
-use iroh::{
-    Watcher,
-    endpoint::{RemoteInfo, TransportConfig},
-    protocol::Router,
-};
+use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::{
     BlobsProtocol,
+    api::downloader::Downloader,
+    api::tags::TagInfo,
     store::{
         fs::options::GcConfig,
         mem::{MemStore, Options as MemStoreOptions},
@@ -24,7 +22,7 @@ pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
-use psyche_metrics::ClientMetrics;
+use psyche_metrics::{ClientMetrics, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::{
@@ -32,9 +30,8 @@ use std::{
     hash::{DefaultHasher, Hash as _, Hasher},
     marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddrV4},
-    ops::Sub,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::{
     io::AsyncReadExt,
@@ -61,7 +58,6 @@ mod download_manager;
 mod latency_sorted;
 mod local_discovery;
 mod p2p_model_sharing;
-mod peer_list;
 pub mod router;
 mod serde;
 mod serializable_kind;
@@ -87,7 +83,6 @@ pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
     ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
 };
-pub use peer_list::PeerList;
 pub use serde::Networkable;
 pub use serialized_distro::{
     SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
@@ -114,6 +109,64 @@ pub enum DiscoveryMode {
     N0,
 }
 
+#[derive(Debug, Clone)]
+pub enum BlobTag {
+    // Tag for Distro result blobs containing the step as an u32 to check if it's safe to be deleted
+    DistroResult(u32),
+    // Tag for Parameter blobs with a specific format to identify them and remove them after warmup
+    Parameter(String),
+}
+
+impl TryFrom<TagInfo> for BlobTag {
+    type Error = String;
+
+    fn try_from(tag: TagInfo) -> Result<Self, Self::Error> {
+        let tag_value_str = match std::str::from_utf8(&tag.name.0) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("Failed parsing tag name: {}", e);
+                return Err("Failed parsing tag name".to_string());
+            }
+        };
+
+        if tag_value_str.starts_with("model-") {
+            return Ok(BlobTag::Parameter(tag_value_str.to_string()));
+        }
+
+        let tag_value = match tag_value_str.parse::<u32>() {
+            Ok(value) => value,
+            Err(e) => {
+                return Err(format!("Failed parsing tag value: {}", e));
+            }
+        };
+
+        Ok(BlobTag::DistroResult(tag_value))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct P2PNodeInfo {
+    pub node_id: NodeId,
+    pub path: ConnectionType,
+    pub bandwidth: f64,
+    pub latency: f64,
+}
+
+impl From<P2PNodeInfo> for PeerConnection {
+    fn from(value: P2PNodeInfo) -> Self {
+        Self {
+            node_id: value.node_id.to_string(),
+            connection_type: match value.path {
+                ConnectionType::None => psyche_metrics::ConnectionType::None,
+                ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
+                ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
+                ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
+            },
+            latency: value.latency as f32,
+        }
+    }
+}
+
 pub struct NetworkConnection<BroadcastMessage, Download>
 where
     BroadcastMessage: Networkable,
@@ -121,6 +174,7 @@ where
 {
     router: Arc<Router>,
     blobs_store: MemStore,
+    downloader: Downloader,
     state: State,
     gossip_tx: GossipSender,
     gossip_rx: GossipReceiver,
@@ -169,7 +223,7 @@ where
         metrics: Arc<ClientMetrics>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
-            None => SecretKey::generate(&mut rand::rngs::OsRng),
+            None => SecretKey::generate(&mut rand::rng()),
             Some(key) => key,
         };
 
@@ -202,6 +256,8 @@ where
             Ipv4Addr::new(0, 0, 0, 0)
         };
 
+        let bootstrap_node_ids = bootstrap_peers.iter().map(|p| p.node_id).collect();
+
         let endpoint = {
             let mut transport_config = TransportConfig::default();
             transport_config
@@ -217,21 +273,23 @@ where
                 .transport_config(transport_config)
                 .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)));
 
-            let e = match discovery_mode {
+            let endpoint = match discovery_mode {
                 DiscoveryMode::Local => {
                     endpoint.discovery(local_discovery::LocalTestDiscovery::new(public_key))
-                    // endpoint.discovery_n0()
                 }
                 DiscoveryMode::N0 => endpoint.discovery_n0(),
             };
 
-            e.bind().await?
+            endpoint.bind().await?
         };
 
-        let node_addr = endpoint.node_addr().initialized().await;
+        if matches!(discovery_mode, DiscoveryMode::N0) {
+            endpoint.online().await;
+        }
 
-        info!("Our node addr: {}", node_addr.node_id);
-        info!("Our join ticket: {}", PeerList(vec![node_addr]));
+        let node_addr = endpoint.node_addr();
+
+        info!("Our node id: {}", node_addr.node_id);
 
         trace!("creating blobs store...");
         let store = MemStore::new_with_opts(MemStoreOptions {
@@ -240,6 +298,7 @@ where
                 add_protected: None,
             }),
         });
+        let downloader = Downloader::new(&store, &endpoint);
         trace!("blobs store created!");
 
         trace!("creating gossip...");
@@ -268,7 +327,7 @@ where
         trace!("model parameter sharing created!");
 
         trace!("creating router...");
-        let blobs_protocol = BlobsProtocol::new(&store.clone(), endpoint.clone(), None);
+        let blobs_protocol = BlobsProtocol::new(&store.clone(), None);
         let router = spawn_router_with_allowlist(
             allowlist.clone(),
             endpoint.clone(),
@@ -276,24 +335,8 @@ where
         )?;
         trace!("router created!");
 
-        // add any bootstrap peers
-        {
-            if bootstrap_peers.is_empty() {
-                info!("Waiting for peers to join us...");
-            } else {
-                info!("Trying to connect to {} peers...", bootstrap_peers.len());
-                // add the peer addrs from the ticket to our endpoint's addressbook so that they can be dialed
-                for peer in &bootstrap_peers {
-                    router.endpoint().add_node_addr(peer.clone())?;
-                }
-            };
-        }
-
         let (gossip_tx, gossip_rx) = gossip
-            .subscribe(
-                gossip_topic(run_id),
-                bootstrap_peers.iter().map(|p| p.node_id).collect(),
-            )
+            .subscribe(gossip_topic(run_id), bootstrap_node_ids)
             .await?
             .split();
         info!("Connected!");
@@ -303,6 +346,7 @@ where
 
         Ok(Self {
             blobs_store: store,
+            downloader,
             gossip_rx,
             gossip_tx,
             rx_model_parameter_req,
@@ -337,7 +381,7 @@ where
     pub fn add_peers(&self, peers: Vec<NodeId>) {
         let peer_list = peers
             .iter()
-            .map(|n| n.fmt_short())
+            .map(|n| n.fmt_short().to_string())
             .collect::<Vec<_>>()
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
@@ -375,7 +419,7 @@ where
         let provider_node_id = ticket.node_addr().clone();
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
-            DownloadType::DistroResult(peers) => peers.iter().map(|peer| peer.node_id).collect(),
+            DownloadType::DistroResult(peers) => peers,
             DownloadType::ModelSharing(_) => {
                 vec![]
             }
@@ -387,19 +431,15 @@ where
 
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
-        let downloader = self.blobs_store.downloader(&self.endpoint);
-        let endpoint = self.endpoint.clone();
+        let latency_sorted = LatencySorted::new(
+            std::iter::once(provider_node_id.node_id)
+                .chain(additional_peers_to_try.iter().cloned())
+                .collect(),
+            self.endpoint.clone(),
+        );
+        let download = self.downloader.download(ticket_hash, latency_sorted);
         tokio::spawn(async move {
-            let latency_sorted = LatencySorted::new(
-                std::iter::once(provider_node_id.node_id)
-                    .chain(additional_peers_to_try.iter().cloned())
-                    .collect(),
-                endpoint,
-            );
-            let progress = downloader
-                .download(ticket_hash, latency_sorted)
-                .stream()
-                .await;
+            let progress = download.stream().await;
 
             match progress {
                 Ok(mut progress) => {
@@ -414,17 +454,16 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: u32) -> Result<BlobTicket> {
+    pub async fn add_downloadable(&mut self, data: Download, tag: &str) -> Result<BlobTicket> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
             .blobs()
             .add_bytes(blob_data.clone())
-            .with_named_tag(tag.to_bytes())
+            .with_named_tag(tag)
             .await?;
-        let addr = self.router.endpoint().node_addr().initialized().await;
+        let addr = self.router.endpoint().node_addr();
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
-
         debug!(
             name: "blob_upload",
             hash = %blob_res.hash.fmt_short(),
@@ -437,7 +476,9 @@ where
         Ok(blob_ticket)
     }
 
-    pub async fn remove_blobs_with_tag_less_than(&mut self, target_tag: u32) -> anyhow::Result<()> {
+    /// Removes all the tags from the store that are lower than the target tag.
+    /// Also removes all the tags used for the parameter sharing since this will run only in the Train state
+    pub async fn remove_staled_tags(&mut self, target_tag: u32) -> anyhow::Result<()> {
         let store = self.blobs_store.as_ref().clone();
         let mut tags = store.tags().list().await?;
         let mut to_delete = Vec::new();
@@ -452,22 +493,29 @@ where
                     }
                 };
 
-                let tag_value = match u32::from_bytes(tag.name.0.iter().as_slice()) {
-                    Ok(value) => value,
+                let blob_tag: BlobTag = match BlobTag::try_from(tag) {
+                    Ok(tag) => tag,
                     Err(e) => {
-                        warn!("Failed parsing tag value: {}", e);
+                        warn!("Failed parsing blob tag: {}", e);
                         continue;
                     }
                 };
 
-                if tag_value < target_tag {
-                    to_delete.push(tag_value);
+                match blob_tag {
+                    BlobTag::Parameter(tag_name) => {
+                        to_delete.push(tag_name);
+                    }
+                    BlobTag::DistroResult(step) => {
+                        if step < target_tag {
+                            to_delete.push(step.to_string());
+                        }
+                    }
                 }
             }
 
             let mut deleted_tags = 0;
             for tag in to_delete {
-                match store.tags().delete(tag.to_bytes()).await {
+                match store.tags().delete(&tag).await {
                     Ok(_) => {
                         deleted_tags += 1;
                     }
@@ -492,28 +540,38 @@ where
     }
 
     pub async fn node_addr(&self) -> NodeAddr {
-        self.router.endpoint().node_addr().initialized().await
+        self.router.endpoint().node_addr()
     }
 
-    pub async fn join_ticket(&self) -> Result<String> {
-        let me = self.router.endpoint().node_addr().initialized().await;
-        Ok(PeerList(vec![me]).to_string())
-    }
-
-    /// RemoteInfo and bandwidth in bytes/s for a node
-    pub fn remote_infos(&self) -> Vec<(RemoteInfo, f64)> {
-        self.router
-            .endpoint()
-            .remote_info_iter()
-            .map(|node_info| {
-                let bandwidth = self
-                    .state
-                    .bandwidth_tracker
-                    .get_bandwidth_by_node(&node_info.node_id)
-                    .unwrap_or_default();
-                (node_info, bandwidth)
-            })
-            .collect()
+    pub fn remote_infos(&self) -> Vec<P2PNodeInfo> {
+        std::iter::once(P2PNodeInfo {
+            node_id: self.endpoint.node_id(),
+            bandwidth: 0.0,
+            path: ConnectionType::None,
+            latency: 0.0,
+        })
+        .chain(self.endpoint.connections().into_iter().map(|node_id| {
+            let bandwidth = self
+                .state
+                .bandwidth_tracker
+                .get_bandwidth_by_node(&node_id)
+                .unwrap_or_default();
+            P2PNodeInfo {
+                node_id,
+                path: self
+                    .endpoint
+                    .conn_type(node_id)
+                    .map(|mut c| c.get())
+                    .unwrap_or(ConnectionType::None),
+                bandwidth,
+                latency: self
+                    .endpoint
+                    .latency(node_id)
+                    .unwrap_or(Duration::MAX)
+                    .as_secs_f64(),
+            }
+        }))
+        .collect()
     }
 
     pub async fn poll_next(&mut self) -> Result<Option<NetworkEvent<BroadcastMessage, Download>>> {
@@ -548,7 +606,7 @@ where
                 Ok(Some(NetworkEvent::ModelConfigRequest(protocol_req_tx)))
             }
             _ = self.update_stats_interval.tick() => {
-                on_update_stats(self.router.endpoint(), &mut self.state).await?;
+                on_update_stats(&self.endpoint, self.remote_infos(), &mut self.state).await?;
                 Ok(None)
             }
             else => { Ok(None) }
@@ -593,19 +651,6 @@ where
         }
         None
     }
-
-    pub async fn get_all_peers(&self) -> Vec<(NodeAddr, ConnectionType)> {
-        std::iter::once((
-            self.router.endpoint().node_addr().initialized().await,
-            ConnectionType::None,
-        ))
-        .chain(self.router.endpoint().remote_info_iter().map(|i| {
-            let c = i.conn_type.clone();
-            (i.into(), c)
-        }))
-        .collect()
-    }
-
     pub fn router(&self) -> Arc<Router> {
         self.router.clone()
     }
@@ -704,27 +749,14 @@ where
     ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
 }
 
-async fn on_update_stats(endpoint: &Endpoint, stats: &mut State) -> Result<()> {
-    let ticket = {
-        let me = endpoint.node_addr().initialized().await;
-        PeerList(vec![me])
-    };
+async fn on_update_stats(
+    endpoint: &Endpoint,
+    remote_infos: Vec<P2PNodeInfo>,
+    stats: &mut State,
+) -> Result<()> {
+    stats.node_id = Some(endpoint.node_id());
 
-    stats.join_ticket = ticket;
-
-    for (peer_id, conn_type, last_recvd) in endpoint
-        .remote_info_iter()
-        .filter_map(|i| i.last_received().map(|r| (i.node_id, i.conn_type, r)))
-    {
-        // after 2 minutes with no comms, assume a client is disconnected.
-        if last_recvd.as_secs() < 120 {
-            stats
-                .last_seen
-                .insert(peer_id, (conn_type, Instant::now().sub(last_recvd)));
-        } else {
-            stats.last_seen.remove(&peer_id);
-        }
-    }
+    stats.node_connections = remote_infos;
 
     stats
         .bandwidth_history
