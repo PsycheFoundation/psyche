@@ -8,6 +8,19 @@ import {
 } from 'solana-kiss'
 import { utilsGetStateDirectory } from './utils'
 
+export async function saveExists(
+	saveSubject: string,
+	saveName: string
+): Promise<boolean> {
+	const path = savePath(saveSubject, saveName, 'latest')
+	try {
+		await fsp.access(path)
+		return true
+	} catch {
+		return false
+	}
+}
+
 export async function saveWrite(
 	saveSubject: string,
 	saveName: string,

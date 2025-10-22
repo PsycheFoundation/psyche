@@ -15,12 +15,13 @@ function rpcHttpBuilder(url: string) {
 			rpcHttpFromUrl(url, { commitment: 'confirmed' }),
 			100
 		),
-		async (error, context) => {
-			if (context.totalDurationMs > 10_000) {
-				console.error('Rpc failed to reply for too long, giving up', error)
+		async (_error, context) => {
+			if (context.totalDurationMs >= 60 * 60 * 1000) {
+				console.log('Giving up retries after 1 hour')
 				return false
 			}
-			await new Promise((resolve) => setTimeout(resolve, 100))
+			const delay = context.retriedCounter * 1000
+			await new Promise((resolve) => setTimeout(resolve, delay))
 			return true
 		}
 	)

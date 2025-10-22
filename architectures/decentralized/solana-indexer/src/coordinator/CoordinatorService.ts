@@ -5,7 +5,7 @@ import {
 	indexingCheckpointJsonCodec,
 } from '../indexing/IndexingCheckpoint'
 import { indexingInstructions } from '../indexing/IndexingInstructions'
-import { saveRead, saveWrite } from '../save'
+import { saveExists, saveRead, saveWrite } from '../save'
 import { utilsGetProgramAnchorIdl } from '../utils'
 import {
 	CoordinatorDataStore,
@@ -34,9 +34,13 @@ async function serviceLoader(programAddress: Pubkey) {
 		dataStore = coordinatorDataStoreJsonCodec.decoder(saveContent.dataStore)
 		console.log('Loaded coordinator state from:', saveContent.updatedAt)
 	} catch (error) {
-		if (!process.env['ALLOW_NEW_STATE_COORDINATOR']) {
+		const willOverride = await saveExists(
+			pubkeyToBase58(programAddress),
+			saveName
+		)
+		if (willOverride && !process.env['ALLOW_STATE_OVERRIDE']) {
 			throw new Error(
-				'Failed to read existing coordinator JSON, and ALLOW_NEW_STATE_COORDINATOR is not set'
+				'Failed to read existing coordinator JSON, and ALLOW_STATE_OVERRIDE is not set'
 			)
 		}
 		checkpoint = { orderedIndexedChunks: [] }
