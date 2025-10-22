@@ -415,7 +415,7 @@ where
         Ok(())
     }
 
-    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
+    pub fn start_download(&mut self, ticket: BlobTicket, tag: &str, download_type: DownloadType) {
         let provider_node_id = ticket.node_addr().clone();
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
@@ -427,7 +427,7 @@ where
         let (tx, rx) = mpsc::unbounded_channel();
 
         self.download_manager
-            .add(ticket, tag, rx, download_type.clone());
+            .add(ticket, tag.to_owned(), rx, download_type.clone());
 
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
@@ -438,7 +438,10 @@ where
             self.endpoint.clone(),
         );
         let download = self.downloader.download(ticket_hash, latency_sorted);
+        let blob_store_clone = self.blobs_store.clone();
+        let tag = tag.to_owned();
         tokio::spawn(async move {
+            let _ = blob_store_clone.tags().set(tag.clone(), ticket_hash).await;
             let progress = download.stream().await;
 
             match progress {

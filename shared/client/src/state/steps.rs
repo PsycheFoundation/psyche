@@ -48,7 +48,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
 
     active_step: ActiveStep,
 
-    tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+    tx_request_download: mpsc::UnboundedSender<(BlobTicket, String)>,
     tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
     tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
 
@@ -126,7 +126,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         cooldown: CooldownStepMetadata,
         trainers: Vec<Trainer>,
         coordinator_state: Coordinator<T>,
-        tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+        tx_request_download: mpsc::UnboundedSender<(BlobTicket, String)>,
         tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
         tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
         stats_logger: StatsLogger,
@@ -474,7 +474,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 // (assuming the caller will put our payload in the proper place)
                 if from_client_id != self.identity {
                     self.tx_request_download
-                        .send((ticket, result_step))
+                        .send((ticket, result_step.to_string()))
                         .map_err(|_| ApplyMessageError::StartDownloadBlob)?;
                 }
             }

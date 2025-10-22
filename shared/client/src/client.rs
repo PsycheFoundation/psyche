@@ -479,7 +479,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let metrics = metrics.clone();
                             let retried_downloads = retried_downloads.clone();
                             tokio::spawn(async move {
-                                let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.pending_retries().await;
+                                let pending_retries: Vec<(psyche_network::Hash, BlobTicket, String, DownloadType)> = retried_downloads.pending_retries().await;
 
                             for (hash, ticket, tag, download_type) in pending_retries {
                                     let retries = retried_downloads.update_time(hash).await;
@@ -518,7 +518,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| *addr != self_node_id).collect();
                             let kind = DownloadType::DistroResult(other_possible_nodes);
                             metrics.record_download_started(download_ticket.hash(), kind.kind());
-                            p2p.start_download(download_ticket, tag, kind);
+                            p2p.start_download(download_ticket, &tag, kind);
                         }
                         Some(opportunistic_data) = rx_witness.recv() => {
                             metrics.record_witness_send(opportunistic_data.kind());
@@ -625,17 +625,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for (ticket, request_type) in param_blob_tickets {
-                                let kind = DownloadType::ModelSharing(request_type);
+                                let kind = DownloadType::ModelSharing(request_type.clone());
                                 metrics.record_download_started(ticket.hash(), kind.kind());
                                 // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, kind);
+                                if let ModelRequestType::Parameter(parameter_name) = request_type {
+                                    p2p.start_download(ticket, &format!("model-{}", parameter_name), kind);
+                                }
                             }
                         }
                         Some(config_blob_ticket) = rx_config_download.recv() => {
                             let kind = DownloadType::ModelSharing(ModelRequestType::Config);
                             metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
                             // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket, 0, kind);
+                            p2p.start_download(config_blob_ticket, "model-config", kind);
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
                         _ = check_connection_interval.tick() => {
