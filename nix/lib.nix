@@ -113,9 +113,9 @@ let
       ''
         mkdir -p $out/bin
         makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
+          --set PYTHONPATH "${psychePythonVenv}/${pkgs.python312.sitePackages}" \
           --prefix PATH : "${psychePythonVenv}/bin"
       '';
-  # --set PYTHONPATH "${psychePythonVenv}/${psychePythonVenv.sitePackages}" \
 
   buildRustPackageWithoutPython =
     {
