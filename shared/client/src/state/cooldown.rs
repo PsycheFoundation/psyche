@@ -47,6 +47,10 @@ pub struct CooldownStepMetadata {
     checkpoint_extra_files: Vec<PathBuf>,
 
     model_task_runner: ModelTaskRunner,
+    // use a heap here to as a best-effort attempt to ensure we get rid of the lowest step number dir even if we spawn multiple tasks
+    // which may not finish writing their dirs in order. We note that even if we were to take the more complicated
+    // route of actually enumerating the checkpoint_dir there would still be a race condition, unless we took a lockfile
+    // or the like on the entire checkpoint_dir which probably isn't worth it just to support disk cleanup
     delete_queue: Arc<Mutex<BinaryHeap<Reverse<u32>>>>,
 }
 
@@ -157,20 +161,7 @@ impl CooldownStepMetadata {
                     })
                     .await
                     .map_err(|_| CheckpointError::WriteThreadCrashed)??;
-                    // push this step onto the delete queue only after we know we've at least created the dir. This avoids
-                    // degenerate cases where the queue fills up with nonexistant dirs, causing our length test
-                    // on the queue to return true even when the actual number of dirs is below the limit. There's a small risk this could
-                    // cause us to miss dirs that get created but then the write fails after the dir is created. In that case, we likely
-                    // have bigger issues to worry about anyway, and this is much faster than actually enumerating the checkpoint_dir
-                    // parsing dir names, etc
-                    // use a heap here to as a best-effort attempt to ensure we get rid of the lowest step number dir even if we spawn multiple tasks
-                    // which may not finish writing their dirs in order. We note that even if we were to take the more complicated
-                    // route of actually enumerating the checkpoint_dir there would still be a race condition, unless we took a lockfile
-                    // or the like on the entire checkpoint_dir which probably isn't worth it just to support disk cleanup
-                    if keep_steps.is_some() {
-                        let mut delete_queue_guard = delete_queue.lock().await;
-                        delete_queue_guard.push(Reverse(step));
-                    }
+
                     for extra in checkpoint_extra_files {
                         let to = path.join(extra.file_name().unwrap());
                         tokio::fs::copy(extra.clone(), to.clone())
@@ -217,9 +208,13 @@ impl CooldownStepMetadata {
                     // we put the cleanup step at the end, so that if keep_steps == Some(0) the logic will still work
                     // we'll just delete the dir after we've uploaded it
                     if let Some(keep_steps) = keep_steps {
+                        // if we fail in any of the above steps we may wind up not queueing this dir for delete
+                        // but that's probably better than risking having the dir deleted from under us
+                        // for a relatively low priority disk cleanup task
+                        let mut delete_queue_guard = delete_queue.lock().await;
+                        delete_queue_guard.push(Reverse(step));
                         // in the happy case this could be an if but if previous iterations failed somewhere
                         // then we may have more than 1 dir to clean up
-                        let mut delete_queue_guard = delete_queue.lock().await;
                         while delete_queue_guard.len() > keep_steps as usize {
                             let delete_step = delete_queue_guard.pop().unwrap().0;
                             let delete_path =
