@@ -415,7 +415,7 @@ impl SharableModel {
         &mut self,
         param_name: &str,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
-        tag: &str,
+        tag: Tag,
     ) -> Result<BlobTicket, SharableModelError> {
         let Some(loading_parameters) = self.serializing_parameters.as_mut() else {
             return Err(SharableModelError::ParametersNotInitialized);

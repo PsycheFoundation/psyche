@@ -373,7 +373,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
                                         // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
                                         trace!("NetworkEvent::ParameterRequest({parameter_name})");
-                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, &format!("model-{parameter_name}")).await {
+                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, Tag::from(format!("model-{parameter_name}"))).await {
                                             Err(e) => {
                                                 if let Err(e) = protocol_req_tx.send(Err(e)) {
                                                     warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
@@ -628,7 +628,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             for (ticket, request_type) in param_blob_tickets {
                                 let kind = DownloadType::ModelSharing(request_type.clone());
                                 metrics.record_download_started(ticket.hash(), kind.kind());
-                                // tag 0 means when we enter a train step, it'll get wiped.
                                 if let ModelRequestType::Parameter(parameter_name) = request_type {
                                     p2p.start_download(ticket, Tag::from(format!("model-{}", parameter_name)), kind);
                                 }
@@ -637,7 +636,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         Some(config_blob_ticket) = rx_config_download.recv() => {
                             let kind = DownloadType::ModelSharing(ModelRequestType::Config);
                             metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
-                            // tag 0 means when we enter a train step, it'll get wiped.
                             p2p.start_download(config_blob_ticket, Tag::from("model-config"), kind);
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
