@@ -2,6 +2,7 @@ use anyhow::{Result, bail};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMode, RelayUrl};
+use iroh_blobs::api::Tag;
 use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
@@ -169,7 +170,7 @@ impl App {
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network.start_download(
                     blob_ticket,
-                    &step.to_string(),
+                    Tag::from(step.to_string()),
                     DownloadType::DistroResult(Vec::new()),
                 )
             }
@@ -219,7 +220,7 @@ impl App {
 
         let blob_ticket = match self
             .network
-            .add_downloadable(DistroResultBlob { step, data }, step.to_string().as_str())
+            .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
             Ok(v) => {
