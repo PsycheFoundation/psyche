@@ -367,7 +367,7 @@ async function main() {
 		}
 	)
 
-fastify.get<{
+	fastify.get<{
 		Querystring: { owner: string; repo: string; revision?: string }
 	}>('/check-checkpoint', async (request) => {
 		const { owner, repo, revision } = request.query
@@ -376,7 +376,8 @@ fastify.get<{
 			const response = await fetch(url, { method: 'HEAD' })
 			return { isValid: response.ok, description: response.statusText }
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+			const errorMessage =
+				error instanceof Error ? error.message : 'Unknown error'
 			return { isValid: false, description: errorMessage }
 		}
 	})
