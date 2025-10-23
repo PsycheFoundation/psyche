@@ -34,6 +34,7 @@ use super::{
     stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
     types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
+use iroh_blobs::api::Tag;
 
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     // identity for connecting to the data server
@@ -154,7 +155,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
     pub tx_distro_result: UnboundedSender<DistroBroadcastAndPayload>,
-    pub tx_request_download: UnboundedSender<(BlobTicket, String)>,
+    pub tx_request_download: UnboundedSender<(BlobTicket, Tag)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
 
