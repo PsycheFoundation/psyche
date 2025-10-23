@@ -367,14 +367,17 @@ async function main() {
 		}
 	)
 
-	fastify.get('/check-checkpoint', async (request, reply) => {
-		const { owner, repo, revision } = request.query // Changed from request.params
+fastify.get<{
+		Querystring: { owner: string; repo: string; revision?: string }
+	}>('/check-checkpoint', async (request) => {
+		const { owner, repo, revision } = request.query
 		const url = `https://huggingface.co/${owner}/${repo}${revision ? `/tree/${revision}` : ''}`
 		try {
 			const response = await fetch(url, { method: 'HEAD' })
 			return { isValid: response.ok, description: response.statusText }
 		} catch (error) {
-			return { isValid: false, description: error.message }
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+			return { isValid: false, description: errorMessage }
 		}
 	})
 
