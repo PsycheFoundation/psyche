@@ -118,10 +118,3 @@ opt-level = 1
 
 [profile.test]
 opt-level = 1
-
-[profile.release-dist]
-inherits = "release"
-strip = true
-lto = "fat"
-codegen-units = 1
-panic = "abort"

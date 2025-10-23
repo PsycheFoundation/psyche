@@ -4,8 +4,8 @@ cargo run --release -p run-manager -- --env-file .env.local --wallet-path keys/k
 
 ## Generating a release-ready binary
 
-This will generate a stripped and optimized binary ready for distribution in `$PROJECT_ROOT/target/release-dist/`
+This will generate a binary ready for distribution in `$PROJECT_ROOT/target/release/`
 
 ```bash
-cargo build --profile release-dist -p run-manager
+cargo build --profile release -p run-manager
 ```
