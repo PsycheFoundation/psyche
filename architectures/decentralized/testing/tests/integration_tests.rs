@@ -330,7 +330,9 @@ async fn disconnect_client() {
     // initialize a Solana run with 2 client
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
-    let _cleanup = e2e_testing_setup_three_clients(docker.clone()).await;
+
+    // Initialize a Solana run with 3 client
+    let _cleanup = e2e_testing_setup(docker.clone(), 3).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(
