@@ -146,6 +146,7 @@ impl CooldownStepMetadata {
                 let Some(CheckpointConfig {
                     hub_upload,
                     checkpoint_dir,
+                    delete_old_steps,
                     keep_steps,
                 }) = checkpoint_info
                 else {
@@ -207,9 +208,9 @@ impl CooldownStepMetadata {
                         })
                         .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                    // we put the cleanup step at the end, so that if keep_steps == Some(0) the logic will still work
+                    // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
                     // we'll just delete the dir after we've uploaded it
-                    if let Some(keep_steps) = keep_steps {
+                    if delete_old_steps {
                         // if we fail in any of the above steps we may wind up not queueing this dir for delete
                         // but that's probably better than risking having the dir deleted from under us
                         // for a relatively low priority disk cleanup task
