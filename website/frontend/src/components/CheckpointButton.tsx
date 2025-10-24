@@ -12,9 +12,14 @@ export const CheckpointButton = ({
 	const [isValid, setIsValid] = useState<boolean | undefined>(undefined)
 
 	useEffect(() => {
-		const [owner, repo] = checkpoint.repo_id.split('/')
+		const parsedRepo = checkpoint.repo_id.split('/')
 
-		console.log('FETCHING CHECKPOINT STATUS')
+		if (parsedRepo.length !== 2) {
+			setIsValid(false)
+			return
+		}
+		const [owner, repo] = parsedRepo
+
 		fetchCheckpointStatus(owner, repo, checkpoint.revision || undefined)
 			.then((data) => {
 				setIsValid(data.isValid)
@@ -24,7 +29,6 @@ export const CheckpointButton = ({
 			})
 	}, [checkpoint.repo_id, checkpoint.revision])
 
-	// Show nothing while loading
 	if (isValid === undefined) {
 		return null
 	}
