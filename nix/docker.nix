@@ -204,10 +204,7 @@ let
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
           "TRITON_LIBCUDA_PATH=/usr/lib64"
-<<<<<<<
-=======
           "TRITON_HOME=/tmp/triton"
->>>>>>>
           "PYTHONUNBUFFERED=1"
         ];
       };
