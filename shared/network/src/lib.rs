@@ -253,7 +253,24 @@ where
             };
             v4
         } else {
-            Ipv4Addr::new(0, 0, 0, 0)
+            // No interface specified - try to find and prioritize InfiniBand (ib*) interfaces
+            let interfaces = get_if_addrs::get_if_addrs().unwrap();
+
+            // First, try to find an InfiniBand interface (ib*)
+            let ib_iface = interfaces
+                .iter()
+                .find(|iface| iface.name.starts_with("ib") && iface.ip().is_ipv4());
+
+            if let Some(iface) = ib_iface {
+                let IpAddr::V4(v4) = iface.ip() else {
+                    unreachable!("checked in earlier if. should not be possible.")
+                };
+                info!("Using InfiniBand interface: {} ({})", iface.name, v4);
+                v4
+            } else {
+                // No IB interface found, bind to all interfaces
+                Ipv4Addr::new(0, 0, 0, 0)
+            }
         };
 
         let bootstrap_node_ids = bootstrap_peers.iter().map(|p| p.node_id).collect();
