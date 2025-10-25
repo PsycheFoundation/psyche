@@ -10,10 +10,13 @@ use bollard::{
 use psyche_client::IntegrationTestLogMarker;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 use tokio::signal;
 
-use crate::docker_watcher::{DockerWatcher, DockerWatcherError};
+use crate::{
+    docker_watcher::{DockerWatcher, DockerWatcherError},
+    utils::ConfigBuilder,
+};
 
 /// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
 fn has_gpu_support() -> bool {
@@ -36,30 +39,31 @@ pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator"
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
 
 pub struct DockerTestCleanup;
-impl Drop for DockerTestCleanup {
-    fn drop(&mut self) {
-        println!("\nStopping containers...");
-        let output = Command::new("just")
-            .args(["stop_test_infra"])
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .expect("Failed stop docker compose instances");
+// impl Drop for DockerTestCleanup {
+//     fn drop(&mut self) {
+//         println!("\nStopping containers...");
+//         let output = Command::new("just")
+//             .args(["stop_test_infra"])
+//             .stdout(Stdio::inherit())
+//             .stderr(Stdio::inherit())
+//             .output()
+//             .expect("Failed stop docker compose instances");
 
-        if !output.status.success() {
-            panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
-        }
-    }
-}
+//         if !output.status.success() {
+//             panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
+//         }
+//     }
+// }
 
 /// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
-    config: Option<PathBuf>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
-    spawn_psyche_network(init_num_clients, config).unwrap();
+
+    spawn_psyche_network(init_num_clients).unwrap();
+
     spawn_ctrl_c_task();
 
     DockerTestCleanup {}
@@ -68,9 +72,20 @@ pub async fn e2e_testing_setup(
 pub async fn e2e_testing_setup_subscription(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
-    config: Option<PathBuf>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
+    #[cfg(not(feature = "python"))]
+    let config_file_path = ConfigBuilder::new()
+        .with_num_clients(init_num_clients)
+        .build();
+    #[cfg(feature = "python")]
+    let config_file_path = ConfigBuilder::new()
+        .with_num_clients(init_num_clients)
+        .with_architecture("HfAuto")
+        .with_batch_size(8)
+        .build();
+
+    println!("[+] Config file written to: {}", config_file_path.display());
     let mut command = Command::new("just");
     let command = command
         .args([
@@ -79,10 +94,6 @@ pub async fn e2e_testing_setup_subscription(
         ])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
-
-    if let Some(config) = config {
-        command.env("CONFIG_PATH", config);
-    }
 
     let output = command
         .output()
@@ -148,7 +159,7 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
         platform: None,
     });
     let config = Config {
-        image: Some("psyche-solana-test-client-no-python"),
+        image: Some("psyche-solana-test-client"),
         env: Some(envs.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()
@@ -219,30 +230,35 @@ pub async fn spawn_new_client_with_monitoring(
     Ok(container_id)
 }
 
-pub fn spawn_psyche_network(
-    init_num_clients: usize,
-    config: Option<PathBuf>,
-) -> Result<(), DockerWatcherError> {
+// Updated spawn function
+pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
+    #[cfg(not(feature = "python"))]
+    let config_file_path = ConfigBuilder::new()
+        .with_num_clients(init_num_clients)
+        .build();
+    #[cfg(feature = "python")]
+    let config_file_path = ConfigBuilder::new()
+        .with_num_clients(init_num_clients)
+        .with_architecture("HfAuto")
+        .with_batch_size(8)
+        .build();
+
+    println!("[+] Config file written to: {}", config_file_path.display());
+
     let mut command = Command::new("just");
-    let command = command
+    let output = command
         .args(["run_test_infra", &format!("{init_num_clients}")])
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
-    if let Some(config) = config {
-        command.env("CONFIG_PATH", config);
-    }
-
-    let output = command
+        .stderr(Stdio::inherit())
         .output()
         .expect("Failed to spawn docker compose instances");
+
     if !output.status.success() {
         panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
     }
 
     println!("\n[+] Docker compose network spawned successfully!");
     println!();
-
     Ok(())
 }
 
