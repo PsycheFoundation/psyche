@@ -2,7 +2,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Button } from '../../components/Button.js'
 import ArrowLeft from '../../assets/icons/arrow-left.svg?react'
 import Fullscreen from '../../assets/icons/fullscreen.svg?react'
-import HuggingfaceIcon from '../../assets/icons/huggingface.svg?react'
 import { styled } from '@linaria/react'
 import { text } from '../../fonts.js'
 import { StatusChip } from '../../components/StatusChip.js'
@@ -17,6 +16,7 @@ import {
 	runHasState,
 	RunStateIndicator,
 } from '../../components/RunStateIndicator.js'
+import { CheckpointButton } from '../../components/CheckpointButton.js'
 import { fetchRunStreaming } from '../../fetchRuns.js'
 import { PromptResults } from '../../components/PromptResults.js'
 import { useStreamingLoaderData } from '../../useStreamingData.js'
@@ -201,20 +201,7 @@ function RouteComponent() {
 									</div>
 								)}
 								{run.state?.checkpoint && (
-									<Button
-										style="secondary"
-										center
-										icon={{
-											side: 'left',
-											svg: HuggingfaceIcon,
-											autoColor: false,
-										}}
-										href={`https://huggingface.co/${run.state.checkpoint.repo_id}/${run.state.checkpoint.revision ? `tree/${run.state.checkpoint.revision}` : ''}`}
-										target="_blank"
-									>
-										latest checkpoint:{' '}
-										{run.state.checkpoint.repo_id.split('/')[1]}
-									</Button>
+									<CheckpointButton checkpoint={run.state.checkpoint} />
 								)}
 
 								<PromptResults
