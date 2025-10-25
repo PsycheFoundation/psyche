@@ -39,21 +39,21 @@ pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator"
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
 
 pub struct DockerTestCleanup;
-impl Drop for DockerTestCleanup {
-    fn drop(&mut self) {
-        println!("\nStopping containers...");
-        let output = Command::new("just")
-            .args(["stop_test_infra"])
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .expect("Failed stop docker compose instances");
+// impl Drop for DockerTestCleanup {
+//     fn drop(&mut self) {
+//         println!("\nStopping containers...");
+//         let output = Command::new("just")
+//             .args(["stop_test_infra"])
+//             .stdout(Stdio::inherit())
+//             .stderr(Stdio::inherit())
+//             .output()
+//             .expect("Failed stop docker compose instances");
 
-        if !output.status.success() {
-            panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
-        }
-    }
-}
+//         if !output.status.success() {
+//             panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
+//         }
+//     }
+// }
 
 /// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(

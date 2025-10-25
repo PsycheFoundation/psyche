@@ -25,3 +25,4 @@ rstest.workspace = true
 
 [features]
 python = ["psyche-python-extension-impl"]
+parallelism = ["psyche-client/parallelism"]

@@ -13,9 +13,6 @@ use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
 use std::env;
 use std::path::PathBuf;
 
-#[cfg(feature = "python")]
-const DEFAULT_SIDECARS_PER_CLIENT: u32 = 8;
-
 pub struct SolanaTestClient {
     program: Program<Arc<Keypair>>,
     account: Pubkey,
@@ -145,7 +142,10 @@ impl ConfigBuilder {
     pub fn new() -> Self {
         let path = env::current_dir().unwrap();
         println!("The current directory is {}", path.display());
+        #[cfg(not(feature = "python"))]
         let base_path = "../../../config/solana-test/nano-config.toml";
+        #[cfg(feature = "python")]
+        let base_path = "../../../config/solana-test/light-config.toml";
 
         let base_config: toml::Value = fs::read_to_string(base_path)
             .expect("Failed to read base config")
@@ -155,7 +155,7 @@ impl ConfigBuilder {
         Self {
             base_config,
             num_clients: 1,
-            batch_size: 4,
+            batch_size: 1,
             architecture: String::from("HfLlama"),
         }
     }
@@ -183,17 +183,18 @@ impl ConfigBuilder {
         // This means that every client is a witness
         self.set_value("config.witness_nodes", 0_u32);
 
+        self.set_value("model.LLM.architecture", self.architecture.clone());
+        self.set_value(
+            "config.global_batch_size_start",
+            self.batch_size * self.num_clients as u32,
+        );
+        self.set_value(
+            "config.global_batch_size_end",
+            self.batch_size * self.num_clients as u32,
+        );
+
         #[cfg(feature = "python")]
-        if self.num_clients > 1 {
-            self.set_value(
-                "config.global_batch_size_start",
-                DEFAULT_SIDECARS_PER_CLIENT * self.num_clients as u32,
-            );
-            self.set_value(
-                "config.global_batch_size_end",
-                DEFAULT_SIDECARS_PER_CLIENT * self.num_clients as u32,
-            );
-        }
+        self.set_value("config.warmup_time", 200);
 
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");

@@ -14,7 +14,7 @@ if [ "${PYTHON_ENABLED}" = "true" ]; then
         --rpc "${RPC}" \
         --ws-rpc "${WS_RPC}" \
         --run-id "${RUN_ID}" \
-        --data-parallelism "8" \
+        --data-parallelism 8 \
         --logs "json"
 else
     echo "Starting client without Python features"
