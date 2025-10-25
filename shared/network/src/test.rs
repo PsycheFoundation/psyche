@@ -1,5 +1,6 @@
 use anyhow::Result;
 use iroh::NodeAddr;
+use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
 use psyche_metrics::ClientMetrics;
 use serde::{Deserialize, Serialize};
@@ -88,8 +89,11 @@ impl App {
                     println!("Downloading");
                 }
 
-                self.network
-                    .start_download(blob_ticket, step, DownloadType::DistroResult(peers));
+                self.network.start_download(
+                    blob_ticket,
+                    Tag::from(step.to_string()),
+                    DownloadType::DistroResult(peers),
+                );
 
                 if !self.should_wait_before {
                     println!("Waiting to kill sender");
@@ -126,7 +130,7 @@ impl App {
 
         let blob_ticket = match self
             .network
-            .add_downloadable(DistroResultBlob { step, data }, step.to_string().as_str())
+            .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
             Ok(bt) => {
