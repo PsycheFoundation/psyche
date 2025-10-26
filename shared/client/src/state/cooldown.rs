@@ -214,6 +214,8 @@ impl CooldownStepMetadata {
                         // if we fail in any of the above steps we may wind up not queueing this dir for delete
                         // but that's probably better than risking having the dir deleted from under us
                         // for a relatively low priority disk cleanup task
+                        // and this may actually be preferred anyway because if we failed to upload, we may want to keep
+                        // the data around locally on disk
                         let mut delete_queue_guard = delete_queue.lock().await;
                         delete_queue_guard.push(Reverse(step));
                         // in the happy case this could be an if but if previous iterations failed somewhere
