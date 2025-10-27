@@ -46,6 +46,11 @@ pub fn init_coordinator_processor(
     context: Context<InitCoordinatorAccounts>,
     params: InitCoordinatorParams,
 ) -> Result<()> {
+    // run_id must be at most 32 bytes because of PDA constraints
+    if params.run_id.len() > 32 {
+        return err!(ProgramError::RunIdInvalidLength);
+    }
+
     // Initialize the coordinator instance
     let coordinator_instance = &mut context.accounts.coordinator_instance;
     coordinator_instance.bump = context.bumps.coordinator_instance;
