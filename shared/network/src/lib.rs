@@ -187,6 +187,7 @@ where
         secret_key: Option<SecretKey>,
         allowlist: A,
         metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
@@ -249,8 +250,19 @@ where
             endpoint.bind().await?
         };
 
+        // Wait until the endpoint is online if using N0 discovery
+        // The cancel token allows to exit the client via Ctrl+C instead of hanging
         if matches!(discovery_mode, DiscoveryMode::N0) {
-            endpoint.online().await;
+            if let Some(cancel_token) = &cancel {
+                select! {
+                    _ = endpoint.online() => {},
+                    _ = cancel_token.cancelled() => {
+                        return Err(anyhow!("Cancelled by user"));
+                    }
+                }
+            } else {
+                endpoint.online().await;
+            }
         }
 
         let node_addr = endpoint.node_addr();
