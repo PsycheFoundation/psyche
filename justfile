@@ -23,12 +23,16 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
+# Determine whether to use Python support based on environment variable
+
+use_python := env("USE_PYTHON", "0")
+
 # Run decentralized integration tests with optional Python support and test filtering
-decentralized-integration-tests test_name="" python="":
+decentralized-integration-tests test_name="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if [[ "{{ python }}" == "python" ]]; then
+    if [[ "{{ use_python }}" == "1" ]]; then
         echo "Running tests with Python support"
         just setup_python_test_infra
 
