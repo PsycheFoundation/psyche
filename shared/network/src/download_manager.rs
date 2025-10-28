@@ -346,13 +346,17 @@ impl<D: Networkable> Debug for DownloadManagerEvent<D> {
     }
 }
 
+enum FutureResult {
+    Download(usize, Result<DownloadProgressItem>),
+    Read(usize, Result<Bytes>),
+}
+
 pub struct DownloadManager<D: Networkable> {
     downloads: Arc<Mutex<Vec<Download>>>,
     reading: Arc<Mutex<Vec<ReadingFinishedDownload>>>,
     _download_type: PhantomData<D>,
     task_handle: Option<JoinHandle<()>>,
     event_receiver: mpsc::UnboundedReceiver<DownloadManagerEvent<D>>,
-    tx_new_item: mpsc::UnboundedSender<()>,
 }
 
 impl<D: Networkable> Debug for DownloadManager<D> {
@@ -367,7 +371,6 @@ impl<D: Networkable> Debug for DownloadManager<D> {
 impl<D: Networkable + Send + 'static> DownloadManager<D> {
     pub fn new() -> Result<Self> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        let (tx_new_item, mut rx_new_item) = mpsc::unbounded_channel();
 
         let downloads = Arc::new(Mutex::new(Vec::new()));
         let reading = Arc::new(Mutex::new(Vec::new()));
@@ -377,15 +380,11 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             _download_type: PhantomData,
             task_handle: None,
             event_receiver,
-            tx_new_item,
         };
 
         let task_handle = tokio::spawn(async move {
             loop {
-                if downloads.lock().await.is_empty()
-                    && reading.lock().await.is_empty()
-                    && rx_new_item.recv().await.is_none()
-                {
+                if downloads.lock().await.is_empty() && reading.lock().await.is_empty() {
                     // channel is closed.
                     info!("Download manager channel closed - shutting down.");
                     return;
@@ -416,16 +415,11 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         download_type: DownloadType,
     ) {
         let downloads = self.downloads.clone();
-        let sender = self.tx_new_item.clone();
         tokio::spawn(async move {
             downloads
                 .lock()
                 .await
                 .push(Download::new(blob_ticket, tag, progress, download_type));
-
-            if let Err(err) = sender.send(()) {
-                error!("{err:#}");
-            }
         });
     }
 
@@ -437,7 +431,6 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         download_type: DownloadType,
     ) {
         let reading = self.reading.clone();
-        let sender = self.tx_new_item.clone();
         tokio::spawn(async move {
             reading.lock().await.push(ReadingFinishedDownload {
                 blob_ticket,
@@ -445,9 +438,6 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 download,
                 r#type: download_type,
             });
-            if let Err(err) = sender.send(()) {
-                error!("{err:#}");
-            }
         });
     }
 
@@ -461,11 +451,6 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
     ) -> Option<DownloadManagerEvent<D>> {
         if downloads.is_empty() && reading.is_empty() {
             return None;
-        }
-
-        enum FutureResult {
-            Download(usize, Result<DownloadProgressItem>),
-            Read(usize, Result<Bytes>),
         }
 
         let download_futures = downloads.iter_mut().enumerate().map(|(i, download)| {
