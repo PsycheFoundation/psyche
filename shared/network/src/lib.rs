@@ -5,7 +5,6 @@ use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::api::Tag;
-use iroh_blobs::api::tags::DeleteOptions;
 use iroh_blobs::{
     BlobsProtocol,
     api::downloader::Downloader,
@@ -446,17 +445,34 @@ where
     /// Removes all the tags from the store that are lower than the target tag.
     /// Also removes all the tags used for the parameter sharing since this will run only in the Train state
     pub async fn remove_staled_tags(&mut self, target_tag: u32) -> anyhow::Result<()> {
-        let delete_opts = DeleteOptions {
-            from: None,
-            to: Some(target_tag.to_string().into()),
-        };
         let store = self.blobs_store.as_ref().clone();
         let model_tags_deleted = store.tags().delete_prefix("model-").await?;
-        let distro_results_deleted = store.tags().delete_with_opts(delete_opts).await?;
-        debug!(
-            "Untagged {} blobs",
-            model_tags_deleted + distro_results_deleted
-        );
+
+        tokio::spawn(async move {
+            let mut tags = store.tags().list().await.unwrap();
+            let mut to_delete = Vec::new();
+            let mut distro_results_deleted = 0;
+
+            while let Some(tag) = tags.next().await {
+                if let Ok(tag) = tag {
+                    let tag: u32 = tag.name.to_string().parse().unwrap();
+                    if tag < target_tag {
+                        to_delete.push(tag);
+                        distro_results_deleted += 1;
+                    }
+                }
+            }
+
+            for tag in to_delete {
+                let _ = store.tags().delete(tag.to_string()).await;
+            }
+
+            debug!(
+                "Untagged {} blobs",
+                model_tags_deleted + distro_results_deleted
+            );
+        });
+
         Ok(())
     }
 
