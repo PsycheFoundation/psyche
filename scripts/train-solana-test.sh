@@ -20,8 +20,8 @@ elif [[ -z "${WALLET_FILE:-}" ]]; then
     trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
 fi
 
-RPC=${RPC:-"http://127.0.0.1:8899"}
-WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
+RPC=${RPC:-"http://7da1cfaf-50:8899"}
+WS_RPC=${WS_RPC:-"ws://7da1cfaf-50:8900"}
 RUN_ID=${RUN_ID:-"test"}
 
 # presets for a DGX or an HGX
@@ -41,9 +41,11 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
-        --data-parallelism ${DP} \
-        --tensor-parallelism ${TP} \
+        --data-parallelism 1 \
+        --tensor-parallelism 1 \
         --micro-batch-size ${BATCH_SIZE} \
+        --checkpoint-dir ./checkpoints \
+        --hub-repo "pefontana/Meta-Llama-3.1-8B" \
         --logs "console" \
         "$@"
 else

@@ -1,13 +1,13 @@
 [config]
-warmup_time = 30
-cooldown_time = 30
-rounds_per_epoch = 20
+warmup_time = 300
+cooldown_time = 200
+rounds_per_epoch = 100
 max_round_train_time = 30
-round_witness_time = 1
+round_witness_time = 5
 min_clients = 1
 init_min_clients = 1
 verification_percent = 0
-witness_nodes = 1
+witness_nodes = 0
 global_batch_size_start = 8
 global_batch_size_end = 8
 global_batch_size_warmup_tokens = 0
@@ -20,7 +20,7 @@ max_seq_len = 2048
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
+repo_id = "pefontana/Meta-Llama-3.1-8B"
 
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"

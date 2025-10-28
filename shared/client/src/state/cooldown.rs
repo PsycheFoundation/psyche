@@ -102,7 +102,15 @@ impl CooldownStepMetadata {
         let model_task_runner = self.model_task_runner.clone();
         let doing_checkpoint = checkpoint_info.is_some();
 
-        let checkpointing_and_evals = tokio::task::spawn(
+        let checkpointing_and_evals: tokio::task::JoinHandle<
+            Result<
+                (
+                    RunningEvals,
+                    Option<tokio::task::JoinHandle<Result<(), CheckpointError>>>,
+                ),
+                CheckpointError,
+            >,
+        > = tokio::task::spawn(
             async move {
                 info!("Extracting full model...");
                 let (variables, trainer) =
@@ -132,11 +140,11 @@ impl CooldownStepMetadata {
                 }) = checkpoint_info
                 else {
                     // If there was no HF checkpointing configuration, return immediately
-                    return Ok(evals);
+                    return Ok((evals, None));
                 };
 
                 // Start the upload process of the updated model parameters in a separate task
-                tokio::task::spawn(async move {
+                let upload_handle = tokio::task::spawn(async move {
                     let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
                     info!("Saving to {}", path.display());
                     let mut local = tokio::task::spawn_blocking({
@@ -192,7 +200,7 @@ impl CooldownStepMetadata {
                     Ok(())
                 });
 
-                Ok(evals)
+                Ok((evals, Some(upload_handle)))
             }
             .instrument(info_span!("checkpointing")),
         );
@@ -205,18 +213,34 @@ impl CooldownStepMetadata {
 
 #[derive(Debug)]
 pub struct CooldownStep {
-    checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
+    checkpointing_and_evals: JoinHandle<
+        Result<
+            (
+                RunningEvals,
+                Option<JoinHandle<Result<(), CheckpointError>>>,
+            ),
+            CheckpointError,
+        >,
+    >,
     doing_checkpoint: bool,
 }
 
 impl CooldownStep {
-    pub async fn finish(self) -> Result<RunningEvals, CooldownError> {
-        let running_evals = self
+    pub async fn finish(
+        self,
+    ) -> Result<
+        (
+            RunningEvals,
+            Option<JoinHandle<Result<(), CheckpointError>>>,
+        ),
+        CooldownError,
+    > {
+        let (running_evals, upload_handle) = self
             .checkpointing_and_evals
             .await
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
-        Ok(running_evals)
+        Ok((running_evals, upload_handle))
     }
 
     pub fn doing_checkpoint(&self) -> bool {

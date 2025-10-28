@@ -101,7 +101,11 @@ impl CoordinatorInstanceState {
             _ => None,
         };
 
-        msg!("Pre-tick run state: {}", self.coordinator.run_state);
+        msg!(
+            "Pre-tick run state: {}, pending_pause: {}",
+            self.coordinator.run_state,
+            self.coordinator.pending_pause.is_true()
+        );
 
         let clock: Clock = Clock::get()?;
         match self.coordinator.tick(
@@ -175,8 +179,21 @@ impl CoordinatorInstanceState {
 
     pub fn set_paused(&mut self, paused: bool) -> Result<()> {
         let unix_timestamp = Clock::get()?.unix_timestamp as u64;
+        msg!(
+            "set_paused called: paused={}, state={}",
+            paused,
+            self.coordinator.run_state
+        );
         if let Err(err) = match paused {
-            true => self.coordinator.pause(unix_timestamp),
+            true => {
+                let result = self.coordinator.pause(unix_timestamp);
+                msg!(
+                    "pause() returned: {:?}, pending_pause={}",
+                    result.is_ok(),
+                    self.coordinator.pending_pause.is_true()
+                );
+                result
+            },
             false => {
                 if !self.coordinator.config.check() {
                     return err!(ProgramError::ConfigSanityCheckFailed);
