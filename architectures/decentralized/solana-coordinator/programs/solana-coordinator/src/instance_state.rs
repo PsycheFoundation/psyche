@@ -407,6 +407,17 @@ impl CoordinatorInstanceState {
         self.coordinator
             .checkpoint(id, index as u64, repo)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
-        self.tick()
+
+        // Only tick if not halted (Paused/Uninitialized/Finished)
+        // Checkpoint update itself doesn't require state transitions
+        if !self.coordinator.halted() {
+            self.tick()
+        } else {
+            msg!(
+                "Checkpoint recorded while halted (state: {}), skipping tick",
+                self.coordinator.run_state
+            );
+            Ok(())
+        }
     }
 }
