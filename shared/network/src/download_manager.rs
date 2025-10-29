@@ -7,20 +7,28 @@ use crate::{
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use futures_util::future::select_all;
+use futures_util::{StreamExt, TryFutureExt};
 use iroh::PublicKey;
-use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
 use iroh_blobs::{Hash, api::downloader::DownloadProgressItem};
+use iroh_blobs::{
+    api::{
+        Tag,
+        downloader::{ContentDiscovery, DownloadProgress},
+    },
+    store::mem::MemStore,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap, fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc,
     time::Instant,
 };
 use tokio::{
+    io::AsyncReadExt,
     sync::{Mutex, mpsc, oneshot},
     task::JoinHandle,
 };
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 pub const MAX_DOWNLOAD_RETRIES: usize = 3;
 
@@ -255,39 +263,23 @@ impl DownloadType {
 struct Download {
     blob_ticket: BlobTicket,
     tag: Tag,
-    download: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
     last_offset: u64,
     total_size: u64,
     r#type: DownloadType,
 }
 
+#[derive(Debug)]
 struct ReadingFinishedDownload {
     blob_ticket: BlobTicket,
     tag: Tag,
-    download: oneshot::Receiver<Bytes>,
     r#type: DownloadType,
 }
 
-impl Debug for ReadingFinishedDownload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ReadingFinishedDownload")
-            .field("blob_ticket", &self.blob_ticket)
-            .field("reading", &"...")
-            .finish()
-    }
-}
-
 impl Download {
-    fn new(
-        blob_ticket: BlobTicket,
-        tag: Tag,
-        download: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
-        download_type: DownloadType,
-    ) -> Self {
+    fn new(blob_ticket: BlobTicket, tag: Tag, download_type: DownloadType) -> Self {
         Self {
             blob_ticket,
             tag,
-            download,
             last_offset: 0,
             total_size: 0,
             r#type: download_type,
@@ -346,98 +338,79 @@ impl<D: Networkable> Debug for DownloadManagerEvent<D> {
     }
 }
 
-enum FutureResult {
-    Download(usize, Result<DownloadProgressItem>),
-    Read(usize, Result<Bytes>),
-}
-
+#[derive(Debug)]
 pub struct DownloadManager<D: Networkable> {
-    downloads: Arc<Mutex<Vec<Download>>>,
-    reading: Arc<Mutex<Vec<ReadingFinishedDownload>>>,
     _download_type: PhantomData<D>,
-    task_handle: Option<JoinHandle<()>>,
     event_receiver: mpsc::UnboundedReceiver<DownloadManagerEvent<D>>,
+    event_sender: mpsc::UnboundedSender<DownloadManagerEvent<D>>,
+    blobs_store: MemStore,
 }
 
-impl<D: Networkable> Debug for DownloadManager<D> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DownloadManager")
-            .field("downloads", &self.downloads)
-            .field("reading", &self.reading)
-            .finish()
-    }
-}
+// impl<D: Networkable> Debug for DownloadManager<D> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.debug_struct("DownloadManager").finish()
+//     }
+// }
 
 impl<D: Networkable + Send + 'static> DownloadManager<D> {
-    pub fn new() -> Result<Self> {
+    pub fn new(blobs_store: MemStore) -> Result<Self> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-
-        let downloads = Arc::new(Mutex::new(Vec::new()));
-        let reading = Arc::new(Mutex::new(Vec::new()));
-        let mut manager = Self {
-            downloads: downloads.clone(),
-            reading: reading.clone(),
+        Ok(Self {
             _download_type: PhantomData,
-            task_handle: None,
             event_receiver,
-        };
+            event_sender: event_sender.clone(),
+            blobs_store,
+        })
+    }
 
-        let task_handle = tokio::spawn(async move {
-            loop {
-                if downloads.lock().await.is_empty() && reading.lock().await.is_empty() {
-                    // channel is closed.
-                    info!("Download manager channel closed - shutting down.");
-                    return;
-                }
-
-                if let Some(event) =
-                    Self::poll_next_inner(&mut *downloads.lock().await, &mut *reading.lock().await)
-                        .await
-                {
-                    if event_sender.send(event).is_err() {
-                        warn!("Event sender in download manager closed.");
-                        break;
+    pub fn start_download(
+        &mut self,
+        progress: DownloadProgress,
+        blob_ticket: BlobTicket,
+        tag: Tag,
+        download_type: DownloadType,
+    ) {
+        let mut download = Download::new(blob_ticket.clone(), tag.clone(), download_type);
+        let event_sender = self.event_sender.clone();
+        let blobs_store_clone = self.blobs_store.clone();
+        let blob_hash = blob_ticket.hash();
+        tokio::spawn(async move {
+            blobs_store_clone.tags().set(tag.clone(), blob_hash).await;
+            info!(
+                "Starting download for blob: {}",
+                download.blob_ticket.hash()
+            );
+            let progress = progress.stream().await;
+            match progress {
+                Ok(mut progress) => {
+                    while let Some(val) = progress.next().await {
+                        let event = Self::handle_download_progress(val, &mut download);
+                        event_sender.send(event.unwrap());
                     }
                 }
+                Err(e) => panic!("Failed to start download: {e}"),
             }
         });
-
-        manager.task_handle = Some(task_handle);
-
-        Ok(manager)
     }
 
-    pub fn add(
-        &mut self,
-        blob_ticket: BlobTicket,
-        tag: Tag,
-        progress: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
-        download_type: DownloadType,
-    ) {
-        let downloads = self.downloads.clone();
+    pub fn read(&mut self, blob_ticket: BlobTicket, tag: Tag, download_type: DownloadType) {
+        let event_sender = self.event_sender.clone();
+        let mut buf = Vec::new();
+        let blobs = self.blobs_store.blobs().clone();
         tokio::spawn(async move {
-            downloads
-                .lock()
-                .await
-                .push(Download::new(blob_ticket, tag, progress, download_type));
-        });
-    }
-
-    pub fn read(
-        &mut self,
-        blob_ticket: BlobTicket,
-        tag: Tag,
-        download: oneshot::Receiver<Bytes>,
-        download_type: DownloadType,
-    ) {
-        let reading = self.reading.clone();
-        tokio::spawn(async move {
-            reading.lock().await.push(ReadingFinishedDownload {
-                blob_ticket,
-                tag,
-                download,
-                r#type: download_type,
-            });
+            let result = blobs.reader(blob_ticket.hash()).read_to_end(&mut buf).await;
+            debug!(name: "blob_download_finish", hash = %blob_ticket.hash().fmt_short(), "downloaded blob {:?}, {} bytes", blob_ticket.hash().fmt_short(), buf.len());
+            let result_event = Self::handle_read_result(
+                ReadingFinishedDownload {
+                    blob_ticket,
+                    tag,
+                    r#type: download_type,
+                },
+                Bytes::from(buf),
+            );
+            if let Some(event) = result_event {
+                let _ = event_sender.send(event);
+            }
         });
     }
 
@@ -445,185 +418,106 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         self.event_receiver.recv().await
     }
 
-    async fn poll_next_inner(
-        downloads: &mut Vec<Download>,
-        reading: &mut Vec<ReadingFinishedDownload>,
-    ) -> Option<DownloadManagerEvent<D>> {
-        if downloads.is_empty() && reading.is_empty() {
-            return None;
-        }
-
-        let download_futures = downloads.iter_mut().enumerate().map(|(i, download)| {
-            Box::pin(async move {
-                FutureResult::Download(
-                    i,
-                    download.download.recv().await.unwrap_or_else(|| {
-                        Err(anyhow!(
-                            "download channel closed when trying to download blob with hash {}.",
-                            download.blob_ticket.hash()
-                        ))
-                    }),
-                )
-            }) as Pin<Box<dyn Future<Output = FutureResult> + Send>>
-        });
-
-        let read_futures = reading.iter_mut().enumerate().map(|(i, read)| {
-            Box::pin(async move {
-                FutureResult::Read(i, (&mut read.download).await.map_err(|e| e.into()))
-            }) as Pin<Box<dyn Future<Output = FutureResult> + Send>>
-        });
-
-        let all_futures: Vec<Pin<Box<dyn Future<Output = FutureResult> + Send>>> =
-            download_futures.chain(read_futures).collect();
-
-        let result = select_all(all_futures).await.0;
-
-        match result {
-            FutureResult::Download(index, result) => {
-                Self::handle_download_progress(downloads, result, index)
-            }
-            FutureResult::Read(index, result) => {
-                let downloader: ReadingFinishedDownload = reading.swap_remove(index);
-                tokio::task::spawn_blocking(move || Self::handle_read_result(downloader, result))
-                    .await
-                    .unwrap()
-            }
-        }
-    }
-
     fn handle_download_progress(
-        downloads: &mut Vec<Download>,
-        result: Result<DownloadProgressItem>,
-        index: usize,
+        result: DownloadProgressItem,
+        download: &mut Download,
     ) -> Option<DownloadManagerEvent<D>> {
-        let download = &mut downloads[index];
-        let tag = download.tag.clone();
         let event = match result {
-            Ok(progress) => match progress {
-                DownloadProgressItem::TryProvider {
-                    id: _id,
-                    request: _request,
-                } => Some(DownloadManagerEvent::Update(DownloadUpdate {
+            DownloadProgressItem::TryProvider {
+                id: _id,
+                request: _request,
+            } => Some(DownloadManagerEvent::Update(DownloadUpdate {
+                blob_ticket: download.blob_ticket.clone(),
+                tag: download.tag.clone(),
+                downloaded_size_delta: 0,
+                downloaded_size: 0,
+                total_size: 0,
+                all_done: false,
+                download_type: download.r#type.clone(),
+            })),
+            DownloadProgressItem::Progress(bytes_amount) => {
+                Some(DownloadManagerEvent::Update(DownloadUpdate {
                     blob_ticket: download.blob_ticket.clone(),
-                    tag,
-                    downloaded_size_delta: 0,
-                    downloaded_size: 0,
-                    total_size: 0,
-                    all_done: false,
-                    download_type: download.r#type.clone(),
-                })),
-                DownloadProgressItem::Progress(bytes_amount) => {
-                    Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
-                        tag,
-                        downloaded_size_delta: bytes_amount.saturating_sub(download.last_offset),
-                        downloaded_size: bytes_amount,
-                        total_size: download.total_size,
-                        all_done: false,
-                        download_type: download.r#type.clone(),
-                    }))
-                }
-                // We're using the Blob format so there's only one part for each blob
-                DownloadProgressItem::PartComplete { request: _request } => {
-                    Some(DownloadManagerEvent::Update(DownloadUpdate {
-                        blob_ticket: download.blob_ticket.clone(),
-                        tag,
-                        downloaded_size_delta: 0,
-                        downloaded_size: download.last_offset,
-                        total_size: download.total_size,
-                        all_done: true,
-                        download_type: download.r#type.clone(),
-                    }))
-                }
-                DownloadProgressItem::DownloadError => {
-                    Some(DownloadManagerEvent::Failed(DownloadFailed {
-                        blob_ticket: download.blob_ticket.clone(),
-                        error: anyhow!("Download error"),
-                        tag,
-                        download_type: download.r#type.clone(),
-                    }))
-                }
-                DownloadProgressItem::Error(e) => {
-                    Some(DownloadManagerEvent::Failed(DownloadFailed {
-                        blob_ticket: download.blob_ticket.clone(),
-                        error: e,
-                        tag,
-                        download_type: download.r#type.clone(),
-                    }))
-                }
-                DownloadProgressItem::ProviderFailed {
-                    id: _id,
-                    request: _request,
-                } => Some(DownloadManagerEvent::Update(DownloadUpdate {
-                    blob_ticket: download.blob_ticket.clone(),
-                    tag,
-                    downloaded_size_delta: 0,
-                    downloaded_size: download.last_offset,
+                    tag: download.tag.clone(),
+                    downloaded_size_delta: bytes_amount.saturating_sub(download.last_offset),
+                    downloaded_size: bytes_amount,
                     total_size: download.total_size,
                     all_done: false,
                     download_type: download.r#type.clone(),
-                })),
-            },
-            Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
+                }))
+            }
+            // We're using the Blob format so there's only one part for each blob
+            DownloadProgressItem::PartComplete { request: _request } => {
+                download.last_offset = download.last_offset;
+                Some(DownloadManagerEvent::Update(DownloadUpdate {
+                    blob_ticket: download.blob_ticket.clone(),
+                    tag: download.tag.clone(),
+                    downloaded_size_delta: 0,
+                    downloaded_size: download.last_offset,
+                    total_size: download.total_size,
+                    all_done: true,
+                    download_type: download.r#type.clone(),
+                }))
+            }
+            DownloadProgressItem::DownloadError => {
+                warn!(
+                    "Download error, removing it. idx, hash {}, node provider {}: {}",
+                    download.blob_ticket.hash(),
+                    download.blob_ticket.node_addr().node_id,
+                    "Download error"
+                );
+                Some(DownloadManagerEvent::Failed(DownloadFailed {
+                    blob_ticket: download.blob_ticket.clone(),
+                    error: anyhow!("Download error"),
+                    tag: download.tag.clone(),
+                    download_type: download.r#type.clone(),
+                }))
+            }
+            DownloadProgressItem::Error(e) => {
+                warn!(
+                    "Download error, removing it. idx, hash {}, node provider {}: {}",
+                    download.blob_ticket.hash(),
+                    download.blob_ticket.node_addr().node_id,
+                    e
+                );
+                Some(DownloadManagerEvent::Failed(DownloadFailed {
+                    blob_ticket: download.blob_ticket.clone(),
+                    error: e,
+                    tag: download.tag.clone(),
+                    download_type: download.r#type.clone(),
+                }))
+            }
+            DownloadProgressItem::ProviderFailed {
+                id: _id,
+                request: _request,
+            } => Some(DownloadManagerEvent::Update(DownloadUpdate {
                 blob_ticket: download.blob_ticket.clone(),
-                error: err,
-                tag,
+                tag: download.tag.clone(),
+                downloaded_size_delta: 0,
+                downloaded_size: download.last_offset,
+                total_size: download.total_size,
+                all_done: false,
                 download_type: download.r#type.clone(),
             })),
         };
-        match &event {
-            Some(DownloadManagerEvent::Update(DownloadUpdate {
-                all_done,
-                downloaded_size,
-                ..
-            })) if *all_done => {
-                download.last_offset = *downloaded_size;
-                let removed = downloads.swap_remove(index);
-                trace!(
-                    "Since download is complete, removing it: idx {index}, hash {}",
-                    removed.blob_ticket.hash()
-                );
-            }
-            Some(DownloadManagerEvent::Failed(DownloadFailed {
-                blob_ticket, error, ..
-            })) => {
-                downloads.swap_remove(index);
-                warn!(
-                    "Download error, removing it. idx {index}, hash {}, node provider {}: {}",
-                    blob_ticket.hash(),
-                    blob_ticket.node_addr().node_id,
-                    error
-                );
-            }
-            _ => {
-                // download update is normal, doesn't cause removal.
-            }
-        }
+
         event
     }
 
     fn handle_read_result(
         downloader: ReadingFinishedDownload,
-        result: Result<Bytes>,
+        result: Bytes,
     ) -> Option<DownloadManagerEvent<D>> {
-        match result {
-            Ok(bytes) => match postcard::from_bytes(&bytes) {
-                Ok(decoded) => Some(DownloadManagerEvent::Complete(DownloadComplete {
-                    data: decoded,
-                    from: downloader.blob_ticket.node_addr().node_id,
-                    hash: downloader.blob_ticket.hash(),
-                })),
-                Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
-                    blob_ticket: downloader.blob_ticket,
-                    tag: downloader.tag,
-                    error: err.into(),
-                    download_type: downloader.r#type.clone(),
-                })),
-            },
-            Err(e) => Some(DownloadManagerEvent::Failed(DownloadFailed {
+        match postcard::from_bytes(&result) {
+            Ok(decoded) => Some(DownloadManagerEvent::Complete(DownloadComplete {
+                data: decoded,
+                from: downloader.blob_ticket.node_addr().node_id,
+                hash: downloader.blob_ticket.hash(),
+            })),
+            Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket: downloader.blob_ticket,
                 tag: downloader.tag,
-                error: e,
+                error: err.into(),
                 download_type: downloader.r#type.clone(),
             })),
         }

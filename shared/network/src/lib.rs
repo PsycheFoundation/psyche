@@ -311,7 +311,7 @@ where
         let update_stats_interval = interval(Duration::from_secs(1));
 
         Ok(Self {
-            blobs_store: store,
+            blobs_store: store.clone(),
             downloader,
             gossip_rx,
             gossip_tx,
@@ -323,7 +323,7 @@ where
 
             update_stats_interval,
             state: State::new(15),
-            download_manager: DownloadManager::new()?,
+            download_manager: DownloadManager::new(store)?,
             _broadcast_message: Default::default(),
             _download: Default::default(),
             endpoint,
@@ -390,10 +390,6 @@ where
                 vec![]
             }
         };
-        let (tx, rx) = mpsc::unbounded_channel();
-        // We share the tag with the download manager to keep track of the download progress on this blob but we actually set the tag here
-        self.download_manager
-            .add(ticket, tag.clone(), rx, download_type.clone());
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let latency_sorted = LatencySorted::new(
@@ -402,22 +398,12 @@ where
                 .collect(),
             self.endpoint.clone(),
         );
-        let download = self.downloader.download(ticket_hash, latency_sorted);
+        let progress = self.downloader.download(ticket_hash, latency_sorted);
         let blob_store_clone = self.blobs_store.clone();
+        self.download_manager
+            .start_download(progress, ticket, tag.clone(), download_type);
         tokio::spawn(async move {
             let _ = blob_store_clone.tags().set(tag, ticket_hash).await;
-            let progress = download.stream().await;
-
-            match progress {
-                Ok(mut progress) => {
-                    while let Some(val) = progress.next().await {
-                        if let Err(err) = tx.send(Ok(val)) {
-                            panic!("Failed to send download progress: {err:?} {:?}", err.0);
-                        }
-                    }
-                }
-                Err(e) => panic!("Failed to start download: {e}"),
-            }
         });
     }
 
@@ -544,34 +530,34 @@ where
         );
 
         let hash = update.blob_ticket.hash();
-
         if update.all_done {
             self.state.download_progesses.remove(&hash);
 
-            let blobs = self.blobs_store.blobs().clone();
-            let (send, recv) = oneshot::channel();
-            trace!(name: "blob_download_read_start", hash = %hash.fmt_short());
-            tokio::spawn(async move {
-                let mut buf = Vec::new();
-                if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
-                    error!("Failed to read bytes: {err:#}");
-                    return;
-                }
-                let size = buf.len();
-                let res = send.send(Bytes::from(buf));
-                debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
-                if res.is_err() {
-                    error!("Failed to send read bytes result.");
-                }
-            });
+            // let blobs = self.blobs_store.blobs().clone();
+            // let (send, recv) = oneshot::channel();
+            // trace!(name: "blob_download_read_start", hash = %hash.fmt_short());
+            // tokio::spawn(async move {
+            //     let mut buf = Vec::new();
+            //     if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
+            //         error!("Failed to read bytes: {err:#}");
+            //         return;
+            //     }
+            //     let size = buf.len();
+            //     let res = send.send(Bytes::from(buf));
+            //     debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
+            //     if res.is_err() {
+            //         error!("Failed to send read bytes result.");
+            //     }
+            // });
 
             self.download_manager
-                .read(update.blob_ticket, update.tag, recv, update.download_type);
+                .read(update.blob_ticket, update.tag, update.download_type);
         } else {
             self.state.download_progesses.insert(hash, update);
         }
         None
     }
+
     pub fn router(&self) -> Arc<Router> {
         self.router.clone()
     }
