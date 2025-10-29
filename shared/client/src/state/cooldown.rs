@@ -181,7 +181,11 @@ impl CooldownStepMetadata {
                     .await
                     {
                         Ok(revision) => {
-                            info!(repo = hub_repo, "Upload to HuggingFace complete");
+                            info!(
+                                repo = hub_repo,
+                                revision = revision,
+                                "Upload to HuggingFace complete"
+                            );
                             revision
                         }
                         Err(err) => {

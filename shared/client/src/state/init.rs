@@ -310,6 +310,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 let repo_id: String = (&hub_repo.repo_id).into();
                                 let potential_local_path = PathBuf::from(repo_id.clone());
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
+                                info!(
+                                    repo_id = repo_id,
+                                    potential_local_path = %potential_local_path.display(),
+                                    revision = revision,
+                                    "model::Checkpoint::Hub"
+                                );
 
                                 let model_is_local = if revision.is_none()
                                     && tokio::fs::try_exists(potential_local_path.clone())
@@ -324,7 +330,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     }
                                     ret
                                 } else {
-                                    info!("Downloading {} (if needed)", hub_repo.repo_id);
+                                    info!(
+                                        "Downloading {}, revision: {:?} (if needed)",
+                                        hub_repo.repo_id, revision
+                                    );
                                     download_model_repo_async(
                                         &repo_id,
                                         revision,
@@ -335,6 +344,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     )
                                     .await?
                                 };
+                                info!("model_is_local: {:?}", model_is_local);
                                 let repo_files = model_is_local;
                                 let checkpoint_extra_files = repo_files
                                     .iter()

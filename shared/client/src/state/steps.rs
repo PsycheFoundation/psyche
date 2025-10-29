@@ -1098,8 +1098,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
                 let in_cooldown = matches!(&step_state_machine.active_step,
                     ActiveStep::Cooldown(cooldown_step) if cooldown_step.doing_checkpoint());
 
-                // Or if there are pending upload handles
-                let has_pending_uploads = !step_state_machine.pending_upload_handles.is_empty();
+                // Or if there are pending upload handles that are still running
+                let has_pending_uploads = step_state_machine
+                    .pending_upload_handles
+                    .iter()
+                    .any(|handle| !handle.is_finished());
 
                 in_cooldown || has_pending_uploads
             }
