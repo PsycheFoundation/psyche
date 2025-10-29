@@ -15,6 +15,8 @@ serde_json.workspace = true
 futures-util.workspace = true
 thiserror.workspace = true
 psyche-client.workspace = true
+anyhow.workspace = true
+tar = "0.4"
 
 [dev-dependencies]
 test-log.workspace = true

@@ -10,6 +10,7 @@ pub enum IntegrationTestLogMarker {
     SolanaSubscription,
     WitnessElected,
     Error,
+    CheckpointType,
 }
 
 impl std::fmt::Display for IntegrationTestLogMarker {
@@ -26,6 +27,7 @@ impl std::fmt::Display for IntegrationTestLogMarker {
                 Self::SolanaSubscription => "solana_subscription",
                 Self::WitnessElected => "witness_elected",
                 Self::Error => "error",
+                Self::CheckpointType => "checkpoint_type",
             }
         )
     }
@@ -44,6 +46,7 @@ impl FromStr for IntegrationTestLogMarker {
             "solana_subscription" => Self::SolanaSubscription,
             "witness_elected" => Self::WitnessElected,
             "error" => Self::Error,
+            "checkpoint_type" => Self::CheckpointType,
             _ => return Err(()),
         })
     }

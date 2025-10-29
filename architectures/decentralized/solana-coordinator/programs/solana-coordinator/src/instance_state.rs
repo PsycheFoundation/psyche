@@ -96,12 +96,37 @@ impl CoordinatorInstanceState {
                     "Pending active clients ids: {}",
                     active_clients_ids.len()
                 );
+                msg!(
+                    "Previous epoch clients count: {}",
+                    self.coordinator.epoch_state.clients.len()
+                );
+
+                // Log pending client IDs for debugging
+                if active_clients_ids.len() > 0 {
+                    msg!("Pending client IDs:");
+                    for client in self.clients_state.clients.iter() {
+                        if client.active == self.clients_state.next_active {
+                            msg!("  {:?}", client.id);
+                        }
+                    }
+                }
+
                 Some(active_clients_ids)
             },
             _ => None,
         };
 
         msg!("Pre-tick run state: {}", self.coordinator.run_state);
+
+        // Log previous client IDs for debugging P2P safety check
+        if self.coordinator.run_state == RunState::WaitingForMembers {
+            if self.coordinator.epoch_state.clients.len() > 0 {
+                msg!("Previous epoch client IDs:");
+                for client in self.coordinator.epoch_state.clients.iter() {
+                    msg!("  {:?}", client.id);
+                }
+            }
+        }
 
         let clock: Clock = Clock::get()?;
         match self.coordinator.tick(
@@ -170,6 +195,22 @@ impl CoordinatorInstanceState {
         };
 
         msg!("Post-tick run state: {}", self.coordinator.run_state);
+
+        // Log checkpoint type for debugging pause/resume scenarios
+        match &self.coordinator.model {
+            Model::LLM(llm) => {
+                let checkpoint_str = match &llm.checkpoint {
+                    psyche_coordinator::model::Checkpoint::Hub(_) => "Hub",
+                    psyche_coordinator::model::Checkpoint::P2P(_) => "P2P",
+                    psyche_coordinator::model::Checkpoint::Ephemeral => {
+                        "Ephemeral"
+                    },
+                    psyche_coordinator::model::Checkpoint::Dummy(_) => "Dummy",
+                };
+                msg!("Checkpoint type: {}", checkpoint_str);
+            },
+        }
+
         Ok(())
     }
 
