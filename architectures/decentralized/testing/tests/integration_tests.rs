@@ -422,7 +422,7 @@ async fn disconnect_client() {
                 );
 
                 if step == 20 {
-                    println!("NUMBER OF EPOCHS REACHED");
+                    println!("Max number of epochs reached for test");
                     break;
                 }
 
@@ -457,7 +457,11 @@ async fn disconnect_client() {
                     && new_state == RunState::Cooldown.to_string()
                 {
                     let epoch_clients = solana_client.get_current_epoch_clients().await;
-                    assert_eq!(epoch_clients.len(), 2, "Client 2 should have been kicked");
+                    assert_eq!(
+                        epoch_clients.len(),
+                        2,
+                        "The remaining number of clients is incorrect"
+                    );
                     break;
                 }
             }
