@@ -323,7 +323,7 @@ where
 
             update_stats_interval,
             state: State::new(15),
-            download_manager: DownloadManager::new(store)?,
+            download_manager: DownloadManager::new()?,
             _broadcast_message: Default::default(),
             _download: Default::default(),
             endpoint,
@@ -533,25 +533,25 @@ where
         if update.all_done {
             self.state.download_progesses.remove(&hash);
 
-            // let blobs = self.blobs_store.blobs().clone();
-            // let (send, recv) = oneshot::channel();
-            // trace!(name: "blob_download_read_start", hash = %hash.fmt_short());
-            // tokio::spawn(async move {
-            //     let mut buf = Vec::new();
-            //     if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
-            //         error!("Failed to read bytes: {err:#}");
-            //         return;
-            //     }
-            //     let size = buf.len();
-            //     let res = send.send(Bytes::from(buf));
-            //     debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
-            //     if res.is_err() {
-            //         error!("Failed to send read bytes result.");
-            //     }
-            // });
+            let blobs = self.blobs_store.blobs().clone();
+            let (send, recv) = oneshot::channel();
+            trace!(name: "blob_download_read_start", hash = %hash.fmt_short());
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
+                    error!("Failed to read bytes: {err:#}");
+                    return;
+                }
+                let size = buf.len();
+                let res = send.send(Bytes::from(buf));
+                debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
+                if res.is_err() {
+                    error!("Failed to send read bytes result.");
+                }
+            });
 
             self.download_manager
-                .read(update.blob_ticket, update.tag, update.download_type);
+                .read(update.blob_ticket, recv, update.tag, update.download_type);
         } else {
             self.state.download_progesses.insert(hash, update);
         }
