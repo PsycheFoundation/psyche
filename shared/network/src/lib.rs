@@ -259,7 +259,7 @@ where
         trace!("creating blobs store...");
         let store = MemStore::new_with_opts(MemStoreOptions {
             gc_config: Some(GcConfig {
-                interval: Duration::from_secs(10),
+                interval: Duration::from_millis(500),
                 add_protected: None,
             }),
         });
@@ -396,6 +396,7 @@ where
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let latency_sorted = LatencySorted::new(
+            // vec![provider_node_id.node_id],
             std::iter::once(provider_node_id.node_id)
                 .chain(additional_peers_to_try.iter().cloned())
                 .collect(),
@@ -448,30 +449,34 @@ where
         let store = self.blobs_store.as_ref().clone();
         let model_tags_deleted = store.tags().delete_prefix("model-").await?;
 
-        tokio::spawn(async move {
-            let mut tags = store.tags().list().await.unwrap();
-            let mut to_delete = Vec::new();
-            let mut distro_results_deleted = 0;
+        let mut tags = store.tags().list().await?;
+        let mut to_delete = Vec::new();
+        let mut distro_results_deleted = 0;
 
-            while let Some(tag) = tags.next().await {
-                if let Ok(tag) = tag {
-                    let tag: u32 = tag.name.to_string().parse().unwrap();
-                    if tag < target_tag {
-                        to_delete.push(tag);
-                        distro_results_deleted += 1;
-                    }
+        while let Some(tag) = tags.next().await {
+            error!("OK(TAG): {tag:?}");
+            if let Ok(tag) = tag {
+                error!("TAG NAME: {:?}", tag.name);
+                error!("TAG NAME STRING: {:?}", tag.name.to_string());
+                let tag: u32 = String::from_utf8(tag.name.0.to_vec())?.parse()?;
+                error!("AHORA SI: {tag}");
+                // let tag: u32 = tag.name.to_string().parse()?;
+                if tag < target_tag {
+                    to_delete.push(tag);
+                    // let _ = store.tags().delete(tag.to_string()).await;
+                    distro_results_deleted += 1;
                 }
             }
+        }
 
-            for tag in to_delete {
-                let _ = store.tags().delete(tag.to_string()).await;
-            }
+        for tag in to_delete {
+            let _ = store.tags().delete(tag.to_string()).await;
+        }
 
-            debug!(
-                "Untagged {} blobs",
-                model_tags_deleted + distro_results_deleted
-            );
-        });
+        debug!(
+            "Untagged {} blobs",
+            model_tags_deleted + distro_results_deleted
+        );
 
         Ok(())
     }

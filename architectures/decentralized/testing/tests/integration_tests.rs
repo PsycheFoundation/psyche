@@ -420,14 +420,13 @@ async fn disconnect_client() {
                 println!(
                     "epoch: {epoch} step: {step} state change client {client_id} - {old_state}=>{new_state}"
                 );
-                let epoch_clients = solana_client.get_current_epoch_clients().await;
-
                 if step == 40 {
                     println!("NUMBER OF EPOCHS REACHED");
                     break;
                 }
 
                 if old_state == RunState::WaitingForMembers.to_string() {
+                    let epoch_clients = solana_client.get_current_epoch_clients().await;
                     println!(
                         "Starting epoch: {} with {} clients",
                         epoch,
@@ -436,11 +435,8 @@ async fn disconnect_client() {
                 }
 
                 // kill client during step 2 in the RoundWitness state
-                if epoch == 1
-                    && step == 35
-                    && old_state == RunState::RoundTrain.to_string()
-                    && !killed_client
-                {
+                if step == 10 && old_state == RunState::RoundTrain.to_string() && !killed_client {
+                    let epoch_clients = solana_client.get_current_epoch_clients().await;
                     assert_eq!(epoch_clients.len(), 3);
                     // Kill any client, since all are witnesses
                     watcher
@@ -455,6 +451,7 @@ async fn disconnect_client() {
                     && !seen_health_checks.is_empty()
                     && new_state == RunState::Cooldown.to_string()
                 {
+                    let epoch_clients = solana_client.get_current_epoch_clients().await;
                     assert_eq!(epoch_clients.len(), 2, "Client 2 should have been kicked");
                     break;
                 }
