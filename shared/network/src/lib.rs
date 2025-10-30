@@ -484,9 +484,16 @@ where
                 );
                 continue;
             };
+
             if distro_result_step < target_distro_result_step {
-                let _ = store.tags().delete(tag_name).await;
-                distro_results_deleted += 1;
+                let tag_delete_res = store.tags().delete(&tag_name).await;
+                if tag_delete_res.is_ok() {
+                    distro_results_deleted += 1;
+                } else {
+                    warn!(
+                        "There was an error while trying to delete tag {tag_name}: {tag_delete_res:?}"
+                    );
+                }
             }
         }
 
