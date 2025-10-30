@@ -4,16 +4,9 @@ use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
+use iroh_blobs::BlobsProtocol;
 use iroh_blobs::api::Tag;
 use iroh_blobs::api::tags::DeleteOptions;
-use iroh_blobs::{
-    BlobsProtocol,
-    api::downloader::Downloader,
-    store::{
-        fs::options::GcConfig,
-        mem::{MemStore, Options as MemStoreOptions},
-    },
-};
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
     net::Gossip,
@@ -35,7 +28,6 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::AsyncReadExt,
     select,
     sync::{mpsc::UnboundedReceiver, oneshot},
     task::JoinError,
@@ -139,8 +131,6 @@ where
     Download: Networkable,
 {
     router: Arc<Router>,
-    blobs_store: MemStore,
-    downloader: Downloader,
     state: State,
     gossip_tx: GossipSender,
     gossip_rx: GossipReceiver,
@@ -162,7 +152,6 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NetworkConnection")
             .field("router", &self.router)
-            .field("blobs_store", &self.blobs_store)
             .field("gossip_tx", &self.gossip_tx)
             .field("gossip_rx", &self.gossip_rx)
             .field("state", &self.state)
@@ -257,16 +246,6 @@ where
 
         info!("Our node id: {}", node_addr.node_id);
 
-        trace!("creating blobs store...");
-        let store = MemStore::new_with_opts(MemStoreOptions {
-            gc_config: Some(GcConfig {
-                interval: Duration::from_secs(10),
-                add_protected: None,
-            }),
-        });
-        let downloader = Downloader::new(&store, &endpoint);
-        trace!("blobs store created!");
-
         trace!("creating gossip...");
         let gossip = Gossip::builder()
             .max_message_size(4096)
@@ -285,6 +264,8 @@ where
             .spawn(endpoint.clone());
         trace!("gossip created!");
 
+        let download_manager = DownloadManager::new(&endpoint)?;
+
         trace!("creating model parameter sharing...");
         let (tx_model_parameter_req, rx_model_parameter_req) = mpsc::unbounded_channel();
         let (tx_model_config_req, rx_model_config_req) = mpsc::unbounded_channel();
@@ -293,7 +274,7 @@ where
         trace!("model parameter sharing created!");
 
         trace!("creating router...");
-        let blobs_protocol = BlobsProtocol::new(&store.clone(), None);
+        let blobs_protocol = BlobsProtocol::new(&download_manager.blobs_store.clone(), None);
         let router = spawn_router_with_allowlist(
             allowlist.clone(),
             endpoint.clone(),
@@ -311,8 +292,6 @@ where
         let update_stats_interval = interval(Duration::from_secs(1));
 
         Ok(Self {
-            blobs_store: store.clone(),
-            downloader,
             gossip_rx,
             gossip_tx,
             rx_model_parameter_req,
@@ -323,7 +302,7 @@ where
 
             update_stats_interval,
             state: State::new(15),
-            download_manager: DownloadManager::new()?,
+            download_manager,
             _broadcast_message: Default::default(),
             _download: Default::default(),
             endpoint,
@@ -398,22 +377,20 @@ where
                 .collect(),
             self.endpoint.clone(),
         );
-        let progress = self.downloader.download(ticket_hash, latency_sorted);
-        let blob_store_clone = self.blobs_store.clone();
+        // let progress = self.downloader.download(ticket_hash, latency_sorted);
+        // let blob_store_clone = self.blobs_store.clone();
         self.download_manager
-            .start_download(progress, ticket, tag.clone(), download_type);
-        tokio::spawn(async move {
-            let _ = blob_store_clone.tags().set(tag, ticket_hash).await;
-        });
+            .start_download(latency_sorted, ticket, tag.clone(), download_type);
+        // tokio::spawn(async move {
+        //     let _ = blob_store_clone.tags().set(tag, ticket_hash).await;
+        // });
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: Tag) -> Result<BlobTicket> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
-            .blobs_store
-            .blobs()
-            .add_bytes(blob_data.clone())
-            .with_named_tag(tag)
+            .download_manager
+            .upload_blob(blob_data.clone(), tag)
             .await?;
         let addr = self.router.endpoint().node_addr();
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
@@ -436,7 +413,7 @@ where
             from: None,
             to: Some(target_tag.to_string().into()),
         };
-        let store = self.blobs_store.as_ref().clone();
+        let store = self.download_manager.blobs_store.as_ref().clone();
         let model_tags_deleted = store.tags().delete_prefix("model-").await?;
         let distro_results_deleted = store.tags().delete_with_opts(delete_opts).await?;
         debug!(
@@ -500,7 +477,7 @@ where
                         Ok(self.on_download_update(update))
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
-                        self.state.download_progesses.remove(&result.blob_ticket.hash());
+                        self.state.download_progresses.remove(&result.blob_ticket.hash());
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),
@@ -531,29 +508,29 @@ where
 
         let hash = update.blob_ticket.hash();
         if update.all_done {
-            self.state.download_progesses.remove(&hash);
+            self.state.download_progresses.remove(&hash);
 
-            let blobs = self.blobs_store.blobs().clone();
-            let (send, recv) = oneshot::channel();
-            trace!(name: "blob_download_read_start", hash = %hash.fmt_short());
-            tokio::spawn(async move {
-                let mut buf = Vec::new();
-                if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
-                    error!("Failed to read bytes: {err:#}");
-                    return;
-                }
-                let size = buf.len();
-                let res = send.send(Bytes::from(buf));
-                debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
-                if res.is_err() {
-                    error!("Failed to send read bytes result.");
-                }
-            });
+            // let blobs = self.blobs_store.blobs().clone();
+            // let (send, recv) = oneshot::channel();
+            // trace!(name: "blob_download_read_start", hash = %hash.fmt_short());
+            // tokio::spawn(async move {
+            //     let mut buf = Vec::new();
+            //     if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
+            //         error!("Failed to read bytes: {err:#}");
+            //         return;
+            //     }
+            //     let size = buf.len();
+            //     let res = send.send(Bytes::from(buf));
+            //     debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
+            //     if res.is_err() {
+            //         error!("Failed to send read bytes result.");
+            //     }
+            // });
 
             self.download_manager
-                .read(update.blob_ticket, recv, update.tag, update.download_type);
+                .read(update.blob_ticket, update.tag, update.download_type);
         } else {
-            self.state.download_progesses.insert(hash, update);
+            self.state.download_progresses.insert(hash, update);
         }
         None
     }

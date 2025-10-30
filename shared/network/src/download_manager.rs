@@ -5,15 +5,23 @@ use crate::{
 };
 
 use anyhow::{Result, anyhow};
-use bytes::Bytes;
 use futures_util::StreamExt;
-use iroh::PublicKey;
-use iroh_blobs::api::{Tag, downloader::DownloadProgress};
+use iroh::{Endpoint, PublicKey};
+use iroh_blobs::api::downloader::Downloader;
+use iroh_blobs::store::fs::options::GcConfig;
+use iroh_blobs::store::mem::{MemStore, Options as MemStoreOptions};
 use iroh_blobs::ticket::BlobTicket;
 use iroh_blobs::{Hash, api::downloader::DownloadProgressItem};
+use iroh_blobs::{
+    HashAndFormat,
+    api::{Tag, downloader::ContentDiscovery},
+};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, marker::PhantomData, time::Instant};
+use std::time::Duration;
+use std::{collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc, time::Instant};
+use tokio::io::AsyncReadExt;
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, error, trace};
 use tracing::{info, warn};
 
 pub const MAX_DOWNLOAD_RETRIES: usize = 3;
@@ -322,25 +330,39 @@ pub struct DownloadManager<D: Networkable> {
     _download_type: PhantomData<D>,
     event_receiver: mpsc::UnboundedReceiver<DownloadManagerEvent<D>>,
     event_sender: mpsc::UnboundedSender<DownloadManagerEvent<D>>,
+    pub blobs_store: Arc<MemStore>,
+    iroh_downloader: Downloader,
 }
 
 impl<D: Networkable + Send + 'static> DownloadManager<D> {
-    pub fn new() -> Result<Self> {
+    pub fn new(endpoint: &Endpoint) -> Result<Self> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
+        trace!("creating blobs store...");
+        let store = MemStore::new_with_opts(MemStoreOptions {
+            gc_config: Some(GcConfig {
+                interval: Duration::from_secs(10),
+                add_protected: None,
+            }),
+        });
+        let downloader = Downloader::new(&store, endpoint);
+        trace!("blobs store created!");
         Ok(Self {
             _download_type: PhantomData,
+            iroh_downloader: downloader,
             event_receiver,
             event_sender: event_sender.clone(),
+            blobs_store: Arc::new(store),
         })
     }
 
     pub fn start_download(
         &mut self,
-        progress: DownloadProgress,
+        providers: impl ContentDiscovery,
         blob_ticket: BlobTicket,
         tag: Tag,
         download_type: DownloadType,
     ) {
+        let progress = self.iroh_downloader.download(blob_ticket.hash(), providers);
         let mut download = Download::new(blob_ticket.clone(), tag.clone(), download_type);
         let event_sender = self.event_sender.clone();
         tokio::spawn(async move {
@@ -361,17 +383,27 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         });
     }
 
-    pub fn read(
-        &mut self,
-        blob_ticket: BlobTicket,
-        result_recv: tokio::sync::oneshot::Receiver<Bytes>,
-        tag: Tag,
-        download_type: DownloadType,
-    ) {
+    pub async fn upload_blob(&self, data: Vec<u8>, tag: Tag) -> Result<HashAndFormat> {
+        self.blobs_store
+            .add_bytes(data)
+            .with_named_tag(tag)
+            .await
+            .map_err(|e| anyhow!("{e}"))
+    }
+
+    pub fn read(&mut self, blob_ticket: BlobTicket, tag: Tag, download_type: DownloadType) {
         let event_sender = self.event_sender.clone();
+        let blobs = self.blobs_store.blobs().clone();
+        let hash = blob_ticket.hash();
         tokio::spawn(async move {
-            let result = result_recv.await.unwrap();
-            let event = match postcard::from_bytes(&result) {
+            let mut buf = Vec::new();
+            if let Err(err) = blobs.reader(hash).read_to_end(&mut buf).await {
+                error!("Failed to read bytes: {err:#}");
+                return;
+            }
+            let size = buf.len();
+            debug!(name: "blob_download_finish", hash = %hash.fmt_short(), "downloaded blob {:?}, {} bytes", hash.fmt_short(), size);
+            let event = match postcard::from_bytes(&buf) {
                 Ok(decoded) => Some(DownloadManagerEvent::Complete(DownloadComplete {
                     data: decoded,
                     from: blob_ticket.node_addr().node_id,

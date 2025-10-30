@@ -227,6 +227,7 @@ impl NetworkTUIState {
     {
         let s = &nc.state;
         let blob_hashes = nc
+            .download_manager
             .blobs_store
             .list()
             .stream()
@@ -242,7 +243,7 @@ impl NetworkTUIState {
                 total_data_per_sec: s.bandwidth_tracker.get_total_bandwidth(),
                 download_bandwidth_history: s.bandwidth_history.clone(),
                 downloads: s
-                    .download_progesses
+                    .download_progresses
                     .iter()
                     .map(|(key, dl)| {
                         (

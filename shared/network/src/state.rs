@@ -14,7 +14,7 @@ pub struct State {
     pub node_connections: Vec<P2PNodeInfo>,
     pub bandwidth_tracker: BandwidthTracker,
     pub bandwidth_history: VecDeque<f64>,
-    pub download_progesses: HashMap<iroh_blobs::Hash, DownloadUpdate>,
+    pub download_progresses: HashMap<iroh_blobs::Hash, DownloadUpdate>,
 }
 
 impl State {
@@ -24,7 +24,7 @@ impl State {
             node_connections: Default::default(),
             bandwidth_tracker: BandwidthTracker::new(bandwidth_average_period),
             bandwidth_history: Default::default(),
-            download_progesses: Default::default(),
+            download_progresses: Default::default(),
         }
     }
 }
