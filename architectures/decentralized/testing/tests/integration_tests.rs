@@ -1082,8 +1082,8 @@ async fn test_pause_and_resume_run() {
             Some(Response::StateChange(_timestamp, _client, old_state, new_state, epoch, step)) => {
                 println!("epoch: {epoch} step: {step} state change: {old_state} => {new_state}");
 
-                // Wait for at least epoch 2 so checkpoint transitions from Hub -> P2P
-                if !paused && epoch >= 2 && new_state == RunState::RoundTrain.to_string() {
+                // Wait a bit before pausing
+                if !paused && step > 3 && new_state == RunState::RoundTrain.to_string() {
                     pause_and_verify(
                         docker.clone(),
                         &run_id,

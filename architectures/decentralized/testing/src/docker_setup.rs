@@ -225,17 +225,16 @@ pub async fn spawn_client_with_keypair(
 
     // Override entrypoint to skip solana-keygen (which would overwrite the mounted keypair)
     // We run the same commands as client_test_entrypoint.sh but WITHOUT solana-keygen new
-    let entrypoint_cmd = format!(
-        "set -o errexit && \
-         solana config set --url \"${{RPC}}\" && \
+    let entrypoint_cmd = "set -o errexit && \
+         solana config set --url \"${RPC}\" && \
          solana airdrop 10 \"$(solana-keygen pubkey)\" && \
          psyche-solana-client train \
              --wallet-private-key-path \"/root/.config/solana/id.json\" \
-             --rpc \"${{RPC}}\" \
-             --ws-rpc \"${{WS_RPC}}\" \
-             --run-id \"${{RUN_ID}}\" \
+             --rpc \"${RPC}\" \
+             --ws-rpc \"${WS_RPC}\" \
+             --run-id \"${RUN_ID}\" \
              --logs \"json\""
-    );
+        .to_string();
     let entrypoint = vec!["/bin/sh", "-c", &entrypoint_cmd];
 
     let options = Some(CreateContainerOptions {
@@ -456,16 +455,16 @@ pub async fn extract_keypair_from_container(
     // Extract from tar archive
     let mut archive = Archive::new(&keypair_tar_bytes[..]);
     let mut keypair_json = String::new();
-    for entry in archive
+    if let Some(entry) = archive
         .entries()
         .map_err(|e| format!("Failed to read tar: {}", e))?
+        .next()
     {
         let mut entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         use std::io::Read;
         entry
             .read_to_string(&mut keypair_json)
             .map_err(|e| format!("Failed to read keypair: {}", e))?;
-        break;
     }
 
     // Save to host filesystem

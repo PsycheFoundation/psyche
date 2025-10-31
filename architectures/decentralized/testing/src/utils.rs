@@ -159,7 +159,7 @@ impl SolanaTestClient {
              {}",
             rpc, wallet_path, psyche_cmd
         );
-        let cmd = vec!["/bin/sh".to_string(), "-c".to_string(), shell_script];
+        let cmd = ["/bin/sh".to_string(), "-c".to_string(), shell_script];
 
         let temp_container_name = format!("test-psyche-run-owner-temp-{}", std::process::id());
         let network_name = "test_psyche-test-network";
@@ -183,7 +183,7 @@ impl SolanaTestClient {
             ..Default::default()
         };
 
-        let env_vars = vec![
+        let env_vars = [
             format!("RPC={}", rpc),
             format!("WS_RPC={}", ws_rpc),
             format!("RUN_ID={}", run_id),
@@ -216,7 +216,7 @@ impl SolanaTestClient {
         let wait_future = async {
             let mut wait_stream =
                 docker.wait_container(&temp_container_name, None::<WaitContainerOptions<String>>);
-            while let Some(wait_result) = wait_stream.next().await {
+            if let Some(wait_result) = wait_stream.next().await {
                 match wait_result {
                     Ok(result) => {
                         println!("Container finished with status: {:?}", result.status_code);

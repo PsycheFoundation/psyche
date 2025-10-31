@@ -118,16 +118,6 @@ impl CoordinatorInstanceState {
 
         msg!("Pre-tick run state: {}", self.coordinator.run_state);
 
-        // Log previous client IDs for debugging P2P safety check
-        if self.coordinator.run_state == RunState::WaitingForMembers {
-            if self.coordinator.epoch_state.clients.len() > 0 {
-                msg!("Previous epoch client IDs:");
-                for client in self.coordinator.epoch_state.clients.iter() {
-                    msg!("  {:?}", client.id);
-                }
-            }
-        }
-
         let clock: Clock = Clock::get()?;
         match self.coordinator.tick(
             active_clients_ids,
