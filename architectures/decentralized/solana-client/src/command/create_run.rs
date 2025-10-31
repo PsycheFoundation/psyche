@@ -36,6 +36,14 @@ pub async fn command_create_run_execute(
         join_authority,
     } = params;
 
+    // run_id must be at most 32 bytes because of PDA constraints
+    if run_id.len() > 32 {
+        bail!(
+            "run_id must be 32 bytes or less, got {} bytes",
+            run_id.len()
+        );
+    }
+
     let payer = backend.get_payer();
     let main_authority = payer;
     let join_authority = join_authority.unwrap_or(payer);

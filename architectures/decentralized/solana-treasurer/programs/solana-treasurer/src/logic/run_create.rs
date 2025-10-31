@@ -8,6 +8,7 @@ use psyche_solana_coordinator::cpi::init_coordinator;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::program::PsycheSolanaCoordinator;
 
+use crate::ProgramError;
 use crate::state::Run;
 
 #[derive(Accounts)]
@@ -72,6 +73,11 @@ pub fn run_create_processor(
     context: Context<RunCreateAccounts>,
     params: RunCreateParams,
 ) -> Result<()> {
+    // run_id must be at most 32 bytes because of PDA constraints
+    if params.run_id.len() > 32 {
+        return err!(ProgramError::RunIdInvalidLength);
+    }
+
     let run = &mut context.accounts.run;
     run.bump = context.bumps.run;
     run.index = params.index;
