@@ -29,6 +29,7 @@ pub enum Response {
     SolanaSubscription(String, String),
     WitnessElected(String),
     Error(ObservedErrorKind, String),
+    CheckpointType(String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -306,6 +307,17 @@ impl DockerWatcher {
                             message.to_string(),
                         );
 
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
+                    IntegrationTestLogMarker::CheckpointType => {
+                        let checkpoint_type = parsed_log
+                            .get("checkpoint_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap()
+                            .to_string();
+                        let response = Response::CheckpointType(checkpoint_type);
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }

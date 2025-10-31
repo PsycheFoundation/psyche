@@ -644,6 +644,8 @@ impl<T: NodeIdentity> Coordinator<T> {
             if self.active() {
                 self.pending_pause = true.into();
             } else {
+                println!("withdraw_all 1");
+                self.withdraw_all()?;
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.epoch_state.cold_start_epoch = true.into();
             }
@@ -1027,9 +1029,17 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
 
             if self.pending_pause.is_true() {
+                println!("withdraw_all 2");
+                self.withdraw_all()?;
+
+                let cold_start_epoch = self.epoch_state.cold_start_epoch;
+                bytemuck::write_zeroes(&mut self.epoch_state);
+                self.epoch_state.cold_start_epoch = cold_start_epoch;
+                self.epoch_state.first_round = true.into();
+                self.epoch_state.start_step = self.progress.step;
+
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.pending_pause = false.into();
-                self.epoch_state.cold_start_epoch = true.into();
             } else {
                 self.start_waiting_for_members(unix_timestamp);
                 self.epoch_state.cold_start_epoch = false.into();

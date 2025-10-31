@@ -17,7 +17,8 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
+        e2e_testing_setup, extract_keypair_from_container, kill_all_clients, pause_and_verify,
+        resume_run, spawn_client_with_keypair, spawn_new_client, spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -1018,6 +1019,162 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     _ => {}
                 }
             }
+        }
+    }
+}
+
+/// Tests pausing and resuming a run
+/// Starts a run with 1 client, pauses it, verifies it's paused, then resumes it
+/// and verifies the client rejoins and gets the model from Hub since all clients have disconnected.
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_pause_and_resume_run() {
+    let run_id = "test".to_string();
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // Initialize a Solana run with 1 client
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        1,
+        Some(PathBuf::from(
+            "../../config/solana-test/nano-one-min-clients.toml",
+        )),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Downloads keypairs from the Docker container, so we can later rejoin with same ID and pause the run as well.
+    let temp_client_keypair_path = "/tmp/test-client-1-keypair.json";
+    let temp_run_owner_keypair_path = "/tmp/test-run-owner-keypair.json";
+    extract_keypair_from_container(
+        &docker,
+        &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+        temp_client_keypair_path,
+    )
+    .await
+    .expect("Failed to extract client keypair");
+
+    extract_keypair_from_container(
+        &docker,
+        "test-psyche-run-owner-1",
+        temp_run_owner_keypair_path,
+    )
+    .await
+    .expect("Failed to extract run owner keypair");
+
+    // Monitor the client container
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![
+                IntegrationTestLogMarker::StateChange,
+                IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::Error,
+            ],
+        )
+        .unwrap();
+
+    let solana_client = SolanaTestClient::new(run_id.clone()).await;
+
+    let mut paused = false;
+    let mut rejoined_client = false;
+    let mut current_epoch = -1;
+    let mut last_epoch_loss = f64::MAX;
+    let mut verified_hub_checkpoint = false;
+    let num_epochs_after_rejoin = 2;
+
+    println!("Waiting for training to start...");
+    loop {
+        let response = watcher.log_rx.recv().await;
+        match response {
+            Some(Response::StateChange(_timestamp, _client, old_state, new_state, epoch, step)) => {
+                println!("epoch: {epoch} step: {step} state change: {old_state} => {new_state}");
+
+                // Wait a bit before pausing
+                if !paused && step > 3 && new_state == RunState::RoundTrain.to_string() {
+                    pause_and_verify(
+                        docker.clone(),
+                        &run_id,
+                        temp_run_owner_keypair_path,
+                        &solana_client,
+                    )
+                    .await;
+                    paused = true;
+                    println!("Now waiting for coordinator to kick client-1...");
+                }
+            }
+            Some(Response::Loss(client, epoch, step, loss)) => {
+                println!("client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}");
+                if epoch as i64 > current_epoch {
+                    current_epoch = epoch as i64;
+
+                    let Some(loss) = loss else {
+                        println!("Reached new epoch but loss was NaN");
+                        continue;
+                    };
+
+                    assert!(loss < last_epoch_loss * 1.25);
+                    assert!(loss > 0.0);
+                    last_epoch_loss = loss;
+
+                    // After rejoining and verifying Hub checkpoint, train for a few more epochs
+                    if verified_hub_checkpoint && epoch >= num_epochs_after_rejoin {
+                        println!(
+                            "Trained for {num_epochs_after_rejoin} epochs after rejoin. Loss continued to decrease. Test successful!"
+                        );
+                        return;
+                    }
+                }
+            }
+            Some(Response::CheckpointType(checkpoint_type)) if rejoined_client => {
+                println!("Checkpoint type: {checkpoint_type}");
+                assert_eq!(
+                    checkpoint_type, "Hub",
+                    "Expected Hub checkpoint after rejoin"
+                );
+                verified_hub_checkpoint = true;
+                println!(
+                    "Hub checkpoint verified. Now training for {num_epochs_after_rejoin} more epochs to verify loss continues to decrease..."
+                );
+            }
+            Some(Response::Error(error_kind, message)) => {
+                println!("Error received: {:?} - {}", error_kind, message);
+
+                // Here is where we detect the client has been "kicked" due to the run being paused
+                if paused && !rejoined_client {
+                    println!("Client kicked by coordinator!");
+                    // Resume the run that was paused
+                    resume_run(docker.clone(), temp_run_owner_keypair_path, &run_id).await;
+                    // Wait some time before rejoining just in case
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+
+                    println!("Rejoining with client's keypair...");
+                    let container =
+                        spawn_client_with_keypair(docker.clone(), temp_client_keypair_path)
+                            .await
+                            .expect("Failed to spawn client with keypair");
+                    println!("Rejoined client: {}", container);
+
+                    // Monitor the client again to check which checkpoint it grabs
+                    watcher
+                        .monitor_container(
+                            &container,
+                            vec![
+                                IntegrationTestLogMarker::CheckpointType,
+                                IntegrationTestLogMarker::StateChange,
+                                IntegrationTestLogMarker::Loss,
+                            ],
+                        )
+                        .expect("Failed to monitor rejoined client");
+                    // Wait for client to fully connect
+                    println!("Waiting 10 seconds for client to connect...");
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+
+                    rejoined_client = true;
+                }
+            }
+            _ => {}
         }
     }
 }
