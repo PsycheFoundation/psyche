@@ -690,11 +690,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     break;
                                 }
                             }
-                            // Timeout to avoid waiting forever if something goes wrong
-                            _ = tokio::time::sleep(std::time::Duration::from_secs(300)) => {
-                                warn!("Timeout waiting for checkpoints (5 minutes), continuing shutdown");
-                                break;
-                            }
                         }
                     }
 

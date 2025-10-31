@@ -185,15 +185,7 @@ impl CoordinatorInstanceState {
             self.coordinator.run_state
         );
         if let Err(err) = match paused {
-            true => {
-                let result = self.coordinator.pause(unix_timestamp);
-                msg!(
-                    "pause() returned: {:?}, pending_pause={}",
-                    result.is_ok(),
-                    self.coordinator.pending_pause.is_true()
-                );
-                result
-            },
+            true => self.coordinator.pause(unix_timestamp),
             false => {
                 if !self.coordinator.config.check() {
                     return err!(ProgramError::ConfigSanityCheckFailed);
