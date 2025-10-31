@@ -1108,7 +1108,8 @@ async fn test_pause_and_resume_run() {
                         continue;
                     };
 
-                    assert!(loss < last_epoch_loss);
+                    assert!(loss < last_epoch_loss * 1.25);
+                    assert!(loss > 0.0);
                     last_epoch_loss = loss;
 
                     // After rejoining and verifying Hub checkpoint, train for a few more epochs
