@@ -1094,17 +1094,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     pub fn doing_checkpoint(&self) -> bool {
         match &self.0 {
             InitStage::Running(step_state_machine) => {
-                // Check if actively in cooldown doing checkpoint
-                let in_cooldown = matches!(&step_state_machine.active_step,
-                    ActiveStep::Cooldown(cooldown_step) if cooldown_step.doing_checkpoint());
-
-                // Or if there are pending upload handles that are still running
                 let has_pending_uploads = step_state_machine
                     .pending_upload_handles
                     .iter()
                     .any(|handle| !handle.is_finished());
 
-                in_cooldown || has_pending_uploads
+                has_pending_uploads
             }
             _ => false,
         }
