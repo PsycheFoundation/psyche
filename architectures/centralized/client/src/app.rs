@@ -151,6 +151,7 @@ impl AppBuilder {
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
             metrics.clone(),
+            Some(p.cancel.clone()),
         )
         .await?;
 

@@ -192,6 +192,7 @@ async fn spawn_new_node(
         None,
         allowlist::AllowAll,
         Arc::new(ClientMetrics::new(None)),
+        None,
     )
     .await?;
 
