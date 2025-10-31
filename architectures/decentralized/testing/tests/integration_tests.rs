@@ -10,7 +10,6 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
-use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{RunState, model::Checkpoint};
 use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
@@ -1074,6 +1073,10 @@ async fn test_pause_and_resume_run() {
 
     let mut paused = false;
     let mut rejoined_client = false;
+    let mut current_epoch = -1;
+    let mut last_epoch_loss = f64::MAX;
+    let mut verified_hub_checkpoint = false;
+    let num_epochs_after_rejoin = 2;
 
     println!("Waiting for training to start...");
     loop {
@@ -1095,13 +1098,38 @@ async fn test_pause_and_resume_run() {
                     println!("Now waiting for coordinator to kick client-1...");
                 }
             }
+            Some(Response::Loss(client, epoch, step, loss)) => {
+                println!("client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}");
+                if epoch as i64 > current_epoch {
+                    current_epoch = epoch as i64;
+
+                    let Some(loss) = loss else {
+                        println!("Reached new epoch but loss was NaN");
+                        continue;
+                    };
+
+                    assert!(loss < last_epoch_loss);
+                    last_epoch_loss = loss;
+
+                    // After rejoining and verifying Hub checkpoint, train for a few more epochs
+                    if verified_hub_checkpoint && epoch >= num_epochs_after_rejoin {
+                        println!(
+                            "Trained for {num_epochs_after_rejoin} epochs after rejoin. Loss continued to decrease. Test successful!"
+                        );
+                        return;
+                    }
+                }
+            }
             Some(Response::CheckpointType(checkpoint_type)) if rejoined_client => {
                 println!("Checkpoint type: {checkpoint_type}");
                 assert_eq!(
                     checkpoint_type, "Hub",
                     "Expected Hub checkpoint after rejoin"
                 );
-                return;
+                verified_hub_checkpoint = true;
+                println!(
+                    "Hub checkpoint verified. Now training for {num_epochs_after_rejoin} more epochs to verify loss continues to decrease..."
+                );
             }
             Some(Response::Error(error_kind, message)) => {
                 println!("Error received: {:?} - {}", error_kind, message);
