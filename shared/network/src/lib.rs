@@ -5,7 +5,6 @@ use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::api::Tag;
-use iroh_blobs::api::tags::DeleteOptions;
 use iroh_blobs::{
     BlobsProtocol,
     api::downloader::Downloader,
@@ -256,11 +255,16 @@ where
         let node_addr = endpoint.node_addr();
 
         info!("Our node id: {}", node_addr.node_id);
-
         trace!("creating blobs store...");
+
+        let gc_interval: u64 = std::env::var("BLOBS_GC_INTERVAL_MILLIS")
+            .ok()
+            .and_then(|gc_interval_str| gc_interval_str.parse().ok())
+            .unwrap_or(10000);
+
         let store = MemStore::new_with_opts(MemStoreOptions {
             gc_config: Some(GcConfig {
-                interval: Duration::from_secs(10),
+                interval: Duration::from_millis(gc_interval),
                 add_protected: None,
             }),
         });
@@ -445,14 +449,54 @@ where
 
     /// Removes all the tags from the store that are lower than the target tag.
     /// Also removes all the tags used for the parameter sharing since this will run only in the Train state
-    pub async fn remove_staled_tags(&mut self, target_tag: u32) -> anyhow::Result<()> {
-        let delete_opts = DeleteOptions {
-            from: None,
-            to: Some(target_tag.to_string().into()),
-        };
+    pub async fn remove_staled_tags(
+        &mut self,
+        target_distro_result_step: u32,
+    ) -> anyhow::Result<()> {
         let store = self.blobs_store.as_ref().clone();
         let model_tags_deleted = store.tags().delete_prefix("model-").await?;
-        let distro_results_deleted = store.tags().delete_with_opts(delete_opts).await?;
+        let mut distro_results_deleted = 0;
+        let mut tags = store.tags().list().await?;
+
+        while let Some(tag) = tags.next().await {
+            let Ok(tag) = tag else {
+                warn!("Error while getting tag: {tag:?}. This may lead to a memory leak");
+                continue;
+            };
+
+            let Ok(tag_name) = String::from_utf8(tag.name.0.to_vec()) else {
+                warn!(
+                    "Error while decoding tag name to string: {tag:?}. This may lead to a memory leak"
+                );
+                continue;
+            };
+
+            // Since tags related to model parameter sharing have been already deleted, it is assumed that
+            // all remaining tags are related to Distro result blobs
+            let tag_name_splitted: Vec<&str> = tag_name.split("_").collect();
+            let Some(tag_name_distro_result_step) = tag_name_splitted.get(1) else {
+                warn!("Step not present in tag name: {tag_name}. This may lead to a memory leak");
+                continue;
+            };
+            let Ok(distro_result_step) = tag_name_distro_result_step.parse::<u32>() else {
+                warn!(
+                    "Distro result step could not be parsed: {tag_name_distro_result_step}. This may lead to a memory leak"
+                );
+                continue;
+            };
+
+            if distro_result_step < target_distro_result_step {
+                let tag_delete_res = store.tags().delete(&tag_name).await;
+                if tag_delete_res.is_ok() {
+                    distro_results_deleted += 1;
+                } else {
+                    warn!(
+                        "There was an error while trying to delete tag {tag_name}: {tag_delete_res:?}"
+                    );
+                }
+            }
+        }
+
         debug!(
             "Untagged {} blobs",
             model_tags_deleted + distro_results_deleted
