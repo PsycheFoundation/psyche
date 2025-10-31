@@ -100,7 +100,6 @@ impl CooldownStepMetadata {
         let tx_checkpoint = self.tx_checkpoint.clone();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
-        // let doing_checkpoint = checkpoint_info.is_some();
 
         let checkpointing_and_evals: tokio::task::JoinHandle<
             Result<

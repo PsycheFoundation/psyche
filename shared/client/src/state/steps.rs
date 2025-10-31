@@ -692,9 +692,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     }
 
     async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), StepError> {
-        // Clean up completed uploads
-        self.cleanup_completed_uploads();
-
         let client_index = match state
             .epoch_state
             .clients
@@ -838,12 +835,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             // the epoch ended & we're transitioning to cooldown
             (ActiveStep::Witness(witnessing), RunState::Cooldown) => {
                 let trainers = witnessing.finish().await?.stop_evals().await?;
+                // check here
+                self.cleanup_completed_uploads();
+
                 ActiveStep::Cooldown(self.cooldown.start(trainers, &state)?)
             }
             // cooldown is done, we consider waiting for members and warmup to be basically the same
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
             | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
+                //check here
+                self.cleanup_completed_uploads();
+
                 let (trainers, upload_handle) = cooldown.finish().await?;
                 if let Some(handle) = upload_handle {
                     self.pending_upload_handles.push(handle);
@@ -882,7 +885,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    /// Remove completed upload handles from the pending list
     fn cleanup_completed_uploads(&mut self) {
         self.pending_upload_handles
             .retain(|handle| !handle.is_finished());
