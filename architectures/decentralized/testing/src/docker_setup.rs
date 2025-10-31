@@ -214,11 +214,18 @@ pub async fn spawn_client_with_keypair(
     };
 
     // Get env vars from config file
-    let env_vars = std::fs::read_to_string("../../../config/client/.env.local")
-        .unwrap()
+    let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.local")
+        .expect("Failed to read env file")
         .lines()
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("#") {
+                None
+            } else {
+                Some(line.to_string())
+            }
+        })
+        .collect();
     let envs = if has_gpu {
         [env_vars, vec!["NVIDIA_DRIVER_CAPABILITIES=all".to_string()]].concat()
     } else {
