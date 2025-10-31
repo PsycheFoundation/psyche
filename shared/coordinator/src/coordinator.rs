@@ -599,23 +599,17 @@ impl<T: NodeIdentity> Coordinator<T> {
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
-        if true {
-            // if self.epoch_state.checkpointed.is_false() {
-            // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
-            // with the last checkpointed one. We could instead have a vector of hub repos to have
-            // more download options.
-            match &mut self.model {
-                Model::LLM(llm) => match llm.checkpoint {
-                    Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
-                    Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                    _ => {}
-                },
-            }
-            self.epoch_state.checkpointed = true.into();
-            Ok(())
-        } else {
-            Err(CoordinatorError::AlreadyCheckpointed)
+        // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
+        // with the last checkpointed one. We could instead have a vector of hub repos to have
+        // more download options.
+        match &mut self.model {
+            Model::LLM(llm) => match llm.checkpoint {
+                Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
+                Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                _ => {}
+            },
         }
+        Ok(())
     }
 
     pub fn withdraw(&mut self, index: u64) -> std::result::Result<(), CoordinatorError> {
@@ -1031,7 +1025,6 @@ impl<T: NodeIdentity> Coordinator<T> {
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.pending_pause = false.into();
                 self.epoch_state.cold_start_epoch = true.into();
-                self.epoch_state.checkpointed = false.into();
             } else {
                 self.start_waiting_for_members(unix_timestamp);
                 self.epoch_state.cold_start_epoch = false.into();
