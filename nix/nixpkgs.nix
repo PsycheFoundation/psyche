@@ -54,15 +54,8 @@ in
               });
 
             torch = torch-bin;
-            transformers = pyprev.transformers.overrideAttrs (oldAttrs: {
-              version = "4.56.1";
-              src = prev.fetchFromGitHub {
-                owner = "huggingface";
-                repo = "transformers";
-                tag = "v${oldAttrs.version}";
-                hash = "sha256-92l1eEiqd3R9TVwNDBee6HsyfnRW1ezEi5fzVqmh76c=";
-              };
-            });
+            flash-attn = pyfinal.callPackage ../python/flash-attn.nix { };
+            liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
           };
         };
       })

@@ -8,8 +8,6 @@
       ...
     }:
     let
-      inherit (pkgs.psycheLib) buildRustPackageWithPsychePythonEnvironment useHostGpuDrivers;
-
     in
     {
       _module.args.pkgs = import inputs.nixpkgs (
@@ -18,9 +16,6 @@
         }
       );
 
-      packages = {
-        flattenReferencesGraph = pkgs.flattenReferencesGraph;
-      }
-      // lib.mapAttrs (_: lib.id) pkgs.psychePackages;
+      packages = lib.mapAttrs (_: lib.id) pkgs.psychePackages;
     };
 }
