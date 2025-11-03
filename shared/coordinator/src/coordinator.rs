@@ -859,16 +859,16 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 
     pub fn get_cold_start_warmup_bounds(&self) -> Option<(u32, u32)> {
-        match self.epoch_state.cold_start_epoch.is_true() {
-            true => Some((
-                self.epoch_state.start_step,
-                self.epoch_state.start_step
-                    + match &self.model {
-                        Model::LLM(llm) => llm.cold_start_warmup_steps,
-                    },
-            )),
-            false => None,
+        let cold_start_warmup_steps = match &self.model {
+            Model::LLM(llm) => llm.cold_start_warmup_steps,
+        };
+        if self.epoch_state.cold_start_epoch.is_false() || cold_start_warmup_steps == 0 {
+            return None;
         }
+        Some((
+            self.epoch_state.start_step,
+            self.epoch_state.start_step + cold_start_warmup_steps,
+        ))
     }
 
     fn get_global_batch_size_for_tokens(&self, tokens_processed: u64) -> u16 {
