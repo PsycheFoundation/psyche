@@ -752,6 +752,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             }
                                             Some(model_addrs_and_hashes) = rx_model_download.recv() => {
                                                 info!("Starting big blob download");
+                                                info!("model_addrs_and_hashes.len(): {}", model_addrs_and_hashes.len());
                                                 match p2p.start_download_big_blob(model_addrs_and_hashes).await {
                                                     Ok((data, _)) => {
                                                         if let Err(err) = sharable_model.deserialize_params(data).await {
