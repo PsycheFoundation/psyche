@@ -370,8 +370,10 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
     ) {
         let progress = self.iroh_downloader.download(blob_ticket.hash(), providers);
         let mut download = Download::new(blob_ticket.clone(), tag.clone(), download_type);
+        let store = self.blobs_store.clone();
         let event_sender = self.event_sender.clone();
         tokio::spawn(async move {
+            store.tags().set(tag, blob_ticket.hash()).await;
             info!(
                 "Starting download for blob: {}",
                 download.blob_ticket.hash()
