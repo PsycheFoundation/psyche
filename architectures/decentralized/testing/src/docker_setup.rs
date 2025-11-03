@@ -132,16 +132,18 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
     };
 
     // Get env vars from config file
-    let env_vars = std::fs::read_to_string("../../../config/client/.env.local")
-        .unwrap()
+    let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.local")
+        .expect("Failed to read env file")
         .lines()
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
-    let envs = if has_gpu {
-        [env_vars, vec!["NVIDIA_DRIVER_CAPABILITIES=all".to_string()]].concat()
-    } else {
-        env_vars
-    };
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("#") {
+                None
+            } else {
+                Some(line.to_string())
+            }
+        })
+        .collect();
 
     let options = Some(CreateContainerOptions {
         name: new_container_name.clone(),
@@ -149,7 +151,7 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
     });
     let config = Config {
         image: Some("psyche-solana-test-client-no-python"),
-        env: Some(envs.iter().map(|s| s.as_str()).collect()),
+        env: Some(env_vars.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()
     };
