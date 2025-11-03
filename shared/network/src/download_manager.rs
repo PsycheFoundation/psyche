@@ -338,13 +338,19 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
     pub fn new(endpoint: &Endpoint) -> Result<Self> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
         trace!("creating blobs store...");
+
+        let gc_interval: u64 = std::env::var("BLOBS_GC_INTERVAL_MILLIS")
+            .ok()
+            .and_then(|gc_interval_str| gc_interval_str.parse().ok())
+            .unwrap_or(10000);
+
         let store = MemStore::new_with_opts(MemStoreOptions {
             gc_config: Some(GcConfig {
-                interval: Duration::from_secs(10),
+                interval: Duration::from_millis(gc_interval),
                 add_protected: None,
             }),
         });
-        let downloader = Downloader::new(&store, endpoint);
+        let downloader = Downloader::new(&store, &endpoint);
         trace!("blobs store created!");
         Ok(Self {
             _download_type: PhantomData,
