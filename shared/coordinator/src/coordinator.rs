@@ -983,8 +983,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             // the situation where only witness nodes disconnected or everyone
             // disconnected. We just set everyone to withdrawn state and change
             // to Cooldown.
-            // Also, if the run was paused we should withdraw all clients from it
-            if num_witnesses == 0 || self.pending_pause.is_true() {
+            if num_witnesses == 0 {
                 self.withdraw_all()?;
                 self.start_cooldown(unix_timestamp);
                 return Ok(TickResult::Ticked);
@@ -995,6 +994,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             if height == self.config.rounds_per_epoch - 1
                 || self.epoch_state.clients.len() < self.config.min_clients as usize
                 || num_witnesses < self.witness_quorum(num_witnesses)
+                || self.pending_pause.is_true()
             {
                 self.start_cooldown(unix_timestamp);
                 return Ok(TickResult::Ticked);
@@ -1029,6 +1029,8 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
 
             if self.pending_pause.is_true() {
+                println!("withdraw_all 2");
+                self.withdraw_all()?;
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.pending_pause = false.into();
                 self.epoch_state.cold_start_epoch = true.into();
