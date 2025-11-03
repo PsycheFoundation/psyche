@@ -1,0 +1,39 @@
+name: Solana integration tests run
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, '**']
+
+jobs:
+  # First, build the validator image and cache it
+  build-validator:
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/solana-build-anchor-programs.yml
+
+  # Then run all tests in parallel, using the cached validator image
+  test:
+    needs: build-validator
+    strategy:
+      fail-fast: false
+      matrix:
+        test-name:
+          - test_one_clients_three_epochs_run
+          - test_two_clients_three_epochs_run
+          - test_client_join_and_get_model_p2p
+          - test_rejoining_client_delay
+          - disconnect_client
+          - drop_a_client_waitingformembers_then_reconnect
+          - test_when_all_clients_disconnect_checkpoint_is_hub
+          - test_solana_subscriptions
+          - test_everybody_leaves_in_warmup
+          - test_lost_only_peer_go_back_to_hub_checkpoint
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/solana-integration-test-base.yml
+    with:
+      test-name: ${{ matrix.test-name }}

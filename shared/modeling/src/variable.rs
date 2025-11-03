@@ -22,6 +22,7 @@ pub trait Variable {
     fn is_sharded(&self) -> bool;
     fn zeros_like(&self, name: String) -> Box<dyn Variable>;
     fn set_grad(&self, tensor: Tensor);
+    fn zero_grad(&self);
 }
 
 #[derive(Debug)]
@@ -129,5 +130,12 @@ impl Variable for (String, Tensor, Option<Shard>, Option<Arc<Communicator>>) {
         self.1
             .grad()
             .copy_(&self.shard_other_tensor_like_me(tensor));
+    }
+
+    fn zero_grad(&self) {
+        let grad = self.1.grad();
+        if grad.defined() {
+            let _ = self.1.grad().zero_();
+        }
     }
 }

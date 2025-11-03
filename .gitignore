@@ -60,3 +60,7 @@ book
 
 ### Env files ###
 **/.env
+
+### Website ###
+website/frontend/public/tokenizers/*.json
+website/frontend/public/prompts/index.json

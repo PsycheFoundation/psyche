@@ -1,16 +1,16 @@
-use anyhow::{Error, Result};
-use clap::Parser;
+use anyhow::{Error, Result, anyhow};
+use clap::{Parser, ValueEnum};
 use psyche_data_provider::download_model_repo_sync;
 use psyche_modeling::{
-    CausalLM, CommunicatorId, LogitsProcessor, Sampling, TokenOutputStream,
-    auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
+    AttentionImplementation, CausalLM, CommunicatorId, Devices, LogitsProcessor, Sampling,
+    TokenOutputStream, auto_model_for_causal_lm_from_pretrained, auto_tokenizer,
 };
 use std::{
     io::Write,
     path::PathBuf,
     sync::{Arc, Barrier},
 };
-use tch::{Device, Kind, Tensor};
+use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 
 const DEFAULT_PROMPT: &str = r"
@@ -65,6 +65,25 @@ Whate'er it bodes, henceforward will I bear
 Upon my target three fair-shining suns.
 ";
 
+#[derive(ValueEnum, Clone, Debug)]
+enum AttnImpl {
+    Eager,
+    Sdpa,
+    #[cfg(feature = "parallelism")]
+    FlashAttention2,
+}
+
+impl From<AttnImpl> for AttentionImplementation {
+    fn from(val: AttnImpl) -> Self {
+        match val {
+            AttnImpl::Eager => AttentionImplementation::Eager,
+            AttnImpl::Sdpa => AttentionImplementation::Sdpa,
+            #[cfg(feature = "parallelism")]
+            AttnImpl::FlashAttention2 => AttentionImplementation::FlashAttention2,
+        }
+    }
+}
+
 #[derive(Parser, Debug, Clone)]
 struct Args {
     #[arg(long, default_value = "NousResearch/Llama-2-7b-hf")]
@@ -91,6 +110,16 @@ struct Args {
     #[arg(long)]
     tensor_parallelism: Option<usize>,
 
+    #[arg(long)]
+    attn_implementation: Option<AttnImpl>,
+
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    device: Devices,
+
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
@@ -110,25 +139,51 @@ fn inference(
         .as_ref()
         .map(|(_, rank, _, _)| *rank)
         .unwrap_or(0);
-    let device = Device::Cuda(rank);
+    let device = args.device.device_for_rank(rank).ok_or_else(|| {
+        anyhow!(
+            "device not available for rank {rank} with devices {}",
+            args.device
+        )
+    })?;
 
     #[cfg(feature = "python")]
     let python = args.python;
     #[cfg(not(feature = "python"))]
     let python = false;
-    let mut model: Box<dyn CausalLM> = if python {
+    let model: Box<dyn CausalLM> = if python {
         #[cfg(feature = "python")]
         {
-            if args.tensor_parallelism.is_some() {
-                anyhow::bail!("Parallelism not supported for inference in python yet");
-            }
+            let tp = args.tensor_parallelism.unwrap_or(1);
 
             psyche_python_extension_impl::init_embedded_python();
 
+            let attn_implementation = args
+                .attn_implementation
+                .map(|x| x.into())
+                .unwrap_or_default();
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
-            Box::new(psyche_modeling::PythonCausalLM::new(
-                "hf-auto", &source, device, None, None,
-            )?) as Box<dyn CausalLM>
+            if tp == 1 {
+                Box::new(psyche_modeling::PythonCausalLM::new(
+                    "hf-auto",
+                    &source,
+                    device,
+                    attn_implementation,
+                    None,
+                    None,
+                )?) as Box<dyn CausalLM>
+            } else {
+                tracing::info!("Faking TP with FSDP");
+                Box::new(psyche_modeling::PythonDistributedCausalLM::new(
+                    "hf-auto".to_string(),
+                    source,
+                    device,
+                    attn_implementation,
+                    psyche_modeling::ParallelismConfig { dp: tp, tp: 1 },
+                    None,
+                    None,
+                    None,
+                )?) as Box<dyn CausalLM>
+            }
         }
         #[cfg(not(feature = "python"))]
         unreachable!();
@@ -136,7 +191,7 @@ fn inference(
         auto_model_for_causal_lm_from_pretrained(
             repo_files,
             Some(Kind::BFloat16),
-            None,
+            args.attn_implementation.map(|x| x.into()),
             tensor_parallelism.as_ref().map(|_| device),
             tensor_parallelism
                 .as_ref()
@@ -173,11 +228,11 @@ fn inference(
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
-        let (logits, _) = model.forward(&input, None, Some(1), None);
+        let (logits, _) = model.forward(&input, None, None, None, Some(1), None);
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
-        let logits = logits.squeeze();
+        let logits = logits.unwrap().squeeze();
         let next_token = logits_processor.sample(&logits)?;
         token_generated += 1;
         tokens.push(next_token as i64);
@@ -201,6 +256,7 @@ fn inference(
             }
         }
     }
+    model.shutdown();
     Ok(())
 }
 
@@ -215,7 +271,13 @@ fn main() -> Result<()> {
             .map(|x| x.unwrap().path())
             .collect::<Vec<_>>()
     } else {
-        download_model_repo_sync(&args.model.clone(), args.revision.clone(), None, None, true)?
+        download_model_repo_sync(
+            &args.model.clone(),
+            args.revision.clone(),
+            None,
+            std::env::var("HF_TOKEN").ok(),
+            true,
+        )?
     };
     let tokenizer = auto_tokenizer(&repo_files)?;
 
@@ -232,15 +294,14 @@ fn main() -> Result<()> {
         Some(0) | Some(1) | None => inference(repo_files, None, args, seed, tokens, tokenizer)?,
         Some(world_size) => {
             #[cfg(feature = "python")]
-            let id = match args.python {
-                true => CommunicatorId::torch_distributed("nccl", "tcp://127.0.0.1:23456"),
-                #[cfg(feature = "parallelism")]
-                false => tch::CStore::new().into(),
-                #[cfg(not(feature = "parallelism"))]
-                false => CommunicatorId::none(),
-            };
+            {
+                if args.python {
+                    tracing::info!("Faking TP with FSDP");
+                    inference(repo_files, None, args, seed, tokens, tokenizer)?;
+                    return Ok(());
+                }
+            }
 
-            #[cfg(not(feature = "python"))]
             let id: CommunicatorId = {
                 #[cfg(feature = "parallelism")]
                 {

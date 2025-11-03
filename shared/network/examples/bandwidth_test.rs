@@ -2,11 +2,12 @@ use anyhow::{Result, bail};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMode, RelayUrl};
+use iroh_blobs::api::Tag;
 use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
     BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    NetworkTui, PeerList, allowlist, fmt_bytes,
+    NetworkTui, allowlist, fmt_bytes,
 };
 use psyche_tui::{
     CustomWidget, LogOutput,
@@ -22,7 +23,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::{
     collections::HashMap,
-    str::FromStr,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
@@ -58,7 +58,7 @@ struct Args {
     )]
     tui: bool,
 
-    peer_list: Option<String>,
+    connect_to: Option<String>,
 }
 
 type NC = NetworkConnection<Message, DistroResultBlob>;
@@ -152,7 +152,9 @@ impl App {
         if let Some(tx_tui_state) = &self.tx_tui_state {
             let tui_state = TUIState {
                 current_step: self.current_step,
-                network: (&self.network).into(),
+                network: NetworkTUIState::from_network_connection(&self.network)
+                    .await
+                    .unwrap(),
             };
             tx_tui_state.send(tui_state).await.unwrap();
         }
@@ -161,14 +163,14 @@ impl App {
     async fn on_network_event(&mut self, event: NetworkEvent<Message, DistroResultBlob>) {
         match event {
             NetworkEvent::MessageReceived((from, Message::Message { text })) => {
-                info!(name:"message_recv_text", from=from.fmt_short(), text=text)
+                info!(name:"message_recv_text", from=from.fmt_short().to_string(), text=text)
             }
             NetworkEvent::MessageReceived((from, Message::DistroResult { step, blob_ticket })) => {
-                info!(name:"message_recv_distro", from=from.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
+                info!(name:"message_recv_distro", from=%from.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network.start_download(
                     blob_ticket,
-                    step,
+                    Tag::from(step.to_string()),
                     DownloadType::DistroResult(Vec::new()),
                 )
             }
@@ -184,7 +186,7 @@ impl App {
                     fmt_bytes(file.data.len() as f64),
                     fmt_bytes(speed),
                 );
-                info!(name:"download_blob", from=result.from.fmt_short(), step=file.step, blob=hash.fmt_short());
+                info!(name:"download_blob", from=%result.from.fmt_short(), step=file.step, blob=%hash.fmt_short());
             }
             NetworkEvent::DownloadFailed(result) => {
                 info!(
@@ -199,7 +201,7 @@ impl App {
     async fn on_tick(&mut self) {
         let unix_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("time went forwads :)");
+            .expect("time went forward :)");
         let step = ((unix_time.as_secs() + 2) / 15) as u32;
         info!("new step {step}");
         if step != self.current_step + 1 {
@@ -213,16 +215,16 @@ impl App {
 
         const DATA_SIZE_MB: usize = 10;
         let mut data = vec![0u8; DATA_SIZE_MB * 1024 * 1024];
-        rand::thread_rng().fill(&mut data[..]);
+        rand::rng().fill(&mut data[..]);
         let node_id = self.network.node_id();
 
         let blob_ticket = match self
             .network
-            .add_downloadable(DistroResultBlob { step, data }, step)
+            .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
             Ok(v) => {
-                info!(name:"upload_blob", from=node_id.fmt_short(), step=step, blob=v.hash().fmt_short());
+                info!(name:"upload_blob", from=%node_id.fmt_short(), step=step, blob=%v.hash().fmt_short());
                 v
             }
             Err(err) => {
@@ -240,7 +242,7 @@ impl App {
             error!("Error sending message: {err}");
         } else {
             info!("broadcasted message for step {step}: {}", blob_ticket);
-            info!(name:"message_send_distro", from=node_id.fmt_short(), step=step, blob=blob_ticket.hash().fmt_short());
+            info!(name:"message_send_distro", from=%node_id.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
         }
     }
 }
@@ -257,19 +259,16 @@ async fn main() -> Result<()> {
         })
         .init()?;
 
-    let PeerList(peers) = args
-        .peer_list
+    let single_node_id = args
+        .connect_to
         .map(|p| {
-            PeerList::from_str(&p).unwrap_or_else(|_| {
-                let single_node_id = data_encoding::HEXLOWER
-                    .decode(p.as_bytes())
-                    .map(|b| PublicKey::try_from(&b as &[u8]))
-                    .expect("failed to parse peer list or node addr from arg")
-                    .expect("failed to parse peer list or node addr from arg");
-                PeerList(vec![single_node_id.into()])
-            })
+            data_encoding::HEXLOWER
+                .decode(p.as_bytes())
+                .map(|b| PublicKey::try_from(&b as &[u8]))
+                .expect("failed to parse node addr from arg")
         })
-        .unwrap_or_default();
+        .transpose()?
+        .map(Into::into);
 
     info!("joining gossip room");
 
@@ -287,12 +286,10 @@ async fn main() -> Result<()> {
         "123",
         args.bind_port,
         args.bind_interface,
-        relay_mode,
         DiscoveryMode::N0,
-        peers,
+        single_node_id.into_iter().collect(),
         secret_key,
         allowlist::AllowAll,
-        4,
         Arc::new(ClientMetrics::new(None)),
     )
     .await?;

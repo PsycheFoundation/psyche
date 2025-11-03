@@ -3,6 +3,7 @@
   pnpm,
   stdenv,
   nodejs,
+  curl,
   ...
 }:
 let
@@ -29,14 +30,17 @@ lib.extendMkDerivation {
 
       pnpmDeps = pnpm.fetchDeps {
         inherit (finalAttrs) pname version;
+        fetcherVersion = 2;
         src = workspaceSrc;
-        hash = "sha256-FjZt0cNKlMBdgocLTbr6RkGMBjqu3rp7NWgyAX3imY4=";
+        hash = "sha256-PUXS9VkAOt9Gcjl0pdzHt0A3jmeSQFZ88+WFUqPgVxE=";
       };
 
       nativeBuildInputs = [
         pnpm.configHook
         nodejs
-      ] ++ extraInputs;
+        curl
+      ]
+      ++ extraInputs;
 
       inherit preBuild installPhase;
 

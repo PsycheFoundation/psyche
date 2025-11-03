@@ -134,15 +134,17 @@ impl Communicator {
     }
 
     #[allow(unused_variables)]
-    pub fn all_gather<T: AsRef<Tensor>>(
+    pub fn all_gather(
         &self,
-        output_tensors: &[T],
+        output_tensors: &[Tensor],
         input_tensor: &Tensor,
     ) -> Result<(), TchError> {
         match self {
             Communicator::None => unimplemented!(),
             #[cfg(feature = "python")]
-            Communicator::TorchDistributed(_) => todo!(),
+            Communicator::TorchDistributed(torch) => torch
+                .all_gather(output_tensors, input_tensor)
+                .map_err(|x| TchError::Torch(format!("{x}"))),
             #[cfg(feature = "parallelism")]
             Communicator::NCCL(cnccl) => cnccl.all_gather(output_tensors, input_tensor),
         }
@@ -217,7 +219,7 @@ pub trait AllReduce {
 
 #[allow(unused)]
 pub trait AllGather {
-    fn all_gather<T: AsRef<Tensor>>(&self, output_tensors: &[T], comm: &Option<Arc<Communicator>>);
+    fn all_gather(&self, output_tensors: &[Tensor], comm: &Option<Arc<Communicator>>);
 }
 
 pub trait CudaSynchronize {
@@ -233,7 +235,7 @@ impl AllReduce for Tensor {
 }
 
 impl AllGather for Tensor {
-    fn all_gather<T: AsRef<Tensor>>(&self, output_tensors: &[T], comm: &Option<Arc<Communicator>>) {
+    fn all_gather(&self, output_tensors: &[Tensor], comm: &Option<Arc<Communicator>>) {
         match comm {
             Some(comm) => {
                 comm.all_gather(output_tensors, self).unwrap();
@@ -532,7 +534,7 @@ pub fn unsharded_cpu_variables(
         let name = var.name();
         let var = var.gather_full_tensor();
         // now you're probably thinking, why are you moving this to the CPU? why even unshard the tensor
-        // on the other ranks and not do it just on rank 0? here's the thing, you're right, you're absoutely right,
+        // on the other ranks and not do it just on rank 0? here's the thing, you're right, you're absolutely right,
         // except horribly, inexplicibly wrong. if you do that, the non-zero ranks fill up and can OOM -- the gathered
         // tensors hang around for no reason. doing this operation on all ranks makes the memory free as one would expect.
         // remember, we're just along for the ride.

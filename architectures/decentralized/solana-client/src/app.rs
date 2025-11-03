@@ -1,8 +1,4 @@
-use crate::{
-    backend::SolanaBackend,
-    network_identity::NetworkIdentity,
-    retry::{RetryError, retry_function},
-};
+use crate::{backend::SolanaBackend, network_identity::NetworkIdentity};
 
 use anchor_client::{
     Cluster,
@@ -18,12 +14,12 @@ use psyche_client::{
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_metrics::ClientMetrics;
-use psyche_network::{
-    DiscoveryMode, NetworkTUIState, NetworkTui, RelayMode, SecretKey, allowlist, psyche_relay_map,
-};
+
+use psyche_modeling::Devices;
+use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
 use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
-use rand::{Rng, RngCore, thread_rng};
+use rand::{Rng, RngCore};
 use std::{path::PathBuf, time::Duration};
 use std::{
     sync::Arc,
@@ -74,6 +70,7 @@ pub struct AppParams {
     pub p2p_interface: Option<String>,
     pub eval_tasks: Vec<psyche_eval::Task>,
     pub eval_task_max_docs: Option<usize>,
+    pub prompt_task: bool,
     pub checkpoint_upload_info: Option<CheckpointConfig>,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
@@ -82,9 +79,10 @@ pub struct AppParams {
     pub grad_accum_in_fp32: bool,
     pub dummy_training_delay_secs: Option<u64>,
     pub max_concurrent_parameter_requests: usize,
-    pub max_concurrent_downloads: usize,
     pub authorizer: Option<Pubkey>,
     pub metrics_local_port: Option<u16>,
+    pub device: Devices,
+    pub sidecar_port: Option<u16>,
 }
 
 impl AppBuilder {
@@ -107,12 +105,10 @@ impl AppBuilder {
             &p.run_id,
             p.p2p_port,
             p.p2p_interface,
-            RelayMode::Custom(psyche_relay_map()),
             DiscoveryMode::N0,
             vec![],
             Some(p.identity_secret_key.clone()),
             allowlist.clone(),
-            p.max_concurrent_downloads,
             metrics.clone(),
         )
         .await?;
@@ -125,6 +121,7 @@ impl AppBuilder {
                 write_gradients_dir: p.write_gradients_dir,
                 eval_tasks: p.eval_tasks,
                 eval_task_max_docs: p.eval_task_max_docs,
+                prompt_task: p.prompt_task,
                 checkpoint_config: p.checkpoint_upload_info,
                 hub_read_token: p.hub_read_token,
                 hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
@@ -136,6 +133,8 @@ impl AppBuilder {
                 grad_accum_in_fp32: p.grad_accum_in_fp32,
                 dummy_training_delay_secs: p.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+                device: p.device,
+                sidecar_port: p.sidecar_port,
             };
         let app = App {
             run_id: p.run_id.clone(),
@@ -201,8 +200,8 @@ impl App {
         // (subscription is on change), so check if it's in that state right at boot
         // and join the run if so
         if start_coordinator_state.run_state == RunState::WaitingForMembers {
-            let joined = retry_function("join_run", || {
-                backend.join_run_retryable(
+            let join_signature = backend
+                .join_run(
                     coordinator_instance,
                     coordinator_account,
                     psyche_solana_coordinator::ClientId {
@@ -211,16 +210,14 @@ impl App {
                     },
                     self.authorizer,
                 )
-            })
-            .await
-            .map_err(|e: RetryError<String>| anyhow!("join_run error: {}", e))?;
+                .await?;
             info!(
                 run_id = self.run_id,
                 from = %signer,
-                tx = %joined,
+                tx = %join_signature,
                 "Joined run",
             );
-            joined_run_this_epoch = Some(joined);
+            joined_run_this_epoch = Some(join_signature);
             ever_joined_run = true;
         } else {
             info!("Waiting for the current epoch to end before joining");
@@ -276,14 +273,14 @@ impl App {
                         .as_ref()
                         .map(|state| state.clients_state.get_active_clients_ids());
 
-                    match ticked.tick(pending_clients_ids, timestamp, rand::thread_rng().next_u64()) {
+                    match ticked.tick(pending_clients_ids, timestamp, rand::rng().next_u64()) {
                         Ok(_) => {
                             if ticked.run_state != latest_update.run_state {
                                 // to avoid *everyone* sending a tick, we probabilisticly send it
                                 // targeting having two clients send it per interval
                                 let send_tick = match ticked.epoch_state.clients.len() {
                                     0..=2 => true,
-                                    len => { let rand: f32 = thread_rng().r#gen();
+                                    len => { let rand: f32 = rand::rng().random();
                                         rand <= 2.0 / len as f32
                                     }
                                 };
@@ -301,21 +298,21 @@ impl App {
                     match latest_update.run_state {
                         RunState::WaitingForMembers => {
                             if joined_run_this_epoch.is_none() {
-                                let joined = retry_function("join_run", || backend
-                                    .join_run_retryable(
+                                let join_signature = backend
+                                    .join_run(
                                         coordinator_instance,
                                         coordinator_account,
                                         id,
                                         self.authorizer,
-                                    ))
-                                    .await.map_err(|e: RetryError<String>| anyhow!("join_run error: {}", e))?;
+                                    )
+                                    .await?;
                                 info!(
                                     run_id = self.run_id,
                                     from = %signer,
-                                    tx = %joined,
+                                    tx = %join_signature,
                                     "Joined run",
                                 );
-                                joined_run_this_epoch = Some(joined);
+                                joined_run_this_epoch = Some(join_signature);
                                 ever_joined_run = true;
                             }
                         }

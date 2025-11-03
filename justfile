@@ -13,7 +13,7 @@ fmt:
 
 # spin up a local testnet
 local-testnet *args='':
-    cargo run -p psyche-centralized-local-testnet -- start {{ args }}
+    OLTP_METRICS_URL="http://localhost:4318/v1/metrics" OLTP_TRACING_URL="http://localhost:4318/v1/traces" OLTP_LOGS_URL="http://localhost:4318/v1/logs" cargo run -p psyche-centralized-local-testnet -- start {{ args }}
 
 # run integration tests
 integration-test test_name="":
@@ -56,6 +56,13 @@ start-training-localnet-client run_id="test" *args='':
 start-training-localnet-light-client run_id="test" *args='':
     RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
+OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
+OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
+
+# The same command as above but with arguments set to export telemetry data
+start-training-localnet-light-client-telemetry run_id="test" *args='':
+    OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
 DEVNET_RPC := "https://api.devnet.solana.com"
 DEVNET_WS_RPC := "wss://api.devnet.solana.com"
 
@@ -95,6 +102,7 @@ generate_cli_docs:
     cargo run -p psyche-centralized-client print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-client.md
     cargo run -p psyche-centralized-server print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-server.md
     cargo run -p psyche-centralized-local-testnet print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-local-testnet.md
+    cargo run -p psyche-sidecar print-all-help --markdown > psyche-book/generated/cli/psyche-sidecar.md
 
 run_docker_client *ARGS:
     just nix build_docker_solana_client
@@ -102,7 +110,7 @@ run_docker_client *ARGS:
 
 # Setup clients assigning one available GPU to each of them.
 
-# There's no way to do this using the replicas from docker-compose file, so we have to do it manually.
+# There's no way to do this using the replicas from docker compose file, so we have to do it manually.
 setup_gpu_clients num_clients="1":
     ./scripts/coordinator-address-check.sh
     just nix build_docker_solana_test_client
@@ -118,13 +126,21 @@ docker_push_centralized_client:
 
 # Setup the infrastructure for testing locally using Docker.
 setup_test_infra:
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    just nix build_docker_solana_test_client
+    cd architectures/decentralized/solana-coordinator && anchor build
+    cd architectures/decentralized/solana-authorizer && anchor build
+    just nix build_docker_solana_test_client_no_python
     just nix build_docker_solana_test_validator
 
 run_test_infra num_clients="1":
-    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+    #!/usr/bin/env bash
+    cd docker/test
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --force-recreate
+    else
+        echo "Running without GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+    fi
 
 run_test_infra_with_proxies_validator num_clients="1":
     cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate

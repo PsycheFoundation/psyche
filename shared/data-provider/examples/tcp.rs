@@ -7,7 +7,8 @@ use parquet::data_type::AsBytes;
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{
-    DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedDataProvider,
+    DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedData,
+    TokenizedDataProvider,
 };
 use psyche_network::{AuthenticatableIdentity, FromSignedBytesError, Networkable};
 use psyche_tui::logging;
@@ -114,10 +115,10 @@ impl anchor_lang::Space for DummyNodeIdentity {
 
 struct DummyDataProvider;
 impl TokenizedDataProvider for DummyDataProvider {
-    async fn get_samples(&mut self, _data_ids: BatchId) -> anyhow::Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, _data_ids: BatchId) -> anyhow::Result<Vec<TokenizedData>> {
         let mut data: [i32; 1024] = [0; 1024];
-        rand::thread_rng().fill(&mut data);
-        Ok(vec![data.to_vec()])
+        rand::rng().fill(&mut data);
+        Ok(vec![TokenizedData::from_input_ids(data.to_vec())])
     }
 }
 

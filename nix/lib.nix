@@ -18,7 +18,8 @@ let
     (builtins.match ".*tests/resources/.*$" path != null)
     || (builtins.match ".*tests/fixtures/.*$" path != null)
     || (builtins.match ".*.config/.*$" path != null)
-    || (builtins.match ".*local-dev-keypair.json$" path != null);
+    || (builtins.match ".*local-dev-keypair.json$" path != null)
+    || (builtins.match ".*shared/client/src/state/prompt_texts/index\\.json$" path != null);
 
   src = lib.cleanSourceWith {
     src = ../.;
@@ -36,38 +37,49 @@ let
       python312
     ];
 
-    buildInputs =
+    buildInputs = [
+      pkgs.python312Packages.torch
+    ]
+    ++ (with pkgs; [
+      openssl
+      fontconfig # for lr plot
+    ])
+    ++ lib.optionals pkgs.config.cudaSupport (
+      with pkgs.cudaPackages;
       [
-        pkgs.python312Packages.torch-bin
+        cudatoolkit
+        cuda_cudart
+        nccl
       ]
       ++ (with pkgs; [
-        openssl
-        fontconfig # for lr plot
+        rdma-core
       ])
-      ++ lib.optionals pkgs.config.cudaSupport (
-        with pkgs.cudaPackages;
-        [
-          cudatoolkit
-          cuda_cudart
-          nccl
-        ]
-      );
+    );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    cargoExtraArgs = "--features python-extension,parallelism";
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = "--features python" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
       pythonWithPsycheExtension
     ];
-    NIX_LDFLAGS = "-L${pkgs.python312}/lib -lpython3.12";
+    NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
+  };
+
+  rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
+    inherit env src;
+    strictDeps = true;
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = lib.optionalString (pkgs.config.cudaSupport) "--features parallelism";
   };
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
+  cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
   pythonWithPsycheExtension = (
     pkgs.python312.withPackages (ps: [
@@ -75,20 +87,53 @@ let
     ])
   );
 
-  buildRustPackageWithPythonSidecar =
+  buildRustPackageWithPsychePythonEnvironment =
+    {
+      name,
+      isExample ? false,
+    }:
+    let
+      rustPackage = craneLib.buildPackage (
+        rustWorkspaceArgsWithPython
+        // {
+          inherit cargoArtifacts;
+          pname = name;
+          cargoExtraArgs =
+            rustWorkspaceArgsWithPython.cargoExtraArgs
+            + (if isExample then " --example ${name}" else " --bin ${name}");
+          doCheck = false;
+
+          meta.mainProgram = name;
+        }
+      );
+    in
+    pkgs.runCommand "${name}"
+      {
+        buildInputs = [ pkgs.makeWrapper ];
+      }
+      ''
+        mkdir -p $out/bin
+        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
+          --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
+          --prefix PATH : "${pythonWithPsycheExtension}/bin"
+      '';
+
+  buildRustPackageWithoutPython =
     {
       name,
       isExample ? false,
     }:
     craneLib.buildPackage (
-      rustWorkspaceArgsWithPython
+      rustWorkspaceArgsNoPython
       // {
-        inherit cargoArtifacts;
+        cargoArtifacts = cargoArtifactsNoPython;
         pname = name;
         cargoExtraArgs =
-          rustWorkspaceArgsWithPython.cargoExtraArgs
+          rustWorkspaceArgsNoPython.cargoExtraArgs
           + (if isExample then " --example ${name}" else " --bin ${name}");
         doCheck = false;
+
+        meta.mainProgram = name;
       }
     );
 
@@ -222,7 +267,8 @@ let
 
         nativeBuildInputs = [
           inputs.solana-pkgs.packages.${system}.anchor
-        ] ++ rustWorkspaceDeps.nativeBuildInputs;
+        ]
+        ++ rustWorkspaceDeps.nativeBuildInputs;
 
         buildPhaseCargoCommand = ''
           mkdir $out
@@ -241,7 +287,8 @@ in
     rustWorkspaceArgs
     rustWorkspaceArgsWithPython
     cargoArtifacts
-    buildRustPackageWithPythonSidecar
+    buildRustPackageWithPsychePythonEnvironment
+    buildRustPackageWithoutPython
     buildRustWasmTsPackage
     useHostGpuDrivers
     env

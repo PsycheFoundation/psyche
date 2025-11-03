@@ -7,14 +7,33 @@ use std::fs;
 use tracing::info;
 
 use crate::{
+    TokenizedData,
     file_extensions::DATA_FILE_EXTENSIONS,
     traits::{LengthKnownDataProvider, TokenizedDataProvider},
 };
 
-fn mmap_file(p: &std::path::PathBuf) -> Result<memmap2::Mmap> {
+fn is_truthy_env_bool(value: &str) -> bool {
+    matches!(value.to_lowercase().as_str(), "1" | "true" | "yes")
+}
+
+fn mmap_file(p: &std::path::PathBuf) -> Result<Box<dyn AsRef<[u8]> + Send>> {
     let file = std::fs::File::open(p)?;
-    let mmap = unsafe { memmap2::MmapOptions::new().map(&file)? };
-    Ok(mmap)
+
+    // try to mmap first, only falling back to read if allowed
+    match unsafe { memmap2::MmapOptions::new().map(&file) } {
+        Ok(mmap) => Ok(Box::new(mmap)),
+        Err(e)
+            if e.raw_os_error() == Some(22)
+                && std::env::var("ALLOW_FAIL_MMAP")
+                    .map(|v| is_truthy_env_bool(&v))
+                    .unwrap_or(false) =>
+        {
+            eprintln!("mmap failed (likely under Valgrind), falling back to file read");
+            let data = std::fs::read(p)?;
+            Ok(Box::new(data))
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 struct SequencePointer {
@@ -23,7 +42,7 @@ struct SequencePointer {
 }
 
 pub struct LocalDataProvider {
-    data_files: Vec<memmap2::Mmap>,
+    data_files: Vec<Box<dyn AsRef<[u8]> + Send>>,
     sequences: Vec<SequencePointer>,
     seq_len: usize,
     token_size_in_bytes: TokenSize,
@@ -34,6 +53,7 @@ impl LengthKnownDataProvider for LocalDataProvider {
         self.sequences.len()
     }
 }
+
 impl LocalDataProvider {
     pub fn new_from_directory(
         dir: impl AsRef<std::path::Path>,
@@ -51,7 +71,7 @@ impl LocalDataProvider {
             let file = file.path();
             if let Some(extension) = file.extension().and_then(|s| s.to_str()) {
                 if DATA_FILE_EXTENSIONS.contains(&extension) {
-                    bin_files.push(file)
+                    bin_files.push(file);
                 }
             }
         }
@@ -86,7 +106,7 @@ impl LocalDataProvider {
                 .enumerate()
                 // find every sequence in every file
                 .flat_map(|(file_index, current_tokens)| {
-                    (0..current_tokens.len()
+                    (0..current_tokens.as_ref().as_ref().len()
                         - (seq_len_in_bytes + usize::from(token_size_in_bytes))) // +1 token for pretraining data!
                         .step_by(seq_len_in_bytes)
                         .map(move |byte_offset| SequencePointer {
@@ -110,7 +130,7 @@ impl LocalDataProvider {
         })
     }
 
-    fn internal_get_samples(&self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    fn internal_get_samples(&self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         let mut ret: Vec<_> = Vec::new();
         for data_id in data_ids.iter() {
             let SequencePointer {
@@ -125,7 +145,7 @@ impl LocalDataProvider {
 
             let file = &self.data_files[*file_index];
             let data_len = usize::from(self.token_size_in_bytes) * (self.seq_len + 1);
-            let data = &file[*byte_offset..*byte_offset + data_len];
+            let data = &file.as_ref().as_ref()[*byte_offset..*byte_offset + data_len];
 
             let tokens: Vec<i32> = data
                 .chunks(self.token_size_in_bytes.into())
@@ -137,14 +157,14 @@ impl LocalDataProvider {
                     }
                 })
                 .collect();
-            ret.push(tokens);
+            ret.push(TokenizedData::from_input_ids(tokens));
         }
         Ok(ret)
     }
 }
 
 impl TokenizedDataProvider for LocalDataProvider {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         self.internal_get_samples(data_ids)
     }
 }
@@ -155,7 +175,7 @@ pub struct LocalDataProviderIter {
 }
 
 impl Iterator for LocalDataProviderIter {
-    type Item = Vec<i32>;
+    type Item = TokenizedData;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_index < self.provider.num_sequences() as u64 {
@@ -177,7 +197,7 @@ impl Iterator for LocalDataProviderIter {
 }
 
 impl IntoIterator for LocalDataProvider {
-    type Item = Vec<i32>;
+    type Item = TokenizedData;
     type IntoIter = LocalDataProviderIter;
 
     fn into_iter(self) -> Self::IntoIter {

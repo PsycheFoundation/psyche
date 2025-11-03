@@ -2,7 +2,7 @@ use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, ColumnParallelLinear, Communicator,
     CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig,
     ModelLoadError, ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RoPEType, RowParallelLinear, auto_config::UseSDPA, rotate_half, yarn_get_mscale,
+    RoPEType, RowParallelLinear, rotate_half, yarn_get_mscale,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -68,26 +68,69 @@ pub struct DeepseekConfig {
 }
 
 pub fn apply_rotary_pos_emb(
+    cache: &RoPECache,
     q: &Tensor,
     k: &Tensor,
-    index_pos: i64,
-    cache: &RoPECache,
+    position_ids: Option<&Tensor>,
 ) -> (Tensor, Tensor) {
-    let (_b_sz, _, seq_len, _hidden_size) = q.size4().unwrap();
-    let cos = cache.cos.narrow(0, index_pos, seq_len);
-    let sin = cache.sin.narrow(0, index_pos, seq_len);
-    let cos = Tensor::cat(&[&cos, &cos], -1);
-    let sin = Tensor::cat(&[&sin, &sin], -1);
-    let cos = cos.unsqueeze(0).unsqueeze(0);
-    let sin = sin.unsqueeze(0).unsqueeze(0);
-
     let (b, h, s, d) = q.size4().unwrap();
+    let position_ids = match position_ids {
+        Some(ids) => ids,
+        None => &Tensor::arange(s, (Kind::Int64, q.device()))
+            .unsqueeze(0)
+            .expand([b, s], false),
+    };
+    let pos_shape = position_ids.size();
+    assert_eq!(
+        pos_shape.len(),
+        2,
+        "position_ids must be 2D [batch, seq_len]"
+    );
+    let pos_b = pos_shape[0];
+    let pos_s = pos_shape[1];
+    assert_eq!(
+        pos_s, s,
+        "sequence length mismatch between q and position_ids"
+    );
+    assert!(
+        pos_b == 1 || pos_b == b,
+        "batch size mismatch between position_ids and q"
+    );
+
+    let head_dim_2 = cache.inv_freq.size()[0];
+    let inv_freq_expanded = cache
+        .inv_freq
+        .to_kind(Kind::Float)
+        .unsqueeze(0)
+        .unsqueeze(-1)
+        .expand([pos_b, head_dim_2, 1], true);
+    let position_ids_expanded = position_ids.to_kind(Kind::Float).unsqueeze(1); // [pos_b, 1, seq_len]
+
+    let freqs = inv_freq_expanded.matmul(&position_ids_expanded); // [pos_b, head_dim_2, seq_len]
+    let freqs = freqs.transpose(1, 2); // [pos_b, seq_len, head_dim_2]
+
+    let emb = Tensor::cat(&[&freqs, &freqs], -1); // [pos_b, seq_len, head_dim]
+
+    let mut cos = emb.cos();
+    let mut sin = emb.sin();
+
+    if cache.mscale != 1.0 {
+        let _ = cos.g_mul_scalar_(cache.mscale);
+        let _ = sin.g_mul_scalar_(cache.mscale);
+    }
+
+    let cos = cos.unsqueeze(1); // [pos_b, 1, seq_len, head_dim]
+    let sin = sin.unsqueeze(1); // [pos_b, 1, seq_len, head_dim]
+
+    let kind = q.kind();
+    let cos = cos.to_kind(kind);
+    let sin = sin.to_kind(kind);
+
     let q = q
         .view([b, h, s, d / 2, 2])
         .transpose(4, 3)
         .reshape([b, h, s, d]);
 
-    let (b, h, s, d) = k.size4().unwrap();
     let k = k
         .view([b, h, s, d / 2, 2])
         .transpose(4, 3)
@@ -118,7 +161,7 @@ struct MLAAttention {
     qk_nope_head_dim: i64,
     softmax_scale: f64,
     device: Device,
-    use_sdpa: bool,
+    attn_implementation: AttentionImplementation,
     num_heads: i64,
     num_local_heads: i64,
 
@@ -131,7 +174,7 @@ impl MLAAttention {
     fn new(
         vs: nn::Path,
         config: &DeepseekConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let tp_size = comm.as_ref().map(|x| x.size()).unwrap_or(1);
@@ -248,7 +291,7 @@ impl MLAAttention {
             kv_lora_rank,
             softmax_scale,
             device: vs.device(),
-            use_sdpa,
+            attn_implementation,
             num_heads,
             num_local_heads,
             comm,
@@ -262,7 +305,15 @@ impl MLAAttention {
         (a, b)
     }
 
-    fn forward(&self, x: &Tensor, index_pos: i64, cache: &RoPECache) -> Tensor {
+    #[allow(unused_mut)]
+    #[allow(unused_variables)]
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&(Tensor, i32)>,
+        cache: &RoPECache,
+    ) -> Tensor {
         let (b, t, _) = x.size3().unwrap();
         let kind = x.kind();
 
@@ -314,58 +365,125 @@ impl MLAAttention {
             .parallel_expand_heads(&self.comm, [b, t, self.num_heads, self.qk_rope_head_dim])
             .transpose(1, 2);
 
-        let (q_pe, k_pe) = apply_rotary_pos_emb(&q_pe, &k_pe, index_pos, cache);
+        let (q_pe, k_pe) = apply_rotary_pos_emb(cache, &q_pe, &k_pe, position_ids);
 
-        let query_states = Tensor::cat(&[&q_nope, &q_pe], -1);
-        let key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
+        let mut query_states = Tensor::cat(&[&q_nope, &q_pe], -1);
+        let mut key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
 
-        let y = if self.use_sdpa {
-            // Flash Attention only supports equal dimensions for query, keys, and values.
-            // It's actually more efficient to pad to these dimensions so that SDPA will use FA
-            // rather than doing vanilla math attention on the smaller value dimension
+        let y = match self.attn_implementation {
+            #[cfg(feature = "parallelism")]
+            AttentionImplementation::FlashAttention2 => {
+                let mut padded_value_states = value_states.shallow_clone();
+                let full_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim;
+                if full_head_dim != self.head_v_dim {
+                    let pad_size = full_head_dim - self.head_v_dim;
+                    padded_value_states = Tensor::cat(
+                        &[
+                            &value_states,
+                            &Tensor::zeros(
+                                [b, self.num_local_heads, t, pad_size],
+                                (kind, self.device),
+                            ),
+                        ],
+                        -1,
+                    );
+                }
 
-            let mut padded_value_states = value_states.shallow_clone();
-            if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
-                let pad_size = self.qk_nope_head_dim + self.qk_rope_head_dim - self.head_v_dim;
-                padded_value_states = Tensor::cat(
-                    &[
-                        &value_states,
-                        &Tensor::zeros([b, self.num_local_heads, t, pad_size], (kind, self.device)),
-                    ],
-                    -1,
+                let (cum_seq, max_len) = match sequence_lengths {
+                    Some((cum_seq, max_len)) => (Some(cum_seq), *max_len as i64),
+                    None => (None, t),
+                };
+
+                let _ = query_states.transpose_(1, 2);
+                let _ = key_states.transpose_(1, 2);
+                let _ = padded_value_states.transpose_(1, 2);
+
+                if cum_seq.is_some() {
+                    // reshape to 3D packed format for FA varlen
+                    query_states =
+                        query_states.reshape([b * t, self.num_local_heads, full_head_dim]);
+                    key_states = key_states.reshape([b * t, self.num_local_heads, full_head_dim]);
+                    padded_value_states =
+                        padded_value_states.reshape([b * t, self.num_local_heads, full_head_dim]);
+                }
+
+                let (att, _, _, _, _) = tch::flash_attention_forward(
+                    &query_states,
+                    &key_states,
+                    &padded_value_states,
+                    cum_seq,
+                    cum_seq,
+                    max_len,
+                    max_len,
+                    0.0,
+                    t > 1,
+                    false,
+                    Some(self.softmax_scale),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+
+                if full_head_dim != self.head_v_dim {
+                    att.narrow(-1, 0, self.head_v_dim)
+                } else {
+                    att
+                }
+            }
+            AttentionImplementation::Sdpa => {
+                // Flash Attention only supports equal dimensions for query, keys, and values.
+                // It's actually more efficient to pad to these dimensions so that SDPA will use FA
+                // rather than doing vanilla math attention on the smaller value dimension
+
+                let mut padded_value_states = value_states.shallow_clone();
+                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
+                    let pad_size = self.qk_nope_head_dim + self.qk_rope_head_dim - self.head_v_dim;
+                    padded_value_states = Tensor::cat(
+                        &[
+                            &value_states,
+                            &Tensor::zeros(
+                                [b, self.num_local_heads, t, pad_size],
+                                (kind, self.device),
+                            ),
+                        ],
+                        -1,
+                    );
+                }
+
+                let att = Tensor::scaled_dot_product_attention::<Tensor>(
+                    &query_states,
+                    &key_states,
+                    &padded_value_states,
+                    None,
+                    0.0,
+                    true,
+                    Some(self.softmax_scale),
+                    false,
                 );
-            }
 
-            let att = Tensor::scaled_dot_product_attention::<Tensor>(
-                &query_states,
-                &key_states,
-                &padded_value_states,
-                None,
-                0.0,
-                true,
-                Some(self.softmax_scale),
-                false,
-            );
-
-            if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
-                att.narrow(-1, 0, self.head_v_dim)
-            } else {
-                att
+                if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
+                    att.narrow(-1, 0, self.head_v_dim)
+                } else {
+                    att
+                }
+                .transpose(1, 2)
             }
-        } else {
-            let att = query_states.matmul(&key_states.transpose(-2, -1)) * self.softmax_scale;
-            let mask = Tensor::ones([t, t], (kind, self.device))
-                .tril(0)
-                .reshape([1, 1, t, t]);
-            let att = att.masked_fill(&mask.eq(0.), f64::NEG_INFINITY);
-            att.softmax(-1, kind).matmul(&value_states)
+            AttentionImplementation::Eager => {
+                let att = query_states.matmul(&key_states.transpose(-2, -1)) * self.softmax_scale;
+                let mask = Tensor::ones([t, t], (kind, self.device))
+                    .tril(0)
+                    .reshape([1, 1, t, t]);
+                let att = att.masked_fill(&mask.eq(0.), f64::NEG_INFINITY);
+                att.softmax(-1, kind).matmul(&value_states).transpose(1, 2)
+            }
         };
 
         // Project back to hidden size
-        let y =
-            y.transpose(1, 2)
-                .contiguous()
-                .reshape([b, t, self.num_local_heads * self.head_v_dim]);
+        let y = y
+            .contiguous()
+            .reshape([b, t, self.num_local_heads * self.head_v_dim]);
 
         self.o_proj.forward(&y)
     }
@@ -717,10 +835,10 @@ impl DeepseekBlock {
         vs: nn::Path,
         config: &DeepseekConfig,
         layer_idx: usize,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
-        let mla = MLAAttention::new(&vs / "self_attn", config, use_sdpa, comm.clone());
+        let mla = MLAAttention::new(&vs / "self_attn", config, attn_implementation, comm.clone());
 
         let network = if config.n_routed_experts.is_some()
             && layer_idx >= config.first_k_dense_replace.unwrap()
@@ -750,11 +868,20 @@ impl DeepseekBlock {
         }
     }
 
-    fn forward(&self, x: &Tensor, index_pos: i64, cache: &RoPECache) -> Tensor {
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&(Tensor, i32)>,
+        cache: &RoPECache,
+    ) -> Tensor {
         let residual = x;
-        let x = self
-            .mla
-            .forward(&self.input_layernorm.forward(x), index_pos, cache);
+        let x = self.mla.forward(
+            &self.input_layernorm.forward(x),
+            position_ids,
+            sequence_lengths,
+            cache,
+        );
         let x = &x + residual;
 
         let residual = &x;
@@ -765,11 +892,13 @@ impl DeepseekBlock {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Deepseek {
     embed_tokens: nn::Embedding,
     blocks: Vec<DeepseekBlock>,
     norm: RMSNorm,
+    attn_implementation: AttentionImplementation,
     rope_cache: RoPECache,
 }
 
@@ -777,7 +906,7 @@ impl Deepseek {
     pub fn new(
         vs: nn::Path,
         config: &DeepseekConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let embed_tokens = nn::embedding(
@@ -793,7 +922,7 @@ impl Deepseek {
                     &vs / "model" / "layers" / i,
                     config,
                     i,
-                    use_sdpa,
+                    attn_implementation,
                     comm.clone(),
                 )
             })
@@ -806,11 +935,9 @@ impl Deepseek {
         );
 
         let rope_cache = RoPECache::new(
-            vs.kind(),
             &config.rope_config(),
             config.qk_rope_head_dim.unwrap(),
             config.rope_theta(),
-            config.max_position_embeddings(),
             &vs.device(),
         );
 
@@ -818,20 +945,50 @@ impl Deepseek {
             embed_tokens,
             blocks,
             norm,
+            attn_implementation,
             rope_cache,
         }
     }
 }
 
 impl LanguageModelForward for Deepseek {
-    fn forward(&self, x: &Tensor, index_pos: i64, training: bool) -> Tensor {
+    #[allow(unused_variables)]
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
+        training: bool,
+    ) -> Tensor {
         if let NetworkBlock::MoE(_) = &self.blocks[0].network {
             assert!(!training, "DeepseekMoE training not yet supported");
         }
+
+        let sequence_lengths = sequence_lengths.map(|sequence_lengths| {
+            #[cfg(feature = "parallelism")]
+            {
+                if self.attn_implementation == AttentionImplementation::FlashAttention2 {
+                    crate::attention::create_cu_seqlens(sequence_lengths, x.device())
+                } else {
+                    panic!("`sequence_lengths` only supported for FlashAttention2");
+                }
+            }
+
+            #[cfg(not(feature = "parallelism"))]
+            {
+                panic!("`sequence_lengths` only supported for FlashAttention2");
+            }
+        });
+
         let mut hidden_states = self.embed_tokens.forward(x);
 
         for block in &self.blocks {
-            hidden_states = block.forward(&hidden_states, index_pos, &self.rope_cache);
+            hidden_states = block.forward(
+                &hidden_states,
+                position_ids,
+                sequence_lengths.as_ref(),
+                &self.rope_cache,
+            );
         }
 
         self.norm.forward(&hidden_states)
@@ -850,7 +1007,7 @@ impl DeepseekForCausalLM {
         Ok(Deepseek::new(
             vs,
             config,
-            attn_implementation.use_sdpa()?,
+            attn_implementation.unwrap_or_default(),
             comm,
         ))
     }
@@ -876,27 +1033,98 @@ impl DeepseekForCausalLM {
 }
 
 impl ModelConfig for DeepseekConfig {
-    // TODO: This is just a hacky solution to get the parameter names from the config
-    // but it is probably overkill. We should think about a better way to get them
-    // to make the p2p requests.
     fn get_parameter_names(&self) -> Vec<String> {
-        let mut variables: nn::VarStore = nn::VarStore::new(Device::Cpu);
-        variables.set_kind(Kind::BFloat16);
-        let _model = Deepseek::new(variables.root(), self, false, None);
-        let c = nn::LinearConfig {
-            bias: false,
-            ..Default::default()
-        };
+        let mut parameters = Vec::new();
 
-        let _lm_head = nn::linear(
-            &variables.root() / "lm_head",
-            self.hidden_size as i64,
-            self.vocab_size as i64,
-            c,
-        );
+        parameters.push("model.embed_tokens.weight".to_string());
+        parameters.push("model.norm.weight".to_string());
+        parameters.push("lm_head.weight".to_string());
 
-        let variables_lock = variables.variables_.lock().unwrap();
-        variables_lock.named_variables.keys().cloned().collect()
+        for layer_idx in 0..self.num_hidden_layers {
+            let layer_prefix = format!("model.layers.{}", layer_idx);
+
+            parameters.push(format!("{}.input_layernorm.weight", layer_prefix));
+            parameters.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
+
+            self.generate_attention_params(&mut parameters, &layer_prefix);
+            if layer_idx >= self.first_k_dense_replace.unwrap() && self.n_routed_experts.is_some() {
+                self.generate_moe_params(&mut parameters, layer_idx);
+            } else {
+                self.generate_dense_mlp_params(&mut parameters, &layer_prefix);
+            }
+        }
+
+        parameters
+    }
+}
+
+impl DeepseekConfig {
+    fn generate_attention_params(&self, names: &mut Vec<String>, prefix: &str) {
+        names.push(format!("{}.self_attn.o_proj.weight", prefix));
+
+        if self.q_lora_rank.is_some() && self.kv_lora_rank.is_some() {
+            names.push(format!("{}.self_attn.q_a_proj.weight", prefix));
+            names.push(format!("{}.self_attn.q_b_proj.weight", prefix));
+            names.push(format!("{}.self_attn.q_a_layernorm.weight", prefix));
+            names.push(format!("{}.self_attn.kv_a_proj_with_mqa.weight", prefix));
+            names.push(format!("{}.self_attn.kv_b_proj.weight", prefix));
+            names.push(format!("{}.self_attn.kv_a_layernorm.weight", prefix));
+
+            if self.attention_bias.unwrap_or(false) {
+                names.push(format!("{}.self_attn.q_a_proj.bias", prefix));
+                names.push(format!("{}.self_attn.q_b_proj.bias", prefix));
+                names.push(format!("{}.self_attn.kv_a_proj_with_mqa.bias", prefix));
+                names.push(format!("{}.self_attn.kv_b_proj.bias", prefix));
+                names.push(format!("{}.self_attn.o_proj.bias", prefix));
+            }
+        } else {
+            names.push(format!("{}.self_attn.q_proj.weight", prefix));
+            names.push(format!("{}.self_attn.k_proj.weight", prefix));
+            names.push(format!("{}.self_attn.v_proj.weight", prefix));
+        }
+    }
+
+    fn generate_dense_mlp_params(&self, names: &mut Vec<String>, prefix: &str) {
+        names.push(format!("{}.mlp.gate_proj.weight", prefix));
+        names.push(format!("{}.mlp.up_proj.weight", prefix));
+        names.push(format!("{}.mlp.down_proj.weight", prefix));
+    }
+
+    fn generate_moe_params(&self, names: &mut Vec<String>, layer_idx: usize) {
+        if let Some(n_experts) = self.n_routed_experts {
+            names.push(format!("model.layers.{}.mlp.gate.weight", layer_idx));
+            names.push(format!(
+                "model.layers.{}.mlp.gate.e_score_correction_bias",
+                layer_idx
+            ));
+            for expert_idx in 0..n_experts {
+                names.push(format!(
+                    "model.layers.{}.mlp.experts.{}.gate_proj.weight",
+                    layer_idx, expert_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.experts.{}.up_proj.weight",
+                    layer_idx, expert_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.experts.{}.down_proj.weight",
+                    layer_idx, expert_idx
+                ));
+
+                names.push(format!(
+                    "model.layers.{}.mlp.shared_experts.gate_proj.weight",
+                    layer_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.shared_experts.up_proj.weight",
+                    layer_idx
+                ));
+                names.push(format!(
+                    "model.layers.{}.mlp.shared_experts.down_proj.weight",
+                    layer_idx
+                ));
+            }
+        }
     }
 }
 

@@ -8,7 +8,7 @@
       ...
     }:
     let
-      inherit (pkgs.psycheLib) buildRustPackageWithPythonSidecar useHostGpuDrivers;
+      inherit (pkgs.psycheLib) buildRustPackageWithPsychePythonEnvironment useHostGpuDrivers;
 
     in
     {
@@ -18,6 +18,9 @@
         }
       );
 
-      packages = lib.mapAttrs (_: lib.id) pkgs.psychePackages;
+      packages = {
+        flattenReferencesGraph = pkgs.flattenReferencesGraph;
+      }
+      // lib.mapAttrs (_: lib.id) pkgs.psychePackages;
     };
 }

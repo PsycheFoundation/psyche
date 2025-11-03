@@ -1,9 +1,7 @@
 use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{
-    self, Checkpoint, LLM, LLMTrainingDataLocation, LLMTrainingDataType, Model,
-};
+use psyche_coordinator::model::{self, Checkpoint, LLM, LLMTrainingDataLocation, Model};
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
@@ -180,13 +178,9 @@ impl App {
             let training_data_server = match &coordinator.model {
                 Model::LLM(LLM {
                     data_location,
-                    data_type,
                     checkpoint,
                     ..
                 }) => {
-                    if let LLMTrainingDataType::Finetuning = data_type {
-                        panic!("Finetuning is not supported yet.")
-                    }
                     if let LLMTrainingDataLocation::Server(url) = data_location {
                         match checkpoint {
                             Checkpoint::Hub(hub_repo) => {
@@ -399,7 +393,7 @@ impl App {
                         &from,
                         witness,
                         Self::get_timestamp(),
-                        rand::thread_rng().next_u64(),
+                        rand::rng().next_u64(),
                     ),
                 } {
                     warn!("Error when processing witness: {error}");
@@ -450,7 +444,7 @@ impl App {
                 self.backend.pending_clients.len(),
             )),
             Self::get_timestamp(),
-            rand::thread_rng().next_u64(),
+            rand::rng().next_u64(),
         ) {
             Ok(TickResult::EpochEnd(result)) => {
                 if result {

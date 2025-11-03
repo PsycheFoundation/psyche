@@ -4,7 +4,7 @@
 	"version": "0.0.0",
 	"type": "module",
 	"scripts": {
-		"_dev": "VITE_BACKEND_PORT=3000 vite",
+		"_dev": "cp ../../shared/data-provider/tests/resources/llama2_tokenizer.json public/tokenizers/ && cp ../../shared/data-provider/tests/resources/llama3_tokenizer.json public/tokenizers/ && cp ../../shared/client/src/state/prompt_texts/index.json public/prompts/ && VITE_BACKEND_PORT=3000 vite",
 		"dev-localnet": "VITE_MINING_POOL_CLUSTER=localhost:8899 VITE_COORDINATOR_CLUSTER=localhost:8899 VITE_MINING_POOL_RPC=http://localhost:8899/ pnpm _dev",
 		"dev-devnet": "VITE_MINING_POOL_CLUSTER=devnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://api.devnet.solana.com pnpm _dev",
 		"dev-mainnet": "VITE_MINING_POOL_CLUSTER=mainnet VITE_COORDINATOR_CLUSTER=mainnet VITE_MINING_POOL_RPC=https://quentin-uzfsvh-fast-mainnet.helius-rpc.com pnpm _dev",

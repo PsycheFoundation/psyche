@@ -1,0 +1,35 @@
+{
+	"shuffle": "DontShuffle",
+	"providers": [
+		[
+			{
+				"location": {
+					"NumberedFiles": {
+						"url_template": "http://localhost:8000/{}.ds",
+						"start_index": 0,
+						"n_left_pad_zeros": 3,
+						"num_files": 2
+					}
+				},
+				"token_size_in_bytes": "TwoBytes",
+				"shuffle": "DontShuffle"
+			},
+			0.7
+		],
+		[
+			{
+				"location": {
+					"NumberedFiles": {
+						"url_template": "http://localhost:8001/{}.ds",
+						"start_index": 0,
+						"n_left_pad_zeros": 3,
+						"num_files": 2
+					}
+				},
+				"token_size_in_bytes": "TwoBytes",
+				"shuffle": "DontShuffle"
+			},
+			0.3
+		]
+	]
+}

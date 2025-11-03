@@ -2,7 +2,7 @@ use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, CausalSelfAttention,
     ColumnParallelLinear, CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward,
     ModelConfig, ModelLoadError, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RowParallelLinear, auto_config::UseSDPA, default_rope, parallelism::Communicator,
+    RowParallelLinear, default_rope, parallelism::Communicator,
 };
 use std::sync::Arc;
 use tch::{
@@ -26,6 +26,7 @@ pub struct LlamaConfig {
     pub rope_scaling: Option<RoPEConfig>,
     pub max_position_embeddings: usize,
     pub tie_word_embeddings: bool,
+    pub attention_bias: Option<bool>,
 }
 
 impl LlamaConfig {
@@ -48,6 +49,7 @@ impl LlamaConfig {
             rope_scaling: None,
             max_position_embeddings: 2048,
             tie_word_embeddings: false,
+            attention_bias: None,
         }
     }
 }
@@ -113,7 +115,7 @@ impl Block {
     fn new(
         vs: nn::Path,
         config: &LlamaConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let rms_1 = RMSNorm::new(
@@ -129,7 +131,7 @@ impl Block {
                 .unwrap_or(config.num_attention_heads) as i64,
             config.hidden_size as i64,
             (config.max_position_embeddings + 1) as i64,
-            use_sdpa,
+            attn_implementation,
             comm.clone(),
         );
         let rms_2 = RMSNorm::new(
@@ -151,17 +153,30 @@ impl Block {
         }
     }
 
-    fn forward(&self, x: &Tensor, index_pos: i64, cache: &RoPECache) -> Tensor {
-        let x = self.attn.forward(&self.rms_1.forward(x), index_pos, cache) + x;
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&(Tensor, i32)>,
+        cache: &RoPECache,
+    ) -> Tensor {
+        let x = self.attn.forward(
+            &self.rms_1.forward(x),
+            position_ids,
+            sequence_lengths,
+            cache,
+        ) + x;
         self.mlp.forward(&self.rms_2.forward(&x)) + x
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Llama {
     wte: nn::Embedding,
     blocks: Vec<Block>,
     ln_f: RMSNorm,
+    attn_implementation: AttentionImplementation,
     rope_cache: RoPECache,
 }
 
@@ -169,7 +184,7 @@ impl Llama {
     pub fn new(
         vs: nn::Path,
         config: &LlamaConfig,
-        use_sdpa: bool,
+        attn_implementation: AttentionImplementation,
         comm: Option<Arc<Communicator>>,
     ) -> Self {
         let wte = nn::embedding(
@@ -184,30 +199,64 @@ impl Llama {
             config.rms_norm_eps,
         );
         let blocks = (0..config.num_hidden_layers)
-            .map(|i| Block::new(&vs / "model" / "layers" / i, config, use_sdpa, comm.clone()))
+            .map(|i| {
+                Block::new(
+                    &vs / "model" / "layers" / i,
+                    config,
+                    attn_implementation,
+                    comm.clone(),
+                )
+            })
             .collect::<Vec<_>>();
         let rope_cache = RoPECache::new(
-            vs.kind(),
             &config.rope_config(),
             config.hidden_size() / config.num_attention_heads(),
             config.rope_theta(),
-            config.max_position_embeddings(),
             &vs.device(),
         );
         Self {
             wte,
             blocks,
             ln_f,
+            attn_implementation,
             rope_cache,
         }
     }
 }
 
 impl LanguageModelForward for Llama {
-    fn forward(&self, x: &Tensor, index_pos: i64, _training: bool) -> Tensor {
+    #[allow(unused_variables)]
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
+        _training: bool,
+    ) -> Tensor {
+        let sequence_lengths = sequence_lengths.map(|sequence_lengths| {
+            #[cfg(feature = "parallelism")]
+            {
+                if self.attn_implementation == AttentionImplementation::FlashAttention2 {
+                    crate::attention::create_cu_seqlens(sequence_lengths, x.device())
+                } else {
+                    panic!("`sequence_lengths` only supported for FlashAttention2");
+                }
+            }
+
+            #[cfg(not(feature = "parallelism"))]
+            {
+                panic!("`sequence_lengths` only supported for FlashAttention2");
+            }
+        });
+
         let mut x = self.wte.forward(x);
         for block in &self.blocks {
-            x = block.forward(&x, index_pos, &self.rope_cache);
+            x = block.forward(
+                &x,
+                position_ids,
+                sequence_lengths.as_ref(),
+                &self.rope_cache,
+            );
         }
         self.ln_f.forward(&x)
     }
@@ -225,7 +274,7 @@ impl LlamaForCausalLM {
         Ok(Llama::new(
             vs,
             config,
-            attn_implementation.use_sdpa()?,
+            attn_implementation.unwrap_or_default(),
             comm,
         ))
     }
@@ -251,27 +300,35 @@ impl LlamaForCausalLM {
 }
 
 impl ModelConfig for LlamaConfig {
-    // TODO: This is just a hacky solution to get the parameter names from the config
-    // but it is probably overkill. We should think about a better way to get them
-    // to make the p2p requests.
     fn get_parameter_names(&self) -> Vec<String> {
-        let mut variables: nn::VarStore = nn::VarStore::new(Device::Cpu);
-        variables.set_kind(Kind::BFloat16);
-        let _model = Llama::new(variables.root(), self, false, None);
-        let c = nn::LinearConfig {
-            bias: false,
-            ..Default::default()
-        };
+        let mut variables = Vec::new();
+        for layer_idx in 0..self.num_hidden_layers {
+            let layer_prefix = format!("model.layers.{}", layer_idx);
 
-        let _lm_head = nn::linear(
-            &variables.root() / "lm_head",
-            self.hidden_size as i64,
-            self.vocab_size as i64,
-            c,
-        );
+            variables.push(format!("{}.self_attn.q_proj.weight", layer_prefix));
+            variables.push(format!("{}.self_attn.k_proj.weight", layer_prefix));
+            variables.push(format!("{}.self_attn.v_proj.weight", layer_prefix));
+            variables.push(format!("{}.self_attn.o_proj.weight", layer_prefix));
 
-        let variables_lock = variables.variables_.lock().unwrap();
-        variables_lock.named_variables.keys().cloned().collect()
+            variables.push(format!("{}.mlp.gate_proj.weight", layer_prefix));
+            variables.push(format!("{}.mlp.up_proj.weight", layer_prefix));
+            variables.push(format!("{}.mlp.down_proj.weight", layer_prefix));
+
+            variables.push(format!("{}.input_layernorm.weight", layer_prefix));
+            variables.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
+
+            if self.attention_bias.unwrap_or(false) {
+                variables.push(format!("{}.self_attn.q_proj.bias", layer_prefix));
+                variables.push(format!("{}.self_attn.k_proj.bias", layer_prefix));
+                variables.push(format!("{}.self_attn.v_proj.bias", layer_prefix));
+            }
+        }
+
+        variables.push("lm_head.weight".to_string());
+        variables.push("model.norm.weight".to_string());
+        variables.push("model.embed_tokens.weight".to_string());
+
+        variables
     }
 }
 
