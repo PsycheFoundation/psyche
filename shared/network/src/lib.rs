@@ -4,10 +4,10 @@ use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
+use iroh_blobs::api::Tag;
 use iroh_blobs::{
     BlobsProtocol,
     api::downloader::Downloader,
-    api::tags::TagInfo,
     store::{
         fs::options::GcConfig,
         mem::{MemStore, Options as MemStoreOptions},
@@ -107,41 +107,6 @@ const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
 pub enum DiscoveryMode {
     Local,
     N0,
-}
-
-#[derive(Debug, Clone)]
-pub enum BlobTag {
-    // Tag for Distro result blobs containing the step as an u32 to check if it's safe to be deleted
-    DistroResult(u32),
-    // Tag for Parameter blobs with a specific format to identify them and remove them after warmup
-    Parameter(String),
-}
-
-impl TryFrom<TagInfo> for BlobTag {
-    type Error = String;
-
-    fn try_from(tag: TagInfo) -> Result<Self, Self::Error> {
-        let tag_value_str = match std::str::from_utf8(&tag.name.0) {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("Failed parsing tag name: {}", e);
-                return Err("Failed parsing tag name".to_string());
-            }
-        };
-
-        if tag_value_str.starts_with("model-") {
-            return Ok(BlobTag::Parameter(tag_value_str.to_string()));
-        }
-
-        let tag_value = match tag_value_str.parse::<u32>() {
-            Ok(value) => value,
-            Err(e) => {
-                return Err(format!("Failed parsing tag value: {}", e));
-            }
-        };
-
-        Ok(BlobTag::DistroResult(tag_value))
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -290,11 +255,16 @@ where
         let node_addr = endpoint.node_addr();
 
         info!("Our node id: {}", node_addr.node_id);
-
         trace!("creating blobs store...");
+
+        let gc_interval: u64 = std::env::var("BLOBS_GC_INTERVAL_MILLIS")
+            .ok()
+            .and_then(|gc_interval_str| gc_interval_str.parse().ok())
+            .unwrap_or(10000);
+
         let store = MemStore::new_with_opts(MemStoreOptions {
             gc_config: Some(GcConfig {
-                interval: Duration::from_secs(10),
+                interval: Duration::from_millis(gc_interval),
                 add_protected: None,
             }),
         });
@@ -415,7 +385,7 @@ where
         Ok(())
     }
 
-    pub fn start_download(&mut self, ticket: BlobTicket, tag: u32, download_type: DownloadType) {
+    pub fn start_download(&mut self, ticket: BlobTicket, tag: Tag, download_type: DownloadType) {
         let provider_node_id = ticket.node_addr().clone();
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
@@ -425,10 +395,9 @@ where
             }
         };
         let (tx, rx) = mpsc::unbounded_channel();
-
+        // We share the tag with the download manager to keep track of the download progress on this blob but we actually set the tag here
         self.download_manager
-            .add(ticket, tag, rx, download_type.clone());
-
+            .add(ticket, tag.clone(), rx, download_type.clone());
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let latency_sorted = LatencySorted::new(
@@ -438,7 +407,9 @@ where
             self.endpoint.clone(),
         );
         let download = self.downloader.download(ticket_hash, latency_sorted);
+        let blob_store_clone = self.blobs_store.clone();
         tokio::spawn(async move {
+            let _ = blob_store_clone.tags().set(tag, ticket_hash).await;
             let progress = download.stream().await;
 
             match progress {
@@ -454,7 +425,7 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: &str) -> Result<BlobTicket> {
+    pub async fn add_downloadable(&mut self, data: Download, tag: Tag) -> Result<BlobTicket> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
@@ -478,64 +449,58 @@ where
 
     /// Removes all the tags from the store that are lower than the target tag.
     /// Also removes all the tags used for the parameter sharing since this will run only in the Train state
-    pub async fn remove_staled_tags(&mut self, target_tag: u32) -> anyhow::Result<()> {
+    pub async fn remove_staled_tags(
+        &mut self,
+        target_distro_result_step: u32,
+    ) -> anyhow::Result<()> {
         let store = self.blobs_store.as_ref().clone();
+        let model_tags_deleted = store.tags().delete_prefix("model-").await?;
+        let mut distro_results_deleted = 0;
         let mut tags = store.tags().list().await?;
-        let mut to_delete = Vec::new();
 
-        tokio::task::spawn(async move {
-            while let Some(tag_result) = tags.next().await {
-                let tag = match tag_result {
-                    Ok(tag) => tag,
-                    Err(e) => {
-                        warn!("Failed getting blob tag to delete: {}", e);
-                        continue;
-                    }
-                };
+        while let Some(tag) = tags.next().await {
+            let Ok(tag) = tag else {
+                warn!("Error while getting tag: {tag:?}. This may lead to a memory leak");
+                continue;
+            };
 
-                let blob_tag: BlobTag = match BlobTag::try_from(tag) {
-                    Ok(tag) => tag,
-                    Err(e) => {
-                        warn!("Failed parsing blob tag: {}", e);
-                        continue;
-                    }
-                };
+            let Ok(tag_name) = String::from_utf8(tag.name.0.to_vec()) else {
+                warn!(
+                    "Error while decoding tag name to string: {tag:?}. This may lead to a memory leak"
+                );
+                continue;
+            };
 
-                match blob_tag {
-                    BlobTag::Parameter(tag_name) => {
-                        to_delete.push(tag_name);
-                    }
-                    BlobTag::DistroResult(step) => {
-                        if step < target_tag {
-                            to_delete.push(step.to_string());
-                        }
-                    }
+            // Since tags related to model parameter sharing have been already deleted, it is assumed that
+            // all remaining tags are related to Distro result blobs
+            let tag_name_splitted: Vec<&str> = tag_name.split("_").collect();
+            let Some(tag_name_distro_result_step) = tag_name_splitted.get(1) else {
+                warn!("Step not present in tag name: {tag_name}. This may lead to a memory leak");
+                continue;
+            };
+            let Ok(distro_result_step) = tag_name_distro_result_step.parse::<u32>() else {
+                warn!(
+                    "Distro result step could not be parsed: {tag_name_distro_result_step}. This may lead to a memory leak"
+                );
+                continue;
+            };
+
+            if distro_result_step < target_distro_result_step {
+                let tag_delete_res = store.tags().delete(&tag_name).await;
+                if tag_delete_res.is_ok() {
+                    distro_results_deleted += 1;
+                } else {
+                    warn!(
+                        "There was an error while trying to delete tag {tag_name}: {tag_delete_res:?}"
+                    );
                 }
             }
+        }
 
-            let mut deleted_tags = 0;
-            for tag in to_delete {
-                match store.tags().delete(&tag).await {
-                    Ok(_) => {
-                        deleted_tags += 1;
-                    }
-                    Err(err) => {
-                        warn!("Error deleting blob tag {tag}: {err}")
-                    }
-                }
-            }
-            match store.blobs().list().hashes().await {
-                Ok(blobs) => debug!(
-                    "Untagged {} old blobs from p2p, {} blobs remain",
-                    deleted_tags,
-                    blobs.len()
-                ),
-                Err(err) => debug!(
-                    "Untagged {} old blobs from p2p, but got error fetching list of blobs: {}",
-                    deleted_tags, err
-                ),
-            }
-        });
+        debug!(
+            "Untagged {} blobs",
+            model_tags_deleted + distro_results_deleted
+        );
         Ok(())
     }
 

@@ -285,7 +285,14 @@ async fn test_rejoining_client_delay() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, None).await;
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        1,
+        Some(PathBuf::from(
+            "../../config/solana-test/nano-one-min-clients.toml",
+        )),
+    )
+    .await;
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
 
@@ -348,8 +355,6 @@ async fn test_rejoining_client_delay() {
 async fn disconnect_client() {
     // set test variables
     let run_id = "test".to_string();
-    // epochs the test will run
-    let num_of_epochs_to_run = 3;
 
     // initialize a Solana run with 2 client
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
@@ -398,8 +403,6 @@ async fn disconnect_client() {
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
                 IntegrationTestLogMarker::UntrainedBatches,
-                IntegrationTestLogMarker::WitnessElected,
-                IntegrationTestLogMarker::Loss,
             ],
         )
         .unwrap();
@@ -414,10 +417,17 @@ async fn disconnect_client() {
     while let Some(response) = watcher.log_rx.recv().await {
         match response {
             Response::StateChange(_timestamp, client_id, old_state, new_state, epoch, step) => {
-                println!("step: {step} state change client {client_id} - {old_state}=>{new_state}");
-                let epoch_clients = solana_client.get_current_epoch_clients().await;
+                println!(
+                    "epoch: {epoch} step: {step} state change client {client_id} - {old_state} => {new_state}"
+                );
+
+                if step == 20 {
+                    println!("Max number of epochs reached for test");
+                    break;
+                }
 
                 if old_state == RunState::WaitingForMembers.to_string() {
+                    let epoch_clients = solana_client.get_current_epoch_clients().await;
                     println!(
                         "Starting epoch: {} with {} clients",
                         epoch,
@@ -425,13 +435,14 @@ async fn disconnect_client() {
                     );
                 }
 
-                // kill client during step 2 in the RoundWitness state
-                if epoch == 1
-                    && step == 35
+                if epoch == 0
+                    && step == 10
                     && old_state == RunState::RoundTrain.to_string()
                     && !killed_client
                 {
+                    let epoch_clients = solana_client.get_current_epoch_clients().await;
                     assert_eq!(epoch_clients.len(), 3);
+
                     // Kill any client, since all are witnesses
                     watcher
                         .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-1"))
@@ -445,13 +456,12 @@ async fn disconnect_client() {
                     && !seen_health_checks.is_empty()
                     && new_state == RunState::Cooldown.to_string()
                 {
-                    assert_eq!(epoch_clients.len(), 2, "Client 2 should have been kicked");
-                    break;
-                }
-
-                // In case we never see the health_checks, run up to max epochs
-                if epoch == num_of_epochs_to_run {
-                    println!("NUMBER OF EPOCHS REACHED");
+                    let epoch_clients = solana_client.get_current_epoch_clients().await;
+                    assert_eq!(
+                        epoch_clients.len(),
+                        2,
+                        "The remaining number of clients is incorrect"
+                    );
                     break;
                 }
             }
@@ -476,16 +486,6 @@ async fn disconnect_client() {
                 untrained_batches.push(untrained_batch_ids);
             }
 
-            Response::WitnessElected(container_name) => {
-                println!("Found witness client in: {container_name}");
-            }
-
-            Response::Loss(client, epoch, step, loss) => {
-                println!(
-                    "client: {:?}, epoch: {}, step: {}, Loss: {:?}",
-                    client, epoch, step, loss,
-                );
-            }
             _ => {}
         }
     }
@@ -873,7 +873,14 @@ async fn test_everybody_leaves_in_warmup() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, None).await;
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        1,
+        Some(PathBuf::from(
+            "../../config/solana-test/nano-one-min-clients.toml",
+        )),
+    )
+    .await;
     tokio::time::sleep(Duration::from_secs(20)).await;
 
     // initialize DockerWatcher
@@ -930,7 +937,14 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 1 client, minimum 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, None).await;
+    let _cleanup = e2e_testing_setup(
+        docker.clone(),
+        1,
+        Some(PathBuf::from(
+            "../../config/solana-test/nano-one-min-clients.toml",
+        )),
+    )
+    .await;
 
     // Monitor the original client container
     let _monitor_client_1 = watcher
@@ -996,7 +1010,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     Some(Response::LoadedModel(checkpoint)) => {
                         if spawned_second_client && first_client_killed {
                             // Assert checkpoint is Hub
-                            assert!(checkpoint.starts_with("emozilla/"), "The model should be obtained from Hub since the other client disconnected");
+                            assert!(checkpoint.starts_with("pefontana/"), "The model should be obtained from Hub since the other client disconnected");
                             println!("Model succesfuly obtained from Hub");
                             return;
                         }

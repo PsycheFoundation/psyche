@@ -3,6 +3,7 @@ use crate::{
     state::{train::FinishedTrainers, types::DeserializeError},
 };
 
+use iroh_blobs::api::Tag;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
@@ -48,7 +49,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
 
     active_step: ActiveStep,
 
-    tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+    tx_request_download: mpsc::UnboundedSender<(BlobTicket, Tag)>,
     tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
     tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
 
@@ -126,7 +127,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         cooldown: CooldownStepMetadata,
         trainers: Vec<Trainer>,
         coordinator_state: Coordinator<T>,
-        tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+        tx_request_download: mpsc::UnboundedSender<(BlobTicket, Tag)>,
         tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
         tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
         stats_logger: StatsLogger,
@@ -472,9 +473,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 // start downloading the payload unless this is a self-message
                 // (assuming the caller will put our payload in the proper place)
+                let tag_name = format!("downloaded-distro-result-{from_client_id}_{result_step}");
                 if from_client_id != self.identity {
                     self.tx_request_download
-                        .send((ticket, result_step))
+                        .send((ticket, Tag::from(tag_name)))
                         .map_err(|_| ApplyMessageError::StartDownloadBlob)?;
                 }
             }
