@@ -10,7 +10,7 @@ verification_percent = 0
 witness_nodes = 1
 global_batch_size_start = 8
 global_batch_size_end = 8
-global_batch_size_warmup_tokens = 0
+global_batch_size_warmup_tokens = 1
 total_steps = 25000
 
 [model.LLM]
