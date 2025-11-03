@@ -6,7 +6,6 @@ use futures_util::{StreamExt, TryFutureExt};
 use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::BlobsProtocol;
 use iroh_blobs::api::Tag;
-use iroh_blobs::api::tags::DeleteOptions;
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
     net::Gossip,
@@ -377,13 +376,8 @@ where
                 .collect(),
             self.endpoint.clone(),
         );
-        // let progress = self.downloader.download(ticket_hash, latency_sorted);
-        // let blob_store_clone = self.blobs_store.clone();
         self.download_manager
             .start_download(latency_sorted, ticket, tag.clone(), download_type);
-        // tokio::spawn(async move {
-        //     let _ = blob_store_clone.tags().set(tag, ticket_hash).await;
-        // });
     }
 
     pub async fn add_downloadable(&mut self, data: Download, tag: Tag) -> Result<BlobTicket> {
@@ -412,55 +406,9 @@ where
         &mut self,
         target_distro_result_step: u32,
     ) -> anyhow::Result<()> {
-        let store = self.download_manager.blobs_store.as_ref().clone();
-        let model_tags_deleted = store.tags().delete_prefix("model-").await?;
-        let mut distro_results_deleted = 0;
-        let mut tags = store.tags().list().await?;
-
-        while let Some(tag) = tags.next().await {
-            let Ok(tag) = tag else {
-                warn!("Error while getting tag: {tag:?}. This may lead to a memory leak");
-                continue;
-            };
-
-            let Ok(tag_name) = String::from_utf8(tag.name.0.to_vec()) else {
-                warn!(
-                    "Error while decoding tag name to string: {tag:?}. This may lead to a memory leak"
-                );
-                continue;
-            };
-
-            // Since tags related to model parameter sharing have been already deleted, it is assumed that
-            // all remaining tags are related to Distro result blobs
-            let tag_name_splitted: Vec<&str> = tag_name.split("_").collect();
-            let Some(tag_name_distro_result_step) = tag_name_splitted.get(1) else {
-                warn!("Step not present in tag name: {tag_name}. This may lead to a memory leak");
-                continue;
-            };
-            let Ok(distro_result_step) = tag_name_distro_result_step.parse::<u32>() else {
-                warn!(
-                    "Distro result step could not be parsed: {tag_name_distro_result_step}. This may lead to a memory leak"
-                );
-                continue;
-            };
-
-            if distro_result_step < target_distro_result_step {
-                let tag_delete_res = store.tags().delete(&tag_name).await;
-                if tag_delete_res.is_ok() {
-                    distro_results_deleted += 1;
-                } else {
-                    warn!(
-                        "There was an error while trying to delete tag {tag_name}: {tag_delete_res:?}"
-                    );
-                }
-            }
-        }
-
-        debug!(
-            "Untagged {} blobs",
-            model_tags_deleted + distro_results_deleted
-        );
-        Ok(())
+        self.download_manager
+            .remove_staled_tags(target_distro_result_step)
+            .await
     }
 
     pub async fn node_addr(&self) -> NodeAddr {
@@ -510,6 +458,7 @@ where
             update = self.download_manager.poll_next() => {
                 match update {
                     Some(DownloadManagerEvent::Complete(result)) => {
+                        self.state.download_progresses.remove(&result.hash);
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
@@ -547,13 +496,7 @@ where
         );
 
         let hash = update.blob_ticket.hash();
-        if update.all_done {
-            self.state.download_progresses.remove(&hash);
-            self.download_manager
-                .read(update.blob_ticket, update.tag, update.download_type);
-        } else {
-            self.state.download_progresses.insert(hash, update);
-        }
+        self.state.download_progresses.insert(hash, update);
         None
     }
 
