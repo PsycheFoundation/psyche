@@ -75,8 +75,10 @@ python312Packages.buildPythonPackage rec {
     [
       torch
       transformers
-      (python312Packages.callPackage ./liger-kernel.nix { })
     ]
+    ++ (lib.optionals (!stdenv.isDarwin) [
+      (python312Packages.callPackage ./liger-kernel.nix { })
+    ])
     ++ (lib.optionals config.cudaSupport [
       (python312Packages.callPackage ./flash-attn.nix { })
     ]);

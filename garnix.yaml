@@ -28,6 +28,7 @@ builds:
       - 'packages.x86_64-linux.psyche-centralized-client'
       - 'packages.x86_64-linux.psyche-centralized-server'
       - 'packages.x86_64-linux.docker-psyche-solana-client'
+      - 'packages.x86_64-linux.docker-psyche-solana-test-client-no-python'
       - 'packages.x86_64-linux.psyche-centralized-local-testnet'
       - 'packages.x86_64-linux.expand-distro'
       - 'devShells.x86_64-linux.*'
@@ -36,7 +37,6 @@ builds:
 
   # on main, might as well build everything, though
   - exclude:
-      - 'packages.*.docker-psyche-solana-test-validator'
       - 'packages.aarch64-darwin.*'
       - 'devShells.aarch64-darwin.*'
     include:

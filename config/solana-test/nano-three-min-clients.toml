@@ -1,13 +1,13 @@
 [config]
 warmup_time = 50
-cooldown_time = 30
+cooldown_time = 10
 rounds_per_epoch = 20
-max_round_train_time = 40
-round_witness_time = 1
+max_round_train_time = 15
+round_witness_time = 3
 min_clients = 3
 init_min_clients = 3
 verification_percent = 0
-witness_nodes = 3
+witness_nodes = 0
 global_batch_size_start = 6
 global_batch_size_end = 6
 global_batch_size_warmup_tokens = 0

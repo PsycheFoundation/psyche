@@ -19,6 +19,7 @@ use psyche_network::{
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
+use iroh_blobs::api::Tag;
 use rand::{Rng, RngCore, seq::SliceRandom};
 use std::{
     collections::BTreeSet,
@@ -337,8 +338,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     retried_downloads.insert(DownloadRetryInfo {
                                                         retries: retries + 1,
                                                         retry_time,
-                                                        ticket: blob_ticket_to_retry,
                                                         tag: dl.tag,
+                                                        ticket: blob_ticket_to_retry,
                                                         r#type: download_type_clone,
                                                     });
                                             });
@@ -361,8 +362,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                     retried_downloads.insert(DownloadRetryInfo {
                                                         retries: retries + 1,
                                                         retry_time,
-                                                        ticket: dl.blob_ticket,
                                                         tag: dl.tag,
+                                                        ticket: dl.blob_ticket,
                                                         r#type: dl.download_type,
                                                     });
                                                 }
@@ -372,7 +373,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     NetworkEvent::ParameterRequest(parameter_name, protocol_req_tx) => {
                                         // TODO: We should validate that the parameter is requested while we are in RunState::Warmup.
                                         trace!("NetworkEvent::ParameterRequest({parameter_name})");
-                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, &format!("model-{parameter_name}")).await {
+                                        match sharable_model.get_transmittable_parameter(&parameter_name, &mut p2p, Tag::from(format!("model-{parameter_name}"))).await {
                                             Err(e) => {
                                                 if let Err(e) = protocol_req_tx.send(Err(e)) {
                                                     warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
@@ -429,7 +430,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
 
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, step.to_string().as_str()).await?;
+
+                            let tag_name = format!("distro-result_{step}");
+                            let ticket = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
+
                             let hash = ticket.hash();
                             info!(
                                 client_id = %identity, step = step,
@@ -479,7 +483,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let metrics = metrics.clone();
                             let retried_downloads = retried_downloads.clone();
                             tokio::spawn(async move {
-                                let pending_retries: Vec<(psyche_network::Hash, BlobTicket, u32, DownloadType)> = retried_downloads.pending_retries().await;
+                                let pending_retries: Vec<(psyche_network::Hash, BlobTicket, Tag, DownloadType)> = retried_downloads.pending_retries().await;
 
                             for (hash, ticket, tag, download_type) in pending_retries {
                                     let retries = retried_downloads.update_time(hash).await;
@@ -625,17 +629,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
                         Some(param_blob_tickets) = rx_params_download.recv() => {
                             for (ticket, request_type) in param_blob_tickets {
-                                let kind = DownloadType::ModelSharing(request_type);
+                                let kind = DownloadType::ModelSharing(request_type.clone());
                                 metrics.record_download_started(ticket.hash(), kind.kind());
-                                // tag 0 means when we enter a train step, it'll get wiped.
-                                p2p.start_download(ticket, 0, kind);
+                                if let ModelRequestType::Parameter(parameter_name) = request_type {
+                                    p2p.start_download(ticket, Tag::from(format!("model-{}", parameter_name)), kind);
+                                }
                             }
                         }
                         Some(config_blob_ticket) = rx_config_download.recv() => {
                             let kind = DownloadType::ModelSharing(ModelRequestType::Config);
                             metrics.record_download_started(config_blob_ticket.hash(), kind.kind());
-                            // tag 0 means when we enter a train step, it'll get wiped.
-                            p2p.start_download(config_blob_ticket, 0, kind);
+                            p2p.start_download(config_blob_ticket, Tag::from("model-config"), kind);
                         }
                         _ = param_requests_cancel_token.cancelled() => bail!("Peers were unreachable for P2P parameter requests. Try joining again"),
                         _ = check_connection_interval.tick() => {

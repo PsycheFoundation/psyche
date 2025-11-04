@@ -134,11 +134,11 @@ setup_test_infra:
 run_test_infra num_clients="1":
     #!/usr/bin/env bash
     cd docker/test
-    if [ -n "${USE_GPU}" ] || command -v nvidia-smi &> /dev/null; then
-        echo "GPU detected or USE_GPU set, enabling GPU support"
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
         NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --force-recreate
     else
-        echo "No GPU detected, running without GPU support"
+        echo "Running without GPU support"
         NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
     fi
 
