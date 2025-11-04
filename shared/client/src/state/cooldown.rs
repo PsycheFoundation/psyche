@@ -99,6 +99,31 @@ pub enum CheckpointError {
     SendCheckpoint,
 }
 
+async fn cleanup_dirs(
+    delete_queue: Arc<Mutex<BinaryHeap<Reverse<u32>>>>,
+    keep_steps: u32,
+    run_id: String,
+    delete_old_steps: bool,
+    step: u32,
+    checkpoint_dir: PathBuf,
+) {
+    if delete_old_steps {
+        let mut delete_queue_guard = delete_queue.lock().await;
+        delete_queue_guard.push(Reverse(step));
+        // in the happy case this could be an if but if previous iterations failed somewhere
+        // then we may have more than 1 dir to clean up
+        while delete_queue_guard.len() > keep_steps as usize {
+            let delete_step = delete_queue_guard.pop().unwrap().0;
+            let delete_path = checkpoint_dir.join(format!("{run_id}-step{delete_step}"));
+            if let Err(err) = tokio::fs::remove_dir_all(delete_path.clone()).await {
+                warn!("Error removing {} : {}", delete_path.display(), err);
+            } else {
+                info!("Successfully removed {}", delete_path.display());
+            }
+        }
+    }
+}
+
 impl CooldownStepMetadata {
     pub fn start<T: NodeIdentity>(
         &self,
@@ -178,6 +203,15 @@ impl CooldownStepMetadata {
                         hub_token,
                     }) = hub_upload
                     else {
+                        cleanup_dirs(
+                            delete_queue,
+                            keep_steps,
+                            run_id,
+                            delete_old_steps,
+                            step,
+                            checkpoint_dir,
+                        )
+                        .await;
                         return Ok::<(), CheckpointError>(());
                     };
 
@@ -210,27 +244,20 @@ impl CooldownStepMetadata {
 
                     // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
                     // we'll just delete the dir after we've uploaded it
-                    if delete_old_steps {
-                        // if we fail in any of the above steps we may wind up not queueing this dir for delete
-                        // but that's probably better than risking having the dir deleted from under us
-                        // for a relatively low priority disk cleanup task
-                        // and this may actually be preferred anyway because if we failed to upload, we may want to keep
-                        // the data around locally on disk
-                        let mut delete_queue_guard = delete_queue.lock().await;
-                        delete_queue_guard.push(Reverse(step));
-                        // in the happy case this could be an if but if previous iterations failed somewhere
-                        // then we may have more than 1 dir to clean up
-                        while delete_queue_guard.len() > keep_steps as usize {
-                            let delete_step = delete_queue_guard.pop().unwrap().0;
-                            let delete_path =
-                                checkpoint_dir.join(format!("{run_id}-step{delete_step}"));
-                            if let Err(err) = tokio::fs::remove_dir_all(delete_path.clone()).await {
-                                warn!("Error removing {} : {}", delete_path.display(), err);
-                            } else {
-                                info!("Successfully removed {}", delete_path.display());
-                            }
-                        }
-                    }
+                    // if we fail in any of the above steps we may wind up not queueing this dir for delete
+                    // but that's probably better than risking having the dir deleted from under us
+                    // for a relatively low priority disk cleanup task
+                    // and this may actually be preferred anyway because if we failed to upload, we may want to keep
+                    // the data around locally on disk
+                    cleanup_dirs(
+                        delete_queue,
+                        keep_steps,
+                        run_id,
+                        delete_old_steps,
+                        step,
+                        checkpoint_dir,
+                    )
+                    .await;
 
                     Ok(())
                 });
