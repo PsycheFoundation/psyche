@@ -233,19 +233,8 @@ pub async fn spawn_client_with_keypair(
     let host_config = build_host_config(network_name, has_gpu, binds);
     let envs = load_client_env_vars(has_gpu);
 
-    // Override entrypoint to skip solana-keygen (which would overwrite the mounted keypair)
-    // We run the same commands as client_test_entrypoint.sh but WITHOUT solana-keygen new
-    let entrypoint_cmd = "set -o errexit && \
-         solana config set --url \"${RPC}\" && \
-         solana airdrop 10 \"$(solana-keygen pubkey)\" && \
-         psyche-solana-client train \
-             --wallet-private-key-path \"/root/.config/solana/id.json\" \
-             --rpc \"${RPC}\" \
-             --ws-rpc \"${WS_RPC}\" \
-             --run-id \"${RUN_ID}\" \
-             --logs \"json\""
-        .to_string();
-    let entrypoint = vec!["/bin/sh", "-c", &entrypoint_cmd];
+    // Use entrypoint script that skips solana-keygen (which would overwrite the mounted keypair)
+    let entrypoint = vec!["/bin/client_test_entrypoint_with_keypair.sh"];
 
     let options = Some(CreateContainerOptions {
         name: new_container_name.clone(),
