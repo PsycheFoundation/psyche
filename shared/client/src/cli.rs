@@ -180,7 +180,7 @@ pub struct TrainArgs {
     #[clap(long, default_value_t = true, env)]
     pub delete_old_steps: bool,
 
-    #[clap(long, default_value_t = 3, env)]
+    #[clap(long, default_value_t = 1, env)]
     pub keep_steps: u32,
 }
 

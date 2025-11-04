@@ -226,6 +226,8 @@ impl CooldownStepMetadata {
                                 checkpoint_dir.join(format!("{run_id}-step{delete_step}"));
                             if let Err(err) = tokio::fs::remove_dir_all(delete_path.clone()).await {
                                 warn!("Error removing {} : {}", delete_path.display(), err);
+                            } else {
+                                info!("Successfully removed {}", delete_path.display());
                             }
                         }
                     }
