@@ -1,16 +1,17 @@
 use crate::{
     Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker,
-    client::P2PNodeInfo,
     state::{train::FinishedTrainers, types::DeserializeError},
 };
 
+use iroh_blobs::api::Tag;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
-use psyche_network::{AuthenticatableIdentity, BlobTicket, Hash, TransmittableDistroResult};
+use psyche_network::{
+    AuthenticatableIdentity, BlobTicket, Hash, P2PNodeInfo, TransmittableDistroResult,
+};
 use psyche_watcher::OpportunisticData;
 use std::{
-    collections::HashMap,
     fmt,
     sync::{Arc, Mutex},
     time::Instant,
@@ -48,7 +49,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
 
     active_step: ActiveStep,
 
-    tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+    tx_request_download: mpsc::UnboundedSender<(BlobTicket, Tag)>,
     tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
     tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
 
@@ -127,7 +128,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         cooldown: CooldownStepMetadata,
         trainers: Vec<Trainer>,
         coordinator_state: Coordinator<T>,
-        tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+        tx_request_download: mpsc::UnboundedSender<(BlobTicket, Tag)>,
         tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
         tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
         stats_logger: StatsLogger,
@@ -479,9 +480,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 // start downloading the payload unless this is a self-message
                 // (assuming the caller will put our payload in the proper place)
+                let tag_name = format!("downloaded-distro-result-{from_client_id}_{result_step}");
                 if from_client_id != self.identity {
                     self.tx_request_download
-                        .send((ticket, result_step))
+                        .send((ticket, Tag::from(tag_name)))
                         .map_err(|_| ApplyMessageError::StartDownloadBlob)?;
                 }
             }
@@ -876,7 +878,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub fn set_node_info(&mut self, node_info: HashMap<String, P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
         self.stats_logger
             .lock()
             .map_err(|_| anyhow::anyhow!("stats logger mutex poisoned"))?
@@ -1080,7 +1082,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub fn set_node_info(&mut self, node_info: HashMap<String, P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
         if let InitStage::Running(run) = &mut self.0 {
             run.set_node_info(node_info)?;
         }

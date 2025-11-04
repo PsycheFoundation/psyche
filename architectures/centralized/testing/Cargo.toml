@@ -20,7 +20,7 @@ rand.workspace = true
 toml = "0.8.19"
 serde.workspace = true
 tracing.workspace = true
-iroh-n0des = { git = "https://github.com/n0-computer/iroh-n0des" }
+iroh-n0des = { git = "https://github.com/n0-computer/iroh-n0des", rev = "73e0cc4b9823efccac079b260a23bd9d3449a5a3" }
 iroh.workspace = true
 iroh-blobs.workspace = true
 iroh-gossip.workspace = true

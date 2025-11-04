@@ -25,6 +25,7 @@ pub enum EosToks {
 /// Its internal implementation is completely hidden, so this can be impl'd
 /// for a wrapper struct that does something like data parallelism.
 pub trait CausalLM: Send {
+    // returns (logits, loss)
     fn forward(
         &self,
         x: &Tensor,
@@ -33,7 +34,7 @@ pub trait CausalLM: Send {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>);
+    ) -> (Option<Tensor>, Option<Tensor>);
     fn bos_token_id(&self) -> Option<i64>;
     fn eos_token_ids(&self) -> Option<EosToks>;
     fn device(&self) -> Device;
@@ -184,7 +185,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         let (_, t) = x.size2().unwrap();
         let mut x = self.model.forward(
             x,
@@ -220,7 +221,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
             }
             None => None,
         };
-        (logits, loss)
+        (Some(logits), loss)
     }
 
     fn bos_token_id(&self) -> Option<i64> {

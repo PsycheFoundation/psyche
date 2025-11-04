@@ -132,6 +132,7 @@ pub struct AppParams {
     pub metrics_local_port: Option<u16>,
     pub sim_endpoint: Option<Endpoint>,
     pub device: Devices,
+    pub sidecar_port: Option<u16>,
 }
 
 impl App {
@@ -314,6 +315,7 @@ impl App {
             dummy_training_delay_secs: params.dummy_training_delay_secs,
             max_concurrent_parameter_requests: params.max_concurrent_parameter_requests,
             device: params.device,
+            sidecar_port: params.sidecar_port,
         };
 
         // let backend = Backend {

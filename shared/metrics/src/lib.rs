@@ -125,6 +125,7 @@ impl Drop for ClientMetrics {
 
 #[derive(Debug, Serialize, Clone, Copy)]
 pub enum ConnectionType {
+    None,
     Direct,
     Mixed,
     Relay,
@@ -487,8 +488,12 @@ impl ClientMetrics {
             ..
         } in connections
         {
+            if matches!(connection_type, ConnectionType::None) {
+                continue;
+            }
             *connection_counts
                 .entry(match connection_type {
+                    ConnectionType::None => unreachable!(),
                     ConnectionType::Direct => "direct",
                     ConnectionType::Mixed => "mixed",
                     ConnectionType::Relay => "relay",

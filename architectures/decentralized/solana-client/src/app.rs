@@ -19,7 +19,7 @@ use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
 use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
-use rand::{Rng, RngCore, thread_rng};
+use rand::{Rng, RngCore};
 use std::{path::PathBuf, time::Duration};
 use std::{
     sync::Arc,
@@ -82,6 +82,7 @@ pub struct AppParams {
     pub authorizer: Option<Pubkey>,
     pub metrics_local_port: Option<u16>,
     pub device: Devices,
+    pub sidecar_port: Option<u16>,
 }
 
 impl AppBuilder {
@@ -133,6 +134,7 @@ impl AppBuilder {
                 dummy_training_delay_secs: p.dummy_training_delay_secs,
                 max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
                 device: p.device,
+                sidecar_port: p.sidecar_port,
             };
         let app = App {
             run_id: p.run_id.clone(),
@@ -271,14 +273,14 @@ impl App {
                         .as_ref()
                         .map(|state| state.clients_state.get_active_clients_ids());
 
-                    match ticked.tick(pending_clients_ids, timestamp, rand::thread_rng().next_u64()) {
+                    match ticked.tick(pending_clients_ids, timestamp, rand::rng().next_u64()) {
                         Ok(_) => {
                             if ticked.run_state != latest_update.run_state {
                                 // to avoid *everyone* sending a tick, we probabilisticly send it
                                 // targeting having two clients send it per interval
                                 let send_tick = match ticked.epoch_state.clients.len() {
                                     0..=2 => true,
-                                    len => { let rand: f32 = thread_rng().r#gen();
+                                    len => { let rand: f32 = rand::rng().random();
                                         rand <= 2.0 / len as f32
                                     }
                                 };

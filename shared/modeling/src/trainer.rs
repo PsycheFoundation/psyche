@@ -283,7 +283,7 @@ enum ParallelResult {
     },
     Optimize,
     Forward {
-        logits_and_loss: Option<(Tensor, Option<Tensor>)>,
+        logits_and_loss: Option<(Option<Tensor>, Option<Tensor>)>,
     },
     Extract {
         variables: HashMap<String, Tensor>,
@@ -560,7 +560,7 @@ impl LocalTrainer {
         barrier: &Arc<dyn Barrier>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> Option<(Tensor, Option<Tensor>)> {
+    ) -> Option<(Option<Tensor>, Option<Tensor>)> {
         let _guard = tch::no_grad_guard();
         if barrier.wait().is_err() {
             return None;
@@ -1186,7 +1186,7 @@ impl CausalLM for LocalTrainer {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         self.barrier.reset();
         for (tx, _) in &self.models {
             tx.send(ParallelAssignment::Forward {
@@ -1306,7 +1306,7 @@ impl CausalLM for Trainer {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         match self {
             Trainer::Local(local_trainer) => local_trainer.forward(
                 x,

@@ -4,6 +4,7 @@ use crate::{
     device_utils::DevicePytorchStr,
 };
 
+use crate::{DeepseekConfig, LlamaConfig};
 use pyo3::{
     prelude::*,
     types::{IntoPyDict, PyDict, PyList, PyString, PyTuple},
@@ -12,6 +13,7 @@ use pyo3_tch::PyTensor;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
+use tracing::error;
 
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {
@@ -20,7 +22,25 @@ pub struct PythonModelConfig {
 
 impl ModelConfig for PythonModelConfig {
     fn get_parameter_names(&self) -> Vec<String> {
-        todo!()
+        let architecture = self.config["architectures"][0]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
+        if architecture.contains("llama") || architecture.contains("oss") {
+            if let Ok(config) = serde_json::from_value::<LlamaConfig>(self.config.clone()) {
+                return config.get_parameter_names();
+            }
+            error!("Failed to parse LlamaConfig from JSON");
+            vec![]
+        } else if architecture.contains("deepseek") {
+            if let Ok(config) = serde_json::from_value::<DeepseekConfig>(self.config.clone()) {
+                return config.get_parameter_names();
+            }
+            error!("Failed to parse DeepseekConfig from JSON");
+            vec![]
+        } else {
+            vec![]
+        }
     }
 }
 
@@ -228,8 +248,8 @@ impl CausalLM for PythonCausalLM {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
-        let result: PyResult<(Tensor, Option<Tensor>)> = Python::with_gil(|py| {
+    ) -> (Option<Tensor>, Option<Tensor>) {
+        let result: PyResult<(Option<Tensor>, Option<Tensor>)> = Python::with_gil(|py| {
             let causal_lm = self.causal_lm.bind(py);
             let forward = causal_lm.getattr("forward")?;
             let input_ids = PyTensor(input_ids.shallow_clone());
@@ -245,14 +265,18 @@ impl CausalLM for PythonCausalLM {
             );
             let result: Bound<PyTuple> = forward.call1(args)?.downcast_into()?;
             let logits = result.get_item(0)?;
-            let logits: PyTensor = logits.extract()?;
+            let logits: Option<Tensor> = match logits.is_none() {
+                true => None,
+                false => Some(logits.extract::<PyTensor>()?),
+            }
+            .map(|x| x.0);
             let loss = result.get_item(1)?;
             let loss: Option<Tensor> = match loss.is_none() {
                 true => None,
                 false => Some(loss.extract::<PyTensor>()?),
             }
             .map(|x| x.0);
-            Ok((logits.0, loss))
+            Ok((logits, loss))
         });
         match result {
             Ok(result) => result,
@@ -568,7 +592,7 @@ impl CausalLM for WrappedPythonCausalLM {
         sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (Tensor, Option<Tensor>) {
+    ) -> (Option<Tensor>, Option<Tensor>) {
         self.local.forward(
             x,
             labels,

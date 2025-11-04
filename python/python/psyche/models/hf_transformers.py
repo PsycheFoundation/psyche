@@ -26,6 +26,10 @@ from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
     _CHECKPOINT_PREFIX,
 )
+from liger_kernel.transformers.monkey_patch import (
+    _apply_liger_kernel_to_instance,
+    MODEL_TYPE_TO_APPLY_LIGER_FN,
+)
 
 
 # adapted from https://github.com/pytorch/torchtitan/blob/49c6d6fc15ef644e5c3b1003ad4e0d9ea5fcb9a9/torchtitan/parallelisms/parallel_dims.py#L48
@@ -75,7 +79,6 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
 
 
 class HfTransformersAuto(CausalLM):
-
     def __init__(self, model, config, world_mesh: DeviceMesh, device: torch.device):
         self.model = model
         self.config = config
@@ -125,6 +128,15 @@ class HfTransformersAuto(CausalLM):
             raise ValueError(f"Unknown model_type {model_type}")
 
         config = config_class.from_dict(config)
+
+        # If n_routed_experts is None disable all MoE related features
+        if hasattr(config, "n_routed_experts") and config.n_routed_experts is None:
+            config.n_shared_experts = None
+            config.moe_layer_freq = None
+            config.num_experts_per_tok = None
+            config.moe_intermediate_size = None
+            # Set first_k_dense_replace to a very large number to force all layers to be dense
+            config.first_k_dense_replace = 999999
 
         if override_max_position_embeddings:
             config.max_position_embeddings = override_max_position_embeddings
@@ -244,6 +256,14 @@ class HfTransformersAuto(CausalLM):
         if model.supports_gradient_checkpointing:
             model.gradient_checkpointing_enable()
 
+        if config.model_type in MODEL_TYPE_TO_APPLY_LIGER_FN:
+            print(f"Applying liger kernels to model type `{config.model_type}`")
+            no_tp = tp == 1
+            _apply_liger_kernel_to_instance(
+                model=model,
+                fused_linear_cross_entropy=no_tp,  # liger fused ce can't deal with mixed tensor/dtensors which happens in non-pure-fsdp mode
+            )
+
         # compile the loss, greatly reduces mem usage for large vocabularies
         model.loss_function = torch.compile(model.loss_function)
 
@@ -272,7 +292,7 @@ class HfTransformersAuto(CausalLM):
         sequence_lengths: Optional[list[list[int]]] = None,
         num_logits_to_keep: Optional[int] = None,
         loss_scale: Optional[float] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
         if self.world_mesh:
             if self.world_mesh.mesh_dim_names:
                 if "dp_shard" in self.world_mesh.mesh_dim_names:
@@ -283,33 +303,37 @@ class HfTransformersAuto(CausalLM):
                     # do FSDP data sharding
                     shard_size = input_ids.shape[0] // size
                     start_row = rank * shard_size
-                    input_ids = input_ids.narrow(0, start_row, shard_size).contiguous()
+                    input_ids = input_ids.narrow(0, start_row, shard_size)
                     if labels is not None:
-                        labels = labels.narrow(0, start_row, shard_size).contiguous()
+                        labels = labels.narrow(0, start_row, shard_size)
                     if position_ids is not None:
-                        position_ids = position_ids.narrow(
-                            0, start_row, shard_size
-                        ).contiguous()
+                        position_ids = position_ids.narrow(0, start_row, shard_size)
 
         num_logits_to_keep = 0 if num_logits_to_keep is None else num_logits_to_keep
-        try:
-            ret = self.model(
-                input_ids,
-                labels=labels,
-                position_ids=position_ids,
-                logits_to_keep=num_logits_to_keep,  # name changed in 4.50
-                return_dict=True,
-                use_cache=False,
-            )
-        except Exception as e:
-            import traceback
 
-            print(f"[{self.device}]: {e}")
-            traceback.print_exception(e)
-            raise e
-        if ret.loss and loss_scale:
-            ret.loss /= loss_scale
-        return (ret.logits, ret.loss)
+        # need to wrap in a device context or get triton errors when using liger
+        # see https://github.com/linkedin/Liger-Kernel/issues/593#issuecomment-2770160474
+        with torch.cuda.device(input_ids.device.index):
+            try:
+                ret = self.model(
+                    input_ids.contiguous(),
+                    labels=labels.contiguous() if labels is not None else None,
+                    position_ids=(
+                        position_ids.contiguous() if position_ids is not None else None
+                    ),
+                    logits_to_keep=num_logits_to_keep,  # name changed in 4.50
+                    return_dict=True,
+                    use_cache=False,
+                )
+            except Exception as e:
+                import traceback
+
+                print(f"[{self.device}]: {e}")
+                traceback.print_exception(e)
+                raise e
+            if ret.loss and loss_scale:
+                ret.loss /= loss_scale
+            return (ret.logits, ret.loss)
 
     def named_parameters(self) -> dict[str, torch.Tensor]:
         params = dict(self.model.named_parameters())

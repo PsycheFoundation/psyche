@@ -464,7 +464,7 @@ impl PreparedTask {
                         .forward(&request_tensor, None, None, None, None, None)
                 };
 
-                let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
+                let logits = logits.unwrap().squeeze_dim(0).slice(0, 0, None, 1);
 
                 // Get tensor of shape `[choice.len(), vocab_size]` containing the
                 // model's logits for each token of the `choice` text.
@@ -667,7 +667,7 @@ impl PreparedTask {
                     options
                         .model
                         .forward(&model_input, None, None, None, Some(1), None);
-                let logits = logits.squeeze();
+                let logits = logits.unwrap().squeeze();
 
                 let next_token = logits_processor.sample(&logits).unwrap();
                 full_sequence.push(next_token as i64);

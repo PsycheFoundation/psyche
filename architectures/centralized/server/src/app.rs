@@ -395,7 +395,7 @@ impl App {
                         &from,
                         witness,
                         Self::get_timestamp(),
-                        rand::thread_rng().next_u64(),
+                        rand::rng().next_u64(),
                     ),
                 } {
                     warn!("Error when processing witness: {error}");
@@ -446,7 +446,7 @@ impl App {
                 self.backend.pending_clients.len(),
             )),
             Self::get_timestamp(),
-            rand::thread_rng().next_u64(),
+            rand::rng().next_u64(),
         ) {
             Ok(TickResult::EpochEnd(result)) => {
                 if result {

@@ -34,6 +34,7 @@ use super::{
     stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
     types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
 };
+use iroh_blobs::api::Tag;
 
 #[derive(Debug)]
 pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
@@ -71,6 +72,8 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
 
     // configurable dummy training time (in seconds) for this client - relevant just for testing
     pub dummy_training_delay_secs: Option<u64>,
+
+    pub sidecar_port: Option<u16>,
 }
 
 #[derive(Debug, Error)]
@@ -153,7 +156,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
     pub tx_distro_result: UnboundedSender<DistroBroadcastAndPayload>,
-    pub tx_request_download: UnboundedSender<(BlobTicket, u32)>,
+    pub tx_request_download: UnboundedSender<(BlobTicket, Tag)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
 
@@ -463,9 +466,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 model::LLMTrainingDataType::Pretraining => None,
                             };
 
-                        let raw_loaded_model_type: RawLoadedModelType = if llm.architecture
-                            == model::LLMArchitecture::HfAuto
-                            {
+                        let raw_loaded_model_type: RawLoadedModelType =
+                            if llm.architecture == model::LLMArchitecture::HfAuto {
                                 #[cfg(feature = "python")]
                                 {
                                     let dp = init_config.data_parallelism;
@@ -480,6 +482,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 attn_implementation.unwrap_or_default(),
                                                 psyche_modeling::ParallelismConfig { dp, tp },
                                                 Some(llm.max_seq_len as usize),
+                                                init_config.sidecar_port,
                                                 None,
                                             )
                                             .map(RawLoadedModelType::PythonDistributed)
@@ -552,22 +555,22 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 ModelLoadError::NoDeviceForRank(rank, devices)
                                             })?;
                                             if is_dummy_model {
-                                            if let Some(training_delay) =
-                                                init_config.dummy_training_delay_secs
-                                            {
-                                                return Ok(Box::new(
-                                                    psyche_modeling::DummyModel::new(
-                                                        training_delay,
-                                                    ),
-                                                )
-                                                    as Box<dyn psyche_modeling::CausalLM>);
-                                            } else {
-                                                return Ok(Box::new(
-                                                    psyche_modeling::DummyModel::default(),
-                                                )
-                                                    as Box<dyn psyche_modeling::CausalLM>);
+                                                if let Some(training_delay) =
+                                                    init_config.dummy_training_delay_secs
+                                                {
+                                                    return Ok(Box::new(
+                                                        psyche_modeling::DummyModel::new(
+                                                            training_delay,
+                                                        ),
+                                                    )
+                                                        as Box<dyn psyche_modeling::CausalLM>);
+                                                } else {
+                                                    return Ok(Box::new(
+                                                        psyche_modeling::DummyModel::default(),
+                                                    )
+                                                        as Box<dyn psyche_modeling::CausalLM>);
+                                                }
                                             }
-                                        }
                                             match llm.architecture {
                                                 model::LLMArchitecture::HfLlama => {
                                                     LlamaForCausalLM::from_pretrained(

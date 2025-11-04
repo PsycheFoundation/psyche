@@ -181,6 +181,7 @@ fn inference(
                     psyche_modeling::ParallelismConfig { dp: tp, tp: 1 },
                     None,
                     None,
+                    None,
                 )?) as Box<dyn CausalLM>
             }
         }
@@ -231,7 +232,7 @@ fn inference(
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
-        let logits = logits.squeeze();
+        let logits = logits.unwrap().squeeze();
         let next_token = logits_processor.sample(&logits)?;
         token_generated += 1;
         tokens.push(next_token as i64);

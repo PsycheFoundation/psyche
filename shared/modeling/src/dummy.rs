@@ -67,18 +67,15 @@ impl DummyModel {
 impl CausalLM for DummyModel {
     fn forward(
         &self,
-        _x: &tch::Tensor,
+        x: &tch::Tensor,
         _labels: Option<&tch::Tensor>,
         _position_ids: Option<&tch::Tensor>,
         _sequence_lengths: Option<&Vec<Vec<i32>>>,
         _num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (tch::Tensor, Option<tch::Tensor>) {
-        let shape = vec![1, 1, 1];
-        let cpu_device = tch::Device::Cpu;
-
-        let result = tch::Tensor::zeros(&shape, (Kind::BFloat16, cpu_device));
-        let loss = tch::Tensor::zeros([1], (Kind::BFloat16, cpu_device));
+    ) -> (Option<tch::Tensor>, Option<tch::Tensor>) {
+        let result = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
+        let loss = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = loss.set_requires_grad(true);
         let loss = loss.g_add_scalar(1.0);
         let loss = match loss_scale {
@@ -87,7 +84,7 @@ impl CausalLM for DummyModel {
         };
 
         std::thread::sleep(self.training_delay_secs);
-        (result, Some(loss))
+        (Some(result), Some(loss))
     }
 
     fn bos_token_id(&self) -> Option<i64> {

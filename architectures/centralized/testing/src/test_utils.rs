@@ -7,7 +7,7 @@ use iroh::Endpoint;
 use iroh_n0des::Registry;
 use psyche_centralized_client::app::AppParams;
 use psyche_network::{DiscoveryMode, SecretKey};
-use rand::distributions::{Alphanumeric, DistString};
+use rand::distr::{Alphanumeric, SampleString};
 use serde::{Deserialize, Serialize};
 use std::env;
 use tokio::task::JoinHandle;
@@ -93,7 +93,7 @@ where
 }
 
 pub fn sample_rand_run_id() -> String {
-    Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+    Alphanumeric.sample_string(&mut rand::rng(), 16)
 }
 
 /// Sums the healthy score of all nodes and assert it vs expected_score
@@ -130,7 +130,7 @@ pub fn dummy_client_app_params_with_training_delay(
 ) -> AppParams {
     AppParams {
         cancel: CancellationToken::default(),
-        identity_secret_key: SecretKey::generate(&mut rand::rngs::OsRng),
+        identity_secret_key: SecretKey::generate(&mut rand::rng()),
         server_addr: format!("localhost:{server_port}").to_string(),
         tx_tui_state: None,
         run_id: run_id.to_string(),
@@ -155,13 +155,14 @@ pub fn dummy_client_app_params_with_training_delay(
         metrics_local_port: None,
         sim_endpoint,
         device: Default::default(),
+        sidecar_port: Default::default(),
     }
 }
 
 pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppParams {
     AppParams {
         cancel: CancellationToken::default(),
-        identity_secret_key: SecretKey::generate(&mut rand::rngs::OsRng),
+        identity_secret_key: SecretKey::generate(&mut rand::rng()),
         server_addr: format!("localhost:{server_port}").to_string(),
         tx_tui_state: None,
         run_id: run_id.to_string(),
@@ -186,6 +187,7 @@ pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppPar
         metrics_local_port: None,
         sim_endpoint: None,
         device: Default::default(),
+        sidecar_port: Default::default(),
     }
 }
 

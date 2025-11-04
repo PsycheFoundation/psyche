@@ -4,7 +4,7 @@ use crate::{
     test_utils::{Setup, sample_rand_run_id},
 };
 use bytemuck::Zeroable;
-use iroh::Endpoint;
+use iroh::endpoint::Endpoint;
 use iroh_n0des::simulation::{Node, Spawn, SpawnContext};
 use psyche_centralized_server::app::App as ServerApp;
 use psyche_centralized_shared::ClientId;
@@ -423,7 +423,7 @@ impl CoordinatorServerHandle {
 }
 
 impl Node for CoordinatorServerHandle {
-    fn endpoint(&self) -> Option<&iroh_n0des::iroh::Endpoint> {
+    fn endpoint(&self) -> Option<&Endpoint> {
         None
     }
 
