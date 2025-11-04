@@ -149,4 +149,10 @@ run_test_infra_three_clients:
     cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
 
 stop_test_infra:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
+    # Clean up any containers spawned via Docker API (not managed by docker-compose)
+    docker rm -f $(docker ps -aq --filter "name=test-psyche-test-client-") 2>/dev/null || true
+    docker rm -f $(docker ps -aq --filter "name=nginx-proxy-") 2>/dev/null || true
+    echo "Cleaned up all test containers"

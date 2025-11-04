@@ -37,6 +37,8 @@ pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
 
+/// 1. Stops docker-compose services
+/// 2. Force-removes any remaining test containers by name pattern
 pub struct DockerTestCleanup;
 impl Drop for DockerTestCleanup {
     fn drop(&mut self) {
@@ -208,13 +210,14 @@ async fn spawn_client_internal(
     Ok(container_name)
 }
 
+/// Spawns a new client container with default configuration.
 pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
     spawn_client_internal(docker_client, new_container_name, None, None).await
 }
 
-/// Spawns a new client container with a specific Solana keypair
-/// This allows rejoining with the same identity after disconnecting
+/// Spawns a new client container with a specific Solana keypair.
+/// This allows rejoining with the same identity after disconnecting.
 pub async fn spawn_client_with_keypair(
     docker_client: Arc<Docker>,
     host_keypair_path: &str,
@@ -272,7 +275,7 @@ pub async fn spawn_client_with_keypair(
 }
 
 pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Vec<String>) {
-    let containers = get_client_containers(docker_client).await;
+    let containers = get_client_containers_only(docker_client).await;
 
     let mut running_containers = Vec::new();
     let mut all_container_names = Vec::new();
@@ -394,7 +397,15 @@ async fn list_containers_by_prefix(
         .collect()
 }
 
-async fn get_client_containers(docker_client: Arc<Docker>) -> Vec<ContainerSummary> {
+/// Get ONLY client containers (excludes nginx proxies)
+/// Used for counting/naming new client containers
+async fn get_client_containers_only(docker_client: Arc<Docker>) -> Vec<ContainerSummary> {
+    list_containers_by_prefix(docker_client, &[CLIENT_CONTAINER_PREFIX]).await
+}
+
+/// Get ALL test infrastructure containers (clients + nginx proxies)
+/// Used for cleanup operations
+async fn get_test_containers(docker_client: Arc<Docker>) -> Vec<ContainerSummary> {
     list_containers_by_prefix(
         docker_client,
         &[CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX],
@@ -403,7 +414,7 @@ async fn get_client_containers(docker_client: Arc<Docker>) -> Vec<ContainerSumma
 }
 
 async fn remove_old_client_containers(docker_client: Arc<Docker>) {
-    let client_containers = get_client_containers(docker_client.clone()).await;
+    let client_containers = get_test_containers(docker_client.clone()).await;
 
     for cont in client_containers.iter() {
         docker_client
@@ -425,7 +436,7 @@ async fn remove_old_client_containers(docker_client: Arc<Docker>) {
 }
 
 async fn get_name_of_new_client_container(docker_client: Arc<Docker>) -> String {
-    let client_containers = get_client_containers(docker_client.clone()).await;
+    let client_containers = get_client_containers_only(docker_client.clone()).await;
     format!("{CLIENT_CONTAINER_PREFIX}-{}", client_containers.len() + 1)
 }
 
