@@ -101,39 +101,39 @@ pub async fn e2e_testing_setup_subscription(
     DockerTestCleanup {}
 }
 
-pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
-    // Set the container name based on the ones that are already running.
-    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
+/// Build GPU device request for NVIDIA GPU support
+fn build_gpu_device_request() -> DeviceRequest {
+    DeviceRequest {
+        driver: Some("nvidia".to_string()),
+        count: Some(1),
+        capabilities: Some(vec![vec!["gpu".to_string()]]),
+        ..Default::default()
+    }
+}
 
-    // Check if GPU is available
-    let has_gpu = has_gpu_support();
-
-    // Setting extra hosts and optionally nvidia request
-    let network_name = "test_psyche-test-network";
-    let host_config = if has_gpu {
-        // Setting nvidia usage parameters
-        let device_request = DeviceRequest {
-            driver: Some("nvidia".to_string()),
-            count: Some(1),
-            capabilities: Some(vec![vec!["gpu".to_string()]]),
-            ..Default::default()
-        };
-
+/// Build host configuration for container with optional GPU and volume binds
+fn build_host_config(network: &str, has_gpu: bool, binds: Option<Vec<String>>) -> HostConfig {
+    if has_gpu {
+        let device_request = build_gpu_device_request();
         HostConfig {
             device_requests: Some(vec![device_request]),
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
-            network_mode: Some(network_name.to_string()),
+            network_mode: Some(network.to_string()),
+            binds,
             ..Default::default()
         }
     } else {
         HostConfig {
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
-            network_mode: Some(network_name.to_string()),
+            network_mode: Some(network.to_string()),
+            binds,
             ..Default::default()
         }
-    };
+    }
+}
 
-    // Get env vars from config file
+/// Load environment variables from client config file and add GPU capabilities if needed
+fn load_client_env_vars(has_gpu: bool) -> Vec<String> {
     let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.local")
         .expect("Failed to read env file")
         .lines()
@@ -147,26 +147,70 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
         })
         .collect();
 
+    if has_gpu {
+        [env_vars, vec!["NVIDIA_DRIVER_CAPABILITIES=all".to_string()]].concat()
+    } else {
+        env_vars
+    }
+}
+
+/// Internal helper to spawn a client container with configurable options
+async fn spawn_client_internal(
+    docker_client: Arc<Docker>,
+    container_name: String,
+    keypair_bind: Option<String>,
+    custom_entrypoint: Option<Vec<&str>>,
+) -> Result<String, DockerWatcherError> {
+    let has_gpu = has_gpu_support();
+    let network_name = "test_psyche-test-network";
+
+    // Build volume binds if keypair path provided
+    let binds = keypair_bind.map(|host_path| {
+        let container_keypair_path = "/root/.config/solana/id.json";
+        vec![format!("{}:{}", host_path, container_keypair_path)]
+    });
+
+    // Build host config with optional GPU and binds
+    let host_config = build_host_config(network_name, has_gpu, binds);
+
+    // Load environment variables
+    let envs = load_client_env_vars(has_gpu);
+
+    // Create container config
     let options = Some(CreateContainerOptions {
-        name: new_container_name.clone(),
+        name: container_name.clone(),
         platform: None,
     });
-    let config = Config {
+
+    let mut config = Config {
         image: Some("psyche-solana-test-client-no-python"),
-        env: Some(env_vars.iter().map(|s| s.as_str()).collect()),
+        env: Some(envs.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()
     };
+
+    // Set custom entrypoint if provided
+    if let Some(entrypoint) = custom_entrypoint {
+        config.entrypoint = Some(entrypoint);
+    }
+
+    // Create and start container
     docker_client
         .create_container(options, config)
         .await
         .unwrap();
-    // Start the container
+
     docker_client
-        .start_container::<String>(&new_container_name, None)
+        .start_container::<String>(&container_name, None)
         .await
         .unwrap();
-    Ok(new_container_name)
+
+    Ok(container_name)
+}
+
+pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
+    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
+    spawn_client_internal(docker_client, new_container_name, None, None).await
 }
 
 /// Spawns a new client container with a specific Solana keypair
@@ -175,62 +219,16 @@ pub async fn spawn_client_with_keypair(
     docker_client: Arc<Docker>,
     host_keypair_path: &str,
 ) -> Result<String, DockerWatcherError> {
-    // Set the container name based on the ones that are already running.
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-
-    // Check if GPU is available
     let has_gpu = has_gpu_support();
-
-    // Setting extra hosts and optionally nvidia request
     let network_name = "test_psyche-test-network";
-
-    // Create bind mount for the keypair
     let container_keypair_path = "/root/.config/solana/id.json";
-    let binds = vec![format!("{}:{}", host_keypair_path, container_keypair_path)];
-
-    let host_config = if has_gpu {
-        // Setting nvidia usage parameters
-        let device_request = DeviceRequest {
-            driver: Some("nvidia".to_string()),
-            count: Some(1),
-            capabilities: Some(vec![vec!["gpu".to_string()]]),
-            ..Default::default()
-        };
-
-        HostConfig {
-            device_requests: Some(vec![device_request]),
-            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
-            network_mode: Some(network_name.to_string()),
-            binds: Some(binds),
-            ..Default::default()
-        }
-    } else {
-        HostConfig {
-            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
-            network_mode: Some(network_name.to_string()),
-            binds: Some(binds),
-            ..Default::default()
-        }
-    };
-
-    // Get env vars from config file
-    let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.local")
-        .expect("Failed to read env file")
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with("#") {
-                None
-            } else {
-                Some(line.to_string())
-            }
-        })
-        .collect();
-    let envs = if has_gpu {
-        [env_vars, vec!["NVIDIA_DRIVER_CAPABILITIES=all".to_string()]].concat()
-    } else {
-        env_vars
-    };
+    let binds = Some(vec![format!(
+        "{}:{}",
+        host_keypair_path, container_keypair_path
+    )]);
+    let host_config = build_host_config(network_name, has_gpu, binds);
+    let envs = load_client_env_vars(has_gpu);
 
     // Override entrypoint to skip solana-keygen (which would overwrite the mounted keypair)
     // We run the same commands as client_test_entrypoint.sh but WITHOUT solana-keygen new
@@ -250,6 +248,7 @@ pub async fn spawn_client_with_keypair(
         name: new_container_name.clone(),
         platform: None,
     });
+
     let config = Config {
         image: Some("psyche-solana-test-client-no-python"),
         env: Some(envs.iter().map(|s| s.as_str()).collect()),
@@ -257,45 +256,39 @@ pub async fn spawn_client_with_keypair(
         entrypoint: Some(entrypoint),
         ..Default::default()
     };
+
+    // Create and start container
     docker_client
         .create_container(options, config)
         .await
         .unwrap();
-    // Start the container
+
     docker_client
         .start_container::<String>(&new_container_name, None)
         .await
         .unwrap();
+
     Ok(new_container_name)
 }
 
 pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Vec<String>) {
-    let all_containers = docker_client
-        .list_containers::<String>(Some(ListContainersOptions {
-            all: true, // Include stopped containers as well
-            ..Default::default()
-        }))
-        .await
-        .unwrap();
+    let containers = get_client_containers(docker_client).await;
 
     let mut running_containers = Vec::new();
     let mut all_container_names = Vec::new();
 
-    for cont in all_containers {
+    for cont in containers {
         if let Some(names) = &cont.names {
             if let Some(name) = names.first() {
                 let trimmed_name = name.trim_start_matches('/').to_string();
+                all_container_names.push(trimmed_name.clone());
 
-                if trimmed_name.starts_with(CLIENT_CONTAINER_PREFIX) {
-                    all_container_names.push(trimmed_name.clone());
-
-                    if cont
-                        .state
-                        .as_deref()
-                        .is_some_and(|state| state.eq_ignore_ascii_case("running"))
-                    {
-                        running_containers.push(trimmed_name);
-                    }
+                if cont
+                    .state
+                    .as_deref()
+                    .is_some_and(|state| state.eq_ignore_ascii_case("running"))
+                {
+                    running_containers.push(trimmed_name);
                 }
             }
         }
@@ -368,8 +361,11 @@ pub fn spawn_ctrl_c_task() {
     });
 }
 
-async fn get_client_containers(docker_client: Arc<Docker>) -> Vec<ContainerSummary> {
-    let mut client_containers = Vec::new();
+/// List containers matching given prefixes
+async fn list_containers_by_prefix(
+    docker_client: Arc<Docker>,
+    prefixes: &[&str],
+) -> Vec<ContainerSummary> {
     let all_containers = docker_client
         .list_containers::<String>(Some(ListContainersOptions {
             all: true, // Include stopped containers as well
@@ -378,19 +374,32 @@ async fn get_client_containers(docker_client: Arc<Docker>) -> Vec<ContainerSumma
         .await
         .unwrap();
 
-    for cont in all_containers {
-        if let Some(names) = &cont.names {
-            if let Some(name) = names.first() {
-                let trimmed_name = name.trim_start_matches('/').to_string();
-                if trimmed_name.starts_with(CLIENT_CONTAINER_PREFIX)
-                    || trimmed_name.starts_with(NGINX_PROXY_PREFIX)
-                {
-                    client_containers.push(cont);
-                }
-            }
-        }
-    }
-    client_containers
+    // Filter containers by prefixes
+    all_containers
+        .into_iter()
+        .filter(|cont| {
+            cont.names
+                .as_ref() // Get Option<&Vec<String>>
+                .and_then(|names| names.first()) // Get Option<&String> (first name)
+                .map(|name| {
+                    // Docker prefixes names with "/", so strip it
+                    let trimmed_name = name.trim_start_matches('/');
+                    // Check if container name starts with any of the provided prefixes
+                    prefixes
+                        .iter()
+                        .any(|prefix| trimmed_name.starts_with(prefix))
+                })
+                .unwrap_or(false) // If any step failed, exclude this container
+        })
+        .collect()
+}
+
+async fn get_client_containers(docker_client: Arc<Docker>) -> Vec<ContainerSummary> {
+    list_containers_by_prefix(
+        docker_client,
+        &[CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX],
+    )
+    .await
 }
 
 async fn remove_old_client_containers(docker_client: Arc<Docker>) {
