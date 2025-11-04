@@ -7,7 +7,6 @@ use bollard::{
     models::DeviceRequest,
     secret::{ContainerSummary, HostConfig},
 };
-use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -37,6 +36,32 @@ pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
 
+/// Creates a new keypair using `solana-keygen` and saves it to the specified path.
+pub fn generate_keypair_file(output_path: &str) -> Result<(), String> {
+    let output = Command::new("solana-keygen")
+        .args([
+            "new",
+            "--no-bip39-passphrase",
+            "--outfile",
+            output_path,
+            "--force",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run solana-keygen: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "solana-keygen failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    println!("Generated keypair at {}", output_path);
+    Ok(())
+}
+
 /// 1. Stops docker-compose services
 /// 2. Force-removes any remaining test containers by name pattern
 pub struct DockerTestCleanup;
@@ -64,6 +89,46 @@ pub async fn e2e_testing_setup(
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
     spawn_psyche_network(init_num_clients, config).unwrap();
+    spawn_ctrl_c_task();
+
+    DockerTestCleanup {}
+}
+
+/// Setup test infrastructure with pre-generated keypairs for client and run owner.
+/// This is useful for tests that need deterministic keypairs (e.g., pause/rejoin tests).
+pub async fn e2e_testing_setup_with_keypairs(
+    docker_client: Arc<Docker>,
+    config: Option<PathBuf>,
+) -> DockerTestCleanup {
+    remove_old_client_containers(docker_client.clone()).await;
+
+    // Remove any existing run-owner container before starting infrastructure
+    let run_owner_name = "test-psyche-run-owner-1";
+    let _ = docker_client
+        .remove_container(
+            run_owner_name,
+            Some(RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            }),
+        )
+        .await;
+
+    // Start infrastructure with 0 clients as test will spawn manually later
+    spawn_psyche_network(0, config).unwrap();
+
+    // Remove docker-compose run owner so test can spawn one with custom keypair
+    let _ = docker_client
+        .remove_container(
+            run_owner_name,
+            Some(RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            }),
+        )
+        .await;
+    println!("Removed docker-compose run owner container");
+
     spawn_ctrl_c_task();
 
     DockerTestCleanup {}
@@ -156,6 +221,44 @@ fn load_client_env_vars(has_gpu: bool) -> Vec<String> {
     }
 }
 
+/// Create and start a Docker container with the given configuration
+async fn create_and_start_container(
+    docker_client: Arc<Docker>,
+    container_name: String,
+    image: &str,
+    env_vars: Vec<String>,
+    host_config: HostConfig,
+    entrypoint: Option<Vec<&str>>,
+) -> Result<String, DockerWatcherError> {
+    let options = Some(CreateContainerOptions {
+        name: container_name.clone(),
+        platform: None,
+    });
+
+    let mut config = Config {
+        image: Some(image),
+        env: Some(env_vars.iter().map(|s| s.as_str()).collect()),
+        host_config: Some(host_config),
+        ..Default::default()
+    };
+
+    if let Some(entrypoint) = entrypoint {
+        config.entrypoint = Some(entrypoint);
+    }
+
+    docker_client
+        .create_container(options, config)
+        .await
+        .unwrap();
+
+    docker_client
+        .start_container::<String>(&container_name, None)
+        .await
+        .unwrap();
+
+    Ok(container_name)
+}
+
 /// Internal helper to spawn a client container with configurable options
 async fn spawn_client_internal(
     docker_client: Arc<Docker>,
@@ -178,36 +281,55 @@ async fn spawn_client_internal(
     // Load environment variables
     let envs = load_client_env_vars(has_gpu);
 
-    // Create container config
-    let options = Some(CreateContainerOptions {
-        name: container_name.clone(),
-        platform: None,
-    });
+    // Create and start container using unified helper
+    create_and_start_container(
+        docker_client,
+        container_name,
+        "psyche-solana-test-client-no-python",
+        envs,
+        host_config,
+        custom_entrypoint,
+    )
+    .await
+}
 
-    let mut config = Config {
-        image: Some("psyche-solana-test-client-no-python"),
-        env: Some(envs.iter().map(|s| s.as_str()).collect()),
-        host_config: Some(host_config),
-        ..Default::default()
-    };
+/// Internal helper to spawn a container with keypair and optional config file
+/// Used by both spawn_client_with_keypair and spawn_run_owner_with_keypair
+async fn spawn_container_with_keypair_and_config(
+    docker_client: Arc<Docker>,
+    container_name: String,
+    host_keypair_path: &str,
+    entrypoint: Vec<&str>,
+    config_path: Option<&str>,
+    additional_env_vars: Vec<String>,
+) -> Result<String, DockerWatcherError> {
+    let has_gpu = has_gpu_support();
+    let network_name = "test_psyche-test-network";
+    let container_keypair_path = "/root/.config/solana/id.json";
 
-    // Set custom entrypoint if provided
-    if let Some(entrypoint) = custom_entrypoint {
-        config.entrypoint = Some(entrypoint);
+    // Build volume binds: always include keypair, optionally include config
+    let mut binds = vec![format!("{}:{}", host_keypair_path, container_keypair_path)];
+    if let Some(config) = config_path {
+        let container_config_path = "/usr/local/config.toml";
+        binds.push(format!("{}:{}", config, container_config_path));
     }
 
+    let host_config = build_host_config(network_name, has_gpu, Some(binds));
+
+    // Load base environment variables and add any additional ones
+    let mut envs = load_client_env_vars(has_gpu);
+    envs.extend(additional_env_vars);
+
     // Create and start container
-    docker_client
-        .create_container(options, config)
-        .await
-        .unwrap();
-
-    docker_client
-        .start_container::<String>(&container_name, None)
-        .await
-        .unwrap();
-
-    Ok(container_name)
+    create_and_start_container(
+        docker_client,
+        container_name,
+        "psyche-solana-test-client-no-python",
+        envs,
+        host_config,
+        Some(entrypoint),
+    )
+    .await
 }
 
 /// Spawns a new client container with default configuration.
@@ -223,44 +345,45 @@ pub async fn spawn_client_with_keypair(
     host_keypair_path: &str,
 ) -> Result<String, DockerWatcherError> {
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-    let has_gpu = has_gpu_support();
-    let network_name = "test_psyche-test-network";
-    let container_keypair_path = "/root/.config/solana/id.json";
-    let binds = Some(vec![format!(
-        "{}:{}",
-        host_keypair_path, container_keypair_path
-    )]);
-    let host_config = build_host_config(network_name, has_gpu, binds);
-    let envs = load_client_env_vars(has_gpu);
 
     // Use entrypoint script that skips solana-keygen (which would overwrite the mounted keypair)
     let entrypoint = vec!["/bin/client_test_entrypoint_with_keypair.sh"];
 
-    let options = Some(CreateContainerOptions {
-        name: new_container_name.clone(),
-        platform: None,
-    });
+    spawn_container_with_keypair_and_config(
+        docker_client,
+        new_container_name,
+        host_keypair_path,
+        entrypoint,
+        None,       // No config file for regular clients
+        Vec::new(), // No additional env vars
+    )
+    .await
+}
 
-    let config = Config {
-        image: Some("psyche-solana-test-client-no-python"),
-        env: Some(envs.iter().map(|s| s.as_str()).collect()),
-        host_config: Some(host_config),
-        entrypoint: Some(entrypoint),
-        ..Default::default()
-    };
+/// Spawns a run owner container with a specific Solana keypair.
+pub async fn spawn_run_owner_with_keypair(
+    docker_client: Arc<Docker>,
+    host_keypair_path: &str,
+    config_path: &str,
+    run_id: &str,
+) -> Result<String, DockerWatcherError> {
+    let container_name = "test-psyche-run-owner-1".to_string();
 
-    // Create and start container
-    docker_client
-        .create_container(options, config)
-        .await
-        .unwrap();
+    // Use entrypoint script that skips solana-keygen
+    let entrypoint = vec!["/bin/run_owner_entrypoint_with_keypair.sh"];
 
-    docker_client
-        .start_container::<String>(&new_container_name, None)
-        .await
-        .unwrap();
+    // Add run-specific environment variable
+    let additional_env_vars = vec![format!("RUN_ID={}", run_id)];
 
-    Ok(new_container_name)
+    spawn_container_with_keypair_and_config(
+        docker_client,
+        container_name,
+        host_keypair_path,
+        entrypoint,
+        Some(config_path), // Run owner needs config file
+        additional_env_vars,
+    )
+    .await
 }
 
 pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Vec<String>) {
@@ -443,59 +566,6 @@ pub async fn kill_all_clients(docker: &Docker, signal: &str) {
 
     // Small delay to ensure containers terminate
     tokio::time::sleep(Duration::from_secs(2)).await;
-}
-
-/// Extract a Solana keypair from a container and save to host filesystem
-pub async fn extract_keypair_from_container(
-    docker: &Docker,
-    container_name: &str,
-    output_path: &str,
-) -> Result<(), String> {
-    use bollard::container::DownloadFromContainerOptions;
-    use std::fs;
-    use std::io::Write;
-    use tar::Archive;
-
-    let keypair_container_path = "/root/.config/solana/id.json";
-    let download_options = Some(DownloadFromContainerOptions {
-        path: keypair_container_path.to_string(),
-    });
-
-    let mut keypair_tar_stream = docker.download_from_container(container_name, download_options);
-    let mut keypair_tar_bytes = Vec::new();
-
-    while let Some(chunk) = keypair_tar_stream.next().await {
-        keypair_tar_bytes.extend_from_slice(
-            &chunk.map_err(|e| format!("Failed to download keypair: {}", e))?[..],
-        );
-    }
-
-    // Extract from tar archive
-    let mut archive = Archive::new(&keypair_tar_bytes[..]);
-    let mut keypair_json = String::new();
-    if let Some(entry) = archive
-        .entries()
-        .map_err(|e| format!("Failed to read tar: {}", e))?
-        .next()
-    {
-        let mut entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        use std::io::Read;
-        entry
-            .read_to_string(&mut keypair_json)
-            .map_err(|e| format!("Failed to read keypair: {}", e))?;
-    }
-
-    // Save to host filesystem
-    let mut file = fs::File::create(output_path)
-        .map_err(|e| format!("Failed to create file {}: {}", output_path, e))?;
-    file.write_all(keypair_json.as_bytes())
-        .map_err(|e| format!("Failed to write keypair: {}", e))?;
-
-    println!(
-        "Extracted keypair from {} to {}",
-        container_name, output_path
-    );
-    Ok(())
 }
 
 /// Pause the run and verify it reaches Paused state
