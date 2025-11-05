@@ -232,14 +232,6 @@ pub async fn upload_model_repo_async(
         .collect();
 
     let files = files?;
-    let num_files = files.len();
-    info!(
-        "Starting upload to HuggingFace - repo: {}, num_files: {}, message: {:?}",
-        repo_id, num_files, commit_message
-    );
-
-    let file_names: Vec<&str> = files.iter().map(|(_, name)| name.as_str()).collect();
-    info!("Files to upload: {:?}", file_names);
 
     let commit_info = match api_repo
         .upload_files(
