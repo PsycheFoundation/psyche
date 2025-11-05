@@ -845,9 +845,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
             | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
-                //check here
-                self.cleanup_completed_uploads();
-
                 let (trainers, upload_handle) = cooldown.finish().await?;
                 if let Some(handle) = upload_handle {
                     self.pending_upload_handles.push(handle);

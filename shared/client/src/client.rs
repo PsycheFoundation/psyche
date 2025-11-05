@@ -682,6 +682,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     info!("Waiting for all pending checkpoints to finish");
 
                     // Keep waiting for checkpoints while there are uploads pending
+                    let mut checkpoint_check_interval = interval(Duration::from_secs(10));
                     while run.doing_checkpoint() {
                         tokio::select! {
                             checkpoint = rx_checkpoint.recv() => {
@@ -692,6 +693,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     // Channel closed, no more checkpoints coming
                                     break;
                                 }
+                            }
+                            _ = checkpoint_check_interval.tick() => {
                             }
                         }
                     }
