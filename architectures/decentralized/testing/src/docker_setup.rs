@@ -35,6 +35,7 @@ fn has_gpu_support() -> bool {
 pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
+pub const RUN_OWNER_CONTAINER_PREFIX: &str = "test-psyche-run-owner";
 
 /// 1. Stops docker-compose services
 /// 2. Force-removes any remaining test containers by name pattern
@@ -450,12 +451,16 @@ async fn get_client_containers_only(docker_client: Arc<Docker>) -> Vec<Container
     list_containers_by_prefix(docker_client, &[CLIENT_CONTAINER_PREFIX]).await
 }
 
-/// Get ALL test infrastructure containers (clients + nginx proxies)
+/// Get all test infrastructure containers (clients + nginx proxies + run owners)
 /// Used for cleanup operations
 async fn get_test_containers(docker_client: Arc<Docker>) -> Vec<ContainerSummary> {
     list_containers_by_prefix(
         docker_client,
-        &[CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX],
+        &[
+            CLIENT_CONTAINER_PREFIX,
+            NGINX_PROXY_PREFIX,
+            RUN_OWNER_CONTAINER_PREFIX,
+        ],
     )
     .await
 }
