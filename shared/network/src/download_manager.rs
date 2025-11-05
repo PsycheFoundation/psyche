@@ -198,9 +198,9 @@ impl RetriedDownloadsActor {
                     .map(|(hash, info)| {
                         (
                             *hash,
-                            info.ticket.clone(),
-                            info.tag.clone(),
-                            info.r#type.clone(),
+                            info.ticket.to_owned(),
+                            info.tag.to_owned(),
+                            info.r#type.to_owned(),
                         )
                     })
                     .collect();
@@ -354,7 +354,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             _download_type: PhantomData,
             iroh_downloader: downloader,
             event_receiver,
-            event_sender: event_sender.clone(),
+            event_sender,
             blobs_store: Arc::new(store),
         })
     }
@@ -370,7 +370,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         let mut download = Download::new(blob_ticket.clone(), tag.clone(), download_type.clone());
         let store = self.blobs_store.clone();
         let event_sender = self.event_sender.clone();
-        let blobs = self.blobs_store.blobs().clone();
+        let blobs = store.blobs().clone();
 
         tokio::spawn(async move {
             let _ = store.tags().set(tag.clone(), blob_ticket.hash()).await;
@@ -381,33 +381,46 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             let progress = progress.stream().await;
             match progress {
                 Ok(mut progress) => {
-                    while let Some(val) = progress.next().await {
-                        match val {
-                            // We're using the Blob format so there's only one part for each blob, the part completion means the download is complete
-                            DownloadProgressItem::PartComplete { request: _request } => {
-                                let event = Self::process_completed(
-                                    blobs,
-                                    download.blob_ticket.clone(),
-                                    tag.clone(),
-                                    download_type.clone(),
-                                )
-                                .await;
-                                if let Some(event) = event {
-                                    let _ = event_sender.send(event);
+                    while let Some(progress_update) = progress.next().await {
+                        // We're using the Blob format so there's only one part for each blob, the part completion means the download is complete
+                        if matches!(
+                            &progress_update,
+                            DownloadProgressItem::PartComplete { request: _request }
+                        ) {
+                            let event = Self::process_completed(
+                                blobs,
+                                download.blob_ticket,
+                                tag,
+                                download_type,
+                            )
+                            .await;
+                            if let Some(event) = event {
+                                if let Err(e) = event_sender.send(event) {
+                                    error!("Failed to send download event: {}", e);
                                 }
-                                break;
                             }
-                            other => {
-                                if let Some(event) =
-                                    Self::handle_download_progress(other, &mut download)
-                                {
-                                    let _ = event_sender.send(event);
-                                }
+                            break;
+                        } else if let Some(event) =
+                            Self::handle_download_progress(progress_update, &mut download)
+                        {
+                            if let Err(e) = event_sender.send(event) {
+                                error!("Failed to send download event: {}", e);
                             }
                         }
                     }
                 }
-                Err(e) => panic!("Failed to start download: {e}"),
+                Err(e) => {
+                    if let Err(e) =
+                        event_sender.send(DownloadManagerEvent::Failed(DownloadFailed {
+                            blob_ticket: download.blob_ticket,
+                            tag,
+                            error: e.into(),
+                            download_type,
+                        }))
+                    {
+                        error!("Failed to send download failed event: {e}");
+                    }
+                }
             }
         });
     }
@@ -444,7 +457,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 blob_ticket,
                 tag,
                 error: err.into(),
-                download_type: download_type.clone(),
+                download_type,
             })),
         };
         event
@@ -455,10 +468,9 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
     }
 
     pub async fn remove_staled_tags(&self, target_distro_result_step: u32) -> anyhow::Result<()> {
-        let store = self.blobs_store.clone();
-        let model_tags_deleted = store.tags().delete_prefix("model-").await?;
+        let model_tags_deleted = self.blobs_store.tags().delete_prefix("model-").await?;
         let mut distro_results_deleted = 0;
-        let mut tags = store.tags().list().await?;
+        let mut tags = self.blobs_store.tags().list().await?;
 
         while let Some(tag) = tags.next().await {
             let Ok(tag) = tag else {
@@ -488,7 +500,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             };
 
             if distro_result_step < target_distro_result_step {
-                let tag_delete_res = store.tags().delete(&tag_name).await;
+                let tag_delete_res = self.blobs_store.tags().delete(&tag_name).await;
                 if tag_delete_res.is_ok() {
                     distro_results_deleted += 1;
                 } else {
@@ -510,19 +522,22 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         iroh_download_progress: DownloadProgressItem,
         download: &mut Download,
     ) -> Option<DownloadManagerEvent<D>> {
+        let blob_ticket = download.blob_ticket.clone();
+        let tag = download.tag.clone();
+        let download_type = download.r#type.clone();
         let event = match iroh_download_progress {
             DownloadProgressItem::TryProvider {
                 id: _id,
                 request: _request,
             } => Some(DownloadManagerEvent::Update(DownloadUpdate {
-                blob_ticket: download.blob_ticket.clone(),
+                blob_ticket,
                 downloaded_size_delta: 0,
                 downloaded_size: 0,
                 total_size: 0,
             })),
             DownloadProgressItem::Progress(bytes_amount) => {
                 Some(DownloadManagerEvent::Update(DownloadUpdate {
-                    blob_ticket: download.blob_ticket.clone(),
+                    blob_ticket,
                     downloaded_size_delta: bytes_amount.saturating_sub(download.last_offset),
                     downloaded_size: bytes_amount,
                     total_size: download.total_size,
@@ -531,15 +546,15 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
             DownloadProgressItem::DownloadError => {
                 warn!(
                     "Download error, removing it. idx, hash {}, node provider {}: {}",
-                    download.blob_ticket.hash(),
-                    download.blob_ticket.node_addr().node_id,
+                    blob_ticket.hash(),
+                    blob_ticket.node_addr().node_id,
                     "Download error"
                 );
                 Some(DownloadManagerEvent::Failed(DownloadFailed {
-                    blob_ticket: download.blob_ticket.clone(),
+                    blob_ticket,
                     error: anyhow!("Download error"),
-                    tag: download.tag.clone(),
-                    download_type: download.r#type.clone(),
+                    tag,
+                    download_type,
                 }))
             }
             DownloadProgressItem::Error(e) => {
@@ -550,17 +565,17 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     e
                 );
                 Some(DownloadManagerEvent::Failed(DownloadFailed {
-                    blob_ticket: download.blob_ticket.clone(),
+                    blob_ticket,
                     error: e,
-                    tag: download.tag.clone(),
-                    download_type: download.r#type.clone(),
+                    tag,
+                    download_type,
                 }))
             }
             DownloadProgressItem::ProviderFailed {
                 id: _id,
                 request: _request,
             } => Some(DownloadManagerEvent::Update(DownloadUpdate {
-                blob_ticket: download.blob_ticket.clone(),
+                blob_ticket,
                 downloaded_size_delta: 0,
                 downloaded_size: download.last_offset,
                 total_size: download.total_size,
