@@ -1,9 +1,9 @@
 use anchor_spl::associated_token;
 use anyhow::Result;
 use clap::Args;
-use serde_json::Map;
 use serde_json::json;
 use serde_json::to_string_pretty;
+use serde_json::Map;
 
 use crate::SolanaBackend;
 
@@ -120,12 +120,12 @@ pub async fn command_json_dump_run_execute(
             },
             "rates": {
                 "current": {
-                    "earning": coordinator_account_state.state.clients_state.current_epoch_rates.earning_rate,
-                    "slashing": coordinator_account_state.state.clients_state.current_epoch_rates.slashing_rate,
+                    "earning": coordinator_account_state.state.clients_state.current_epoch_rates.earning_rate_total_shared,
+                    "slashing": coordinator_account_state.state.clients_state.current_epoch_rates.slashing_rate_per_client,
                 },
                 "future": {
-                    "earning": coordinator_account_state.state.clients_state.future_epoch_rates.earning_rate,
-                    "slashing": coordinator_account_state.state.clients_state.future_epoch_rates.slashing_rate,
+                    "earning": coordinator_account_state.state.clients_state.future_epoch_rates.earning_rate_total_shared,
+                    "slashing": coordinator_account_state.state.clients_state.future_epoch_rates.slashing_rate_per_client,
                 },
             }
         },
@@ -173,7 +173,7 @@ pub async fn command_json_dump_run_execute(
                 .state
                 .clients_state
                 .current_epoch_rates
-                .earning_rate;
+                .earning_rate_total_shared;
         let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
             json!(f64::INFINITY)
         } else {

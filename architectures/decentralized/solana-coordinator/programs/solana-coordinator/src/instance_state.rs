@@ -1,28 +1,28 @@
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::Model;
 use psyche_coordinator::ClientState;
 use psyche_coordinator::Coordinator;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::HealthChecks;
 use psyche_coordinator::RunState;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
-use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::Model;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
+use psyche_core::sha256v;
 use psyche_core::FixedString;
 use psyche_core::SmallBoolean;
-use psyche_core::sha256v;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::ClientId;
-use crate::ProgramError;
 use crate::client::Client;
 use crate::clients_state::ClientsState;
+use crate::ClientId;
+use crate::ProgramError;
 
 #[derive(
     Debug,
@@ -146,7 +146,8 @@ impl CoordinatorInstanceState {
                             client.earned += self
                                 .clients_state
                                 .current_epoch_rates
-                                .earning_rate;
+                                .earning_rate_total_shared
+                                .saturating_div(finished_clients.len() as u64);
                         }
                         finished_client_index += 1;
                     }
@@ -160,7 +161,7 @@ impl CoordinatorInstanceState {
                             client.slashed += self
                                 .clients_state
                                 .current_epoch_rates
-                                .slashing_rate;
+                                .slashing_rate_per_client;
                         }
                         exited_client_index += 1;
                     }
@@ -248,16 +249,22 @@ impl CoordinatorInstanceState {
 
     pub fn set_future_epoch_rates(
         &mut self,
-        epoch_earning_rate: Option<u64>,
-        epoch_slashing_rate: Option<u64>,
+        epoch_earning_rate_total_shared: Option<u64>,
+        epoch_slashing_rate_per_client: Option<u64>,
     ) -> Result<()> {
-        if let Some(epoch_earning_rate) = epoch_earning_rate {
-            self.clients_state.future_epoch_rates.earning_rate =
-                epoch_earning_rate;
+        if let Some(epoch_earning_rate_total_shared) =
+            epoch_earning_rate_total_shared
+        {
+            self.clients_state
+                .future_epoch_rates
+                .earning_rate_total_shared = epoch_earning_rate_total_shared;
         }
-        if let Some(epoch_slashing_rate) = epoch_slashing_rate {
-            self.clients_state.future_epoch_rates.slashing_rate =
-                epoch_slashing_rate;
+        if let Some(epoch_slashing_rate_per_client) =
+            epoch_slashing_rate_per_client
+        {
+            self.clients_state
+                .future_epoch_rates
+                .slashing_rate_per_client = epoch_slashing_rate_per_client;
         }
         Ok(())
     }

@@ -1,6 +1,6 @@
+use anchor_client::anchor_lang::system_program;
 use anchor_client::anchor_lang::InstructionData;
 use anchor_client::anchor_lang::ToAccountMetas;
-use anchor_client::anchor_lang::system_program;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
@@ -99,8 +99,8 @@ pub fn coordinator_set_future_epoch_rates(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
-    epoch_earning_rate: Option<u64>,
-    epoch_slashing_rate: Option<u64>,
+    epoch_earning_rate_total_shared: Option<u64>,
+    epoch_slashing_rate_per_client: Option<u64>,
 ) -> Instruction {
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     anchor_instruction(
@@ -111,8 +111,8 @@ pub fn coordinator_set_future_epoch_rates(
             coordinator_account: *coordinator_account,
         },
         psyche_solana_coordinator::instruction::SetFutureEpochRates {
-            epoch_earning_rate,
-            epoch_slashing_rate,
+            epoch_earning_rate_total_shared,
+            epoch_slashing_rate_per_client,
         },
     )
 }

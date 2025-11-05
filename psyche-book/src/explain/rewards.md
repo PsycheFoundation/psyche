@@ -2,6 +2,7 @@
 
 When clients participate in a training run, the `Coordinator` keeps track of the compute contributions.
 
+// TODO (vbrunet) - update docs
 An `earning_rate` is added to the Client's `earned` points at the end of every successful training Epoch.
 
 ## Run Treasurer, Compute Incentives

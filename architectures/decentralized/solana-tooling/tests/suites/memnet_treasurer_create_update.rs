@@ -1,11 +1,11 @@
-use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
+use psyche_coordinator::model::LLM;
+use psyche_coordinator::CoordinatorConfig;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
@@ -69,8 +69,8 @@ pub async fn run() {
             cold_start_warmup_steps: 0,
         })),
         progress: None,
-        epoch_earning_rate: Some(66),
-        epoch_slashing_rate: None,
+        epoch_earning_rate_total_shared: Some(66),
+        epoch_slashing_rate_per_client: None,
         paused: Some(false),
     };
 
