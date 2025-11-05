@@ -176,6 +176,12 @@ pub struct TrainArgs {
 
     #[clap(long, env)]
     pub sidecar_port: Option<u16>,
+
+    #[clap(long, default_value_t = true, env)]
+    pub delete_old_steps: bool,
+
+    #[clap(long, default_value_t = 1, env)]
+    pub keep_steps: u32,
 }
 
 impl TrainArgs {
@@ -210,25 +216,33 @@ impl TrainArgs {
             &hub_read_token,
             self.hub_repo.clone(),
             self.checkpoint_dir.clone(),
+            self.delete_old_steps,
+            self.keep_steps,
         ) {
-            (Some(token), Some(repo), Some(dir)) => Some(CheckpointConfig {
-                checkpoint_dir: dir,
-                hub_upload: Some(HubUploadInfo {
-                    hub_repo: repo,
-                    hub_token: token.to_string(),
-                }),
-            }),
-            (None, Some(_), Some(_)) => {
+            (Some(token), Some(repo), Some(dir), delete_old_steps, keep_steps) => {
+                Some(CheckpointConfig {
+                    checkpoint_dir: dir,
+                    hub_upload: Some(HubUploadInfo {
+                        hub_repo: repo,
+                        hub_token: token.to_string(),
+                    }),
+                    delete_old_steps,
+                    keep_steps,
+                })
+            }
+            (None, Some(_), Some(_), _, _) => {
                 bail!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
             }
-            (_, Some(_), None) => {
+            (_, Some(_), None, _, _) => {
                 bail!("--hub-repo was set, but no --checkpoint-dir was passed!")
             }
-            (_, None, Some(dir)) => Some(CheckpointConfig {
+            (_, None, Some(dir), delete_old_steps, keep_steps) => Some(CheckpointConfig {
                 checkpoint_dir: dir,
                 hub_upload: None,
+                delete_old_steps,
+                keep_steps,
             }),
-            (_, None, _) => None,
+            (_, None, _, _, _) => None,
         };
 
         Ok(checkpoint_upload_info)
