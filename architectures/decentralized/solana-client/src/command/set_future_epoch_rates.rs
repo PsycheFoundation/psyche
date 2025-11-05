@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Args;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 
-use crate::{instructions, SolanaBackend};
+use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -69,8 +69,8 @@ pub async fn command_set_future_epoch_rates_execute(
         .send_and_retry("Set future epoch rates", &[instruction], &[])
         .await?;
     println!("On run {run_id} with transaction {signature}:");
-    println!(" - Set earning rate to {earning_rate_total_shared:?}");
-    println!(" - Set slashing rate to {slashing_rate_per_client:?}");
+    println!(" - Set earning rate to {earning_rate_total_shared:?} (divided between clients)");
+    println!(" - Set slashing rate to {slashing_rate_per_client:?} (per failing client)");
 
     println!("\n===== Logs =====");
     for log in backend.get_logs(&signature).await? {

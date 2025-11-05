@@ -1,9 +1,9 @@
 use anchor_spl::associated_token;
 use anyhow::Result;
 use clap::Args;
+use serde_json::Map;
 use serde_json::json;
 use serde_json::to_string_pretty;
-use serde_json::Map;
 
 use crate::SolanaBackend;
 
