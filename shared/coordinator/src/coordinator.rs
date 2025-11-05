@@ -861,9 +861,8 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 
     pub fn get_cold_start_warmup_bounds(&self) -> Option<(u32, u32)> {
-        let cold_start_warmup_steps = match &self.model {
-            Model::LLM(llm) => llm.cold_start_warmup_steps,
-        };
+        let Model::LLM(llm) = &self.model;
+        let cold_start_warmup_steps = llm.cold_start_warmup_steps;
         if self.epoch_state.cold_start_epoch.is_false() || cold_start_warmup_steps == 0 {
             return None;
         }
