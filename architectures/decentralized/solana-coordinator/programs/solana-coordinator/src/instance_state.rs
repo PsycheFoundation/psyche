@@ -101,11 +101,7 @@ impl CoordinatorInstanceState {
             _ => None,
         };
 
-        msg!(
-            "Pre-tick run state: {}, pending_pause: {}",
-            self.coordinator.run_state,
-            self.coordinator.pending_pause.is_true()
-        );
+        msg!("Pre-tick run state: {}", self.coordinator.run_state);
 
         let clock: Clock = Clock::get()?;
         match self.coordinator.tick(
