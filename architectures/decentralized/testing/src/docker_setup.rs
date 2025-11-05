@@ -68,46 +68,6 @@ pub async fn e2e_testing_setup(
     DockerTestCleanup {}
 }
 
-/// Setup test infrastructure with pre-generated keypairs for client and run owner.
-/// This is useful for tests that need deterministic keypairs (e.g., pause/rejoin tests).
-pub async fn e2e_testing_setup_with_keypairs(
-    docker_client: Arc<Docker>,
-    config: Option<PathBuf>,
-) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client.clone()).await;
-
-    // Remove any existing run-owner container before starting infrastructure
-    let run_owner_name = "test-psyche-run-owner-1";
-    let _ = docker_client
-        .remove_container(
-            run_owner_name,
-            Some(RemoveContainerOptions {
-                force: true,
-                ..Default::default()
-            }),
-        )
-        .await;
-
-    // Start infrastructure with 0 clients as test will spawn manually later
-    spawn_psyche_network(0, config).unwrap();
-
-    // Remove docker-compose run owner so test can spawn one with custom keypair
-    let _ = docker_client
-        .remove_container(
-            run_owner_name,
-            Some(RemoveContainerOptions {
-                force: true,
-                ..Default::default()
-            }),
-        )
-        .await;
-    println!("Removed docker-compose run owner container");
-
-    spawn_ctrl_c_task();
-
-    DockerTestCleanup {}
-}
-
 pub async fn e2e_testing_setup_subscription(
     docker_client: Arc<Docker>,
     init_num_clients: usize,

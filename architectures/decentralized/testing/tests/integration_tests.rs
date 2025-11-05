@@ -17,8 +17,8 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, e2e_testing_setup_with_keypairs, kill_all_clients, pause_and_verify,
-        resume_run, spawn_client_with_keypair, spawn_new_client, spawn_new_client_with_monitoring,
+        e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run,
+        spawn_client_with_keypair, spawn_new_client, spawn_new_client_with_monitoring,
         spawn_run_owner_with_keypair,
     },
     docker_watcher::{DockerWatcher, Response},
@@ -1054,7 +1054,8 @@ async fn test_pause_and_resume_run() {
         .expect("Failed to resolve absolute path for config file");
 
     // Initialize Solana test infrastructure (validator, etc.) with 0 clients
-    let _cleanup = e2e_testing_setup_with_keypairs(docker.clone(), Some(compose_config_path)).await;
+    // The run owner and clients will be manually spawned with pre-generated keypairs
+    let _cleanup = e2e_testing_setup(docker.clone(), 0, Some(compose_config_path)).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     // Manually spawn run owner with pre-generated keypair
