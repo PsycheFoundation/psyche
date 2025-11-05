@@ -274,7 +274,6 @@ pub struct CoordinatorEpochState<T> {
     pub rounds_head: u32,
     pub start_step: u32,
     pub first_round: SmallBoolean,
-    pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
 }
 
@@ -405,7 +404,6 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             rounds: Default::default(),
             rounds_head: Default::default(),
             first_round: true.into(),
-            checkpointed: Default::default(),
             clients: Default::default(),
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
