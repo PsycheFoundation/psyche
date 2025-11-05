@@ -9,11 +9,19 @@ use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
     SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
+    path::PathBuf,
+    sync::Arc,
+};
 use tch::Tensor;
 use thiserror::Error;
-use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::{Instrument, error, info, info_span};
+use tokio::{
+    sync::{Mutex, mpsc},
+    task::JoinHandle,
+};
+use tracing::{Instrument, error, info, info_span, warn};
 
 use super::{
     CheckpointConfig,
@@ -39,6 +47,13 @@ pub struct CooldownStepMetadata {
     checkpoint_extra_files: Vec<PathBuf>,
 
     model_task_runner: ModelTaskRunner,
+    // use a heap here as a best-effort attempt to ensure we get rid of the lowest step number dir even if we spawn multiple tasks
+    // which may not finish writing their dirs in order. We note that even if we were to take the more complicated
+    // route of actually enumerating the checkpoint_dir there would still be a race condition, unless we took a lockfile
+    // or the like on the entire checkpoint_dir which probably isn't worth it just to support disk cleanup
+    // we don't really expect there to be contention on this lock or real race conditions in practice though
+    // as by the time one task spawns after a training round the previous write/upload task(s) should (hopefully) be long done
+    delete_queue: Arc<Mutex<BinaryHeap<Reverse<u32>>>>,
 }
 
 impl CooldownStepMetadata {
@@ -55,6 +70,7 @@ impl CooldownStepMetadata {
             checkpoint_info,
             checkpoint_extra_files,
             model_task_runner,
+            delete_queue: Arc::new(Mutex::new(BinaryHeap::new())),
         }
     }
 }
@@ -83,6 +99,31 @@ pub enum CheckpointError {
     SendCheckpoint,
 }
 
+async fn cleanup_dirs(
+    delete_queue: Arc<Mutex<BinaryHeap<Reverse<u32>>>>,
+    keep_steps: u32,
+    run_id: String,
+    delete_old_steps: bool,
+    step: u32,
+    checkpoint_dir: PathBuf,
+) {
+    if delete_old_steps {
+        let mut delete_queue_guard = delete_queue.lock().await;
+        delete_queue_guard.push(Reverse(step));
+        // in the happy case this could be an if but if previous iterations failed somewhere
+        // then we may have more than 1 dir to clean up
+        while delete_queue_guard.len() > keep_steps as usize {
+            let delete_step = delete_queue_guard.pop().unwrap().0;
+            let delete_path = checkpoint_dir.join(format!("{run_id}-step{delete_step}"));
+            if let Err(err) = tokio::fs::remove_dir_all(delete_path.clone()).await {
+                warn!("Error removing {} : {}", delete_path.display(), err);
+            } else {
+                info!("Successfully removed {}", delete_path.display());
+            }
+        }
+    }
+}
+
 impl CooldownStepMetadata {
     pub fn start<T: NodeIdentity>(
         &self,
@@ -100,6 +141,7 @@ impl CooldownStepMetadata {
         let tx_checkpoint = self.tx_checkpoint.clone();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
+        let delete_queue = self.delete_queue.clone();
 
         let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
@@ -128,6 +170,8 @@ impl CooldownStepMetadata {
                 let Some(CheckpointConfig {
                     hub_upload,
                     checkpoint_dir,
+                    delete_old_steps,
+                    keep_steps,
                 }) = checkpoint_info
                 else {
                     // If there was no HF checkpointing configuration, return immediately
@@ -158,6 +202,15 @@ impl CooldownStepMetadata {
                         hub_token,
                     }) = hub_upload
                     else {
+                        cleanup_dirs(
+                            delete_queue,
+                            keep_steps,
+                            run_id,
+                            delete_old_steps,
+                            step,
+                            checkpoint_dir,
+                        )
+                        .await;
                         return Ok::<(), CheckpointError>(());
                     };
 
@@ -191,6 +244,23 @@ impl CooldownStepMetadata {
                             revision: Some(FixedString::from_str_truncated(&revision)),
                         })
                         .map_err(|_| CheckpointError::SendCheckpoint)?;
+
+                    // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
+                    // we'll just delete the dir after we've uploaded it
+                    // if we fail in any of the above steps we may wind up not queueing this dir for delete
+                    // but that's probably better than risking having the dir deleted from under us
+                    // for a relatively low priority disk cleanup task
+                    // and this may actually be preferred anyway because if we failed to upload, we may want to keep
+                    // the data around locally on disk
+                    cleanup_dirs(
+                        delete_queue,
+                        keep_steps,
+                        run_id,
+                        delete_old_steps,
+                        step,
+                        checkpoint_dir,
+                    )
+                    .await;
 
                     Ok(())
                 });
