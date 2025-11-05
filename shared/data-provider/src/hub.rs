@@ -7,7 +7,7 @@ use hf_hub::{
 };
 use std::{path::PathBuf, time::Instant};
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 const DATASET_EXTENSIONS: [&str; 1] = [".parquet"];

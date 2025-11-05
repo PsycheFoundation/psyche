@@ -101,15 +101,7 @@ impl CooldownStepMetadata {
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
 
-        let checkpointing_and_evals: tokio::task::JoinHandle<
-            Result<
-                (
-                    RunningEvals,
-                    Option<tokio::task::JoinHandle<Result<(), CheckpointError>>>,
-                ),
-                CheckpointError,
-            >,
-        > = tokio::task::spawn(
+        let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
                 info!("Extracting full model...");
                 let (variables, trainer) =
@@ -213,17 +205,19 @@ impl CooldownStepMetadata {
     }
 }
 
+type CheckpointAndEvalsHandle = JoinHandle<
+    Result<
+        (
+            RunningEvals,
+            Option<JoinHandle<Result<(), CheckpointError>>>,
+        ),
+        CheckpointError,
+    >,
+>;
+
 #[derive(Debug)]
 pub struct CooldownStep {
-    checkpointing_and_evals: JoinHandle<
-        Result<
-            (
-                RunningEvals,
-                Option<JoinHandle<Result<(), CheckpointError>>>,
-            ),
-            CheckpointError,
-        >,
-    >,
+    checkpointing_and_evals: CheckpointAndEvalsHandle,
 }
 
 impl CooldownStep {
