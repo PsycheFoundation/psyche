@@ -36,32 +36,6 @@ pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
 
-/// Creates a new keypair using `solana-keygen` and saves it to the specified path.
-pub fn generate_keypair_file(output_path: &str) -> Result<(), String> {
-    let output = Command::new("solana-keygen")
-        .args([
-            "new",
-            "--no-bip39-passphrase",
-            "--outfile",
-            output_path,
-            "--force",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run solana-keygen: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "solana-keygen failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    println!("Generated keypair at {}", output_path);
-    Ok(())
-}
-
 /// 1. Stops docker-compose services
 /// 2. Force-removes any remaining test containers by name pattern
 pub struct DockerTestCleanup;

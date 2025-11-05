@@ -17,9 +17,9 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, e2e_testing_setup_with_keypairs, generate_keypair_file,
-        kill_all_clients, pause_and_verify, resume_run, spawn_client_with_keypair,
-        spawn_new_client, spawn_new_client_with_monitoring, spawn_run_owner_with_keypair,
+        e2e_testing_setup, e2e_testing_setup_with_keypairs, kill_all_clients, pause_and_verify,
+        resume_run, spawn_client_with_keypair, spawn_new_client, spawn_new_client_with_monitoring,
+        spawn_run_owner_with_keypair,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -1034,23 +1034,21 @@ async fn test_pause_and_resume_run() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Generate keypairs that will be used
-    let unique_id = std::process::id();
-    let temp_client_keypair_path = format!("/tmp/test-pause-rejoin-client-{}.json", unique_id);
-    let temp_run_owner_keypair_path = format!("/tmp/test-pause-rejoin-owner-{}.json", unique_id);
+    // Use pre-generated keypairs from docker/test/keypairs
+    let test_package_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = test_package_dir.join("../../..");
+    let client_keypair_path = workspace_root.join("docker/test/keypairs/client.json");
+    let run_owner_keypair_path = workspace_root.join("docker/test/keypairs/run_owner.json");
 
-    generate_keypair_file(&temp_client_keypair_path).expect("Failed to generate client keypair");
-    generate_keypair_file(&temp_run_owner_keypair_path)
-        .expect("Failed to generate run owner keypair");
+    let client_keypair_path =
+        std::fs::canonicalize(&client_keypair_path).expect("Failed to resolve client keypair path");
+    let run_owner_keypair_path = std::fs::canonicalize(&run_owner_keypair_path)
+        .expect("Failed to resolve run owner keypair path");
 
     // Path for docker-compose (relative to compose file location)
     let compose_config_path = PathBuf::from("../../config/solana-test/nano-one-min-clients.toml");
 
-    // Construct absolute path from test package directory to workspace root
-    // Had to do this because else it wouldn't find the file, this is the only way it worked.
-    // Perhaps can be simplified
-    let test_package_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = test_package_dir.join("../../..");
+    // Construct absolute path for config file
     let absolute_config_path = workspace_root.join("config/solana-test/nano-one-min-clients.toml");
     let absolute_config_path = std::fs::canonicalize(&absolute_config_path)
         .expect("Failed to resolve absolute path for config file");
@@ -1062,7 +1060,7 @@ async fn test_pause_and_resume_run() {
     // Manually spawn run owner with pre-generated keypair
     let _run_owner_container = spawn_run_owner_with_keypair(
         docker.clone(),
-        &temp_run_owner_keypair_path,
+        run_owner_keypair_path.to_str().unwrap(),
         absolute_config_path.to_str().unwrap(),
         &run_id,
     )
@@ -1072,9 +1070,10 @@ async fn test_pause_and_resume_run() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Manually spawn client with pre-generated keypair
-    let client_container = spawn_client_with_keypair(docker.clone(), &temp_client_keypair_path)
-        .await
-        .expect("Failed to spawn client with keypair");
+    let client_container =
+        spawn_client_with_keypair(docker.clone(), client_keypair_path.to_str().unwrap())
+            .await
+            .expect("Failed to spawn client with keypair");
     println!("Spawned client: {}", client_container);
     tokio::time::sleep(Duration::from_secs(3)).await;
 
@@ -1111,7 +1110,7 @@ async fn test_pause_and_resume_run() {
                     pause_and_verify(
                         docker.clone(),
                         &run_id,
-                        &temp_run_owner_keypair_path,
+                        run_owner_keypair_path.to_str().unwrap(),
                         &solana_client,
                     )
                     .await;
@@ -1160,15 +1159,22 @@ async fn test_pause_and_resume_run() {
                 if paused && !rejoined_client {
                     println!("Client kicked by coordinator!");
                     // Resume the run that was paused
-                    resume_run(docker.clone(), &temp_run_owner_keypair_path, &run_id).await;
+                    resume_run(
+                        docker.clone(),
+                        run_owner_keypair_path.to_str().unwrap(),
+                        &run_id,
+                    )
+                    .await;
                     // Wait some time before rejoining just in case
                     tokio::time::sleep(Duration::from_secs(2)).await;
 
                     println!("Rejoining with client's keypair...");
-                    let container =
-                        spawn_client_with_keypair(docker.clone(), &temp_client_keypair_path)
-                            .await
-                            .expect("Failed to spawn client with keypair");
+                    let container = spawn_client_with_keypair(
+                        docker.clone(),
+                        client_keypair_path.to_str().unwrap(),
+                    )
+                    .await
+                    .expect("Failed to spawn client with keypair");
                     println!("Rejoined client: {}", container);
 
                     // Monitor the client again to check which checkpoint it grabs
