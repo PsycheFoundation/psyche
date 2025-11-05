@@ -139,7 +139,8 @@ pub async fn e2e_testing_setup_subscription(
     init_num_clients: usize,
     config: Option<PathBuf>,
 ) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client).await;
+    remove_old_client_containers(docker_client.clone()).await;
+
     let mut command = Command::new("just");
     let command = command
         .args([
