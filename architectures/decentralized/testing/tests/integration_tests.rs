@@ -227,19 +227,22 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     )
     .await;
 
-    // Wait until client 1 is training until we add new clients
+    // Wait until client 1 has loaded the model and is ready to serve via P2P
     let _monitor_client_1 = watcher
         .monitor_container(
             &format!("{CLIENT_CONTAINER_PREFIX}-1"),
-            vec![IntegrationTestLogMarker::Loss],
+            vec![IntegrationTestLogMarker::LoadedModel],
         )
         .unwrap();
 
-    println!("Waiting for first client to start training...");
-    // Wait for first loss report from client-1 to ensure it has loaded the model
+    println!("Waiting for first client to load model...");
+    // Wait for LoadedModel to ensure client-1 can serve P2P requests
     loop {
-        if let Some(Response::Loss(_, _, _, _)) = watcher.log_rx.recv().await {
-            println!("First client is training, ready to add new clients");
+        if let Some(Response::LoadedModel(checkpoint)) = watcher.log_rx.recv().await {
+            println!(
+                "First client has loaded model from {}, ready to add new clients",
+                checkpoint
+            );
             break;
         }
     }
@@ -312,12 +315,30 @@ async fn test_rejoining_client_delay() {
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
 
-    tokio::time::sleep(Duration::from_secs(30)).await;
+    // Wait until client 1 has loaded the model and is ready to serve via P2P
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![IntegrationTestLogMarker::LoadedModel],
+        )
+        .unwrap();
+
+    println!("Waiting for first client to load model...");
+    // Wait for LoadedModel to ensure client-1 can serve P2P requests
+    loop {
+        if let Some(Response::LoadedModel(checkpoint)) = watcher.log_rx.recv().await {
+            println!(
+                "First client has loaded model from {}, ready to add new clients",
+                checkpoint
+            );
+            break;
+        }
+    }
 
     // Spawn client
     spawn_new_client(docker.clone()).await.unwrap();
 
-    let _monitor_client = watcher
+    let _monitor_client_2 = watcher
         .monitor_container(
             &format!("{CLIENT_CONTAINER_PREFIX}-{}", 2),
             vec![IntegrationTestLogMarker::LoadedModel],
