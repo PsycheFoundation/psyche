@@ -19,7 +19,6 @@ use psyche_decentralized_testing::{
     docker_setup::{
         e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run,
         spawn_client_with_keypair, spawn_new_client, spawn_new_client_with_monitoring,
-        spawn_run_owner_with_keypair,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -239,26 +238,37 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     // Wait for LoadedModel to ensure client-1 can serve P2P requests
     loop {
         if let Some(Response::LoadedModel(checkpoint)) = watcher.log_rx.recv().await {
-            println!(
-                "First client has loaded model from {}, ready to add new clients",
-                checkpoint
-            );
+            println!("First client has loaded model from {}", checkpoint);
             break;
         }
     }
 
+    // Give P2P infrastructure extra time to fully initialize and be ready to serve
+    println!("Waiting 10s for P2P to stabilize...");
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
     println!("Adding new clients");
     for i in 1..=n_new_clients {
+        let client_name = format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1);
+        println!("Spawning client {}...", client_name);
         spawn_new_client(docker.clone()).await.unwrap();
+
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
+                &client_name,
                 vec![
                     IntegrationTestLogMarker::LoadedModel,
                     IntegrationTestLogMarker::Loss,
                 ],
             )
             .unwrap();
+
+        // Add delay between spawns to let each client stabilize and be ready to serve P2P
+        // This prevents newly spawned clients from trying to fetch from each other before they're ready
+        if i < n_new_clients {
+            println!("Waiting 10s before spawning next client...");
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
     }
 
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
@@ -1082,11 +1092,6 @@ async fn test_pause_and_resume_run() {
 
     // Path for docker-compose (relative to compose file location)
     let compose_config_path = PathBuf::from("../../config/solana-test/nano-one-min-clients.toml");
-
-    // Construct absolute path for config file
-    let absolute_config_path = workspace_root.join("config/solana-test/nano-one-min-clients.toml");
-    let absolute_config_path = std::fs::canonicalize(&absolute_config_path)
-        .expect("Failed to resolve absolute path for config file");
 
     // Initialize Solana test infrastructure (validator, run owner, etc.) with 0 clients
     // The run owner is created by docker-compose with pre-generated keypair
