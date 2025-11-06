@@ -83,10 +83,10 @@ jobs:
 
           # download from Garnix cache first
           echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0
+          nix build --max-jobs 0 .#docker-psyche-solana-test-client-no-python --no-link --print-out-paths > client-image-path.txt
 
           # Load the image into Docker
-          $OUT_PATH | docker load
+          cat client-image-path.txt | xargs -I{} bash -c '{} | docker load'
 
           echo "Disk space after client build"
           df -h
