@@ -152,6 +152,7 @@ let
         nativeBuildInputs =
           rustWorkspaceArgs.nativeBuildInputs
           ++ (with pkgs; [
+            binaryen # wasm-opt
             wasm-pack
             jq
             wasm-bindgen-cli
@@ -160,9 +161,9 @@ let
         buildPhaseCargoCommand = ''
           export CRATE_PATH=$(cargo metadata --format-version=1 --no-deps | jq -r ".packages[] | select(.name == \"${name}\") | .manifest_path" | xargs dirname)
 
-          # wasm-pack needs a $HOME dir set.
           echo "building wasm"
-          HOME=$TMPDIR wasm-pack build --target nodejs --mode no-install $CRATE_PATH
+          # wasm-pack needs a $HOME dir set.
+          RUST_LOG=debug HOME=$TMPDIR wasm-pack build --target nodejs --mode no-install $CRATE_PATH
 
           echo "building ts bindings"
           cargo test -p ${name} export_bindings
