@@ -227,8 +227,22 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     )
     .await;
 
-    println!("Waiting for run to go on with the first client");
-    tokio::time::sleep(Duration::from_secs(30)).await;
+    // Wait until client 1 is training until we add new clients
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![IntegrationTestLogMarker::Loss],
+        )
+        .unwrap();
+
+    println!("Waiting for first client to start training...");
+    // Wait for first loss report from client-1 to ensure it has loaded the model
+    loop {
+        if let Some(Response::Loss(_, _, _, _)) = watcher.log_rx.recv().await {
+            println!("First client is training, ready to add new clients");
+            break;
+        }
+    }
 
     println!("Adding new clients");
     for i in 1..=n_new_clients {
