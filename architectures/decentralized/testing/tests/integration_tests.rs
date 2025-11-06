@@ -1053,21 +1053,12 @@ async fn test_pause_and_resume_run() {
     let absolute_config_path = std::fs::canonicalize(&absolute_config_path)
         .expect("Failed to resolve absolute path for config file");
 
-    // Initialize Solana test infrastructure (validator, etc.) with 0 clients
-    // The run owner and clients will be manually spawned with pre-generated keypairs
+    // Initialize Solana test infrastructure (validator, run owner, etc.) with 0 clients
+    // The run owner is created by docker-compose with pre-generated keypair
+    // Clients will be manually spawned with pre-generated keypairs
     let _cleanup = e2e_testing_setup(docker.clone(), 0, Some(compose_config_path)).await;
-    tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Manually spawn run owner with pre-generated keypair
-    let _run_owner_container = spawn_run_owner_with_keypair(
-        docker.clone(),
-        run_owner_keypair_path.to_str().unwrap(),
-        absolute_config_path.to_str().unwrap(),
-        &run_id,
-    )
-    .await
-    .expect("Failed to spawn run owner with keypair");
-    println!("Spawned run owner with keypair");
+    // Wait for run owner to be ready
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Manually spawn client with pre-generated keypair

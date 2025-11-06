@@ -467,6 +467,13 @@ async fn get_test_containers(docker_client: Arc<Docker>) -> Vec<ContainerSummary
 
 async fn remove_old_client_containers(docker_client: Arc<Docker>) {
     let client_containers = get_test_containers(docker_client.clone()).await;
+    println!(
+        "Removing old containers: {:?}",
+        client_containers
+            .iter()
+            .filter_map(|c| c.names.as_ref().and_then(|n| n.first()))
+            .collect::<Vec<&String>>()
+    );
 
     for cont in client_containers.iter() {
         docker_client
