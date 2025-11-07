@@ -143,17 +143,9 @@ async fn test_two_clients_three_epochs_run() {
     // Wait for infrastructure to be ready
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // Spawn first client with random keypair
-    let client1 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 1");
-    println!("Spawned client: {}", client1);
-
-    // Spawn second client with random keypair
-    let client2 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 2");
-    println!("Spawned client: {}", client2);
+    // Spawn two clients
+    let client1 = spawn_new_client(docker.clone()).await;
+    let client2 = spawn_new_client(docker.clone()).await;
 
     // Monitor the client containers
     let _monitor_client_1 = watcher
@@ -266,7 +258,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     for i in 1..=n_new_clients {
         let client_name = format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1);
         println!("Spawning client {}...", client_name);
-        spawn_new_client(docker.clone()).await.unwrap();
+        spawn_new_client(docker.clone()).await;
 
         let _monitor_client = watcher
             .monitor_container(
@@ -361,7 +353,7 @@ async fn test_rejoining_client_delay() {
     }
 
     // Spawn client
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone()).await;
 
     let _monitor_client_2 = watcher
         .monitor_container(
@@ -436,20 +428,9 @@ async fn disconnect_client() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Spawn 3 clients with random keypairs
-    let client1 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 1");
-    println!("Spawned client: {}", client1);
-
-    let client2 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 2");
-    println!("Spawned client: {}", client2);
-
-    let client3 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 3");
-    println!("Spawned client: {}", client3);
+    let client1 = spawn_new_client(docker.clone()).await;
+    let client2 = spawn_new_client(docker.clone()).await;
+    let client3 = spawn_new_client(docker.clone()).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(
@@ -611,9 +592,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     // Spawn 2 clients with random keypairs
     let mut clients = Vec::new();
     for i in 1..=n_clients {
-        let client = spawn_new_client(docker.clone())
-            .await
-            .expect(&format!("Failed to spawn client {}", i));
+        let client = spawn_new_client(docker.clone()).await;
         println!("Spawned client {}: {}", i, client);
         clients.push(client);
     }
@@ -680,7 +659,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     // Test reconnection
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone()).await;
 
     // Wait for state to change back to Warmup
     assert!(
@@ -712,17 +691,9 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     // Wait for infrastructure to be ready
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // Spawn 2 clients with random keypairs
-    let client1 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 1");
-    println!("Spawned client: {}", client1);
-
-    let client2 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 2");
-    println!("Spawned client: {}", client2);
-
+    // Spawn 2 clients
+    let client1 = spawn_new_client(docker.clone()).await;
+    let client2 = spawn_new_client(docker.clone()).await;
     let initial_clients = vec![client1.clone(), client2.clone()];
 
     let solana_client = SolanaTestClient::new(run_id).await;
@@ -849,18 +820,10 @@ async fn test_solana_subscriptions() {
     // Wait for infrastructure to be ready
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // Spawn 2 clients with random keypairs
-    let client1 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 1");
-    println!("Spawned client: {}", client1);
+    // Spawn 2 clients
+    let client1 = spawn_new_client(docker.clone()).await;
+    let client2 = spawn_new_client(docker.clone()).await;
 
-    let client2 = spawn_new_client(docker.clone())
-        .await
-        .expect("Failed to spawn client 2");
-    println!("Spawned client: {}", client2);
-
-    // Monitor the client containers
     let _monitor_client_1 = watcher
         .monitor_container(&client1, vec![IntegrationTestLogMarker::StateChange])
         .unwrap();
@@ -1024,7 +987,7 @@ async fn test_everybody_leaves_in_warmup() {
     }
 
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone()).await;
     println!("New client started");
 
     let client_2_name = format!("{CLIENT_CONTAINER_PREFIX}-2");
@@ -1098,7 +1061,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 
                         if new_state == RunState::RoundTrain.to_string() && !spawned_second_client {
                             println!("Joining a second client to the run");
-                            let second_client_id = spawn_new_client(docker.clone()).await.unwrap();
+                            let second_client_id = spawn_new_client(docker.clone()).await;
                             let _monitor_client_2 = watcher
                             .monitor_container(
                                 &second_client_id,

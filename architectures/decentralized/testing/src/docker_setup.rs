@@ -269,9 +269,13 @@ async fn spawn_container_with_keypair_and_config(
 }
 
 /// Spawns a new client container with default configuration.
-pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
+pub async fn spawn_new_client(docker_client: Arc<Docker>) -> String {
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-    spawn_client_internal(docker_client, new_container_name, None, None).await
+    let spawned_name = spawn_client_internal(docker_client, new_container_name, None, None)
+        .await
+        .expect("Failed to spawn client");
+    println!("Spawned new client container: {}", spawned_name);
+    spawned_name
 }
 
 /// Spawns a new client container with a specific Solana keypair.
@@ -352,7 +356,7 @@ pub async fn spawn_new_client_with_monitoring(
     docker: Arc<Docker>,
     watcher: &DockerWatcher,
 ) -> Result<String, DockerWatcherError> {
-    let container_id = spawn_new_client(docker.clone()).await.unwrap();
+    let container_id = spawn_new_client(docker.clone()).await;
     let _monitor_client_2 = watcher
         .monitor_container(
             &container_id,
