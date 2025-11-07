@@ -136,8 +136,9 @@ fn build_host_config(network: &str, has_gpu: bool, binds: Option<Vec<String>>) -
 }
 
 /// Load environment variables from client config file and add GPU capabilities if needed
-fn load_client_env_vars(has_gpu: bool) -> Vec<String> {
-    let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.test")
+fn load_client_env_vars(has_gpu: bool, env_file: &str) -> Vec<String> {
+    let env_path = format!("../../../config/client/{}", env_file);
+    let env_vars: Vec<String> = std::fs::read_to_string(&env_path)
         .expect("Failed to read env file")
         .lines()
         .filter_map(|line| {
@@ -201,6 +202,7 @@ async fn spawn_client_internal(
     container_name: String,
     keypair_bind: Option<String>,
     custom_entrypoint: Option<Vec<&str>>,
+    env_file: &str,
 ) -> Result<String, DockerWatcherError> {
     let has_gpu = has_gpu_support();
     let network_name = "test_psyche-test-network";
@@ -215,7 +217,7 @@ async fn spawn_client_internal(
     let host_config = build_host_config(network_name, has_gpu, binds);
 
     // Load environment variables
-    let envs = load_client_env_vars(has_gpu);
+    let envs = load_client_env_vars(has_gpu, env_file);
 
     // Create and start container using unified helper
     create_and_start_container(
@@ -238,6 +240,7 @@ async fn spawn_container_with_keypair_and_config(
     entrypoint: Vec<&str>,
     config_path: Option<&str>,
     additional_env_vars: Vec<String>,
+    env_file: &str,
 ) -> Result<String, DockerWatcherError> {
     let has_gpu = has_gpu_support();
     let network_name = "test_psyche-test-network";
@@ -253,7 +256,7 @@ async fn spawn_container_with_keypair_and_config(
     let host_config = build_host_config(network_name, has_gpu, Some(binds));
 
     // Load base environment variables and add any additional ones
-    let mut envs = load_client_env_vars(has_gpu);
+    let mut envs = load_client_env_vars(has_gpu, env_file);
     envs.extend(additional_env_vars);
 
     // Create and start container
@@ -271,9 +274,22 @@ async fn spawn_container_with_keypair_and_config(
 /// Spawns a new client container with default configuration.
 pub async fn spawn_new_client(docker_client: Arc<Docker>) -> String {
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-    let spawned_name = spawn_client_internal(docker_client, new_container_name, None, None)
-        .await
-        .expect("Failed to spawn client");
+    let spawned_name =
+        spawn_client_internal(docker_client, new_container_name, None, None, ".env.local")
+            .await
+            .expect("Failed to spawn client");
+    println!("Spawned new client container: {}", spawned_name);
+    spawned_name
+}
+
+/// Spawns a new client container configured for subscription tests.
+/// Uses .env.test which includes WS_RPC_2 for backup cluster subscriptions.
+pub async fn spawn_new_client_for_subscriptions(docker_client: Arc<Docker>) -> String {
+    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
+    let spawned_name =
+        spawn_client_internal(docker_client, new_container_name, None, None, ".env.test")
+            .await
+            .expect("Failed to spawn client");
     println!("Spawned new client container: {}", spawned_name);
     spawned_name
 }
@@ -296,6 +312,7 @@ pub async fn spawn_client_with_keypair(
         entrypoint,
         None,       // No config file for regular clients
         Vec::new(), // No additional env vars
+        ".env.local",
     )
     .await
 }
@@ -322,6 +339,7 @@ pub async fn spawn_run_owner_with_keypair(
         entrypoint,
         Some(config_path), // Run owner needs config file
         additional_env_vars,
+        ".env.local",
     )
     .await
 }
