@@ -137,7 +137,7 @@ fn build_host_config(network: &str, has_gpu: bool, binds: Option<Vec<String>>) -
 
 /// Load environment variables from client config file and add GPU capabilities if needed
 fn load_client_env_vars(has_gpu: bool) -> Vec<String> {
-    let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.local")
+    let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.test")
         .expect("Failed to read env file")
         .lines()
         .filter_map(|line| {
