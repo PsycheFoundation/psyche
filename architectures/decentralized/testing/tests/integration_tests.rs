@@ -130,20 +130,35 @@ async fn test_two_clients_three_epochs_run() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 1 client
+    // Initialize a Solana run with 0 clients
     let _cleanup = e2e_testing_setup(
         docker.clone(),
-        2,
+        0,
         Some(PathBuf::from(
             "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
 
-    // Monitor the client container
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn first client with random keypair
+    let client1 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 1");
+    println!("Spawned client: {}", client1);
+
+    // Spawn second client with random keypair
+    let client2 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 2");
+    println!("Spawned client: {}", client2);
+
+    // Monitor the client containers
     let _monitor_client_1 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            &client1,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::Loss,
@@ -153,7 +168,7 @@ async fn test_two_clients_three_epochs_run() {
 
     let _monitor_client_2 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            &client2,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::Loss,
@@ -403,23 +418,42 @@ async fn disconnect_client() {
     // set test variables
     let run_id = "test".to_string();
 
-    // initialize a Solana run with 2 client
+    // initialize a Solana run with 0 clients
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 3 client
+    // Initialize a Solana run with 0 clients
     let _cleanup = e2e_testing_setup(
         docker.clone(),
-        3,
+        0,
         Some(PathBuf::from(
             "../../config/solana-test/nano-three-min-clients.toml",
         )),
     )
     .await;
 
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 3 clients with random keypairs
+    let client1 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 1");
+    println!("Spawned client: {}", client1);
+
+    let client2 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 2");
+    println!("Spawned client: {}", client2);
+
+    let client3 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 3");
+    println!("Spawned client: {}", client3);
+
     let _monitor_client_1 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            &client1,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -432,7 +466,7 @@ async fn disconnect_client() {
 
     let _monitor_client_2 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            &client2,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -445,7 +479,7 @@ async fn disconnect_client() {
 
     let _monitor_client_3 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-3"),
+            &client3,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -491,11 +525,8 @@ async fn disconnect_client() {
                     assert_eq!(epoch_clients.len(), 3);
 
                     // Kill any client, since all are witnesses
-                    watcher
-                        .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-1"))
-                        .await
-                        .unwrap();
-                    println!("Killed client: {CLIENT_CONTAINER_PREFIX}-1");
+                    watcher.kill_container(&client1).await.unwrap();
+                    println!("Killed client: {}", client1);
                     killed_client = true;
                 }
 
@@ -567,19 +598,32 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     let _cleanup = e2e_testing_setup(
         docker.clone(),
-        2,
+        0,
         Some(PathBuf::from(
             "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
 
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 2 clients with random keypairs
+    let mut clients = Vec::new();
+    for i in 1..=n_clients {
+        let client = spawn_new_client(docker.clone())
+            .await
+            .expect(&format!("Failed to spawn client {}", i));
+        println!("Spawned client {}: {}", i, client);
+        clients.push(client);
+    }
+
     let solana_client = SolanaTestClient::new(run_id).await;
     // Monitor clients
-    for i in 1..=n_clients {
+    for client in &clients {
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
+                client,
                 vec![
                     IntegrationTestLogMarker::Loss,
                     IntegrationTestLogMarker::StateChange,
@@ -598,16 +642,10 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
                 // Once warmup starts, kill client 2's container
                 if new_state == RunState::RoundTrain.to_string() && !train_reached {
-                    println!(
-                        "Train started, killing container {}...",
-                        &format!("{CLIENT_CONTAINER_PREFIX}-2")
-                    );
+                    println!("Train started, killing container {}...", &clients[1]);
 
                     let options = Some(KillContainerOptions { signal: "SIGKILL" });
-                    docker
-                        .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-2"), options)
-                        .await
-                        .unwrap();
+                    docker.kill_container(&clients[1], options).await.unwrap();
 
                     tokio::time::sleep(Duration::from_secs(2)).await;
                     train_reached = true;
@@ -664,12 +702,28 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
 
     let _cleanup = e2e_testing_setup(
         docker.clone(),
-        2,
+        0,
         Some(PathBuf::from(
             "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
+
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 2 clients with random keypairs
+    let client1 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 1");
+    println!("Spawned client: {}", client1);
+
+    let client2 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 2");
+    println!("Spawned client: {}", client2);
+
+    let initial_clients = vec![client1.clone(), client2.clone()];
 
     let solana_client = SolanaTestClient::new(run_id).await;
     let mut has_spawned_new_client_yet = false;
@@ -679,6 +733,15 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     loop {
         tokio::select! {
             _ = liveness_check_interval.tick() => {
+                // Check if any clients have crashed (only check initial clients, not new ones)
+                if !has_spawned_new_client_yet {
+                    for client in &initial_clients {
+                        if let Err(e) = watcher.monitor_client_health_by_id(client).await {
+                            panic!("Client crashed: {}", e);
+                        }
+                    }
+                }
+
                 // Show number of connected clients and current state of coordinator
                 let clients = solana_client.get_clients().await;
                 let current_epoch = solana_client.get_current_epoch().await;
@@ -773,29 +836,37 @@ async fn test_solana_subscriptions() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 2 client
+    // Initialize a Solana run with 0 clients
     let _cleanup = e2e_testing_setup_subscription(
         docker.clone(),
-        2,
+        0,
         Some(PathBuf::from(
             "../../config/solana-test/nano-two-min-clients.toml",
         )),
     )
     .await;
 
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 2 clients with random keypairs
+    let client1 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 1");
+    println!("Spawned client: {}", client1);
+
+    let client2 = spawn_new_client(docker.clone())
+        .await
+        .expect("Failed to spawn client 2");
+    println!("Spawned client: {}", client2);
+
     // Monitor the client containers
     let _monitor_client_1 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
-            vec![IntegrationTestLogMarker::StateChange],
-        )
+        .monitor_container(&client1, vec![IntegrationTestLogMarker::StateChange])
         .unwrap();
 
     let _monitor_client_2 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
-            vec![IntegrationTestLogMarker::SolanaSubscription],
-        )
+        .monitor_container(&client2, vec![IntegrationTestLogMarker::SolanaSubscription])
         .unwrap();
 
     let mut live_interval = time::interval(Duration::from_secs(10));
