@@ -233,23 +233,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
         )),
     )
     .await;
-
-    // Wait until client 1 has loaded the model and is ready to serve via P2P
-    let _monitor_client_1 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
-            vec![IntegrationTestLogMarker::LoadedModel],
-        )
-        .unwrap();
-
-    println!("Waiting for first client to load model...");
-    // Wait for LoadedModel to ensure client-1 can serve P2P requests
-    loop {
-        if let Some(Response::LoadedModel(checkpoint)) = watcher.log_rx.recv().await {
-            println!("First client has loaded model from {}", checkpoint);
-            break;
-        }
-    }
+    tokio::time::sleep(Duration::from_secs(30)).await;
 
     // Give P2P infrastructure extra time to fully initialize and be ready to serve
     println!("Waiting 10s for P2P to stabilize...");
@@ -332,28 +316,7 @@ async fn test_rejoining_client_delay() {
     .await;
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
-
-    // Wait until client 1 has loaded the model and is ready to serve via P2P
-    let _monitor_client_1 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
-            vec![IntegrationTestLogMarker::LoadedModel],
-        )
-        .unwrap();
-
-    println!("Waiting for first client to load model...");
-    // Wait for LoadedModel to ensure client-1 can serve P2P requests
-    loop {
-        if let Some(Response::LoadedModel(checkpoint)) = watcher.log_rx.recv().await {
-            println!(
-                "First client has loaded model from {}, ready to add new clients",
-                checkpoint
-            );
-            break;
-        }
-    }
-
-    // Spawn client
+    tokio::time::sleep(Duration::from_secs(30)).await;
     spawn_new_client(docker.clone()).await;
 
     let _monitor_client_2 = watcher
