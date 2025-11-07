@@ -25,8 +25,11 @@ pub enum PythonDistributedCausalLMError {
     #[error("Local device must be rank 0, instead got {0}")]
     LocalNotRankZero(usize),
 
-    #[error("Local device not a CUDA device")]
-    NonCUDADevice,
+    #[error("Device {0:?} is not a CUDA device")]
+    NonCUDADevice(Device),
+
+    #[error("CUDA not available")]
+    CUDANotAvailable,
 
     #[error("Python error: {0}")]
     PythonError(#[from] PyErr),
@@ -227,7 +230,7 @@ impl PythonDistributedCausalLM {
         num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
         if !tch::Cuda::is_available() {
-            return Err(PythonDistributedCausalLMError::NonCUDADevice);
+            return Err(PythonDistributedCausalLMError::CUDANotAvailable);
         }
         let num_local_ranks = num_local_ranks.unwrap_or_else(tch::Cuda::device_count);
         let world_size = parallelism.dp * parallelism.tp;
@@ -245,7 +248,7 @@ impl PythonDistributedCausalLM {
                 // Does the 0th cuda device *have* to be rank 0?
                 return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank));
             }
-            _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
+            _ => return Err(PythonDistributedCausalLMError::NonCUDADevice(device)),
         };
         let backend = "nccl".to_string();
         let init_method = format!("tcp://0.0.0.0:{}", port.unwrap_or(34567));
