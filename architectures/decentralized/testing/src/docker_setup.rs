@@ -7,13 +7,12 @@ use bollard::{
     models::DeviceRequest,
     secret::{ContainerSummary, HostConfig},
 };
-use psyche_client::IntegrationTestLogMarker;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
 use tokio::signal;
 
-use crate::docker_watcher::{DockerWatcher, DockerWatcherError};
+use crate::docker_watcher::DockerWatcherError;
 use crate::utils::SolanaTestClient;
 
 /// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
@@ -196,18 +195,19 @@ async fn create_and_start_container(
     Ok(container_name)
 }
 
+pub async fn spawn_new_client(docker_client: Arc<Docker>) -> String {
+    spawn_new_client_with_options(docker_client.clone(), None, ".env.local").await
+}
+
 /// Internal helper to spawn a client container with configurable options
-async fn spawn_client_internal(
+pub async fn spawn_new_client_with_options(
     docker_client: Arc<Docker>,
-    container_name: String,
     keypair_path: Option<&str>,
-    config_path: Option<&str>,
-    custom_entrypoint: Option<Vec<&str>>,
-    additional_env_vars: Vec<String>,
     env_file: &str,
-) -> Result<String, DockerWatcherError> {
+) -> String {
     let has_gpu = has_gpu_support();
     let network_name = "test_psyche-test-network";
+    let container_name = get_name_of_new_client_container(docker_client.clone()).await;
 
     // Build volume binds for keypair and/or config
     let mut binds = Vec::new();
@@ -215,10 +215,10 @@ async fn spawn_client_internal(
         let container_keypair_path = "/root/.config/solana/id.json";
         binds.push(format!("{}:{}", host_keypair_path, container_keypair_path));
     }
-    if let Some(config) = config_path {
-        let container_config_path = "/usr/local/config.toml";
-        binds.push(format!("{}:{}", config, container_config_path));
-    }
+    // if let Some(config) = config_path {
+    // let container_config_path = "/usr/local/config.toml";
+    // binds.push(format!("{}:{}", config, container_config_path));
+    // }
 
     let host_config = build_host_config(
         network_name,
@@ -226,69 +226,18 @@ async fn spawn_client_internal(
         if binds.is_empty() { None } else { Some(binds) },
     );
 
-    // Load base environment variables and add any additional ones
-    let mut envs = load_client_env_vars(has_gpu, env_file);
-    envs.extend(additional_env_vars);
-
-    // Create and start container using unified helper
+    // Create and start container
+    let envs = load_client_env_vars(has_gpu, env_file);
     create_and_start_container(
         docker_client,
         container_name,
         "psyche-solana-test-client-no-python",
         envs,
         host_config,
-        custom_entrypoint,
+        None,
     )
     .await
-}
-
-/// Spawns a new client container with configurable environment file.
-/// If env_file is None, defaults to ".env.local".
-pub async fn spawn_new_client_with_env(
-    docker_client: Arc<Docker>,
-    env_file: Option<&str>,
-) -> String {
-    let env_file = env_file.unwrap_or(".env.local");
-    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-    let spawned_name = spawn_client_internal(
-        docker_client,
-        new_container_name,
-        None,
-        None,
-        None,
-        Vec::new(),
-        env_file,
-    )
-    .await
-    .expect("Failed to spawn client");
-    println!("Spawned new client container: {}", spawned_name);
-    spawned_name
-}
-
-/// Spawns a new client container with default configuration.
-pub async fn spawn_new_client(docker_client: Arc<Docker>) -> String {
-    spawn_new_client_with_env(docker_client, None).await
-}
-
-/// Spawns a new client container with a specific Solana keypair.
-/// This allows rejoining with the same identity after disconnecting.
-pub async fn spawn_client_with_keypair(
-    docker_client: Arc<Docker>,
-    host_keypair_path: &str,
-) -> Result<String, DockerWatcherError> {
-    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-
-    // Standard entrypoint detects mounted keypair and skips generation
-    spawn_client_internal(
-        docker_client,
-        new_container_name,
-        Some(host_keypair_path),
-        None,
-        None, // Use default entrypoint
-        Vec::new(),
-        ".env.local",
-    )
-    .await
+    .expect("Failed to create and start client container")
 }
 
 pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Vec<String>) {
@@ -313,25 +262,6 @@ pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Ve
     }
 
     (all_container_names, running_containers)
-}
-
-pub async fn spawn_new_client_with_monitoring(
-    docker: Arc<Docker>,
-    watcher: &DockerWatcher,
-) -> Result<String, DockerWatcherError> {
-    let container_id = spawn_new_client(docker.clone()).await;
-    let _monitor_client_2 = watcher
-        .monitor_container(
-            &container_id,
-            vec![
-                IntegrationTestLogMarker::LoadedModel,
-                IntegrationTestLogMarker::StateChange,
-                IntegrationTestLogMarker::Loss,
-            ],
-        )
-        .unwrap();
-    println!("Spawned client {container_id}");
-    Ok(container_id)
 }
 
 pub fn spawn_psyche_network(

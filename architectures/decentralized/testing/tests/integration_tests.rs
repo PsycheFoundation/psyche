@@ -12,15 +12,13 @@ use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{RunState, model::Checkpoint};
-use psyche_decentralized_testing::docker_setup::{
-    e2e_testing_setup_subscription, spawn_new_client_with_env,
-};
+use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run,
-        spawn_client_with_keypair, spawn_new_client, spawn_new_client_with_monitoring,
+        e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run, spawn_new_client,
+        spawn_new_client_with_options,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -709,13 +707,35 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                     // Wait a while before spawning a new client
                     tokio::time::sleep(Duration::from_secs(20)).await;
                     // Spawn a new client, that should get the model with Hub
-                    let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
+                    let joined_container_id = spawn_new_client(docker.clone()).await;
                     println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
                     // Spawn another because whe have min_clients=2
-                    let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
+                    let joined_container_id = spawn_new_client(docker.clone()).await;
                     println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
-                    has_spawned_new_client_yet = true;
 
+                    // Monitor the containers
+                    let _monitor_client_1 = watcher
+                        .monitor_container(
+                            &client1,
+                            vec![
+                                IntegrationTestLogMarker::Loss,
+                                IntegrationTestLogMarker::StateChange,
+                                IntegrationTestLogMarker::LoadedModel,
+                            ],
+                        )
+                        .unwrap();
+                    let _monitor_client_2 = watcher
+                        .monitor_container(
+                            &client2,
+                            vec![
+                                IntegrationTestLogMarker::Loss,
+                                IntegrationTestLogMarker::StateChange,
+                                IntegrationTestLogMarker::LoadedModel,
+                            ],
+                        )
+                        .unwrap();
+
+                    has_spawned_new_client_yet = true;
                     continue;
                 }
 
@@ -786,8 +806,8 @@ async fn test_solana_subscriptions() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Spawn 2 clients. We need to use the .env.test config here for this test
-    let client1 = spawn_new_client_with_env(docker.clone(), Some(".env.test")).await;
-    let client2 = spawn_new_client_with_env(docker.clone(), Some(".env.test")).await;
+    let client1 = spawn_new_client_with_options(docker.clone(), None, ".env.test").await;
+    let client2 = spawn_new_client_with_options(docker.clone(), None, ".env.test").await;
 
     let _monitor_client_1 = watcher
         .monitor_container(&client1, vec![IntegrationTestLogMarker::StateChange])
@@ -1101,10 +1121,12 @@ async fn test_pause_and_resume_run() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Manually spawn client with pre-generated keypair
-    let client_container =
-        spawn_client_with_keypair(docker.clone(), client_keypair_path.to_str().unwrap())
-            .await
-            .expect("Failed to spawn client with keypair");
+    let client_container = spawn_new_client_with_options(
+        docker.clone(),
+        Some(client_keypair_path.to_str().unwrap()),
+        ".env.local",
+    )
+    .await;
     println!("Spawned client: {}", client_container);
     tokio::time::sleep(Duration::from_secs(3)).await;
 
@@ -1200,12 +1222,12 @@ async fn test_pause_and_resume_run() {
                     tokio::time::sleep(Duration::from_secs(2)).await;
 
                     println!("Rejoining with client's keypair...");
-                    let container = spawn_client_with_keypair(
+                    let container = spawn_new_client_with_options(
                         docker.clone(),
-                        client_keypair_path.to_str().unwrap(),
+                        Some(client_keypair_path.to_str().unwrap()),
+                        ".env.local",
                     )
-                    .await
-                    .expect("Failed to spawn client with keypair");
+                    .await;
                     println!("Rejoined client: {}", container);
 
                     // Monitor the client again to check which checkpoint it grabs
