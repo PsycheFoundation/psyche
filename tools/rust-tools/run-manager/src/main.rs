@@ -24,11 +24,11 @@ struct Args {
 
     /// Path to wallet private key file
     #[arg(long, global = true)]
-    wallet_path: Option<PathBuf>,
+    wallet_path: PathBuf,
 
     /// Path to .env file with environment variables
     #[arg(long, global = true)]
-    env_file: Option<PathBuf>,
+    env_file: PathBuf,
 
     /// Coordinator program ID
     #[arg(
@@ -430,14 +430,11 @@ async fn main() -> Result<()> {
                 )
                 .init();
 
-            let wallet_path = args.wallet_path.context("--wallet-path is required")?;
-            let env_file = args.env_file.context("--env-file is required")?;
-
-            load_and_apply_env_file(&env_file)?;
+            load_and_apply_env_file(&args.env_file)?;
 
             let result = run(
-                wallet_path,
-                env_file,
+                args.wallet_path,
+                args.env_file,
                 args.coordinator_program_id,
                 args.background,
                 args.local,
