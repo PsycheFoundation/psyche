@@ -38,15 +38,9 @@ struct Args {
     )]
     coordinator_program_id: String,
 
-    /// Run container in background without streaming logs to console
-    #[arg(long, global = true, default_value = "false")]
-    background: bool,
-
     /// Use a local Docker image instead of pulling from registry.
-    /// If a version is provided, use that specific version. If no version is provided,
-    /// query coordinator for the version but skip pulling.
-    #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", value_name = "VERSION")]
-    local: Option<String>,
+    #[arg(long, global = true)]
+    local: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -309,54 +303,42 @@ impl CoordinatorClient {
 
 /// Determine which Docker image to use and pull it if necessary
 async fn prepare_image(
-    local: &Option<String>,
+    local: bool,
     coordinator_program_id: &str,
     docker_mgr: &DockerManager,
 ) -> Result<String> {
-    match local {
-        // --local=version: use explicit version passed by parameter
-        Some(version) if !version.is_empty() => {
-            let tag = format!("psyche-solana-client:{}", version);
-            info!("Using local image (skipping pull): {}", tag);
-            Ok(tag)
-        }
-        // No --local or --local with no argument: query coordinator
-        _ => {
-            let run_id = get_env_var("RUN_ID")?;
-            let rpc = get_env_var("RPC")?;
+    let run_id = get_env_var("RUN_ID")?;
+    let rpc = get_env_var("RPC")?;
 
-            let coordinator_program_id = coordinator_program_id
-                .parse::<Pubkey>()
-                .context("Failed to parse coordinator program ID")?;
-            info!("Using coordinator program ID: {}", coordinator_program_id);
+    let coordinator_program_id = coordinator_program_id
+        .parse::<Pubkey>()
+        .context("Failed to parse coordinator program ID")?;
+    info!("Using coordinator program ID: {}", coordinator_program_id);
 
-            let coordinator = CoordinatorClient::new(rpc, coordinator_program_id);
-            let docker_tag = coordinator.get_docker_tag_for_run(local.is_some(), &run_id)?;
-            info!("Docker tag for run '{}': {}", run_id, docker_tag);
-            if local.is_some() {
-                info!("Using local image (skipping pull): {}", docker_tag);
-            } else {
-                info!("Pulling image from registry: {}", docker_tag);
-                docker_mgr.pull_image(&docker_tag)?;
-            }
-            Ok(docker_tag)
-        }
+    let coordinator = CoordinatorClient::new(rpc, coordinator_program_id);
+    let docker_tag = coordinator.get_docker_tag_for_run(local, &run_id)?;
+    info!("Docker tag for run '{}': {}", run_id, docker_tag);
+    if local {
+        info!("Using local image (skipping pull): {}", docker_tag);
+    } else {
+        info!("Pulling image from registry: {}", docker_tag);
+        docker_mgr.pull_image(&docker_tag)?;
     }
+    Ok(docker_tag)
 }
 
 async fn run(
     wallet_path: PathBuf,
     env_file: PathBuf,
     coordinator_program_id: String,
-    background: bool,
-    local: Option<String>,
+    local: bool,
 ) -> Result<()> {
     let wallet_key = std::fs::read_to_string(&wallet_path)
         .context("Failed to read wallet file")?
         .trim()
         .to_string();
     let docker_mgr = DockerManager::new()?;
-    let mut docker_tag = prepare_image(&local, &coordinator_program_id, &docker_mgr).await?;
+    let mut docker_tag = prepare_image(local, &coordinator_program_id, &docker_mgr).await?;
 
     loop {
         info!("Starting container");
@@ -367,15 +349,8 @@ async fn run(
         // Race between container completion and Ctrl+C
         let exit_code = tokio::select! {
             result = async {
-                if background {
-                    println!("\nContainer is running in the background.");
-                    println!("To view logs: docker logs -f {}", &container_id[..12]);
-                    println!("To stop: docker stop {}", &container_id[..12]);
-                    docker_mgr.wait_for_container(&container_id)
-                } else {
                     docker_mgr.stream_logs(&container_id).await?;
                     docker_mgr.wait_for_container(&container_id)
-                }
             } => {
                 result?
             },
@@ -398,7 +373,7 @@ async fn run(
         // Only retry on version mismatch (exit code 10)
         if exit_code == VERSION_MISMATCH_EXIT_CODE {
             warn!("Version mismatch detected, re-checking coordinator for new version...");
-            docker_tag = prepare_image(&local, &coordinator_program_id, &docker_mgr).await?;
+            docker_tag = prepare_image(local, &coordinator_program_id, &docker_mgr).await?;
             info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
             tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
         } else {
@@ -436,7 +411,6 @@ async fn main() -> Result<()> {
                 args.wallet_path,
                 args.env_file,
                 args.coordinator_program_id,
-                args.background,
                 args.local,
             )
             .await;
