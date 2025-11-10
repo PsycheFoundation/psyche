@@ -296,7 +296,7 @@ impl PythonDistributedCausalLM {
                         comm.barrier(Some(device))?;
                         info!("Sharing parameters with the other ranks");
 
-                        for (name, tensor) in tensors_vec.iter() {
+                        for (name, tensor) in tensors_vec.into_iter() {
                             comm.set(
                                 &format!("tensor_shape_{}", name),
                                 &serde_json::to_string(&tensor.size()).unwrap(),
@@ -311,7 +311,7 @@ impl PythonDistributedCausalLM {
                             // To broadcast we have to move the tensor to the GPU
                             let tensor = tensor.to(device);
 
-                            if let Err(e) = comm.broadcast(&tensor.shallow_clone()) {
+                            if let Err(e) = comm.broadcast(&tensor) {
                                 error!("Error broadcasting tensor {}: {}", name, e);
                                 return Err(PythonDistributedCausalLMError::PythonError(e));
                             }
