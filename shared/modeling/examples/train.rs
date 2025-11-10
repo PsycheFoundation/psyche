@@ -160,6 +160,9 @@ struct Args {
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
+
+    #[arg(long)]
+    seed: Option<u32>,
 }
 
 #[tokio::main]
@@ -188,11 +191,20 @@ async fn main() -> Result<()> {
         )?
     };
 
+    let shuffle = match args.seed {
+        Some(x) => {
+            let mut array = [0u8; 32];
+            array[28..32].copy_from_slice(&x.to_be_bytes());
+            Shuffle::Seeded(array)
+        }
+        None => Shuffle::DontShuffle,
+    };
+
     let mut dataset: DataProvider<DummyNodeIdentity> = match LocalDataProvider::new_from_directory(
         &args.data_path,
         args.token_size.try_into()?,
         args.sequence_length,
-        Shuffle::DontShuffle,
+        shuffle,
     )
     .with_context(|| "Failed to load data with local data provider.")
     {
@@ -210,7 +222,7 @@ async fn main() -> Result<()> {
             let dataset = PreprocessedDataProvider::new_from_directory(
                 &args.data_path,
                 args.sequence_length,
-                Shuffle::DontShuffle,
+                shuffle,
                 Some(Split::Train),
                 None,
             )
