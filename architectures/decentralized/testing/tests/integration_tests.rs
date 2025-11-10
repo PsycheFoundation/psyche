@@ -12,14 +12,15 @@ use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{RunState, model::Checkpoint};
-use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
+use psyche_decentralized_testing::docker_setup::{
+    e2e_testing_setup_subscription, spawn_new_client_with_env,
+};
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
         e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run,
-        spawn_client_with_keypair, spawn_new_client, spawn_new_client_for_subscriptions,
-        spawn_new_client_with_monitoring,
+        spawn_client_with_keypair, spawn_new_client, spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -784,9 +785,9 @@ async fn test_solana_subscriptions() {
     // Wait for infrastructure to be ready
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // Spawn 2 clients with subscription test configuration
-    let client1 = spawn_new_client_for_subscriptions(docker.clone()).await;
-    let client2 = spawn_new_client_for_subscriptions(docker.clone()).await;
+    // Spawn 2 clients. We need to use the .env.test config here for this test
+    let client1 = spawn_new_client_with_env(docker_client, Some(".env.test")).await;
+    let client2 = spawn_new_client_with_env(docker_client, Some(".env.test")).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(&client1, vec![IntegrationTestLogMarker::StateChange])

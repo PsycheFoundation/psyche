@@ -200,24 +200,35 @@ async fn create_and_start_container(
 async fn spawn_client_internal(
     docker_client: Arc<Docker>,
     container_name: String,
-    keypair_bind: Option<String>,
+    keypair_path: Option<&str>,
+    config_path: Option<&str>,
     custom_entrypoint: Option<Vec<&str>>,
+    additional_env_vars: Vec<String>,
     env_file: &str,
 ) -> Result<String, DockerWatcherError> {
     let has_gpu = has_gpu_support();
     let network_name = "test_psyche-test-network";
 
-    // Build volume binds if keypair path provided
-    let binds = keypair_bind.map(|host_path| {
+    // Build volume binds for keypair and/or config
+    let mut binds = Vec::new();
+    if let Some(host_keypair_path) = keypair_path {
         let container_keypair_path = "/root/.config/solana/id.json";
-        vec![format!("{}:{}", host_path, container_keypair_path)]
-    });
+        binds.push(format!("{}:{}", host_keypair_path, container_keypair_path));
+    }
+    if let Some(config) = config_path {
+        let container_config_path = "/usr/local/config.toml";
+        binds.push(format!("{}:{}", config, container_config_path));
+    }
 
-    // Build host config with optional GPU and binds
-    let host_config = build_host_config(network_name, has_gpu, binds);
+    let host_config = build_host_config(
+        network_name,
+        has_gpu,
+        if binds.is_empty() { None } else { Some(binds) },
+    );
 
-    // Load environment variables
-    let envs = load_client_env_vars(has_gpu, env_file);
+    // Load base environment variables and add any additional ones
+    let mut envs = load_client_env_vars(has_gpu, env_file);
+    envs.extend(additional_env_vars);
 
     // Create and start container using unified helper
     create_and_start_container(
@@ -231,67 +242,32 @@ async fn spawn_client_internal(
     .await
 }
 
-/// Internal helper to spawn a container with keypair and optional config file
-/// Used by both spawn_client_with_keypair and spawn_run_owner_with_keypair
-async fn spawn_container_with_keypair_and_config(
+/// Spawns a new client container with configurable environment file.
+/// If env_file is None, defaults to ".env.local".
+pub async fn spawn_new_client_with_env(
     docker_client: Arc<Docker>,
-    container_name: String,
-    host_keypair_path: &str,
-    entrypoint: Vec<&str>,
-    config_path: Option<&str>,
-    additional_env_vars: Vec<String>,
-    env_file: &str,
-) -> Result<String, DockerWatcherError> {
-    let has_gpu = has_gpu_support();
-    let network_name = "test_psyche-test-network";
-    let container_keypair_path = "/root/.config/solana/id.json";
-
-    // Build volume binds: always include keypair, optionally include config
-    let mut binds = vec![format!("{}:{}", host_keypair_path, container_keypair_path)];
-    if let Some(config) = config_path {
-        let container_config_path = "/usr/local/config.toml";
-        binds.push(format!("{}:{}", config, container_config_path));
-    }
-
-    let host_config = build_host_config(network_name, has_gpu, Some(binds));
-
-    // Load base environment variables and add any additional ones
-    let mut envs = load_client_env_vars(has_gpu, env_file);
-    envs.extend(additional_env_vars);
-
-    // Create and start container
-    create_and_start_container(
+    env_file: Option<&str>,
+) -> String {
+    let env_file = env_file.unwrap_or(".env.local");
+    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
+    let spawned_name = spawn_client_internal(
         docker_client,
-        container_name,
-        "psyche-solana-test-client-no-python",
-        envs,
-        host_config,
-        Some(entrypoint),
+        new_container_name,
+        None,
+        None,
+        None,
+        Vec::new(),
+        env_file,
     )
     .await
+    .expect("Failed to spawn client");
+    println!("Spawned new client container: {}", spawned_name);
+    spawned_name
 }
 
 /// Spawns a new client container with default configuration.
 pub async fn spawn_new_client(docker_client: Arc<Docker>) -> String {
-    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-    let spawned_name =
-        spawn_client_internal(docker_client, new_container_name, None, None, ".env.local")
-            .await
-            .expect("Failed to spawn client");
-    println!("Spawned new client container: {}", spawned_name);
-    spawned_name
-}
-
-/// Spawns a new client container configured for subscription tests.
-/// Uses .env.test which includes WS_RPC_2 for backup cluster subscriptions.
-pub async fn spawn_new_client_for_subscriptions(docker_client: Arc<Docker>) -> String {
-    let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
-    let spawned_name =
-        spawn_client_internal(docker_client, new_container_name, None, None, ".env.test")
-            .await
-            .expect("Failed to spawn client");
-    println!("Spawned new client container: {}", spawned_name);
-    spawned_name
+    spawn_new_client_with_env(docker_client, None).await
 }
 
 /// Spawns a new client container with a specific Solana keypair.
@@ -305,40 +281,13 @@ pub async fn spawn_client_with_keypair(
     // Use entrypoint script that skips solana-keygen (which would overwrite the mounted keypair)
     let entrypoint = vec!["/bin/client_test_entrypoint_with_keypair.sh"];
 
-    spawn_container_with_keypair_and_config(
+    spawn_client_internal(
         docker_client,
         new_container_name,
-        host_keypair_path,
-        entrypoint,
-        None,       // No config file for regular clients
-        Vec::new(), // No additional env vars
-        ".env.local",
-    )
-    .await
-}
-
-/// Spawns a run owner container with a specific Solana keypair.
-pub async fn spawn_run_owner_with_keypair(
-    docker_client: Arc<Docker>,
-    host_keypair_path: &str,
-    config_path: &str,
-    run_id: &str,
-) -> Result<String, DockerWatcherError> {
-    let container_name = "test-psyche-run-owner-1".to_string();
-
-    // Use entrypoint script (will use mounted keypair if available)
-    let entrypoint = vec!["/bin/run_owner_entrypoint.sh"];
-
-    // Add run-specific environment variable
-    let additional_env_vars = vec![format!("RUN_ID={}", run_id)];
-
-    spawn_container_with_keypair_and_config(
-        docker_client,
-        container_name,
-        host_keypair_path,
-        entrypoint,
-        Some(config_path), // Run owner needs config file
-        additional_env_vars,
+        Some(host_keypair_path),
+        None,
+        Some(entrypoint),
+        Vec::new(),
         ".env.local",
     )
     .await
@@ -351,18 +300,16 @@ pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Ve
     let mut all_container_names = Vec::new();
 
     for cont in containers {
-        if let Some(names) = &cont.names {
-            if let Some(name) = names.first() {
-                let trimmed_name = name.trim_start_matches('/').to_string();
-                all_container_names.push(trimmed_name.clone());
+        if let Some(name) = container_name(&cont) {
+            let name_owned = name.to_string();
+            all_container_names.push(name_owned.clone());
 
-                if cont
-                    .state
-                    .as_deref()
-                    .is_some_and(|state| state.eq_ignore_ascii_case("running"))
-                {
-                    running_containers.push(trimmed_name);
-                }
+            if cont
+                .state
+                .as_deref()
+                .is_some_and(|state| state.eq_ignore_ascii_case("running"))
+            {
+                running_containers.push(name_owned);
             }
         }
     }
@@ -434,6 +381,14 @@ pub fn spawn_ctrl_c_task() {
     });
 }
 
+/// Extract the container name from a ContainerSummary, stripping the Docker "/" prefix
+fn container_name(cont: &ContainerSummary) -> Option<&str> {
+    cont.names
+        .as_ref()?
+        .first()
+        .map(|s| s.trim_start_matches('/'))
+}
+
 /// List containers matching given prefixes
 async fn list_containers_by_prefix(
     docker_client: Arc<Docker>,
@@ -451,18 +406,9 @@ async fn list_containers_by_prefix(
     all_containers
         .into_iter()
         .filter(|cont| {
-            cont.names
-                .as_ref() // Get Option<&Vec<String>>
-                .and_then(|names| names.first()) // Get Option<&String> (first name)
-                .map(|name| {
-                    // Docker prefixes names with "/", so strip it
-                    let trimmed_name = name.trim_start_matches('/');
-                    // Check if container name starts with any of the provided prefixes
-                    prefixes
-                        .iter()
-                        .any(|prefix| trimmed_name.starts_with(prefix))
-                })
-                .unwrap_or(false) // If any step failed, exclude this container
+            container_name(cont)
+                .map(|name| prefixes.iter().any(|prefix| name.starts_with(prefix)))
+                .unwrap_or(false)
         })
         .collect()
 }
@@ -493,26 +439,23 @@ async fn remove_old_client_containers(docker_client: Arc<Docker>) {
         "Removing old containers: {:?}",
         client_containers
             .iter()
-            .filter_map(|c| c.names.as_ref().and_then(|n| n.first()))
-            .collect::<Vec<&String>>()
+            .filter_map(|c| container_name(c))
+            .collect::<Vec<&str>>()
     );
 
     for cont in client_containers.iter() {
-        docker_client
-            .remove_container(
-                cont.names
-                    .as_ref()
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    .trim_start_matches('/'),
-                Some(RemoveContainerOptions {
-                    force: true, // Ensure it's removed even if running
-                    ..Default::default()
-                }),
-            )
-            .await
-            .unwrap();
+        if let Some(name) = container_name(cont) {
+            docker_client
+                .remove_container(
+                    name,
+                    Some(RemoveContainerOptions {
+                        force: true, // Ensure it's removed even if running
+                        ..Default::default()
+                    }),
+                )
+                .await
+                .unwrap();
+        }
     }
 }
 
