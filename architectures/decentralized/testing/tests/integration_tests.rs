@@ -141,6 +141,10 @@ async fn test_two_clients_three_epochs_run() {
     )
     .await;
 
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn two clients
     let client1 = spawn_new_client(docker.clone()).await;
     let client2 = spawn_new_client(docker.clone()).await;
 
@@ -231,6 +235,10 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     .await;
     tokio::time::sleep(Duration::from_secs(30)).await;
 
+    // Give P2P infrastructure extra time to fully initialize and be ready to serve
+    println!("Waiting 10s for P2P to stabilize...");
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
     println!("Adding new clients");
     for i in 1..=n_new_clients {
         let client_name = format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1);
@@ -246,6 +254,13 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
                 ],
             )
             .unwrap();
+
+        // Add delay between spawns to let each client stabilize and be ready to serve P2P
+        // This prevents newly spawned clients from trying to fetch from each other before they're ready
+        if i < n_new_clients {
+            println!("Waiting 10s before spawning next client...");
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
     }
 
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
@@ -373,6 +388,10 @@ async fn disconnect_client() {
     )
     .await;
 
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 3 clients with random keypairs
     let client1 = spawn_new_client(docker.clone()).await;
     let client2 = spawn_new_client(docker.clone()).await;
     let client3 = spawn_new_client(docker.clone()).await;
@@ -531,6 +550,9 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     )
     .await;
 
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
     // Spawn 2 clients with random keypairs
     let mut clients = Vec::new();
     for i in 1..=n_clients {
@@ -629,6 +651,9 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
         )),
     )
     .await;
+
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Spawn 2 clients
     let client1 = spawn_new_client(docker.clone()).await;
@@ -755,6 +780,9 @@ async fn test_solana_subscriptions() {
         )),
     )
     .await;
+
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Spawn 2 clients with subscription test configuration
     let client1 = spawn_new_client_for_subscriptions(docker.clone()).await;
