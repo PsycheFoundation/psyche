@@ -771,10 +771,9 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
-) {
+) -> Result<(BlobTicket, ModelRequestType)> {
     let max_attempts = 500u16;
     let mut attempts = 0u16;
 
@@ -796,13 +795,8 @@ pub async fn blob_ticket_param_request_task(
 
         match result {
             Ok(Ok(blob_ticket)) => {
-                model_blob_tickets
-                    .lock()
-                    .unwrap()
-                    .push((blob_ticket, model_request_type));
-
                 peer_manager.report_success(peer_id);
-                return;
+                return Ok((blob_ticket, model_request_type));
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
@@ -819,4 +813,7 @@ pub async fn blob_ticket_param_request_task(
 
     error!("No peers available to give us a model parameter after {max_attempts} attempts");
     cancellation_token.cancel();
+    Err(anyhow!(
+        "Failed to get model parameter blob ticket after {max_attempts} attempts"
+    ))
 }

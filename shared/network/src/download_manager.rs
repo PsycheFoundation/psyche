@@ -23,6 +23,7 @@ use tokio::{
 use tracing::{error, info, trace, warn};
 
 pub const MAX_DOWNLOAD_RETRIES: usize = 3;
+pub const MAX_CONCURRENT_PARAMETER_REQUESTS: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct DownloadRetryInfo {
@@ -35,7 +36,7 @@ pub struct DownloadRetryInfo {
 
 #[derive(Debug)]
 pub enum RetriedDownloadsMessage {
-    Insert {
+    InsertRetry {
         info: DownloadRetryInfo,
     },
     Remove {
@@ -53,6 +54,13 @@ pub enum RetriedDownloadsMessage {
         hash: Hash,
         response: oneshot::Sender<usize>,
     },
+    AddParameter {
+        blob_ticket: BlobTicket,
+        request_type: ModelRequestType,
+    },
+    DownloadSucceeded {
+        hash: Hash,
+    },
 }
 
 /// Handler to interact with the retried downloads actor
@@ -61,25 +69,32 @@ pub struct RetriedDownloadsHandle {
     tx: mpsc::UnboundedSender<RetriedDownloadsMessage>,
 }
 
-impl Default for RetriedDownloadsHandle {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl RetriedDownloadsHandle {
-    pub fn new() -> Self {
+    pub fn new(download_tx: mpsc::UnboundedSender<(BlobTicket, ModelRequestType)>) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
 
         // Spawn the actor
-        tokio::spawn(retried_downloads_actor(rx));
+        tokio::spawn(retried_downloads_actor(rx, download_tx.clone()));
 
         Self { tx }
     }
 
     /// Insert a new download to retry
     pub fn insert(&self, info: DownloadRetryInfo) {
-        let _ = self.tx.send(RetriedDownloadsMessage::Insert { info });
+        let _ = self.tx.send(RetriedDownloadsMessage::InsertRetry { info });
+    }
+
+    pub fn add_parameter(&self, blob_ticket: BlobTicket, request_type: ModelRequestType) {
+        let _ = self.tx.send(RetriedDownloadsMessage::AddParameter {
+            blob_ticket,
+            request_type,
+        });
+    }
+
+    pub fn download_succeeded(&self, hash: Hash) {
+        let _ = self
+            .tx
+            .send(RetriedDownloadsMessage::DownloadSucceeded { hash });
     }
 
     /// Remove a download from the retry list
@@ -155,37 +170,83 @@ impl RetriedDownloadsHandle {
 }
 
 struct RetriedDownloadsActor {
-    downloads: HashMap<Hash, DownloadRetryInfo>,
+    retry_downloads: HashMap<Hash, DownloadRetryInfo>,
+    current_parameter_tickets: Vec<(BlobTicket, ModelRequestType)>,
+    tx_start_download: mpsc::UnboundedSender<(BlobTicket, ModelRequestType)>,
+    current_downloads: usize,
 }
 
 impl RetriedDownloadsActor {
-    fn new() -> Self {
+    fn new(tx_start_download: mpsc::UnboundedSender<(BlobTicket, ModelRequestType)>) -> Self {
         Self {
-            downloads: HashMap::new(),
+            retry_downloads: HashMap::new(),
+            current_parameter_tickets: Vec::new(),
+            tx_start_download,
+            current_downloads: 0,
         }
     }
 
     fn handle_message(&mut self, message: RetriedDownloadsMessage) {
         match message {
-            RetriedDownloadsMessage::Insert { info } => {
+            RetriedDownloadsMessage::InsertRetry { info } => {
                 let hash = info.ticket.hash();
-                self.downloads.insert(hash, info);
+                self.retry_downloads.insert(hash, info);
+            }
+
+            RetriedDownloadsMessage::AddParameter {
+                blob_ticket,
+                request_type,
+            } => {
+                info!(
+                    "Adding parameter download ticket {:?} for request type {:?}",
+                    blob_ticket, request_type
+                );
+                if self.current_downloads >= MAX_CONCURRENT_PARAMETER_REQUESTS {
+                    self.current_parameter_tickets
+                        .push((blob_ticket, request_type));
+                    info!("Max concurrent parameter downloads reached, queuing ticket");
+                    return;
+                }
+                info!("Starting parameter download for ticket {:?}", blob_ticket);
+                self.tx_start_download
+                    .send((blob_ticket, request_type))
+                    .unwrap_or_else(|err| {
+                        error!("Failed to send start download message: {}", err);
+                    });
+                self.current_downloads += 1;
+            }
+
+            RetriedDownloadsMessage::DownloadSucceeded { hash } => {
+                self.current_downloads = self.current_downloads.saturating_sub(1);
+                if let Some((next_ticket, request_type)) = self.current_parameter_tickets.pop() {
+                    info!(
+                        "Starting next queued parameter download for ticket {:?} since a download completed",
+                        next_ticket
+                    );
+                    // Start the next download
+                    self.tx_start_download
+                        .send((next_ticket.clone(), request_type))
+                        .unwrap_or_else(|err| {
+                            error!("Failed to send start download message: {}", err);
+                        });
+                    self.current_downloads += 1;
+                }
             }
 
             RetriedDownloadsMessage::Remove { hash, response } => {
-                let removed = self.downloads.remove(&hash);
+                let removed = self.retry_downloads.remove(&hash);
                 let _ = response.send(removed);
             }
 
             RetriedDownloadsMessage::Get { hash, response } => {
-                let info = self.downloads.get(&hash).cloned();
+                let info = self.retry_downloads.get(&hash).cloned();
                 let _ = response.send(info);
             }
 
             RetriedDownloadsMessage::PendingRetries { response } => {
                 let now = Instant::now();
                 let pending: Vec<_> = self
-                    .downloads
+                    .retry_downloads
                     .iter()
                     .filter(|(_, info)| {
                         info.retry_time
@@ -206,7 +267,7 @@ impl RetriedDownloadsActor {
             }
 
             RetriedDownloadsMessage::UpdateTime { hash, response } => {
-                let retries = if let Some(info) = self.downloads.get_mut(&hash) {
+                let retries = if let Some(info) = self.retry_downloads.get_mut(&hash) {
                     info.retry_time = None; // Mark as being retried now
                     info.retries
                 } else {
@@ -219,8 +280,11 @@ impl RetriedDownloadsActor {
     }
 }
 
-async fn retried_downloads_actor(mut rx: mpsc::UnboundedReceiver<RetriedDownloadsMessage>) {
-    let mut actor = RetriedDownloadsActor::new();
+async fn retried_downloads_actor(
+    mut rx: mpsc::UnboundedReceiver<RetriedDownloadsMessage>,
+    tx: mpsc::UnboundedSender<(BlobTicket, ModelRequestType)>,
+) {
+    let mut actor = RetriedDownloadsActor::new(tx);
 
     while let Some(message) = rx.recv().await {
         actor.handle_message(message);
