@@ -278,15 +278,13 @@ pub async fn spawn_client_with_keypair(
 ) -> Result<String, DockerWatcherError> {
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
 
-    // Use entrypoint script that skips solana-keygen (which would overwrite the mounted keypair)
-    let entrypoint = vec!["/bin/client_test_entrypoint_with_keypair.sh"];
-
+    // Standard entrypoint detects mounted keypair and skips generation
     spawn_client_internal(
         docker_client,
         new_container_name,
         Some(host_keypair_path),
         None,
-        Some(entrypoint),
+        None, // Use default entrypoint
         Vec::new(),
         ".env.local",
     )

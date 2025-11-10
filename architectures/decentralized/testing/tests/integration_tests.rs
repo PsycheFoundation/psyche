@@ -786,8 +786,8 @@ async fn test_solana_subscriptions() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Spawn 2 clients. We need to use the .env.test config here for this test
-    let client1 = spawn_new_client_with_env(docker_client, Some(".env.test")).await;
-    let client2 = spawn_new_client_with_env(docker_client, Some(".env.test")).await;
+    let client1 = spawn_new_client_with_env(docker.clone(), Some(".env.test")).await;
+    let client2 = spawn_new_client_with_env(docker.clone(), Some(".env.test")).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(&client1, vec![IntegrationTestLogMarker::StateChange])

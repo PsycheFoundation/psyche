@@ -4,20 +4,17 @@ set -o errexit
 
 solana config set --url "${RPC}"
 
-# Use pre-mounted keypair if available, otherwise generate a new one
-if [ -f "/usr/local/keypairs/client.json" ]; then
-    # Copy pre-mounted keypair to default location for solana-toolbox compatibility
-    mkdir -p /root/.config/solana
-    cp /usr/local/keypairs/client.json /root/.config/solana/id.json
-    WALLET_FILE="/root/.config/solana/id.json"
-    echo "Using pre-mounted client keypair"
-    solana airdrop 10 "$(solana-keygen pubkey)"
-else
+WALLET_FILE="/root/.config/solana/id.json"
+
+# Generate keypair only if it doesn't exist (allows mounting via volume bind)
+if [ ! -f "${WALLET_FILE}" ]; then
+    echo "Generating new client keypair"
     solana-keygen new --no-bip39-passphrase --force
-    WALLET_FILE="/root/.config/solana/id.json"
-    echo "Generated new client keypair"
-    solana airdrop 10 "$(solana-keygen pubkey)"
+else
+    echo "Using existing client keypair"
 fi
+
+solana airdrop 10 "$(solana-keygen pubkey)"
 
 psyche-solana-client train \
     --wallet-private-key-path "${WALLET_FILE}" \
