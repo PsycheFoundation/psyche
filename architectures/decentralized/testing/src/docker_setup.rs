@@ -326,8 +326,8 @@ pub async fn spawn_run_owner_with_keypair(
 ) -> Result<String, DockerWatcherError> {
     let container_name = "test-psyche-run-owner-1".to_string();
 
-    // Use entrypoint script that skips solana-keygen
-    let entrypoint = vec!["/bin/run_owner_entrypoint_with_keypair.sh"];
+    // Use entrypoint script (will use mounted keypair if available)
+    let entrypoint = vec!["/bin/run_owner_entrypoint.sh"];
 
     // Add run-specific environment variable
     let additional_env_vars = vec![format!("RUN_ID={}", run_id)];
