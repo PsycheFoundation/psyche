@@ -39,6 +39,7 @@ builds:
   - exclude:
       - 'packages.aarch64-darwin.*'
       - 'devShells.aarch64-darwin.*'
+      - 'packages.x86_64-linux.docker-psyche-solana-test-validator'
     include:
       - 'packages.x86_64-linux.*'
       - 'devShells.x86_64-linux.*'
