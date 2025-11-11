@@ -142,7 +142,7 @@ run_test_infra num_clients="1":
         NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
     fi
 
-run_test_infra_with_proxies_validator num_clients="1":
+run_test_infra_with_proxies_validator num_clients="0":
     cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
 
 run_test_infra_three_clients:

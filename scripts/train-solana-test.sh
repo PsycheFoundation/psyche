@@ -20,8 +20,8 @@ elif [[ -z "${WALLET_FILE:-}" ]]; then
     trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
 fi
 
-RPC=${RPC:-"http://127.0.0.1:8899"}
-WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
+RPC=${RPC:-"http://7da1cfaf-50:8899"}
+WS_RPC=${WS_RPC:-"ws://7da1cfaf-50:8900"}
 RUN_ID=${RUN_ID:-"test"}
 
 # presets for a DGX or an HGX
@@ -35,14 +35,14 @@ solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || tru
 export RUST_LOG="info,psyche=debug"
 
 if [[ "$OTLP_METRICS_URL" == "" ]]; then
-    cargo run --release --bin psyche-solana-client -- \
+    cargo run --release --features python,parallelism --bin psyche-solana-client -- \
         train \
         --wallet-private-key-path ${WALLET_FILE} \
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
-        --data-parallelism ${DP} \
-        --tensor-parallelism ${TP} \
+        --data-parallelism 8 \
+        --tensor-parallelism 1 \
         --micro-batch-size ${BATCH_SIZE} \
         --logs "console" \
         "$@"

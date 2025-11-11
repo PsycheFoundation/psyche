@@ -2,9 +2,6 @@ services:
   psyche-run-owner:
     env_file:
       - '../../config/client/.env.test'
-  psyche-test-client:
-    env_file:
-      - '../../config/client/.env.test'
 
   nginx:
     image: nginx:latest
@@ -25,6 +22,18 @@ services:
       - '8902:8902'
     volumes:
       - ./subscriptions_test/nginx_p8902.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - psyche-solana-test-validator
+    networks:
+      - psyche-test-network
+
+  nginx_http:
+    image: nginx:latest
+    container_name: nginx-http-proxy
+    ports:
+      - '8903:8903'
+    volumes:
+      - ./subscriptions_test/nginx_http.conf:/etc/nginx/nginx.conf
     depends_on:
       - psyche-solana-test-validator
     networks:
