@@ -1,0 +1,50 @@
+name: 'Wait for Garnix CI'
+description: 'Wait for Garnix CI checks to complete'
+inputs:
+  timeout-minutes:
+    description: 'Maximum time to wait in minutes'
+    required: false
+    default: '50'
+runs:
+  using: 'composite'
+  steps:
+    - name: Wait for All Garnix checks
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+        echo "Waiting for 'All Garnix checks' on commit $SHA"
+        TOTAL_ATTEMPTS=$(( ${{ inputs.timeout-minutes }} * 2 ))
+
+        for i in $(seq 1 $TOTAL_ATTEMPTS); do
+          CHECK=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs --jq '.check_runs[] | select(.name == "package docker-psyche-solana-test-client-no-python [x86_64-linux]") | {name: .name, status: .status, conclusion: .conclusion}')
+          if [ -z "$CHECK" ]; then
+            echo "No 'package docker-psyche-solana-test-client-no-python [x86_64-linux]' found yet, waiting..."
+            sleep 10
+            continue
+          fi
+
+          STATUS=$(echo "$CHECK" | jq -r '.status')
+          CONCLUSION=$(echo "$CHECK" | jq -r '.conclusion')
+
+          if [ "$CONCLUSION" = "null" ]; then
+            echo "Garnix check for image generation: $STATUS (conclusion: pending)"
+          fi
+
+          if [ "$STATUS" = "completed" ]; then
+            if [ "$CONCLUSION" = "success" ]; then
+              echo "Image generation job in Garnix passed!"
+              exit 0
+            else
+              echo "Image generation job in Garnix failed with conclusion: $CONCLUSION"
+              exit 1
+            fi
+          fi
+
+          echo "Waiting for 'package docker-psyche-solana-test-client-no-python [x86_64-linux]' to complete... (attempt $i/$TOTAL_ATTEMPTS)"
+          sleep 10
+
+        done
+        echo "Timeout waiting for 'All Garnix checks'"
+        exit 1
