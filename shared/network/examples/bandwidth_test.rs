@@ -282,6 +282,9 @@ async fn main() -> Result<()> {
     };
     info!("using relay servers: {:?}", &relay_mode);
 
+    let tui = args.tui;
+    let (cancel, tx_tui_state) = maybe_start_render_loop(tui.then(Tui::default))?;
+
     let network = NC::init(
         "123",
         args.bind_port,
@@ -291,12 +294,9 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         Arc::new(ClientMetrics::new(None)),
+        Some(cancel.clone()),
     )
     .await?;
-
-    let tui = args.tui;
-
-    let (cancel, tx_tui_state) = maybe_start_render_loop(tui.then(Tui::default))?;
 
     const SEND_DATA_INTERVAL: u64 = 3;
     // fire at wall-clock 3-second intervals.
