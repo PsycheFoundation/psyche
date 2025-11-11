@@ -2,12 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use bollard::{
     Docker,
-    container::{CreateContainerOptions, RemoveContainerOptions, StartContainerOptions},
+    container::{CreateContainerOptions, StartContainerOptions},
     image::{CreateImageOptions, ListImagesOptions},
     secret::HostConfig,
 };
 use futures_util::StreamExt;
 
+use crate::docker_setup::remove_container;
 use crate::utils::SolanaTestClient;
 
 #[derive(Clone, Debug)]
@@ -195,15 +196,7 @@ async fn create_chaos_action_with_command(
         ..Default::default()
     };
 
-    let _ = docker_client
-        .remove_container(
-            container_name,
-            Some(RemoveContainerOptions {
-                force: true, // Ensure it's removed even if running
-                ..Default::default()
-            }),
-        )
-        .await;
+    remove_container(docker_client.clone(), container_name).await;
 
     for target in targets.iter() {
         command.push(target.clone());

@@ -1,12 +1,13 @@
 use bollard::{
     Docker,
     container::{
-        Config, CreateContainerOptions, KillContainerOptions, ListContainersOptions,
-        RemoveContainerOptions,
+        Config, CreateContainerOptions, KillContainerOptions, ListContainersOptions, LogsOptions,
+        RemoveContainerOptions, WaitContainerOptions,
     },
     models::DeviceRequest,
     secret::{ContainerSummary, HostConfig},
 };
+use futures_util::StreamExt;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
@@ -158,18 +159,22 @@ fn load_client_env_vars(has_gpu: bool, env_file: &str) -> Vec<String> {
 }
 
 /// Create and start a Docker container with the given configuration
-async fn create_and_start_container(
+pub async fn create_and_start_container(
     docker_client: Arc<Docker>,
     container_name: String,
     image: &str,
     env_vars: Vec<String>,
     host_config: HostConfig,
     entrypoint: Option<Vec<&str>>,
+    cmd: Option<Vec<String>>,
 ) -> Result<String, DockerWatcherError> {
     let options = Some(CreateContainerOptions {
         name: container_name.clone(),
         platform: None,
     });
+
+    // Convert cmd to Vec<&str> with proper lifetime
+    let cmd: Option<Vec<&str>> = cmd.as_ref().map(|c| c.iter().map(|s| s.as_str()).collect());
 
     let mut config = Config {
         image: Some(image),
@@ -180,6 +185,10 @@ async fn create_and_start_container(
 
     if let Some(entrypoint) = entrypoint {
         config.entrypoint = Some(entrypoint);
+    }
+
+    if let Some(cmd) = cmd {
+        config.cmd = Some(cmd);
     }
 
     docker_client
@@ -193,6 +202,66 @@ async fn create_and_start_container(
         .unwrap();
 
     Ok(container_name)
+}
+
+/// Wait for a container to complete, retrieve logs, and clean up
+/// Returns the container's exit code or an error
+pub async fn wait_for_container_and_cleanup(
+    docker_client: Arc<Docker>,
+    container_name: &str,
+    timeout_secs: u64,
+) -> Result<i64, anyhow::Error> {
+    // Wait for container to complete with timeout
+    println!("Waiting for container to complete...");
+    let mut wait_stream =
+        docker_client.wait_container(container_name, None::<WaitContainerOptions<String>>);
+
+    let exit_code =
+        match tokio::time::timeout(Duration::from_secs(timeout_secs), wait_stream.next()).await {
+            Ok(Some(Ok(result))) => {
+                println!("Container finished with exit code: {}", result.status_code);
+                result.status_code
+            }
+            Ok(Some(Err(e))) => {
+                eprintln!("Error waiting for container: {}", e);
+                -1
+            }
+            Ok(None) => {
+                eprintln!("Wait stream ended unexpectedly");
+                -1
+            }
+            Err(_) => {
+                eprintln!("Container timed out after {} seconds", timeout_secs);
+                -1
+            }
+        };
+
+    // Get the container logs for debugging
+    println!("Retrieving container logs...");
+    let mut logs_stream = docker_client.logs(
+        container_name,
+        Some(LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            ..Default::default()
+        }),
+    );
+    while let Some(log) = logs_stream.next().await {
+        match log {
+            Ok(log_output) => print!("  {}", log_output),
+            Err(e) => eprintln!("  Error reading logs: {}", e),
+        }
+    }
+
+    // Always cleanup the container
+    remove_container(docker_client, container_name).await;
+
+    // Return success or error based on exit code
+    if exit_code == 0 {
+        Ok(exit_code)
+    } else {
+        Err(anyhow::anyhow!("Container exited with code: {}", exit_code))
+    }
 }
 
 pub async fn spawn_new_client(docker_client: Arc<Docker>) -> String {
@@ -234,6 +303,7 @@ pub async fn spawn_new_client_with_options(
         "psyche-solana-test-client-no-python",
         envs,
         host_config,
+        None,
         None,
     )
     .await
@@ -373,18 +443,22 @@ async fn remove_old_client_containers(docker_client: Arc<Docker>) {
 
     for cont in client_containers.iter() {
         if let Some(name) = container_name(cont) {
-            docker_client
-                .remove_container(
-                    name,
-                    Some(RemoveContainerOptions {
-                        force: true, // Ensure it's removed even if running
-                        ..Default::default()
-                    }),
-                )
-                .await
-                .unwrap();
+            remove_container(docker_client.clone(), name).await;
         }
     }
+}
+
+pub async fn remove_container(docker_client: Arc<Docker>, container_name: &str) {
+    docker_client
+        .remove_container(
+            container_name,
+            Some(RemoveContainerOptions {
+                force: true, // Ensure it's removed even if running
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
 }
 
 async fn get_name_of_new_client_container(docker_client: Arc<Docker>) -> String {
