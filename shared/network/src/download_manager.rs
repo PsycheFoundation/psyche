@@ -182,7 +182,6 @@ impl RetriedDownloadsHandle {
 
 struct RetriedDownloadsActor {
     retry_downloads: HashMap<Hash, DownloadRetryInfo>,
-    current_parameter_tickets: Vec<(BlobTicket, ModelRequestType)>,
     tx_start_download: mpsc::UnboundedSender<(BlobTicket, ModelRequestType)>,
     current_downloads: usize,
     waiting_requesters: Vec<oneshot::Sender<()>>,
@@ -192,7 +191,6 @@ impl RetriedDownloadsActor {
     fn new(tx_start_download: mpsc::UnboundedSender<(BlobTicket, ModelRequestType)>) -> Self {
         Self {
             retry_downloads: HashMap::new(),
-            current_parameter_tickets: Vec::new(),
             tx_start_download,
             current_downloads: 0,
             waiting_requesters: Vec::new(),
@@ -211,7 +209,7 @@ impl RetriedDownloadsActor {
                     // Can proceed immediately
                     let _ = response.send(());
                 } else {
-                    // Queue the waiter
+                    // Queue the process to wait
                     self.waiting_requesters.push(response);
                 }
             }
@@ -220,16 +218,6 @@ impl RetriedDownloadsActor {
                 blob_ticket,
                 request_type,
             } => {
-                info!(
-                    "Adding parameter download ticket {:?} for request type {:?}",
-                    blob_ticket, request_type
-                );
-                if self.current_downloads >= MAX_CONCURRENT_PARAMETER_REQUESTS {
-                    self.current_parameter_tickets
-                        .push((blob_ticket, request_type));
-                    info!("Max concurrent parameter downloads reached, queuing ticket");
-                    return;
-                }
                 info!("Starting parameter download for ticket {:?}", blob_ticket);
                 self.tx_start_download
                     .send((blob_ticket, request_type))
@@ -237,22 +225,16 @@ impl RetriedDownloadsActor {
                         error!("Failed to send start download message: {}", err);
                     });
                 self.current_downloads += 1;
+                info!("CURRENT PARAMETER DOWNLOADS: {}", self.current_downloads);
             }
 
             RetriedDownloadsMessage::DownloadSucceeded { hash } => {
                 self.current_downloads = self.current_downloads.saturating_sub(1);
-                if let Some((next_ticket, request_type)) = self.current_parameter_tickets.pop() {
-                    info!(
-                        "Starting next queued parameter download for ticket {:?} since a download completed",
-                        next_ticket
-                    );
-                    // Start the next download
-                    self.tx_start_download
-                        .send((next_ticket.clone(), request_type))
-                        .unwrap_or_else(|err| {
-                            error!("Failed to send start download message: {}", err);
-                        });
-                    self.current_downloads += 1;
+                if !self.waiting_requesters.is_empty() {
+                    if let Some(waiter) = self.waiting_requesters.pop() {
+                        info!("Notifying waiting requester that capacity is available");
+                        let _ = waiter.send(());
+                    }
                 }
             }
 

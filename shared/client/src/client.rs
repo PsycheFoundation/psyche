@@ -562,6 +562,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                 tokio::spawn(async move {
                                 for param_name in param_names {
+                                    info!("Waiting for capacity");
                                     retried_downloads.wait_for_capacity().await;
 
                                     let router = router.clone();
@@ -573,41 +574,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             param_requests_cancel_token.clone()
                                         ).await.unwrap();
 
-                                    // let send_result = tx_params_download.send(result.unwrap());
                                     retried_downloads.add_parameter(result.0, result.1);
-                                    // max_concurrent_parameter_requests += 1;
-                                    // if max_concurrent_parameter_requests >= 5 {
-                                    //     println!("Reached max concurrent parameter requests, waiting for one to complete");
-                                    //     let a = rx_parameter_download_confirm.recv().await;
-                                    //     println!("Download completed for one parameter, continuing with requests");
-                                    //     max_concurrent_parameter_requests -= 1;
-                                    // }
-                                    // // Check if we reached the max number of concurrent requests, and if that is the case,
-                                    // // await for all of them to complete and start downloading the blobs
-                                    // if request_handles.len() == max_concurrent_parameter_requests - 1 {
-                                    //     let mut max_concurrent_request_futures = std::mem::take(&mut request_handles);
-                                    //     max_concurrent_request_futures.push(request_handle);
-                                    //     // We don't care about the errors because we are already handling them inside the task
-                                    //     join_all(max_concurrent_request_futures).await;
-                                    //     let current_parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
-                                    //         let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
-                                    //         parameter_blob_tickets_lock.drain(..).collect()
-                                    //     };
-                                    //     tx_params_download.send(current_parameter_blob_tickets)?;
-                                    //     continue;
-                                    // }
-                                    // request_handles.push(request_handle);
                                 }
                             });
-
-                                // // All parameters have been requested, wait all the remaining request futures to complete
-                                // // and download the blobs
-                                // join_all(request_handles).await;
-                                // let parameter_blob_tickets: Vec<(BlobTicket, ModelRequestType)> = {
-                                //     let mut parameter_blob_tickets_lock = parameter_blob_tickets.lock().unwrap();
-                                //     parameter_blob_tickets_lock.drain(..).collect()
-                                // };
-                                // tx_params_download.send(parameter_blob_tickets)?;
                         },
                         Some(tx_model_config_response) = rx_request_model_config.recv() => {
                             sharable_model.tx_model_config_response = Some(tx_model_config_response);
