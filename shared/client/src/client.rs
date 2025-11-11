@@ -562,6 +562,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                 tokio::spawn(async move {
                                 for param_name in param_names {
+                                    retried_downloads.wait_for_capacity().await;
+
                                     let router = router.clone();
 
                                     let result = blob_ticket_param_request_task(

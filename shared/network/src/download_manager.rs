@@ -61,6 +61,9 @@ pub enum RetriedDownloadsMessage {
     DownloadSucceeded {
         hash: Hash,
     },
+    WaitForCapacity {
+        response: oneshot::Sender<()>,
+    },
 }
 
 /// Handler to interact with the retried downloads actor
@@ -89,6 +92,14 @@ impl RetriedDownloadsHandle {
             blob_ticket,
             request_type,
         });
+    }
+
+    pub async fn wait_for_capacity(&self) {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(RetriedDownloadsMessage::WaitForCapacity { response: tx })
+            .unwrap();
+        let _ = rx.await;
     }
 
     pub fn download_succeeded(&self, hash: Hash) {
@@ -174,6 +185,7 @@ struct RetriedDownloadsActor {
     current_parameter_tickets: Vec<(BlobTicket, ModelRequestType)>,
     tx_start_download: mpsc::UnboundedSender<(BlobTicket, ModelRequestType)>,
     current_downloads: usize,
+    waiting_requesters: Vec<oneshot::Sender<()>>,
 }
 
 impl RetriedDownloadsActor {
@@ -183,6 +195,7 @@ impl RetriedDownloadsActor {
             current_parameter_tickets: Vec::new(),
             tx_start_download,
             current_downloads: 0,
+            waiting_requesters: Vec::new(),
         }
     }
 
@@ -191,6 +204,16 @@ impl RetriedDownloadsActor {
             RetriedDownloadsMessage::InsertRetry { info } => {
                 let hash = info.ticket.hash();
                 self.retry_downloads.insert(hash, info);
+            }
+
+            RetriedDownloadsMessage::WaitForCapacity { response } => {
+                if self.current_downloads < MAX_CONCURRENT_PARAMETER_REQUESTS {
+                    // Can proceed immediately
+                    let _ = response.send(());
+                } else {
+                    // Queue the waiter
+                    self.waiting_requesters.push(response);
+                }
             }
 
             RetriedDownloadsMessage::AddParameter {
