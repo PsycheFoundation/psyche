@@ -124,57 +124,40 @@ impl SolanaTestClient {
         false
     }
 
-    /// Sets the paused state of the run by executing the set-paused command.
-    ///
-    /// This method creates a temporary container that mounts the keypair file and script
-    /// to execute the set-paused command with the run owner's authority.
-    pub async fn set_paused(
-        docker: Arc<Docker>,
-        run_id: &str,
-        paused: bool,
-        keypair_host_path: &str,
-    ) -> Result<()> {
+    /// Sets the paused state of the run by executing the pause/resume command.
+    /// Creates a temporary container that runs pause/resume as the run owner.
+    pub async fn set_paused(docker: Arc<Docker>, run_id: &str, paused: bool) -> Result<()> {
         use bollard::secret::HostConfig;
 
         let wallet_path = "/tmp/run-owner-keypair.json";
-        let script_path = "/tmp/set-paused.sh";
         let rpc = "http://psyche-solana-test-validator:8899";
         let ws_rpc = "ws://psyche-solana-test-validator:8900";
 
         let temp_container_name = format!("test-psyche-run-owner-temp-{}", std::process::id());
         let network_name = "test_psyche-test-network";
 
-        // Verify keypair exists
-        if !std::path::Path::new(keypair_host_path).exists() {
-            return Err(anyhow::anyhow!(
-                "Keypair file not found at: {}",
-                keypair_host_path
-            ));
-        }
-
-        // Get absolute path to the script from the workspace root
-        let script_host_path = std::env::current_dir()?
-            .join("../../../scripts/set-paused.sh")
+        // Get absolute path to the run owner keypair from the workspace root
+        let keypair_host_path = std::env::current_dir()?
+            .join("../../../docker/test/keypairs/run_owner.json")
             .canonicalize()
             .map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to find script at ../../../scripts/set-paused.sh: {}",
+                    "Failed to find run owner keypair at ../../../docker/test/keypairs/run_owner.json: {}",
                     e
                 )
             })?
             .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Failed to convert script path to string"))?
+            .ok_or_else(|| anyhow::anyhow!("Failed to convert keypair path to string"))?
             .to_string();
-        println!(
-            "Mounting script from {} to {}",
-            script_host_path, script_path
-        );
 
-        // Mount both keypair and script
-        let binds = vec![
-            format!("{}:{}", keypair_host_path, wallet_path),
-            format!("{}:{}", script_host_path, script_path),
-        ];
+        let entrypoint_path = if paused {
+            "/bin/pause_entrypoint.sh"
+        } else {
+            "/bin/resume_entrypoint.sh"
+        };
+
+        // Mount the keypair
+        let binds = vec![format!("{}:{}", keypair_host_path, wallet_path)];
 
         let host_config = HostConfig {
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
@@ -183,16 +166,12 @@ impl SolanaTestClient {
             ..Default::default()
         };
 
-        // Run the script with parameters
-        let paused_str = if paused { "true" } else { "false" };
-        let cmd = vec![
-            "sh".to_string(),
-            script_path.to_string(),
-            run_id.to_string(),
-            paused_str.to_string(),
-            wallet_path.to_string(),
-            rpc.to_string(),
-            ws_rpc.to_string(),
+        // Build environment variables for the entrypoint script
+        let env_vars = vec![
+            format!("RUN_ID={}", run_id),
+            format!("WALLET_FILE={}", wallet_path),
+            format!("RPC={}", rpc),
+            format!("WS_RPC={}", ws_rpc),
         ];
 
         // Create and start the container
@@ -201,10 +180,9 @@ impl SolanaTestClient {
             docker.clone(),
             temp_container_name.clone(),
             "psyche-solana-test-client-no-python",
-            vec![],
+            env_vars,
             host_config,
-            Some(vec![]), // Clear the default entrypoint
-            Some(cmd),
+            Some(vec![entrypoint_path]),
         )
         .await?;
 

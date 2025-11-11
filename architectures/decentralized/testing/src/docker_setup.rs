@@ -166,15 +166,11 @@ pub async fn create_and_start_container(
     env_vars: Vec<String>,
     host_config: HostConfig,
     entrypoint: Option<Vec<&str>>,
-    cmd: Option<Vec<String>>,
 ) -> Result<String, DockerWatcherError> {
     let options = Some(CreateContainerOptions {
         name: container_name.clone(),
         platform: None,
     });
-
-    // Convert cmd to Vec<&str> with proper lifetime
-    let cmd: Option<Vec<&str>> = cmd.as_ref().map(|c| c.iter().map(|s| s.as_str()).collect());
 
     let mut config = Config {
         image: Some(image),
@@ -185,10 +181,6 @@ pub async fn create_and_start_container(
 
     if let Some(entrypoint) = entrypoint {
         config.entrypoint = Some(entrypoint);
-    }
-
-    if let Some(cmd) = cmd {
-        config.cmd = Some(cmd);
     }
 
     docker_client
@@ -284,10 +276,6 @@ pub async fn spawn_new_client_with_options(
         let container_keypair_path = "/root/.config/solana/id.json";
         binds.push(format!("{}:{}", host_keypair_path, container_keypair_path));
     }
-    // if let Some(config) = config_path {
-    // let container_config_path = "/usr/local/config.toml";
-    // binds.push(format!("{}:{}", config, container_config_path));
-    // }
 
     let host_config = build_host_config(
         network_name,
@@ -303,7 +291,6 @@ pub async fn spawn_new_client_with_options(
         "psyche-solana-test-client-no-python",
         envs,
         host_config,
-        None,
         None,
     )
     .await
@@ -483,16 +470,11 @@ pub async fn kill_all_clients(docker: &Docker, signal: &str) {
 }
 
 /// Pause the run and verify it reaches Paused state
-pub async fn pause_and_verify(
-    docker: Arc<Docker>,
-    run_id: &str,
-    keypair_path: &str,
-    solana_client: &SolanaTestClient,
-) {
+pub async fn pause_and_verify(docker: Arc<Docker>, run_id: &str, solana_client: &SolanaTestClient) {
     use psyche_coordinator::RunState;
 
     println!("Pausing the run...");
-    SolanaTestClient::set_paused(docker, run_id, true, keypair_path)
+    SolanaTestClient::set_paused(docker, run_id, true)
         .await
         .expect("Failed to pause run");
 
@@ -514,9 +496,9 @@ pub async fn pause_and_verify(
 }
 
 /// Resumes a paused run
-pub async fn resume_run(docker: Arc<Docker>, owner_keypair_path: &str, run_id: &str) {
+pub async fn resume_run(docker: Arc<Docker>, run_id: &str) {
     println!("Resuming the run...");
-    SolanaTestClient::set_paused(docker, run_id, false, owner_keypair_path)
+    SolanaTestClient::set_paused(docker, run_id, false)
         .await
         .expect("Failed to resume run");
     println!("Run resumed!");

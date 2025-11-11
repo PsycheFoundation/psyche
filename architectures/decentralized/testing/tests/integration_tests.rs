@@ -1102,12 +1102,9 @@ async fn test_pause_and_resume_run() {
     let test_package_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = test_package_dir.join("../../..");
     let client_keypair_path = workspace_root.join("docker/test/keypairs/client.json");
-    let run_owner_keypair_path = workspace_root.join("docker/test/keypairs/run_owner.json");
 
     let client_keypair_path =
         std::fs::canonicalize(&client_keypair_path).expect("Failed to resolve client keypair path");
-    let run_owner_keypair_path = std::fs::canonicalize(&run_owner_keypair_path)
-        .expect("Failed to resolve run owner keypair path");
 
     // Path for docker-compose (relative to compose file location)
     let compose_config_path = PathBuf::from("../../config/solana-test/nano-one-min-clients.toml");
@@ -1160,13 +1157,7 @@ async fn test_pause_and_resume_run() {
 
                 // Wait a bit before pausing
                 if !paused && step > 3 && new_state == RunState::RoundTrain.to_string() {
-                    pause_and_verify(
-                        docker.clone(),
-                        &run_id,
-                        run_owner_keypair_path.to_str().unwrap(),
-                        &solana_client,
-                    )
-                    .await;
+                    pause_and_verify(docker.clone(), &run_id, &solana_client).await;
                     paused = true;
                     println!("Now waiting for coordinator to kick client-1...");
                 }
@@ -1212,12 +1203,7 @@ async fn test_pause_and_resume_run() {
                 if paused && !rejoined_client {
                     println!("Client kicked by coordinator!");
                     // Resume the run that was paused
-                    resume_run(
-                        docker.clone(),
-                        run_owner_keypair_path.to_str().unwrap(),
-                        &run_id,
-                    )
-                    .await;
+                    resume_run(docker.clone(), &run_id).await;
                     // Wait some time before rejoining just in case
                     tokio::time::sleep(Duration::from_secs(2)).await;
 
