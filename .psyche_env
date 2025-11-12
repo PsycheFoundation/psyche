@@ -1,0 +1,7 @@
+# .psyche_env
+RPC=http://localhost:8899
+WS_RPC=ws://localhost:8900
+RUN_ID=test
+NVIDIA_DRIVER_CAPABILITIES=all
+DATA_PARALLELISM=8
+MICRO_BATCH_SIZE=1

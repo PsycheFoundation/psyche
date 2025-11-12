@@ -1,7 +1,8 @@
 [config]
 warmup_time = 30
 cooldown_time = 30
-rounds_per_epoch = 20
+rounds_per_epoch = 10
+epoch_time = 60
 max_round_train_time = 30
 round_witness_time = 1
 min_clients = 1
@@ -28,6 +29,7 @@ shuffle = "DontShuffle"
 [model.LLM.data_location.Http.location.Gcp]
 bucket_name = "nous-pretraining-public-us"
 filter_directory = "fineweb-edu-tokenized-llama2"
+
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 250

@@ -245,6 +245,7 @@ pub struct CoordinatorConfig {
     pub global_batch_size_warmup_tokens: u64,
 
     pub rounds_per_epoch: u32,
+    pub epoch_time: u64,
     pub total_steps: u32,
 
     pub init_min_clients: u16,
@@ -274,6 +275,7 @@ pub struct CoordinatorEpochState<T> {
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub rounds_head: u32,
     pub start_step: u32,
+    pub start_timestamp: u64,
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
@@ -412,6 +414,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
+            start_timestamp: Default::default(),
         }
     }
 }
@@ -918,6 +921,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.epoch_state.first_round = true.into();
             self.epoch_state.cold_start_epoch = cold_start_epoch;
             self.epoch_state.start_step = self.progress.step;
+            self.epoch_state.start_timestamp = unix_timestamp;
             self.epoch_state
                 .clients
                 .extend(
@@ -989,7 +993,9 @@ impl<T: NodeIdentity> Coordinator<T> {
 
             // If we reach the end of an epoch or if we don't reach the min number of
             // clients or registered witnesses for the current round, we change to Cooldown
-            if height == self.config.rounds_per_epoch - 1
+
+            // if height == self.config.rounds_per_epoch - 1
+            if self.check_epoch_timeout(unix_timestamp)
                 || self.epoch_state.clients.len() < self.config.min_clients as usize
                 || num_witnesses < self.witness_quorum(num_witnesses)
                 || self.pending_pause.is_true()
@@ -1044,6 +1050,11 @@ impl<T: NodeIdentity> Coordinator<T> {
     fn check_timeout(&self, unix_timestamp: u64, duration: u64) -> bool {
         self.run_state_start_unix_timestamp != unix_timestamp
             && unix_timestamp >= duration + self.run_state_start_unix_timestamp
+    }
+
+    fn check_epoch_timeout(&self, unix_timestamp: u64) -> bool {
+        self.epoch_state.start_timestamp != unix_timestamp
+            && unix_timestamp >= self.epoch_state.start_timestamp + self.config.epoch_time
     }
 
     fn start_cooldown(&mut self, unix_timestamp: u64) {
