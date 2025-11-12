@@ -4,13 +4,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iroh::NodeId;
+use iroh::EndpointId;
 
 use crate::{P2PNodeInfo, download_manager::DownloadUpdate};
 
 #[derive(Debug)]
 pub struct State {
-    pub node_id: Option<NodeId>,
+    pub node_id: Option<EndpointId>,
     pub node_connections: Vec<P2PNodeInfo>,
     pub bandwidth_tracker: BandwidthTracker,
     pub bandwidth_history: VecDeque<f64>,
@@ -38,7 +38,7 @@ struct DownloadEvent {
 #[derive(Debug)]
 pub struct BandwidthTracker {
     average_period_secs: u64,
-    events: HashMap<NodeId, VecDeque<DownloadEvent>>,
+    events: HashMap<EndpointId, VecDeque<DownloadEvent>>,
 }
 
 impl BandwidthTracker {
@@ -49,7 +49,7 @@ impl BandwidthTracker {
         }
     }
 
-    pub fn add_event(&mut self, from: NodeId, num_bytes: u64) {
+    pub fn add_event(&mut self, from: EndpointId, num_bytes: u64) {
         let now = Instant::now();
         let events = self.events.entry(from).or_default();
         events.push_back(DownloadEvent {
@@ -66,7 +66,7 @@ impl BandwidthTracker {
         }
     }
 
-    pub fn get_bandwidth_by_node(&self, id: &NodeId) -> Option<f64> {
+    pub fn get_bandwidth_by_node(&self, id: &EndpointId) -> Option<f64> {
         self.events.get(id).map(node_bandwidth)
     }
 

@@ -65,11 +65,11 @@ futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }
 fast-math = "0.1"
 async-trait = "0.1.82"
-iroh = { version = "0.93.2", features = ["metrics"] }
-iroh-relay = { version = "0.93.2", features = ["metrics"] }
-iroh-blobs = { version = "0.95.0", features = ["metrics"] }
+iroh = { version = "0.94.0", features = ["metrics"] }
+iroh-relay = { version = "0.94.0", features = ["metrics"] }
+iroh-blobs = { version = "0.96.0", features = ["metrics"] }
 flume = "0.11.1"
-iroh-gossip = { version = "0.93.1" }
+iroh-gossip = { version = "0.94.0" }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
@@ -107,11 +107,6 @@ test-log = { version = "0.2.16", features = ["trace"] }
 pretty_assertions = "1.4.1"
 serial_test = "3.2.0"
 rstest = "0.25.0"
-
-[patch.crates-io]
-iroh = { version = "0.93.2", git = "https://github.com/arilotter/iroh", rev = "ca67ba14f6e1d9db7cb7083acf9bb03cdf71c3ea" }
-iroh-base = { version = "0.93.2", git = "https://github.com/arilotter/iroh", rev = "ca67ba14f6e1d9db7cb7083acf9bb03cdf71c3ea" }
-iroh-relay = { version = "0.93.2", git = "https://github.com/arilotter/iroh", rev = "ca67ba14f6e1d9db7cb7083acf9bb03cdf71c3ea" }
 
 [profile.dev]
 opt-level = 1

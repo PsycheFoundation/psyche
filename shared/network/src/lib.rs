@@ -3,7 +3,7 @@ use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
-use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
+use iroh::{endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::api::Tag;
 use iroh_blobs::{
     BlobsProtocol,
@@ -49,7 +49,9 @@ use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519::Signature;
-pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
+pub use iroh::{
+    EndpointAddr, EndpointId, RelayMode, discovery::dns::DnsDiscovery, endpoint::ConnectionType,
+};
 pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
@@ -78,7 +80,7 @@ pub use download_manager::{
     RetriedDownloadsHandle, TransmittableDownload,
 };
 pub use iroh::{Endpoint, PublicKey, SecretKey};
-use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
+use iroh_relay::{RelayConfig, RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
     ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
@@ -111,7 +113,7 @@ pub enum DiscoveryMode {
 
 #[derive(Debug, Clone)]
 pub struct P2PNodeInfo {
-    pub node_id: NodeId,
+    pub node_id: EndpointId,
     pub path: ConnectionType,
     pub bandwidth: f64,
     pub latency: f64,
@@ -182,7 +184,7 @@ where
         port: Option<u16>,
         interface: Option<String>,
         discovery_mode: DiscoveryMode,
-        bootstrap_peers: Vec<NodeAddr>,
+        bootstrap_peers: Vec<EndpointAddr>,
         secret_key: Option<SecretKey>,
         allowlist: A,
         metrics: Arc<ClientMetrics>,
@@ -222,7 +224,7 @@ where
             Ipv4Addr::new(0, 0, 0, 0)
         };
 
-        let bootstrap_node_ids = bootstrap_peers.iter().map(|p| p.node_id).collect();
+        let bootstrap_node_ids = bootstrap_peers.iter().map(|p| p.id).collect();
 
         let endpoint = {
             let mut transport_config = TransportConfig::default();
@@ -243,7 +245,7 @@ where
                 DiscoveryMode::Local => {
                     endpoint.discovery(local_discovery::LocalTestDiscovery::new(public_key))
                 }
-                DiscoveryMode::N0 => endpoint.discovery_n0(),
+                DiscoveryMode::N0 => endpoint.discovery(DnsDiscovery::n0_dns()),
             };
 
             endpoint.bind().await?
@@ -264,9 +266,9 @@ where
             }
         }
 
-        let node_addr = endpoint.node_addr();
+        let node_addr = endpoint.addr();
 
-        info!("Our node id: {}", node_addr.node_id);
+        info!("Our node id: {}", node_addr.id);
         trace!("creating blobs store...");
 
         let gc_interval: u64 = std::env::var("BLOBS_GC_INTERVAL_MILLIS")
@@ -350,17 +352,17 @@ where
         self.router.shutdown().await
     }
 
-    pub fn node_id(&self) -> NodeId {
-        self.router.endpoint().node_id()
+    pub fn node_id(&self) -> EndpointId {
+        self.router.endpoint().id()
     }
 
-    pub fn is_allowlisted<A: Allowlist>(node_id: &NodeId, allowlist: &A) -> bool {
+    pub fn is_allowlisted<A: Allowlist>(node_id: &EndpointId, allowlist: &A) -> bool {
         allowlist.allowed(*node_id)
     }
 
     /// Don't call this often / with many peers!
     /// It can force disconnection of other gossip peers if we have too many.
-    pub fn add_peers(&self, peers: Vec<NodeId>) {
+    pub fn add_peers(&self, peers: Vec<EndpointId>) {
         let peer_list = peers
             .iter()
             .map(|n| n.fmt_short().to_string())
@@ -368,7 +370,7 @@ where
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
         let gossip_tx = self.gossip_tx.clone();
-        let node_id = self.router.endpoint().node_id();
+        let node_id = self.router.endpoint().id();
         tokio::task::spawn(
             async move {
                 if let Err(err) = gossip_tx
@@ -398,7 +400,7 @@ where
     }
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: Tag, download_type: DownloadType) {
-        let provider_node_id = ticket.node_addr().clone();
+        let provider_node_id = ticket.addr().clone();
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
             DownloadType::DistroResult(peers) => peers,
@@ -413,7 +415,7 @@ where
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let latency_sorted = LatencySorted::new(
-            std::iter::once(provider_node_id.node_id)
+            std::iter::once(provider_node_id.id)
                 .chain(additional_peers_to_try.iter().cloned())
                 .collect(),
             self.endpoint.clone(),
@@ -445,7 +447,7 @@ where
             .add_bytes(blob_data.clone())
             .with_named_tag(tag)
             .await?;
-        let addr = self.router.endpoint().node_addr();
+        let addr = self.router.endpoint().addr();
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
         debug!(
             name: "blob_upload",
@@ -516,38 +518,38 @@ where
         Ok(())
     }
 
-    pub async fn node_addr(&self) -> NodeAddr {
-        self.router.endpoint().node_addr()
+    pub async fn node_addr(&self) -> EndpointAddr {
+        self.router.endpoint().addr()
     }
 
     pub fn remote_infos(&self) -> Vec<P2PNodeInfo> {
         std::iter::once(P2PNodeInfo {
-            node_id: self.endpoint.node_id(),
+            node_id: self.endpoint.id(),
             bandwidth: 0.0,
             path: ConnectionType::None,
             latency: 0.0,
         })
-        .chain(self.endpoint.connections().into_iter().map(|node_id| {
-            let bandwidth = self
-                .state
-                .bandwidth_tracker
-                .get_bandwidth_by_node(&node_id)
-                .unwrap_or_default();
-            P2PNodeInfo {
-                node_id,
-                path: self
-                    .endpoint
-                    .conn_type(node_id)
-                    .map(|mut c| c.get())
-                    .unwrap_or(ConnectionType::None),
-                bandwidth,
-                latency: self
-                    .endpoint
-                    .latency(node_id)
-                    .unwrap_or(Duration::MAX)
-                    .as_secs_f64(),
-            }
-        }))
+        // .chain(self.endpoint.msock.ids().into_iter().map(|node_id| {
+        //     let bandwidth = self
+        //         .state
+        //         .bandwidth_tracker
+        //         .get_bandwidth_by_node(&node_id)
+        //         .unwrap_or_default();
+        //     P2PNodeInfo {
+        //         node_id,
+        //         path: self
+        //             .endpoint
+        //             .conn_type(node_id)
+        //             .map(|mut c| c.get())
+        //             .unwrap_or(ConnectionType::None),
+        //         bandwidth,
+        //         latency: self
+        //             .endpoint
+        //             .latency(node_id)
+        //             .unwrap_or(Duration::MAX)
+        //             .as_secs_f64(),
+        //     }
+        // }))
         .collect()
     }
 
@@ -594,10 +596,9 @@ where
         &mut self,
         update: DownloadUpdate,
     ) -> Option<NetworkEvent<BroadcastMessage, Download>> {
-        self.state.bandwidth_tracker.add_event(
-            update.blob_ticket.node_addr().node_id,
-            update.downloaded_size_delta,
-        );
+        self.state
+            .bandwidth_tracker
+            .add_event(update.blob_ticket.addr().id, update.downloaded_size_delta);
 
         let hash = update.blob_ticket.hash();
 
@@ -632,14 +633,14 @@ where
         self.router.clone()
     }
 
-    pub fn neighbors(&self) -> impl Iterator<Item = NodeId> + '_ {
+    pub fn neighbors(&self) -> impl Iterator<Item = EndpointId> + '_ {
         self.gossip_rx.neighbors()
     }
 }
 
 pub async fn request_model_blob_ticket(
     router: Arc<Router>,
-    node_addr: NodeId,
+    node_addr: EndpointId,
     request_type: &ModelRequestType,
 ) -> Result<BlobTicket> {
     let conn = router
@@ -731,7 +732,7 @@ async fn on_update_stats(
     remote_infos: Vec<P2PNodeInfo>,
     stats: &mut State,
 ) -> Result<()> {
-    stats.node_id = Some(endpoint.node_id());
+    stats.node_id = Some(endpoint.id());
 
     stats.node_connections = remote_infos;
 
@@ -751,23 +752,23 @@ pub fn psyche_relay_map() -> RelayMap {
     RelayMap::from_iter([psyche_use_relay_node(), psyche_usw_relay_node()])
 }
 
-/// Get the Psyche [`RelayNode`] for US East.
-pub fn psyche_use_relay_node() -> RelayNode {
+/// Get the Psyche [`RelayConfig`] for US East.
+pub fn psyche_use_relay_node() -> RelayConfig {
     let url: Url = format!("https://{USE_RELAY_HOSTNAME}")
         .parse()
         .expect("default url");
-    RelayNode {
+    RelayConfig {
         url: url.into(),
         quic: Some(RelayQuicConfig::default()),
     }
 }
 
-/// Get the Psyche [`RelayNode`] for US West.
-pub fn psyche_usw_relay_node() -> RelayNode {
+/// Get the Psyche [`RelayConfig`] for US West.
+pub fn psyche_usw_relay_node() -> RelayConfig {
     let url: Url = format!("https://{USW_RELAY_HOSTNAME}")
         .parse()
         .expect("default_url");
-    RelayNode {
+    RelayConfig {
         url: url.into(),
         quic: Some(RelayQuicConfig::default()),
     }

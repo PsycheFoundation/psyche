@@ -1,4 +1,4 @@
-use iroh::PublicKey;
+use iroh::{PublicKey, Signature};
 use std::{
     fmt::{Debug, Display},
     hash::Hash,
@@ -31,9 +31,9 @@ pub trait AuthenticatableIdentity:
     fn raw_p2p_sign(&self, private_key: &Self::PrivateKey, bytes: &[u8]) -> [u8; 64];
 }
 
-pub fn raw_p2p_verify(signer: &[u8; 32], bytes: &[u8], signature: &[u8; 64]) -> bool {
+pub fn raw_p2p_verify(signer: &[u8; 32], bytes: &[u8], signature: &Signature) -> bool {
     if let Ok(public) = PublicKey::from_bytes(signer) {
-        return public.verify(bytes, &signature.into()).is_ok();
+        return public.verify(bytes, &signature).is_ok();
     }
     false
 }

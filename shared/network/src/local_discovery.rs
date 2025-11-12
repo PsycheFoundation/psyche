@@ -1,7 +1,7 @@
 use futures_util::{Stream, stream};
-use iroh::NodeId;
+use iroh::EndpointId;
 use iroh::discovery::{DiscoveryError, DiscoveryItem};
-use iroh::node_info::{NodeData, NodeInfo};
+use iroh::endpoint_info::{EndpointData, EndpointInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
@@ -13,7 +13,7 @@ use tracing::error;
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
 
 #[derive(Debug)]
-pub(crate) struct LocalTestDiscovery(NodeId);
+pub(crate) struct LocalTestDiscovery(EndpointId);
 
 #[derive(Serialize, Deserialize)]
 struct StoredNodeInfo {
@@ -22,28 +22,34 @@ struct StoredNodeInfo {
 }
 
 impl LocalTestDiscovery {
-    pub fn new(node_id: NodeId) -> Self {
-        Self(node_id)
+    pub fn new(endpoint_id: EndpointId) -> Self {
+        Self(endpoint_id)
     }
     fn get_discovery_dir() -> PathBuf {
         PathBuf::from("/tmp/iroh_local_discovery")
     }
 
-    fn get_node_file_path(node_id: &NodeId) -> PathBuf {
-        Self::get_discovery_dir().join(node_id.to_string())
+    fn get_node_file_path(endpoint_id: &EndpointId) -> PathBuf {
+        Self::get_discovery_dir().join(endpoint_id.to_string())
     }
 }
 
 impl iroh::discovery::Discovery for LocalTestDiscovery {
-    fn publish(&self, data: &NodeData) {
+    fn publish(&self, data: &EndpointData) {
         // Create discovery directory if it doesn't exist
         let discovery_dir = Self::get_discovery_dir();
         fs::create_dir_all(&discovery_dir).expect("Failed to create discovery directory");
 
         // Prepare node info for storage
+        let relay = data.relay_urls().next();
+        let relay_str: Option<String>;
+        match relay {
+            Some(url) => relay_str = Some(url.to_string()),
+            None => relay_str = None,
+        }
         let node_info = StoredNodeInfo {
-            relay_url: data.relay_url().map(|u| u.to_string()),
-            direct_addresses: data.direct_addresses().iter().cloned().collect(),
+            relay_url: relay_str,
+            direct_addresses: data.ip_addrs().cloned().collect(),
         };
 
         // Serialize and write to file
@@ -54,12 +60,12 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
 
     fn resolve(
         &self,
-        node_id: iroh::NodeId,
+        endpoint_id: iroh::EndpointId,
     ) -> Option<BoxStream<anyhow::Result<DiscoveryItem, DiscoveryError>>> {
-        let file_path = Self::get_node_file_path(&node_id);
+        let file_path = Self::get_node_file_path(&endpoint_id);
 
         if !file_path.exists() {
-            error!("no local node filepath found for node id {node_id} at {file_path:?}");
+            error!("no local node filepath found for node id {endpoint_id} at {file_path:?}");
             return None;
         }
 
@@ -82,9 +88,11 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
         let direct_addresses: BTreeSet<_> = node_info.direct_addresses.into_iter().collect();
 
         let discovery_item = iroh::discovery::DiscoveryItem::new(
-            NodeInfo {
-                node_id,
-                data: NodeData::new(relay_url, direct_addresses),
+            EndpointInfo {
+                endpoint_id,
+                data: EndpointData::new(None)
+                    .with_relay_url(relay_url)
+                    .with_ip_addrs(direct_addresses),
             },
             "local_test_discovery",
             Some(

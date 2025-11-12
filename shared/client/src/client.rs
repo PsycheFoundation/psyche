@@ -6,13 +6,14 @@ use crate::{
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use futures::future::join_all;
+use iroh::Signature;
 use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState, NodeId,
+    EndpointId, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState,
     PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload, allowlist,
     blob_ticket_param_request_task, raw_p2p_verify,
 };
@@ -237,7 +238,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         let broadcast_step = broadcast.step;
                                         let broadcast_kind = broadcast.data.kind();
                                         if let Some(client) = watcher.get_client_for_p2p_public_key(from.as_bytes()) {
-                                            if raw_p2p_verify(from.as_bytes(), &broadcast.commitment.data_hash, &broadcast.commitment.signature) {
+                                            if raw_p2p_verify(from.as_bytes(), &broadcast.commitment.data_hash, &Signature::from_bytes(&broadcast.commitment.signature)) {
                                                 match &broadcast.data {
                                                     BroadcastType::TrainingResult(training_result) => {
                                                         trace!("Got training result gossip message from {from}: step {} batch id {}", broadcast.step, training_result.batch_id);
@@ -313,12 +314,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
                                                 let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
-                                                peer_manager.report_blob_ticket_request_error(dl.blob_ticket.node_addr().node_id, Some(dl.blob_ticket.clone()));
+                                                peer_manager.report_blob_ticket_request_error(dl.blob_ticket.addr().id, Some(dl.blob_ticket.clone()));
 
                                                 info!(
                                                     "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
                                                     retries + 1,
-                                                    dl.blob_ticket.node_addr().node_id,
+                                                    dl.blob_ticket.addr().id,
                                                     backoff_duration,
                                                     dl.error
                                                 );
@@ -608,8 +609,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 return Ok(());
                             };
 
-                            let me = NodeId::from_bytes(identity.get_p2p_public_key())?;
-                            let peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state)
+                            let me = EndpointId::from_bytes(identity.get_p2p_public_key())?;
+                            let peer_ids: Vec<EndpointId> = participating_node_ids(&coordinator_state)
                                 .into_iter()
                                 .filter(|peer_id| peer_id != &me)
                                 .collect();
@@ -781,16 +782,16 @@ fn ensure_gossip_connected<T: NodeIdentity>(
     }
 }
 
-fn participating_node_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId> {
+fn participating_node_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
     state
         .epoch_state
         .clients
         .iter()
-        .map(|c| NodeId::from_bytes(c.id.get_p2p_public_key()).unwrap())
+        .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap())
         .collect()
 }
 
-fn all_node_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId> {
+fn all_node_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
     let mut addrs = participating_node_ids(state);
     addrs.shuffle(&mut rand::rng());
     addrs

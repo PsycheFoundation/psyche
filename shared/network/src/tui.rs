@@ -1,7 +1,7 @@
 use crate::{NetworkConnection, Networkable, P2PNodeInfo, util::fmt_bytes};
 
 use futures_util::StreamExt;
-use iroh::{NodeId, endpoint::ConnectionType};
+use iroh::{EndpointId, endpoint::ConnectionType};
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -203,7 +203,7 @@ pub struct UIDownloadProgress {
 
 #[derive(Default, Debug, Clone)]
 pub struct NetworkTUIStateInner {
-    pub node_id: Option<NodeId>,
+    pub node_id: Option<EndpointId>,
     pub node_connections: Vec<P2PNodeInfo>,
     // pub data_per_sec_per_client: HashMap<PublicKey, f64>,
     pub total_data_per_sec: f64,
