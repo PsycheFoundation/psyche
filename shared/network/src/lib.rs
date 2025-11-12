@@ -9,7 +9,7 @@ use iroh_blobs::{
     BlobsProtocol,
     api::downloader::Downloader,
     store::{
-        fs::options::GcConfig,
+        GcConfig,
         mem::{MemStore, Options as MemStoreOptions},
     },
 };

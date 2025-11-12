@@ -65,11 +65,11 @@ futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }
 fast-math = "0.1"
 async-trait = "0.1.82"
-iroh = { version = "0.94.0", features = ["metrics"] }
-iroh-relay = { version = "0.94.0", features = ["metrics"] }
-iroh-blobs = { version = "0.96.0", features = ["metrics"] }
+iroh = { version = "0.95.0", features = ["metrics"] }
+iroh-relay = { version = "0.95.0", features = ["metrics"] }
+iroh-blobs = { version = "0.97.0", features = ["metrics"] }
 flume = "0.11.1"
-iroh-gossip = { version = "0.94.0" }
+iroh-gossip = { version = "0.95.0" }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
