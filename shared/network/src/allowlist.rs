@@ -1,24 +1,24 @@
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
-use iroh::NodeId;
+use iroh::EndpointId;
 
 pub trait Allowlist: std::fmt::Debug + Clone {
-    fn allowed(&self, addr: NodeId) -> bool;
+    fn allowed(&self, addr: EndpointId) -> bool;
 }
 
 #[derive(Debug, Clone)]
 pub struct AllowAll;
 
 impl Allowlist for AllowAll {
-    fn allowed(&self, _addr: NodeId) -> bool {
+    fn allowed(&self, _addr: EndpointId) -> bool {
         true
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct AllowDynamic {
-    allowed_nodes: Arc<RwLock<HashSet<NodeId>>>,
+    allowed_nodes: Arc<RwLock<HashSet<EndpointId>>>,
 }
 
 impl AllowDynamic {
@@ -28,27 +28,27 @@ impl AllowDynamic {
         }
     }
 
-    pub fn with_nodes(nodes: impl IntoIterator<Item = NodeId>) -> Self {
+    pub fn with_nodes(nodes: impl IntoIterator<Item = EndpointId>) -> Self {
         AllowDynamic {
             allowed_nodes: Arc::new(RwLock::new(nodes.into_iter().collect())),
         }
     }
 
-    pub fn add(&self, addr: NodeId) {
+    pub fn add(&self, addr: EndpointId) {
         self.allowed_nodes
             .write()
             .expect("RwLock poisoned")
             .insert(addr);
     }
 
-    pub fn remove(&self, addr: &NodeId) {
+    pub fn remove(&self, addr: &EndpointId) {
         self.allowed_nodes
             .write()
             .expect("RwLock poisoned")
             .remove(addr);
     }
 
-    pub fn set(&self, nodes: impl IntoIterator<Item = NodeId>) {
+    pub fn set(&self, nodes: impl IntoIterator<Item = EndpointId>) {
         *self.allowed_nodes.write().expect("RwLock poisoned") = nodes.into_iter().collect();
     }
 
@@ -58,7 +58,7 @@ impl AllowDynamic {
 }
 
 impl Allowlist for AllowDynamic {
-    fn allowed(&self, addr: NodeId) -> bool {
+    fn allowed(&self, addr: EndpointId) -> bool {
         self.allowed_nodes
             .read()
             .expect("RwLock poisoned")

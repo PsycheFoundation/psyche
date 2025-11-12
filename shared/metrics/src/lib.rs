@@ -132,7 +132,7 @@ pub enum ConnectionType {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct PeerConnection {
-    pub node_id: String,
+    pub endpoint_id: String,
     pub connection_type: ConnectionType,
     pub latency: f32,
 }

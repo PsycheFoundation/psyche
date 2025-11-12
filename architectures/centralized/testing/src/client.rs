@@ -63,7 +63,7 @@ impl Client {
         p2p: NC,
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
-        debug!("spawned new client: {:?}", p2p.node_addr().await);
+        debug!("spawned new client: {:?}", p2p.endpoint_addr().await);
         let client_run = self.inner.run(allowlist, p2p, state_options);
         tokio::pin!(client_run);
         loop {
