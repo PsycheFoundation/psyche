@@ -260,7 +260,7 @@ async fn async_main() -> Result<()> {
         } => print_identity_keys(identity_secret_key_path.as_ref()),
         Commands::CreateStaticP2PIdentity { save_path } => {
             let identity_secret_key = SecretKey::generate(&mut rand::rng());
-            std::fs::write(&save_path, identity_secret_key.secret().as_bytes())?;
+            std::fs::write(&save_path, identity_secret_key.to_bytes())?;
             print_identity_keys(Some(&save_path))?;
             println!("Wrote secret key to {}", save_path.display());
             Ok(())

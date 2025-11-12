@@ -39,7 +39,7 @@ pub fn print_identity_keys(key: Option<&PathBuf>) -> Result<()> {
         anyhow!("Use --identity-secret-key-path or use `RAW_IDENTITY_SECRET_KEY` env variable")
     })?;
     println!("Public key: {}", key.public());
-    println!("Secret key: {}", hex::encode(key.secret().as_bytes()));
+    println!("Secret key: {}", hex::encode(key.to_bytes()));
     Ok(())
 }
 
