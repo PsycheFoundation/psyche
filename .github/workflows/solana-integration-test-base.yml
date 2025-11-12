@@ -117,7 +117,7 @@ jobs:
           echo "Checking for required Docker images"
           docker images
           docker images | grep psyche-solana-test-validator || (echo "ERROR: psyche-solana-test-validator image not found" && exit 1)
-          docker images | grep psyche-solana-test-client-no-python || (echo "ERROR: psyche-solana-test-client-no-python image not found" && exit 1)
+          docker images | grep psyche-solana-test-client || (echo "ERROR: psyche-solana-test-client image not found" && exit 1)
           echo "All required images are present"
 
           echo "Final disk usage before tests"

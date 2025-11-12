@@ -33,55 +33,57 @@ let
     {
       imageName,
       solanaClientPackage,
+      usePython ? false,
     }:
     pkgs.dockerTools.streamLayeredImage {
       name = imageName;
       tag = "latest";
-
-      contents = with pkgs; [
-        solana
-        bashInteractive
-        busybox
-        cacert
-        solanaClientPackage
-        externalRustPackages.solana_toolbox_cli
-        jq
-
-        # Create proper system structure including /tmp
-        (pkgs.runCommand "system-setup" { } ''
-          mkdir -p $out/etc $out/tmp $out/var/tmp $out/run
-
-          # Create basic passwd and group files
-          cat > $out/etc/passwd << EOF
-            root:x:0:0:root:/root:/bin/bash
-            nobody:x:65534:65534:nobody:/nonexistent:/bin/false
-            EOF
-
-          cat > $out/etc/group << EOF
-            root:x:0:
-            nobody:x:65534:
-            EOF
-
-          # Set proper permissions for temp directories
-          chmod 1777 $out/tmp
-          chmod 1777 $out/var/tmp
-          chmod 755 $out/run
-        '')
-
-        (pkgs.runCommand "entrypoint" { } ''
-          mkdir -p $out/bin
-          cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
-          cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
-          cp ${../docker/test/resume_entrypoint.sh} $out/bin/resume_entrypoint.sh
-          cp ${../docker/test/pause_entrypoint.sh} $out/bin/pause_entrypoint.sh
-          cp ${../scripts/join-authorization-create.sh} $out/bin/join-authorization-create.sh
-          chmod +x $out/bin/client_test_entrypoint.sh
-          chmod +x $out/bin/run_owner_entrypoint.sh
-          chmod +x $out/bin/join-authorization-create.sh
-          chmod +x $out/bin/pause_entrypoint.sh
-          chmod +x $out/bin/resume_entrypoint.sh
-        '')
-      ];
+      contents =
+        with pkgs;
+        [
+          solana
+          bashInteractive
+          busybox
+          cacert
+          solanaClientPackage
+          externalRustPackages.solana_toolbox_cli
+          jq
+          # Create proper system structure including /tmp
+          (pkgs.runCommand "system-setup" { } ''
+            mkdir -p $out/etc $out/tmp $out/var/tmp $out/run
+            # Create basic passwd and group files
+            cat > $out/etc/passwd << EOF
+              root:x:0:0:root:/root:/bin/bash
+              nobody:x:65534:65534:nobody:/nonexistent:/bin/false
+              EOF
+            cat > $out/etc/group << EOF
+              root:x:0:
+              nobody:x:65534:
+              EOF
+            # Set proper permissions for temp directories
+            chmod 1777 $out/tmp
+            chmod 1777 $out/var/tmp
+            chmod 755 $out/run
+          '')
+          (pkgs.runCommand "entrypoint" { } ''
+            mkdir -p $out/bin
+            cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
+            cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
+            cp ${../docker/test/resume_entrypoint.sh} $out/bin/resume_entrypoint.sh
+            cp ${../docker/test/pause_entrypoint.sh} $out/bin/pause_entrypoint.sh
+            cp ${../scripts/join-authorization-create.sh} $out/bin/join-authorization-create.sh
+            chmod +x $out/bin/client_test_entrypoint.sh
+            chmod +x $out/bin/run_owner_entrypoint.sh
+            chmod +x $out/bin/resume_entrypoint.sh
+            chmod +x $out/bin/pause_entrypoint.sh
+            chmod +x $out/bin/join-authorization-create.sh
+          '')
+        ]
+        ++ lib.optionals usePython [
+          coreutils
+          stdenv.cc
+          rdma-core
+        ];
 
       config = {
         Env = [
@@ -92,6 +94,7 @@ let
           "TRITON_LIBCUDA_PATH=/usr/lib64"
           "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
+          "PYTHON_ENABLED=${if usePython then "true" else "false"}"
         ];
         Entrypoint = [ "/bin/client_test_entrypoint.sh" ];
       };
@@ -144,11 +147,13 @@ let
     docker-psyche-solana-test-client = mkSolanaTestClientImage {
       imageName = "psyche-solana-test-client";
       solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nixglhost";
+      usePython = true;
     };
 
     docker-psyche-solana-test-client-no-python = mkSolanaTestClientImage {
-      imageName = "psyche-solana-test-client-no-python";
+      imageName = "psyche-solana-test-client";
       solanaClientPackage = nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python";
+      usePython = false;
     };
 
     docker-psyche-solana-test-validator = pkgs.dockerTools.streamLayeredImage {

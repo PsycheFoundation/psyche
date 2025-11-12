@@ -1,6 +1,6 @@
 services:
   psyche-run-owner:
-    image: psyche-solana-test-client-no-python:latest
+    image: psyche-solana-test-client:latest
     depends_on:
       psyche-solana-test-validator:
         condition: service_healthy
@@ -16,7 +16,7 @@ services:
       - psyche-test-network
 
   psyche-test-client:
-    image: psyche-solana-test-client-no-python:latest
+    image: psyche-solana-test-client:latest
     depends_on:
       psyche-run-owner:
         condition: service_completed_successfully

@@ -7290,15 +7290,18 @@ dependencies = [
  "psyche-client",
  "psyche-coordinator",
  "psyche-core",
+ "psyche-python-extension-impl",
  "psyche-solana-coordinator",
  "rstest",
  "serde_json",
  "serial_test",
  "tar",
+ "tch",
  "test-log",
  "thiserror 2.0.17",
  "tokio",
  "tokio-util 0.7.16",
+ "toml 0.8.23",
 ]
 
 [[package]]
