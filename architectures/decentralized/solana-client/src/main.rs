@@ -546,8 +546,7 @@ async fn async_main() -> Result<()> {
                 sidecar_port: args.sidecar_port,
             })
             .build()
-            .await
-            .unwrap();
+            .await?;
 
             app.run().await?;
             logger.shutdown()?;

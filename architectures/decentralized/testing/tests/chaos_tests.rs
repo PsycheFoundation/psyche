@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use bollard::Docker;
 use psyche_client::IntegrationTestLogMarker;
@@ -36,16 +36,9 @@ async fn test_pause_solana_validator(
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, None).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(
-            docker.clone(),
-            2,
-            Some(PathBuf::from(
-                "../../config/solana-test/light-two-min-clients.toml",
-            )),
-        )
-        .await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client
@@ -131,16 +124,9 @@ async fn test_delay_solana_test_validator(
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, None).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(
-            docker.clone(),
-            2,
-            Some(PathBuf::from(
-                "../../config/solana-test/light-two-min-clients.toml",
-            )),
-        )
-        .await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client
@@ -222,16 +208,9 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, None).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(
-            docker.clone(),
-            2,
-            Some(PathBuf::from(
-                "../../config/solana-test/light-two-min-clients.toml",
-            )),
-        )
-        .await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client

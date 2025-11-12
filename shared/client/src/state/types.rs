@@ -18,6 +18,8 @@ pub struct HubUploadInfo {
 pub struct CheckpointConfig {
     pub hub_upload: Option<HubUploadInfo>,
     pub checkpoint_dir: PathBuf,
+    pub delete_old_steps: bool,
+    pub keep_steps: u32,
 }
 
 #[derive(Debug)]

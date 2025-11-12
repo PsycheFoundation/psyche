@@ -3,6 +3,7 @@ import {
 	ApiGetRuns,
 	ApiGetRun,
 	ApiGetContributionInfo,
+	ApiGetCheckpointStatus,
 	formats,
 	CURRENT_VERSION,
 } from 'shared'
@@ -52,6 +53,15 @@ export async function fetchRuns(): Promise<ApiGetRuns> {
 				totalTokensPerSecondActive: 23_135_234n,
 			} satisfies ApiGetRuns)
 		: psycheJsonFetch('runs')
+}
+
+export async function fetchCheckpointStatus(
+	owner: string,
+	repo: string,
+	revision?: string
+): Promise<ApiGetCheckpointStatus> {
+	const queryParams = `owner=${owner}&repo=${repo}${revision ? `&revision=${revision}` : ''}`
+	return psycheJsonFetch(`check-checkpoint?${queryParams}`)
 }
 
 interface DecodeState {
@@ -272,7 +282,9 @@ async function getOneJsonPayloadFromStream<T>(
 			return null
 		}
 
-		decodeState.buffer += decodeState.decoder.decode(value, { stream: true })
+		decodeState.buffer += decodeState.decoder.decode(value, {
+			stream: true,
+		})
 		const lines = decodeState.buffer.split('\n')
 
 		if (lines.length > 1) {
@@ -312,5 +324,8 @@ async function openStreamToBackendPath(path: string) {
 		)
 	}
 
-	return { reader: response.body.getReader(), decodeState: makeDecodeState() }
+	return {
+		reader: response.body.getReader(),
+		decodeState: makeDecodeState(),
+	}
 }
