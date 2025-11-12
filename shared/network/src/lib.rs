@@ -202,7 +202,7 @@ where
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Some(Duration::from_secs(1)));
 
-            let relay_mode = RelayMode::Custom(psyche_relay_map());
+            let relay_mode = RelayMode::Default;
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
             let endpoint = Endpoint::builder()
