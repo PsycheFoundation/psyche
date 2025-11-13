@@ -1,11 +1,23 @@
+Thsi binary is a manager for Psyche client containers. It should allow users to connect to a Psyche without having to worry about client versions, as this performs the necessary checks beforehand.
+
+One can run the run manager like this:
+
 ```bash
 cargo run --release -p run-manager -- --env-file .env.local --wallet-path keys/keypair.json
 ```
 
-## Generating a release-ready binary
-
-This will generate a binary ready for distribution in `$PROJECT_ROOT/target/release/`
-
+In case you already have a prebuilt binary:
 ```bash
-cargo build --profile release -p run-manager
+./run-manager -- --env-file .env.local --wallet-path keys/keypair.json
 ```
+
+Where:
+* `--env-file` should point to a `.env` file where several relevant environment variables should be defined, for example:
+    ```
+    RPC=http://some-host:8899
+    WS_RPC=ws://some-host:8900
+    RUN_ID=the_run_id
+    ```
+* `--wallet-path` points to a valid Solana keypair file
+
+The run manager will also try to restart the client a few times in case it encounters an error. If you notice it somehow is stuck you may close the process manually via `ctrl+c` and run it again.
