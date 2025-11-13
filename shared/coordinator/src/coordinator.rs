@@ -7,6 +7,7 @@ use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh}
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
+use std::num::NonZeroU32;
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
 
@@ -244,7 +245,7 @@ pub struct CoordinatorConfig {
     pub round_witness_time: u64,
     pub global_batch_size_warmup_tokens: u64,
 
-    pub rounds_per_epoch: u32,
+    // pub rounds_per_epoch: u32,
     pub epoch_time: u64,
     pub total_steps: u32,
 
@@ -275,6 +276,7 @@ pub struct CoordinatorEpochState<T> {
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub rounds_head: u32,
     pub start_step: u32,
+    pub last_step: Option<std::num::NonZeroU32>,
     pub start_timestamp: u64,
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
@@ -414,6 +416,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
+            last_step: Default::default(),
             start_timestamp: Default::default(),
         }
     }
@@ -975,7 +978,6 @@ impl<T: NodeIdentity> Coordinator<T> {
             // TODO: Punish idle witnesses
             self.epoch_state.first_round = false.into();
             self.progress.step += 1;
-
             let current_round = self.current_round_unchecked();
             let height = current_round.height;
             let num_witnesses = current_round.witnesses.len() as u16;
@@ -991,12 +993,23 @@ impl<T: NodeIdentity> Coordinator<T> {
                 return Ok(TickResult::Ticked);
             }
 
-            // If we reach the end of an epoch or if we don't reach the min number of
-            // clients or registered witnesses for the current round, we change to Cooldown
+            if self.check_epoch_timeout(unix_timestamp) && self.epoch_state.last_step.is_none() {
+                let last_step: u32 = self.progress.step + 2;
+                self.epoch_state.last_step = NonZeroU32::new(last_step);
+            }
 
-            // if height == self.config.rounds_per_epoch - 1
-            if self.check_epoch_timeout(unix_timestamp)
-                || self.epoch_state.clients.len() < self.config.min_clients as usize
+            if self
+                .epoch_state
+                .last_step
+                .is_some_and(|last_step| self.progress.step == last_step.get())
+            {
+                self.start_cooldown(unix_timestamp);
+                return Ok(TickResult::Ticked);
+            }
+
+            // If we don't reach the min number of clients or registered witnesses for the current round,
+            // we change to Cooldown
+            if self.epoch_state.clients.len() < self.config.min_clients as usize
                 || num_witnesses < self.witness_quorum(num_witnesses)
                 || self.pending_pause.is_true()
             {
@@ -1147,7 +1160,7 @@ impl CoordinatorConfig {
             && self.global_batch_size_start != 0
             && self.global_batch_size_end != 0
             && self.global_batch_size_end >= self.global_batch_size_start
-            && self.rounds_per_epoch >= 4 // need at least 4 rounds per epoch for overlapped pipeling
+            // && self.rounds_per_epoch >= 4 // need at least 4 rounds per epoch for overlapped pipeling
             && self.total_steps != 0
             && self.witness_nodes <= self.min_clients
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
