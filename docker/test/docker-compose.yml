@@ -14,20 +14,6 @@ services:
     networks:
       - psyche-test-network
 
-  psyche-test-client:
-    image: psyche-solana-test-client-no-python:latest
-    depends_on:
-      psyche-run-owner:
-        condition: service_completed_successfully
-    deploy:
-      replicas: ${NUM_REPLICAS:-1}
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-    env_file:
-      - '../../config/client/.env.local'
-    networks:
-      - psyche-test-network
-
   psyche-solana-test-validator:
     image: psyche-solana-test-validator:latest
     ports:
