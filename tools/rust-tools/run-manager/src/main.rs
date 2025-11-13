@@ -127,7 +127,6 @@ impl DockerManager {
         wallet_key: String,
     ) -> Result<String> {
         info!("Creating container from image: {}", image_name);
-        let version = image_name.split(':').nth(1).unwrap_or("latest").to_string();
 
         let mut cmd = Command::new("docker");
         cmd.arg("run")
@@ -138,9 +137,7 @@ impl DockerManager {
             .arg("--gpus=all")
             .arg("--device=/dev/infiniband:/dev/infiniband")
             .arg("--env")
-            .arg(format!("RAW_WALLET_PRIVATE_KEY={}", wallet_key))
-            .arg("--env")
-            .arg(format!("PSYCHE_CLIENT_VERSION={}", version));
+            .arg(format!("RAW_WALLET_PRIVATE_KEY={}", wallet_key));
         cmd.arg("--env-file").arg(env_file);
         cmd.arg(image_name);
 

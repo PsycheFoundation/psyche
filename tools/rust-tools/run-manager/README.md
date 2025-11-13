@@ -7,17 +7,19 @@ cargo run --release -p run-manager -- --env-file .env.local --wallet-path keys/k
 ```
 
 In case you already have a prebuilt binary:
+
 ```bash
 ./run-manager -- --env-file .env.local --wallet-path keys/keypair.json
 ```
 
 Where:
-* `--env-file` should point to a `.env` file where several relevant environment variables should be defined, for example:
-    ```
-    RPC=http://some-host:8899
-    WS_RPC=ws://some-host:8900
-    RUN_ID=the_run_id
-    ```
-* `--wallet-path` points to a valid Solana keypair file
+
+- `--env-file` should point to a `.env` file where several relevant environment variables should be defined, for example:
+  ```
+  RPC=http://some-host:8899
+  WS_RPC=ws://some-host:8900
+  RUN_ID=the_run_id
+  ```
+- `--wallet-path` points to a valid Solana keypair file
 
 The run manager will also try to restart the client a few times in case it encounters an error. If you notice it somehow is stuck you may close the process manually via `ctrl+c` and run it again.

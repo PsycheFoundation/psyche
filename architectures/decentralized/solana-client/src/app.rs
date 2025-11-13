@@ -37,6 +37,8 @@ pub(super) type Tabs = TabbedWidget<(ClientTUI, CoordinatorTui, NetworkTui, Logg
 pub const TAB_NAMES: [&str; 4] = ["Client", "Coordinator", "Network", "Logger"];
 type TabsData = <Tabs as CustomWidget>::Data;
 
+const CLIENT_VERSION: &str = "latest";
+
 pub struct App {
     run_id: String,
     cluster: Cluster,
@@ -184,8 +186,7 @@ impl App {
         );
 
         // Check client version compatibility before joining
-        let client_version =
-            std::env::var("PSYCHE_CLIENT_VERSION").unwrap_or_else(|_| "latest".to_string());
+        let client_version = CLIENT_VERSION.to_string();
         info!("Psyche Client version: {}", client_version);
 
         if client_version != coordinator_client_version {
