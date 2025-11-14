@@ -17,6 +17,7 @@ build_docker_solana_client:
 
 # Build the image for the solana client used for testing
 build_docker_solana_test_client:
+    echo "USER IS: $USER"
     nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
     nix-results/docker-psyche-solana-test-client | docker load
 
