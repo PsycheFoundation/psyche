@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
-use psyche_network::SecretKey;
+use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
 
@@ -56,6 +56,14 @@ pub struct TrainArgs {
     /// Sets the network interface for the client's P2P network participation. If not provided, will bind to all interfaces.
     #[clap(long, env)]
     pub bind_p2p_interface: Option<String>,
+
+    /// What relays to use - public n0 or the private Psyche ones
+    #[clap(long, env)]
+    pub iroh_relay: RelayKind,
+
+    /// What discovery to use - public n0 or local
+    #[clap(long, env)]
+    pub iroh_discovery: DiscoveryMode,
 
     /// Sets clients logs interface
     /// tui: Enables a terminal-based graphical interface for monitoring analytics.
