@@ -86,7 +86,6 @@ let
           "NVIDIA_VISIBLE_DEVICES=all"
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
           "PYTHON_ENABLED=${if usePython then "true" else "false"}"
         ];
@@ -127,7 +126,6 @@ let
           "LD_LIBRARY_PATH=/lib:/usr/lib"
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/train_entrypoint.sh" ];
