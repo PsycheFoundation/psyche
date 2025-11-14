@@ -19,7 +19,7 @@ use std::{
 };
 use tch::{Device, Tensor};
 use thiserror::Error;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -235,11 +235,15 @@ impl PythonDistributedCausalLM {
         }
         let num_local_ranks = num_local_ranks.unwrap_or_else(tch::Cuda::device_count);
         let world_size = parallelism.dp * parallelism.tp;
-        if world_size < (num_local_ranks as usize) {
+        if world_size > (num_local_ranks as usize) {
             return Err(PythonDistributedCausalLMError::IncompatibleWorldSize(
                 world_size,
                 num_local_ranks as usize,
             ));
+        } else if world_size < num_local_ranks as usize {
+            warn!(
+                "The client will use {world_size} devices, but {num_local_ranks} are available. Make sure that underusing the available devices is okay"
+            );
         }
 
         let rank = match device {

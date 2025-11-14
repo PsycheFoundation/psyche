@@ -8,7 +8,9 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_core::IntegrationTestLogMarker;
+use std::collections::HashMap;
 use std::process::{Command, Stdio};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
@@ -18,11 +20,12 @@ use crate::{
     utils::ConfigBuilder,
 };
 
-/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
+/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable.
+/// This logic mirrors the justfile's GPU detection to ensure consistency.
 fn has_gpu_support() -> bool {
-    // Check if USE_GPU environment variable is set
-    if std::env::var("USE_GPU").is_ok() {
-        return true;
+    // Check if USE_GPU environment variable is explicitly set to "0" to disable GPU
+    if let Ok(val) = std::env::var("USE_GPU") {
+        return val != "0";
     }
 
     // Check if nvidia-smi command exists
@@ -37,6 +40,16 @@ fn has_gpu_support() -> bool {
 pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
+
+pub fn get_devices_for_client(id: u16) -> String {
+    let devices_per_client: HashMap<u16, Vec<String>> = HashMap::from([
+        (1, vec!["0".to_string(), "1".to_string()]),
+        (2, vec!["2".to_string(), "3".to_string()]),
+        (3, vec!["4".to_string(), "5".to_string()]),
+        (4, vec!["6".to_string(), "7".to_string()]),
+    ]);
+    devices_per_client.get(&id).unwrap().join(",")
+}
 
 pub struct DockerTestCleanup;
 impl Drop for DockerTestCleanup {
@@ -75,17 +88,17 @@ pub async fn e2e_testing_setup_subscription(
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
     #[cfg(not(feature = "python"))]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .build();
     #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_architecture("HfAuto")
+        .with_model("NousResearch/Meta-Llama-3.1-8B")
         .with_batch_size(8 * init_num_clients as u32)
         .build();
 
-    println!("[+] Config file written to: {}", config_file_path.display());
     let mut command = Command::new("just");
     let command = command
         .args([
@@ -156,13 +169,35 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
         })
         .collect();
 
+    let mut final_envs = Vec::new();
+    let client_id: u16 = u16::from_str(
+        new_container_name
+            .chars()
+            .last()
+            .unwrap()
+            .to_string()
+            .as_str(),
+    )
+    .unwrap();
+    let devices = get_devices_for_client(client_id);
+    for env in &env_vars {
+        if env.contains("CUDA_VISIBLE_DEVICES") {
+            let splited_env = env.split('=').collect::<Vec<&str>>();
+            if splited_env.len() == 2 {
+                final_envs.push(format!("CUDA_VISIBLE_DEVICES={}", devices));
+            }
+        } else {
+            final_envs.push(env.to_string());
+        }
+    }
+
     let options = Some(CreateContainerOptions {
         name: new_container_name.clone(),
         platform: None,
     });
     let config = Config {
         image: Some("psyche-solana-test-client"),
-        env: Some(env_vars.iter().map(|s| s.as_str()).collect()),
+        env: Some(final_envs.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()
     };
@@ -235,17 +270,17 @@ pub async fn spawn_new_client_with_monitoring(
 // Updated spawn function
 pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
-        .build();
-    #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_architecture("HfAuto")
-        .with_batch_size(8 * init_num_clients as u32)
         .build();
 
-    println!("[+] Config file written to: {}", config_file_path.display());
+    #[cfg(feature = "python")]
+    ConfigBuilder::new()
+        .with_num_clients(init_num_clients)
+        .with_architecture("HfAuto")
+        .with_model("NousResearch/Meta-Llama-3.1-8B")
+        .with_batch_size(8 * init_num_clients as u32)
+        .build();
 
     let mut command = Command::new("just");
     let output = command
