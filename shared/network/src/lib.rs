@@ -24,6 +24,7 @@ pub use p2p_model_sharing::{
 use psyche_metrics::{ClientMetrics, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
+use std::str::FromStr;
 use std::{
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
@@ -108,6 +109,45 @@ pub enum DiscoveryMode {
     N0,
 }
 
+impl FromStr for DiscoveryMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "local" => Ok(DiscoveryMode::Local),
+            "n0" => Ok(DiscoveryMode::N0),
+            _ => Err(format!(
+                "Invalid discovery mode: '{}'. Expected 'local' or 'n0'",
+                s
+            )),
+        }
+    }
+}
+
+/// What relays should we connect to?
+#[derive(Debug, Clone, Copy)]
+pub enum RelayKind {
+    /// Psyche-specific relays
+    Psyche,
+    /// N0 default relays
+    N0,
+}
+
+impl FromStr for RelayKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "psyche" => Ok(RelayKind::Psyche),
+            "n0" => Ok(RelayKind::N0),
+            _ => Err(format!(
+                "Invalid relay kind: '{}'. Expected 'psyche' or 'n0'",
+                s
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct P2PEndpointInfo {
     pub id: EndpointId,
@@ -181,6 +221,7 @@ where
         port: Option<u16>,
         interface: Option<String>,
         discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
         bootstrap_peers: Vec<EndpointAddr>,
         secret_key: Option<SecretKey>,
         allowlist: A,
@@ -229,7 +270,10 @@ where
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Some(Duration::from_secs(1)));
 
-            let relay_mode = RelayMode::Custom(psyche_relay_map());
+            let relay_mode = match relay_kind {
+                RelayKind::N0 => RelayMode::Default,
+                RelayKind::Psyche => RelayMode::Custom(psyche_relay_map()),
+            };
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
             let endpoint = Endpoint::builder()
