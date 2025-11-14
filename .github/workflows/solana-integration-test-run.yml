@@ -12,9 +12,60 @@ jobs:
       actions: write
     uses: ./.github/workflows/solana-build-anchor-programs.yml
 
-  # Then run all tests in parallel, using the cached validator image
+  # Build the test binary once and cache it for all test jobs
+  build-test-binary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-build-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-build-${{ runner.os }}-
+
+      - name: Build test binary
+        run: |
+          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests --no-run
+
+      - name: Find and cache test binary
+        run: |
+          # Find the compiled test binary
+          TEST_BINARY=$(find target/release/deps -name 'integration_tests-*' -type f -executable | head -n 1)
+          echo "Found test binary: $TEST_BINARY"
+
+          # Create a directory for the binary and copy it with a consistent name
+          mkdir -p test-binary
+          cp "$TEST_BINARY" test-binary/integration_tests
+
+      - name: Save test binary to cache
+        uses: actions/cache/save@v4
+        with:
+          path: test-binary/
+          key: test-binary-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'shared/**/*.rs', 'architectures/decentralized/**/*.rs') }}
+
+  # Then run all tests in parallel, using the cached validator image and test binary
   test:
-    needs: build-validator
+    needs: [build-validator, build-test-binary]
     strategy:
       fail-fast: false
       matrix:
