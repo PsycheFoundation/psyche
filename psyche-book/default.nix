@@ -49,6 +49,9 @@ stdenvNoCC.mkDerivation {
   postPatch = ''
     mkdir -p generated/cli
 
+    # we set HOME to a writable directory to avoid cache dir permission issues
+    export HOME=$TMPDIR
+
     ${lib.concatMapStringsSep "\n" (
       name:
       "${rustPackages.${name}}/bin/${name} print-all-help --markdown > generated/cli/${
