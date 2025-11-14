@@ -173,8 +173,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         )
         .map_err(TrainError::CoordinatorError)?;
 
-        // let have_training = round.height < state.config.rounds_per_epoch - 2;
-        let have_training = state.epoch_state.last_step.is_none();
+        let have_training = !state.epoch_state.last_step_set();
         let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) =
             match have_training {
                 true => {

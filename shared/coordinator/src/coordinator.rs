@@ -7,7 +7,6 @@ use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh}
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
-use std::num::NonZeroU32;
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
 
@@ -245,7 +244,6 @@ pub struct CoordinatorConfig {
     pub round_witness_time: u64,
     pub global_batch_size_warmup_tokens: u64,
 
-    // pub rounds_per_epoch: u32,
     pub epoch_time: u64,
     pub total_steps: u32,
 
@@ -276,7 +274,7 @@ pub struct CoordinatorEpochState<T> {
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub rounds_head: u32,
     pub start_step: u32,
-    pub last_step: Option<std::num::NonZeroU32>,
+    pub last_step: u32,
     pub start_timestamp: u64,
     pub first_round: SmallBoolean,
     pub checkpointed: SmallBoolean,
@@ -993,15 +991,12 @@ impl<T: NodeIdentity> Coordinator<T> {
                 return Ok(TickResult::Ticked);
             }
 
-            if self.check_epoch_timeout(unix_timestamp) && self.epoch_state.last_step.is_none() {
+            if self.check_epoch_timeout(unix_timestamp) && !self.epoch_state.last_step_set() {
                 let last_step: u32 = self.progress.step + 2;
-                self.epoch_state.last_step = NonZeroU32::new(last_step);
+                self.epoch_state.last_step = last_step;
             }
 
-            if self
-                .epoch_state
-                .last_step
-                .is_some_and(|last_step| self.progress.step == last_step.get())
+            if self.epoch_state.last_step_set() && self.progress.step == self.epoch_state.last_step
             {
                 self.start_cooldown(unix_timestamp);
                 return Ok(TickResult::Ticked);
@@ -1150,6 +1145,12 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 }
 
+impl<T> CoordinatorEpochState<T> {
+    pub fn last_step_set(&self) -> bool {
+        self.last_step != 0
+    }
+}
+
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
         self.max_round_train_time != 0
@@ -1160,7 +1161,6 @@ impl CoordinatorConfig {
             && self.global_batch_size_start != 0
             && self.global_batch_size_end != 0
             && self.global_batch_size_end >= self.global_batch_size_start
-            // && self.rounds_per_epoch >= 4 // need at least 4 rounds per epoch for overlapped pipeling
             && self.total_steps != 0
             && self.witness_nodes <= self.min_clients
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
