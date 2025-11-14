@@ -43,6 +43,10 @@ pub fn print_identity_keys(key: Option<&PathBuf>) -> Result<()> {
     Ok(())
 }
 
+fn parse_trim_quotes(s: &str) -> Result<String, String> {
+    Ok(s.trim_matches('"').to_string())
+}
+
 #[derive(Args, Debug)]
 pub struct TrainArgs {
     /// Path to the clients secret key. Create a new random one running `openssl rand 32 > secret.key`. If not provided a random one will be generated.
@@ -105,7 +109,7 @@ pub struct TrainArgs {
     pub metrics_local_port: Option<u16>,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
-    #[clap(long, env)]
+    #[clap(long, env, value_parser = parse_trim_quotes)]
     pub run_id: String,
 
     #[clap(long, default_value_t = 1, env)]
