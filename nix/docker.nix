@@ -1,6 +1,6 @@
 {
   pkgs,
-  nixglhostRustPackages,
+  rustPackages,
   inputs,
   externalRustPackages,
 }:
@@ -104,12 +104,12 @@ let
         coreutils
         stdenv.cc
         rdma-core
-        nixglhostRustPackages."psyche-solana-client-nixglhost"
-        nixglhostRustPackages."psyche-centralized-client-nixglhost"
-        nixglhostRustPackages."inference-nixglhost"
-        nixglhostRustPackages."train-nixglhost"
-        nixglhostRustPackages."bandwidth_test-nixglhost"
-        nixglhostRustPackages."psyche-sidecar-nixglhost"
+        rustPackages."psyche-solana-client"
+        rustPackages."psyche-centralized-client"
+        rustPackages."inference"
+        rustPackages."train"
+        rustPackages."bandwidth_test"
+        rustPackages."psyche-sidecar"
         python3Packages.huggingface-hub
         (pkgs.runCommand "entrypoint" { } ''
           mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
@@ -136,13 +136,13 @@ let
 
     docker-psyche-solana-test-client = mkSolanaTestClientImage {
       imageName = "psyche-solana-test-client";
-      solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nixglhost";
+      solanaClientPackage = rustPackages."psyche-solana-client";
       usePython = true;
     };
 
     docker-psyche-solana-test-client-no-python = mkSolanaTestClientImage {
       imageName = "psyche-solana-test-client";
-      solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nopython-nixglhost";
+      solanaClientPackage = rustPackages."psyche-solana-client-nopython";
       usePython = false;
     };
 
@@ -189,7 +189,7 @@ let
 
       contents = [
         pkgs.bashInteractive
-        nixglhostRustPackages."psyche-centralized-client-nixglhost"
+        rustPackages."psyche-centralized-client"
       ];
 
       config = {
@@ -199,7 +199,6 @@ let
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
           "TRITON_=/usr/lib64"
-          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
         ];
       };

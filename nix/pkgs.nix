@@ -44,34 +44,37 @@ lib.makeScope pkgs.newScope (
       };
     };
 
-    rustPackages = lib.listToAttrs (
-      lib.concatMap (name: [
-        {
-          name = name;
-          value = self.psycheLib.buildRustPackageWithPsychePythonEnvironment {
-            inherit name;
-            isExample = lib.elem name rustExampleNames;
-          };
-        }
-        {
-          name = "${name}-nopython";
-          value = self.psycheLib.buildRustPackageWithoutPython {
-            inherit name;
-            isExample = lib.elem name rustExampleNames;
-          };
-        }
-      ]) allRustPackageNames
-    );
-
-    nixglhostRustPackages = lib.mapAttrs' (
-      name: pkg: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers pkg)
-    ) rustPackages;
-
+    rustPackages =
+      let
+        inherit (self.psycheLib)
+          useHostGpuDrivers
+          buildRustPackageWithPsychePythonEnvironment
+          buildRustPackageWithoutPython
+          ;
+      in
+      lib.listToAttrs (
+        lib.concatMap (name: [
+          {
+            name = name;
+            value = useHostGpuDrivers (buildRustPackageWithPsychePythonEnvironment {
+              inherit name;
+              isExample = lib.elem name rustExampleNames;
+            });
+          }
+          {
+            name = "${name}-nopython";
+            value = useHostGpuDrivers (buildRustPackageWithoutPython {
+              inherit name;
+              isExample = lib.elem name rustExampleNames;
+            });
+          }
+        ]) allRustPackageNames
+      );
     dockerPackages = import ./docker.nix {
       inherit
         pkgs
-        nixglhostRustPackages
         inputs
+        rustPackages
         externalRustPackages
         ;
     };
@@ -104,7 +107,6 @@ lib.makeScope pkgs.newScope (
         }
         rustPackages
         externalRustPackages
-        nixglhostRustPackages
         dockerPackages
       ]
     );

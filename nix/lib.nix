@@ -109,6 +109,7 @@ let
     pkgs.runCommand "${name}"
       {
         buildInputs = [ pkgs.makeWrapper ];
+        meta.mainProgram = name;
       }
       ''
         mkdir -p $out/bin
@@ -191,9 +192,13 @@ let
     if pkgs.config.cudaSupport then
       (
         package:
+        assert lib.assertMsg (
+          package.meta ? mainProgram
+        ) "Package ${package.name} must have meta.mainProgram set to use useHostGpuDrivers";
         pkgs.runCommand "${package.name}-nixgl-wrapped"
           {
             nativeBuildInputs = [ pkgs.makeWrapper ];
+            meta.mainProgram = package.meta.mainProgram;
           }
           ''
             mkdir -p $out/bin
