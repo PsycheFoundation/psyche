@@ -1,46 +1,60 @@
-- name: Get deployment status and URL
-  id: get-deployment
-  uses: actions/github-script@v6
-  with:
-    script: |
-      const checks = await github.rest.checks.listForRef({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        ref: "${{ steps.get-pr.outputs.pr_sha }}"
-      });
+name: Update Deployment Comment
 
-      console.log(`All checks: ${checks.data.check_runs.map(c => c.name)}`)
+on:
+  check_suite:
+    types: [completed]
 
-      // Look for nixosConfig checks which are the Garnix deployments
-      const deploymentCheck = checks.data.check_runs.find(check => 
-        check.name.startsWith('nixosConfig ')
-      );
+jobs:
+  update-comment:
+    runs-on: ubuntu-latest
 
-      if (!deploymentCheck) {
-        core.setFailed('Deployment check not found');
-        return;
-      }
+    # Only run if there are associated pull requests
+    if: github.event.check_suite.pull_requests[0].number != null
 
-      console.log(`Found deployment check: ${deploymentCheck.name}`)
-      console.log(`Check output: ${JSON.stringify(deploymentCheck.output)}`)
+    steps:
+      - name: Get deployment status and URL
+        id: get-deployment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: "${{ steps.get-pr.outputs.pr_sha }}"
+            });
 
-      const outputLines = deploymentCheck.output.text.split('\n');
-      let deploymentUrl;
+            console.log(`All checks: ${checks.data.check_runs.map(c => c.name)}`)
 
-      // Check each line for the deployment URL
-      for (const line of outputLines) {
-          const match = line.match(/Server has been successfully deployed to: (.+)/);
-          if (match) {
-              deploymentUrl = match[1];
-              break;
-          }
-      }
+            // Look for nixosConfig checks which are the Garnix deployments
+            const deploymentCheck = checks.data.check_runs.find(check => 
+              check.name.startsWith('nixosConfig ')
+            );
 
-      if (!deploymentUrl) {
-        core.setFailed('Deployment URL not found in output');
-        return;
-      }
+            if (!deploymentCheck) {
+              core.setFailed('Deployment check not found');
+              return;
+            }
 
-      core.setOutput('status', deploymentCheck.conclusion);
-      core.setOutput('url', deploymentUrl);
-      core.setOutput('config', deploymentCheck.name);
+            console.log(`Found deployment check: ${deploymentCheck.name}`)
+            console.log(`Check output: ${JSON.stringify(deploymentCheck.output)}`)
+
+            const outputLines = deploymentCheck.output.text.split('\n');
+            let deploymentUrl;
+
+            // Check each line for the deployment URL
+            for (const line of outputLines) {
+                const match = line.match(/Server has been successfully deployed to: (.+)/);
+                if (match) {
+                    deploymentUrl = match[1];
+                    break;
+                }
+            }
+
+            if (!deploymentUrl) {
+              core.setFailed('Deployment URL not found in output');
+              return;
+            }
+
+            core.setOutput('status', deploymentCheck.conclusion);
+            core.setOutput('url', deploymentUrl);
+            core.setOutput('config', deploymentCheck.name);
