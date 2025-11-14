@@ -42,6 +42,20 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           sudo chmod +x /usr/local/bin/just
 
+      # Restore pre-built test binary
+      - name: Restore test binary from cache
+        id: cache-test-binary
+        uses: actions/cache/restore@v4
+        with:
+          path: test-binary/
+          key: test-binary-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'shared/**/*.rs', 'architectures/decentralized/**/*.rs') }}
+          fail-on-cache-miss: true
+
+      - name: Make test binary executable
+        run: |
+          chmod +x test-binary/integration_tests
+          echo "Test binary ready: $(ls -lh test-binary/integration_tests)"
+
       # Step 1: Get Validator Image from cache
       - name: Get Validator Image from cache
         id: cache-validator
@@ -126,4 +140,5 @@ jobs:
       # Step 4: Run Integration Tests
       - name: Run integration test
         run: |
-          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "${{ inputs.test-name }}"
+          # Use the pre-built test binary instead of recompiling
+          nix develop --command ./test-binary/integration_tests --nocapture "${{ inputs.test-name }}"
