@@ -295,6 +295,8 @@ pub struct CoordinatorProgress {
 #[serde(bound = "T: NodeIdentity")]
 #[repr(C)]
 pub struct Coordinator<T> {
+    // TODO we should actually limit this to 32 bytes for PDA constraints; for now we leave it as-is
+    // as to not break existing deployments by changing the size of the struct.
     pub run_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
 
     pub run_state: RunState,

@@ -74,6 +74,9 @@ pub enum ProgramError {
 
     #[msg("There are more clients than total number of batches to assign")]
     MoreClientsThanBatches,
+
+    #[msg("run_id must be 32 bytes or less")]
+    RunIdInvalidLength,
 }
 
 impl From<CoordinatorError> for ProgramError {
