@@ -15,7 +15,7 @@ runs:
       run: |
         SHA="${{ github.event.pull_request.head.sha || github.sha }}"
         echo "Waiting for 'All Garnix checks' on commit $SHA"
-        TOTAL_ATTEMPTS=$(( ${{ inputs.timeout-minutes }} * 2 ))
+        TOTAL_ATTEMPTS=60
 
         for i in $(seq 1 $TOTAL_ATTEMPTS); do
           CHECK=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs --jq '.check_runs[] | select(.name == "package docker-psyche-solana-test-client-no-python [x86_64-linux]") | {name: .name, status: .status, conclusion: .conclusion}')

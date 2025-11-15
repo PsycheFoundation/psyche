@@ -7284,6 +7284,7 @@ name = "psyche-decentralized-testing"
 version = "0.1.0"
 dependencies = [
  "anchor-client",
+ "anyhow",
  "bollard",
  "futures-util",
  "psyche-client",
@@ -7294,6 +7295,7 @@ dependencies = [
  "rstest",
  "serde_json",
  "serial_test",
+ "tar",
  "tch",
  "test-log",
  "thiserror 2.0.17",
