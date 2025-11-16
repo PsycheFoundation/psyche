@@ -3691,7 +3691,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "hf-hub"
 version = "0.3.2"
-source = "git+https://github.com/NousResearch/hf-hub.git?rev=269dc3df4e194f9071ddbdbd25ed90d4990f9262#269dc3df4e194f9071ddbdbd25ed90d4990f9262"
+source = "git+https://github.com/IAvecilla/hf-hub.git?rev=c56317d02ff8e10acccdf48efd01a532eea9181b#c56317d02ff8e10acccdf48efd01a532eea9181b"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
