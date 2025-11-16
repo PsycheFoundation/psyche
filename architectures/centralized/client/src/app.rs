@@ -9,7 +9,7 @@ use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::Devices;
 use psyche_network::{
-    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, SecretKey,
+    AuthenticatableIdentity, DiscoveryMode, EndpointId, NetworkTUIState, NetworkTui, SecretKey,
     TcpClient, allowlist,
 };
 use psyche_tui::logging::LoggerWidget;
@@ -52,7 +52,7 @@ impl WatcherBackend<ClientId> for Backend {
                 .epoch_state
                 .clients
                 .iter()
-                .map(|c| NodeId::from_bytes(c.id.get_p2p_public_key()).unwrap()),
+                .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap()),
         );
         Ok(new_state)
     }
