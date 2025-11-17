@@ -8,7 +8,7 @@ use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
 use psyche_network::{
-    AuthenticatableIdentity, BlobTicket, Hash, P2PNodeInfo, TransmittableDistroResult,
+    AuthenticatableIdentity, BlobTicket, Hash, P2PEndpointInfo, TransmittableDistroResult,
 };
 use psyche_watcher::OpportunisticData;
 use std::{
@@ -859,11 +859,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_endpoint_info(&mut self, endpoint_info: Vec<P2PEndpointInfo>) -> anyhow::Result<()> {
         self.stats_logger
             .lock()
             .map_err(|_| anyhow::anyhow!("stats logger mutex poisoned"))?
-            .node_info = node_info;
+            .endpoint_info = endpoint_info;
         Ok(())
     }
 }
@@ -1063,9 +1063,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_endpoint_info(&mut self, endpoint_info: Vec<P2PEndpointInfo>) -> anyhow::Result<()> {
         if let InitStage::Running(run) = &mut self.0 {
-            run.set_node_info(node_info)?;
+            run.set_endpoint_info(endpoint_info)?;
         }
         Ok(())
     }

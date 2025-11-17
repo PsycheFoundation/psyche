@@ -10,17 +10,18 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
+use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
 
-use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
 use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
-use rand::{Rng, RngCore};
-use std::{path::PathBuf, time::Duration};
+use rand::{Rng, RngCore, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use std::time::Duration;
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -52,111 +53,106 @@ pub struct App {
     state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
 }
 
-pub struct AppBuilder(AppParams);
-
 pub struct AppParams {
     pub cancel: CancellationToken,
-    pub identity_secret_key: SecretKey,
     pub wallet_keypair: Arc<Keypair>,
     pub cluster: Cluster,
     pub backup_clusters: Vec<Cluster>,
     pub tx_tui_state: Option<Sender<TabsData>>,
-    pub run_id: String,
-    pub data_parallelism: usize,
-    pub tensor_parallelism: usize,
-    pub micro_batch_size: usize,
-    pub write_gradients_dir: Option<PathBuf>,
-    pub p2p_port: Option<u16>,
-    pub p2p_interface: Option<String>,
-    pub eval_tasks: Vec<psyche_eval::Task>,
-    pub eval_task_max_docs: Option<usize>,
-    pub prompt_task: bool,
-    pub checkpoint_upload_info: Option<CheckpointConfig>,
-    pub hub_read_token: Option<String>,
-    pub hub_max_concurrent_downloads: usize,
-    pub wandb_info: Option<WandBInfo>,
-    pub optim_stats: Option<u32>,
-    pub grad_accum_in_fp32: bool,
-    pub dummy_training_delay_secs: Option<u64>,
-    pub max_concurrent_parameter_requests: usize,
     pub authorizer: Option<Pubkey>,
-    pub metrics_local_port: Option<u16>,
-    pub device: Devices,
-    pub sidecar_port: Option<u16>,
+    pub train_args: TrainArgs,
 }
 
-impl AppBuilder {
-    pub fn new(params: AppParams) -> Self {
-        Self(params)
-    }
+pub async fn build_app(
+    AppParams {
+        cancel,
+        wallet_keypair,
+        cluster,
+        backup_clusters,
+        tx_tui_state,
+        authorizer,
+        train_args: p,
+    }: AppParams,
+) -> Result<App> {
+    let identity_secret_key: SecretKey =
+        read_identity_secret_key(p.identity_secret_key_path.as_ref())?
+            // Iroh key should be deterministically derived from Solana key
+            .unwrap_or_else(|| {
+                let mut rng = ChaCha8Rng::from_seed(sha256(wallet_keypair.secret().as_bytes()));
+                SecretKey::generate(&mut rng)
+            });
+    let identity = psyche_solana_coordinator::ClientId::new(
+        wallet_keypair.pubkey(),
+        *identity_secret_key.public().as_bytes(),
+    );
 
-    pub async fn build(self) -> Result<App> {
-        let p = self.0;
-        let identity = psyche_solana_coordinator::ClientId::new(
-            p.wallet_keypair.pubkey(),
-            *p.identity_secret_key.public().as_bytes(),
-        );
+    let eval_tasks = p.eval_tasks()?;
+    let hub_read_token = std::env::var("HF_TOKEN").ok();
+    let checkpoint_config = p.checkpoint_config()?;
 
-        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
+    let solana_pubkey = wallet_keypair.pubkey();
+    let wandb_info = p.wandb_info(format!("{}-{solana_pubkey}", p.run_id))?;
 
-        let allowlist = allowlist::AllowDynamic::new();
+    let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
 
-        let p2p = NC::init(
-            &p.run_id,
-            p.p2p_port,
-            p.p2p_interface,
-            DiscoveryMode::N0,
-            vec![],
-            Some(p.identity_secret_key.clone()),
-            allowlist.clone(),
-            metrics.clone(),
-            Some(p.cancel.clone()),
-        )
-        .await?;
+    let allowlist = allowlist::AllowDynamic::new();
 
-        let state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity> =
-            RunInitConfig {
-                data_parallelism: p.data_parallelism,
-                tensor_parallelism: p.tensor_parallelism,
-                micro_batch_size: p.micro_batch_size,
-                write_gradients_dir: p.write_gradients_dir,
-                eval_tasks: p.eval_tasks,
-                eval_task_max_docs: p.eval_task_max_docs,
-                prompt_task: p.prompt_task,
-                checkpoint_config: p.checkpoint_upload_info,
-                hub_read_token: p.hub_read_token,
-                hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
-                wandb_info: p.wandb_info,
-                identity,
-                network_identity: identity.into(),
-                private_key: (p.wallet_keypair.clone(), p.identity_secret_key),
-                optim_stats_every_n_steps: p.optim_stats,
-                grad_accum_in_fp32: p.grad_accum_in_fp32,
-                dummy_training_delay_secs: p.dummy_training_delay_secs,
-                max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
-                device: p.device,
-                sidecar_port: p.sidecar_port,
-            };
-        let app = App {
-            run_id: p.run_id.clone(),
-            cluster: p.cluster,
-            backup_clusters: p.backup_clusters,
-            tick_check_interval: {
-                let mut interval = interval(Duration::from_millis(500));
-                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-                interval
-            },
-            cancel: p.cancel,
-            tx_tui_state: p.tx_tui_state,
-            update_tui_interval: interval(Duration::from_millis(150)),
-            authorizer: p.authorizer,
-            allowlist,
-            metrics,
-            p2p,
-            state_options,
+    let p2p = NC::init(
+        &p.run_id,
+        p.bind_p2p_port,
+        p.bind_p2p_interface,
+        DiscoveryMode::N0,
+        p.iroh_relay,
+        vec![],
+        Some(identity_secret_key.clone()),
+        allowlist.clone(),
+        metrics.clone(),
+        Some(cancel.clone()),
+    )
+    .await?;
+
+    let state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity> =
+        RunInitConfig {
+            data_parallelism: p.data_parallelism,
+            tensor_parallelism: p.tensor_parallelism,
+            micro_batch_size: p.micro_batch_size,
+            write_gradients_dir: p.write_gradients_dir,
+            eval_tasks,
+            eval_task_max_docs: p.eval_task_max_docs,
+            prompt_task: p.prompt_task,
+            checkpoint_config,
+            hub_read_token,
+            hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
+            wandb_info,
+            identity,
+            network_identity: identity.into(),
+            private_key: (wallet_keypair.clone(), identity_secret_key),
+            optim_stats_every_n_steps: p.optim_stats_steps,
+            grad_accum_in_fp32: p.grad_accum_in_fp32,
+            dummy_training_delay_secs: p.dummy_training_delay_secs,
+            max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+            device: p.device,
+            sidecar_port: p.sidecar_port,
         };
-        Ok(app)
-    }
+    let app = App {
+        run_id: p.run_id.clone(),
+        cluster,
+        backup_clusters,
+        tick_check_interval: {
+            let mut interval = interval(Duration::from_millis(500));
+            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            interval
+        },
+        cancel,
+        tx_tui_state,
+        update_tui_interval: interval(Duration::from_millis(150)),
+        authorizer,
+        allowlist,
+        metrics,
+        p2p,
+        state_options,
+    };
+    Ok(app)
 }
 
 impl App {
