@@ -6917,6 +6917,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "clap",
  "psyche-centralized-client",
  "psyche-centralized-server",
  "psyche-centralized-shared",
