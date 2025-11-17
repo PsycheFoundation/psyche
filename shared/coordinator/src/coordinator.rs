@@ -1184,6 +1184,12 @@ mod tests {
     )]
     struct TestNode(u64);
 
+	impl std::fmt::Display for TestNode {
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			write!(f, "Node({})", self.0)
+		}
+	}
+
     impl NodeIdentity for TestNode {
         fn get_p2p_public_key(&self) -> &[u8; 32] {
             todo!()
