@@ -1127,7 +1127,6 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 }
 
-
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
         self.max_round_train_time != 0
@@ -1215,7 +1214,6 @@ mod tests {
 
     #[test]
     fn total_steps_test() {
-        
         let total_steps = 10;
         let rounds_per_epoch = 4;
 
