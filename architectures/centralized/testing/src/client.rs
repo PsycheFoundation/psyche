@@ -29,10 +29,8 @@ impl Client {
         RunInitConfig<ClientId, ClientId>,
     ) {
         let client_app_params = dummy_client_app_params_default(server_port, run_id);
-        let (client_app, allowlist, p2p, state_options) = ClientAppBuilder::new(client_app_params)
-            .build()
-            .await
-            .unwrap();
+        let (client_app, allowlist, p2p, state_options) =
+            build_client_app(client_app_params).await.unwrap();
 
         (Self { inner: client_app }, allowlist, p2p, state_options)
     }

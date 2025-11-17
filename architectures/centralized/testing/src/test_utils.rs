@@ -3,8 +3,10 @@ use std::time::Duration;
 
 use crate::client::ClientHandle;
 use crate::server::CoordinatorServerHandle;
+use clap::Parser;
 use psyche_centralized_client::app::AppParams;
-use psyche_network::{DiscoveryMode, SecretKey};
+use psyche_client::TrainArgs;
+use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
 use rand::distr::{Alphanumeric, SampleString};
 use std::env;
 use tokio_util::sync::CancellationToken;
@@ -109,6 +111,19 @@ pub async fn assert_witnesses_healthy_score(
     );
 }
 
+struct AppParams {
+    cancel: CancellationToken,
+    server_addr: String,
+    tx_tui_state: Option<Sender<TabsData>>,
+    train_args: TrainArgs,
+}
+
+#[derive(Parser)]
+struct TestCli {
+    #[command(flatten)]
+    train_args: TrainArgs,
+}
+
 pub fn dummy_client_app_params_with_training_delay(
     server_port: u16,
     run_id: &str,
@@ -116,31 +131,32 @@ pub fn dummy_client_app_params_with_training_delay(
 ) -> AppParams {
     AppParams {
         cancel: CancellationToken::default(),
-        identity_secret_key: SecretKey::generate(&mut rand::rng()),
         server_addr: format!("localhost:{server_port}").to_string(),
         tx_tui_state: None,
-        run_id: run_id.to_string(),
-        data_parallelism: 1,
-        tensor_parallelism: 1,
-        micro_batch_size: 1,
-        write_gradients_dir: None,
-        p2p_port: None,
-        p2p_interface: None,
-        eval_tasks: Vec::new(),
-        prompt_task: false,
-        eval_task_max_docs: None,
-        checkpoint_upload_info: None,
-        hub_read_token: None,
-        hub_max_concurrent_downloads: 1,
-        wandb_info: None,
-        optim_stats: None,
-        grad_accum_in_fp32: false,
-        dummy_training_delay_secs: Some(training_delay_secs),
-        discovery_mode: DiscoveryMode::Local,
-        max_concurrent_parameter_requests: 10,
-        metrics_local_port: None,
-        device: Default::default(),
-        sidecar_port: Default::default(),
+        #[rustfmt::skip]
+        train_args: TestCli::parse_from([
+            "dummy",
+            "--run-id", run_id,
+            "--data-parallelism", "1",
+            "--tensor-parallelism", "1",
+            "--micro-batch-size", "1",
+            "--micro-batch-size", "1",
+            "--hub-max-concurrent-downloads", "1",
+        ]).train_args,
+        //  {
+        //     run_id: run_id.to_string(),
+        //     data_parallelism: 1,
+        //     tensor_parallelism: 1,
+        //     micro_batch_size: 1,
+        //     prompt_task: false,
+        //     hub_max_concurrent_downloads: 1,
+        //     grad_accum_in_fp32: false,
+        //     dummy_training_delay_secs: Some(training_delay_secs),
+        //     iroh_discovery: DiscoveryMode::Local,
+        //     max_concurrent_parameter_requests: 10,
+        //     iroh_relay: RelayKind::N0,
+        //     ..Default::default()
+        // },
     }
 }
 
