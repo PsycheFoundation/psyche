@@ -15,7 +15,7 @@ runs:
       run: |
         SHA="${{ github.event.pull_request.head.sha || github.sha }}"
         echo "Waiting for 'All Garnix checks' on commit $SHA"
-        TOTAL_ATTEMPTS=$(( ${{ inputs.timeout-minutes }} * 2 ))
+        TOTAL_ATTEMPTS=60
 
         GARNIX_SUITE_ID=""
 

@@ -311,6 +311,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 let potential_local_path = PathBuf::from(repo_id.clone());
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
 
+                                info!(
+                                    integration_test_log_marker = %IntegrationTestLogMarker::CheckpointType,
+                                    checkpoint_type = "Hub",
+                                    "Checkpoint is Hub, loading from HuggingFace"
+                                );
+
                                 let model_is_local = if revision.is_none()
                                     && tokio::fs::try_exists(potential_local_path.clone())
                                         .await
@@ -358,7 +364,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             model::Checkpoint::P2P(_) => {
                                 let (tx_model_config_response, rx_model_config_response) =
                                     oneshot::channel();
-                                info!("Checkpoint is p2p, requesting model config over network");
+                                info!(
+                                    integration_test_log_marker = %IntegrationTestLogMarker::CheckpointType,
+                                    checkpoint_type = "P2P",
+                                    "Checkpoint is p2p, requesting model config over network"
+                                );
 
                                 tx_request_model_config
                                     .send(tx_model_config_response)
