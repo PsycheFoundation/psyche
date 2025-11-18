@@ -1256,11 +1256,9 @@ mod tests {
             assert!(safety < 500, "state machine did not finish in time");
 
             ts += 1;
-
-		
-			if matches!(c.run_state, RunState::WaitingForMembers) {
-				maybe_clients = Some(clients.iter());
-			}
+            if matches!(c.run_state, RunState::WaitingForMembers) {
+                maybe_clients = Some(clients.iter());
+            }
 
             if matches!(c.run_state, RunState::RoundWitness) {
                 let round = c.current_round_mut_unchecked();
