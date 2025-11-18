@@ -102,9 +102,9 @@ impl ParameterDownloaderHandle {
 
     pub async fn wait_for_capacity(&self) {
         let (tx, rx) = oneshot::channel();
-        self.tx
-            .send(ParameterDownloaderMessage::WaitForCapacity { response: tx })
-            .unwrap();
+        let _ = self
+            .tx
+            .send(ParameterDownloaderMessage::WaitForCapacity { response: tx });
         let _ = rx.await;
     }
 

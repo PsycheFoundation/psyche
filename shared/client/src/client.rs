@@ -5,7 +5,6 @@ use crate::{
 };
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
-use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
@@ -121,7 +120,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     tx_broadcast_finished,
                 });
 
-                let retried_downloads = ParameterDownloaderHandle::new(
+                let parameter_downloader_handle = ParameterDownloaderHandle::new(
                     tx_params_download.clone(),
                     max_concurrent_parameter_requests,
                 );
@@ -274,8 +273,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
                                         metrics.record_download_completed(hash, from);
-                                        retried_downloads.download_succeeded();
-                                        if retried_downloads.remove(hash).await.is_some() {
+                                        parameter_downloader_handle.download_succeeded();
+                                        if parameter_downloader_handle.remove(hash).await.is_some() {
                                             info!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
                                         match download_data {
@@ -307,7 +306,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     NetworkEvent::DownloadFailed(dl) => {
                                         let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
                                         let hash = dl.blob_ticket.hash();
-                                        let retries = retried_downloads.get(hash).await.map(|i| i.retries).unwrap_or(0);
+                                        let retries = parameter_downloader_handle.get(hash).await.map(|i| i.retries).unwrap_or(0);
                                         let download_type_clone = dl.download_type.clone();
 
                                         match dl.download_type {
@@ -327,18 +326,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 );
                                                 let router = p2p.router().clone();
                                                 let peer_manager = peer_manager.clone();
-                                                let retried_downloads = retried_downloads.clone();
+                                                let parameter_downloader_handle = parameter_downloader_handle.clone();
                                                 let param_requests_cancel_token = param_requests_cancel_token.clone();
                                                 tokio::spawn(async move {
-                                                    let blob_ticket_to_retry = if let Ok(new_blob_ticket) = get_blob_ticket_to_download(router.clone(), request_type, peer_manager.clone(), param_requests_cancel_token).await {
+                                                    let blob_ticket_to_retry = if let Ok((new_blob_ticket, _)) = blob_ticket_param_request_task(request_type, router.clone(), peer_manager.clone(), param_requests_cancel_token).await {
                                                         // We remove the old hash because we're getting the blob from a new peer that has its own version of the model parameter or config blob
-                                                        retried_downloads.remove(hash).await;
+                                                        parameter_downloader_handle.remove(hash).await;
                                                         new_blob_ticket
                                                     } else {
                                                         dl.blob_ticket
                                                     };
 
-                                                    retried_downloads.insert(DownloadRetryInfo {
+                                                    parameter_downloader_handle.insert(DownloadRetryInfo {
                                                         retries: retries + 1,
                                                         retry_time,
                                                         tag: dl.tag,
@@ -351,7 +350,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 if retries >= MAX_DOWNLOAD_RETRIES {
                                                     metrics.record_download_perma_failed();
                                                     warn!("Distro result download failed (not retrying): {}", dl.error);
-                                                    retried_downloads.remove(hash).await;
+                                                    parameter_downloader_handle.remove(hash).await;
                                                 } else {
                                                     metrics.record_download_failed();
                                                     let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
@@ -362,7 +361,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         backoff_duration,
                                                         dl.error
                                                     );
-                                                    retried_downloads.insert(DownloadRetryInfo {
+                                                    parameter_downloader_handle.insert(DownloadRetryInfo {
                                                         retries: retries + 1,
                                                         retry_time,
                                                         tag: dl.tag,
@@ -484,12 +483,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let tx_params_download = tx_params_download.clone();
                             let tx_config_download = tx_config_download.clone();
                             let metrics = metrics.clone();
-                            let retried_downloads = retried_downloads.clone();
+                            let parameter_downloader_handle = parameter_downloader_handle.clone();
                             tokio::spawn(async move {
-                                let pending_retries: Vec<(psyche_network::Hash, BlobTicket, Tag, DownloadType)> = retried_downloads.pending_retries().await;
+                                let pending_retries: Vec<(psyche_network::Hash, BlobTicket, Tag, DownloadType)> = parameter_downloader_handle.pending_retries().await;
 
                             for (hash, ticket, tag, download_type) in pending_retries {
-                                    let retries = retried_downloads.update_time(hash).await;
+                                    let retries = parameter_downloader_handle.update_time(hash).await;
 
                                     metrics.record_download_retry(hash);
                                     // We check the type of the failed download and send it to the appropriate channel to retry it
@@ -557,12 +556,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
                                 // and dropped immediately
                                 let peer_manager = peer_manager.clone();
-                                let retried_downloads = retried_downloads.clone();
+                                let parameter_downloader_handle = parameter_downloader_handle.clone();
 
                                 tokio::spawn(async move {
                                 for param_name in param_names {
-                                    info!("Waiting for capacity");
-                                    retried_downloads.wait_for_capacity().await;
+                                    info!("Limit of current parameters downloads reached, waiting for capacity");
+                                    parameter_downloader_handle.wait_for_capacity().await;
 
                                     let router = router.clone();
 
@@ -573,7 +572,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             param_requests_cancel_token.clone()
                                         ).await.unwrap();
 
-                                    retried_downloads.add_parameter(result.0, result.1);
+                                    parameter_downloader_handle.add_parameter(result.0, result.1);
                                 }
                             });
                         },
@@ -596,7 +595,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let tx_config_download = tx_config_download.clone();
                             let param_requests_cancel_token = param_requests_cancel_token.clone();
                             tokio::spawn(async move {
-                                if let Ok(config_blob_ticket) = get_blob_ticket_to_download(router.clone(), ModelRequestType::Config, peer_manager, param_requests_cancel_token).await {
+                                if let Ok((config_blob_ticket, _)) = blob_ticket_param_request_task(ModelRequestType::Config, router.clone(), peer_manager, param_requests_cancel_token).await {
                                     tx_config_download.send(config_blob_ticket).expect("Failed to send config blob ticket");
                                 } else {
                                     error!("Error getting the config blob ticket, we'll not proceed with the download");
@@ -770,21 +769,4 @@ fn all_node_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId>
     let mut addrs = participating_node_ids(state);
     addrs.shuffle(&mut rand::rng());
     addrs
-}
-
-async fn get_blob_ticket_to_download(
-    router: Arc<Router>,
-    request_type: ModelRequestType,
-    peer_manager: Arc<PeerManagerHandle>,
-    cancellation_token: CancellationToken,
-) -> Result<BlobTicket, anyhow::Error> {
-    let result = blob_ticket_param_request_task(
-        request_type.clone(),
-        router,
-        peer_manager,
-        cancellation_token.clone(),
-    )
-    .await?;
-
-    Ok(result.0)
 }
