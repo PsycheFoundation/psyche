@@ -2,6 +2,7 @@ use anyhow::{Result, bail};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser};
 use iroh::{PublicKey, RelayMode, RelayUrl};
+use iroh_blobs::api::Tag;
 use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::{
@@ -169,7 +170,7 @@ impl App {
                 self.start_time.insert(blob_ticket.hash(), Instant::now());
                 self.network.start_download(
                     blob_ticket,
-                    step,
+                    Tag::from(step.to_string()),
                     DownloadType::DistroResult(Vec::new()),
                 )
             }
@@ -219,7 +220,7 @@ impl App {
 
         let blob_ticket = match self
             .network
-            .add_downloadable(DistroResultBlob { step, data }, step.to_string().as_str())
+            .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
             Ok(v) => {
@@ -281,6 +282,9 @@ async fn main() -> Result<()> {
     };
     info!("using relay servers: {:?}", &relay_mode);
 
+    let tui = args.tui;
+    let (cancel, tx_tui_state) = maybe_start_render_loop(tui.then(Tui::default))?;
+
     let network = NC::init(
         "123",
         args.bind_port,
@@ -290,12 +294,9 @@ async fn main() -> Result<()> {
         secret_key,
         allowlist::AllowAll,
         Arc::new(ClientMetrics::new(None)),
+        Some(cancel.clone()),
     )
     .await?;
-
-    let tui = args.tui;
-
-    let (cancel, tx_tui_state) = maybe_start_render_loop(tui.then(Tui::default))?;
 
     const SEND_DATA_INTERVAL: u64 = 3;
     // fire at wall-clock 3-second intervals.

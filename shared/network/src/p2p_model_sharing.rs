@@ -2,6 +2,7 @@ use anyhow::Result;
 use iroh::NodeId;
 use iroh::protocol::AcceptError;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
+use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
@@ -414,7 +415,7 @@ impl SharableModel {
         &mut self,
         param_name: &str,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
-        tag: &str,
+        tag: Tag,
     ) -> Result<BlobTicket, SharableModelError> {
         let Some(loading_parameters) = self.serializing_parameters.as_mut() else {
             return Err(SharableModelError::ParametersNotInitialized);
@@ -477,7 +478,7 @@ impl SharableModel {
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
                 let ticket = p2p
-                    .add_downloadable(transmittable_download, tag)
+                    .add_downloadable(transmittable_download, Tag::from(tag))
                     .await
                     .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                 self.config_and_tokenizer_ticket = Some(ticket.clone());

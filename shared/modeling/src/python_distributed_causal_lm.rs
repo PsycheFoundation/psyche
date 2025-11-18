@@ -25,8 +25,11 @@ pub enum PythonDistributedCausalLMError {
     #[error("Local device must be rank 0, instead got {0}")]
     LocalNotRankZero(usize),
 
-    #[error("Local device not a CUDA device")]
-    NonCUDADevice,
+    #[error("Device {0:?} is not a CUDA device")]
+    NonCUDADevice(Device),
+
+    #[error("CUDA not available")]
+    CUDANotAvailable,
 
     #[error("Python error: {0}")]
     PythonError(#[from] PyErr),
@@ -227,7 +230,7 @@ impl PythonDistributedCausalLM {
         num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
         if !tch::Cuda::is_available() {
-            return Err(PythonDistributedCausalLMError::NonCUDADevice);
+            return Err(PythonDistributedCausalLMError::CUDANotAvailable);
         }
         let num_local_ranks = num_local_ranks.unwrap_or_else(tch::Cuda::device_count);
         let world_size = parallelism.dp * parallelism.tp;
@@ -245,7 +248,7 @@ impl PythonDistributedCausalLM {
                 // Does the 0th cuda device *have* to be rank 0?
                 return Err(PythonDistributedCausalLMError::LocalNotRankZero(rank));
             }
-            _ => return Err(PythonDistributedCausalLMError::NonCUDADevice),
+            _ => return Err(PythonDistributedCausalLMError::NonCUDADevice(device)),
         };
         let backend = "nccl".to_string();
         let init_method = format!("tcp://0.0.0.0:{}", port.unwrap_or(34567));
@@ -293,7 +296,7 @@ impl PythonDistributedCausalLM {
                         comm.barrier(Some(device))?;
                         info!("Sharing parameters with the other ranks");
 
-                        for (name, tensor) in tensors_vec.iter() {
+                        for (name, tensor) in tensors_vec.into_iter() {
                             comm.set(
                                 &format!("tensor_shape_{}", name),
                                 &serde_json::to_string(&tensor.size()).unwrap(),
@@ -308,7 +311,7 @@ impl PythonDistributedCausalLM {
                             // To broadcast we have to move the tensor to the GPU
                             let tensor = tensor.to(device);
 
-                            if let Err(e) = comm.broadcast(&tensor.shallow_clone()) {
+                            if let Err(e) = comm.broadcast(&tensor) {
                                 error!("Error broadcasting tensor {}: {}", name, e);
                                 return Err(PythonDistributedCausalLMError::PythonError(e));
                             }

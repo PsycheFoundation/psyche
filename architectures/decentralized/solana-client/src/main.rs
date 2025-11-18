@@ -521,8 +521,7 @@ async fn async_main() -> Result<()> {
                 sidecar_port: args.sidecar_port,
             })
             .build()
-            .await
-            .unwrap();
+            .await?;
 
             app.run().await?;
             logger.shutdown()?;
@@ -570,7 +569,7 @@ async fn async_main() -> Result<()> {
 
 fn main() -> Result<()> {
     #[cfg(feature = "python")]
-    psyche_python_extension_impl::init_embedded_python();
+    psyche_python_extension_impl::init_embedded_python()?;
 
     let runtime = Builder::new_multi_thread()
         .enable_io()

@@ -137,17 +137,12 @@ pub struct PeerConnection {
     pub latency: f32,
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy, Default)]
 pub enum ClientRoleInRound {
+    #[default]
     NotInRound,
     Trainer,
     Witness,
-}
-
-impl Default for ClientRoleInRound {
-    fn default() -> Self {
-        Self::NotInRound
-    }
 }
 
 impl ClientMetrics {

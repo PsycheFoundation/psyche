@@ -23,11 +23,13 @@ builds:
       - 'checks.x86_64-linux.workspace-test-all'
       - 'checks.x86_64-linux.workspace-test-decentralized'
       - 'checks.x86_64-linux.workspace-test-parallelism'
+      - 'packages.docker-psyche-solana-test-validator'
     include:
       - 'packages.x86_64-linux.psyche-solana-client'
       - 'packages.x86_64-linux.psyche-centralized-client'
       - 'packages.x86_64-linux.psyche-centralized-server'
       - 'packages.x86_64-linux.docker-psyche-solana-client'
+      - 'packages.x86_64-linux.docker-psyche-solana-test-client-no-python'
       - 'packages.x86_64-linux.psyche-centralized-local-testnet'
       - 'packages.x86_64-linux.expand-distro'
       - 'devShells.x86_64-linux.*'
@@ -36,9 +38,9 @@ builds:
 
   # on main, might as well build everything, though
   - exclude:
-      - 'packages.*.docker-psyche-solana-test-validator'
       - 'packages.aarch64-darwin.*'
       - 'devShells.aarch64-darwin.*'
+      - 'packages.x86_64-linux.docker-psyche-solana-test-validator'
     include:
       - 'packages.x86_64-linux.*'
       - 'devShells.x86_64-linux.*'

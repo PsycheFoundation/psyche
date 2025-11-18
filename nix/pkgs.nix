@@ -22,30 +22,12 @@ lib.makeScope pkgs.newScope (
       "train"
     ];
 
-    rustPackages = lib.mapAttrs (_: lib.id) (
-      lib.genAttrs (rustPackageNames ++ rustExampleNames) (
-        name:
-        self.psycheLib.buildRustPackageWithPsychePythonEnvironment {
-          inherit name;
-          isExample = lib.elem name rustExampleNames;
-        }
-      )
-    );
-
-    rustPackagesNoPython = lib.mapAttrs (_: lib.id) (
-      lib.genAttrs (rustPackageNames ++ rustExampleNames) (
-        name:
-        self.psycheLib.buildRustPackageWithoutPython {
-          inherit name;
-          isExample = lib.elem name rustExampleNames;
-        }
-      )
-    );
+    allRustPackageNames = rustPackageNames ++ rustExampleNames;
 
     externalRustPackages = {
       solana_toolbox_cli = pkgs.rustPlatform.buildRustPackage rec {
         pname = "solana_toolbox_cli";
-        version = "0.4.3"; # Replace with actual version
+        version = "0.4.3";
 
         src = pkgs.fetchCrate {
           inherit pname version;
@@ -62,64 +44,77 @@ lib.makeScope pkgs.newScope (
       };
     };
 
-    nixglhostRustPackages = lib.listToAttrs (
-      (map (
-        name: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers rustPackages.${name})
-      ) rustPackageNames)
-      ++ (map (
-        name: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers rustPackages.${name})
-      ) rustExampleNames)
-    );
-
-    nixglhostRustPackagesNoPython = lib.listToAttrs (
-      (map (
-        name:
-        lib.nameValuePair "${name}-nixglhost-no-python" (
-          self.psycheLib.useHostGpuDrivers rustPackagesNoPython.${name}
-        )
-      ) rustPackageNames)
-      ++ (map (
-        name:
-        lib.nameValuePair "${name}-nixglhost-no-python" (
-          self.psycheLib.useHostGpuDrivers rustPackagesNoPython.${name}
-        )
-      ) rustExampleNames)
-    );
-
-    # Import Docker configurations
+    rustPackages =
+      let
+        inherit (self.psycheLib)
+          useHostGpuDrivers
+          buildRustPackageWithPsychePythonEnvironment
+          buildRustPackageWithoutPython
+          ;
+      in
+      lib.listToAttrs (
+        lib.concatMap (name: [
+          {
+            name = name;
+            value = useHostGpuDrivers (buildRustPackageWithPsychePythonEnvironment {
+              inherit name;
+              isExample = lib.elem name rustExampleNames;
+            });
+          }
+          {
+            name = "${name}-nopython";
+            value = useHostGpuDrivers (buildRustPackageWithoutPython {
+              inherit name;
+              isExample = lib.elem name rustExampleNames;
+            });
+          }
+        ]) allRustPackageNames
+      );
     dockerPackages = import ./docker.nix {
       inherit
         pkgs
-        nixglhostRustPackages
-        nixglhostRustPackagesNoPython
         inputs
+        rustPackages
         externalRustPackages
         ;
     };
 
-    psychePackages = {
-      psyche-website-wasm = self.callPackage ../website/wasm { };
-      psyche-website-shared = self.callPackage ../website/shared { };
+    mergeAttrsetsNoConflicts =
+      error: attrsets:
+      builtins.foldl' (
+        acc: current:
+        let
+          conflicts = builtins.filter (key: builtins.hasAttr key acc) (builtins.attrNames current);
+        in
+        if conflicts != [ ] then
+          throw "${error} Conflicting keys: ${builtins.toString conflicts}"
+        else
+          acc // current
+      ) { } attrsets;
 
-      psyche-deserialize-zerocopy-wasm = self.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
+    psychePackages = (
+      mergeAttrsetsNoConflicts "can't merge psyche package sets." [
+        {
+          psyche-website-wasm = self.callPackage ../website/wasm { };
+          psyche-website-shared = self.callPackage ../website/shared { };
 
-      solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
-      solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
+          psyche-deserialize-zerocopy-wasm = self.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
 
-      psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
-    }
-    // rustPackages
-    // rustPackagesNoPython
-    // externalRustPackages
-    // nixglhostRustPackages
-    // nixglhostRustPackagesNoPython
-    // dockerPackages;
+          solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
+          solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
+
+          psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+        }
+        rustPackages
+        externalRustPackages
+        dockerPackages
+      ]
+    );
   in
   {
     psycheLib = import ./lib.nix {
       inherit pkgs inputs;
     };
-
     inherit psychePackages;
   }
   // lib.mapAttrs (_: lib.id) psychePackages
