@@ -5,7 +5,6 @@ use crate::{
 };
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
-use futures::future::join_all;
 use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::NodeIdentity;
@@ -13,7 +12,7 @@ use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
     MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState, NodeId,
-    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload, allowlist,
+    ParameterDownloaderHandle, PeerManagerHandle, SharableModel, TransmittableDownload, allowlist,
     blob_ticket_param_request_task, raw_p2p_verify,
 };
 use psyche_watcher::{Backend, BackendWatcher};
@@ -103,7 +102,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                 let max_concurrent_parameter_requests =
                     init_config.max_concurrent_parameter_requests;
-                let mut concurrent_downloads = 0_usize;
 
                 let mut current_downloaded_parameters = 0_u64;
                 let mut total_parameters = None;
@@ -123,7 +121,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     tx_broadcast_finished,
                 });
 
-                let retried_downloads = RetriedDownloadsHandle::new(tx_params_download.clone());
+                let retried_downloads = ParameterDownloaderHandle::new(
+                    tx_params_download.clone(),
+                    max_concurrent_parameter_requests,
+                );
                 let mut sharable_model = SharableModel::empty();
                 let peer_manager = Arc::new(PeerManagerHandle::new(
                     MAX_ERRORS_PER_PEER,
@@ -273,7 +274,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     }) => {
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
                                         metrics.record_download_completed(hash, from);
-                                        retried_downloads.download_succeeded(hash);
+                                        retried_downloads.download_succeeded();
                                         if retried_downloads.remove(hash).await.is_some() {
                                             info!("Successfully downloaded previously failed blob {}", hex::encode(hash));
                                         }
@@ -548,7 +549,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             total_parameters = Some(param_names.len());
                             sharable_model.initialize_parameters(&param_names, tx_params_response);
 
-                            let tx_params_download = tx_params_download.clone();
                             let router = p2p.router();
 
                             let peer_manager = peer_manager.clone();
@@ -557,7 +557,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 // is no chance of mutex poisoning; locks are acquired only to insert or remove items from them
                                 // and dropped immediately
                                 let peer_manager = peer_manager.clone();
-                                let mut max_concurrent_parameter_requests = 0;
                                 let retried_downloads = retried_downloads.clone();
 
                                 tokio::spawn(async move {
@@ -785,9 +784,7 @@ async fn get_blob_ticket_to_download(
         peer_manager,
         cancellation_token.clone(),
     )
-    .await;
+    .await?;
 
-    let (blob_ticket_lock, model_type) = result.unwrap();
-
-    Ok(blob_ticket_lock)
+    Ok(result.0)
 }
