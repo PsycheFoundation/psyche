@@ -4,7 +4,7 @@ When clients participate in a decentralized training run, a set of Solana Keypai
 
 ## Users Roles
 
-A different set of key will be used for each role within the Training flow.
+A different set of keys will be used for each role within the Training flow.
 
 The following roles will be important:
 
@@ -37,11 +37,11 @@ sudo apt-get install jq
 cargo install solana_toolbox_cli
 ```
 
-For the `join_authority` (the grantor) to issues new `authorization` a script is provided:
+For the `join_authority` (the grantor) to issue new `authorization` a script is provided:
 
 ```sh
 # We assume that "grantor.json" contains the Private Key of the "join_authority"
-# The "grantor.json" can be created using: $ solana-keygen new -o grantee.json
+# The "grantor.json" can be created using: $ solana-keygen new -o grantor.json
 # We assume that $GRANTEE_PUBKEY is set to the public key of the "authorizer" (or grantee)
 # The $GRANTEE_PUBKEY can be retrieved by using: $ solana-keygen pubkey grantee.json
 sh scripts/join-authorization-create.sh devnet grantor.json $GRANTEE_PUBKEY
