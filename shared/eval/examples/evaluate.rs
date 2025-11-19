@@ -203,7 +203,7 @@ fn run_data_parallel(
             let mut model: Box<dyn CausalLM> = if python {
                 #[cfg(feature = "python")]
                 {
-                    psyche_python_extension_impl::init_embedded_python();
+                    psyche_python_extension_impl::init_embedded_python()?;
 
                     Box::new(psyche_modeling::PythonDistributedCausalLM::new(
                         "hf-auto".to_string(),
