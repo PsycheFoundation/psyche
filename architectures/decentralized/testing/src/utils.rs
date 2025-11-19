@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fs, sync::Arc, time::Duration};
 
 use anchor_client::{
     Cluster, Program,
@@ -10,6 +10,8 @@ use psyche_coordinator::{
 };
 use psyche_core::FixedVec;
 use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
+use std::env;
+use std::path::PathBuf;
 
 pub struct SolanaTestClient {
     program: Program<Arc<Keypair>>,
@@ -120,5 +122,89 @@ impl SolanaTestClient {
 
         println!("Timeout waiting for state: {target_state:?}");
         false
+    }
+}
+
+pub struct ConfigBuilder {
+    base_config: toml::Value,
+    num_clients: usize,
+    batch_size: u32,
+    architecture: String,
+}
+
+impl Default for ConfigBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ConfigBuilder {
+    pub fn new() -> Self {
+        let path = env::current_dir().unwrap();
+        println!("The current directory is {}", path.display());
+        #[cfg(not(feature = "python"))]
+        let base_path = "../../../config/solana-test/nano-config.toml";
+        #[cfg(feature = "python")]
+        let base_path = "../../../config/solana-test/light-config.toml";
+
+        let base_config: toml::Value = fs::read_to_string(base_path)
+            .expect("Failed to read base config")
+            .parse()
+            .expect("Failed to parse TOML");
+
+        Self {
+            base_config,
+            num_clients: 1,
+            batch_size: 4,
+            architecture: String::from("HfLlama"),
+        }
+    }
+
+    pub fn with_num_clients(mut self, num: usize) -> Self {
+        self.num_clients = num;
+        self
+    }
+
+    pub fn with_architecture(mut self, architecture: &str) -> Self {
+        self.architecture = architecture.to_string();
+        self
+    }
+
+    pub fn with_batch_size(mut self, batch_size: u32) -> Self {
+        self.batch_size = batch_size;
+        self
+    }
+
+    pub fn build(mut self) -> PathBuf {
+        // Apply runtime overrides
+        self.set_value("config.min_clients", self.num_clients as u32);
+        self.set_value("config.init_min_clients", self.num_clients as u32);
+
+        // This means that every client is a witness
+        self.set_value("config.witness_nodes", 0_u32);
+
+        self.set_value("model.LLM.architecture", self.architecture.clone());
+        self.set_value("config.global_batch_size_start", self.batch_size);
+        self.set_value("config.global_batch_size_end", self.batch_size);
+
+        #[cfg(feature = "python")]
+        self.set_value("config.warmup_time", 100);
+
+        let config_content = toml::to_string(&self.base_config).unwrap();
+        let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
+        fs::write(&config_file_path, config_content).unwrap();
+
+        config_file_path
+    }
+
+    fn set_value(&mut self, path: &str, value: impl Into<toml::Value>) {
+        let parts: Vec<&str> = path.split('.').collect();
+        let mut current = &mut self.base_config;
+
+        for part in &parts[..parts.len() - 1] {
+            current = current.get_mut(part).unwrap();
+        }
+
+        current[parts.last().unwrap()] = value.into();
     }
 }

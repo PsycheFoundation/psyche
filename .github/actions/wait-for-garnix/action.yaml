@@ -4,7 +4,7 @@ inputs:
   timeout-minutes:
     description: 'Maximum time to wait in minutes'
     required: false
-    default: '10'
+    default: '50'
 runs:
   using: 'composite'
   steps:
@@ -17,8 +17,23 @@ runs:
         echo "Waiting for 'All Garnix checks' on commit $SHA"
         TOTAL_ATTEMPTS=$(( ${{ inputs.timeout-minutes }} * 2 ))
 
+        GARNIX_SUITE_ID=""
+
         for i in $(seq 1 $TOTAL_ATTEMPTS); do
-          CHECK=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs --jq '.check_runs[] | select(.name == "package docker-psyche-solana-test-client-no-python [x86_64-linux]") | {name: .name, status: .status, conclusion: .conclusion}')
+          if [ -z "$GARNIX_SUITE_ID" ]; then
+            GARNIX_SUITE_ID=$(gh api repos/${{ github.repository }}/commits/$SHA/check-suites --jq '.check_suites[] | select(.app.name == "Garnix CI") | .id')
+            
+            if [ -z "$GARNIX_SUITE_ID" ]; then
+              echo "No Garnix CI check suite found yet, waiting... (attempt $i/$TOTAL_ATTEMPTS)"
+              sleep 10
+              continue
+            fi
+            
+            echo "Found Garnix CI check suite: $GARNIX_SUITE_ID"
+          fi
+          
+          CHECK=$(gh api repos/${{ github.repository }}/check-suites/$GARNIX_SUITE_ID/check-runs --jq '.check_runs[] | select(.name == "package docker-psyche-solana-test-client-no-python [x86_64-linux]") | {name: .name, status: .status, conclusion: .conclusion}')
+          
           if [ -z "$CHECK" ]; then
             echo "No 'package docker-psyche-solana-test-client-no-python [x86_64-linux]' found yet, waiting..."
             sleep 10
