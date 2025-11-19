@@ -12,9 +12,9 @@ pub struct CommandSetFutureEpochRatesParams {
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
-    earning_rate: Option<u64>,
+    earning_rate_total_shared: Option<u64>,
     #[clap(long, env)]
-    slashing_rate: Option<u64>,
+    slashing_rate_per_client: Option<u64>,
 }
 
 pub async fn command_set_future_epoch_rates_execute(
@@ -24,8 +24,8 @@ pub async fn command_set_future_epoch_rates_execute(
     let CommandSetFutureEpochRatesParams {
         run_id,
         treasurer_index,
-        earning_rate,
-        slashing_rate,
+        earning_rate_total_shared,
+        slashing_rate_per_client,
     } = params;
 
     let main_authority = backend.get_payer();
@@ -50,8 +50,8 @@ pub async fn command_set_future_epoch_rates_execute(
                 config: None,
                 model: None,
                 progress: None,
-                epoch_earning_rate: earning_rate,
-                epoch_slashing_rate: slashing_rate,
+                epoch_earning_rate_total_shared: earning_rate_total_shared,
+                epoch_slashing_rate_per_client: slashing_rate_per_client,
                 paused: None,
             },
         )
@@ -60,8 +60,8 @@ pub async fn command_set_future_epoch_rates_execute(
             &run_id,
             &coordinator_account,
             &main_authority,
-            earning_rate,
-            slashing_rate,
+            earning_rate_total_shared,
+            slashing_rate_per_client,
         )
     };
 
@@ -69,8 +69,8 @@ pub async fn command_set_future_epoch_rates_execute(
         .send_and_retry("Set future epoch rates", &[instruction], &[])
         .await?;
     println!("On run {run_id} with transaction {signature}:");
-    println!(" - Set earning rate to {earning_rate:?}");
-    println!(" - Set slashing rate to {slashing_rate:?}");
+    println!(" - Set earning rate to {earning_rate_total_shared:?} (divided between clients)");
+    println!(" - Set slashing rate to {slashing_rate_per_client:?} (per failing client)");
 
     println!("\n===== Logs =====");
     for log in backend.get_logs(&signature).await? {
