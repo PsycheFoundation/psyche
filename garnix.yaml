@@ -23,6 +23,7 @@ builds:
       - 'checks.x86_64-linux.workspace-test-all'
       - 'checks.x86_64-linux.workspace-test-decentralized'
       - 'checks.x86_64-linux.workspace-test-parallelism'
+      - 'packages.docker-psyche-solana-test-validator'
     include:
       - 'packages.x86_64-linux.psyche-solana-client'
       - 'packages.x86_64-linux.psyche-centralized-client'
@@ -39,6 +40,7 @@ builds:
   - exclude:
       - 'packages.aarch64-darwin.*'
       - 'devShells.aarch64-darwin.*'
+      - 'packages.x86_64-linux.docker-psyche-solana-test-validator'
     include:
       - 'packages.x86_64-linux.*'
       - 'devShells.x86_64-linux.*'

@@ -48,8 +48,8 @@ pub async fn command_set_paused_execute(
                 config: None,
                 model: None,
                 progress: None,
-                epoch_earning_rate: None,
-                epoch_slashing_rate: None,
+                epoch_earning_rate_total_shared: None,
+                epoch_slashing_rate_per_client: None,
                 paused: Some(paused),
             },
         )
