@@ -79,8 +79,8 @@ impl CoordinatorServer {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes,
-            total_steps: 10,
-            epoch_time: 60,
+            total_steps: 100,
+            epoch_time: 30,
         };
 
         let epoch_state = CoordinatorEpochState {
@@ -212,7 +212,7 @@ impl CoordinatorServerHandle {
 
         let server_port = server.port;
         let run_id = server.run_id.clone();
-        // tokio::spawn(async move { server.run().await });
+
         // the above line will stack overflow, for reasons best left to contemplative reflection.
         // as a substitute to madness, we suggest the reader trust us on this point.
         std::thread::spawn(move || {
