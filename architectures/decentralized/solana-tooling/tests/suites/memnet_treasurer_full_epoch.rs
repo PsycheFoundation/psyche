@@ -54,7 +54,7 @@ pub async fn run() {
     let warmup_time = 77;
     let round_witness_time = 33;
     let cooldown_time = 42;
-    let rounds_per_epoch = 4;
+    let epoch_time = 30;
     let earned_point_per_epoch = 33;
 
     // Prepare the collateral mint
@@ -188,7 +188,7 @@ pub async fn run() {
                 global_batch_size_warmup_tokens: 0,
                 verification_percent: 0,
                 witness_nodes: 1,
-                rounds_per_epoch,
+                epoch_time,
                 total_steps: 100,
             }),
             model: Some(Model::LLM(LLM {

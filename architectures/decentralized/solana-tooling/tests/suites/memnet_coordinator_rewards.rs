@@ -54,7 +54,7 @@ pub async fn run() {
     let warmup_time = 77;
     let round_witness_time = 42;
     let cooldown_time = 88;
-    let rounds_per_epoch = 4;
+    let epoch_time = 30;
     let earned_point_per_epoch = 33;
 
     // Create the empty pre-allocated coordinator_account
@@ -101,7 +101,7 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 0,
-            rounds_per_epoch,
+            epoch_time,
             total_steps: 100,
         }),
         Some(Model::LLM(LLM {
