@@ -104,25 +104,28 @@ class UpdatableLLMEngine:
     def abort_request(self, request_id: str):
         self.engine.abort_request(request_id)
 
-    def update_weights_from_memory(
-        self, update_metadata: Dict[str, Any], shared_mem_ptr: int
-    ):
+    def get_model(self) -> torch.nn.Module:
         """
-        PLACEHOLDER
+        Returns the underlying model for weight updates.
+        This is critical for the updater daemon to access parameters.
 
-        This function will be called by Rust when a new weight delta arrives.
-
-        Args:
-            update_metadata: JSON describing which parameters are being updated (offsets, shapes).
-            shared_mem_ptr: Pointer/Handle to the shared memory region containing the new weights.
+        Returns:
+            The vLLM model (torch.nn.Module)
         """
-        # 1. Access the shared memory region (using ctypes or torch.from_blob)
-        # 2. Iterate through update_metadata
-        # 3. Locate the target tensor in self.param_registry
-        # 4. Copy data from shared memory -> target tensor
+        return self.engine.model_executor.driver_worker.model_runner.model
 
-        logger.info("Received weight update signal (Not implemented yet)")
-        pass
+    def share_memory(self):
+        """
+        Makes model parameters accessible across processes via PyTorch shared memory.
+        This enables zero-copy updates from the updater daemon.
+
+        IMPORTANT: Must be called before spawning the updater process!
+        """
+        model = self.get_model()
+        for param in model.parameters():
+            param.share_memory_()
+        logger.info("Model parameters moved to shared memory")
 
     def get_tokenizer(self):
+        """Returns the tokenizer used by this engine."""
         return self.engine.tokenizer

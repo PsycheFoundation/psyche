@@ -68,9 +68,9 @@ impl VLLMEngine {
     /// Initialize the Python vLLM engine
     pub fn new(config: VLLMConfig) -> Result<Self, VLLMError> {
         Python::with_gil(|py| {
-            // Import the custom Python module we created in Task 1.1
+            // Import the vLLM module from psyche.vllm
             // Ensure 'python/python' is in PYTHONPATH
-            let module = PyModule::import(py, "psyche.inference.engine")?;
+            let module = PyModule::import(py, "psyche.vllm.engine")?;
 
             let engine_class = module.getattr("UpdatableLLMEngine")?;
 
