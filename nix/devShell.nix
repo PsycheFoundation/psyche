@@ -89,6 +89,9 @@
             + lib.optionalString pkgs.config.metalSupport ''
               # macOS: Ensure PyTorch can use Metal Performance Shaders
               export PYTORCH_ENABLE_MPS_FALLBACK=1
+
+              # Set up PyTorch library path for test execution
+              export DYLD_LIBRARY_PATH="${psychePythonVenv}/lib/python3.12/site-packages/torch/lib"
             ''
             + ''
               echo "Welcome to the Psyche development shell.";
@@ -105,9 +108,6 @@
               ];
               shellHook = defaultShell.shellHook + ''
                 echo "This shell has the 'psyche' module available in its python interpreter.";
-
-                # Set up PyTorch library path for test execution
-                export DYLD_LIBRARY_PATH="${pkgs.psycheLib.psychePythonVenv.torch}/lib/python3.12/site-packages/torch/lib"
               '';
             }
           );
