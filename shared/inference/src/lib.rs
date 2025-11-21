@@ -1,3 +1,8 @@
-pub mod vllm_engine;
+pub mod vllm;
 
-pub use vllm_engine::{GenerationOutput, SamplingParams, VLLMConfig, VLLMEngine, VLLMError};
+// Re-export commonly used types for convenience
+pub use vllm::{
+    GenerationOutput, SamplingParams, UpdateMode, VLLMConfig, VLLMEngine, VLLMError, VLLMMode,
+    VLLMUpdaterError, VLLMWithUpdater, VLLMWithUpdaterConfig, WeightDeltaBatch,
+    compute_weight_delta,
+};

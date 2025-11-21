@@ -1,9 +1,9 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyString};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use pyo3::types::{PyDict, PyList};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
+
+use super::types::{GenerationOutput, SamplingParams, VLLMConfig};
 
 #[derive(Error, Debug)]
 pub enum VLLMError {
@@ -17,43 +17,6 @@ impl From<PyErr> for VLLMError {
     fn from(err: PyErr) -> Self {
         Python::with_gil(|py| VLLMError::PythonError(err.to_string()))
     }
-}
-
-/// Configuration for the vLLM Engine
-#[derive(Debug, Clone)]
-pub struct VLLMConfig {
-    pub model_name: String,
-    pub tensor_parallel_size: usize,
-    pub gpu_memory_utilization: f64,
-    pub max_model_len: Option<usize>,
-}
-
-/// Parameters for text generation (matches vLLM SamplingParams)
-#[derive(Debug, Serialize, Clone)]
-pub struct SamplingParams {
-    pub temperature: f64,
-    pub top_p: f64,
-    pub max_tokens: usize,
-    pub stop: Option<Vec<String>>,
-}
-
-impl Default for SamplingParams {
-    fn default() -> Self {
-        Self {
-            temperature: 1.0,
-            top_p: 1.0,
-            max_tokens: 512,
-            stop: None,
-        }
-    }
-}
-
-/// The result of a single generation step
-#[derive(Debug, Deserialize)]
-pub struct GenerationOutput {
-    pub request_id: String,
-    pub text: String,
-    pub finished: bool,
 }
 
 /// The Rust wrapper around the Python `UpdatableLLMEngine`
