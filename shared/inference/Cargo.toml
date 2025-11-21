@@ -1,0 +1,24 @@
+[package]
+name = "psyche-inference"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+# PyO3 for Python FFI
+pyo3.workspace = true
+
+# Tensor operations
+tch.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+tokio.workspace = true
+
+[dev-dependencies]
