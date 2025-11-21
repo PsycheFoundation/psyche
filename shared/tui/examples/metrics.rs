@@ -11,14 +11,14 @@ use tracing::{Level, info, span};
 #[tokio::main]
 async fn main() {
     let authorization_header =
-        std::env::var("OLTP_AUTH_HEADER").expect("env var OLTP_AUTH_HEADER not set");
+        std::env::var("OTLP_AUTH_HEADER").expect("env var OTLP_AUTH_HEADER not set");
     let metrics_endpoint =
-        std::env::var("OLTP_METRICS_URL").expect("env var OLTP_METRICS_URL not set");
+        std::env::var("OTLP_METRICS_URL").expect("env var OTLP_METRICS_URL not set");
 
     let tracing_endpoint =
-        std::env::var("OLTP_TRACING_URL").expect("env var OLTP_TRACING_URL not set");
+        std::env::var("OTLP_TRACING_URL").expect("env var OTLP_TRACING_URL not set");
 
-    let log_endpoint = std::env::var("OLTP_LOGS_URL").expect("env var OLTP_LOGS_URL not set");
+    let log_endpoint = std::env::var("OTLP_LOGS_URL").expect("env var OTLP_LOGS_URL not set");
 
     let _logs = logging()
         .with_output(LogOutput::Console)
