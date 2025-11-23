@@ -36,7 +36,7 @@ enum Commands {
     /// Starts the server and launches the coordinator with the declared configuration.
     Run {
         #[command(flatten)]
-        run_args: RunArgs,
+        run_args: Box<RunArgs>,
     },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
