@@ -24,6 +24,8 @@ lib.extendMkDerivation {
       meta ? { },
     }@args:
     {
+      __structuredAttrs = true;
+
       pname = "${packageJson.name}-${package}";
       version = packageJson.version;
       src = workspaceSrc;
