@@ -771,7 +771,7 @@ async fn test_solana_subscriptions() {
     // skip the first 3 events since init subscriptions can vary the order
     subscription_events = subscription_events[3..].into();
     subscription_events.dedup();
-    let expected_subscription_events = vec![
+    let expected_subscription_events = [
         // init subscriptions
         (
             format!(r#""ws://{NGINX_PROXY_PREFIX}-2:8902/ws/""#),

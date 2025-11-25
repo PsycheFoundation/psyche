@@ -164,7 +164,7 @@ async fn async_main() -> Result<()> {
 
 fn main() -> Result<()> {
     #[cfg(feature = "python")]
-    psyche_python_extension_impl::init_embedded_python();
+    psyche_python_extension_impl::init_embedded_python()?;
 
     // let shutdown_handler =
     let runtime = Builder::new_multi_thread()
