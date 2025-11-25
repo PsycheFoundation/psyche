@@ -27,6 +27,12 @@ jobs:
       - name: Stop Docker containers
         run: docker stop $(docker ps -aq) || true
 
+      - name: Kill validator and psyche processes
+        run: |
+          pkill -f validator || true
+          pkill -f psyche || true
+          pkill -f solana-test-validator || true
+
       - name: Check running processes after
         run: |
           echo "=== Docker containers ==="
