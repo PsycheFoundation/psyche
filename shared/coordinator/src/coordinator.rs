@@ -959,6 +959,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         if self.check_timeout(unix_timestamp, self.config.max_round_train_time) {
             self.change_state(unix_timestamp, RunState::RoundWitness);
         }
+        if self.progress.step > self.config.total_steps {
+            self.change_state(unix_timestamp, RunState::RoundWitness);
+        }
         Ok(TickResult::Ticked)
     }
 
