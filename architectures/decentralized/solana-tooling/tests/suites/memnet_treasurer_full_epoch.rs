@@ -51,8 +51,9 @@ pub async fn run() {
     let client = Keypair::new();
     let ticker = Keypair::new();
     let distributed_collateral_amount = 10_000_000;
-    let warmup_time = 77;
-    let round_witness_time = 33;
+
+    let warmup_time = 10;
+    let round_witness_time = 10;
     let cooldown_time = 42;
     let epoch_time = 30;
     let earned_point_per_epoch = 33;
@@ -187,7 +188,7 @@ pub async fn run() {
                 global_batch_size_end: 1,
                 global_batch_size_warmup_tokens: 0,
                 verification_percent: 0,
-                witness_nodes: 1,
+                witness_nodes: 0,
                 epoch_time,
                 total_steps: 100,
             }),
@@ -300,7 +301,7 @@ pub async fn run() {
     .unwrap();
 
     // Go through an epoch's rounds
-    for _ in 0..rounds_per_epoch {
+    for _ in 0..4 {
         // Witness
         process_coordinator_witness(
             &mut endpoint,

@@ -51,8 +51,8 @@ pub async fn run() {
         clients.push(Keypair::new());
     }
     let ticker = Keypair::new();
-    let warmup_time = 77;
-    let round_witness_time = 42;
+    let warmup_time = 10;
+    let round_witness_time = 10;
     let cooldown_time = 88;
     let epoch_time = 30;
     let earned_point_per_epoch = 33;
@@ -206,6 +206,7 @@ pub async fn run() {
         .forward_clock_unix_timestamp(warmup_time)
         .await
         .unwrap();
+
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -217,7 +218,7 @@ pub async fn run() {
     .unwrap();
 
     // Run a full epoch
-    for _ in 0..rounds_per_epoch {
+    for _ in 0..4 {
         // Fetch the state at the start of the round
         let coordinator_account_state =
             get_coordinator_account_state(&mut endpoint, &coordinator_account)
