@@ -3,9 +3,10 @@
   inputs,
   lib ? pkgs.lib,
   gitcommit ? inputs.self.rev or inputs.self.dirtyRev or "unknown",
-  system ? pkgs.stdenv.hostPlatform.system,
 }:
 let
+  system = pkgs.stdenv.hostPlatform.system;
+
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
     extensions = [ "rust-src" ];
     targets = [ "wasm32-unknown-unknown" ];
@@ -32,29 +33,28 @@ let
 
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
+      python312
       pkg-config
       perl
-      python312
     ];
 
-    buildInputs = [
-      pkgs.python312Packages.torch
-    ]
-    ++ (with pkgs; [
-      openssl
-      fontconfig # for lr plot
-    ])
-    ++ lib.optionals pkgs.config.cudaSupport (
-      with pkgs.cudaPackages;
-      [
-        cudatoolkit
-        cuda_cudart
-        nccl
-      ]
-      ++ (with pkgs; [
-        rdma-core
+    buildInputs =
+      (with pkgs; [
+        openssl
+        python312Packages.torch
+        fontconfig # for lr plot
       ])
-    );
+      ++ lib.optionals pkgs.config.cudaSupport (
+        with pkgs.cudaPackages;
+        [
+          cudatoolkit
+          cuda_cudart
+          nccl
+        ]
+        ++ (with pkgs; [
+          rdma-core
+        ])
+      );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
@@ -66,9 +66,9 @@ let
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
-      pythonWithPsycheExtension
+      psychePythonVenv
     ];
-    NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
+    NIX_LDFLAGS = "-L${psychePythonVenv}/lib -lpython3.12";
   };
 
   rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
@@ -81,11 +81,10 @@ let
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
   cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
-  pythonWithPsycheExtension = (
-    pkgs.python312.withPackages (ps: [
-      (pkgs.callPackage ../python { })
-    ])
-  );
+  # Runtime python environment = build-time env + rust extension
+  psychePythonVenv = pkgs.callPackage ../python {
+    inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
+  };
 
   buildRustPackageWithPsychePythonEnvironment =
     {
@@ -110,12 +109,12 @@ let
     pkgs.runCommand "${name}"
       {
         buildInputs = [ pkgs.makeWrapper ];
+        meta.mainProgram = name;
       }
       ''
         mkdir -p $out/bin
         makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-          --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
-          --prefix PATH : "${pythonWithPsycheExtension}/bin"
+          --prefix PATH : "${psychePythonVenv}/bin"
       '';
 
   buildRustPackageWithoutPython =
@@ -154,6 +153,7 @@ let
         nativeBuildInputs =
           rustWorkspaceArgs.nativeBuildInputs
           ++ (with pkgs; [
+            binaryen # wasm-opt
             wasm-pack
             jq
             wasm-bindgen-cli
@@ -162,9 +162,9 @@ let
         buildPhaseCargoCommand = ''
           export CRATE_PATH=$(cargo metadata --format-version=1 --no-deps | jq -r ".packages[] | select(.name == \"${name}\") | .manifest_path" | xargs dirname)
 
-          # wasm-pack needs a $HOME dir set.
           echo "building wasm"
-          HOME=$TMPDIR wasm-pack build --target nodejs --mode no-install $CRATE_PATH
+          # wasm-pack needs a $HOME dir set.
+          RUST_LOG=debug HOME=$TMPDIR wasm-pack build --target nodejs --mode no-install $CRATE_PATH
 
           echo "building ts bindings"
           cargo test -p ${name} export_bindings
@@ -192,9 +192,13 @@ let
     if pkgs.config.cudaSupport then
       (
         package:
-        pkgs.runCommandNoCC "${package.name}-nixgl-wrapped"
+        assert lib.assertMsg (
+          package.meta ? mainProgram
+        ) "Package ${package.name} must have meta.mainProgram set to use useHostGpuDrivers";
+        pkgs.runCommand "${package.name}-nixgl-wrapped"
           {
             nativeBuildInputs = [ pkgs.makeWrapper ];
+            meta.mainProgram = package.meta.mainProgram;
           }
           ''
             mkdir -p $out/bin
@@ -294,7 +298,7 @@ in
     env
     src
     gitcommit
-    pythonWithPsycheExtension
+    psychePythonVenv
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

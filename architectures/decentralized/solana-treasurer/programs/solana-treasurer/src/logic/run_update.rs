@@ -42,8 +42,8 @@ pub struct RunUpdateParams {
     pub config: Option<CoordinatorConfig>,
     pub model: Option<Model>,
     pub progress: Option<CoordinatorProgress>,
-    pub epoch_earning_rate: Option<u64>,
-    pub epoch_slashing_rate: Option<u64>,
+    pub epoch_earning_rate_total_shared: Option<u64>,
+    pub epoch_slashing_rate_per_client: Option<u64>,
     pub paused: Option<bool>,
 }
 
@@ -83,8 +83,8 @@ pub fn run_update_processor(
         )?;
     }
 
-    if params.epoch_earning_rate.is_some()
-        || params.epoch_slashing_rate.is_some()
+    if params.epoch_earning_rate_total_shared.is_some()
+        || params.epoch_slashing_rate_per_client.is_some()
     {
         set_future_epoch_rates(
             CpiContext::new(
@@ -102,8 +102,8 @@ pub fn run_update_processor(
                 },
             )
             .with_signer(run_signer_seeds),
-            params.epoch_earning_rate,
-            params.epoch_slashing_rate,
+            params.epoch_earning_rate_total_shared,
+            params.epoch_slashing_rate_per_client,
         )?;
     }
 

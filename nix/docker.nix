@@ -1,7 +1,6 @@
 {
   pkgs,
-  nixglhostRustPackages,
-  nixglhostRustPackagesNoPython,
+  rustPackages,
   inputs,
   externalRustPackages,
 }:
@@ -19,7 +18,7 @@ let
     name = "solana-authorizer";
   };
 
-  solana = inputs.solana-pkgs.packages.${pkgs.system}.default;
+  solana = inputs.solana-pkgs.packages.${pkgs.stdenv.hostPlatform.system}.default;
 
   layeringPipeline = pkgs.writeText "reverse-popularity-layering.json" ''
     [
@@ -91,8 +90,6 @@ let
           "NVIDIA_VISIBLE_DEVICES=all"
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_LIBCUDA_PATH=/usr/lib64"
-          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
           "PYTHON_ENABLED=${if usePython then "true" else "false"}"
         ];
@@ -112,12 +109,12 @@ let
         coreutils
         stdenv.cc
         rdma-core
-        nixglhostRustPackages."psyche-solana-client-nixglhost"
-        nixglhostRustPackages."psyche-centralized-client-nixglhost"
-        nixglhostRustPackages."inference-nixglhost"
-        nixglhostRustPackages."train-nixglhost"
-        nixglhostRustPackages."bandwidth_test-nixglhost"
-        nixglhostRustPackages."psyche-sidecar-nixglhost"
+        rustPackages."psyche-solana-client"
+        rustPackages."psyche-centralized-client"
+        rustPackages."inference"
+        rustPackages."train"
+        rustPackages."bandwidth_test"
+        rustPackages."psyche-sidecar"
         python3Packages.huggingface-hub
         (pkgs.runCommand "entrypoint" { } ''
           mkdir -p $out/bin $out/etc $out/tmp $out/var/tmp $out/run
@@ -134,8 +131,6 @@ let
           "LD_LIBRARY_PATH=/lib:/usr/lib"
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_LIBCUDA_PATH=/usr/lib64"
-          "TRITON_HOME=/tmp/triton"
           "PYTHONUNBUFFERED=1"
         ];
         Entrypoint = [ "/bin/train_entrypoint.sh" ];
@@ -146,13 +141,13 @@ let
 
     docker-psyche-solana-test-client = mkSolanaTestClientImage {
       imageName = "psyche-solana-test-client";
-      solanaClientPackage = nixglhostRustPackages."psyche-solana-client-nixglhost";
+      solanaClientPackage = rustPackages."psyche-solana-client";
       usePython = true;
     };
 
     docker-psyche-solana-test-client-no-python = mkSolanaTestClientImage {
       imageName = "psyche-solana-test-client";
-      solanaClientPackage = nixglhostRustPackagesNoPython."psyche-solana-client-nixglhost-no-python";
+      solanaClientPackage = rustPackages."psyche-solana-client-nopython";
       usePython = false;
     };
 
@@ -199,7 +194,7 @@ let
 
       contents = [
         pkgs.bashInteractive
-        nixglhostRustPackages."psyche-centralized-client-nixglhost"
+        rustPackages."psyche-centralized-client"
       ];
 
       config = {
@@ -208,8 +203,7 @@ let
           "NVIDIA_VISIBLE_DEVICES=all"
           "LOGNAME=root"
           "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor"
-          "TRITON_LIBCUDA_PATH=/usr/lib64"
-          "TRITON_HOME=/tmp/triton"
+          "TRITON_=/usr/lib64"
           "PYTHONUNBUFFERED=1"
         ];
       };
