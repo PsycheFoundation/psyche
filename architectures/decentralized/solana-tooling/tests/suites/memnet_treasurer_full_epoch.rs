@@ -63,7 +63,6 @@ pub async fn run() {
     let round_witness_time = 10;
     let cooldown_time = 42;
     let epoch_time = 30;
-    // let rounds_per_epoch = 4;
     let earned_point_per_epoch_total_shared = 888_888_888_888_888;
     let earned_point_per_epoch_per_client =
         earned_point_per_epoch_total_shared / clients.len() as u64;

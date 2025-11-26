@@ -174,26 +174,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         .map_err(TrainError::CoordinatorError)?;
 
         let have_training = !state.epoch_state.last_step_set();
-        let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) =
-            match have_training {
-                true => {
-                    let data_assignments = assign_data_for_state(state, &committee_selection);
-                    let all_batch_ids = get_batch_ids_for_round(
-                        state.current_round().unwrap(),
-                        state,
-                        committee_selection.get_num_trainer_nodes(),
-                    );
-                    let num_all_batch_ids = all_batch_ids.len();
-                    let batch_ids_not_yet_trained_on: BatchIdSet =
-                        all_batch_ids.into_iter().collect();
-                    (
-                        data_assignments,
-                        num_all_batch_ids,
-                        Arc::new(Mutex::new(Some(batch_ids_not_yet_trained_on))),
-                    )
-                }
-                false => (BTreeMap::new(), 0, Arc::new(Mutex::new(None))),
-            };
+        let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) = if have_training {
+            let data_assignments = assign_data_for_state(state, &committee_selection);
+            let all_batch_ids = get_batch_ids_for_round(
+                state.current_round().unwrap(),
+                state,
+                committee_selection.get_num_trainer_nodes(),
+            );
+            let num_all_batch_ids = all_batch_ids.len();
+            let batch_ids_not_yet_trained_on: BatchIdSet = all_batch_ids.into_iter().collect();
+            (
+                data_assignments,
+                num_all_batch_ids,
+                Arc::new(Mutex::new(Some(batch_ids_not_yet_trained_on))),
+            )
+        } else {
+            (BTreeMap::new(), 0, Arc::new(Mutex::new(None)))
+        };
 
         let committee_proof = committee_selection.get_committee(client_index);
         let witness_proof = committee_selection.get_witness(client_index);

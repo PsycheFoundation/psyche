@@ -991,11 +991,14 @@ impl<T: NodeIdentity> Coordinator<T> {
                 return Ok(TickResult::Ticked);
             }
 
+            // Once the timeout for the whole epoch is reached, we set the last step as the current
+            // step plus two.
             if self.check_epoch_timeout(unix_timestamp) && !self.epoch_state.last_step_set() {
                 let last_step: u32 = self.progress.step + 2;
                 self.epoch_state.last_step = last_step;
             }
 
+            // We reached the last step of the epoch, we transition to Cooldown
             if self.epoch_state.last_step_set() && self.progress.step == self.epoch_state.last_step
             {
                 self.start_cooldown(unix_timestamp);
