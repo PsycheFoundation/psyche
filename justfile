@@ -23,13 +23,47 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-# run integration decentralized tests
-decentralized-integration-test test_name="":
-    just setup_test_infra
-    if [ "{{ test_name }}" = "" ]; then \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
-    else \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
+# Determine whether to use Python support based on environment variable
+
+use_python := env("USE_PYTHON", "0")
+
+# Run decentralized integration tests with optional Python support and test filtering
+decentralized-integration-tests test_name="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [[ "{{ use_python }}" == "1" ]]; then
+        echo "Running tests with Python support"
+        just setup_python_test_infra
+
+        if [[ -z "{{ test_name }}" ]]; then
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --features python,parallelism \
+                --test integration_tests \
+                -- --nocapture
+        else
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --features python,parallelism \
+                --test integration_tests \
+                -- --nocapture "{{ test_name }}"
+        fi
+    else
+        echo "Running tests without Python support"
+        just setup_test_infra
+
+        if [[ -z "{{ test_name }}" ]]; then
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --test integration_tests \
+                -- --nocapture
+        else
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --test integration_tests \
+                -- --nocapture "{{ test_name }}"
+        fi
     fi
 
 # run integration decentralized chaos tests
@@ -131,6 +165,13 @@ setup_test_infra:
     just nix build_docker_solana_test_client_no_python
     just nix build_docker_solana_test_validator
 
+# Setup the infrastructure for testing locally using Docker.
+setup_python_test_infra:
+    cd architectures/decentralized/solana-coordinator && anchor build
+    cd architectures/decentralized/solana-authorizer && anchor build
+    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_validator
+
 run_test_infra num_clients="1":
     #!/usr/bin/env bash
     cd docker/test
@@ -143,10 +184,14 @@ run_test_infra num_clients="1":
     fi
 
 run_test_infra_with_proxies_validator num_clients="1":
-    cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
-
-run_test_infra_three_clients:
-    cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
+    #!/usr/bin/env bash
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
+        cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml -f ../docker-compose.gpu.yml up -d --force-recreate
+    else
+        echo "Running without GPU support"
+        cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
+    fi
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
