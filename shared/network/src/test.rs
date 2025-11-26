@@ -1,5 +1,5 @@
 use anyhow::Result;
-use iroh::NodeAddr;
+use iroh::EndpointAddr;
 use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
 use psyche_metrics::ClientMetrics;
@@ -158,13 +158,13 @@ impl App {
 
 async fn spawn_new_node(
     is_sender: bool,
-    peers: Vec<NodeAddr>,
+    peers: Vec<EndpointAddr>,
     should_wait_to_download: bool,
     cancel_token: CancellationToken,
 ) -> Result<(
     Option<UnboundedReceiver<String>>,
     Option<UnboundedReceiver<String>>,
-    Vec<NodeAddr>,
+    Vec<EndpointAddr>,
     JoinHandle<()>,
 )> {
     let (tx_waiting_for_download, rx_waiting_for_download) = if !is_sender {
@@ -196,8 +196,8 @@ async fn spawn_new_node(
     )
     .await?;
 
-    let node_addr = network.router().endpoint().node_addr();
-    let join_id = vec![node_addr.clone()];
+    let addr = network.router().endpoint().addr();
+    let join_id = vec![addr.clone()];
 
     let mut app = App {
         cancel: cancel_token,
