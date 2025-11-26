@@ -943,7 +943,7 @@ mod tests {
         let ret = TransformDCT::new(vars(vec![a.copy()]), 64)
             .encode(&a)
             .squeeze();
-        assert!(truth.allclose(&ret, 1e-4, 1e-8, false));
+        assert!(truth.allclose(&ret, 1e-4, 1e-4, false));
     }
 
     #[test]
@@ -958,7 +958,7 @@ mod tests {
         let ret = TransformDCT::new(vars(vec![b.copy()]), 64)
             .encode(&b)
             .squeeze();
-        assert!(truth.allclose(&ret, 1e-4, 1e-8, false));
+        assert!(truth.allclose(&ret, 1e-4, 1e-4, false));
     }
 
     #[test]

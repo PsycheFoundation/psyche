@@ -44,8 +44,8 @@ pub struct ClientsState {
 )]
 #[repr(C)]
 pub struct ClientsEpochRates {
-    pub earning_rate: u64,
-    pub slashing_rate: u64,
+    pub earning_rate_total_shared: u64,
+    pub slashing_rate_per_client: u64,
 }
 
 unsafe impl Pod for ClientsState {}

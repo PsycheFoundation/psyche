@@ -1,7 +1,6 @@
 {
   perSystem =
     {
-      system,
       config,
       pkgs,
       lib,
@@ -14,7 +13,7 @@
         rustWorkspaceArgs
         craneLib
         env
-        pythonWithPsycheExtension
+        psychePythonVenv
         ;
     in
     {
@@ -30,7 +29,11 @@
             inputsFrom = [
               self'.packages.psyche-book
             ];
-            inherit env;
+            env = env // {
+              UV_NO_SYNC = 1;
+              # UV_PYTHON = pkgs.psycheLib.psychePythonVenv.interpreter;
+              UV_PYTHON_DOWNLOADS = "never";
+            };
             packages =
               with pkgs;
               [
@@ -61,7 +64,11 @@
 
                 self'.packages.solana_toolbox_cli
 
+                # for ci emulation
                 inputs'.garnix-cli.packages.default
+
+                # python stuff
+                uv
               ]
               ++ (with inputs'.solana-pkgs.packages; [
                 solana
@@ -84,7 +91,7 @@
               export PYTORCH_ENABLE_MPS_FALLBACK=1
 
               # Set up PyTorch library path for test execution
-              export DYLD_LIBRARY_PATH="${pkgs.python312Packages.torch}/lib/python3.12/site-packages/torch/lib"
+              export DYLD_LIBRARY_PATH="${pkgs.psycheLib.psychePythonVenv.torch}/lib/python3.12/site-packages/torch/lib"
             ''
             + ''
               echo "Welcome to the Psyche development shell.";
@@ -97,7 +104,7 @@
             defaultShell
             // {
               packages = defaultShell.packages ++ [
-                pythonWithPsycheExtension
+                psychePythonVenv
               ];
               shellHook = defaultShell.shellHook + ''
                 echo "This shell has the 'psyche' module available in its python interpreter.";

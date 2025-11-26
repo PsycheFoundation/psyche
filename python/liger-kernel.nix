@@ -4,7 +4,7 @@
   torch,
   lib,
 }:
-buildPythonPackage rec {
+buildPythonPackage {
   pname = "liger-kernel";
   version = "0.6.2-seed-oss";
   format = "setuptools";
@@ -27,6 +27,5 @@ buildPythonPackage rec {
     homepage = "https://github.com/linkedin/Liger-Kernel";
     license = lib.licenses.bsd3;
     platforms = lib.platforms.linux;
-    maintainers = with lib.maintainers; [ ];
   };
 }

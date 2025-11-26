@@ -24,6 +24,8 @@ jobs:
         if: steps.cache-validator.outputs.cache-hit != 'true'
 
         uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
 
       - uses: nixbuild/nix-quick-install-action@v31
         if: steps.cache-validator.outputs.cache-hit != 'true'

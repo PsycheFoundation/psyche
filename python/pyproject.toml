@@ -1,21 +1,13 @@
-[build-system]
-requires = ["maturin>=1.8,<2.0"]
-build-backend = "maturin"
-
 [project]
-name = "psyche"
-requires-python = ">=3.8"
-classifiers = [
-  "Programming Language :: Rust",
-  "Programming Language :: Python :: Implementation :: CPython",
-]
-dynamic = ["version"]
-dependencies = ["torch==2.9.0.dev20250827", "transformers==4.56.1"]
+name = "psyche-deps"
+version = "0.1.0"
+requires-python = "==3.12.*"
+# deps like torch and flash attn are provided by nix
+dependencies = ["transformers==4.56.1"]
 
 [project.optional-dependencies]
 tests = ["pytest"]
 
-[tool.maturin]
-python-source = "python"
-module-name = "psyche._psyche_ext"
-features = ["python-extension"]
+[build-system]
+requires = ["uv_build<0.9"]
+build-backend = "uv_build"

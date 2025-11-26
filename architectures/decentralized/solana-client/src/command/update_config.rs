@@ -148,8 +148,8 @@ pub async fn command_update_config_execute(
                 config,
                 model,
                 progress,
-                epoch_earning_rate: None,
-                epoch_slashing_rate: None,
+                epoch_earning_rate_total_shared: None,
+                epoch_slashing_rate_per_client: None,
                 paused: None,
             },
         )

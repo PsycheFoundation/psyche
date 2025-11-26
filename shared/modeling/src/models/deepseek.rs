@@ -1,3 +1,5 @@
+#![allow(clippy::manual_is_multiple_of)]
+
 use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, ColumnParallelLinear, Communicator,
     CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig,

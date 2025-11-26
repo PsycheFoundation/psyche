@@ -69,8 +69,8 @@ pub async fn run() {
             cold_start_warmup_steps: 0,
         })),
         progress: None,
-        epoch_earning_rate: Some(66),
-        epoch_slashing_rate: None,
+        epoch_earning_rate_total_shared: Some(66),
+        epoch_slashing_rate_per_client: None,
         paused: Some(false),
     };
 

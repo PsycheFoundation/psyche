@@ -172,14 +172,15 @@ pub mod psyche_solana_coordinator {
 
     pub fn set_future_epoch_rates(
         ctx: Context<OwnerCoordinatorAccounts>,
-        epoch_earning_rate: Option<u64>,
-        epoch_slashing_rate: Option<u64>,
+        epoch_earning_rate_total_shared: Option<u64>,
+        epoch_slashing_rate_per_client: Option<u64>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
-        account
-            .state
-            .set_future_epoch_rates(epoch_earning_rate, epoch_slashing_rate)
+        account.state.set_future_epoch_rates(
+            epoch_earning_rate_total_shared,
+            epoch_slashing_rate_per_client,
+        )
     }
 
     pub fn join_run(
