@@ -3,6 +3,7 @@ use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
+use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
 use psyche_solana_coordinator::cpi::accounts::InitCoordinatorAccounts;
 use psyche_solana_coordinator::cpi::init_coordinator;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
@@ -73,8 +74,7 @@ pub fn run_create_processor(
     context: Context<RunCreateAccounts>,
     params: RunCreateParams,
 ) -> Result<()> {
-    // run_id must be at most 32 bytes because of PDA constraints
-    if params.run_id.len() > 32 {
+    if params.run_id.len() > SOLANA_RUN_ID_MAX_LEN {
         return err!(ProgramError::RunIdInvalidLength);
     }
 

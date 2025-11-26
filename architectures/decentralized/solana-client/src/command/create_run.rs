@@ -8,6 +8,7 @@ use anchor_client::solana_sdk::system_instruction;
 use anyhow::Result;
 use anyhow::bail;
 use clap::Args;
+use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
 
 use crate::SolanaBackend;
 use crate::instructions;
@@ -36,8 +37,7 @@ pub async fn command_create_run_execute(
         join_authority,
     } = params;
 
-    // run_id must be at most 32 bytes because of PDA constraints
-    if run_id.len() > 32 {
+    if run_id.len() > SOLANA_RUN_ID_MAX_LEN {
         bail!(
             "run_id must be 32 bytes or less, got {} bytes",
             run_id.len()
