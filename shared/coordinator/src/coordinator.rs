@@ -995,7 +995,11 @@ impl<T: NodeIdentity> Coordinator<T> {
             // step plus two.
             if self.check_epoch_timeout(unix_timestamp) && !self.epoch_state.last_step_set() {
                 let last_step: u32 = self.progress.step + 2;
-                self.epoch_state.last_step = last_step;
+                // Just a sanity check to be sure the epoch doesn't end too early since we need
+                // at least 4 rounds per epoch for overlapped pipeling
+                if last_step >= 4 {
+                    self.epoch_state.last_step = last_step;
+                }
             }
 
             // We reached the last step of the epoch, we transition to Cooldown
@@ -1149,6 +1153,9 @@ impl<T: NodeIdentity> Coordinator<T> {
 }
 
 impl<T> CoordinatorEpochState<T> {
+    // When an epoch reaches its timeout, the last step is set as the
+    // current step + 2. When last_step is set to 0, we assume it has not
+    // been set.
     pub fn last_step_set(&self) -> bool {
         self.last_step != 0
     }
