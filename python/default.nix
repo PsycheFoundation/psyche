@@ -36,7 +36,6 @@ let
   ++ lib.optionals stdenvNoCC.hostPlatform.isLinux [
     "flash-attn"
     "liger-kernel"
-    # vllm excluded - install with: uv pip install vllm
   ];
 
   nixProvidedPythonPkgs = getAllTransitiveDeps topLevelNixPkgs;
