@@ -635,6 +635,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             if self.active() {
                 self.pending_pause = true.into();
             } else {
+                self.withdraw_all()?;
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.epoch_state.cold_start_epoch = true.into();
             }
@@ -792,11 +793,14 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 
     pub fn active(&self) -> bool {
-        !self.halted()
-            && !matches!(
-                self.run_state,
-                RunState::WaitingForMembers | RunState::Warmup
-            )
+        !matches!(
+            self.run_state,
+            RunState::WaitingForMembers
+                | RunState::Warmup
+                | RunState::Uninitialized
+                | RunState::Finished
+                | RunState::Paused
+        )
     }
 
     pub fn halted(&self) -> bool {
@@ -848,16 +852,15 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 
     pub fn get_cold_start_warmup_bounds(&self) -> Option<(u32, u32)> {
-        match self.epoch_state.cold_start_epoch.is_true() {
-            true => Some((
-                self.epoch_state.start_step,
-                self.epoch_state.start_step
-                    + match &self.model {
-                        Model::LLM(llm) => llm.cold_start_warmup_steps,
-                    },
-            )),
-            false => None,
+        let Model::LLM(llm) = &self.model;
+        let cold_start_warmup_steps = llm.cold_start_warmup_steps;
+        if self.epoch_state.cold_start_epoch.is_false() || cold_start_warmup_steps == 0 {
+            return None;
         }
+        Some((
+            self.epoch_state.start_step,
+            self.epoch_state.start_step + cold_start_warmup_steps,
+        ))
     }
 
     fn get_global_batch_size_for_tokens(&self, tokens_processed: u64) -> u16 {
@@ -1018,6 +1021,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
 
             if self.pending_pause.is_true() {
+                self.withdraw_all()?;
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.pending_pause = false.into();
                 self.epoch_state.cold_start_epoch = true.into();
