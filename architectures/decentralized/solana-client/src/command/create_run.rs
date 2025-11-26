@@ -36,18 +36,25 @@ pub async fn command_create_run_execute(
         join_authority,
     } = params;
 
+    println!("3");
     let payer = backend.get_payer();
     let main_authority = payer;
     let join_authority = join_authority.unwrap_or(payer);
+    println!("4");
 
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
+    println!("5");
     let coordinator_account_signer = Arc::new(Keypair::new());
+    println!("6");
     let coordinator_account = coordinator_account_signer.pubkey();
+    println!("7");
 
     let space = psyche_solana_coordinator::CoordinatorAccount::space_with_discriminator();
+    println!("8");
     let rent = backend
         .get_minimum_balance_for_rent_exemption(space)
         .await?;
+    println!("9");
 
     let instruction_create = system_instruction::create_account(
         &payer,
@@ -56,6 +63,7 @@ pub async fn command_create_run_execute(
         space as u64,
         &psyche_solana_coordinator::ID,
     );
+    println!("10");
 
     if treasurer_index.is_some() && treasurer_collateral_mint.is_none() {
         bail!(
@@ -63,10 +71,13 @@ pub async fn command_create_run_execute(
             Please provide a collateral mint address if you want to create a run with a treasurer."
         );
     }
+    println!("11");
 
     let instruction_init = if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
+        println!("12");
         let treasurer_index =
             SolanaBackend::compute_deterministic_treasurer_index(&run_id, treasurer_index);
+        println!("13");
         instructions::treasurer_run_create(
             &payer,
             &run_id,
@@ -77,6 +88,7 @@ pub async fn command_create_run_execute(
             &join_authority,
         )
     } else {
+        println!("14");
         instructions::coordinator_init_coordinator(
             &payer,
             &run_id,
@@ -86,6 +98,7 @@ pub async fn command_create_run_execute(
         )
     };
 
+    println!("15");
     let signature = backend
         .send_and_retry(
             "Create and init run",
