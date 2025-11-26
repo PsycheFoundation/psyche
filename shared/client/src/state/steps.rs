@@ -473,9 +473,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 // start downloading the payload unless this is a self-message
                 // (assuming the caller will put our payload in the proper place)
+                let tag_name = format!("downloaded-distro-result-{from_client_id}_{result_step}");
                 if from_client_id != self.identity {
                     self.tx_request_download
-                        .send((ticket, Tag::from(result_step.to_string())))
+                        .send((ticket, Tag::from(tag_name)))
                         .map_err(|_| ApplyMessageError::StartDownloadBlob)?;
                 }
             }

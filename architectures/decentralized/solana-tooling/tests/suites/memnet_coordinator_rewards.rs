@@ -55,7 +55,7 @@ pub async fn run() {
     let round_witness_time = 42;
     let cooldown_time = 88;
     let rounds_per_epoch = 4;
-    let earned_point_per_epoch = 33;
+    let earned_point_per_epoch_total_shared = 444_444;
 
     // Create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
@@ -133,7 +133,7 @@ pub async fn run() {
         &main_authority,
         &coordinator_instance,
         &coordinator_account,
-        Some(earned_point_per_epoch),
+        Some(earned_point_per_epoch_total_shared),
         None,
     )
     .await
@@ -304,6 +304,9 @@ pub async fn run() {
             .iter()
             .find(|c| c.id.signer.eq(&client.pubkey()))
             .unwrap();
-        assert_eq!(client_state.earned, earned_point_per_epoch);
+        assert_eq!(
+            client_state.earned,
+            earned_point_per_epoch_total_shared / clients.len() as u64
+        );
     }
 }

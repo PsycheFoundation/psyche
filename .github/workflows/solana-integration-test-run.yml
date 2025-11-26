@@ -1,11 +1,9 @@
 name: Solana integration tests run
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main, '**']
-
 jobs:
   # First, build the validator image and cache it
   build-validator:
