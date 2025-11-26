@@ -256,7 +256,8 @@ pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcher
         .expect("Failed to spawn docker compose instances");
 
     if !output.status.success() {
-        Command::new("docker logs -n 50 test-psyche-run-owner-1")
+        Command::new("docker")
+            .args(["logs", "-n", "50", "test-psyche-run-owner-1"])
             .stdout(Stdio::inherit())
             .output()
             .unwrap();
