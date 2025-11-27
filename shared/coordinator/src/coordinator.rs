@@ -215,7 +215,6 @@ pub enum CoordinatorError {
     DuplicateWitness,
     InvalidHealthCheck,
     Halted,
-    AlreadyCheckpointed,
     WitnessesFull,
     CannotResume,
     InvalidWithdraw,
@@ -275,7 +274,6 @@ pub struct CoordinatorEpochState<T> {
     pub rounds_head: u32,
     pub start_step: u32,
     pub first_round: SmallBoolean,
-    pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
 }
 
@@ -374,7 +372,6 @@ impl std::fmt::Display for CoordinatorError {
             CoordinatorError::DuplicateWitness => write!(f, "Duplicate witness"),
             CoordinatorError::InvalidHealthCheck => write!(f, "Invalid health check"),
             CoordinatorError::Halted => write!(f, "Halted"),
-            CoordinatorError::AlreadyCheckpointed => write!(f, "Already checkpointed"),
             CoordinatorError::WitnessesFull => write!(f, "Witnesses full"),
             CoordinatorError::CannotResume => write!(f, "Cannot resume"),
             CoordinatorError::InvalidWithdraw => write!(f, "Invalid withdraw"),
@@ -407,7 +404,6 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             rounds: Default::default(),
             rounds_head: Default::default(),
             first_round: true.into(),
-            checkpointed: Default::default(),
             clients: Default::default(),
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
@@ -599,22 +595,17 @@ impl<T: NodeIdentity> Coordinator<T> {
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
-        if self.epoch_state.checkpointed.is_false() {
-            // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
-            // with the last checkpointed one. We could instead have a vector of hub repos to have
-            // more download options.
-            match &mut self.model {
-                Model::LLM(llm) => match llm.checkpoint {
-                    Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
-                    Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                    _ => {}
-                },
-            }
-            self.epoch_state.checkpointed = true.into();
-            Ok(())
-        } else {
-            Err(CoordinatorError::AlreadyCheckpointed)
+        // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
+        // with the last checkpointed one. We could instead have a vector of hub repos to have
+        // more download options.
+        match &mut self.model {
+            Model::LLM(llm) => match llm.checkpoint {
+                Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
+                Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                _ => {}
+            },
         }
+        Ok(())
     }
 
     pub fn withdraw(&mut self, index: u64) -> std::result::Result<(), CoordinatorError> {
