@@ -17,7 +17,7 @@ use crate::instructions;
 pub struct CommandCreateRunParams {
     #[clap(short, long, env)]
     run_id: String,
-    #[clap(short, long, env, default_value = "latest")]
+    #[clap(short, long, env)]
     client_version: String,
     #[clap(long, env)]
     treasurer_index: Option<u64>,

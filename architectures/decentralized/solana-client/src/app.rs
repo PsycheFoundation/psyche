@@ -189,7 +189,7 @@ impl App {
         let client_version = CLIENT_VERSION.to_string();
         info!("Psyche Client version: {}", client_version);
 
-        if client_version != coordinator_client_version {
+        if client_version != coordinator_client_version && coordinator_client_version != "test" {
             tracing::error!(
                 client_version = %client_version,
                 coordinator_client_version = %coordinator_client_version,
