@@ -14,6 +14,8 @@ pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
+// run_id must be at most 32 bytes because of PDA constraints
+pub const SOLANA_RUN_ID_MAX_LEN: usize = 32;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
@@ -293,7 +295,7 @@ pub struct CoordinatorProgress {
 #[serde(bound = "T: NodeIdentity")]
 #[repr(C)]
 pub struct Coordinator<T> {
-    pub run_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
+    pub run_id: FixedString<{ SOLANA_RUN_ID_MAX_LEN }>,
 
     pub run_state: RunState,
 
