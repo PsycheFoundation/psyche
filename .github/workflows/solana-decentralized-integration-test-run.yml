@@ -51,19 +51,19 @@ jobs:
           echo "Disk usage after removing validator tar"
           df -h
 
-      - uses: nixbuild/nix-quick-install-action@v31
-        with:
-          nix_conf: |
-            download-buffer-size = 524288000
-            accept-flake-config = true
-            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
-            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+      # - uses: nixbuild/nix-quick-install-action@v31
+      #   with:
+      #     nix_conf: |
+      #       download-buffer-size = 524288000
+      #       accept-flake-config = true
+      #       substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+      #       trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
-      - name: Download image from Garnix cache
-        run: |
-          nix build --max-jobs 0 .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
-          IMAGE_PATH=$(cat image-path.txt)
-          "$IMAGE_PATH" | docker load
+      # - name: Download image from Garnix cache
+      #   run: |
+      #     nix build --max-jobs 0 .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
+      #     IMAGE_PATH=$(cat image-path.txt)
+      #     "$IMAGE_PATH" | docker load
 
       - name: Stop Docker containers
         run: docker stop $(docker ps -aq) || true
