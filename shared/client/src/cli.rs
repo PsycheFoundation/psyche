@@ -220,6 +220,9 @@ impl TrainArgs {
             self.keep_steps,
         ) {
             (Some(token), Some(repo), Some(dir), delete_old_steps, keep_steps) => {
+                if keep_steps == 0 {
+                    bail!("keep_steps must be >= 1 for hub repository uploads (got {keep_steps})")
+                }
                 Some(CheckpointConfig {
                     checkpoint_dir: dir,
                     hub_upload: Some(HubUploadInfo {
