@@ -10,6 +10,7 @@ on:
 jobs:
   decentralized-integration-test:
     runs-on: self-hosted
+    needs: build-validator
 
     steps:
       - name: Checkout repository
