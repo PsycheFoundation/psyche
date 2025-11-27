@@ -67,7 +67,6 @@ pub async fn command_create_run_execute(
     let instruction_init = if let Some(treasurer_collateral_mint) = treasurer_collateral_mint {
         let treasurer_index =
             SolanaBackend::compute_deterministic_treasurer_index(&run_id, treasurer_index);
-        println!("13");
         instructions::treasurer_run_create(
             &payer,
             &run_id,
