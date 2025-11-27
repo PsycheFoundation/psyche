@@ -8,6 +8,13 @@ on:
     branches: [main]
 
 jobs:
+  # First, build the validator image and cache it
+  build-validator:
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/solana-build-anchor-programs.yml
+
   decentralized-integration-test:
     runs-on: self-hosted
     needs: build-validator
