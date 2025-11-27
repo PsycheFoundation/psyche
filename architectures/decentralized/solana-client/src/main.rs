@@ -271,7 +271,6 @@ async fn async_main() -> Result<()> {
             params,
         } => {
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            println!("1");
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -279,7 +278,6 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
-            println!("2");
             command_create_run_execute(backend, params).await
         }
         Commands::CloseRun {
