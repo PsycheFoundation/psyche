@@ -162,9 +162,9 @@ export function RunStateIndicator({
 }) {
 	const {
 		phase,
-		round,
-		config: { minClients },
+		config: { minClients, epochTime },
 		clients,
+		epochStartTime,
 	} = state
 	const [now, setNow] = useState(new Date(Date.now()))
 	useInterval(() => setNow(new Date(Date.now())), 100)
@@ -198,7 +198,6 @@ export function RunStateIndicator({
 				txs={recentTxs.toReversed()}
 				cluster={import.meta.env.VITE_COORDINATOR_CLUSTER}
 			/>
-			{/* TODO figure out what to do with the progress bar now that we use time-based epoch */}
 			{phase !== 'Paused' && phase !== 'Uninitialized' && (
 				<>
 					{(phase === 'Warmup' ||
@@ -209,10 +208,15 @@ export function RunStateIndicator({
 							chunkHeight={8}
 							chunkWidth={4}
 							chunkSpacing={1}
-							ratio={0}
-							current={round + 1}
-							total={0}
-							label="round"
+							ratio={Math.min(
+								1,
+								(now.getTime() - epochStartTime.getTime()) / (epochTime * 1000)
+							)}
+							current={Math.floor(
+								(now.getTime() - epochStartTime.getTime()) / 1000
+							)}
+							total={epochTime}
+							label="epoch time (seconds)"
 						/>
 					)}
 					{phase === 'WaitingForMembers' && (

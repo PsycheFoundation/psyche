@@ -654,6 +654,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				phaseStartTime: new Date(
 					+`${c.coordinator.run_state_start_unix_timestamp.toString()}000`
 				),
+				epochStartTime: new Date(
+					+`${c.coordinator.epoch_state.start_timestamp.toString()}000`
+				),
 				round: currentRound.height,
 
 				clients: witnessStates,

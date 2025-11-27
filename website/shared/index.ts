@@ -115,6 +115,7 @@ export interface RunData {
 	state?: {
 		phase: RunState
 		phaseStartTime: Date
+		epochStartTime: Date
 		clients: Array<RunRoundClient>
 
 		checkpoint: HubRepo | null
