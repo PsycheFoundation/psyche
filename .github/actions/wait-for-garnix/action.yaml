@@ -17,6 +17,7 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
+        sudo apt install gh -y
         SHA="${{ github.event.pull_request.head.sha || github.sha }}"
         echo "Waiting for 'All Garnix checks' on commit $SHA"
         TOTAL_ATTEMPTS=$(( ${{ inputs.timeout-minutes }} * 2 ))
