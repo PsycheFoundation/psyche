@@ -52,11 +52,6 @@ jobs:
           df -h
             # Wait for Garnix right before downloading from Garnix cache
 
-      - name: Wait for Garnix checks
-        uses: ./.github/actions/wait-for-garnix
-        with:
-          action-name: 'package docker-psyche-solana-test-client [x86_64-linux]'
-
       - name: Download Solana Test Client Python Image
         run: |
           echo "Disk space before client build"
