@@ -121,7 +121,7 @@ export interface RunData {
 
 		round: number
 		config: {
-			roundsPerEpoch: number
+			epochTime: number
 			minClients: number
 
 			warmupTime: number

@@ -163,7 +163,7 @@ export function RunStateIndicator({
 	const {
 		phase,
 		round,
-		config: { roundsPerEpoch, minClients },
+		config: { minClients },
 		clients,
 	} = state
 	const [now, setNow] = useState(new Date(Date.now()))
@@ -198,6 +198,7 @@ export function RunStateIndicator({
 				txs={recentTxs.toReversed()}
 				cluster={import.meta.env.VITE_COORDINATOR_CLUSTER}
 			/>
+			{/* TODO figure out what to do with the progress bar now that we use time-based epoch */}
 			{phase !== 'Paused' && phase !== 'Uninitialized' && (
 				<>
 					{(phase === 'Warmup' ||
@@ -208,17 +209,9 @@ export function RunStateIndicator({
 							chunkHeight={8}
 							chunkWidth={4}
 							chunkSpacing={1}
-							ratio={
-								(round +
-									(phase === 'RoundWitness'
-										? 0.5
-										: phase === 'Cooldown'
-											? 1
-											: 0)) /
-								roundsPerEpoch
-							}
+							ratio={0}
 							current={round + 1}
-							total={roundsPerEpoch}
+							total={0}
 							label="round"
 						/>
 					)}

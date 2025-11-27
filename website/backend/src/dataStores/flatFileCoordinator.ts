@@ -661,7 +661,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 				config: {
 					minClients: config.init_min_clients,
-					epochTime: config.epoch_time,
+					epochTime: Number(config.epoch_time),
 					cooldownTime: Number(config.cooldown_time),
 					maxRoundTrainTime: Number(config.max_round_train_time),
 					roundWitnessTime: Number(config.round_witness_time),
