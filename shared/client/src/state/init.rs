@@ -324,7 +324,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     }
                                     ret
                                 } else {
-                                    info!("Downloading {} (if needed)", hub_repo.repo_id);
+                                    info!(
+                                        "Downloading {}, revision: {:?} (if needed)",
+                                        hub_repo.repo_id, revision
+                                    );
                                     download_model_repo_async(
                                         &repo_id,
                                         revision,
