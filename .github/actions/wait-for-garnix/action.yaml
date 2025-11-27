@@ -12,12 +12,22 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Install GitHub CLI
+      shell: bash
+      run: |
+        if ! command -v gh &> /dev/null; then
+          echo "Installing GitHub CLI..."
+          sudo apt update
+          sudo apt install gh -y
+        else
+          echo "GitHub CLI already installed"
+        fi
+
     - name: Wait for All Garnix checks
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        sudo apt install gh -y
         SHA="${{ github.event.pull_request.head.sha || github.sha }}"
         echo "Waiting for 'All Garnix checks' on commit $SHA"
         TOTAL_ATTEMPTS=$(( ${{ inputs.timeout-minutes }} * 2 ))
