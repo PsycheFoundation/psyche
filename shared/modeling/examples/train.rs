@@ -161,6 +161,10 @@ struct Args {
     #[clap(long)]
     python: bool,
 
+    #[cfg(feature = "python")]
+    #[clap(long, default_value = "hf-auto")]
+    python_arch: String,
+
     #[arg(long)]
     seed: Option<u32>,
 }
@@ -315,7 +319,7 @@ async fn main() -> Result<()> {
                 std::thread::spawn(move || {
                     if dp != 1 || tp != 1 {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
-                            "hf-auto".to_string(),
+                            args.python_arch,
                             source,
                             target_device,
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
@@ -336,7 +340,7 @@ async fn main() -> Result<()> {
                         .into())
                     } else {
                         let models = vec![Box::new(psyche_modeling::PythonCausalLM::new(
-                            "hf-auto",
+                            &args.python_arch,
                             &source,
                             target_device,
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
