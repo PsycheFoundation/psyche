@@ -16,7 +16,8 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
+        e2e_testing_setup, e2e_testing_setup_with_big_model, kill_all_clients, spawn_new_client,
+        spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -945,6 +946,114 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                         }
                     }
                     _ => {}
+                }
+            }
+        }
+    }
+}
+
+/// spawn 1 clients and run for 3 epochs
+/// assert client and coordinator state synchronization
+/// assert that the loss decreases in each epoch
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+#[cfg(feature = "python")]
+async fn test_big_model_with_sidecars() {
+    // set test variables
+    let run_id = "test".to_string();
+
+    // epochs the test will run
+    let num_of_epochs_to_run = 3;
+    let mut current_epoch = -1;
+    let mut last_epoch_loss = f64::MAX;
+    let n_new_clients = 2;
+
+    // Initialize DockerWatcher
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // Initialize a Solana run with 1 client
+    let _cleanup = e2e_testing_setup_with_big_model(docker.clone(), 1).await;
+
+    // Monitor the client container
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![
+                IntegrationTestLogMarker::StateChange,
+                IntegrationTestLogMarker::Loss,
+            ],
+        )
+        .unwrap();
+
+    println!("Waiting for run to go on with the first client");
+    tokio::time::sleep(Duration::from_secs(30)).await;
+
+    // Initialize solana client to query the coordinator state
+    let solana_client = SolanaTestClient::new(run_id).await;
+    let mut live_interval = time::interval(Duration::from_secs(10));
+    let mut clients_with_model = 0;
+
+    println!("Adding new clients");
+    for i in 1..=n_new_clients {
+        spawn_new_client(docker.clone()).await.unwrap();
+        let _monitor_client = watcher
+            .monitor_container(
+                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
+                vec![
+                    IntegrationTestLogMarker::LoadedModel,
+                    IntegrationTestLogMarker::Loss,
+                ],
+            )
+            .unwrap();
+    }
+
+    loop {
+        tokio::select! {
+            _ = live_interval.tick() => {
+                if let Err(e) = watcher.monitor_clients_health(3).await {
+                    panic!("{}", e);
+                }
+            }
+            response = watcher.log_rx.recv() => {
+                match response {
+                    Some(Response::StateChange(timestamp, _client_1, old_state, new_state, _ , _)) => {
+                        let _coordinator_state = solana_client.get_run_state().await;
+                        println!(
+                            "client: new_state: {new_state}, old_state: {old_state}, timestamp: {timestamp}"
+                        );
+                    }
+                    Some(Response::Loss(client, epoch, step, loss)) => {
+                        println!(
+                            "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
+                        );
+                        // assert that the loss decreases each epoch or at least dont peak
+                        if epoch as i64 > current_epoch {
+                            current_epoch = epoch as i64;
+
+                            let Some(loss) = loss else {
+                                println!("Reached new epoch but loss was NaN");
+                                continue;
+                            };
+
+                            assert!(loss < last_epoch_loss * 1.1);
+                            last_epoch_loss = loss;
+                            if epoch == num_of_epochs_to_run {
+                                break;
+                            }
+                        }
+                    }
+                    Some(Response::LoadedModel(checkpoint)) => {
+                        // assert client and coordinator state synchronization
+                        assert!(checkpoint.starts_with("P2P"), "The model should be obtained from P2P");
+                        println!("Client got the model with P2P");
+                        clients_with_model += 1;
+                        if clients_with_model == n_new_clients {
+                            println!("All clients got the model with P2P");
+                            return;
+                        }
+                    }
+                    _ => unreachable!(),
                 }
             }
         }
