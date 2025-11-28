@@ -203,22 +203,33 @@ export function RunStateIndicator({
 					{(phase === 'Warmup' ||
 						phase === 'RoundTrain' ||
 						phase === 'RoundWitness' ||
-						phase === 'Cooldown') && (
-						<Progress
-							chunkHeight={8}
-							chunkWidth={4}
-							chunkSpacing={1}
-							ratio={Math.min(
-								1,
-								(now.getTime() - epochStartTime.getTime()) / (epochTime * 1000)
-							)}
-							current={Math.floor(
-								(now.getTime() - epochStartTime.getTime()) / 1000
-							)}
-							total={epochTime}
-							label="epoch time (seconds)"
-						/>
-					)}
+						phase === 'Cooldown') &&
+						(() => {
+							const elapsedMs = now.getTime() - epochStartTime.getTime()
+							const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000))
+							const isFinalizingEpoch =
+								elapsedSeconds >= epochTime && elapsedSeconds > 0
+
+							return (
+								<Progress
+									chunkHeight={8}
+									chunkWidth={4}
+									chunkSpacing={1}
+									ratio={
+										isFinalizingEpoch
+											? 1
+											: (now.getTime() - epochStartTime.getTime()) /
+												(epochTime * 1000)
+									}
+									current={elapsedSeconds}
+									total={epochTime}
+									label={
+										isFinalizingEpoch ? 'finalizing epoch' : 'epoch time (s)'
+									}
+									showRight={!isFinalizingEpoch}
+								/>
+							)
+						})()}
 					{phase === 'WaitingForMembers' && (
 						<Progress
 							chunkHeight={8}
