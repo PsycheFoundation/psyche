@@ -116,6 +116,10 @@ start-training-devnet-client run_id="test" *args='':
 start-training-devnet-light-client run_id="test" *args='':
     RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
+# Run the run-manager with an env file
+run-manager env_file *args='':
+    cargo run --release -p run-manager -- --env-file {{ env_file }} {{ args }}
+
 solana-client-tests:
     cargo test --package psyche-solana-client --features solana-localnet-tests
 
