@@ -988,6 +988,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             if height == self.config.rounds_per_epoch - 1
                 || self.epoch_state.clients.len() < self.config.min_clients as usize
                 || num_witnesses < self.witness_quorum(num_witnesses)
+                || self.progress.step >= self.config.total_steps
                 || self.pending_pause.is_true()
             {
                 self.start_cooldown(unix_timestamp);
