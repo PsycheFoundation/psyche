@@ -22,10 +22,6 @@ struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Path to wallet private key file
-    #[arg(long, global = true)]
-    wallet_path: PathBuf,
-
     /// Path to .env file with environment variables
     #[arg(long, global = true)]
     env_file: PathBuf,
@@ -324,14 +320,27 @@ async fn prepare_image(
     Ok(docker_tag)
 }
 
-async fn run(
-    wallet_path: PathBuf,
-    env_file: PathBuf,
-    coordinator_program_id: String,
-    local: bool,
-) -> Result<()> {
+async fn run(env_file: PathBuf, coordinator_program_id: String, local: bool) -> Result<()> {
+    // Try to get wallet path from env var, otherwise use default Solana location
+    let wallet_path = match std::env::var("WALLET_PATH") {
+        Ok(path) => {
+            info!("WALLET_PATH set, using keypair at: {}", path);
+            path
+        }
+        Err(_) => {
+            let home = std::env::var("HOME")
+                .context("WALLET_PATH not defined and could not find default keypair in $HOME/.config/solana/id.json")?;
+            let default_path = format!("{}/.config/solana/id.json", home);
+            info!(
+                "WALLET_PATH not defined, using default Solana keypair at: {}",
+                default_path
+            );
+            default_path
+        }
+    };
+
     let wallet_key = std::fs::read_to_string(&wallet_path)
-        .context("Failed to read wallet file")?
+        .context(format!("Failed to read wallet file from: {}", wallet_path))?
         .trim()
         .to_string();
     let docker_mgr = DockerManager::new()?;
@@ -404,13 +413,7 @@ async fn main() -> Result<()> {
 
             load_and_apply_env_file(&args.env_file)?;
 
-            let result = run(
-                args.wallet_path,
-                args.env_file,
-                args.coordinator_program_id,
-                args.local,
-            )
-            .await;
+            let result = run(args.env_file, args.coordinator_program_id, args.local).await;
 
             if let Err(e) = &result {
                 error!("Error: {}", e);
