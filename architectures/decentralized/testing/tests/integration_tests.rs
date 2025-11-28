@@ -5,7 +5,8 @@
 // 1. Set the USE_GPU environment variable: `export USE_GPU=1`
 // 2. Or ensure nvidia-smi is available (GPU will be auto-detected)
 // The test infrastructure will automatically use docker-compose.gpu.yml when GPU is available.
-use std::{sync::Arc, time::Duration};
+
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
@@ -16,7 +17,8 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
+        e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run, spawn_new_client,
+        spawn_new_client_with_options,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -44,7 +46,7 @@ async fn test_one_clients_three_epochs_run() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
 
     // Monitor the client container
     let _monitor_client_1 = watcher
@@ -121,13 +123,20 @@ async fn test_two_clients_three_epochs_run() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
+    // Initialize a Solana run with 0 clients
+    let _cleanup = e2e_testing_setup(docker.clone(), 0, 2).await;
 
-    // Monitor the client container
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn two clients
+    let client1 = spawn_new_client(docker.clone()).await;
+    let client2 = spawn_new_client(docker.clone()).await;
+
+    // Monitor the client containers
     let _monitor_client_1 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            &client1,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::Loss,
@@ -137,7 +146,7 @@ async fn test_two_clients_three_epochs_run() {
 
     let _monitor_client_2 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            &client2,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::Loss,
@@ -201,23 +210,35 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
-
-    println!("Waiting for run to go on with the first client");
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
     tokio::time::sleep(Duration::from_secs(30)).await;
+
+    // Give P2P infrastructure extra time to fully initialize and be ready to serve
+    println!("Waiting 10s for P2P to stabilize...");
+    tokio::time::sleep(Duration::from_secs(10)).await;
 
     println!("Adding new clients");
     for i in 1..=n_new_clients {
-        spawn_new_client(docker.clone()).await.unwrap();
+        let client_name = format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1);
+        println!("Spawning client {}...", client_name);
+        spawn_new_client(docker.clone()).await;
+
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
+                &client_name,
                 vec![
                     IntegrationTestLogMarker::LoadedModel,
                     IntegrationTestLogMarker::Loss,
                 ],
             )
             .unwrap();
+
+        // Add delay between spawns to let each client stabilize and be ready to serve P2P
+        // This prevents newly spawned clients from trying to fetch from each other before they're ready
+        if i < n_new_clients {
+            println!("Waiting 10s before spawning next client...");
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
     }
 
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
@@ -263,16 +284,13 @@ async fn test_rejoining_client_delay() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
-
     tokio::time::sleep(Duration::from_secs(30)).await;
+    spawn_new_client(docker.clone()).await;
 
-    // Spawn client
-    spawn_new_client(docker.clone()).await.unwrap();
-
-    let _monitor_client = watcher
+    let _monitor_client_2 = watcher
         .monitor_container(
             &format!("{CLIENT_CONTAINER_PREFIX}-{}", 2),
             vec![IntegrationTestLogMarker::LoadedModel],
@@ -327,16 +345,24 @@ async fn disconnect_client() {
     // set test variables
     let run_id = "test".to_string();
 
-    // initialize a Solana run with 2 client
+    // initialize a Solana run with 0 clients
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 3 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 3).await;
+    // Initialize a Solana run with 0 clients
+    let _cleanup = e2e_testing_setup(docker.clone(), 0, 2).await;
+
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 3 clients with random keypairs
+    let client1 = spawn_new_client(docker.clone()).await;
+    let client2 = spawn_new_client(docker.clone()).await;
+    let client3 = spawn_new_client(docker.clone()).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            &client1,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -349,7 +375,7 @@ async fn disconnect_client() {
 
     let _monitor_client_2 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            &client2,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -362,7 +388,7 @@ async fn disconnect_client() {
 
     let _monitor_client_3 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-3"),
+            &client3,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -408,11 +434,8 @@ async fn disconnect_client() {
                     assert_eq!(epoch_clients.len(), 3);
 
                     // Kill any client, since all are witnesses
-                    watcher
-                        .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-1"))
-                        .await
-                        .unwrap();
-                    println!("Killed client: {CLIENT_CONTAINER_PREFIX}-1");
+                    watcher.kill_container(&client1).await.unwrap();
+                    println!("Killed client: {}", client1);
                     killed_client = true;
                 }
 
@@ -482,14 +505,25 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 0, 2).await;
+
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 2 clients with random keypairs
+    let mut clients = Vec::new();
+    for i in 1..=n_clients {
+        let client = spawn_new_client(docker.clone()).await;
+        println!("Spawned client {}: {}", i, client);
+        clients.push(client);
+    }
 
     let solana_client = SolanaTestClient::new(run_id).await;
     // Monitor clients
-    for i in 1..=n_clients {
+    for client in &clients {
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
+                client,
                 vec![
                     IntegrationTestLogMarker::Loss,
                     IntegrationTestLogMarker::StateChange,
@@ -508,16 +542,10 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
                 // Once warmup starts, kill client 2's container
                 if new_state == RunState::RoundTrain.to_string() && !train_reached {
-                    println!(
-                        "Train started, killing container {}...",
-                        &format!("{CLIENT_CONTAINER_PREFIX}-2")
-                    );
+                    println!("Train started, killing container {}...", &clients[1]);
 
                     let options = Some(KillContainerOptions { signal: "SIGKILL" });
-                    docker
-                        .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-2"), options)
-                        .await
-                        .unwrap();
+                    docker.kill_container(&clients[1], options).await.unwrap();
 
                     tokio::time::sleep(Duration::from_secs(2)).await;
                     train_reached = true;
@@ -552,7 +580,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     // Test reconnection
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone()).await;
 
     // Wait for state to change back to Warmup
     assert!(
@@ -572,7 +600,15 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 0, 2).await;
+
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 2 clients
+    let client1 = spawn_new_client(docker.clone()).await;
+    let client2 = spawn_new_client(docker.clone()).await;
+    let initial_clients = vec![client1.clone(), client2.clone()];
 
     let solana_client = SolanaTestClient::new(run_id).await;
     let mut has_spawned_new_client_yet = false;
@@ -582,6 +618,15 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     loop {
         tokio::select! {
             _ = liveness_check_interval.tick() => {
+                // Check if any clients have crashed (only check initial clients, not new ones)
+                if !has_spawned_new_client_yet {
+                    for client in &initial_clients {
+                        if let Err(e) = watcher.monitor_client_health_by_id(client).await {
+                            panic!("Client crashed: {}", e);
+                        }
+                    }
+                }
+
                 // Show number of connected clients and current state of coordinator
                 let clients = solana_client.get_clients().await;
                 let current_epoch = solana_client.get_current_epoch().await;
@@ -613,13 +658,35 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                     // Wait a while before spawning a new client
                     tokio::time::sleep(Duration::from_secs(20)).await;
                     // Spawn a new client, that should get the model with Hub
-                    let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
+                    let joined_container_id = spawn_new_client(docker.clone()).await;
                     println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
                     // Spawn another because whe have min_clients=2
-                    let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
+                    let joined_container_id = spawn_new_client(docker.clone()).await;
                     println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
-                    has_spawned_new_client_yet = true;
 
+                    // Monitor the containers
+                    let _monitor_client_1 = watcher
+                        .monitor_container(
+                            &client1,
+                            vec![
+                                IntegrationTestLogMarker::Loss,
+                                IntegrationTestLogMarker::StateChange,
+                                IntegrationTestLogMarker::LoadedModel,
+                            ],
+                        )
+                        .unwrap();
+                    let _monitor_client_2 = watcher
+                        .monitor_container(
+                            &client2,
+                            vec![
+                                IntegrationTestLogMarker::Loss,
+                                IntegrationTestLogMarker::StateChange,
+                                IntegrationTestLogMarker::LoadedModel,
+                            ],
+                        )
+                        .unwrap();
+
+                    has_spawned_new_client_yet = true;
                     continue;
                 }
 
@@ -676,22 +743,22 @@ async fn test_solana_subscriptions() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 2 client
-    let _cleanup = e2e_testing_setup_subscription(docker.clone(), 2).await;
+    // Initialize a Solana run with 0 clients
+    let _cleanup = e2e_testing_setup_subscription(docker.clone(), 0, 2).await;
 
-    // Monitor the client containers
+    // Wait for infrastructure to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Spawn 2 clients. We need to use the .env.test config here for this test
+    let client1 = spawn_new_client_with_options(docker.clone(), None, ".env.test").await;
+    let client2 = spawn_new_client_with_options(docker.clone(), None, ".env.test").await;
+
     let _monitor_client_1 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
-            vec![IntegrationTestLogMarker::StateChange],
-        )
+        .monitor_container(&client1, vec![IntegrationTestLogMarker::StateChange])
         .unwrap();
 
     let _monitor_client_2 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
-            vec![IntegrationTestLogMarker::SolanaSubscription],
-        )
+        .monitor_container(&client2, vec![IntegrationTestLogMarker::SolanaSubscription])
         .unwrap();
 
     let mut live_interval = time::interval(Duration::from_secs(10));
@@ -816,7 +883,7 @@ async fn test_everybody_leaves_in_warmup() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
     tokio::time::sleep(Duration::from_secs(20)).await;
 
     // initialize DockerWatcher
@@ -842,7 +909,7 @@ async fn test_everybody_leaves_in_warmup() {
     }
 
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone()).await;
     println!("New client started");
 
     let client_2_name = format!("{CLIENT_CONTAINER_PREFIX}-2");
@@ -873,7 +940,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 1 client, minimum 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
 
     // Monitor the original client container
     let _monitor_client_1 = watcher
@@ -909,7 +976,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 
                         if new_state == RunState::RoundTrain.to_string() && !spawned_second_client {
                             println!("Joining a second client to the run");
-                            let second_client_id = spawn_new_client(docker.clone()).await.unwrap();
+                            let second_client_id = spawn_new_client(docker.clone()).await;
                             let _monitor_client_2 = watcher
                             .monitor_container(
                                 &second_client_id,
@@ -939,7 +1006,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     Some(Response::LoadedModel(checkpoint)) => {
                         if spawned_second_client && first_client_killed {
                             // Assert checkpoint is Hub
-                            assert!(checkpoint.starts_with("pefontana/") || checkpoint.starts_with("emozilla/"), "The model should be obtained from Hub since the other client disconnected");
+                            assert!(checkpoint.starts_with("pefontana/"), "The model should be obtained from Hub since the other client disconnected");
                             println!("Model succesfuly obtained from Hub");
                             return;
                         }
@@ -947,6 +1014,153 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     _ => {}
                 }
             }
+        }
+    }
+}
+
+/// Tests pausing and resuming a run
+/// Starts a run with 1 client, pauses it, verifies it's paused, then resumes it
+/// and verifies the client rejoins and gets the model from Hub since all clients have disconnected.
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_pause_and_resume_run() {
+    let run_id = "test".to_string();
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // Use pre-generated keypairs from docker/test/keypairs
+    let test_package_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = test_package_dir.join("../../..");
+    let client_keypair_path = workspace_root.join("docker/test/keypairs/client.json");
+
+    let client_keypair_path =
+        std::fs::canonicalize(&client_keypair_path).expect("Failed to resolve client keypair path");
+
+    // Initialize Solana test infrastructure (validator, run owner, etc.)
+    // The run owner is created by docker-compose with pre-generated keypair
+    let _cleanup = e2e_testing_setup(docker.clone(), 0, 1).await;
+
+    // Wait for run owner to be ready
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Manually spawn client with pre-generated keypair
+    let client_container = spawn_new_client_with_options(
+        docker.clone(),
+        Some(client_keypair_path.to_str().unwrap()),
+        ".env.local",
+    )
+    .await;
+    println!("Spawned client: {}", client_container);
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // Monitor the client container
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &client_container,
+            vec![
+                IntegrationTestLogMarker::StateChange,
+                IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::Error,
+            ],
+        )
+        .unwrap();
+
+    let solana_client = SolanaTestClient::new(run_id.clone()).await;
+
+    let mut paused = false;
+    let mut rejoined_client = false;
+    let mut current_epoch = -1;
+    let mut last_epoch_loss = f64::MAX;
+    let mut verified_hub_checkpoint = false;
+    let num_epochs_after_rejoin = 2;
+
+    println!("Waiting for training to start...");
+    loop {
+        let response = watcher.log_rx.recv().await;
+        match response {
+            Some(Response::StateChange(_timestamp, _client, old_state, new_state, epoch, step)) => {
+                println!("epoch: {epoch} step: {step} state change: {old_state} => {new_state}");
+
+                // Wait a bit before pausing
+                if !paused && step > 3 && new_state == RunState::RoundTrain.to_string() {
+                    pause_and_verify(docker.clone(), &run_id, &solana_client).await;
+                    paused = true;
+                    println!("Now waiting for coordinator to kick client-1...");
+                }
+            }
+            Some(Response::Loss(client, epoch, step, loss)) => {
+                println!("client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}");
+                if epoch as i64 > current_epoch {
+                    current_epoch = epoch as i64;
+
+                    let Some(loss) = loss else {
+                        println!("Reached new epoch but loss was NaN");
+                        continue;
+                    };
+
+                    assert!(loss < last_epoch_loss * 1.25);
+                    assert!(loss > 0.0);
+                    last_epoch_loss = loss;
+
+                    // After rejoining and verifying Hub checkpoint, train for a few more epochs
+                    if verified_hub_checkpoint && epoch >= num_epochs_after_rejoin {
+                        println!(
+                            "Trained for {num_epochs_after_rejoin} epochs after rejoin. Loss continued to decrease. Test successful!"
+                        );
+                        return;
+                    }
+                }
+            }
+            Some(Response::CheckpointType(checkpoint_type)) if rejoined_client => {
+                println!("Checkpoint type: {checkpoint_type}");
+                assert_eq!(
+                    checkpoint_type, "Hub",
+                    "Expected Hub checkpoint after rejoin"
+                );
+                verified_hub_checkpoint = true;
+                println!(
+                    "Hub checkpoint verified. Now training for {num_epochs_after_rejoin} more epochs to verify loss continues to decrease..."
+                );
+            }
+            Some(Response::Error(error_kind, message)) => {
+                println!("Error received: {:?} - {}", error_kind, message);
+
+                // Here is where we detect the client has been "kicked" due to the run being paused
+                if paused && !rejoined_client {
+                    println!("Client kicked by coordinator!");
+                    // Resume the run that was paused
+                    resume_run(docker.clone(), &run_id).await;
+                    // Wait some time before rejoining just in case
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+
+                    println!("Rejoining with client's keypair...");
+                    let container = spawn_new_client_with_options(
+                        docker.clone(),
+                        Some(client_keypair_path.to_str().unwrap()),
+                        ".env.local",
+                    )
+                    .await;
+                    println!("Rejoined client: {}", container);
+
+                    // Monitor the client again to check which checkpoint it grabs
+                    watcher
+                        .monitor_container(
+                            &container,
+                            vec![
+                                IntegrationTestLogMarker::CheckpointType,
+                                IntegrationTestLogMarker::StateChange,
+                                IntegrationTestLogMarker::Loss,
+                            ],
+                        )
+                        .expect("Failed to monitor rejoined client");
+                    // Wait for client to fully connect
+                    println!("Waiting 10 seconds for client to connect...");
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+
+                    rejoined_client = true;
+                }
+            }
+            _ => {}
         }
     }
 }
