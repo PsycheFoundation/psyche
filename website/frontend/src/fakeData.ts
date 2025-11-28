@@ -274,10 +274,11 @@ export const fakeContributionInfo: ContributionInfo = {
 function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 	const seededRandom = createSeededRandom(seed)
 
-	const roundsPerEpoch = Math.round(seededRandom() * 10) + 10
+	const epochTime = 3600
 	const minClients = Math.round(seededRandom() * 10) + 2
 	const totalClients = minClients
 
+	const roundsPerEpoch = Math.round(seededRandom() * 10) + 10
 	const stepsPerEpoch = roundsPerEpoch + 2 + totalClients // +2 for warmup and cooldown, +n for num clients
 	const epochStep = step % stepsPerEpoch
 
@@ -377,6 +378,7 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 		state: {
 			phase,
 			phaseStartTime: new Date(Date.now() - seededRandom() * 2_000),
+			epochStartTime: new Date(Date.now() - seededRandom() * 10_000),
 			round,
 			clients,
 			checkpoint: {
@@ -389,7 +391,7 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 				warmupTime: 3_000,
 				roundWitnessTime: 2_000,
 				minClients,
-				roundsPerEpoch,
+				epochTime,
 				lrSchedule: {
 					Cosine: {
 						base_lr: 4.0e-4,
