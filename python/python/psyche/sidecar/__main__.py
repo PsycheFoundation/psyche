@@ -154,6 +154,9 @@ def main():
         store=store,
     )
 
+    def barrier():
+        dist.barrier(device_ids=[args.device] if args.device is not None else None)
+
     architecture = store.get("architecture").decode()
     source = store.get("source").decode()
     if source == "files":
@@ -165,7 +168,7 @@ def main():
         source = PretrainedSourceRepoFiles(files=expanded_files)
     elif source == "config_and_tensors":
         # Sync all ranks before receiving anything
-        dist.barrier()
+        barrier()
         config = store.get("config").decode()
         tensor_names = json.loads(store.get("tensor_names").decode())
         state_dict = {}
@@ -189,12 +192,12 @@ def main():
             # Create empty tensor to overwrite with the broadcasted tensor
             tensor = torch.empty(tensor_shape, dtype=tensor_dtype, device=args.device)
 
-            print("Received tensor:", name)
             dist.broadcast(tensor, 0)
-            dist.barrier()
-            print("Continue")
+            barrier()
 
-            state_dict[name] = tensor
+            state_dict[name] = (
+                tensor.cpu()
+            )  # move back to CPU memory so we don't hold full model in GPU memory
 
         source = PretrainedSourceStateDict(config_json=config, state_dict=state_dict)
     else:
@@ -224,9 +227,7 @@ def main():
             return
         operation = json.loads(operation.decode())
 
-        # dummy barrier
-        dummy = torch.zeros((), dtype=torch.float, device=device)
-        dist.all_reduce(dummy)
+        barrier()
 
         if operation["operation"] == "hyperparameters":
             hyperparameters: Hyperparameters = Hyperparameters(**operation)

@@ -137,7 +137,7 @@ fn extract_run_id(state_path: &PathBuf) -> Result<String> {
 
 fn main() -> Result<()> {
     #[cfg(feature = "python")]
-    psyche_python_extension_impl::init_embedded_python();
+    psyche_python_extension_impl::init_embedded_python()?;
 
     let args = Args::parse();
     let command = args.command;
@@ -333,7 +333,7 @@ fn main() -> Result<()> {
                                 .filter(allowed_to_kill)
                                 .collect();
 
-                            client_nums.shuffle(&mut rand::thread_rng());
+                            client_nums.shuffle(&mut rand::rng());
 
                             client_nums.truncate(kill_num);
                             client_nums

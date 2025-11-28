@@ -180,6 +180,9 @@ export type ApiGetRuns = MaybeError<{
 	totalTokens: bigint
 	totalTokensPerSecondActive: bigint
 }>
+export type ApiGetCheckpointStatus = MaybeError<{
+	isValid: boolean
+}>
 export type ApiGetContributionInfo = MaybeError<ContributionInfo>
 
 export function u64ToLeBytes(value: bigint) {

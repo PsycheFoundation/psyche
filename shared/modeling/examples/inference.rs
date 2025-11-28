@@ -155,7 +155,7 @@ fn inference(
         {
             let tp = args.tensor_parallelism.unwrap_or(1);
 
-            psyche_python_extension_impl::init_embedded_python();
+            psyche_python_extension_impl::init_embedded_python()?;
 
             let attn_implementation = args
                 .attn_implementation
@@ -232,7 +232,7 @@ fn inference(
         if let Some((_, _, _, barrier)) = tensor_parallelism.as_ref() {
             barrier.wait();
         }
-        let logits = logits.squeeze();
+        let logits = logits.unwrap().squeeze();
         let next_token = logits_processor.sample(&logits)?;
         token_generated += 1;
         tokens.push(next_token as i64);

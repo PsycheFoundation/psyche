@@ -259,7 +259,7 @@ async fn async_main() -> Result<()> {
             identity_secret_key_path,
         } => print_identity_keys(identity_secret_key_path.as_ref()),
         Commands::CreateStaticP2PIdentity { save_path } => {
-            let identity_secret_key = SecretKey::generate(&mut rand::rngs::OsRng);
+            let identity_secret_key = SecretKey::generate(&mut rand::rng());
             std::fs::write(&save_path, identity_secret_key.secret().as_bytes())?;
             print_identity_keys(Some(&save_path))?;
             println!("Wrote secret key to {}", save_path.display());
@@ -521,8 +521,7 @@ async fn async_main() -> Result<()> {
                 sidecar_port: args.sidecar_port,
             })
             .build()
-            .await
-            .unwrap();
+            .await?;
 
             app.run().await?;
             logger.shutdown()?;
@@ -570,7 +569,7 @@ async fn async_main() -> Result<()> {
 
 fn main() -> Result<()> {
     #[cfg(feature = "python")]
-    psyche_python_extension_impl::init_embedded_python();
+    psyche_python_extension_impl::init_embedded_python()?;
 
     let runtime = Builder::new_multi_thread()
         .enable_io()

@@ -1,16 +1,17 @@
 use crate::{
     Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker,
-    client::P2PNodeInfo,
     state::{train::FinishedTrainers, types::DeserializeError},
 };
 
+use iroh_blobs::api::Tag;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
-use psyche_network::{AuthenticatableIdentity, BlobTicket, Hash, TransmittableDistroResult};
+use psyche_network::{
+    AuthenticatableIdentity, BlobTicket, Hash, P2PNodeInfo, TransmittableDistroResult,
+};
 use psyche_watcher::OpportunisticData;
 use std::{
-    collections::HashMap,
     fmt,
     sync::{Arc, Mutex},
     time::Instant,
@@ -48,7 +49,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
 
     active_step: ActiveStep,
 
-    tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+    tx_request_download: mpsc::UnboundedSender<(BlobTicket, Tag)>,
     tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
     tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
 
@@ -59,6 +60,10 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     sent_warmup_witness: bool,
 
     coordinator_state: Coordinator<T>,
+
+    // Handles for HuggingFace uploads running in background
+    pending_upload_handles:
+        Vec<tokio::task::JoinHandle<Result<(), crate::state::cooldown::CheckpointError>>>,
 }
 
 #[derive(Error, Debug)]
@@ -126,7 +131,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         cooldown: CooldownStepMetadata,
         trainers: Vec<Trainer>,
         coordinator_state: Coordinator<T>,
-        tx_request_download: mpsc::UnboundedSender<(BlobTicket, u32)>,
+        tx_request_download: mpsc::UnboundedSender<(BlobTicket, Tag)>,
         tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
         tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
         stats_logger: StatsLogger,
@@ -160,6 +165,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             step_finish_time: None,
             sent_warmup_finished: false,
             sent_warmup_witness: false,
+
+            pending_upload_handles: Vec::new(),
         }
     }
 
@@ -472,9 +479,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 // start downloading the payload unless this is a self-message
                 // (assuming the caller will put our payload in the proper place)
+                let tag_name = format!("downloaded-distro-result-{from_client_id}_{result_step}");
                 if from_client_id != self.identity {
                     self.tx_request_download
-                        .send((ticket, result_step))
+                        .send((ticket, Tag::from(tag_name)))
                         .map_err(|_| ApplyMessageError::StartDownloadBlob)?;
                 }
             }
@@ -713,8 +721,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         trace!(
                             "since we're not a member of this step, killing cooldown step and returning to warmup to wait."
                         );
+                        let (trainers, upload_handle) = cooldown.finish().await?;
+                        if let Some(handle) = upload_handle {
+                            self.pending_upload_handles.push(handle);
+                        }
                         ActiveStep::Warmup(self.warmup.start(
-                            cooldown.finish().await?,
+                            trainers,
                             &mut self.previous_round,
                             &mut self.current_round,
                         ))
@@ -824,13 +836,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             // the epoch ended & we're transitioning to cooldown
             (ActiveStep::Witness(witnessing), RunState::Cooldown) => {
                 let trainers = witnessing.finish().await?.stop_evals().await?;
+                // check here
+                self.cleanup_completed_uploads();
+
                 ActiveStep::Cooldown(self.cooldown.start(trainers, &state)?)
             }
             // cooldown is done, we consider waiting for members and warmup to be basically the same
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
             | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
-                let trainers = cooldown.finish().await?;
+                let (trainers, upload_handle) = cooldown.finish().await?;
+                if let Some(handle) = upload_handle {
+                    self.pending_upload_handles.push(handle);
+                }
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
                     &mut self.previous_round,
@@ -857,12 +875,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         Ok(())
     }
 
-    pub fn set_node_info(&mut self, node_info: HashMap<String, P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
         self.stats_logger
             .lock()
             .map_err(|_| anyhow::anyhow!("stats logger mutex poisoned"))?
             .node_info = node_info;
         Ok(())
+    }
+
+    fn cleanup_completed_uploads(&mut self) {
+        self.pending_upload_handles
+            .retain(|handle| !handle.is_finished());
     }
 }
 
@@ -1061,7 +1084,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub fn set_node_info(&mut self, node_info: HashMap<String, P2PNodeInfo>) -> anyhow::Result<()> {
+    pub fn set_node_info(&mut self, node_info: Vec<P2PNodeInfo>) -> anyhow::Result<()> {
         if let InitStage::Running(run) = &mut self.0 {
             run.set_node_info(node_info)?;
         }
@@ -1070,10 +1093,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
 
     pub fn doing_checkpoint(&self) -> bool {
         match &self.0 {
-            InitStage::Running(step_state_machine) => match &step_state_machine.active_step {
-                ActiveStep::Cooldown(cooldown_step) => cooldown_step.doing_checkpoint(),
-                _ => false,
-            },
+            InitStage::Running(step_state_machine) => {
+                let has_pending_uploads = step_state_machine
+                    .pending_upload_handles
+                    .iter()
+                    .any(|handle| !handle.is_finished());
+
+                has_pending_uploads
+            }
             _ => false,
         }
     }

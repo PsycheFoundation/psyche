@@ -55,7 +55,7 @@ fn main() -> Result<()> {
         .split(",")
         .map(|x| {
             tasktype_from_name(x).map(|y| {
-                let num_fewshot = args.num_fewshot.unwrap_or_else(|| match x {
+                let num_fewshot = args.num_fewshot.unwrap_or(match x {
                     "mmlu_pro" => 5,
                     _ => 0,
                 });
@@ -203,7 +203,7 @@ fn run_data_parallel(
             let mut model: Box<dyn CausalLM> = if python {
                 #[cfg(feature = "python")]
                 {
-                    psyche_python_extension_impl::init_embedded_python();
+                    psyche_python_extension_impl::init_embedded_python()?;
 
                     Box::new(psyche_modeling::PythonDistributedCausalLM::new(
                         "hf-auto".to_string(),
@@ -244,7 +244,7 @@ fn run_data_parallel(
                         skip_and_step_by: Some((gpu_id, threads)),
                         live_results: Some(shared_results[task_idx].clone()),
                         cancel: None,
-                        limit: limit,
+                        limit,
                         shared_progress_bar: shared_progress_bars[task_idx].clone(),
                     },
                     !quiet,
