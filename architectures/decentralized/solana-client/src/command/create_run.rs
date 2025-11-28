@@ -8,6 +8,7 @@ use anchor_client::solana_sdk::system_instruction;
 use anyhow::Result;
 use anyhow::bail;
 use clap::Args;
+use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
 
 use crate::SolanaBackend;
 use crate::instructions;
@@ -38,6 +39,13 @@ pub async fn command_create_run_execute(
         treasurer_collateral_mint,
         join_authority,
     } = params;
+
+    if run_id.len() > SOLANA_RUN_ID_MAX_LEN {
+        bail!(
+            "run_id must be 32 bytes or less, got {} bytes",
+            run_id.len()
+        );
+    }
 
     let payer = backend.get_payer();
     let main_authority = payer;
