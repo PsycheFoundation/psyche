@@ -10,7 +10,7 @@ pub struct ClaimCreateAccounts<'info> {
     pub payer: Signer<'info>,
 
     #[account()]
-    pub user: Signer<'info>,
+    pub claimer: Signer<'info>,
 
     #[account()]
     pub airdrop: Box<Account<'info, Airdrop>>,
@@ -22,7 +22,7 @@ pub struct ClaimCreateAccounts<'info> {
         seeds = [
             Claim::SEEDS_PREFIX,
             airdrop.key().as_ref(),
-            user.key().as_ref()
+            claimer.key().as_ref()
         ],
         bump
     )]

@@ -5,6 +5,7 @@ use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 
 use crate::state::Airdrop;
+use crate::state::AirdropMerkleHash;
 use crate::state::AirdropMetadata;
 use crate::ProgramError;
 
@@ -68,12 +69,12 @@ pub fn airdrop_create_processor(
 
     airdrop.index = params.index;
     airdrop.authority = context.accounts.authority.key();
-    airdrop.merkle_root = params.merkle_root;
 
     airdrop.collateral_mint = context.accounts.collateral_mint.key();
     airdrop.total_claimed_collateral_amount = 0;
 
     airdrop.freeze = false;
+    airdrop.merkle_root = params.merkle_root;
     airdrop.metadata = params.metadata;
 
     Ok(())

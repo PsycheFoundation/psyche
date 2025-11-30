@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::state::Airdrop;
+use crate::state::AirdropMerkleHash;
 use crate::state::AirdropMetadata;
 use crate::ProgramError;
 

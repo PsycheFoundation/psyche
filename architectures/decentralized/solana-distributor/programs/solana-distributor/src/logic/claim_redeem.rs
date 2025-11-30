@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::hash::hashv;
 use anchor_spl::token::transfer;
 use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
@@ -6,6 +7,7 @@ use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
 
 use crate::state::Airdrop;
+use crate::state::AirdropMerkleHash;
 use crate::state::Claim;
 use crate::ProgramError;
 
@@ -52,10 +54,10 @@ pub struct ClaimRedeemAccounts<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct ClaimRedeemParams {
     pub vesting_start_unix_timestamp: i64,
-    pub vesting_duration_seconds: u64,
+    pub vesting_duration_seconds: u32,
     pub vesting_collateral_amount: u64,
     pub collateral_amount: u64,
     pub merkle_proof: Vec<AirdropMerkleHash>,
@@ -72,35 +74,29 @@ pub fn claim_redeem_processor(
         return err!(ProgramError::AirdropFreezeIsTrue);
     }
 
-    let merkle_leaf = hashv(&[
+    let merkle_data: &[&[u8]] = &[
         &context.accounts.claimer.key.to_bytes(),
         &params.vesting_start_unix_timestamp.to_le_bytes(),
         &params.vesting_duration_seconds.to_le_bytes(),
         &params.vesting_collateral_amount.to_le_bytes(),
-    ])
-    .to_bytes();
-
-    if !merkle_verify(&airdrop.merkle_root, &merkle_leaf, &params.merkle_proof)
-    {
+    ];
+    let merkle_leaf = hashv(merkle_data);
+    if !merkle_verify(
+        &airdrop.merkle_root,
+        &merkle_leaf.to_bytes(),
+        &params.merkle_proof,
+    ) {
         return err!(ProgramError::ParamsMerkleProofIsInvalid);
     }
 
-    let vesting_elapsed_seconds = u128::from(
-        Clock::get()?
-            .unix_timestamp
-            .saturating_sub(params.vesting_start_unix_timestamp),
-    );
+    let claimable_collateral_amount = compute_vested(
+        params.vesting_start_unix_timestamp,
+        params.vesting_duration_seconds,
+        params.vesting_collateral_amount,
+    )?
+    .saturating_sub(i128::from(claim.claimed_collateral_amount));
 
-    let vesting_unlocked_collateral_amount =
-        u128::from(params.vesting_collateral_amount)
-            .checked_mul(vesting_elapsed_seconds)
-            .ok_or(ProgramError::MathOverflow)?
-            .checked_div(u128::from(params.vesting_duration_seconds))
-            .ok_or(ProgramError::MathOverflow)?
-            .saturating_sub(u128::from(claim.claimed_collateral_amount));
-
-    if vesting_unlocked_collateral_amount < u128::from(params.collateral_amount)
-    {
+    if claimable_collateral_amount < i128::from(params.collateral_amount) {
         return err!(ProgramError::ParamsCollateralAmountIsTooLarge);
     }
 
@@ -128,6 +124,28 @@ pub fn claim_redeem_processor(
     Ok(())
 }
 
+fn compute_vested(
+    start_unix_timestamp: i64,
+    duration_seconds: u32,
+    total_amount: u64,
+) -> Result<i128> {
+    let elapsed_seconds = Clock::get()?
+        .unix_timestamp
+        .checked_sub(start_unix_timestamp)
+        .ok_or(ProgramError::MathOverflow)?;
+    if elapsed_seconds < 0 {
+        return Ok(0);
+    }
+    if elapsed_seconds >= i64::from(duration_seconds) {
+        return Ok(i128::from(total_amount));
+    }
+    Ok(i128::from(total_amount)
+        .checked_mul(i128::from(elapsed_seconds))
+        .ok_or(ProgramError::MathOverflow)?
+        .checked_div(i128::from(duration_seconds))
+        .ok_or(ProgramError::MathOverflow)?)
+}
+
 fn merkle_verify(
     merkle_root: &AirdropMerkleHash,
     merkle_leaf: &AirdropMerkleHash,
@@ -135,12 +153,12 @@ fn merkle_verify(
 ) -> bool {
     merkle_proof
         .iter()
-        .fold(merkle_leaf, |merkle_hash, merkle_node| {
+        .fold(*merkle_leaf, |merkle_hash, merkle_node| {
             if merkle_hash <= *merkle_node {
                 hashv(&[&merkle_hash, merkle_node]).to_bytes()
             } else {
                 hashv(&[merkle_node, &merkle_hash]).to_bytes()
             }
         })
-        == merkle_root
+        == *merkle_root
 }

@@ -12,6 +12,6 @@ impl Claim {
     pub const SEEDS_PREFIX: &'static [u8] = b"Claim";
 
     pub fn space_with_discriminator() -> usize {
-        Claim::INIT_SIZE + 8
+        8 + std::mem::size_of::<Claim>()
     }
 }
