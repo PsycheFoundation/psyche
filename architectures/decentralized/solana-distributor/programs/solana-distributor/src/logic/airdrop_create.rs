@@ -1,0 +1,80 @@
+use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token::Mint;
+use anchor_spl::token::Token;
+use anchor_spl::token::TokenAccount;
+
+use crate::state::Airdrop;
+use crate::state::AirdropMetadata;
+use crate::ProgramError;
+
+#[derive(Accounts)]
+#[instruction(params: AirdropCreateParams)]
+pub struct AirdropCreateAccounts<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account()]
+    pub authority: Signer<'info>,
+
+    #[account(
+        init,
+        payer = payer,
+        space = Airdrop::space_with_discriminator(),
+        seeds = [Airdrop::SEEDS_PREFIX, &params.index.to_le_bytes()],
+        bump,
+    )]
+    pub airdrop: Box<Account<'info, Airdrop>>,
+
+    #[account(
+        init,
+        payer = payer,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = airdrop,
+    )]
+    pub airdrop_collateral: Box<Account<'info, TokenAccount>>,
+
+    #[account()]
+    pub collateral_mint: Box<Account<'info, Mint>>,
+
+    #[account()]
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    #[account()]
+    pub token_program: Program<'info, Token>,
+
+    #[account()]
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+pub struct AirdropCreateParams {
+    pub index: u64,
+    pub merkle_root: AirdropMerkleHash,
+    pub metadata: AirdropMetadata,
+}
+
+pub fn airdrop_create_processor(
+    context: Context<AirdropCreateAccounts>,
+    params: AirdropCreateParams,
+) -> Result<()> {
+    if usize::from(params.metadata.length) > AirdropMetadata::BYTES {
+        return err!(ProgramError::ParamsMetadataLengthIsTooLarge);
+    }
+
+    let airdrop = &mut context.accounts.airdrop;
+
+    airdrop.bump = context.bumps.airdrop;
+
+    airdrop.index = params.index;
+    airdrop.authority = context.accounts.authority.key();
+    airdrop.merkle_root = params.merkle_root;
+
+    airdrop.collateral_mint = context.accounts.collateral_mint.key();
+    airdrop.total_claimed_collateral_amount = 0;
+
+    airdrop.freeze = false;
+    airdrop.metadata = params.metadata;
+
+    Ok(())
+}
