@@ -195,8 +195,9 @@ impl ConfigBuilder {
         self.set_value("config.global_batch_size_end", self.batch_size);
 
         #[cfg(feature = "python")]
-        self.set_value("config.warmup_time", 200);
+        self.set_value("config.warmup_time", 500);
         self.set_value("config.max_round_train_time", 100);
+        self.set_value("model.LLM.checkpoint.Hub.repo_id", self.model.clone());
 
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
