@@ -65,27 +65,9 @@ def get_state_dict_from_engine(engine) -> Optional[Dict[str, torch.Tensor]]:
         The shared state_dict, or None if not available
     """
     try:
-        # Method name to call on WorkerBase
-        def get_state_dict_method(worker_base):
-            """Method to run on worker - accesses model_runner directly"""
-            # The worker_base has a model_runner attribute
-            if hasattr(worker_base, "model_runner"):
-                runner = worker_base.model_runner
-                if hasattr(runner, "psyche_shared_state_dict"):
-                    logger.info(
-                        f"Found psyche_shared_state_dict with {len(runner.psyche_shared_state_dict)} params"
-                    )
-                    return runner.psyche_shared_state_dict
-                else:
-                    logger.warning(
-                        "model_runner exists but no psyche_shared_state_dict attribute"
-                    )
-            else:
-                logger.warning("worker_base has no model_runner attribute")
-            return None
-
-        logger.info("Calling collective_rpc to get state_dict...")
-        results = engine.collective_rpc(get_state_dict_method)
+        # Call the custom method we added to Worker
+        logger.info("Calling collective_rpc with 'get_psyche_state_dict'...")
+        results = engine.collective_rpc("get_psyche_state_dict")
         logger.info(f"collective_rpc returned {len(results)} results")
 
         if results and results[0] is not None:
@@ -123,9 +105,29 @@ def apply_vllm_patches():
     This function must be called BEFORE any vLLM modules are imported.
     """
     try:
-        from vllm.v1.worker.gpu_worker import GPUModelRunner
+        from vllm.v1.worker.gpu_worker import GPUModelRunner, Worker
 
         logger.info("Psyche: Applying vLLM patches for weight update support")
+
+        # Patch Worker to add our custom method
+        class PsychePatchedWorker(Worker):
+            """Psyche-patched Worker with state_dict access method"""
+
+            def get_psyche_state_dict(self):
+                """Return the shared state_dict from the model_runner"""
+                if hasattr(self, "model_runner") and hasattr(
+                    self.model_runner, "psyche_shared_state_dict"
+                ):
+                    logger.info(
+                        f"Worker: Returning psyche_shared_state_dict with "
+                        f"{len(self.model_runner.psyche_shared_state_dict)} parameters"
+                    )
+                    return self.model_runner.psyche_shared_state_dict
+                else:
+                    logger.warning(
+                        "Worker: model_runner or psyche_shared_state_dict not found"
+                    )
+                    return None
 
         # Create patched class that inherits from GPUModelRunner
         # This is the same approach torchtitan uses
@@ -175,12 +177,13 @@ def apply_vllm_patches():
                     logger.error(f"Psyche: Failed to share model memory: {e}")
                     raise
 
-        # Replace the GPUModelRunner class with our patched version
+        # Replace the classes with our patched versions
         import vllm.v1.worker.gpu_worker
 
+        vllm.v1.worker.gpu_worker.Worker = PsychePatchedWorker
         vllm.v1.worker.gpu_worker.GPUModelRunner = PsychePatchedGPUModelRunner
 
-        logger.info("Psyche: Successfully patched vLLM GPUModelRunner")
+        logger.info("Psyche: Successfully patched vLLM Worker and GPUModelRunner")
 
     except ImportError as e:
         logger.warning(
