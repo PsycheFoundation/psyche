@@ -32,7 +32,7 @@ pub async fn run() {
     let per_claimer_collateral_amount = 42;
     let mut claimers = vec![];
     let mut allocations = vec![];
-    for i in 0..100 {
+    for i in 0..42 {
         let claimer = Keypair::new();
         allocations.push(Allocation {
             claimer: claimer.pubkey(),

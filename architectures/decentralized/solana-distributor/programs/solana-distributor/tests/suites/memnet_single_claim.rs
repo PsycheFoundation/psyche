@@ -164,7 +164,7 @@ pub async fn run() {
     .unwrap_err();
 
     // Redeem should fail with an invalid allocation vesting
-    let mut claimer_allocation_corrupted1 = claimer_allocation.clone();
+    let mut claimer_allocation_corrupted1 = claimer_allocation;
     claimer_allocation_corrupted1.vesting.end_collateral_amount += 1;
     process_claim_redeem(
         &mut endpoint,
@@ -181,7 +181,7 @@ pub async fn run() {
     .unwrap_err();
 
     // Redeem should fail with an invalid allocation nonce
-    let mut claimer_allocation_corrupted2 = claimer_allocation.clone();
+    let mut claimer_allocation_corrupted2 = claimer_allocation;
     claimer_allocation_corrupted2.nonce += 1;
     process_claim_redeem(
         &mut endpoint,
