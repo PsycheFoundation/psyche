@@ -252,6 +252,13 @@ def test_vllm_distributed_setup():
             os.environ.pop(key, None)
 
 
+def _child_modify_state_dict(state_dict):
+    """Helper function for test_state_dict_sharing (must be at module level for spawn)"""
+    print("[Child] Modifying shared state_dict...")
+    state_dict["layer1.weight"][0, 0] = 42.0
+    print("[Child] Done")
+
+
 def test_state_dict_sharing():
     """Test that state_dict can be shared across processes"""
     print("=" * 60)
@@ -278,13 +285,8 @@ def test_state_dict_sharing():
         print("✓ All tensors moved to shared memory")
 
         # Create a child process that modifies the state_dict
-        def child_process(state_dict):
-            print("[Child] Modifying shared state_dict...")
-            state_dict["layer1.weight"][0, 0] = 42.0
-            print("[Child] Done")
-
         ctx = mp.get_context("spawn")
-        proc = ctx.Process(target=child_process, args=(state_dict,))
+        proc = ctx.Process(target=_child_modify_state_dict, args=(state_dict,))
         proc.start()
         proc.join()
 
