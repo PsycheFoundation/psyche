@@ -14,13 +14,13 @@ use crate::api::find_pdas::find_pda_airdrop;
 pub async fn process_airdrop_update(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
-    airdrop_index: u64,
+    airdrop_id: u64,
     airdrop_authority: &Keypair,
     airdrop_freeze: Option<bool>,
     airdrop_merkle_root: Option<MerkleHash>,
     airdrop_metadata: Option<AirdropMetadata>,
 ) -> Result<()> {
-    let airdrop = find_pda_airdrop(airdrop_index);
+    let airdrop = find_pda_airdrop(airdrop_id);
 
     ToolboxAnchor::process_instruction_with_signers(
         endpoint,

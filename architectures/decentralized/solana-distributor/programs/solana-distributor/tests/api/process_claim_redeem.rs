@@ -4,8 +4,8 @@ use anyhow::Result;
 use psyche_solana_distributor::accounts::ClaimRedeemAccounts;
 use psyche_solana_distributor::instruction::ClaimRedeem;
 use psyche_solana_distributor::logic::ClaimRedeemParams;
+use psyche_solana_distributor::state::Allocation;
 use psyche_solana_distributor::state::MerkleHash;
-use psyche_solana_distributor::state::Vesting;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
@@ -21,18 +21,19 @@ pub async fn process_claim_redeem(
     payer: &Keypair,
     claimer: &Keypair,
     receiver_collateral: &Pubkey,
-    airdrop_index: u64,
-    vesting_and_proof: &(Vesting, Vec<MerkleHash>),
+    airdrop_id: u64,
+    allocation: &Allocation,
+    merkle_proof: &[MerkleHash],
     collateral_mint: &Pubkey,
     collateral_amount: u64,
 ) -> Result<()> {
-    let airdrop = find_pda_airdrop(airdrop_index);
+    let airdrop = find_pda_airdrop(airdrop_id);
     let airdrop_collateral = associated_token::get_associated_token_address(
         &airdrop,
         collateral_mint,
     );
 
-    let claim = find_pda_claim(&airdrop, &claimer.pubkey());
+    let claim = find_pda_claim(&airdrop, &claimer.pubkey(), allocation.nonce);
 
     ToolboxAnchor::process_instruction_with_signers(
         endpoint,
@@ -48,8 +49,9 @@ pub async fn process_claim_redeem(
         },
         ClaimRedeem {
             params: ClaimRedeemParams {
-                vesting: vesting_and_proof.0,
-                merkle_proof: vesting_and_proof.1.to_vec(),
+                nonce: allocation.nonce,
+                vesting: allocation.vesting,
+                merkle_proof: merkle_proof.to_vec(),
                 collateral_amount,
             },
         },

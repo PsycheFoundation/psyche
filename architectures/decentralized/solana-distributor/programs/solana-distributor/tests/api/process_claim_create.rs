@@ -15,10 +15,11 @@ pub async fn process_claim_create(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
     claimer: &Keypair,
-    airdrop_index: u64,
+    airdrop_id: u64,
+    allocation_nonce: u64,
 ) -> Result<()> {
-    let airdrop = find_pda_airdrop(airdrop_index);
-    let claim = find_pda_claim(&airdrop, &claimer.pubkey());
+    let airdrop = find_pda_airdrop(airdrop_id);
+    let claim = find_pda_claim(&airdrop, &claimer.pubkey(), allocation_nonce);
 
     ToolboxAnchor::process_instruction_with_signers(
         endpoint,
@@ -31,7 +32,9 @@ pub async fn process_claim_create(
             system_program: system_program::ID,
         },
         ClaimCreate {
-            params: ClaimCreateParams {},
+            params: ClaimCreateParams {
+                nonce: allocation_nonce,
+            },
         },
         payer,
         &[claimer],

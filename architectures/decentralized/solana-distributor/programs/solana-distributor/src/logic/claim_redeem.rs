@@ -46,7 +46,8 @@ pub struct ClaimRedeemAccounts<'info> {
         seeds = [
             Claim::SEEDS_PREFIX,
             airdrop.key().as_ref(),
-            claimer.key().as_ref()
+            claimer.key().as_ref(),
+            params.nonce.to_le_bytes().as_ref()
         ],
         bump = claim.bump
     )]
@@ -58,6 +59,7 @@ pub struct ClaimRedeemAccounts<'info> {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct ClaimRedeemParams {
+    pub nonce: u64,
     pub vesting: Vesting,
     pub collateral_amount: u64,
     pub merkle_proof: Vec<MerkleHash>,
@@ -74,6 +76,7 @@ pub fn claim_redeem_processor(
 
     let allocation = Allocation {
         claimer: context.accounts.claimer.key(),
+        nonce: params.nonce,
         vesting: params.vesting,
     };
     if !allocation
@@ -98,7 +101,7 @@ pub fn claim_redeem_processor(
 
     let airdrop_signer_seeds: &[&[&[u8]]] = &[&[
         Airdrop::SEEDS_PREFIX,
-        &airdrop.index.to_le_bytes(),
+        &airdrop.id.to_le_bytes(),
         &[airdrop.bump],
     ]];
     transfer(

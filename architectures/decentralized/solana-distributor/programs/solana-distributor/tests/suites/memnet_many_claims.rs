@@ -5,7 +5,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
-use crate::api::airdrop_data::AirdropMerkleTree;
+use crate::api::airdrop_merkle_tree::AirdropMerkleTree;
 use crate::api::create_memnet_endpoint::create_memnet_endpoint;
 use crate::api::find_pdas::find_pda_airdrop;
 use crate::api::process_airdrop_create::process_airdrop_create;
@@ -20,7 +20,7 @@ pub async fn run() {
     let payer = Keypair::new();
     let payer_lamports = 1_000_000_000;
 
-    let airdrop_index = 42u64;
+    let airdrop_id = 42u64;
     let airdrop_authority = Keypair::new();
     let airdrop_authority_collateral_amount = 424242;
 
@@ -28,22 +28,39 @@ pub async fn run() {
     let collateral_mint_decimals = 6;
 
     // Airdrop merkle tree content
+    let mut expected_total_claimed_collateral = 0;
     let per_claimer_collateral_amount = 42;
     let mut claimers = vec![];
     let mut allocations = vec![];
-    for _ in 0..100 {
+    for i in 0..100 {
         let claimer = Keypair::new();
         allocations.push(Allocation {
             claimer: claimer.pubkey(),
+            nonce: 0,
             vesting: Vesting {
                 start_unix_timestamp: 0,
                 duration_seconds: 0,
                 end_collateral_amount: per_claimer_collateral_amount,
             },
         });
+        expected_total_claimed_collateral += per_claimer_collateral_amount;
+        if i % 3 == 0 {
+            allocations.push(Allocation {
+                claimer: claimer.pubkey(),
+                nonce: 1,
+                vesting: Vesting {
+                    start_unix_timestamp: 0,
+                    duration_seconds: 0,
+                    end_collateral_amount: per_claimer_collateral_amount * 3,
+                },
+            });
+            expected_total_claimed_collateral +=
+                per_claimer_collateral_amount * 3;
+        }
         claimers.push(claimer);
     }
-    let merkle_tree = AirdropMerkleTree::try_from(&allocations).unwrap();
+    let airdrop_merkle_tree =
+        AirdropMerkleTree::try_from(&allocations).unwrap();
 
     // Prepare the payer
     endpoint
@@ -86,9 +103,9 @@ pub async fn run() {
     process_airdrop_create(
         &mut endpoint,
         &payer,
-        airdrop_index,
+        airdrop_id,
         &airdrop_authority,
-        *merkle_tree.root().unwrap(),
+        *airdrop_merkle_tree.root().unwrap(),
         AirdropMetadata {
             length: 0,
             bytes: [0u8; AirdropMetadata::BYTES],
@@ -97,13 +114,6 @@ pub async fn run() {
     )
     .await
     .unwrap();
-
-    // Create the claims PDAs
-    for claimer in &claimers {
-        process_claim_create(&mut endpoint, &payer, claimer, airdrop_index)
-            .await
-            .unwrap();
-    }
 
     // Create a wallet that will receive the airdrop's claimed collateral
     let receiver_collateral = endpoint
@@ -116,7 +126,7 @@ pub async fn run() {
         .unwrap();
 
     // Give the airdrop enough collateral
-    let airdrop = find_pda_airdrop(airdrop_index);
+    let airdrop = find_pda_airdrop(airdrop_id);
     let airdrop_collateral = endpoint
         .process_spl_associated_token_account_get_or_init(
             &payer,
@@ -136,22 +146,40 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Redeem full amount should work now
+    // Redeem full amount for everything should work
     for claimer in &claimers {
-        process_claim_redeem(
-            &mut endpoint,
-            &payer,
-            claimer,
-            &receiver_collateral,
-            airdrop_index,
-            &merkle_tree
-                .vestings_and_proofs_for_claimer(&claimer.pubkey())
-                .unwrap()[0],
-            &collateral_mint,
-            per_claimer_collateral_amount,
-        )
-        .await
-        .unwrap();
+        for allocation_index in airdrop_merkle_tree
+            .allocations_indexes_for_claimer(&claimer.pubkey())
+            .unwrap()
+        {
+            let claimer_allocation =
+                airdrop_merkle_tree.allocations[allocation_index];
+            let claimer_merkle_proof = airdrop_merkle_tree
+                .proof_at_allocation_index(allocation_index)
+                .unwrap();
+            process_claim_create(
+                &mut endpoint,
+                &payer,
+                claimer,
+                airdrop_id,
+                claimer_allocation.nonce,
+            )
+            .await
+            .unwrap();
+            process_claim_redeem(
+                &mut endpoint,
+                &payer,
+                claimer,
+                &receiver_collateral,
+                airdrop_id,
+                &claimer_allocation,
+                &claimer_merkle_proof,
+                &collateral_mint,
+                claimer_allocation.vesting.end_collateral_amount,
+            )
+            .await
+            .unwrap();
+        }
     }
 
     // Check final balances
@@ -162,7 +190,7 @@ pub async fn run() {
             .unwrap()
             .unwrap()
             .amount,
-        per_claimer_collateral_amount * claimers.len() as u64
+        expected_total_claimed_collateral
     );
     assert_eq!(
         endpoint
@@ -171,7 +199,6 @@ pub async fn run() {
             .unwrap()
             .unwrap()
             .amount,
-        airdrop_authority_collateral_amount
-            - (per_claimer_collateral_amount * claimers.len() as u64)
+        airdrop_authority_collateral_amount - expected_total_claimed_collateral
     );
 }

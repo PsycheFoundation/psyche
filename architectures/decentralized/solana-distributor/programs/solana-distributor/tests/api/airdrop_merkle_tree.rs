@@ -1,12 +1,11 @@
 use anyhow::Result;
 use psyche_solana_distributor::state::Allocation;
 use psyche_solana_distributor::state::MerkleHash;
-use psyche_solana_distributor::state::Vesting;
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AirdropMerkleTree {
-    allocations: Vec<Allocation>,
+    pub allocations: Vec<Allocation>,
     merkle_layers: Vec<Vec<MerkleHash>>,
 }
 
@@ -17,15 +16,12 @@ impl AirdropMerkleTree {
         if allocations.is_empty() {
             return Err(anyhow::anyhow!("Allocations must not be empty"));
         }
-
         let mut merkle_layers = vec![];
         let mut merkle_layer = vec![];
-
         for allocation in allocations {
             merkle_layer.push(allocation.to_merkle_hash());
         }
         merkle_layers.push(merkle_layer.clone());
-
         while merkle_layer.len() > 1 {
             let mut merkle_parents = vec![];
             for pair in merkle_layer.chunks(2) {
@@ -36,7 +32,6 @@ impl AirdropMerkleTree {
             merkle_layers.push(merkle_parents.clone());
             merkle_layer = merkle_parents;
         }
-
         Ok(AirdropMerkleTree {
             allocations: allocations.to_vec(),
             merkle_layers,
@@ -50,20 +45,23 @@ impl AirdropMerkleTree {
             .ok_or_else(|| anyhow::anyhow!("Merkle tree is empty"))
     }
 
-    pub fn vestings_and_proofs_for_claimer(
+    pub fn allocations_indexes_for_claimer(
         &self,
         claimer: &Pubkey,
-    ) -> Result<Vec<(Vesting, Vec<MerkleHash>)>> {
-        let mut proofs = vec![];
-        for (index, allocation) in self.allocations.iter().enumerate() {
+    ) -> Result<Vec<usize>> {
+        let mut indexes = vec![];
+        for (position, allocation) in self.allocations.iter().enumerate() {
             if &allocation.claimer == claimer {
-                proofs.push((allocation.vesting, self.proof_for_index(index)?));
+                indexes.push(position);
             }
         }
-        Ok(proofs)
+        Ok(indexes)
     }
 
-    pub fn proof_for_index(&self, mut index: usize) -> Result<Vec<MerkleHash>> {
+    pub fn proof_at_allocation_index(
+        &self,
+        mut index: usize,
+    ) -> Result<Vec<MerkleHash>> {
         let mut proof = vec![];
         for layer in &self.merkle_layers {
             if layer.len() == 1 {

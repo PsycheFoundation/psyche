@@ -22,7 +22,7 @@ pub struct AirdropCreateAccounts<'info> {
         init,
         payer = payer,
         space = Airdrop::space_with_discriminator(),
-        seeds = [Airdrop::SEEDS_PREFIX, &params.index.to_le_bytes()],
+        seeds = [Airdrop::SEEDS_PREFIX, &params.id.to_le_bytes()],
         bump,
     )]
     pub airdrop: Box<Account<'info, Airdrop>>,
@@ -50,7 +50,7 @@ pub struct AirdropCreateAccounts<'info> {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub struct AirdropCreateParams {
-    pub index: u64,
+    pub id: u64,
     pub merkle_root: MerkleHash,
     pub metadata: AirdropMetadata,
 }
@@ -67,7 +67,7 @@ pub fn airdrop_create_processor(
 
     airdrop.bump = context.bumps.airdrop;
 
-    airdrop.index = params.index;
+    airdrop.id = params.id;
     airdrop.authority = context.accounts.authority.key();
 
     airdrop.collateral_mint = context.accounts.collateral_mint.key();

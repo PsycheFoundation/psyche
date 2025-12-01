@@ -18,13 +18,13 @@ use crate::api::find_pdas::find_pda_airdrop;
 pub async fn process_airdrop_create(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
-    airdrop_index: u64,
+    airdrop_id: u64,
     airdrop_authority: &Keypair,
     airdrop_merkle_root: MerkleHash,
     airdrop_metadata: AirdropMetadata,
     collateral_mint: &Pubkey,
 ) -> Result<()> {
-    let airdrop = find_pda_airdrop(airdrop_index);
+    let airdrop = find_pda_airdrop(airdrop_id);
     let airdrop_collateral = associated_token::get_associated_token_address(
         &airdrop,
         collateral_mint,
@@ -45,7 +45,7 @@ pub async fn process_airdrop_create(
         },
         AirdropCreate {
             params: AirdropCreateParams {
-                index: airdrop_index,
+                id: airdrop_id,
                 merkle_root: airdrop_merkle_root,
                 metadata: airdrop_metadata,
             },

@@ -23,7 +23,8 @@ pub struct ClaimCreateAccounts<'info> {
         seeds = [
             Claim::SEEDS_PREFIX,
             airdrop.key().as_ref(),
-            claimer.key().as_ref()
+            claimer.key().as_ref(),
+            params.nonce.to_le_bytes().as_ref()
         ],
         bump
     )]
@@ -34,7 +35,9 @@ pub struct ClaimCreateAccounts<'info> {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
-pub struct ClaimCreateParams {}
+pub struct ClaimCreateParams {
+    pub nonce: u64,
+}
 
 pub fn claim_create_processor(
     context: Context<ClaimCreateAccounts>,

@@ -6,7 +6,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
-use crate::api::airdrop_data::AirdropMerkleTree;
+use crate::api::airdrop_merkle_tree::AirdropMerkleTree;
 use crate::api::create_memnet_endpoint::create_memnet_endpoint;
 use crate::api::find_pdas::find_pda_airdrop;
 use crate::api::process_airdrop_create::process_airdrop_create;
@@ -22,7 +22,7 @@ pub async fn run() {
     let payer = Keypair::new();
     let payer_lamports = 1_000_000_000;
 
-    let airdrop_index = 42u64;
+    let airdrop_id = 42u64;
     let airdrop_authority = Keypair::new();
     let airdrop_authority_collateral_amount = 424242;
 
@@ -32,11 +32,12 @@ pub async fn run() {
     // Airdrop merkle tree content
     let claimer_total_collateral_amount = 323232;
     let claimer = Keypair::new();
-    let merkle_tree = AirdropMerkleTree::try_from(&vec![
+    let airdrop_merkle_tree = AirdropMerkleTree::try_from(&vec![
         make_dummy_stranger_allocation(),
         make_dummy_stranger_allocation(),
         Allocation {
             claimer: claimer.pubkey(),
+            nonce: 77,
             vesting: Vesting {
                 start_unix_timestamp: 0,
                 duration_seconds: 0,
@@ -89,9 +90,9 @@ pub async fn run() {
     process_airdrop_create(
         &mut endpoint,
         &payer,
-        airdrop_index,
+        airdrop_id,
         &airdrop_authority,
-        *merkle_tree.root().unwrap(),
+        *airdrop_merkle_tree.root().unwrap(),
         AirdropMetadata {
             length: 0,
             bytes: [0u8; AirdropMetadata::BYTES],
@@ -101,10 +102,26 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Create the claim PDA
-    process_claim_create(&mut endpoint, &payer, &claimer, airdrop_index)
-        .await
+    // Get the claimer's first vesting and proof combo
+    let claimer_indexes = airdrop_merkle_tree
+        .allocations_indexes_for_claimer(&claimer.pubkey())
         .unwrap();
+    let claimer_allocation =
+        airdrop_merkle_tree.allocations[claimer_indexes[0]];
+    let claimer_merkle_proof = airdrop_merkle_tree
+        .proof_at_allocation_index(claimer_indexes[0])
+        .unwrap();
+
+    // Create the claim PDA
+    process_claim_create(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        airdrop_id,
+        claimer_allocation.nonce,
+    )
+    .await
+    .unwrap();
 
     // Create a wallet that will receive the airdrop's claimed collateral
     let receiver_collateral = endpoint
@@ -116,19 +133,15 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Get the claimer's first vesting and proof combo
-    let claimer_vesting_and_proof = &merkle_tree
-        .vestings_and_proofs_for_claimer(&claimer.pubkey())
-        .unwrap()[0];
-
     // Redeem nothing should work with a valid input
     process_claim_redeem(
         &mut endpoint,
         &payer,
         &claimer,
         &receiver_collateral,
-        airdrop_index,
-        claimer_vesting_and_proof,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
         &collateral_mint,
         0,
     )
@@ -141,29 +154,43 @@ pub async fn run() {
         &payer,
         &claimer,
         &receiver_collateral,
-        airdrop_index,
-        &(claimer_vesting_and_proof.0, vec![]),
+        airdrop_id,
+        &claimer_allocation,
+        &[],
         &collateral_mint,
         0,
     )
     .await
     .unwrap_err();
 
-    // Redeem should fail with an invalid vesting
+    // Redeem should fail with an invalid allocation vesting
+    let mut claimer_allocation_corrupted1 = claimer_allocation.clone();
+    claimer_allocation_corrupted1.vesting.end_collateral_amount += 1;
     process_claim_redeem(
         &mut endpoint,
         &payer,
         &claimer,
         &receiver_collateral,
-        airdrop_index,
-        &(
-            Vesting {
-                start_unix_timestamp: 0,
-                duration_seconds: 0,
-                end_collateral_amount: 999999,
-            },
-            claimer_vesting_and_proof.1.clone(),
-        ),
+        airdrop_id,
+        &claimer_allocation_corrupted1,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Redeem should fail with an invalid allocation nonce
+    let mut claimer_allocation_corrupted2 = claimer_allocation.clone();
+    claimer_allocation_corrupted2.nonce += 1;
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation_corrupted2,
+        &claimer_merkle_proof,
         &collateral_mint,
         0,
     )
@@ -176,8 +203,9 @@ pub async fn run() {
         &payer,
         &claimer,
         &receiver_collateral,
-        airdrop_index,
-        claimer_vesting_and_proof,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
         &collateral_mint,
         1,
     )
@@ -186,7 +214,7 @@ pub async fn run() {
 
     // Give the airdrop enough collateral
     let airdrop_collateral = associated_token::get_associated_token_address(
-        &find_pda_airdrop(airdrop_index),
+        &find_pda_airdrop(airdrop_id),
         &collateral_mint,
     );
     endpoint
@@ -206,8 +234,9 @@ pub async fn run() {
         &payer,
         &claimer,
         &receiver_collateral,
-        airdrop_index,
-        claimer_vesting_and_proof,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
         &collateral_mint,
         claimer_total_collateral_amount,
     )
@@ -220,8 +249,9 @@ pub async fn run() {
         &payer,
         &claimer,
         &receiver_collateral,
-        airdrop_index,
-        claimer_vesting_and_proof,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
         &collateral_mint,
         1,
     )
@@ -240,7 +270,7 @@ pub async fn run() {
     process_airdrop_withdraw(
         &mut endpoint,
         &payer,
-        airdrop_index,
+        airdrop_id,
         &airdrop_authority,
         &spill_collateral,
         &collateral_mint,
@@ -273,10 +303,11 @@ pub async fn run() {
 fn make_dummy_stranger_allocation() -> Allocation {
     Allocation {
         claimer: Pubkey::new_unique(),
+        nonce: 666,
         vesting: Vesting {
             start_unix_timestamp: 0,
             duration_seconds: 0,
-            end_collateral_amount: 0,
+            end_collateral_amount: 888,
         },
     }
 }

@@ -64,7 +64,7 @@ pub fn airdrop_withdraw_processor(
 
     let airdrop_signer_seeds: &[&[&[u8]]] = &[&[
         Airdrop::SEEDS_PREFIX,
-        &airdrop.index.to_le_bytes(),
+        &airdrop.id.to_le_bytes(),
         &[airdrop.bump],
     ]];
     transfer(

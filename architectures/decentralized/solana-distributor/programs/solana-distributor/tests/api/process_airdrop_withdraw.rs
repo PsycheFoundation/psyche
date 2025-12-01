@@ -16,13 +16,13 @@ use crate::api::find_pdas::find_pda_airdrop;
 pub async fn process_airdrop_withdraw(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
-    airdrop_index: u64,
+    airdrop_id: u64,
     airdrop_authority: &Keypair,
     receiver_collateral: &Pubkey,
     collateral_mint: &Pubkey,
     collateral_amount: u64,
 ) -> Result<()> {
-    let airdrop = find_pda_airdrop(airdrop_index);
+    let airdrop = find_pda_airdrop(airdrop_id);
     let airdrop_collateral = associated_token::get_associated_token_address(
         &airdrop,
         collateral_mint,

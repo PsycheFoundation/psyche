@@ -7,7 +7,7 @@ use crate::state::MerkleHash;
 pub struct Airdrop {
     pub bump: u8,
 
-    pub index: u64,
+    pub id: u64,
     pub authority: Pubkey,
 
     pub collateral_mint: Pubkey,

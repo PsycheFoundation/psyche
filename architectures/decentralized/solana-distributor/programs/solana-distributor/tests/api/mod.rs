@@ -1,4 +1,4 @@
-pub mod airdrop_data;
+pub mod airdrop_merkle_tree;
 pub mod create_memnet_endpoint;
 pub mod find_pdas;
 pub mod process_airdrop_create;
