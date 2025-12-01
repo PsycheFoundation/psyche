@@ -10,7 +10,6 @@ use crate::api::airdrop_merkle_tree::AirdropMerkleTree;
 use crate::api::create_memnet_endpoint::create_memnet_endpoint;
 use crate::api::find_pdas::find_pda_airdrop;
 use crate::api::process_airdrop_create::process_airdrop_create;
-use crate::api::process_airdrop_withdraw::process_airdrop_withdraw;
 use crate::api::process_claim_create::process_claim_create;
 use crate::api::process_claim_redeem::process_claim_redeem;
 
@@ -24,29 +23,31 @@ pub async fn run() {
 
     let airdrop_id = 42u64;
     let airdrop_authority = Keypair::new();
-    let airdrop_authority_collateral_amount = 424242;
+    let airdrop_collateral_amount = 999_999_999 * 1_000_000;
 
     let collateral_mint_authority = Keypair::new();
     let collateral_mint_decimals = 6;
 
+    let now_unix_timestamp =
+        endpoint.get_sysvar_clock().await.unwrap().unix_timestamp;
+    let vesting_start_delay_seconds = 1000u32;
+    let vesting_duration_seconds = 1_000_000;
+    let vesting_per_second_collateral_amount = 1_000_000;
+
     // Airdrop merkle tree content
-    let claimer_total_collateral_amount = 323232;
     let claimer = Keypair::new();
-    let airdrop_merkle_tree = AirdropMerkleTree::try_from(&vec![
-        make_dummy_stranger_allocation(),
-        make_dummy_stranger_allocation(),
-        Allocation {
-            claimer: claimer.pubkey(),
-            nonce: 77,
-            vesting: Vesting {
-                start_unix_timestamp: 0,
-                duration_seconds: 0,
-                end_collateral_amount: claimer_total_collateral_amount,
-            },
-        },
-        make_dummy_stranger_allocation(),
-        make_dummy_stranger_allocation(),
-    ])
+    let claimer_vesting = Vesting {
+        start_unix_timestamp: now_unix_timestamp
+            + i64::from(vesting_start_delay_seconds),
+        duration_seconds: vesting_duration_seconds,
+        end_collateral_amount: u64::from(vesting_duration_seconds)
+            * vesting_per_second_collateral_amount,
+    };
+    let airdrop_merkle_tree = AirdropMerkleTree::try_from(&vec![Allocation {
+        claimer: claimer.pubkey(),
+        nonce: 77,
+        vesting: claimer_vesting,
+    }])
     .unwrap();
 
     // Prepare the payer
@@ -62,26 +63,6 @@ pub async fn run() {
             &collateral_mint_authority.pubkey(),
             None,
             collateral_mint_decimals,
-        )
-        .await
-        .unwrap();
-
-    // Give the airdrop_authority some collateral
-    let airdrop_authority_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &airdrop_authority.pubkey(),
-            &collateral_mint,
-        )
-        .await
-        .unwrap();
-    endpoint
-        .process_spl_token_mint_to(
-            &payer,
-            &collateral_mint,
-            &collateral_mint_authority,
-            &airdrop_authority_collateral,
-            airdrop_authority_collateral_amount,
         )
         .await
         .unwrap();
@@ -102,15 +83,25 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Get the claimer's first allocation and matching proof combo
-    let claimer_indexes = airdrop_merkle_tree
-        .allocations_indexes_for_claimer(&claimer.pubkey())
+    // Fill up the airdrop's collateral vault
+    endpoint
+        .process_spl_token_mint_to(
+            &payer,
+            &collateral_mint,
+            &collateral_mint_authority,
+            &associated_token::get_associated_token_address(
+                &find_pda_airdrop(airdrop_id),
+                &collateral_mint,
+            ),
+            airdrop_collateral_amount,
+        )
+        .await
         .unwrap();
-    let claimer_allocation =
-        airdrop_merkle_tree.allocations[claimer_indexes[0]];
-    let claimer_merkle_proof = airdrop_merkle_tree
-        .proof_at_allocation_index(claimer_indexes[0])
-        .unwrap();
+
+    // Get the claimer's allocation and proof
+    let claimer_allocation = airdrop_merkle_tree.allocations[0];
+    let claimer_merkle_proof =
+        airdrop_merkle_tree.proof_at_allocation_index(0).unwrap();
 
     // Create the claim PDA
     process_claim_create(
@@ -148,56 +139,7 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Redeem should fail with an invalid proof
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &[],
-        &collateral_mint,
-        0,
-    )
-    .await
-    .unwrap_err();
-
-    // Redeem should fail with an invalid allocation vesting
-    let mut claimer_allocation_corrupted1 = claimer_allocation;
-    claimer_allocation_corrupted1.vesting.end_collateral_amount += 1;
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation_corrupted1,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        0,
-    )
-    .await
-    .unwrap_err();
-
-    // Redeem should fail with an invalid allocation nonce
-    let mut claimer_allocation_corrupted2 = claimer_allocation;
-    claimer_allocation_corrupted2.nonce += 1;
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation_corrupted2,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        0,
-    )
-    .await
-    .unwrap_err();
-
-    // Redeeming something should fail (not enough collateral in airdrop)
+    // Redeeming before vesting start should fail
     process_claim_redeem(
         &mut endpoint,
         &payer,
@@ -212,38 +154,13 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Give the airdrop enough collateral
-    let airdrop_collateral = associated_token::get_associated_token_address(
-        &find_pda_airdrop(airdrop_id),
-        &collateral_mint,
-    );
+    // Move time forward to exactly vesting start
     endpoint
-        .process_spl_token_transfer(
-            &payer,
-            &airdrop_authority,
-            &airdrop_authority_collateral,
-            &airdrop_collateral,
-            airdrop_authority_collateral_amount,
-        )
+        .forward_clock_unix_timestamp(u64::from(vesting_start_delay_seconds))
         .await
         .unwrap();
 
-    // Redeem full amount should work now
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        claimer_total_collateral_amount,
-    )
-    .await
-    .unwrap();
-
-    // Redeem anything more than that should fail
+    // Redeeming right at the start of vesting should still fail
     process_claim_redeem(
         &mut endpoint,
         &payer,
@@ -258,56 +175,115 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Withdraw the rest left from the airdrop
-    let spill_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &Pubkey::new_unique(),
-            &collateral_mint,
-        )
-        .await
-        .unwrap();
-    process_airdrop_withdraw(
+    // Move one second forward into vesting
+    endpoint.forward_clock_unix_timestamp(1).await.unwrap();
+
+    // We should now be able to redeem exactly one second worth of vested collateral
+    process_claim_redeem(
         &mut endpoint,
         &payer,
+        &claimer,
+        &receiver_collateral,
         airdrop_id,
-        &airdrop_authority,
-        &spill_collateral,
+        &claimer_allocation,
+        &claimer_merkle_proof,
         &collateral_mint,
-        airdrop_authority_collateral_amount - claimer_total_collateral_amount,
+        vesting_per_second_collateral_amount,
     )
     .await
     .unwrap();
 
-    // Check final balances
-    assert_eq!(
-        endpoint
-            .get_spl_token_account(&receiver_collateral)
-            .await
-            .unwrap()
-            .unwrap()
-            .amount,
-        claimer_total_collateral_amount
-    );
-    assert_eq!(
-        endpoint
-            .get_spl_token_account(&spill_collateral)
-            .await
-            .unwrap()
-            .unwrap()
-            .amount,
-        airdrop_authority_collateral_amount - claimer_total_collateral_amount
-    );
-}
+    // But not a single cent more
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        1,
+    )
+    .await
+    .unwrap_err();
 
-fn make_dummy_stranger_allocation() -> Allocation {
-    Allocation {
-        claimer: Pubkey::new_unique(),
-        nonce: 666,
-        vesting: Vesting {
-            start_unix_timestamp: 0,
-            duration_seconds: 0,
-            end_collateral_amount: 888,
-        },
-    }
+    // Move time forward to the halfway point of vesting
+    endpoint
+        .forward_clock_unix_timestamp(u64::from(
+            vesting_duration_seconds / 2 - 1,
+        ))
+        .await
+        .unwrap();
+
+    // We should now be able to redeem up to half of the vested collateral
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        vesting_per_second_collateral_amount
+            * (u64::from(vesting_duration_seconds) / 2)
+            - vesting_per_second_collateral_amount,
+    )
+    .await
+    .unwrap();
+
+    // And not a single cent more
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        1,
+    )
+    .await
+    .unwrap_err();
+
+    // Move time forward to long after the end of vesting
+    endpoint
+        .forward_clock_unix_timestamp(u64::from(
+            vesting_duration_seconds / 2 + 1000,
+        ))
+        .await
+        .unwrap();
+
+    // We should now be able to redeem the rest of the vested collateral
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        vesting_per_second_collateral_amount
+            * (u64::from(vesting_duration_seconds) / 2),
+    )
+    .await
+    .unwrap();
+
+    // And not a single cent more
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        1,
+    )
+    .await
+    .unwrap_err();
 }

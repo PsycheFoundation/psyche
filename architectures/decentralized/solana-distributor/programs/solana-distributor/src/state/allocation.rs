@@ -7,7 +7,7 @@ use crate::state::Vesting;
 pub struct Allocation {
     pub claimer: Pubkey,
     pub nonce: u64,
-    pub vesting: Vesting, // TODO - write tests for vesting allocations
+    pub vesting: Vesting,
 }
 
 impl Allocation {

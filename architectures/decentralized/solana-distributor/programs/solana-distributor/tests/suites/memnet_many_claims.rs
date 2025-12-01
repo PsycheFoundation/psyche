@@ -152,6 +152,7 @@ pub async fn run() {
             .allocations_indexes_for_claimer(&claimer.pubkey())
             .unwrap()
         {
+            // First prepare the claim PDA
             let claimer_allocation =
                 airdrop_merkle_tree.allocations[allocation_index];
             let claimer_merkle_proof = airdrop_merkle_tree
@@ -166,6 +167,7 @@ pub async fn run() {
             )
             .await
             .unwrap();
+            // Then redeem the whole thing at once, it should work
             process_claim_redeem(
                 &mut endpoint,
                 &payer,
@@ -179,6 +181,20 @@ pub async fn run() {
             )
             .await
             .unwrap();
+            // Then redeeming anything past this should fail
+            process_claim_redeem(
+                &mut endpoint,
+                &payer,
+                claimer,
+                &receiver_collateral,
+                airdrop_id,
+                &claimer_allocation,
+                &claimer_merkle_proof,
+                &collateral_mint,
+                1,
+            )
+            .await
+            .unwrap_err();
         }
     }
 
