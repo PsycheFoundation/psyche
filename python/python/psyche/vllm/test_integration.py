@@ -138,30 +138,36 @@ def test_transforms():
 
 
 def test_updater_mock():
-    """Test updater with mock data (no actual vLLM)"""
+    """Test weight updater class"""
     print("=" * 60)
-    print("Test 3: Weight Updater (Mock)")
+    print("Test 3: Weight Updater Class")
     print("=" * 60)
 
     try:
-        from psyche.vllm.updater import WeightUpdate
-        import multiprocessing as mp
+        from psyche.vllm.weight_updater import PsycheWeightUpdater
 
-        print("Creating weight update...")
-        update = WeightUpdate(
-            weight_deltas={"layer.weight": torch.randn(100, 100)}, step=1
+        print("Creating PsycheWeightUpdater...")
+        # Create a mock state_dict
+        mock_state_dict = {
+            "layer1.weight": torch.randn(100, 100),
+            "layer2.weight": torch.randn(50, 50),
+        }
+
+        updater = PsycheWeightUpdater(
+            state_dict=mock_state_dict,
+            model_config=None,
+            training_world_size=1,
+            inference_world_size=1,
+            inference_rank=0,
         )
-        print(
-            f"✓ WeightUpdate created: step={update.step}, {len(update.weight_deltas)} tensors"
-        )
+        print("✓ PsycheWeightUpdater created")
 
-        print("Testing multiprocessing queue...")
-        queue = mp.Queue()
-        queue.put(update)
-        retrieved = queue.get(timeout=1.0)
-        print(f"✓ Queue works: retrieved step={retrieved.step}")
+        print("Testing weight update...")
+        new_weights = {"layer1.weight": torch.randn(100, 100) * 0.01}
+        updater.update_from_dict(new_weights)
+        print("✓ Weight update applied")
 
-        print("\n✅ Updater mock test PASSED\n")
+        print("\n✅ Updater test PASSED\n")
         return True
 
     except Exception as e:
@@ -314,8 +320,8 @@ def main():
     # Test 2: Transforms (pure PyTorch)
     results.append(("Transforms", test_transforms()))
 
-    # Test 3: Updater mock (no vLLM needed)
-    results.append(("Updater Mock", test_updater_mock()))
+    # Test 3: Updater class (no vLLM needed)
+    results.append(("Weight Updater Class", test_updater_mock()))
 
     # Test 4: Direct weight update (requires vLLM with patches)
     results.append(("Direct Weight Update", test_weight_update_direct()))

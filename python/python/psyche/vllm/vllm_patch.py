@@ -118,7 +118,7 @@ def apply_vllm_patches():
                 Update weights in place using the shared state_dict.
 
                 Args:
-                    weight_updates: List of (name, tensor) tuples
+                    weight_updates: List of (name, tensor) tuples or list of [name, tensor] lists
                 """
                 if not hasattr(self, "model_runner") or not hasattr(
                     self.model_runner, "psyche_shared_state_dict"
@@ -129,8 +129,22 @@ def apply_vllm_patches():
                 state_dict = self.model_runner.psyche_shared_state_dict
                 updated_count = 0
 
-                for name, new_weight in weight_updates:
+                for item in weight_updates:
+                    # Handle both tuple and list formats from serialization
+                    if isinstance(item, (tuple, list)) and len(item) == 2:
+                        name, new_weight = item
+                    else:
+                        logger.warning(f"Invalid weight update format: {type(item)}")
+                        continue
+
                     if name in state_dict:
+                        # Ensure new_weight is a tensor
+                        if not isinstance(new_weight, torch.Tensor):
+                            logger.warning(
+                                f"Weight for {name} is not a tensor: {type(new_weight)}"
+                            )
+                            continue
+
                         # Move tensor to same device if needed
                         if new_weight.device != state_dict[name].device:
                             new_weight = new_weight.to(state_dict[name].device)
