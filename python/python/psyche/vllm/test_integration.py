@@ -200,17 +200,53 @@ def test_weight_update_direct():
         # For patched mode, test with a real GPT-2 parameter
         if hasattr(engine, "_using_patched_mode") and engine._using_patched_mode:
             print("Testing RPC-based weight update with real parameter...")
-            # Use a real GPT-2 parameter name and shape
-            # GPT-2 has transformer.wte.weight (vocabulary embeddings) with shape [50257, 768]
-            param_name = "transformer.wte.weight"
-            test_weight = torch.randn(50257, 768) * 0.001  # Small delta
-            test_update = {param_name: test_weight}
 
             try:
-                engine.update_weights(test_update)
-                print("✓ RPC weight update call completed successfully")
+                # Get a list of available parameters via RPC
+                # We'll test with a smaller parameter to keep it fast
+                test_params = [
+                    "model.norm.weight",  # Final layer norm (small)
+                    "model.layers.0.self_attn.o_proj.weight",  # Attention output projection
+                    "model.embed_tokens.weight",  # Embeddings (larger, has padding)
+                ]
+
+                param_info = None
+                param_name = None
+
+                # Try each parameter name until we find one that exists
+                for name in test_params:
+                    results = engine.engine.collective_rpc(
+                        "get_psyche_param_info", args=(name,)
+                    )
+                    if results and results[0] is not None:
+                        param_info = results[0]
+                        param_name = name
+                        print(f"  Found parameter: {name}")
+                        print(
+                            f"  Shape: {param_info['shape']}, dtype: {param_info['dtype']}"
+                        )
+                        break
+
+                if param_info is None:
+                    print(
+                        "⚠ Could not find any test parameter, skipping weight update test"
+                    )
+                else:
+                    # Create a test weight with the correct shape
+                    test_weight = torch.randn(*param_info["shape"]) * 0.001
+                    test_update = {param_name: test_weight}
+
+                    print(
+                        f"  Updating {param_name} with shape {list(test_weight.shape)}"
+                    )
+                    engine.update_weights(test_update)
+                    print("✓ RPC weight update call completed successfully")
+
             except Exception as e:
                 print(f"⚠ RPC weight update failed: {e}")
+                import traceback
+
+                traceback.print_exc()
         elif engine.param_registry:
             # Get a parameter to test
             param_name = list(engine.param_registry.keys())[0]

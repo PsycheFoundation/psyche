@@ -113,6 +113,22 @@ def apply_vllm_patches():
         class PsychePatchedWorker(Worker):
             """Psyche-patched Worker with weight update methods"""
 
+            def get_psyche_param_info(self, param_name: str):
+                """Get shape and dtype for a parameter."""
+                if not hasattr(self, "model_runner") or not hasattr(
+                    self.model_runner, "psyche_shared_state_dict"
+                ):
+                    return None
+
+                state_dict = self.model_runner.psyche_shared_state_dict
+                if param_name in state_dict:
+                    tensor = state_dict[param_name]
+                    return {
+                        "shape": list(tensor.shape),
+                        "dtype": str(tensor.dtype),
+                    }
+                return None
+
             def update_psyche_weights(self, weight_updates):
                 """
                 Update weights in place using the shared state_dict.
