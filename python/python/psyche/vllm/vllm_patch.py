@@ -62,73 +62,6 @@ def clear_registry():
     _MODEL_CONFIG_REGISTRY.clear()
 
 
-class PatchedGPUModelRunner:
-    """
-    Wrapper that patches vLLM's GPUModelRunner to register shared state_dict.
-
-    This class intercepts the load_model() call to:
-    1. Call the original load_model()
-    2. Share the model's memory
-    3. Register the shared state_dict in our global registry
-    """
-
-    def __init__(self, original_class):
-        self._original_class = original_class
-        self._original_load_model = original_class.load_model
-
-    def __call__(self, *args, **kwargs):
-        """Create an instance of the original class with patched methods."""
-        instance = self._original_class(*args, **kwargs)
-
-        # Wrap the load_model method
-        original_load_model = instance.load_model
-
-        def patched_load_model(eep_scale_up: bool = False) -> None:
-            # Call original load_model
-            logger.info("Psyche: Calling original GPUModelRunner.load_model()")
-            original_load_model(eep_scale_up)
-
-            # Now patch in our shared memory access
-            logger.info("Psyche: Sharing model memory for weight updates")
-            try:
-                # Share model memory
-                instance.model.share_memory()
-
-                # Get state_dict and share all tensors
-                state_dict = instance.model.state_dict()
-                for key, val in state_dict.items():
-                    if isinstance(val, torch.Tensor):
-                        val.share_memory_()
-
-                # Determine worker ID (use TP rank if available)
-                try:
-                    from vllm.distributed import get_tensor_model_parallel_rank
-
-                    worker_id = get_tensor_model_parallel_rank()
-                except ImportError:
-                    worker_id = 0
-
-                # Register in global registry
-                register_shared_state_dict(
-                    worker_id=worker_id,
-                    state_dict=state_dict,
-                    model_config=instance.model_config,
-                )
-
-                logger.info(
-                    f"Psyche: Successfully registered shared state_dict for worker {worker_id}"
-                )
-
-            except Exception as e:
-                logger.error(f"Psyche: Failed to share model memory: {e}")
-                raise
-
-        # Replace the method
-        instance.load_model = patched_load_model
-
-        return instance
-
-
 def apply_vllm_patches():
     """
     Apply all vLLM patches for Psyche integration.
@@ -136,16 +69,62 @@ def apply_vllm_patches():
     This function must be called BEFORE any vLLM modules are imported.
     """
     try:
-        import vllm.v1.worker.gpu_worker
+        from vllm.v1.worker.gpu_worker import GPUModelRunner
 
         logger.info("Psyche: Applying vLLM patches for weight update support")
 
-        # Store the original class
-        original_runner = vllm.v1.worker.gpu_worker.GPUModelRunner
+        # Create patched class that inherits from GPUModelRunner
+        # This is the same approach torchtitan uses
+        class PsychePatchedGPUModelRunner(GPUModelRunner):
+            """Psyche-patched GPUModelRunner with shared memory support"""
 
-        # Create and apply the patch
-        patched_runner = PatchedGPUModelRunner(original_runner)
-        vllm.v1.worker.gpu_worker.GPUModelRunner = patched_runner
+            def load_model(self, eep_scale_up: bool = False) -> None:
+                # Call original load_model
+                logger.info("Psyche: Calling original GPUModelRunner.load_model()")
+                super().load_model(eep_scale_up)
+
+                # Now expose shared memory access
+                logger.info("Psyche: Sharing model memory for weight updates")
+                try:
+                    # Share model memory (like torchtitan does)
+                    self.model.share_memory()
+
+                    # Get state_dict and share all tensors
+                    state_dict = self.model.state_dict()
+                    for key, val in state_dict.items():
+                        if isinstance(val, torch.Tensor):
+                            val.share_memory_()
+
+                    # Store on self for access
+                    self.psyche_shared_state_dict = state_dict
+
+                    # Also register in global registry for fallback access
+                    try:
+                        from vllm.distributed import get_tensor_model_parallel_rank
+
+                        worker_id = get_tensor_model_parallel_rank()
+                    except ImportError:
+                        worker_id = 0
+
+                    register_shared_state_dict(
+                        worker_id=worker_id,
+                        state_dict=state_dict,
+                        model_config=self.model_config,
+                    )
+
+                    logger.info(
+                        f"Psyche: Successfully shared state_dict for worker {worker_id} "
+                        f"with {len(state_dict)} parameters"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Psyche: Failed to share model memory: {e}")
+                    raise
+
+        # Replace the GPUModelRunner class with our patched version
+        import vllm.v1.worker.gpu_worker
+
+        vllm.v1.worker.gpu_worker.GPUModelRunner = PsychePatchedGPUModelRunner
 
         logger.info("Psyche: Successfully patched vLLM GPUModelRunner")
 
