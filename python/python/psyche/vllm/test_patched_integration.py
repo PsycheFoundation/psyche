@@ -28,7 +28,6 @@ def test_patch_application():
         from psyche.vllm.vllm_patch import (
             get_shared_state_dict,
             get_all_shared_state_dicts,
-            VLLM_PATCH_AVAILABLE,
         )
 
         print("✓ vLLM patch module imported")
