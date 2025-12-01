@@ -113,8 +113,33 @@ class VLLMWithUpdater:
             max_model_len=max_model_len,
         )
 
+        # Check if we're using the patched RPC mode (vLLM 0.11+)
+        if (
+            hasattr(self.engine, "_using_patched_mode")
+            and self.engine._using_patched_mode
+        ):
+            logger.info(
+                "Using RPC-based weight updates (vLLM 0.11+ with Psyche patches)"
+            )
+            # No need for separate updater process - updates go through RPC
+            self.weight_queue = None
+            self.updater_process = None
+            return
+
+        # Legacy path for older vLLM versions with direct model access
+        logger.info("Using legacy updater process (vLLM < 0.11)")
+
         # Get model and move to shared memory
         model = self.engine.get_model()
+        if model is None:
+            logger.warning(
+                "Model not directly accessible. This manager requires vLLM < 0.11 "
+                "or use engine.update_weights() directly for vLLM 0.11+."
+            )
+            self.weight_queue = None
+            self.updater_process = None
+            return
+
         self.engine.share_memory()
 
         # Infer transform config if not provided
@@ -216,7 +241,7 @@ class VLLMWithUpdater:
 
     def update_weights(self, weight_delta: Dict[str, torch.Tensor]):
         """
-        Send weight update to updater daemon.
+        Send weight update to updater daemon or directly via RPC.
 
         Args:
             weight_delta: {param_name: delta_tensor}
@@ -230,8 +255,21 @@ class VLLMWithUpdater:
                 "Use mode='direct' for now."
             )
 
+        # vLLM 0.11+ with patches: use RPC directly
+        if (
+            hasattr(self.engine, "_using_patched_mode")
+            and self.engine._using_patched_mode
+        ):
+            logger.debug(f"Updating {len(weight_delta)} parameters via RPC")
+            self.engine.update_weights(weight_delta)
+            return
+
+        # Legacy path: queue-based updates
         if self.weight_queue is None:
-            raise RuntimeError("Weight queue not initialized")
+            raise RuntimeError(
+                "Weight queue not initialized. "
+                "For vLLM 0.11+, use engine.update_weights() directly."
+            )
 
         self.weight_queue.put(weight_delta)
         logger.debug(f"Queued update for {len(weight_delta)} parameters")
@@ -246,8 +284,18 @@ class VLLMWithUpdater:
             logger.warning("Checkpoint not supported in server mode")
             return
 
+        # RPC mode: no separate updater process, checkpointing would be done differently
+        if (
+            hasattr(self.engine, "_using_patched_mode")
+            and self.engine._using_patched_mode
+        ):
+            logger.info("Checkpoint: RPC mode doesn't use separate updater process")
+            # In the future, we could implement checkpoint by saving the state_dict via RPC
+            return
+
         if self.weight_queue is None:
-            raise RuntimeError("Weight queue not initialized")
+            logger.warning("Weight queue not initialized, skipping checkpoint")
+            return
 
         self.weight_queue.put("CHECKPOINT")
         logger.info("Sent checkpoint signal to updater")

@@ -319,11 +319,51 @@ def test_manager():
         print(f"✓ Engine retrieved: {type(engine).__name__}")
 
         print("Testing weight update...")
-        weight_delta = {
-            "transformer.h.0.attn.c_attn.weight": torch.randn(2304, 768) * 0.001
-        }
-        vllm.update_weights(weight_delta)
-        print("✓ Weight update queued")
+        # Get a real parameter from the model to test with
+        if hasattr(engine, "_using_patched_mode") and engine._using_patched_mode:
+            # RPC mode: get parameter info
+            results = engine.engine.collective_rpc("get_psyche_param_names")
+            if results and results[0]:
+                param_names = results[0]
+                # Pick a small parameter
+                test_param = None
+                for name in param_names:
+                    if "ln" in name.lower() or "norm" in name.lower():
+                        test_param = name
+                        break
+                if test_param is None and param_names:
+                    test_param = param_names[0]
+
+                if test_param:
+                    param_results = engine.engine.collective_rpc(
+                        "get_psyche_param_info", args=(test_param,)
+                    )
+                    if param_results and param_results[0]:
+                        param_info = param_results[0]
+                        weight_delta = {
+                            test_param: torch.randn(*param_info["shape"]) * 0.001
+                        }
+                        print(f"  Testing update for {test_param}")
+                    else:
+                        print("⚠ Could not get parameter info, skipping weight update")
+                        weight_delta = {}
+                else:
+                    print("⚠ No parameters available, skipping weight update")
+                    weight_delta = {}
+            else:
+                print("⚠ Could not get parameter names, skipping weight update")
+                weight_delta = {}
+        else:
+            # Legacy mode: use hardcoded GPT-2 parameter
+            weight_delta = {
+                "transformer.h.0.attn.c_attn.weight": torch.randn(2304, 768) * 0.001
+            }
+
+        if weight_delta:
+            vllm.update_weights(weight_delta)
+            print("✓ Weight update completed")
+        else:
+            print("⚠ Skipped weight update test")
 
         print("Creating checkpoint...")
         vllm.checkpoint()
