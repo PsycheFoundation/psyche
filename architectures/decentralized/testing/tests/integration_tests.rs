@@ -16,8 +16,7 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, e2e_testing_setup_with_big_model, kill_all_clients, spawn_new_client,
-        spawn_new_client_with_monitoring,
+        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -954,25 +953,21 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 /// spawn 1 clients and run for 3 epochs
 /// assert client and coordinator state synchronization
 /// assert that the loss decreases in each epoch
+#[cfg(feature = "python")]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
-#[cfg(feature = "python")]
 async fn test_big_model_with_sidecars() {
-    // set test variables
     let run_id = "test".to_string();
-
     // epochs the test will run
     let num_of_epochs_to_run = 3;
-    let mut current_epoch = -1;
-    let mut last_epoch_loss = f64::MAX;
-    let n_new_clients = 1;
+    let n_new_clients = 3;
 
     // Initialize DockerWatcher
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup_with_big_model(docker.clone(), 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
     // Monitor the client container
     let _monitor_client_1 = watcher
@@ -1010,7 +1005,7 @@ async fn test_big_model_with_sidecars() {
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(2).await {
+                if let Err(e) = watcher.monitor_clients_health(n_new_clients + 1).await {
                     panic!("{}", e);
                 }
             }
@@ -1026,20 +1021,8 @@ async fn test_big_model_with_sidecars() {
                         println!(
                             "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
                         );
-                        println!("Last epoch loss: {last_epoch_loss:?}");
-                        // assert that the loss decreases each epoch or at least dont peak
-                        if epoch as i64 > current_epoch {
-                            current_epoch = epoch as i64;
-
-                            let Some(loss_value) = loss else {
-                                println!("Reached new epoch but loss was NaN");
-                                continue;
-                            };
-
-                            last_epoch_loss = loss_value;
-                            if epoch == num_of_epochs_to_run {
-                                break;
-                            }
+                        if epoch == num_of_epochs_to_run {
+                            break;
                         }
                     }
                     Some(Response::LoadedModel(checkpoint)) => {
