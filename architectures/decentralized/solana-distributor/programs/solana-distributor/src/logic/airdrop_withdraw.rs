@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::transfer;
 use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
+use anchor_spl::token::transfer;
 
-use crate::state::Airdrop;
 use crate::ProgramError;
+use crate::state::Airdrop;
 
 #[derive(Accounts)]
 #[instruction(params: AirdropWithdrawParams)]

@@ -4,10 +4,10 @@ use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 
+use crate::ProgramError;
 use crate::state::Airdrop;
 use crate::state::AirdropMetadata;
 use crate::state::MerkleHash;
-use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: AirdropCreateParams)]

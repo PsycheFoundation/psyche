@@ -1,16 +1,16 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::transfer;
 use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
+use anchor_spl::token::transfer;
 
+use crate::ProgramError;
 use crate::state::Airdrop;
 use crate::state::Allocation;
 use crate::state::Claim;
 use crate::state::MerkleHash;
 use crate::state::Vesting;
-use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: ClaimRedeemParams)]

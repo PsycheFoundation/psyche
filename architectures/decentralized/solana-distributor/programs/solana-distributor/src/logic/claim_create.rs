@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
+use crate::ProgramError;
 use crate::state::Airdrop;
 use crate::state::Claim;
-use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: ClaimCreateParams)]
