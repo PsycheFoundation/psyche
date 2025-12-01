@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+use crate::state::MerkleHash;
+
 #[account()]
 #[derive(Debug)]
 pub struct Airdrop {
@@ -12,16 +14,8 @@ pub struct Airdrop {
     pub total_claimed_collateral_amount: u64,
 
     pub freeze: bool,
-    pub merkle_root: AirdropMerkleHash,
+    pub merkle_root: MerkleHash,
     pub metadata: AirdropMetadata,
-}
-
-pub type AirdropMerkleHash = [u8; 32];
-
-#[derive(Debug, AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
-pub struct AirdropMetadata {
-    pub length: u16,
-    pub bytes: [u8; AirdropMetadata::BYTES],
 }
 
 impl Airdrop {
@@ -30,6 +24,12 @@ impl Airdrop {
     pub fn space_with_discriminator() -> usize {
         8 + std::mem::size_of::<Airdrop>()
     }
+}
+
+#[derive(Debug, AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
+pub struct AirdropMetadata {
+    pub length: u16,
+    pub bytes: [u8; AirdropMetadata::BYTES],
 }
 
 impl AirdropMetadata {

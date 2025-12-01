@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::state::Airdrop;
-use crate::state::AirdropMerkleHash;
 use crate::state::AirdropMetadata;
+use crate::state::MerkleHash;
 use crate::ProgramError;
 
 #[derive(Accounts)]
@@ -21,7 +21,7 @@ pub struct AirdropUpdateAccounts<'info> {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub struct AirdropUpdateParams {
     pub freeze: Option<bool>,
-    pub merkle_root: Option<AirdropMerkleHash>,
+    pub merkle_root: Option<MerkleHash>,
     pub metadata: Option<AirdropMetadata>,
 }
 

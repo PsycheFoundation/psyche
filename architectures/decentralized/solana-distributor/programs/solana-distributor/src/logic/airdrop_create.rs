@@ -5,8 +5,8 @@ use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 
 use crate::state::Airdrop;
-use crate::state::AirdropMerkleHash;
 use crate::state::AirdropMetadata;
+use crate::state::MerkleHash;
 use crate::ProgramError;
 
 #[derive(Accounts)]
@@ -51,7 +51,7 @@ pub struct AirdropCreateAccounts<'info> {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub struct AirdropCreateParams {
     pub index: u64,
-    pub merkle_root: AirdropMerkleHash,
+    pub merkle_root: MerkleHash,
     pub metadata: AirdropMetadata,
 }
 

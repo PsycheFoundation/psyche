@@ -1,1 +1,1 @@
-pub mod memnet_live_freeze;
+pub mod memnet_single_claim;

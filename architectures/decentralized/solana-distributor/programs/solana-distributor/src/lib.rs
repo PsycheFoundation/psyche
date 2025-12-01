@@ -6,26 +6,6 @@ use logic::*;
 
 declare_id!("CQy5JKR2Lrm16pqSY5nkMaMYSazRk2aYx99pJDNGupR7");
 
-pub fn find_airdrop(airdrop_index: u64) -> Pubkey {
-    Pubkey::find_program_address(
-        &[state::Airdrop::SEEDS_PREFIX, &airdrop_index.to_le_bytes()],
-        &crate::ID,
-    )
-    .0
-}
-
-pub fn find_claim(airdrop: &Pubkey, claimer: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[
-            state::Claim::SEEDS_PREFIX,
-            airdrop.as_ref(),
-            claimer.as_ref(),
-        ],
-        &crate::ID,
-    )
-    .0
-}
-
 #[program]
 pub mod psyche_solana_distributor {
     use super::*;
