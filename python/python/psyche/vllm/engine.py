@@ -92,21 +92,16 @@ class UpdatableLLMEngine:
         2. Direct model_executor access (old vLLM versions)
         3. collective_rpc (vLLM 0.11+ without patching)
         """
-        # Try to get shared state_dict from worker via RPC (vLLM 0.11+ with patches)
+        # For vLLM 0.11+ with patches, we use RPC-based in-place updates
+        # We don't retrieve the state_dict because CUDA tensors can't be serialized
         if VLLM_PATCH_AVAILABLE:
-            logger.info("Attempting to get shared state_dict from worker via RPC...")
-            shared_state_dict = get_state_dict_from_engine(self.engine)
-            if shared_state_dict is not None:
-                self.param_registry = shared_state_dict
-                logger.info(
-                    f"Using shared memory state_dict with {len(self.param_registry)} parameters. "
-                    "Weight updates will use direct memory access."
-                )
-                return
-            else:
-                logger.warning(
-                    "Could not get shared state_dict via RPC, trying fallback methods"
-                )
+            logger.info(
+                "vLLM 0.11+ with Psyche patches detected. "
+                "Weight updates will use RPC-based in-place modification."
+            )
+            # Store a flag that we're using patched mode
+            self._using_patched_mode = True
+            return
 
         # Check if we have the old-style direct model access
         if hasattr(self.engine, "model_executor"):
@@ -166,14 +161,31 @@ class UpdatableLLMEngine:
         Updates model weights using the appropriate method for the vLLM version.
 
         Tries methods in order of efficiency:
-        1. Direct shared memory access (via patching) - fastest
+        1. RPC-based in-place updates (vLLM 0.11+ with patches) - works across processes
         2. Direct model_executor access (old vLLM versions)
-        3. collective_rpc with apply_model (vLLM 0.11+ without patching)
+        3. collective_rpc with load_weights (vLLM 0.11+ without patches)
 
         Args:
             weight_dict: Dictionary mapping parameter names to new weight tensors
         """
-        # Method 1: Direct shared memory access (most efficient)
+        # Method 1: RPC-based in-place updates (vLLM 0.11+ with patches)
+        if hasattr(self, "_using_patched_mode") and self._using_patched_mode:
+            logger.info(
+                f"Updating {len(weight_dict)} weights via RPC in-place modification"
+            )
+            # Convert dict to list of tuples for serialization
+            weight_updates = list(weight_dict.items())
+            try:
+                results = self.engine.collective_rpc(
+                    "update_psyche_weights", args=(weight_updates,)
+                )
+                logger.info(f"Weight update completed on {len(results)} workers")
+                return
+            except Exception as e:
+                logger.error(f"Failed to update weights via RPC: {e}")
+                raise
+
+        # Method 2: Direct shared memory access (if param_registry was populated)
         if self.param_registry and VLLM_PATCH_AVAILABLE:
             logger.debug(f"Updating {len(weight_dict)} weights via shared memory")
             updated_count = 0

@@ -109,25 +109,39 @@ def apply_vllm_patches():
 
         logger.info("Psyche: Applying vLLM patches for weight update support")
 
-        # Patch Worker to add our custom method
+        # Patch Worker to add our custom methods
         class PsychePatchedWorker(Worker):
-            """Psyche-patched Worker with state_dict access method"""
+            """Psyche-patched Worker with weight update methods"""
 
-            def get_psyche_state_dict(self):
-                """Return the shared state_dict from the model_runner"""
-                if hasattr(self, "model_runner") and hasattr(
+            def update_psyche_weights(self, weight_updates):
+                """
+                Update weights in place using the shared state_dict.
+
+                Args:
+                    weight_updates: List of (name, tensor) tuples
+                """
+                if not hasattr(self, "model_runner") or not hasattr(
                     self.model_runner, "psyche_shared_state_dict"
                 ):
-                    logger.info(
-                        f"Worker: Returning psyche_shared_state_dict with "
-                        f"{len(self.model_runner.psyche_shared_state_dict)} parameters"
-                    )
-                    return self.model_runner.psyche_shared_state_dict
-                else:
-                    logger.warning(
-                        "Worker: model_runner or psyche_shared_state_dict not found"
-                    )
-                    return None
+                    logger.error("psyche_shared_state_dict not available")
+                    return False
+
+                state_dict = self.model_runner.psyche_shared_state_dict
+                updated_count = 0
+
+                for name, new_weight in weight_updates:
+                    if name in state_dict:
+                        # Move tensor to same device if needed
+                        if new_weight.device != state_dict[name].device:
+                            new_weight = new_weight.to(state_dict[name].device)
+                        # Update in place
+                        state_dict[name].data.copy_(new_weight)
+                        updated_count += 1
+                    else:
+                        logger.warning(f"Parameter {name} not found in state_dict")
+
+                logger.info(f"Updated {updated_count}/{len(weight_updates)} weights")
+                return True
 
         # Create patched class that inherits from GPUModelRunner
         # This is the same approach torchtitan uses
