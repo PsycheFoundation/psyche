@@ -16,7 +16,7 @@ if [ "${PYTHON_ENABLED}" = "true" ]; then
         --rpc "${RPC}" \
         --ws-rpc "${WS_RPC}" \
         --run-id "${RUN_ID}" \
-        --data-parallelism 8 \
+        --data-parallelism 2 \
         --sidecar-port "${SIDECAR_PORT}" \
         --logs "json"
 else

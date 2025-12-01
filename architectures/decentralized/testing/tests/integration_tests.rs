@@ -966,7 +966,7 @@ async fn test_big_model_with_sidecars() {
     let num_of_epochs_to_run = 3;
     let mut current_epoch = -1;
     let mut last_epoch_loss = f64::MAX;
-    let n_new_clients = 1;
+    let n_new_clients = 3;
 
     // Initialize DockerWatcher
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());

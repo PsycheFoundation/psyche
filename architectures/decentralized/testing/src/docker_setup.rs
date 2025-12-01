@@ -8,7 +8,9 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_client::IntegrationTestLogMarker;
+use std::collections::HashMap;
 use std::process::{Command, Stdio};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
@@ -37,6 +39,16 @@ fn has_gpu_support() -> bool {
 pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
+
+pub fn get_devices_for_client(id: u16) -> String {
+    let devices_per_client: HashMap<u16, Vec<String>> = HashMap::from([
+        (1, vec!["0".to_string(), "1".to_string()]),
+        (2, vec!["2".to_string(), "3".to_string()]),
+        (3, vec!["4".to_string(), "5".to_string()]),
+        (4, vec!["6".to_string(), "7".to_string()]),
+    ]);
+    devices_per_client.get(&id).unwrap().join(",")
+}
 
 pub struct DockerTestCleanup;
 impl Drop for DockerTestCleanup {
@@ -169,13 +181,35 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
         })
         .collect();
 
+    let mut final_envs = Vec::new();
+    let client_id: u16 = u16::from_str(
+        new_container_name
+            .chars()
+            .last()
+            .unwrap()
+            .to_string()
+            .as_str(),
+    )
+    .unwrap();
+    let devices = get_devices_for_client(client_id);
+    for env in &env_vars {
+        if env.contains("CUDA_VISIBLE_DEVICES") {
+            let splited_env = env.split('=').collect::<Vec<&str>>();
+            if splited_env.len() == 2 {
+                final_envs.push(format!("CUDA_VISIBLE_DEVICES={}", devices));
+            }
+        } else {
+            final_envs.push(env.to_string());
+        }
+    }
+
     let options = Some(CreateContainerOptions {
         name: new_container_name.clone(),
         platform: None,
     });
     let config = Config {
         image: Some("psyche-solana-test-client"),
-        env: Some(env_vars.iter().map(|s| s.as_str()).collect()),
+        env: Some(final_envs.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()
     };
