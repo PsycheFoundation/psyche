@@ -84,15 +84,16 @@ pub async fn run() {
     .unwrap();
 
     // Fill up the airdrop's collateral vault
+    let airdrop_collateral = associated_token::get_associated_token_address(
+        &find_pda_airdrop(airdrop_id),
+        &collateral_mint,
+    );
     endpoint
         .process_spl_token_mint_to(
             &payer,
             &collateral_mint,
             &collateral_mint_authority,
-            &associated_token::get_associated_token_address(
-                &find_pda_airdrop(airdrop_id),
-                &collateral_mint,
-            ),
+            &airdrop_collateral,
             airdrop_collateral_amount,
         )
         .await
@@ -139,7 +140,7 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Redeeming before vesting start should fail
+    // Redeeming something before vesting start should fail
     process_claim_redeem(
         &mut endpoint,
         &payer,
@@ -160,7 +161,7 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Redeeming right at the start of vesting should still fail
+    // Redeeming something right at the start of vesting should still fail
     process_claim_redeem(
         &mut endpoint,
         &payer,
@@ -226,8 +227,7 @@ pub async fn run() {
         &claimer_allocation,
         &claimer_merkle_proof,
         &collateral_mint,
-        vesting_per_second_collateral_amount
-            * (u64::from(vesting_duration_seconds) / 2)
+        claimer_vesting.end_collateral_amount / 2
             - vesting_per_second_collateral_amount,
     )
     .await
@@ -250,13 +250,11 @@ pub async fn run() {
 
     // Move time forward to long after the end of vesting
     endpoint
-        .forward_clock_unix_timestamp(u64::from(
-            vesting_duration_seconds / 2 + 1000,
-        ))
+        .forward_clock_unix_timestamp(u64::from(vesting_duration_seconds * 10))
         .await
         .unwrap();
 
-    // We should now be able to redeem the rest of the vested collateral
+    // We should now be able to redeem all the rest of the allocated collateral
     process_claim_redeem(
         &mut endpoint,
         &payer,
@@ -266,8 +264,7 @@ pub async fn run() {
         &claimer_allocation,
         &claimer_merkle_proof,
         &collateral_mint,
-        vesting_per_second_collateral_amount
-            * (u64::from(vesting_duration_seconds) / 2),
+        claimer_vesting.end_collateral_amount / 2,
     )
     .await
     .unwrap();

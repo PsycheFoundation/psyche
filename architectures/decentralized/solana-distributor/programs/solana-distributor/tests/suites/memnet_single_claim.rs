@@ -197,7 +197,7 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Redeeming something should fail (not enough collateral in airdrop)
+    // Redeeming something should fail (not enough collateral deposited in airdrop)
     process_claim_redeem(
         &mut endpoint,
         &payer,
@@ -212,7 +212,7 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Give the airdrop enough collateral
+    // The airdrop_authority deposits some collateral into the airdrop manually
     let airdrop_collateral = associated_token::get_associated_token_address(
         &find_pda_airdrop(airdrop_id),
         &collateral_mint,

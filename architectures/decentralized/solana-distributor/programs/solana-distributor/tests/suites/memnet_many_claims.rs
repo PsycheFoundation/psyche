@@ -1,3 +1,4 @@
+use anchor_spl::associated_token;
 use psyche_solana_distributor::state::AirdropMetadata;
 use psyche_solana_distributor::state::Allocation;
 use psyche_solana_distributor::state::Vesting;
@@ -22,7 +23,7 @@ pub async fn run() {
 
     let airdrop_id = 42u64;
     let airdrop_authority = Keypair::new();
-    let airdrop_authority_collateral_amount = 424242;
+    let airdrop_collateral_amount = 424242;
 
     let collateral_mint_authority = Keypair::new();
     let collateral_mint_decimals = 6;
@@ -79,26 +80,6 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Give the airdrop_authority some collateral
-    let airdrop_authority_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &airdrop_authority.pubkey(),
-            &collateral_mint,
-        )
-        .await
-        .unwrap();
-    endpoint
-        .process_spl_token_mint_to(
-            &payer,
-            &collateral_mint,
-            &collateral_mint_authority,
-            &airdrop_authority_collateral,
-            airdrop_authority_collateral_amount,
-        )
-        .await
-        .unwrap();
-
     // Create the airdrop
     process_airdrop_create(
         &mut endpoint,
@@ -125,23 +106,18 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Give the airdrop enough collateral
-    let airdrop = find_pda_airdrop(airdrop_id);
-    let airdrop_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &airdrop,
-            &collateral_mint,
-        )
-        .await
-        .unwrap();
+    // Fill up the airdrop's collateral vault
+    let airdrop_collateral = associated_token::get_associated_token_address(
+        &find_pda_airdrop(airdrop_id),
+        &collateral_mint,
+    );
     endpoint
-        .process_spl_token_transfer(
+        .process_spl_token_mint_to(
             &payer,
-            &airdrop_authority,
-            &airdrop_authority_collateral,
+            &collateral_mint,
+            &collateral_mint_authority,
             &airdrop_collateral,
-            airdrop_authority_collateral_amount,
+            airdrop_collateral_amount,
         )
         .await
         .unwrap();
@@ -215,6 +191,6 @@ pub async fn run() {
             .unwrap()
             .unwrap()
             .amount,
-        airdrop_authority_collateral_amount - expected_total_claimed_collateral
+        airdrop_collateral_amount - expected_total_claimed_collateral
     );
 }
