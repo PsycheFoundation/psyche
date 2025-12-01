@@ -113,6 +113,16 @@ def apply_vllm_patches():
         class PsychePatchedWorker(Worker):
             """Psyche-patched Worker with weight update methods"""
 
+            def get_psyche_param_names(self):
+                """Get list of all parameter names."""
+                if not hasattr(self, "model_runner") or not hasattr(
+                    self.model_runner, "psyche_shared_state_dict"
+                ):
+                    return []
+
+                state_dict = self.model_runner.psyche_shared_state_dict
+                return list(state_dict.keys())
+
             def get_psyche_param_info(self, param_name: str):
                 """Get shape and dtype for a parameter."""
                 if not hasattr(self, "model_runner") or not hasattr(

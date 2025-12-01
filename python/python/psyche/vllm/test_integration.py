@@ -202,45 +202,51 @@ def test_weight_update_direct():
             print("Testing RPC-based weight update with real parameter...")
 
             try:
-                # Get a list of available parameters via RPC
-                # We'll test with a smaller parameter to keep it fast
-                test_params = [
-                    "model.norm.weight",  # Final layer norm (small)
-                    "model.layers.0.self_attn.o_proj.weight",  # Attention output projection
-                    "model.embed_tokens.weight",  # Embeddings (larger, has padding)
-                ]
+                # First, get list of all available parameters
+                results = engine.engine.collective_rpc("get_psyche_param_names")
+                if results and results[0]:
+                    param_names = results[0]
+                    print(f"  Found {len(param_names)} parameters")
+                    print(f"  First 5 params: {param_names[:5]}")
 
-                param_info = None
-                param_name = None
+                    # Pick a small parameter for testing (layer norm is usually small)
+                    test_param = None
+                    for name in param_names:
+                        if "ln" in name.lower() or "norm" in name.lower():
+                            test_param = name
+                            break
 
-                # Try each parameter name until we find one that exists
-                for name in test_params:
-                    results = engine.engine.collective_rpc(
-                        "get_psyche_param_info", args=(name,)
-                    )
-                    if results and results[0] is not None:
-                        param_info = results[0]
-                        param_name = name
-                        print(f"  Found parameter: {name}")
-                        print(
-                            f"  Shape: {param_info['shape']}, dtype: {param_info['dtype']}"
+                    # If no layer norm found, just use the first parameter
+                    if test_param is None and param_names:
+                        test_param = param_names[0]
+
+                    if test_param:
+                        # Get info for this parameter
+                        param_results = engine.engine.collective_rpc(
+                            "get_psyche_param_info", args=(test_param,)
                         )
-                        break
+                        if param_results and param_results[0]:
+                            param_info = param_results[0]
+                            print(f"  Testing with parameter: {test_param}")
+                            print(
+                                f"  Shape: {param_info['shape']}, dtype: {param_info['dtype']}"
+                            )
 
-                if param_info is None:
-                    print(
-                        "⚠ Could not find any test parameter, skipping weight update test"
-                    )
+                            # Create a test weight with the correct shape
+                            test_weight = torch.randn(*param_info["shape"]) * 0.001
+                            test_update = {test_param: test_weight}
+
+                            print(
+                                f"  Updating {test_param} with shape {list(test_weight.shape)}"
+                            )
+                            engine.update_weights(test_update)
+                            print("✓ RPC weight update call completed successfully")
+                        else:
+                            print("⚠ Could not get parameter info")
+                    else:
+                        print("⚠ No parameters available")
                 else:
-                    # Create a test weight with the correct shape
-                    test_weight = torch.randn(*param_info["shape"]) * 0.001
-                    test_update = {param_name: test_weight}
-
-                    print(
-                        f"  Updating {param_name} with shape {list(test_weight.shape)}"
-                    )
-                    engine.update_weights(test_update)
-                    print("✓ RPC weight update call completed successfully")
+                    print("⚠ Could not get parameter names from model")
 
             except Exception as e:
                 print(f"⚠ RPC weight update failed: {e}")
