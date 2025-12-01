@@ -65,22 +65,42 @@ def get_state_dict_from_engine(engine) -> Optional[Dict[str, torch.Tensor]]:
         The shared state_dict, or None if not available
     """
     try:
-
-        def get_psyche_state_dict(worker):
-            """Function to run on worker to get the state_dict"""
-            if hasattr(worker, "model_runner") and hasattr(
-                worker.model_runner, "psyche_shared_state_dict"
-            ):
-                return worker.model_runner.psyche_shared_state_dict
+        # Method name to call on WorkerBase
+        def get_state_dict_method(worker_base):
+            """Method to run on worker - accesses model_runner directly"""
+            # The worker_base has a model_runner attribute
+            if hasattr(worker_base, "model_runner"):
+                runner = worker_base.model_runner
+                if hasattr(runner, "psyche_shared_state_dict"):
+                    logger.info(
+                        f"Found psyche_shared_state_dict with {len(runner.psyche_shared_state_dict)} params"
+                    )
+                    return runner.psyche_shared_state_dict
+                else:
+                    logger.warning(
+                        "model_runner exists but no psyche_shared_state_dict attribute"
+                    )
+            else:
+                logger.warning("worker_base has no model_runner attribute")
             return None
 
-        results = engine.collective_rpc(
-            "apply_model", args=(lambda m: get_psyche_state_dict,)
-        )
+        logger.info("Calling collective_rpc to get state_dict...")
+        results = engine.collective_rpc(get_state_dict_method)
+        logger.info(f"collective_rpc returned {len(results)} results")
+
         if results and results[0] is not None:
+            logger.info(
+                f"Successfully retrieved state_dict with {len(results[0])} parameters"
+            )
             return results[0]
+        else:
+            logger.warning(f"collective_rpc returned empty or None: {results}")
+
     except Exception as e:
-        logger.debug(f"Could not get state_dict via RPC: {e}")
+        logger.error(f"Error getting state_dict via RPC: {e}")
+        import traceback
+
+        traceback.print_exc()
 
     return None
 
