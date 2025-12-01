@@ -173,8 +173,20 @@ class UpdatableLLMEngine:
             logger.info(
                 f"Updating {len(weight_dict)} weights via RPC in-place modification"
             )
-            # Convert dict to list of tuples for serialization
-            weight_updates = list(weight_dict.items())
+            # Convert dict to list of serializable dicts with metadata
+            weight_updates = []
+            for name, tensor in weight_dict.items():
+                # Move to CPU and convert to flat list for serialization
+                cpu_tensor = tensor.detach().cpu()
+                weight_updates.append(
+                    {
+                        "name": name,
+                        "data": cpu_tensor.flatten().tolist(),
+                        "shape": list(tensor.shape),
+                        "dtype": str(tensor.dtype),
+                    }
+                )
+
             try:
                 results = self.engine.collective_rpc(
                     "update_psyche_weights", args=(weight_updates,)
@@ -183,6 +195,9 @@ class UpdatableLLMEngine:
                 return
             except Exception as e:
                 logger.error(f"Failed to update weights via RPC: {e}")
+                import traceback
+
+                traceback.print_exc()
                 raise
 
         # Method 2: Direct shared memory access (if param_registry was populated)

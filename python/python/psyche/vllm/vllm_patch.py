@@ -118,7 +118,7 @@ def apply_vllm_patches():
                 Update weights in place using the shared state_dict.
 
                 Args:
-                    weight_updates: List of (name, tensor) tuples or list of [name, tensor] lists
+                    weight_updates: List of dicts with keys 'name', 'data', 'shape', 'dtype'
                 """
                 if not hasattr(self, "model_runner") or not hasattr(
                     self.model_runner, "psyche_shared_state_dict"
@@ -130,42 +130,62 @@ def apply_vllm_patches():
                 updated_count = 0
 
                 for item in weight_updates:
-                    # Handle both tuple and list formats from serialization
-                    if isinstance(item, (tuple, list)) and len(item) == 2:
-                        name, new_weight = item
+                    # Extract weight update info from dict
+                    if isinstance(item, dict):
+                        name = item.get("name")
+                        data = item.get("data")
+                        shape = item.get("shape")
+                        dtype_str = item.get("dtype")
                     else:
                         logger.warning(f"Invalid weight update format: {type(item)}")
                         continue
 
+                    if not name or data is None:
+                        logger.warning("Missing name or data in weight update")
+                        continue
+
                     if name in state_dict:
-                        # Convert to tensor if needed (happens during serialization)
-                        if not isinstance(new_weight, torch.Tensor):
-                            if isinstance(new_weight, list):
-                                # Serialized tensor comes as nested list
-                                new_weight = torch.tensor(new_weight)
+                        # Reconstruct tensor from flat list and metadata
+                        try:
+                            # Convert dtype string to torch dtype
+                            if dtype_str:
+                                dtype = getattr(torch, dtype_str.replace("torch.", ""))
                             else:
-                                logger.warning(
-                                    f"Weight for {name} is not a tensor or list: {type(new_weight)}"
+                                dtype = state_dict[name].dtype
+
+                            # Create tensor from flat data list
+                            import numpy as np
+
+                            new_weight = torch.from_numpy(
+                                np.array(data, dtype=np.float32)
+                            )
+
+                            # Reshape to target shape
+                            if shape:
+                                new_weight = new_weight.reshape(shape)
+
+                            # Convert to correct dtype and device
+                            new_weight = new_weight.to(
+                                device=state_dict[name].device, dtype=dtype
+                            )
+
+                            # Verify shape matches
+                            if new_weight.shape != state_dict[name].shape:
+                                logger.error(
+                                    f"Shape mismatch for {name}: "
+                                    f"expected {state_dict[name].shape}, got {new_weight.shape}"
                                 )
                                 continue
 
-                        # Reshape to match expected shape if needed
-                        target_shape = state_dict[name].shape
-                        if new_weight.shape != target_shape:
-                            new_weight = new_weight.reshape(target_shape)
+                            # Update in place
+                            state_dict[name].data.copy_(new_weight)
+                            updated_count += 1
+                        except Exception as e:
+                            logger.error(f"Failed to update {name}: {e}")
+                            import traceback
 
-                        # Move tensor to same device and dtype
-                        if new_weight.device != state_dict[name].device:
-                            new_weight = new_weight.to(
-                                device=state_dict[name].device,
-                                dtype=state_dict[name].dtype,
-                            )
-                        elif new_weight.dtype != state_dict[name].dtype:
-                            new_weight = new_weight.to(dtype=state_dict[name].dtype)
-
-                        # Update in place
-                        state_dict[name].data.copy_(new_weight)
-                        updated_count += 1
+                            traceback.print_exc()
+                            continue
                     else:
                         logger.warning(f"Parameter {name} not found in state_dict")
 
