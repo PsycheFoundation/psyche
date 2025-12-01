@@ -107,7 +107,7 @@ pub async fn run() {
         .allocations_indexes_for_claimer(&claimer.pubkey())
         .unwrap();
     let claimer_allocation =
-        airdrop_merkle_tree.allocations[claimer_indexes[0]];
+        airdrop_merkle_tree.allocations()[claimer_indexes[0]];
     let claimer_merkle_proof = airdrop_merkle_tree
         .proof_at_allocation_index(claimer_indexes[0])
         .unwrap();

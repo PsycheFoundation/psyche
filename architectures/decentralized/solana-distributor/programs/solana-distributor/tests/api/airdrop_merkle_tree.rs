@@ -5,7 +5,7 @@ use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AirdropMerkleTree {
-    pub allocations: Vec<Allocation>,
+    allocations: Vec<Allocation>,
     merkle_layers: Vec<Vec<MerkleHash>>,
 }
 
@@ -43,6 +43,10 @@ impl AirdropMerkleTree {
             .last()
             .and_then(|layer| layer.first())
             .ok_or_else(|| anyhow::anyhow!("Merkle tree is empty"))
+    }
+
+    pub fn allocations(&self) -> &[Allocation] {
+        &self.allocations
     }
 
     pub fn allocations_indexes_for_claimer(

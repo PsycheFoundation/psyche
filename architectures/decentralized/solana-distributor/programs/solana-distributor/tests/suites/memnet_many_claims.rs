@@ -154,7 +154,7 @@ pub async fn run() {
         {
             // First prepare the claim PDA
             let claimer_allocation =
-                airdrop_merkle_tree.allocations[allocation_index];
+                airdrop_merkle_tree.allocations()[allocation_index];
             let claimer_merkle_proof = airdrop_merkle_tree
                 .proof_at_allocation_index(allocation_index)
                 .unwrap();

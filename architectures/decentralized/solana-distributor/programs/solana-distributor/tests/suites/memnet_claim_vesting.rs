@@ -99,7 +99,7 @@ pub async fn run() {
         .unwrap();
 
     // Get the claimer's allocation and proof
-    let claimer_allocation = airdrop_merkle_tree.allocations[0];
+    let claimer_allocation = airdrop_merkle_tree.allocations()[0];
     let claimer_merkle_proof =
         airdrop_merkle_tree.proof_at_allocation_index(0).unwrap();
 
