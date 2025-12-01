@@ -138,16 +138,31 @@ def apply_vllm_patches():
                         continue
 
                     if name in state_dict:
-                        # Ensure new_weight is a tensor
+                        # Convert to tensor if needed (happens during serialization)
                         if not isinstance(new_weight, torch.Tensor):
-                            logger.warning(
-                                f"Weight for {name} is not a tensor: {type(new_weight)}"
-                            )
-                            continue
+                            if isinstance(new_weight, list):
+                                # Serialized tensor comes as nested list
+                                new_weight = torch.tensor(new_weight)
+                            else:
+                                logger.warning(
+                                    f"Weight for {name} is not a tensor or list: {type(new_weight)}"
+                                )
+                                continue
 
-                        # Move tensor to same device if needed
+                        # Reshape to match expected shape if needed
+                        target_shape = state_dict[name].shape
+                        if new_weight.shape != target_shape:
+                            new_weight = new_weight.reshape(target_shape)
+
+                        # Move tensor to same device and dtype
                         if new_weight.device != state_dict[name].device:
-                            new_weight = new_weight.to(state_dict[name].device)
+                            new_weight = new_weight.to(
+                                device=state_dict[name].device,
+                                dtype=state_dict[name].dtype,
+                            )
+                        elif new_weight.dtype != state_dict[name].dtype:
+                            new_weight = new_weight.to(dtype=state_dict[name].dtype)
+
                         # Update in place
                         state_dict[name].data.copy_(new_weight)
                         updated_count += 1
