@@ -5,7 +5,11 @@ import torch
 # Import and apply vLLM patches BEFORE importing vLLM
 # This is critical for enabling shared memory access
 try:
-    from psyche.vllm.vllm_patch import get_shared_state_dict, get_all_shared_state_dicts
+    from psyche.vllm.vllm_patch import (
+        get_shared_state_dict,
+        get_all_shared_state_dicts,
+        get_state_dict_from_engine,
+    )
 
     VLLM_PATCH_AVAILABLE = True
 except ImportError:
@@ -88,25 +92,21 @@ class UpdatableLLMEngine:
         2. Direct model_executor access (old vLLM versions)
         3. collective_rpc (vLLM 0.11+ without patching)
         """
-        # Try to get shared state_dict from patches
+        # Try to get shared state_dict from worker via RPC (vLLM 0.11+ with patches)
         if VLLM_PATCH_AVAILABLE:
-            # Wait a moment for vLLM to initialize and register the state_dict
-            import time
-
-            max_wait = 5  # seconds
-            for i in range(max_wait * 10):
-                shared_state_dict = get_shared_state_dict(worker_id=0)
-                if shared_state_dict is not None:
-                    self.param_registry = shared_state_dict
-                    logger.info(
-                        f"Using shared memory state_dict with {len(self.param_registry)} parameters. "
-                        "Weight updates will use direct memory access."
-                    )
-                    return
-                time.sleep(0.1)
-            logger.warning(
-                "Shared state_dict not available after waiting, falling back to other methods"
-            )
+            logger.info("Attempting to get shared state_dict from worker via RPC...")
+            shared_state_dict = get_state_dict_from_engine(self.engine)
+            if shared_state_dict is not None:
+                self.param_registry = shared_state_dict
+                logger.info(
+                    f"Using shared memory state_dict with {len(self.param_registry)} parameters. "
+                    "Weight updates will use direct memory access."
+                )
+                return
+            else:
+                logger.warning(
+                    "Could not get shared state_dict via RPC, trying fallback methods"
+                )
 
         # Check if we have the old-style direct model access
         if hasattr(self.engine, "model_executor"):

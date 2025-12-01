@@ -51,6 +51,40 @@ def get_shared_state_dict(worker_id: int = 0) -> Optional[Dict[str, torch.Tensor
     return _SHARED_STATE_DICTS.get(worker_id)
 
 
+def get_state_dict_from_engine(engine) -> Optional[Dict[str, torch.Tensor]]:
+    """
+    Get the shared state_dict from a vLLM engine via RPC.
+
+    This works with vLLM 0.11+ by calling into the worker process
+    to retrieve the psyche_shared_state_dict attribute.
+
+    Args:
+        engine: The vLLM LLMEngine instance
+
+    Returns:
+        The shared state_dict, or None if not available
+    """
+    try:
+
+        def get_psyche_state_dict(worker):
+            """Function to run on worker to get the state_dict"""
+            if hasattr(worker, "model_runner") and hasattr(
+                worker.model_runner, "psyche_shared_state_dict"
+            ):
+                return worker.model_runner.psyche_shared_state_dict
+            return None
+
+        results = engine.collective_rpc(
+            "apply_model", args=(lambda m: get_psyche_state_dict,)
+        )
+        if results and results[0] is not None:
+            return results[0]
+    except Exception as e:
+        logger.debug(f"Could not get state_dict via RPC: {e}")
+
+    return None
+
+
 def get_all_shared_state_dicts() -> Dict[int, Dict[str, torch.Tensor]]:
     """Get all registered shared state_dicts."""
     return _SHARED_STATE_DICTS
