@@ -27,6 +27,20 @@ pub async fn command_update_client_version_execute(
         .get_coordinator_instance(&coordinator_instance)
         .await?;
     let coordinator_account = coordinator_instance_state.coordinator_account;
+
+    // Only allow pausing when the coordinator is halted (uninitialized/paused/finished)
+    // This is also checked in the coordinator just in case
+    let coordinator_state = backend
+        .get_coordinator_account(&coordinator_account)
+        .await?
+        .state;
+    if !coordinator_state.coordinator.halted() {
+        anyhow::bail!(
+            "Cannot update client version while run is active (state: {})",
+            coordinator_state.coordinator.run_state
+        );
+    }
+
     let instruction = instructions::coordinator_update_client_version(
         &run_id,
         &coordinator_account,

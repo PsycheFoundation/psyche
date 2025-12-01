@@ -176,6 +176,13 @@ pub mod psyche_solana_coordinator {
         new_version: String,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
+
+        // Only allow pausing when the coordinator is halted (uninitialized/paused/finished)
+        // We should not really reach here since we pre-check in the client
+        if !account.state.coordinator.halted() {
+            return err!(ProgramError::UpdateConfigNotHalted);
+        }
+
         account.state.client_version =
             FixedString::<32>::try_from(new_version.as_str()).unwrap();
         msg!("new version: {}", account.state.client_version);
