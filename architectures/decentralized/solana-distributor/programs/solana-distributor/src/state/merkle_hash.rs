@@ -9,9 +9,9 @@ pub struct MerkleHash {
 }
 
 impl MerkleHash {
-    pub fn from_parts(vals: &[&[u8]]) -> MerkleHash {
+    pub fn from_parts(parts: &[&[u8]]) -> MerkleHash {
         MerkleHash {
-            bytes: hashv(vals).to_bytes(),
+            bytes: hashv(parts).to_bytes(),
         }
     }
 
@@ -40,13 +40,7 @@ impl MerkleHash {
 
 impl std::fmt::Debug for MerkleHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "0x{}",
-            self.bytes
-                .iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<String>()
-        )
+        let parts = self.bytes.iter().map(|b| format!("{:02X}", b));
+        write!(f, "{}", parts.collect::<String>())
     }
 }

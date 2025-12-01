@@ -24,6 +24,13 @@ pub mod psyche_solana_distributor {
         airdrop_update_processor(context, params)
     }
 
+    pub fn airdrop_withdraw(
+        context: Context<AirdropWithdrawAccounts>,
+        params: AirdropWithdrawParams,
+    ) -> Result<()> {
+        airdrop_withdraw_processor(context, params)
+    }
+
     pub fn claim_create(
         context: Context<ClaimCreateAccounts>,
         params: ClaimCreateParams,

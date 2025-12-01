@@ -27,15 +27,12 @@ impl AirdropMerkleTree {
         merkle_layers.push(merkle_layer.clone());
 
         while merkle_layer.len() > 1 {
-            let merkle_children = merkle_layer;
             let mut merkle_parents = vec![];
-
-            for pair in merkle_children.chunks(2) {
+            for pair in merkle_layer.chunks(2) {
                 let left = pair[0];
                 let right = if pair.len() == 2 { pair[1] } else { pair[0] };
                 merkle_parents.push(MerkleHash::from_pair(&left, &right));
             }
-
             merkle_layers.push(merkle_parents.clone());
             merkle_layer = merkle_parents;
         }
@@ -53,13 +50,13 @@ impl AirdropMerkleTree {
             .ok_or_else(|| anyhow::anyhow!("Merkle tree is empty"))
     }
 
-    pub fn proofs_for_receiver(
+    pub fn vestings_and_proofs_for_claimer(
         &self,
-        receiver: &Pubkey,
+        claimer: &Pubkey,
     ) -> Result<Vec<(Vesting, Vec<MerkleHash>)>> {
         let mut proofs = vec![];
         for (index, allocation) in self.allocations.iter().enumerate() {
-            if &allocation.receiver == receiver {
+            if &allocation.claimer == claimer {
                 proofs.push((allocation.vesting, self.proof_for_index(index)?));
             }
         }
@@ -72,7 +69,13 @@ impl AirdropMerkleTree {
             if layer.len() == 1 {
                 break;
             }
-            proof.push(layer[index]);
+            let sibling_index =
+                if index % 2 == 0 { index + 1 } else { index - 1 };
+            if sibling_index >= layer.len() {
+                proof.push(layer[index]);
+            } else {
+                proof.push(layer[sibling_index]);
+            }
             index /= 2;
         }
         Ok(proof)

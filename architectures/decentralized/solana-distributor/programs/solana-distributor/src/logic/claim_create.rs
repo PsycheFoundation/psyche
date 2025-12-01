@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::state::Airdrop;
 use crate::state::Claim;
+use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: ClaimCreateParams)]
@@ -39,6 +40,11 @@ pub fn claim_create_processor(
     context: Context<ClaimCreateAccounts>,
     _params: ClaimCreateParams,
 ) -> Result<()> {
+    let airdrop = &context.accounts.airdrop;
+    if airdrop.freeze {
+        return err!(ProgramError::AirdropFreezeIsTrue);
+    }
+
     let claim = &mut context.accounts.claim;
 
     claim.bump = context.bumps.claim;

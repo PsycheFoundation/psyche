@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::transfer;
 use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
@@ -6,17 +7,13 @@ use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
 
 use crate::state::Airdrop;
-use crate::state::Allocation;
-use crate::state::Claim;
-use crate::state::MerkleHash;
-use crate::state::Vesting;
 use crate::ProgramError;
 
 #[derive(Accounts)]
-#[instruction(params: ClaimRedeemParams)]
-pub struct ClaimRedeemAccounts<'info> {
+#[instruction(params: AirdropWithdrawParams)]
+pub struct AirdropWithdrawAccounts<'info> {
     #[account()]
-    pub claimer: Signer<'info>,
+    pub authority: Signer<'info>,
 
     #[account(
         mut,
@@ -27,13 +24,13 @@ pub struct ClaimRedeemAccounts<'info> {
 
     #[account(
         mut,
-        constraint = airdrop.collateral_mint == collateral_mint.key(),
+        constraint = airdrop.authority == authority.key(),
     )]
     pub airdrop: Box<Account<'info, Airdrop>>,
 
     #[account(
         mut,
-        associated_token::mint = airdrop.collateral_mint,
+        associated_token::mint = collateral_mint,
         associated_token::authority = airdrop,
     )]
     pub airdrop_collateral: Box<Account<'info, TokenAccount>>,
@@ -41,60 +38,29 @@ pub struct ClaimRedeemAccounts<'info> {
     #[account()]
     pub collateral_mint: Box<Account<'info, Mint>>,
 
-    #[account(
-        mut,
-        seeds = [
-            Claim::SEEDS_PREFIX,
-            airdrop.key().as_ref(),
-            claimer.key().as_ref()
-        ],
-        bump = claim.bump
-    )]
-    pub claim: Box<Account<'info, Claim>>,
-
     #[account()]
     pub token_program: Program<'info, Token>,
+
+    #[account()]
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    #[account()]
+    pub system_program: Program<'info, System>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct ClaimRedeemParams {
-    pub vesting: Vesting,
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+pub struct AirdropWithdrawParams {
     pub collateral_amount: u64,
-    pub merkle_proof: Vec<MerkleHash>,
 }
 
-pub fn claim_redeem_processor(
-    context: Context<ClaimRedeemAccounts>,
-    params: ClaimRedeemParams,
+pub fn airdrop_withdraw_processor(
+    context: Context<AirdropWithdrawAccounts>,
+    params: AirdropWithdrawParams,
 ) -> Result<()> {
     let airdrop = &mut context.accounts.airdrop;
     if airdrop.freeze {
         return err!(ProgramError::AirdropFreezeIsTrue);
     }
-
-    let allocation = Allocation {
-        claimer: context.accounts.claimer.key(),
-        vesting: params.vesting,
-    };
-    if !allocation
-        .to_merkle_hash()
-        .is_valid_proof(&params.merkle_proof, &airdrop.merkle_root)
-    {
-        return err!(ProgramError::ParamsMerkleProofIsInvalid);
-    }
-
-    let claim = &mut context.accounts.claim;
-
-    let claimable_collateral_amount = params
-        .vesting
-        .compute_vested_collateral_amount(Clock::get()?.unix_timestamp)?
-        .saturating_sub(i128::from(claim.claimed_collateral_amount));
-    if claimable_collateral_amount < i128::from(params.collateral_amount) {
-        return err!(ProgramError::ParamsCollateralAmountIsTooLarge);
-    }
-
-    airdrop.total_claimed_collateral_amount += params.collateral_amount;
-    claim.claimed_collateral_amount += params.collateral_amount;
 
     let airdrop_signer_seeds: &[&[&[u8]]] = &[&[
         Airdrop::SEEDS_PREFIX,

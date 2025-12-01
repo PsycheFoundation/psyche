@@ -22,8 +22,7 @@ pub async fn process_claim_redeem(
     claimer: &Keypair,
     receiver_collateral: &Pubkey,
     airdrop_index: u64,
-    vesting: &Vesting,
-    merkle_proof: &[MerkleHash],
+    vesting_and_proof: &(Vesting, Vec<MerkleHash>),
     collateral_mint: &Pubkey,
     collateral_amount: u64,
 ) -> Result<()> {
@@ -49,8 +48,8 @@ pub async fn process_claim_redeem(
         },
         ClaimRedeem {
             params: ClaimRedeemParams {
-                vesting: *vesting,
-                merkle_proof: merkle_proof.to_vec(),
+                vesting: vesting_and_proof.0,
+                merkle_proof: vesting_and_proof.1.to_vec(),
                 collateral_amount,
             },
         },
