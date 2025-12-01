@@ -25,7 +25,7 @@ if (path && !path.startsWith('/')) {
 	path = `/${path}`
 }
 
-const BACKEND_URL = `${origin}${path}`
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? `${origin}${path}`
 
 function psycheJsonFetch(path: string) {
 	return fetch(`${BACKEND_URL}/${path}`)
