@@ -70,4 +70,4 @@ jobs:
 
       - name: Run decentralized integration test
         run: |
-          nix develop --command bash -c "cargo test --release -p psyche-decentralized-testing --features python,parallelism --test integration_tests -- --nocapture"
+          nix develop --command bash -c "USE_PYTHON=1 just decentralized-integration-tests test_big_model_with_sidecars"
