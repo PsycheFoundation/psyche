@@ -88,19 +88,31 @@ class UpdatableLLMEngine:
         This allows O(1) access when applying updates.
 
         Tries multiple approaches in order:
-        1. Shared memory state_dict (via patching) - most efficient
-        2. Direct model_executor access (old vLLM versions)
-        3. collective_rpc (vLLM 0.11+ without patching)
+        1. Distributed updater (via patching + torch.distributed) - production mode
+        2. RPC-based updates (via patching + collective_rpc) - testing mode
+        3. Direct model_executor access (old vLLM versions)
         """
-        # For vLLM 0.11+ with patches, we use RPC-based in-place updates
-        # We don't retrieve the state_dict because CUDA tensors can't be serialized
+        # For vLLM 0.11+ with patches, we support both distributed and RPC modes
         if VLLM_PATCH_AVAILABLE:
-            logger.info(
-                "vLLM 0.11+ with Psyche patches detected. "
-                "Weight updates will use RPC-based in-place modification."
-            )
-            # Store a flag that we're using patched mode
-            self._using_patched_mode = True
+            import os
+
+            # Check if distributed updater is being used
+            use_distributed = os.environ.get("PSYCHE_USE_DISTRIBUTED_UPDATER") == "1"
+
+            if use_distributed:
+                logger.info(
+                    "vLLM 0.11+ with Psyche patches detected. "
+                    "Weight updates will use torch.distributed updater process."
+                )
+                self._using_distributed_mode = True
+                self._using_patched_mode = False
+            else:
+                logger.info(
+                    "vLLM 0.11+ with Psyche patches detected. "
+                    "Weight updates will use RPC-based in-place modification (testing mode)."
+                )
+                self._using_patched_mode = True
+                self._using_distributed_mode = False
             return
 
         # Check if we have the old-style direct model access
@@ -160,15 +172,26 @@ class UpdatableLLMEngine:
         """
         Updates model weights using the appropriate method for the vLLM version.
 
-        Tries methods in order of efficiency:
-        1. RPC-based in-place updates (vLLM 0.11+ with patches) - works across processes
-        2. Direct model_executor access (old vLLM versions)
-        3. collective_rpc with load_weights (vLLM 0.11+ without patches)
+        Supported methods:
+        1. Distributed updater (vLLM 0.11+ with torch.distributed) - production mode
+        2. RPC-based in-place updates (vLLM 0.11+ with patches) - testing mode
+        3. Direct model_executor access (old vLLM versions)
+        4. collective_rpc with load_weights (vLLM 0.11+ without patches)
 
         Args:
             weight_dict: Dictionary mapping parameter names to new weight tensors
         """
-        # Method 1: RPC-based in-place updates (vLLM 0.11+ with patches)
+        # Method 1: Distributed updater (production mode)
+        if hasattr(self, "_using_distributed_mode") and self._using_distributed_mode:
+            logger.warning(
+                "Distributed mode: weight updates are handled by the distributed updater process. "
+                "Direct update_weights() calls are not supported in this mode. "
+                "Use torch.distributed to send updates to the training/inference process group."
+            )
+            # In distributed mode, updates come via torch.distributed, not through this method
+            return
+
+        # Method 2: RPC-based in-place updates (testing mode)
         if hasattr(self, "_using_patched_mode") and self._using_patched_mode:
             logger.info(
                 f"Updating {len(weight_dict)} weights via RPC in-place modification"

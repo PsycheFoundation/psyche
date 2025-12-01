@@ -1,9 +1,8 @@
 """
 vLLM Monkey Patching for Psyche Integration
 
-This module patches vLLM's GPUModelRunner to enable direct access to the model's
-state_dict for efficient weight updates. This approach is inspired by torchtitan's
-GRPO implementation.
+This module patches vLLM's GPUModelRunner to enable distributed weight updates
+via torch.distributed. This approach is inspired by torchtitan's GRPO implementation.
 
 IMPORTANT: This module must be imported BEFORE any vLLM modules are imported.
 """
@@ -11,6 +10,7 @@ IMPORTANT: This module must be imported BEFORE any vLLM modules are imported.
 import logging
 from typing import Dict, Optional, Any
 import torch
+import torch.multiprocessing as mp
 
 logger = logging.getLogger(__name__)
 
@@ -221,15 +221,15 @@ def apply_vllm_patches():
         # Create patched class that inherits from GPUModelRunner
         # This is the same approach torchtitan uses
         class PsychePatchedGPUModelRunner(GPUModelRunner):
-            """Psyche-patched GPUModelRunner with shared memory support"""
+            """Psyche-patched GPUModelRunner with distributed updater support"""
 
             def load_model(self, eep_scale_up: bool = False) -> None:
                 # Call original load_model
                 logger.info("Psyche: Calling original GPUModelRunner.load_model()")
                 super().load_model(eep_scale_up)
 
-                # Now expose shared memory access
-                logger.info("Psyche: Sharing model memory for weight updates")
+                # Now set up distributed weight updates
+                logger.info("Psyche: Setting up distributed weight updates")
                 try:
                     # Share model memory (like torchtitan does)
                     self.model.share_memory()
@@ -243,7 +243,7 @@ def apply_vllm_patches():
                     # Store on self for access
                     self.psyche_shared_state_dict = state_dict
 
-                    # Also register in global registry for fallback access
+                    # Get model info for updater process
                     try:
                         from vllm.distributed import get_tensor_model_parallel_rank
 
@@ -251,6 +251,7 @@ def apply_vllm_patches():
                     except ImportError:
                         worker_id = 0
 
+                    # Register in global registry for fallback/debug access
                     register_shared_state_dict(
                         worker_id=worker_id,
                         state_dict=state_dict,
@@ -262,9 +263,63 @@ def apply_vllm_patches():
                         f"with {len(state_dict)} parameters"
                     )
 
+                    # Check if distributed updater should be spawned
+                    # This is controlled by environment variable or can be done programmatically
+                    import os
+
+                    if os.environ.get("PSYCHE_USE_DISTRIBUTED_UPDATER") == "1":
+                        logger.info(
+                            "Psyche: Spawning distributed weight updater process"
+                        )
+                        self._spawn_distributed_updater(state_dict, worker_id)
+
                 except Exception as e:
-                    logger.error(f"Psyche: Failed to share model memory: {e}")
+                    logger.error(f"Psyche: Failed to set up distributed updates: {e}")
                     raise
+
+            def _spawn_distributed_updater(self, state_dict, worker_id):
+                """Spawn the distributed weight updater process"""
+                try:
+                    from psyche.vllm.distributed_updater import weight_updater_process
+                    import os
+
+                    # Get distributed config from environment
+                    # These should be set by Psyche's distributed training infrastructure
+                    process_group_config = {
+                        "backend": os.environ.get("PSYCHE_UPDATER_BACKEND", "nccl"),
+                        "init_method": os.environ.get(
+                            "PSYCHE_UPDATER_INIT_METHOD", "env://"
+                        ),
+                        "world_size": int(os.environ.get("PSYCHE_WORLD_SIZE", 1)),
+                        "rank": int(os.environ.get("PSYCHE_RANK", 0)),
+                    }
+
+                    logger.info(
+                        f"Psyche: Spawning distributed updater with config: {process_group_config}"
+                    )
+
+                    # Spawn updater process
+                    ctx = mp.get_context("spawn")
+
+                    self.psyche_updater_process = ctx.Process(
+                        target=weight_updater_process,
+                        args=(state_dict, process_group_config, self.model_config),
+                        daemon=True,
+                    )
+
+                    self.psyche_updater_process.start()
+
+                    logger.info(
+                        f"Psyche: Distributed updater process started (PID: {self.psyche_updater_process.pid})"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Psyche: Failed to spawn distributed updater: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+                    # Don't fail the entire model load if updater fails
+                    logger.warning("Continuing without distributed updater")
 
         # Replace the classes with our patched versions
         import vllm.v1.worker.gpu_worker
