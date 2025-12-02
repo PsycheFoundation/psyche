@@ -58,14 +58,14 @@ def training_process(rank, world_size, master_addr, master_port):
         # Send some actual parameter updates
         print(f"[Training Rank {rank}] Broadcasting parameter updates...")
 
-        # Create mock parameters with known values
+        # Create mock parameters with LARGE changes to ensure output differs
         # Note: vLLM uses transposed weight matrices (out_features, in_features)
         params_to_send = [
-            ("transformer.h.0.ln_1.weight", torch.ones(768) * 1.5),
-            ("transformer.h.0.ln_1.bias", torch.ones(768) * 0.1),
+            ("transformer.h.0.ln_1.weight", torch.ones(768) * 10.0),  # 10x larger
+            ("transformer.h.0.ln_1.bias", torch.ones(768) * 5.0),  # Much larger bias
             (
                 "transformer.h.0.attn.c_attn.weight",
-                torch.randn(2304, 768) * 0.02,
+                torch.randn(2304, 768) * 0.5,  # 25x larger variance
             ),  # Transposed
         ]
 
