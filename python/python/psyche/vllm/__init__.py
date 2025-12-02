@@ -20,6 +20,11 @@ from .transforms import (
     permute_for_rotary,
     build_full_transform_config_llama,
 )
+from .protocol import (
+    broadcast_parameter,
+    broadcast_state_dict,
+    broadcast_shutdown_signal,
+)
 
 __all__ = [
     # Engine
@@ -33,6 +38,10 @@ __all__ = [
     "apply_rotary_permute",
     "permute_for_rotary",
     "build_full_transform_config_llama",
+    # Protocol
+    "broadcast_parameter",
+    "broadcast_state_dict",
+    "broadcast_shutdown_signal",
 ]
 
 __version__ = "0.1.0"

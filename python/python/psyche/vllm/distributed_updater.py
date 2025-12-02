@@ -10,10 +10,27 @@ Inspired by torchtitan's GRPO implementation.
 import logging
 import torch
 import torch.distributed as dist
+import numpy as np
 from typing import Dict, Optional, Any
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+
+# Dtype mapping for serialization
+DTYPE_MAP = {
+    0: torch.float32,
+    1: torch.float16,
+    2: torch.bfloat16,
+    3: torch.float64,
+    4: torch.int64,
+    5: torch.int32,
+    6: torch.int16,
+    7: torch.int8,
+    8: torch.uint8,
+}
+
+DTYPE_TO_ID = {v: k for k, v in DTYPE_MAP.items()}
 
 
 def permute_for_rotary(weight: torch.Tensor, n_heads: int) -> torch.Tensor:
@@ -131,31 +148,86 @@ def weight_updater_process(
 
         try:
             update_count = 0
+            applied_count = 0
+
             while True:
-                # Receive broadcast from training process (rank 0)
-                # For testing, we receive whatever tensor the training process sends
-                # In production, this would be actual model parameters with metadata
+                # Step 1: Receive metadata header
+                # Format: [shutdown_flag, param_name_len, ndim, dim0, dim1, ..., dtype_id, ...]
+                # Use fixed size buffer for metadata
+                metadata = torch.zeros(128, dtype=torch.long, device=my_device)
 
-                # Create a tensor to receive into
-                # We don't know the size ahead of time, so we'll use a fixed size for testing
-                received_tensor = torch.zeros(100, 100, device=my_device)
+                logger.debug(f"Waiting for metadata broadcast #{update_count + 1}...")
+                dist.broadcast(metadata, src=0)
 
-                logger.info(f"Waiting for broadcast #{update_count + 1}...")
-                dist.broadcast(received_tensor, src=0)
-
-                # Check if it's a shutdown signal (tensor with -1)
-                if received_tensor[0, 0].item() == -1.0:
+                # Check shutdown signal (first element)
+                shutdown_flag = metadata[0].item()
+                if shutdown_flag == -1:
                     logger.info("Received shutdown signal, exiting")
                     break
 
-                update_count += 1
-                logger.info(
-                    f"Received weight update #{update_count} (shape: {received_tensor.shape})"
+                # Decode metadata
+                param_name_len = int(metadata[1].item())
+                if param_name_len == 0 or param_name_len > 100:
+                    logger.error(f"Invalid param_name_len: {param_name_len}")
+                    break
+
+                # Extract parameter name bytes
+                param_name_bytes = (
+                    metadata[2 : 2 + param_name_len]
+                    .cpu()
+                    .numpy()
+                    .astype(np.uint8)
+                    .tobytes()
+                )
+                param_name = param_name_bytes.decode("utf-8").rstrip("\x00")
+
+                # Extract shape
+                ndim = int(metadata[2 + param_name_len].item())
+                shape = tuple(
+                    int(metadata[3 + param_name_len + i].item()) for i in range(ndim)
                 )
 
-                # In production, we would apply this to state_dict:
-                # state_dict[param_name].data.copy_(received_tensor)
-                # For now, just log that we received it
+                # Extract dtype
+                dtype_id = int(metadata[3 + param_name_len + ndim].item())
+                if dtype_id not in DTYPE_MAP:
+                    logger.error(f"Unknown dtype_id: {dtype_id}")
+                    continue
+                dtype = DTYPE_MAP[dtype_id]
+
+                logger.info(
+                    f"Receiving parameter: {param_name} (shape={shape}, dtype={dtype})"
+                )
+
+                # Step 2: Receive actual parameter tensor
+                param_tensor = torch.zeros(shape, dtype=dtype, device=my_device)
+                dist.broadcast(param_tensor, src=0)
+
+                update_count += 1
+                logger.debug(f"Received tensor for {param_name}")
+
+                # Step 3: Apply to state_dict
+                if param_name in state_dict:
+                    # Verify shape matches
+                    if state_dict[param_name].shape != param_tensor.shape:
+                        logger.error(
+                            f"Shape mismatch for {param_name}: "
+                            f"expected {state_dict[param_name].shape}, got {param_tensor.shape}"
+                        )
+                        continue
+
+                    # Apply update to shared memory
+                    state_dict[param_name].data.copy_(param_tensor)
+                    applied_count += 1
+                    logger.debug(f"✓ Applied update to {param_name}")
+
+                    if applied_count % 10 == 0:
+                        logger.info(
+                            f"Applied {applied_count}/{update_count} parameter updates"
+                        )
+                else:
+                    logger.warning(
+                        f"⚠ Parameter {param_name} not found in state_dict (skipping)"
+                    )
 
         except KeyboardInterrupt:
             logger.info("Received interrupt, shutting down")
@@ -165,5 +237,8 @@ def weight_updater_process(
 
             traceback.print_exc()
 
-    logger.info(f"Weight updater process exiting (received {update_count} updates)")
+    logger.info(
+        f"Weight updater process exiting: "
+        f"received {update_count} updates, applied {applied_count}"
+    )
     dist.destroy_process_group()
