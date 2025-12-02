@@ -59,10 +59,14 @@ def training_process(rank, world_size, master_addr, master_port):
         print(f"[Training Rank {rank}] Broadcasting parameter updates...")
 
         # Create mock parameters with known values
+        # Note: vLLM uses transposed weight matrices (out_features, in_features)
         params_to_send = [
             ("transformer.h.0.ln_1.weight", torch.ones(768) * 1.5),
             ("transformer.h.0.ln_1.bias", torch.ones(768) * 0.1),
-            ("transformer.h.0.attn.c_attn.weight", torch.randn(768, 2304) * 0.02),
+            (
+                "transformer.h.0.attn.c_attn.weight",
+                torch.randn(2304, 768) * 0.02,
+            ),  # Transposed
         ]
 
         for i, (param_name, param_tensor) in enumerate(params_to_send):
@@ -131,19 +135,66 @@ def inference_process(rank, world_size, master_addr, master_port):
             f"[Inference Rank {rank}] Distributed updater should be running and joined process group"
         )
 
-        print(f"[Inference Rank {rank}] Updater process will log weight updates")
+        # Run inference BEFORE weight updates
+        print(
+            f"\n[Inference Rank {rank}] === Running inference BEFORE weight updates ==="
+        )
+        test_prompt = "Once upon a time"
+        request_id_1 = engine.add_request(
+            test_prompt, {"temperature": 0.0, "max_tokens": 10}
+        )
+
+        outputs_before = []
+        while engine.has_unfinished_requests():
+            batch_outputs = engine.step()
+            outputs_before.extend(batch_outputs)
+
+        text_before = outputs_before[0].outputs[0].text if outputs_before else ""
+        print(f"[Inference Rank {rank}] Output BEFORE: '{test_prompt}{text_before}'")
+
+        print(f"\n[Inference Rank {rank}] Updater process will log weight updates")
         print(
             f"[Inference Rank {rank}] Look for 'Applied update to ...' messages in logs"
         )
 
         # Keep engine alive while updater receives updates
-        print(f"[Inference Rank {rank}] Keeping engine alive for 20 seconds...")
+        print(f"\n[Inference Rank {rank}] Keeping engine alive for 20 seconds...")
         print(
             f"[Inference Rank {rank}] (Updater process is receiving/applying updates in background)"
         )
         time.sleep(20)
 
-        print(f"[Inference Rank {rank}] ✅ Engine stayed alive during update period")
+        # Run inference AFTER weight updates
+        print(
+            f"\n[Inference Rank {rank}] === Running inference AFTER weight updates ==="
+        )
+        request_id_2 = engine.add_request(
+            test_prompt, {"temperature": 0.0, "max_tokens": 10}
+        )
+
+        outputs_after = []
+        while engine.has_unfinished_requests():
+            batch_outputs = engine.step()
+            outputs_after.extend(batch_outputs)
+
+        text_after = outputs_after[0].outputs[0].text if outputs_after else ""
+        print(f"[Inference Rank {rank}] Output AFTER: '{test_prompt}{text_after}'")
+
+        # Check if output changed
+        if text_before != text_after:
+            print(
+                f"\n[Inference Rank {rank}] ✅ SUCCESS: Output changed after weight update!"
+            )
+            print(
+                f"[Inference Rank {rank}]   This confirms weights were actually applied!"
+            )
+        else:
+            print(f"\n[Inference Rank {rank}] ⚠️  WARNING: Output did not change")
+            print(
+                f"[Inference Rank {rank}]   (This could be expected if changes were small)"
+            )
+
+        print(f"\n[Inference Rank {rank}] ✅ Test complete!")
         print(
             f"[Inference Rank {rank}] Check updater logs above to verify weight updates were applied"
         )
