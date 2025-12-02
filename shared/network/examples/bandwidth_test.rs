@@ -5,6 +5,7 @@ use iroh::{PublicKey, RelayMode, RelayUrl};
 use iroh_blobs::api::Tag;
 use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
+use psyche_network::RelayKind;
 use psyche_network::{
     BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, NetworkTUIState,
     NetworkTui, allowlist, fmt_bytes,
@@ -290,6 +291,7 @@ async fn main() -> Result<()> {
         args.bind_port,
         args.bind_interface,
         DiscoveryMode::N0,
+        RelayKind::Psyche,
         single_endpoint_id.into_iter().collect(),
         secret_key,
         allowlist::AllowAll,

@@ -1,3 +1,4 @@
+use crate::RelayKind;
 use anyhow::Result;
 use iroh::EndpointAddr;
 use iroh_blobs::api::Tag;
@@ -188,6 +189,7 @@ async fn spawn_new_node(
         None,
         None,
         DiscoveryMode::Local,
+        RelayKind::Psyche,
         peers,
         None,
         allowlist::AllowAll,
