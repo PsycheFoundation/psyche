@@ -6,7 +6,9 @@ use tracing::error;
 
 #[derive(Parser, Debug)]
 #[command(name = "run-manager")]
-#[command(about = "Manager to download client containers based on a run version")]
+#[command(
+    about = "Manager to download Psyche client container based on a version specified in the run"
+)]
 struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
