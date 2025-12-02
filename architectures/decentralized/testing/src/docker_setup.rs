@@ -100,17 +100,16 @@ pub async fn e2e_testing_setup_subscription(
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
     #[cfg(not(feature = "python"))]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .build();
     #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_architecture("HfAuto")
         .with_batch_size(8 * init_num_clients as u32)
         .build();
 
-    println!("[+] Config file written to: {}", config_file_path.display());
     let mut command = Command::new("just");
     let command = command
         .args([
@@ -282,17 +281,15 @@ pub async fn spawn_new_client_with_monitoring(
 // Updated spawn function
 pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .build();
     #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_architecture("HfAuto")
         .with_batch_size(8 * init_num_clients as u32)
         .build();
-
-    println!("[+] Config file written to: {}", config_file_path.display());
 
     let mut command = Command::new("just");
     let output = command
@@ -314,7 +311,7 @@ pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcher
 // Updated spawn function
 pub fn spawn_psyche_network_big_model(init_num_clients: usize) -> Result<(), DockerWatcherError> {
     #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
+    ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_batch_size(8 * init_num_clients as u32)
         .with_model("NousResearch/Meta-Llama-3.1-8B")
