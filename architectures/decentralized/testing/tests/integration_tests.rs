@@ -958,7 +958,6 @@ async fn test_big_model_with_sidecars() {
     let run_id = "test".to_string();
     // epochs the test will run
     let num_of_epochs_to_run = 3;
-    let mut current_epoch = -1;
     let n_new_clients = 3;
 
     // Initialize DockerWatcher
