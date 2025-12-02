@@ -60,14 +60,14 @@ impl DummyModel {
 
 impl CausalLM for DummyModel {
     fn forward(
-        &mut self,
+        &self,
         x: &tch::Tensor,
         _labels: Option<&tch::Tensor>,
         _position_ids: Option<&tch::Tensor>,
         _sequence_lengths: Option<&Vec<Vec<i32>>>,
         _num_logits_to_keep: Option<i64>,
         loss_scale: Option<f64>,
-    ) -> (tch::Tensor, Option<tch::Tensor>) {
+    ) -> (Option<tch::Tensor>, Option<tch::Tensor>) {
         let result = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = loss.set_requires_grad(true);
@@ -79,7 +79,7 @@ impl CausalLM for DummyModel {
 
         // sleep some time just to simulate training
         std::thread::sleep(self.training_delay_secs);
-        (result, Some(loss))
+        (Some(result), Some(loss))
     }
 
     fn bos_token_id(&self) -> Option<i64> {
@@ -106,7 +106,7 @@ impl CausalLM for DummyModel {
         None
     }
 
-    fn prepare_for_training(&mut self) {}
+    fn prepare_for_training(&self) {}
 
-    fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+    fn clip_grad_norm(&self, _max_grad_norm: f64) {}
 }

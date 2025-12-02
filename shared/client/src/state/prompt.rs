@@ -20,7 +20,7 @@ pub struct PromptTask {
     pub prompt_finished: RwLock<bool>,
     pub is_running: Mutex<bool>,
     original_prompt_len: RwLock<usize>,
-    tokenizer: std::sync::Arc<Tokenizer>,
+    pub tokenizer: std::sync::Arc<Tokenizer>,
 }
 
 impl PromptTask {
@@ -46,9 +46,9 @@ impl PromptTask {
 
     fn reset_with_new_prompt(&self) {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let prompt_texts = get_prompt_texts();
-        let new_prompt_index = rng.gen_range(0..prompt_texts.len());
+        let new_prompt_index = rng.random_range(0..prompt_texts.len());
 
         let old_prompt_index = *self.selected_prompt.read().unwrap();
         debug!(
@@ -114,7 +114,7 @@ impl PromptTask {
         // Run forward pass
         let (logits, _) = trainer.forward(&input, None, None, None, Some(1), None);
 
-        let logits = logits.squeeze();
+        let logits = logits.unwrap().squeeze();
 
         // sample next token
         let mut logits_processor =

@@ -63,4 +63,7 @@ pub mod psyche_solana_treasurer {
 pub enum ProgramError {
     #[msg("Invalid parameter")]
     InvalidParameter,
+
+    #[msg("run_id must be 32 bytes or less")]
+    RunIdInvalidLength,
 }

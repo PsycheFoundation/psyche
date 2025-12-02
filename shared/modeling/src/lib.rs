@@ -74,7 +74,7 @@ pub use variable::{StableVarStoreIterator, StableVariableIterator, Variable};
 pub fn set_torch_rng_seed() {
     use rand::Rng;
 
-    let seed: i64 = rand::thread_rng().r#gen();
+    let seed: i64 = rand::rng().random();
     tch::manual_seed(seed);
     println!("torch seed set to: {seed}");
 }

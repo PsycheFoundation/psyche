@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
@@ -160,6 +160,9 @@ struct Args {
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
+
+    #[arg(long)]
+    seed: Option<u32>,
 }
 
 #[tokio::main]
@@ -188,12 +191,23 @@ async fn main() -> Result<()> {
         )?
     };
 
+    let shuffle = match args.seed {
+        Some(x) => {
+            let mut array = [0u8; 32];
+            array[28..32].copy_from_slice(&x.to_be_bytes());
+            Shuffle::Seeded(array)
+        }
+        None => Shuffle::DontShuffle,
+    };
+
     let mut dataset: DataProvider<DummyNodeIdentity> = match LocalDataProvider::new_from_directory(
         &args.data_path,
         args.token_size.try_into()?,
         args.sequence_length,
-        Shuffle::DontShuffle,
-    ) {
+        shuffle,
+    )
+    .with_context(|| "Failed to load data with local data provider.")
+    {
         Ok(dataset) => {
             info!(
                 "Loaded local dataset with {} samples",
@@ -201,14 +215,18 @@ async fn main() -> Result<()> {
             );
             DataProvider::Local(dataset)
         }
-        Err(_) => {
+        Err(err) => {
+            println!(
+                "Failed to load with local data provider. {err:?} Trying preprocessed data provider instead"
+            );
             let dataset = PreprocessedDataProvider::new_from_directory(
                 &args.data_path,
                 args.sequence_length,
-                Shuffle::DontShuffle,
+                shuffle,
                 Some(Split::Train),
                 None,
-            )?;
+            )
+            .with_context(|| "Failed to load preprocessed data")?;
             info!(
                 "Loaded preprocessed dataset with {} samples",
                 dataset.num_sequences()
@@ -287,7 +305,7 @@ async fn main() -> Result<()> {
     if python {
         #[cfg(feature = "python")]
         {
-            psyche_python_extension_impl::init_embedded_python();
+            psyche_python_extension_impl::init_embedded_python()?;
 
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);
@@ -303,6 +321,8 @@ async fn main() -> Result<()> {
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
+                            None,
+                            None,
                         )?;
 
                         Ok(psyche_modeling::PythonDistributedTrainer::new(
@@ -375,7 +395,7 @@ async fn main() -> Result<()> {
                             let attn_implemention = args.attn_implementation.map(|x| x.into());
 
                             std::thread::spawn(move || {
-                                let mut model: Box<dyn CausalLM> =
+                                let model: Box<dyn CausalLM> =
                                     auto_model_for_causal_lm_from_pretrained(
                                         repo_files,
                                         Some(Kind::BFloat16),
@@ -531,6 +551,9 @@ async fn main() -> Result<()> {
         if cancel.is_cancelled() {
             break;
         }
+    }
+    for trainer in trainers {
+        trainer.shutdown();
     }
     logger.shutdown()?;
     Ok(())

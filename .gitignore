@@ -51,6 +51,7 @@ logs/
 txt/
 config/testing/dolma/
 **/devnet_funded_accounts
+config/solana-test/test-config.toml
 
 ### Solana ###
 test-ledger
@@ -62,4 +63,5 @@ book
 **/.env
 
 ### Website ###
-website/frontend/public/llama2_tokenizer.json
+website/frontend/public/tokenizers/*.json
+website/frontend/public/prompts/index.json

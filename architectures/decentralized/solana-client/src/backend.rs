@@ -319,9 +319,11 @@ impl SolanaBackend {
         id: psyche_solana_coordinator::ClientId,
         check: CommitteeProof,
     ) {
+        let user = self.get_payer();
         let instruction = instructions::coordinator_health_check(
             &coordinator_instance,
             &coordinator_account,
+            &user,
             id,
             check,
         );
@@ -509,9 +511,15 @@ impl SolanaBackend {
         let instructions = instructions.to_vec();
         let signers = signers.to_vec();
         tokio::task::spawn(async move {
-            Self::send_and_retry_with(&program_coordinators, &name, &instructions, &signers)
-                .await
-                .unwrap();
+            if let Err(err) =
+                Self::send_and_retry_with(&program_coordinators, &name, &instructions, &signers)
+                    .await
+            {
+                error!(
+                    "Failed to send {} transaction after all retries: {}",
+                    name, err
+                );
+            }
         });
     }
 
