@@ -222,7 +222,7 @@ impl RunManager {
 
     pub async fn run(&self) -> Result<()> {
         loop {
-            let mut docker_tag = self.prepare_image().await?;
+            let docker_tag = self.prepare_image().await?;
             info!("Starting container...");
 
             let start_time = tokio::time::Instant::now();
