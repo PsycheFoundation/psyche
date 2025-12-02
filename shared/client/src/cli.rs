@@ -62,11 +62,11 @@ pub struct TrainArgs {
     pub bind_p2p_interface: Option<String>,
 
     /// What relays to use - public n0 or the private Psyche ones
-    #[clap(long, env)]
+    #[clap(long, env, default_value = "psyche")]
     pub iroh_relay: RelayKind,
 
     /// What discovery to use - public n0 or local
-    #[clap(long, env)]
+    #[clap(long, env, default_value = "n0")]
     pub iroh_discovery: DiscoveryMode,
 
     /// Sets clients logs interface
