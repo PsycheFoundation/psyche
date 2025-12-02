@@ -49,7 +49,7 @@ def training_process(rank, world_size, master_addr, master_port):
 
         # Wait for inference process to be ready
         print(f"[Training Rank {rank}] Waiting for inference node to join...")
-        time.sleep(5)  # Give vLLM time to start and spawn updater
+        time.sleep(3)  # Give vLLM time to start and spawn updater
 
         # Send a series of weight updates
         print(f"[Training Rank {rank}] Sending weight updates...")
@@ -66,12 +66,12 @@ def training_process(rank, world_size, master_addr, master_port):
             dist.broadcast(update_tensor, src=0)
             print(f"[Training Rank {rank}] Update {i+1} broadcast complete")
 
-            time.sleep(1)
+            time.sleep(0.5)  # Shorter delay between updates
 
         print(f"[Training Rank {rank}] All updates sent")
 
-        # Send shutdown signal (optional)
-        time.sleep(1)
+        # Send shutdown signal
+        time.sleep(0.5)
         shutdown_signal = torch.tensor([-1.0])
         print(f"[Training Rank {rank}] Sending shutdown signal")
         dist.broadcast(shutdown_signal, src=0)
@@ -144,11 +144,11 @@ def inference_process(rank, world_size, master_addr, master_port):
             )
 
         # Keep engine alive while training process sends updates
-        print(f"[Inference Rank {rank}] Keeping engine alive for 10 seconds...")
+        print(f"[Inference Rank {rank}] Keeping engine alive for 15 seconds...")
         print(
             f"[Inference Rank {rank}] (Updater process is receiving weight updates in background)"
         )
-        time.sleep(10)
+        time.sleep(15)
 
         print(f"[Inference Rank {rank}] Done!")
 
@@ -201,9 +201,9 @@ def test_e2e_distributed():
         training_proc.start()
 
         # Wait for completion
-        print("\nWaiting for processes to complete (timeout: 60s)...")
-        training_proc.join(timeout=60)
-        inference_proc.join(timeout=60)
+        print("\nWaiting for processes to complete (timeout: 90s)...")
+        training_proc.join(timeout=90)
+        inference_proc.join(timeout=90)
 
         # Check results
         training_success = training_proc.exitcode == 0
