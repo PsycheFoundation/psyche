@@ -68,7 +68,7 @@ async fn async_main() -> Result<()> {
 
             let identity_secret_key: SecretKey =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
-                    .unwrap_or_else(|| SecretKey::generate(&mut rand::rngs::OsRng));
+                    .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
@@ -100,6 +100,7 @@ async fn async_main() -> Result<()> {
                     namespace: "psyche".to_string(),
                     deployment_environment: std::env::var("DEPLOYMENT_ENV")
                         .unwrap_or("development".to_string()),
+                    run_id: Some(args.run_id.clone()),
                 })
                 .init()?;
 
@@ -127,6 +128,7 @@ async fn async_main() -> Result<()> {
                 write_gradients_dir: args.write_gradients_dir,
                 eval_task_max_docs: args.eval_task_max_docs,
                 eval_tasks,
+                prompt_task: args.prompt_task,
                 checkpoint_upload_info,
                 hub_read_token,
                 hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
@@ -136,8 +138,9 @@ async fn async_main() -> Result<()> {
                 dummy_training_delay_secs: args.dummy_training_delay_secs,
                 discovery_mode: DiscoveryMode::N0,
                 max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
-                max_concurrent_downloads: args.max_concurrent_downloads,
                 metrics_local_port: args.metrics_local_port,
+                device: args.device,
+                sidecar_port: args.sidecar_port,
             })
             .build()
             .await
@@ -161,7 +164,7 @@ async fn async_main() -> Result<()> {
 
 fn main() -> Result<()> {
     #[cfg(feature = "python")]
-    psyche_python_extension_impl::init_embedded_python();
+    psyche_python_extension_impl::init_embedded_python()?;
 
     // let shutdown_handler =
     let runtime = Builder::new_multi_thread()

@@ -1,6 +1,9 @@
+use std::vec;
+
+use psyche_coordinator::CommitteeSelection;
 use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
-use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
@@ -18,6 +21,7 @@ use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
+use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantee_update;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantor_update;
@@ -40,7 +44,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -48,13 +52,20 @@ pub async fn run() {
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
     let participant = Keypair::new();
-    let client = Keypair::new();
+    let mut clients = vec![];
+    for _ in 0..11 {
+        clients.push(Keypair::new());
+    }
     let ticker = Keypair::new();
+    let minted_collateral_amount = 1_000_000_000_000_000;
+    let top_up_collateral_amount = 0_999_999_999_999_999;
     let warmup_time = 77;
     let round_witness_time = 33;
     let cooldown_time = 42;
     let rounds_per_epoch = 4;
-    let earned_point_per_epoch = 33;
+    let earned_point_per_epoch_total_shared = 888_888_888_888_888;
+    let earned_point_per_epoch_per_client =
+        earned_point_per_epoch_total_shared / clients.len() as u64;
 
     // Prepare the collateral mint
     let collateral_mint_authority = Keypair::new();
@@ -119,7 +130,7 @@ pub async fn run() {
             &collateral_mint,
             &collateral_mint_authority,
             &main_authority_collateral,
-            10_000_000,
+            minted_collateral_amount,
         )
         .await
         .unwrap();
@@ -136,27 +147,39 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Create the client ATA
-    let client_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(
+    // Create the clients ATAs
+    let mut clients_collateral = vec![];
+    for client in &clients {
+        clients_collateral.push(
+            endpoint
+                .process_spl_associated_token_account_get_or_init(
+                    &payer,
+                    &client.pubkey(),
+                    &collateral_mint,
+                )
+                .await
+                .unwrap(),
+        );
+    }
+
+    // Create the participations accounts
+    for client in &clients {
+        process_treasurer_participant_create(
+            &mut endpoint,
             &payer,
-            &client.pubkey(),
-            &collateral_mint,
+            client,
+            &run,
         )
         .await
         .unwrap();
+    }
 
-    // Create the participation account
-    process_treasurer_participant_create(&mut endpoint, &payer, &client, &run)
-        .await
-        .unwrap();
-
-    // Try claiming nothing, it should work since we earned nothing
+    // Try claiming nothing, it should work, but we earned nothing
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &clients[0],
+        &clients_collateral[0],
         &collateral_mint,
         &run,
         &coordinator_account,
@@ -164,6 +187,20 @@ pub async fn run() {
     )
     .await
     .unwrap();
+
+    // Claiming with the wrong collateral should fail
+    process_treasurer_participant_claim(
+        &mut endpoint,
+        &payer,
+        &clients[0],
+        &clients_collateral[1],
+        &collateral_mint,
+        &run,
+        &coordinator_account,
+        0,
+    )
+    .await
+    .unwrap_err();
 
     // Prepare the coordinator's config
     process_treasurer_run_update(
@@ -183,10 +220,10 @@ pub async fn run() {
                 min_clients: 1,
                 init_min_clients: 1,
                 global_batch_size_start: 1,
-                global_batch_size_end: 1,
+                global_batch_size_end: clients.len() as u16,
                 global_batch_size_warmup_tokens: 0,
                 verification_percent: 0,
-                witness_nodes: 1,
+                witness_nodes: 0,
                 rounds_per_epoch,
                 total_steps: 100,
             }),
@@ -210,16 +247,15 @@ pub async fn run() {
                 cold_start_warmup_steps: 0,
             })),
             progress: None,
-            epoch_earning_rate: Some(earned_point_per_epoch),
-            epoch_slashing_rate: None,
+            epoch_earning_rate_total_shared: Some(
+                earned_point_per_epoch_total_shared,
+            ),
+            epoch_slashing_rate_per_client: None,
             paused: Some(false),
         },
     )
     .await
     .unwrap();
-
-    // Generate the client key
-    let client_id = ClientId::new(client.pubkey(), Default::default());
 
     // Add a participant key to whitelist
     let authorization = process_authorizer_authorization_create(
@@ -241,7 +277,7 @@ pub async fn run() {
     .await
     .unwrap();
 
-    // Make the client a delegate of the participant key
+    // Make the clients delegates of the participant key
     process_authorizer_authorization_grantee_update(
         &mut endpoint,
         &payer,
@@ -249,24 +285,26 @@ pub async fn run() {
         &authorization,
         AuthorizationGranteeUpdateParams {
             delegates_clear: false,
-            delegates_added: vec![client.pubkey()],
+            delegates_added: clients.iter().map(|c| c.pubkey()).collect(),
         },
     )
     .await
     .unwrap();
 
-    // The client can now join the run
-    process_coordinator_join_run(
-        &mut endpoint,
-        &payer,
-        &client,
-        &authorization,
-        &coordinator_instance,
-        &coordinator_account,
-        client_id,
-    )
-    .await
-    .unwrap();
+    // The clients can now join the run
+    for client in &clients {
+        process_coordinator_join_run(
+            &mut endpoint,
+            &payer,
+            client,
+            &authorization,
+            &coordinator_instance,
+            &coordinator_account,
+            ClientId::new(client.pubkey(), Default::default()),
+        )
+        .await
+        .unwrap();
+    }
 
     // Tick to transition from waiting for members to warmup
     endpoint
@@ -300,27 +338,48 @@ pub async fn run() {
 
     // Go through an epoch's rounds
     for _ in 0..rounds_per_epoch {
-        // Witness
-        process_coordinator_witness(
-            &mut endpoint,
-            &payer,
-            &client,
-            &coordinator_instance,
-            &coordinator_account,
-            &Witness {
-                proof: WitnessProof {
-                    witness: true.into(),
-                    position: 0,
-                    index: 0,
+        // Fetch the state at the start of the round
+        let coordinator_account_state =
+            get_coordinator_account_state(&mut endpoint, &coordinator_account)
+                .await
+                .unwrap()
+                .unwrap();
+        // Process clients round witness
+        for client in &clients {
+            let witness_proof = CommitteeSelection::from_coordinator(
+                &coordinator_account_state.coordinator,
+                0,
+            )
+            .unwrap()
+            .get_witness(
+                coordinator_account_state
+                    .coordinator
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .position(|c| c.id.signer.eq(&client.pubkey()))
+                    .unwrap() as u64,
+            );
+            if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
+                continue;
+            }
+            process_coordinator_witness(
+                &mut endpoint,
+                &payer,
+                client,
+                &coordinator_instance,
+                &coordinator_account,
+                &Witness {
+                    proof: witness_proof,
+                    participant_bloom: Default::default(),
+                    broadcast_bloom: Default::default(),
+                    broadcast_merkle: Default::default(),
+                    metadata: Default::default(),
                 },
-                participant_bloom: Default::default(),
-                broadcast_bloom: Default::default(),
-                broadcast_merkle: Default::default(),
-                metadata: Default::default(),
-            },
-        )
-        .await
-        .unwrap();
+            )
+            .await
+            .unwrap();
+        }
         // Tick from witness back next round train (or epoch cooldown after the last round)
         endpoint
             .forward_clock_unix_timestamp(round_witness_time)
@@ -341,8 +400,8 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &clients[0],
+        &clients_collateral[0],
         &collateral_mint,
         &coordinator_instance,
         &coordinator_account,
@@ -370,12 +429,12 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &clients[0],
+        &clients_collateral[0],
         &collateral_mint,
         &run,
         &coordinator_account,
-        earned_point_per_epoch,
+        earned_point_per_epoch_per_client,
     )
     .await
     .unwrap_err();
@@ -387,31 +446,35 @@ pub async fn run() {
             &main_authority,
             &main_authority_collateral,
             &run_collateral,
-            5_000_000,
+            top_up_collateral_amount,
         )
         .await
         .unwrap();
 
     // Now that a new epoch has started, we can claim our earned point
-    process_treasurer_participant_claim(
-        &mut endpoint,
-        &payer,
-        &client,
-        &client_collateral,
-        &collateral_mint,
-        &run,
-        &coordinator_account,
-        earned_point_per_epoch,
-    )
-    .await
-    .unwrap();
+    for i in 0..clients.len() {
+        let client = &clients[i];
+        let client_collateral = &clients_collateral[i];
+        process_treasurer_participant_claim(
+            &mut endpoint,
+            &payer,
+            client,
+            client_collateral,
+            &collateral_mint,
+            &run,
+            &coordinator_account,
+            earned_point_per_epoch_per_client,
+        )
+        .await
+        .unwrap();
+    }
 
     // Can't claim anything past the earned points
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client,
-        &client_collateral,
+        &clients[0],
+        &clients_collateral[0],
         &collateral_mint,
         &run,
         &coordinator_account,
@@ -421,15 +484,17 @@ pub async fn run() {
     .unwrap_err();
 
     // Check that we could claim only exactly the right amount
-    assert_eq!(
-        endpoint
-            .get_spl_token_account(&client_collateral)
-            .await
-            .unwrap()
-            .unwrap()
-            .amount,
-        earned_point_per_epoch,
-    );
+    for client_collateral in &clients_collateral {
+        assert_eq!(
+            endpoint
+                .get_spl_token_account(client_collateral)
+                .await
+                .unwrap()
+                .unwrap()
+                .amount,
+            earned_point_per_epoch_per_client,
+        );
+    }
     assert_eq!(
         endpoint
             .get_spl_token_account(&run_collateral)
@@ -437,6 +502,7 @@ pub async fn run() {
             .unwrap()
             .unwrap()
             .amount,
-        5_000_001 - earned_point_per_epoch,
+        1 + top_up_collateral_amount
+            - earned_point_per_epoch_per_client * clients.len() as u64,
     );
 }

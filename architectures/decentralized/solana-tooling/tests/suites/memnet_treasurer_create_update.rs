@@ -26,7 +26,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 5_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -69,8 +69,8 @@ pub async fn run() {
             cold_start_warmup_steps: 0,
         })),
         progress: None,
-        epoch_earning_rate: Some(66),
-        epoch_slashing_rate: None,
+        epoch_earning_rate_total_shared: Some(66),
+        epoch_slashing_rate_per_client: None,
         paused: Some(false),
     };
 

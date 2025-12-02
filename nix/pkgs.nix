@@ -13,6 +13,7 @@ lib.makeScope pkgs.newScope (
       "psyche-centralized-local-testnet"
       "expand-distro"
       "preview-lr"
+      "psyche-sidecar"
     ];
 
     rustExampleNames = [
@@ -21,52 +22,99 @@ lib.makeScope pkgs.newScope (
       "train"
     ];
 
-    rustPackages = lib.mapAttrs (_: lib.id) (
-      lib.genAttrs (rustPackageNames ++ rustExampleNames) (
-        name:
-        self.psycheLib.buildRustPackageWithPythonSidecar {
-          inherit name;
-          isExample = lib.elem name rustExampleNames;
-        }
-      )
-    );
+    allRustPackageNames = rustPackageNames ++ rustExampleNames;
 
-    nixglhostRustPackages = lib.listToAttrs (
-      (map (
-        name: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers rustPackages.${name})
-      ) rustPackageNames)
-      ++ (map (
-        name: lib.nameValuePair "${name}-nixglhost" (self.psycheLib.useHostGpuDrivers rustPackages.${name})
-      ) rustExampleNames)
-    );
+    externalRustPackages = {
+      solana_toolbox_cli = pkgs.rustPlatform.buildRustPackage rec {
+        pname = "solana_toolbox_cli";
+        version = "0.4.3";
 
-    # Import Docker configurations
-    dockerPackages = import ./docker.nix {
-      inherit pkgs nixglhostRustPackages inputs;
+        src = pkgs.fetchCrate {
+          inherit pname version;
+          sha256 = "sha256-6bCbFtVAs4MctSYslTNBk859LxfdOjwetvq/1Ub3VVg=";
+        };
+
+        cargoHash = "sha256-cQ8XkfWdU2HxYnyZQNC59lWWDMbJ0OLocmTiH+N5zrc=";
+
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+          perl
+        ];
+        buildInputs = with pkgs; [ openssl ];
+      };
     };
 
-    psychePackages =
-      {
-        psyche-website-wasm = self.callPackage ../website/wasm { };
-        psyche-website-shared = self.callPackage ../website/shared { };
+    rustPackages =
+      let
+        inherit (self.psycheLib)
+          useHostGpuDrivers
+          buildRustPackageWithPsychePythonEnvironment
+          buildRustPackageWithoutPython
+          ;
+      in
+      lib.listToAttrs (
+        lib.concatMap (name: [
+          {
+            name = name;
+            value = useHostGpuDrivers (buildRustPackageWithPsychePythonEnvironment {
+              inherit name;
+              isExample = lib.elem name rustExampleNames;
+            });
+          }
+          {
+            name = "${name}-nopython";
+            value = useHostGpuDrivers (buildRustPackageWithoutPython {
+              inherit name;
+              isExample = lib.elem name rustExampleNames;
+            });
+          }
+        ]) allRustPackageNames
+      );
+    dockerPackages = import ./docker.nix {
+      inherit
+        pkgs
+        inputs
+        rustPackages
+        externalRustPackages
+        ;
+    };
 
-        psyche-deserialize-zerocopy-wasm = self.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
+    mergeAttrsetsNoConflicts =
+      error: attrsets:
+      builtins.foldl' (
+        acc: current:
+        let
+          conflicts = builtins.filter (key: builtins.hasAttr key acc) (builtins.attrNames current);
+        in
+        if conflicts != [ ] then
+          throw "${error} Conflicting keys: ${builtins.toString conflicts}"
+        else
+          acc // current
+      ) { } attrsets;
 
-        solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
-        solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
+    psychePackages = (
+      mergeAttrsetsNoConflicts "can't merge psyche package sets." [
+        {
+          psyche-website-wasm = self.callPackage ../website/wasm { };
+          psyche-website-shared = self.callPackage ../website/shared { };
 
-        psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+          psyche-deserialize-zerocopy-wasm = self.psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
 
-      }
-      // rustPackages
-      // nixglhostRustPackages
-      // dockerPackages;
+          solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
+          solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
+
+          psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+        }
+        rustPackages
+        externalRustPackages
+        dockerPackages
+      ]
+    );
   in
   {
     psycheLib = import ./lib.nix {
       inherit pkgs inputs;
     };
-
     inherit psychePackages;
   }
   // lib.mapAttrs (_: lib.id) psychePackages

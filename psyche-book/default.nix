@@ -35,6 +35,8 @@ let
   );
 in
 stdenvNoCC.mkDerivation {
+  __structuredAttrs = true;
+
   name = "psyche-book";
   src = ./.;
 
@@ -47,9 +49,15 @@ stdenvNoCC.mkDerivation {
   postPatch = ''
     mkdir -p generated/cli
 
+    # we set HOME to a writable directory to avoid cache dir permission issues
+    export HOME=$TMPDIR
+
     ${lib.concatMapStringsSep "\n" (
       name:
-      "${rustPackages.${name}}/bin/${name} print-all-help --markdown > generated/cli/${
+      let
+        noPythonPackage = "${name}-nopython";
+      in
+      "${rustPackages.${noPythonPackage}}/bin/${name} print-all-help --markdown > generated/cli/${
         lib.replaceStrings [ "-" ] [ "-" ] name
       }.md"
     ) rustPackageNames}

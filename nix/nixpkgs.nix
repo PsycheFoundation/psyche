@@ -6,6 +6,8 @@
 
 let
   cudaSupported = builtins.elem system [ "x86_64-linux" ];
+  metalSupported = builtins.elem system [ "aarch64-darwin" ];
+  cudaVersion = "12.8";
 in
 (
   lib.optionalAttrs (system != null) { inherit system; }
@@ -14,8 +16,10 @@ in
       inputs.rust-overlay.overlays.default
       (final: prev: {
         python312Packages = prev.python312Packages.override {
-          overrides = pyfinal: pyprev: rec {
-            torch = pyprev.torch-bin;
+          overrides = pyfinal: pyprev: {
+            torch = pyfinal.torch-bin;
+            flash-attn = pyfinal.callPackage ../python/flash-attn.nix { };
+            liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
           };
         };
       })
@@ -28,13 +32,16 @@ in
       )
     ];
 
-    config =
-      {
-        allowUnfree = true;
-      }
-      // lib.optionalAttrs cudaSupported {
-        cudaSupport = true;
-        cudaVersion = "12.8";
-      };
+    config = {
+      allowUnfree = true;
+      metalSupport = lib.mkDefault false;
+    }
+    // lib.optionalAttrs cudaSupported {
+      cudaSupport = true;
+      inherit cudaVersion;
+    }
+    // lib.optionalAttrs metalSupported {
+      metalSupport = true;
+    };
   }
 )

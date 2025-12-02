@@ -11,6 +11,8 @@ You'll need to provide:
 - a unique run ID - just a few characters to uniquely identify your run.
 - a name & description for your run
 
+Also, for all the commands you will need to provide the path to you Solana private key.
+
 ### Setup Joining Authorizations
 
 Before we can get started we need to decide who will be able to join the run.
@@ -41,11 +43,9 @@ For a standard run without token incentive distribution layer
 ```bash
 psyche-solana-client create-run \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    --join_authority [JOIN_AUTHORITY_PUBKEY] \
-    --name [NAME] \
-    --description [DESCRIPTION]
+    --join-authority [JOIN_AUTHORITY_PUBKEY] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ### Creating a run with token rewards
@@ -55,12 +55,10 @@ For a run that distributes tokens as reward to the training participants, we nee
 ```bash
 psyche-solana-client create-run \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    --join_authority [JOIN_AUTHORITY_PUBKEY] \
-    --treasurer-collateral-mint [REWARD_COLLATERAL_MINT] \
-    --name [NAME] \
-    --description [DESCRIPTION]
+    --join-authority [JOIN_AUTHORITY_PUBKEY] \
+    --treasurer-collateral-mint [COLLATERAL_MINT_PUBKEY] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Initializing configuration
@@ -75,9 +73,9 @@ You'll need to provide:
 ```bash
 psyche-solana-client update-config \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    --config-path [CONFIG_FILE]
+    --config-path [CONFIG_FILE_PATH] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Starting the training
@@ -87,9 +85,9 @@ At this point, your run is ready to go! You can now set its state to "unpaused",
 ```bash
 psyche-solana-client set-paused \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
-    resume
+    --resume \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 Congratulations! As soon as your first client joins, your model is being trained.
@@ -101,10 +99,10 @@ You can configure how many points does each client earns and loses for each epoc
 ```bash
 psyche-solana-client set-future-epoch-rates \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID] \
     --earning-rate [EARNING_RATE] \
-    --slashing-rate [SLASHING_RATE]
+    --slashing-rate [SLASHING_RATE] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Funding the run with collateral
@@ -112,7 +110,11 @@ psyche-solana-client set-future-epoch-rates \
 To distribute collateral to users, we need to periodically top-up the run's treasury so that points earned by users during compute can then be claimed against the treasury.
 
 ```sh
-sh scripts/treasurer-run-top-up.sh [RPC] [COLLATERAL_SENDER_KEYPAIR] [RUN_ID] [AMOUNT]
+psyche-solana-client treasurer-top-up-rewards \
+    --rpc [RPC] \
+    --run-id [RUN_ID] \
+    --collateral-amount [COLLATERAL_AMOUNT] \
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
 ## Inspect the content of a run
@@ -120,8 +122,16 @@ sh scripts/treasurer-run-top-up.sh [RPC] [COLLATERAL_SENDER_KEYPAIR] [RUN_ID] [A
 Optionally you can get detailled technical information about a run that was previously created for troubleshooting purposes.
 
 ```bash
-psyche-solana-client info \
+psyche-solana-client json-dump-run \
     --rpc [RPC] \
-    --ws-rpc [WS_RPC] \
     --run-id [RUN_ID]
+```
+
+For more info about a specific user inside of a run, you can also use:
+
+```bash
+psyche-solana-client json-dump-user \
+    --rpc [RPC] \
+    --run-id [RUN_ID] \
+    --wallet [PUBLIC_KEY]
 ```

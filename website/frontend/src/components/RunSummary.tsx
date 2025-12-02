@@ -8,6 +8,7 @@ import { ShadowCard } from './ShadowCard.jsx'
 import { forest, slate } from '../colors.js'
 import { Progress } from './ProgressWrapper.js'
 import AnimatedTokensCounter from './AnimatedTokensCounter.js'
+import { memo } from 'react'
 
 const RunTitleRow = styled.div`
 	display: flex;
@@ -51,7 +52,7 @@ const InfoChits = styled.div`
 	display: flex;
 	gap: 16px;
 `
-export function RunSummaryCard({
+export const RunSummaryCard = memo(function RunSummaryCard({
 	info: {
 		id,
 		arch,
@@ -128,4 +129,4 @@ export function RunSummaryCard({
 			</div>
 		</ShadowCard>
 	)
-}
+})

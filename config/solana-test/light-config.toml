@@ -25,18 +25,15 @@ repo_id = "emozilla/llama2-20m-init"
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"
 shuffle = "DontShuffle"
-
 [model.LLM.data_location.Http.location.Gcp]
 bucket_name = "nous-pretraining-public-us"
 filter_directory = "fineweb-edu-tokenized-llama2"
-
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 250
 warmup_init_lr = 0.0
 total_steps = 25000
 final_lr = 4.0e-5
-
 [model.LLM.optimizer.Distro]
 clip_grad_norm = 1.0
 compression_decay = 0.999

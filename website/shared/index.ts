@@ -82,6 +82,9 @@ export type Metrics = {
 	tokensPerSecond: number
 	lr: number
 	evals: Record<string, number>
+	promptResults: number[]
+	promptIndex: number
+	cumulativePromptResults: number[]
 }
 
 export type OverTime<T extends object> = {
@@ -135,6 +138,9 @@ export interface RunData {
 		summary: NullableRecursive<Metrics>
 		history: OverTime<Metrics>
 	}
+	promptResults: number[]
+	promptIndex: number
+	cumulativePromptResults: number[]
 }
 
 interface ChainStatus {
@@ -173,6 +179,9 @@ export type ApiGetRuns = MaybeError<{
 	runs: RunSummary[]
 	totalTokens: bigint
 	totalTokensPerSecondActive: bigint
+}>
+export type ApiGetCheckpointStatus = MaybeError<{
+	isValid: boolean
 }>
 export type ApiGetContributionInfo = MaybeError<ContributionInfo>
 

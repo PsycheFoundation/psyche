@@ -4,6 +4,7 @@ mod auto_model;
 mod auto_tokenizer;
 mod batcher;
 mod causal_language_model;
+mod device_utils;
 mod distro;
 mod dummy;
 mod fp32_gradient_accumulator;
@@ -35,6 +36,7 @@ pub use causal_language_model::{
     CausalLM, CausalLanguageModel, EosToks, LanguageModelBuilder, LanguageModelConfig,
     LanguageModelForward,
 };
+pub use device_utils::{Devices, get_optimal_devices};
 pub use distro::{CompressDCT, Distro, DistroResult, TransformDCT};
 pub use dummy::{DummyModel, get_dummy_parameters};
 pub use fp32_gradient_accumulator::Fp32GradientAccumulator;
@@ -72,13 +74,12 @@ pub use variable::{StableVarStoreIterator, StableVariableIterator, Variable};
 pub fn set_torch_rng_seed() {
     use rand::Rng;
 
-    let seed: i64 = rand::thread_rng().r#gen();
+    let seed: i64 = rand::rng().random();
     tch::manual_seed(seed);
     println!("torch seed set to: {seed}");
 }
 
 pub fn set_suggested_env_vars() {
-    std::env::set_var("TORCH_NCCL_AVOID_RECORD_STREAMS", "1");
     std::env::set_var("NCCL_P2P_DIRECT_DISABLE", "1");
     std::env::set_var("NCCL_LAUNCH_MODE", "GROUP");
 }

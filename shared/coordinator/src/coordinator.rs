@@ -14,10 +14,14 @@ pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
+// run_id must be at most 32 bytes because of PDA constraints
+pub const SOLANA_RUN_ID_MAX_LEN: usize = 32;
 
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
 pub const WAITING_FOR_MEMBERS_EXTRA_SECONDS: u64 = 10;
+// max amount of tokens to send in a witness message
+pub const MAX_TOKENS_TO_SEND: usize = 16;
 
 // bloom filter with 1024 bits (16 u64)
 pub type WitnessBloom = Bloom<16, 8>;
@@ -172,6 +176,8 @@ pub struct WitnessMetadata {
     pub bandwidth_per_sec: f32,
     pub loss: f32,
     pub evals: FixedVec<WitnessEvalResult, 8>,
+    pub prompt_results: FixedVec<i32, { MAX_TOKENS_TO_SEND }>,
+    pub prompt_index: u8,
     pub efficency: f32,
 }
 
@@ -211,7 +217,6 @@ pub enum CoordinatorError {
     DuplicateWitness,
     InvalidHealthCheck,
     Halted,
-    AlreadyCheckpointed,
     WitnessesFull,
     CannotResume,
     InvalidWithdraw,
@@ -271,7 +276,6 @@ pub struct CoordinatorEpochState<T> {
     pub rounds_head: u32,
     pub start_step: u32,
     pub first_round: SmallBoolean,
-    pub checkpointed: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
 }
 
@@ -291,7 +295,7 @@ pub struct CoordinatorProgress {
 #[serde(bound = "T: NodeIdentity")]
 #[repr(C)]
 pub struct Coordinator<T> {
-    pub run_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
+    pub run_id: FixedString<{ SOLANA_RUN_ID_MAX_LEN }>,
 
     pub run_state: RunState,
 
@@ -370,7 +374,6 @@ impl std::fmt::Display for CoordinatorError {
             CoordinatorError::DuplicateWitness => write!(f, "Duplicate witness"),
             CoordinatorError::InvalidHealthCheck => write!(f, "Invalid health check"),
             CoordinatorError::Halted => write!(f, "Halted"),
-            CoordinatorError::AlreadyCheckpointed => write!(f, "Already checkpointed"),
             CoordinatorError::WitnessesFull => write!(f, "Witnesses full"),
             CoordinatorError::CannotResume => write!(f, "Cannot resume"),
             CoordinatorError::InvalidWithdraw => write!(f, "Invalid withdraw"),
@@ -403,7 +406,6 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             rounds: Default::default(),
             rounds_head: Default::default(),
             first_round: true.into(),
-            checkpointed: Default::default(),
             clients: Default::default(),
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
@@ -595,22 +597,17 @@ impl<T: NodeIdentity> Coordinator<T> {
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
-        if self.epoch_state.checkpointed.is_false() {
-            // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
-            // with the last checkpointed one. We could instead have a vector of hub repos to have
-            // more download options.
-            match &mut self.model {
-                Model::LLM(llm) => match llm.checkpoint {
-                    Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
-                    Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                    _ => {}
-                },
-            }
-            self.epoch_state.checkpointed = true.into();
-            Ok(())
-        } else {
-            Err(CoordinatorError::AlreadyCheckpointed)
+        // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
+        // with the last checkpointed one. We could instead have a vector of hub repos to have
+        // more download options.
+        match &mut self.model {
+            Model::LLM(llm) => match llm.checkpoint {
+                Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
+                Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                _ => {}
+            },
         }
+        Ok(())
     }
 
     pub fn withdraw(&mut self, index: u64) -> std::result::Result<(), CoordinatorError> {
@@ -640,6 +637,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             if self.active() {
                 self.pending_pause = true.into();
             } else {
+                self.withdraw_all()?;
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.epoch_state.cold_start_epoch = true.into();
             }
@@ -797,11 +795,14 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 
     pub fn active(&self) -> bool {
-        !self.halted()
-            && !matches!(
-                self.run_state,
-                RunState::WaitingForMembers | RunState::Warmup
-            )
+        !matches!(
+            self.run_state,
+            RunState::WaitingForMembers
+                | RunState::Warmup
+                | RunState::Uninitialized
+                | RunState::Finished
+                | RunState::Paused
+        )
     }
 
     pub fn halted(&self) -> bool {
@@ -853,16 +854,15 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 
     pub fn get_cold_start_warmup_bounds(&self) -> Option<(u32, u32)> {
-        match self.epoch_state.cold_start_epoch.is_true() {
-            true => Some((
-                self.epoch_state.start_step,
-                self.epoch_state.start_step
-                    + match &self.model {
-                        Model::LLM(llm) => llm.cold_start_warmup_steps,
-                    },
-            )),
-            false => None,
+        let Model::LLM(llm) = &self.model;
+        let cold_start_warmup_steps = llm.cold_start_warmup_steps;
+        if self.epoch_state.cold_start_epoch.is_false() || cold_start_warmup_steps == 0 {
+            return None;
         }
+        Some((
+            self.epoch_state.start_step,
+            self.epoch_state.start_step + cold_start_warmup_steps,
+        ))
     }
 
     fn get_global_batch_size_for_tokens(&self, tokens_processed: u64) -> u16 {
@@ -988,6 +988,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             if height == self.config.rounds_per_epoch - 1
                 || self.epoch_state.clients.len() < self.config.min_clients as usize
                 || num_witnesses < self.witness_quorum(num_witnesses)
+                || self.progress.step >= self.config.total_steps
                 || self.pending_pause.is_true()
             {
                 self.start_cooldown(unix_timestamp);
@@ -1023,6 +1024,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
 
             if self.pending_pause.is_true() {
+                self.withdraw_all()?;
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.pending_pause = false.into();
                 self.epoch_state.cold_start_epoch = true.into();

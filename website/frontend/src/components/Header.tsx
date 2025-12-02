@@ -140,14 +140,14 @@ export function Header() {
 							github
 						</a>
 						<a
-							href="https://forum.psyche.network/"
+							href="https://forum.nousresearch.com/"
 							title="discuss psyche's code & propose new models"
 						>
 							forum
 						</a>
 						<a
 							href="https://nousresearch.com/nous-psyche/"
-							title="read the psyche annoucement"
+							title="read the psyche announcement"
 						>
 							about psyche
 						</a>

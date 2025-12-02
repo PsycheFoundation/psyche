@@ -4,12 +4,9 @@
     {
       system,
       pkgs,
-      inputs',
       ...
     }:
     let
-      inherit (pkgs.psycheLib) buildRustPackageWithPythonSidecar useHostGpuDrivers;
-
     in
     {
       _module.args.pkgs = import inputs.nixpkgs (

@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
 use psyche_core::FixedString;
 
 use crate::CoordinatorAccount;
@@ -46,6 +47,10 @@ pub fn init_coordinator_processor(
     context: Context<InitCoordinatorAccounts>,
     params: InitCoordinatorParams,
 ) -> Result<()> {
+    if params.run_id.len() > SOLANA_RUN_ID_MAX_LEN {
+        return err!(ProgramError::RunIdInvalidLength);
+    }
+
     // Initialize the coordinator instance
     let coordinator_instance = &mut context.accounts.coordinator_instance;
     coordinator_instance.bump = context.bumps.coordinator_instance;

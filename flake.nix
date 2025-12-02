@@ -2,7 +2,7 @@
   description = "Nous Psyche";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/release-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
@@ -35,7 +35,6 @@
     };
     solana-pkgs = {
       url = "github:arilotter/solana-flake";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
     agenix-shell = {
       url = "github:aciceri/agenix-shell";
@@ -43,6 +42,7 @@
         nixpkgs.follows = "nixpkgs";
         flake-parts.follows = "flake-parts";
         nix-github-actions.follows = "";
+        treefmt-nix.follows = "treefmt-nix";
       };
     };
     treefmt-nix = {
@@ -55,6 +55,23 @@
         nixpkgs.follows = "nixpkgs";
         flake-compat.follows = "";
       };
+    };
+    garnix-cli = {
+      url = "github:arilotter/garnix-cli";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.treefmt-nix.follows = "treefmt-nix";
+    };
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
