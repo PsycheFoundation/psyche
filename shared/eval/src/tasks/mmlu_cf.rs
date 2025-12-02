@@ -1,11 +1,23 @@
 use crate::{
-    ASCII_UPPERCASE, TaskType, load_dataset,
+    TaskType, load_dataset,
     traits::{Document, LogLikelihoodTask},
 };
 use anyhow::Result;
 use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
 use std::{collections::HashMap, fmt::Display};
 
+/// MMLU with Counterfactual Prompting format.
+/// Same as MMLU but without showing the multiple choice options in the prompt.
+/// The model must complete the answer without seeing the available choices.
+/// # Example
+///
+/// text: "Question: Some facts about viruses: identify the incorrect fact:\nAnswer:"
+/// choices: [
+///     " The first viruses arose 2 billion years ago as parasites of Algae",
+///     " The first viruses came from outer space",
+///     " Viruses evolved before bacteria which in turn evolved before cells",
+///     " They can infect all forms of life even themselves!"
+/// ]
 pub struct MMLUCF {
     test_dataset: Dataset,
     validation_dataset: Dataset,
@@ -44,18 +56,13 @@ impl MMLUCF {
         let options = row
             .get_list(dataset.get_column_id("choices").unwrap())
             .unwrap();
-        let options = (0..options.len())
-            .map(|i| format!("{}. {}", ASCII_UPPERCASE[i], options.get_string(i).unwrap()))
-            .collect::<Vec<_>>();
+
         let choices = (0..options.len())
-            .map(|i| ASCII_UPPERCASE[i].to_owned())
+            .map(|i| format!(" {}", options.get_string(i).unwrap()))
             .collect::<Vec<_>>();
-        let text = format!(
-            "The following are multiple choice questions (with answers) about {}.\n\n{}\n{}\nAnswer:",
-            subject,
-            question,
-            options.join("\n")
-        );
+
+        let text = format!("Question: {}\nAnswer:", question);
+
         let answer = row
             .get_long(dataset.get_column_id("answer").unwrap())
             .unwrap() as usize;
