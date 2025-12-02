@@ -9,6 +9,7 @@
 		"dev-devnet": "VITE_MINING_POOL_CLUSTER=devnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://api.devnet.solana.com pnpm _dev",
 		"dev-mainnet": "VITE_MINING_POOL_CLUSTER=mainnet VITE_COORDINATOR_CLUSTER=mainnet VITE_MINING_POOL_RPC=https://quentin-uzfsvh-fast-mainnet.helius-rpc.com pnpm _dev",
 		"dev-devnet-and-mainnet": "VITE_MINING_POOL_CLUSTER=mainnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://quentin-uzfsvh-fast-mainnet.helius-rpc.com pnpm _dev",
+		"dev-remote": "VITE_BACKEND_URL='https://psyche.network/api' pnpm dev-devnet-and-mainnet",
 		"dev-fake": "VITE_MINING_POOL_CLUSTER=devnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://api.devnet.solana.com VITE_FAKE_DATA=1 pnpm _dev",
 		"build": "tsc -b && vite build",
 		"build-fake": "VITE_MINING_POOL_CLUSTER=devnet VITE_COORDINATOR_CLUSTER=devnet VITE_MINING_POOL_RPC=https://api.devnet.solana.com VITE_FAKE_DATA=1 pnpm build",

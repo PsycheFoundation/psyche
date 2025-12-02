@@ -7,7 +7,7 @@ use hf_hub::{
 };
 use std::{path::PathBuf, time::Instant};
 use thiserror::Error;
-use tracing::debug;
+use tracing::{error, info};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 const DATASET_EXTENSIONS: [&str; 1] = [".parquet"];
@@ -232,15 +232,33 @@ pub async fn upload_model_repo_async(
         .collect();
 
     let files = files?;
-    debug!("Committing to {}: {:?}", repo_id, files);
 
-    let commit_info = api_repo
+    let commit_info = match api_repo
         .upload_files(
             files,
             commit_message.clone(),
             commit_description.clone(),
             false,
         )
-        .await?;
+        .await
+    {
+        Ok(info) => {
+            info!(
+                repo = repo_id,
+                oid = info.oid,
+                "Successfully uploaded files to HuggingFace"
+            );
+            info
+        }
+        Err(e) => {
+            error!(
+                repo = repo_id,
+                error = ?e,
+                "Failed to upload files to HuggingFace. Full error details: {:#?}",
+                e
+            );
+            return Err(e.into());
+        }
+    };
     Ok(commit_info.oid)
 }
