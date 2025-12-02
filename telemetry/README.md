@@ -13,8 +13,12 @@ Once the telemetry stack is up, start your local training setup as usual, but re
 running the Psyche client:
 
 ```
-OTLP_METRICS_URL = "http://localhost:4318/v1/metrics" # OpenTelemetry collector metrics endpoint
-OTLP_LOGS_URL = "http://localhost:4318/v1/logs"       # OpenTelemetry collector logs endpoint
+just setup-solana-localnet-light-test-run
+```
+
+```
+export OTLP_METRICS_URL="http://localhost:4318/v1/metrics"
+export OTLP_LOGS_URL="http://localhost:4318/v1/logs"
 ```
 
 For convenience, you can run `just start-training-localnet-light-client-telemetry` to start the Psyche client with
