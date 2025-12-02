@@ -67,19 +67,6 @@ impl Drop for DockerTestCleanup {
     }
 }
 
-pub async fn e2e_testing_setup_with_big_model(
-    docker_client: Arc<Docker>,
-    init_num_clients: usize,
-) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client).await;
-
-    spawn_psyche_network_big_model(init_num_clients).unwrap();
-
-    spawn_ctrl_c_task();
-
-    DockerTestCleanup {}
-}
-
 /// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
@@ -107,6 +94,7 @@ pub async fn e2e_testing_setup_subscription(
     ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_architecture("HfAuto")
+        .with_model("NousResearch/Meta-Llama-3.1-8B")
         .with_batch_size(8 * init_num_clients as u32)
         .build();
 
@@ -283,39 +271,14 @@ pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcher
     #[cfg(not(feature = "python"))]
     ConfigBuilder::new()
         .with_num_clients(init_num_clients)
-        .build();
-    #[cfg(feature = "python")]
-    ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_architecture("HfAuto")
-        .with_batch_size(8 * init_num_clients as u32)
-        .build();
-
-    let mut command = Command::new("just");
-    let output = command
-        .args(["run_test_infra", &format!("{init_num_clients}")])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-        .expect("Failed to spawn docker compose instances");
-
-    if !output.status.success() {
-        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
-    }
-
-    println!("\n[+] Docker compose network spawned successfully!");
-    println!();
-    Ok(())
-}
-
-// Updated spawn function
-pub fn spawn_psyche_network_big_model(init_num_clients: usize) -> Result<(), DockerWatcherError> {
-    #[cfg(feature = "python")]
-    ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_batch_size(8 * init_num_clients as u32)
         .with_model("NousResearch/Meta-Llama-3.1-8B")
+        .build();
+
+    #[cfg(feature = "python")]
+    ConfigBuilder::new()
+        .with_num_clients(init_num_clients)
         .with_architecture("HfAuto")
+        .with_batch_size(8 * init_num_clients as u32)
         .build();
 
     let mut command = Command::new("just");
