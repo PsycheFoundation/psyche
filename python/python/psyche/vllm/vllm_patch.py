@@ -104,6 +104,16 @@ def apply_vllm_patches():
                     from psyche.vllm.distributed_updater import weight_updater_process
                     import os
 
+                    # Check if distributed config is available
+                    # In testing/development without Psyche coordinator, these may not be set
+                    if "PSYCHE_WORLD_SIZE" not in os.environ:
+                        logger.info(
+                            "Psyche: PSYCHE_WORLD_SIZE not set, skipping distributed updater spawn. "
+                            "Set PSYCHE_WORLD_SIZE, PSYCHE_RANK, MASTER_ADDR, MASTER_PORT to enable distributed mode. "
+                            "This is expected during basic testing without Psyche coordinator."
+                        )
+                        return
+
                     # Get distributed config from environment
                     # These should be set by Psyche's distributed training infrastructure
                     process_group_config = {
