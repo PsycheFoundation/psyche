@@ -7,9 +7,8 @@ use psyche_data_provider::{Dataset, ListAccessor, Row, RowAccessor, Split};
 use std::{collections::HashMap, fmt::Display};
 
 /// MMLU with Counterfactual Prompting format.
-/// Same as MMLU but without showing the multiple choice options in the prompt.
-/// The model must complete the answer without seeing the available choices.
-/// # Example
+/// It uses the same dataset as MMLU but changes the format of the question. Instead of showing multiple choice options,
+/// the model evaluates the probability of each complete answer.
 ///
 /// text: "Question: Some facts about viruses: identify the incorrect fact:\nAnswer:"
 /// choices: [
