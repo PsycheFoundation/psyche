@@ -221,9 +221,8 @@ impl RunManager {
     }
 
     pub async fn run(&self) -> Result<()> {
-        let mut docker_tag = self.prepare_image().await?;
-
         loop {
+            let mut docker_tag = self.prepare_image().await?;
             info!("Starting container...");
 
             let start_time = tokio::time::Instant::now();
@@ -256,7 +255,6 @@ impl RunManager {
             // Only retry on version mismatch (exit code 10)
             if exit_code == VERSION_MISMATCH_EXIT_CODE {
                 warn!("Version mismatch detected, re-checking coordinator for new version...");
-                docker_tag = self.prepare_image().await?;
                 info!("Waiting {} seconds before retry...", RETRY_DELAY_SECS);
                 tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
             } else {
