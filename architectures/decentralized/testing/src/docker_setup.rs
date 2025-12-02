@@ -321,8 +321,6 @@ pub fn spawn_psyche_network_big_model(init_num_clients: usize) -> Result<(), Doc
         .with_architecture("HfAuto")
         .build();
 
-    println!("[+] Config file written to: {}", config_file_path.display());
-
     let mut command = Command::new("just");
     let output = command
         .args(["run_test_infra", &format!("{init_num_clients}")])

@@ -16,8 +16,7 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, e2e_testing_setup_with_big_model, kill_all_clients, spawn_new_client,
-        spawn_new_client_with_monitoring,
+        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -25,6 +24,9 @@ use psyche_decentralized_testing::{
 use rstest::*;
 use serial_test::serial;
 use tokio::time;
+
+#[cfg(feature = "python")]
+use psyche_decentralized_testing::docker_setup::e2e_testing_setup_with_big_model;
 
 /// spawn 1 clients and run for 3 epochs
 /// assert client and coordinator state synchronization
@@ -955,9 +957,9 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 /// spawn 1 clients and run for 3 epochs
 /// assert client and coordinator state synchronization
 /// assert that the loss decreases in each epoch
+#[cfg(feature = "python")]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
-#[cfg(feature = "python")]
 async fn test_big_model_with_sidecars() {
     // set test variables
     let run_id = "test".to_string();
