@@ -67,7 +67,8 @@ def broadcast_parameter(
     metadata[1] = param_name_len
 
     # Parameter name bytes
-    param_name_array = np.frombuffer(param_name_bytes, dtype=np.uint8)
+    # Copy to make writable (frombuffer returns read-only view)
+    param_name_array = np.frombuffer(param_name_bytes, dtype=np.uint8).copy()
     metadata[2 : 2 + param_name_len] = (
         torch.from_numpy(param_name_array).long().to(device)
     )
