@@ -1,10 +1,12 @@
 use anchor_spl::associated_token;
 use psyche_solana_distributor::state::AirdropMetadata;
 use psyche_solana_distributor::state::Allocation;
+use psyche_solana_distributor::state::MerkleHash;
 use psyche_solana_distributor::state::Vesting;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
+use solana_toolbox_endpoint::ToolboxEndpoint;
 
 use crate::api::airdrop_merkle_tree::AirdropMerkleTree;
 use crate::api::create_memnet_endpoint::create_memnet_endpoint;
@@ -125,92 +127,52 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Redeem nothing should work with a valid input
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
+    // Prepare common params for the claimer's claim redeem attempts
+    let mut context = ClaimerClaimRedeemContext {
+        endpoint,
+        payer,
+        claimer,
+        receiver_collateral,
         airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        0,
-    )
-    .await
-    .unwrap();
+        allocation: claimer_allocation,
+        merkle_proof: claimer_merkle_proof,
+        collateral_mint,
+    };
+
+    // Redeem nothing should work with a valid input
+    do_redeem(&mut context, 0).await.unwrap();
 
     // Redeeming something before vesting start should fail
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        1,
-    )
-    .await
-    .unwrap_err();
+    do_redeem(&mut context, 1).await.unwrap_err();
 
     // Move time forward to exactly vesting start
-    endpoint
+    context
+        .endpoint
         .forward_clock_unix_timestamp(u64::from(vesting_start_delay_seconds))
         .await
         .unwrap();
 
     // Redeeming something right at the start of vesting should still fail
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        1,
-    )
-    .await
-    .unwrap_err();
+    do_redeem(&mut context, 1).await.unwrap_err();
 
     // Move one second forward into vesting
-    endpoint.forward_clock_unix_timestamp(1).await.unwrap();
+    context
+        .endpoint
+        .forward_clock_unix_timestamp(1)
+        .await
+        .unwrap();
 
     // We should now be able to redeem exactly one second worth of vested collateral
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        vesting_per_second_collateral_amount,
-    )
-    .await
-    .unwrap();
+    do_redeem(&mut context, vesting_per_second_collateral_amount)
+        .await
+        .unwrap();
 
     // But not a single cent more
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        1,
-    )
-    .await
-    .unwrap_err();
+    do_redeem(&mut context, 1).await.unwrap_err();
 
     // Move time forward to the halfway point of vesting
-    endpoint
+    context
+        .endpoint
         .forward_clock_unix_timestamp(u64::from(
             vesting_duration_seconds / 2 - 1,
         ))
@@ -218,15 +180,8 @@ pub async fn run() {
         .unwrap();
 
     // We should now be able to redeem up to half of the vested collateral
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
+    do_redeem(
+        &mut context,
         claimer_vesting.end_collateral_amount / 2
             - vesting_per_second_collateral_amount,
     )
@@ -234,53 +189,74 @@ pub async fn run() {
     .unwrap();
 
     // And not a single cent more
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        1,
-    )
-    .await
-    .unwrap_err();
+    do_redeem(&mut context, 1).await.unwrap_err();
 
     // Move time forward to long after the end of vesting
-    endpoint
+    context
+        .endpoint
         .forward_clock_unix_timestamp(u64::from(vesting_duration_seconds * 10))
         .await
         .unwrap();
 
     // We should now be able to redeem all the rest of the allocated collateral
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        claimer_vesting.end_collateral_amount / 2,
-    )
-    .await
-    .unwrap();
+    do_redeem(&mut context, claimer_vesting.end_collateral_amount / 2)
+        .await
+        .unwrap();
 
     // And not a single cent more
+    do_redeem(&mut context, 1).await.unwrap_err();
+
+    // And redeeming nothing should still work
+    do_redeem(&mut context, 0).await.unwrap();
+
+    // Check final balances
+    assert_eq!(
+        context
+            .endpoint
+            .get_spl_token_account(&context.receiver_collateral)
+            .await
+            .unwrap()
+            .unwrap()
+            .amount,
+        claimer_vesting.end_collateral_amount
+    );
+    assert_eq!(
+        context
+            .endpoint
+            .get_spl_token_account(&airdrop_collateral)
+            .await
+            .unwrap()
+            .unwrap()
+            .amount,
+        airdrop_collateral_amount - claimer_vesting.end_collateral_amount
+    );
+}
+
+struct ClaimerClaimRedeemContext {
+    endpoint: ToolboxEndpoint,
+    payer: Keypair,
+    claimer: Keypair,
+    receiver_collateral: Pubkey,
+    airdrop_id: u64,
+    allocation: Allocation,
+    merkle_proof: Vec<MerkleHash>,
+    collateral_mint: Pubkey,
+}
+
+async fn do_redeem(
+    context: &mut ClaimerClaimRedeemContext,
+    collateral_amount: u64,
+) -> anyhow::Result<()> {
     process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        1,
+        &mut context.endpoint,
+        &context.payer,
+        &context.claimer,
+        &context.receiver_collateral,
+        context.airdrop_id,
+        &context.allocation,
+        &context.merkle_proof,
+        &context.collateral_mint,
+        collateral_amount,
     )
     .await
-    .unwrap_err();
 }

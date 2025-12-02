@@ -4,7 +4,7 @@ pub mod state;
 use anchor_lang::prelude::*;
 use logic::*;
 
-declare_id!("CQy5JKR2Lrm16pqSY5nkMaMYSazRk2aYx99pJDNGupR7");
+declare_id!("GQEX84Laeg8JSJiiP5hL9L1vi3gGAMB3E6r1eWhf2fjS");
 
 #[program]
 pub mod psyche_solana_distributor {
