@@ -271,13 +271,13 @@ pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcher
     #[cfg(not(feature = "python"))]
     ConfigBuilder::new()
         .with_num_clients(init_num_clients)
-        .with_model("NousResearch/Meta-Llama-3.1-8B")
         .build();
 
     #[cfg(feature = "python")]
     ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_architecture("HfAuto")
+        .with_model("NousResearch/Meta-Llama-3.1-8B")
         .with_batch_size(8 * init_num_clients as u32)
         .build();
 
