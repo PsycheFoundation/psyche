@@ -3,13 +3,9 @@ from typing import List, Optional, Dict, Any
 import torch
 
 # Import and apply vLLM patches BEFORE importing vLLM
-# This is critical for enabling shared memory access
+# This ensures GPUModelRunner is patched for distributed weight updates
 try:
-    from psyche.vllm.vllm_patch import (
-        get_shared_state_dict,
-        get_all_shared_state_dicts,
-        get_state_dict_from_engine,
-    )
+    from psyche.vllm import vllm_patch
 
     VLLM_PATCH_AVAILABLE = True
 except ImportError:
@@ -46,7 +42,10 @@ logger = logging.getLogger(__name__)
 class UpdatableLLMEngine:
     """
     A wrapper around vLLM's LLMEngine that supports dynamic weight updates
-    from a shared memory source (Psyche Distributed Updater).
+    via torch.distributed (Psyche Distributed Updater).
+
+    Weight updates are handled by the distributed updater process spawned
+    by the patched GPUModelRunner, not through this wrapper's methods.
     """
 
     def __init__(
@@ -77,67 +76,9 @@ class UpdatableLLMEngine:
         self.engine = LLMEngine.from_engine_args(engine_args)
         self.request_counter = Counter()
 
-        # Map parameter names to their PyTorch tensors for fast access during updates
-        # We build this registry once at startup
-        self.param_registry: Dict[str, torch.Tensor] = {}
-        self._build_param_registry()
-
-    def _build_param_registry(self):
-        """
-        Creates a mapping of parameter names to tensor objects.
-        This allows O(1) access when applying updates.
-
-        Tries multiple approaches in order:
-        1. Distributed updater (via patching + torch.distributed) - production mode
-        2. RPC-based updates (via patching + collective_rpc) - testing mode
-        3. Direct model_executor access (old vLLM versions)
-        """
-        # For vLLM 0.11+ with patches, we support both distributed and RPC modes
-        if VLLM_PATCH_AVAILABLE:
-            import os
-
-            # Check if distributed updater is being used
-            use_distributed = os.environ.get("PSYCHE_USE_DISTRIBUTED_UPDATER") == "1"
-
-            if use_distributed:
-                logger.info(
-                    "vLLM 0.11+ with Psyche patches detected. "
-                    "Weight updates will use torch.distributed updater process."
-                )
-                self._using_distributed_mode = True
-                self._using_patched_mode = False
-            else:
-                logger.info(
-                    "vLLM 0.11+ with Psyche patches detected. "
-                    "Weight updates will use RPC-based in-place modification (testing mode)."
-                )
-                self._using_patched_mode = True
-                self._using_distributed_mode = False
-            return
-
-        # Check if we have the old-style direct model access
-        if hasattr(self.engine, "model_executor"):
-            try:
-                for (
-                    name,
-                    param,
-                ) in (
-                    self.engine.model_executor.driver_worker.model_runner.model.named_parameters()
-                ):
-                    self.param_registry[name] = param
-
-                logger.info(
-                    f"Registered {len(self.param_registry)} parameters via model_executor."
-                )
-            except AttributeError as e:
-                logger.warning(
-                    f"Could not build param registry via model_executor: {e}. "
-                    "Will use RPC-based weight updates instead."
-                )
-        else:
-            logger.info(
-                "vLLM 0.11+ detected without patches: using collective_rpc for weight updates."
-            )
+        logger.info(
+            "UpdatableLLMEngine initialized. Weight updates will be handled by distributed updater."
+        )
 
     def add_request(self, prompt: str, sampling_params_dict: Dict[str, Any]) -> str:
         """
@@ -170,143 +111,19 @@ class UpdatableLLMEngine:
 
     def update_weights(self, weight_dict: Dict[str, torch.Tensor]):
         """
-        Updates model weights using the appropriate method for the vLLM version.
+        Weight updates are not supported via this method.
 
-        Supported methods:
-        1. Distributed updater (vLLM 0.11+ with torch.distributed) - production mode
-        2. RPC-based in-place updates (vLLM 0.11+ with patches) - testing mode
-        3. Direct model_executor access (old vLLM versions)
-        4. collective_rpc with load_weights (vLLM 0.11+ without patches)
+        Weight updates are handled by the distributed updater process that is spawned
+        by the patched GPUModelRunner. Updates are sent via torch.distributed from
+        training nodes to the inference process group.
 
         Args:
-            weight_dict: Dictionary mapping parameter names to new weight tensors
+            weight_dict: Dictionary mapping parameter names to new weight tensors (ignored)
         """
-        # Method 1: Distributed updater (production mode)
-        if hasattr(self, "_using_distributed_mode") and self._using_distributed_mode:
-            logger.warning(
-                "Distributed mode: weight updates are handled by the distributed updater process. "
-                "Direct update_weights() calls are not supported in this mode. "
-                "Use torch.distributed to send updates to the training/inference process group."
-            )
-            # In distributed mode, updates come via torch.distributed, not through this method
-            return
-
-        # Method 2: RPC-based in-place updates (testing mode)
-        if hasattr(self, "_using_patched_mode") and self._using_patched_mode:
-            logger.info(
-                f"Updating {len(weight_dict)} weights via RPC in-place modification"
-            )
-            # Convert dict to list of serializable dicts with metadata
-            weight_updates = []
-            for name, tensor in weight_dict.items():
-                # Move to CPU and convert to flat list for serialization
-                cpu_tensor = tensor.detach().cpu()
-                weight_updates.append(
-                    {
-                        "name": name,
-                        "data": cpu_tensor.flatten().tolist(),
-                        "shape": list(tensor.shape),
-                        "dtype": str(tensor.dtype),
-                    }
-                )
-
-            try:
-                results = self.engine.collective_rpc(
-                    "update_psyche_weights", args=(weight_updates,)
-                )
-                logger.info(f"Weight update completed on {len(results)} workers")
-                return
-            except Exception as e:
-                logger.error(f"Failed to update weights via RPC: {e}")
-                import traceback
-
-                traceback.print_exc()
-                raise
-
-        # Method 2: Direct shared memory access (if param_registry was populated)
-        if self.param_registry and VLLM_PATCH_AVAILABLE:
-            logger.debug(f"Updating {len(weight_dict)} weights via shared memory")
-            updated_count = 0
-            for name, new_weight in weight_dict.items():
-                if name in self.param_registry:
-                    self.param_registry[name].data.copy_(new_weight)
-                    updated_count += 1
-                else:
-                    logger.warning(f"Parameter {name} not found in registry")
-            logger.info(
-                f"Updated {updated_count}/{len(weight_dict)} weights via shared memory"
-            )
-            return
-
-        # Method 2: Old-style direct model_executor access
-        if hasattr(self.engine, "model_executor") and self.param_registry:
-            logger.info(f"Updating {len(weight_dict)} weights via model_executor")
-            for name, new_weight in weight_dict.items():
-                if name in self.param_registry:
-                    self.param_registry[name].data.copy_(new_weight)
-                else:
-                    logger.warning(f"Parameter {name} not found in registry")
-            return
-
-        # Method 3: New vLLM 0.11+ approach using collective_rpc
-        logger.info(f"Updating {len(weight_dict)} weights via collective_rpc")
-
-        # Convert dict to list of (name, tensor) tuples for load_weights API
-        weights = list(weight_dict.items())
-
-        def apply_weights(model):
-            """Function to apply weights via model.load_weights"""
-            model.load_weights(weights=weights)
-            return True
-
-        try:
-            results = self.engine.collective_rpc("apply_model", args=(apply_weights,))
-            logger.info(f"Weight update completed on {len(results)} workers")
-        except Exception as e:
-            logger.error(f"Failed to update weights via collective_rpc: {e}")
-            raise
-
-    def get_model(self) -> Optional[torch.nn.Module]:
-        """
-        Returns the underlying model for weight updates.
-        This is critical for the updater daemon to access parameters.
-
-        Returns:
-            The vLLM model (torch.nn.Module), or None if not accessible
-            (e.g., in vLLM 0.11+ with V1 multiprocessing architecture)
-        """
-        if hasattr(self.engine, "model_executor"):
-            try:
-                return self.engine.model_executor.driver_worker.model_runner.model
-            except AttributeError:
-                logger.warning("Could not access model via model_executor")
-                return None
-        else:
-            logger.warning(
-                "Direct model access not available in vLLM 0.11+. "
-                "Use update_weights() method with collective_rpc instead."
-            )
-            return None
-
-    def share_memory(self):
-        """
-        Makes model parameters accessible across processes via PyTorch shared memory.
-        This enables zero-copy updates from the updater daemon.
-
-        IMPORTANT: Must be called before spawning the updater process!
-
-        Note: In vLLM 0.11+, this may not be available or necessary due to
-        the V1 multiprocessing architecture where the model runs in a separate process.
-        """
-        model = self.get_model()
-        if model is not None:
-            for param in model.parameters():
-                param.share_memory_()
-            logger.info("Model parameters moved to shared memory")
-        else:
-            logger.info(
-                "Skipping share_memory: model not directly accessible in vLLM 0.11+"
-            )
+        logger.warning(
+            "update_weights() called, but weight updates are handled by the distributed updater process. "
+            "Use torch.distributed to send updates to the training/inference process group."
+        )
 
     def get_tokenizer(self):
         """Returns the tokenizer used by this engine."""
