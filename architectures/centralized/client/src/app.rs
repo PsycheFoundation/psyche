@@ -24,7 +24,7 @@ use tracing::debug;
 
 pub(super) type Tabs = TabbedWidget<(ClientTUI, CoordinatorTui, NetworkTui, LoggerWidget)>;
 pub const TAB_NAMES: [&str; 4] = ["Client", "Coordinator", "Network", "Logger"];
-type TabsData = <Tabs as CustomWidget>::Data;
+pub type TabsData = <Tabs as CustomWidget>::Data;
 
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
