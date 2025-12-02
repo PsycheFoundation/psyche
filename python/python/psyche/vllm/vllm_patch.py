@@ -17,6 +17,38 @@ logger = logging.getLogger(__name__)
 # Removed global registry - torch.distributed handles everything now
 
 
+def get_shared_state_dict_from_engine(engine) -> Optional[Dict[str, torch.Tensor]]:
+    """
+    Get the shared state_dict from a vLLM engine for testing/debugging.
+
+    In production, weight updates come via torch.distributed to the updater process.
+    This function is for testing that the shared memory mechanism works.
+
+    Args:
+        engine: vLLM LLMEngine instance
+
+    Returns:
+        Shared state_dict if available, None otherwise
+    """
+    try:
+        # Navigate to the GPUModelRunner through vLLM's architecture
+        # Engine -> WorkerGroup -> workers -> model_runner
+        if hasattr(engine, "model_executor"):
+            # Try to get to the model runner
+            if hasattr(engine.model_executor, "driver_worker"):
+                worker = engine.model_executor.driver_worker
+                if hasattr(worker, "model_runner"):
+                    model_runner = worker.model_runner
+                    if hasattr(model_runner, "psyche_shared_state_dict"):
+                        return model_runner.psyche_shared_state_dict
+
+        logger.warning("Could not access psyche_shared_state_dict from engine")
+        return None
+    except Exception as e:
+        logger.error(f"Error accessing shared state_dict: {e}")
+        return None
+
+
 def apply_vllm_patches():
     """
     Apply all vLLM patches for Psyche integration.

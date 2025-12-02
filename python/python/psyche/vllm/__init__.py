@@ -12,6 +12,7 @@ Key Components:
 """
 
 from .engine import UpdatableLLMEngine, VLLM_AVAILABLE
+from .vllm_patch import get_shared_state_dict_from_engine
 from .transforms import (
     apply_qkv_fusion,
     apply_gate_up_fusion,
@@ -24,6 +25,8 @@ __all__ = [
     # Engine
     "UpdatableLLMEngine",
     "VLLM_AVAILABLE",
+    # Testing/Debug utilities
+    "get_shared_state_dict_from_engine",
     # Transforms
     "apply_qkv_fusion",
     "apply_gate_up_fusion",
