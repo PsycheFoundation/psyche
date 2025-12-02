@@ -347,7 +347,7 @@ async fn run(env_file: PathBuf, coordinator_program_id: String, local: bool) -> 
     let mut docker_tag = prepare_image(local, &coordinator_program_id, &docker_mgr).await?;
 
     loop {
-        info!("Starting container");
+        info!("Starting container...");
 
         let start_time = tokio::time::Instant::now();
         let container_id = docker_mgr.run_container(&docker_tag, &env_file, wallet_key.clone())?;
@@ -393,34 +393,28 @@ async fn run(env_file: PathBuf, coordinator_program_id: String, local: bool) -> 
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    match args.command {
-        Some(Commands::PrintAllHelp { markdown }) => {
-            // This is a required argument for the time being.
-            assert!(markdown);
-
-            let () = clap_markdown::print_help_markdown::<Args>();
-
-            Ok(())
-        }
-        None => {
-            // Default behavior: run the manager
-            tracing_subscriber::fmt()
-                .with_env_filter(
-                    tracing_subscriber::EnvFilter::try_from_default_env()
-                        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-                )
-                .init();
-
-            load_and_apply_env_file(&args.env_file)?;
-
-            let result = run(args.env_file, args.coordinator_program_id, args.local).await;
-
-            if let Err(e) = &result {
-                error!("Error: {}", e);
-                std::process::exit(1);
-            }
-
-            Ok(())
-        }
+    if let Some(Commands::PrintAllHelp { markdown }) = args.command {
+        // This is a required argument for the time being.
+        assert!(markdown);
+        let () = clap_markdown::print_help_markdown::<Args>();
+        return Ok(());
     }
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
+    load_and_apply_env_file(&args.env_file)?;
+
+    let result = run(args.env_file, args.coordinator_program_id, args.local).await;
+
+    if let Err(e) = &result {
+        error!("Error: {}", e);
+        std::process::exit(1);
+    }
+
+    Ok(())
 }
