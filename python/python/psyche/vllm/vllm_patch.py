@@ -129,6 +129,18 @@ def apply_vllm_patches():
                         f"Psyche: Spawning distributed updater with config: {process_group_config}"
                     )
 
+                    # Ensure MASTER_ADDR and MASTER_PORT are set for env:// init_method
+                    # These need to be in the environment for the spawned process
+                    if process_group_config["init_method"] == "env://":
+                        if (
+                            "MASTER_ADDR" not in os.environ
+                            or "MASTER_PORT" not in os.environ
+                        ):
+                            logger.warning(
+                                "Psyche: init_method='env://' but MASTER_ADDR/MASTER_PORT not set. "
+                                "Updater may fail to join process group."
+                            )
+
                     # Spawn updater process
                     ctx = mp.get_context("spawn")
 

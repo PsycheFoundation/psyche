@@ -80,15 +80,42 @@ def weight_updater_process(
         f"Starting weight updater process: rank={rank}, world_size={world_size}, backend={backend}"
     )
 
-    # Initialize process group
-    dist.init_process_group(
-        backend=backend,
-        init_method=init_method,
-        world_size=world_size,
-        rank=rank,
-    )
+    # Check environment variables needed for env:// init
+    import os
 
-    logger.info(f"Process group initialized successfully (rank {rank}/{world_size})")
+    if init_method == "env://":
+        master_addr = os.environ.get("MASTER_ADDR", "NOT_SET")
+        master_port = os.environ.get("MASTER_PORT", "NOT_SET")
+        logger.info(
+            f"Using env:// init method - MASTER_ADDR={master_addr}, MASTER_PORT={master_port}"
+        )
+
+        if master_addr == "NOT_SET" or master_port == "NOT_SET":
+            logger.error("MASTER_ADDR or MASTER_PORT not set in environment!")
+            raise RuntimeError(
+                "Cannot initialize process group: MASTER_ADDR/MASTER_PORT not set"
+            )
+
+    # Initialize process group
+    logger.info(
+        f"Calling dist.init_process_group(backend={backend}, init_method={init_method}, world_size={world_size}, rank={rank})"
+    )
+    try:
+        dist.init_process_group(
+            backend=backend,
+            init_method=init_method,
+            world_size=world_size,
+            rank=rank,
+        )
+        logger.info(
+            f"Process group initialized successfully (rank {rank}/{world_size})"
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize process group: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise
 
     # Get device from state_dict
     my_device = list(state_dict.values())[0].device
@@ -98,24 +125,45 @@ def weight_updater_process(
         f"Ready to receive weight updates. State dict has {len(state_dict)} parameters."
     )
 
-    # Simple update loop - just wait for broadcasts from training
-    # The training side will handle all the logic about what to send and when
+    # Update receive loop - wait for broadcasts from training
     with torch.no_grad():
         logger.info("Entering update receive loop...")
 
-        # For now, just keep the process alive and joined to the group
-        # The actual update logic will be implemented when we connect the training side
         try:
+            update_count = 0
             while True:
-                # Wait for a signal/tensor from training
-                # This is a placeholder - actual implementation will depend on
-                # how Psyche's training side wants to send updates
-                import time
+                # Receive broadcast from training process (rank 0)
+                # For testing, we receive whatever tensor the training process sends
+                # In production, this would be actual model parameters with metadata
 
-                time.sleep(1)
+                # Create a tensor to receive into
+                # We don't know the size ahead of time, so we'll use a fixed size for testing
+                received_tensor = torch.zeros(100, 100, device=my_device)
+
+                logger.info(f"Waiting for broadcast #{update_count + 1}...")
+                dist.broadcast(received_tensor, src=0)
+
+                # Check if it's a shutdown signal (tensor with -1)
+                if received_tensor[0, 0].item() == -1.0:
+                    logger.info("Received shutdown signal, exiting")
+                    break
+
+                update_count += 1
+                logger.info(
+                    f"Received weight update #{update_count} (shape: {received_tensor.shape})"
+                )
+
+                # In production, we would apply this to state_dict:
+                # state_dict[param_name].data.copy_(received_tensor)
+                # For now, just log that we received it
 
         except KeyboardInterrupt:
             logger.info("Received interrupt, shutting down")
+        except Exception as e:
+            logger.error(f"Error in update receive loop: {e}")
+            import traceback
 
-    logger.info("Weight updater process exiting")
+            traceback.print_exc()
+
+    logger.info(f"Weight updater process exiting (received {update_count} updates)")
     dist.destroy_process_group()
