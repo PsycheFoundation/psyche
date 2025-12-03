@@ -57,7 +57,7 @@ impl MMLUCF {
             .unwrap();
 
         let choices = (0..options.len())
-            .map(|i| format!(" {}", options.get_string(i).unwrap()))
+            .map(|i| format!("{}", options.get_string(i).unwrap()))
             .collect::<Vec<_>>();
 
         let text = format!("Question: {}\nAnswer:", question);
