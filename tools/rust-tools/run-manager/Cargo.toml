@@ -21,4 +21,3 @@ clap-markdown.workspace = true
 
 # Solana RPC
 solana-client = "=2.1.4"
-solana-sdk = "=2.1.4"

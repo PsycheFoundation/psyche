@@ -8294,7 +8294,6 @@ dependencies = [
  "psyche-coordinator",
  "psyche-solana-coordinator",
  "solana-client",
- "solana-sdk",
  "tokio",
  "tracing",
  "tracing-subscriber",
