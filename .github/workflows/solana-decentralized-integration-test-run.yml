@@ -51,16 +51,11 @@ jobs:
           echo "Disk usage after removing validator tar"
           df -h
 
-      - name: Wait for Garnix checks
-        uses: ./.github/actions/wait-for-garnix
-        with:
-          action-name: 'package docker-psyche-solana-test-client [x86_64-linux]'
-
-      - name: Download Solana Test Client No Python Image
+      - name: Download Solana Test Client Python Image
         run: |
           echo "Disk space before client build"
           df -h
-
+          sleep 200
           # Calculate the derivation hash
           echo "Calculating derivation path"
           DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client.drvPath)
