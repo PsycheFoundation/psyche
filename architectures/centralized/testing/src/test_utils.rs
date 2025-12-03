@@ -150,34 +150,3 @@ pub fn dummy_client_app_params_with_training_delay(
         .train_args,
     }
 }
-
-// pub fn dummy_client_app_params_default(server_port: u16, run_id: &str) -> AppParams {
-//     AppParams {
-//         cancel: CancellationToken::default(),
-//         identity_secret_key: SecretKey::generate(&mut rand::rng()),
-//         server_addr: format!("localhost:{server_port}").to_string(),
-//         tx_tui_state: None,
-//         run_id: run_id.to_string(),
-//         data_parallelism: 1,
-//         tensor_parallelism: 1,
-//         micro_batch_size: 1,
-//         write_gradients_dir: None,
-//         p2p_port: None,
-//         p2p_interface: None,
-//         eval_tasks: Vec::new(),
-//         eval_task_max_docs: None,
-//         prompt_task: false,
-//         checkpoint_upload_info: None,
-//         hub_read_token: None,
-//         hub_max_concurrent_downloads: 1,
-//         wandb_info: None,
-//         optim_stats: None,
-//         grad_accum_in_fp32: false,
-//         dummy_training_delay_secs: None,
-//         discovery_mode: DiscoveryMode::Local,
-//         max_concurrent_parameter_requests: 10,
-//         metrics_local_port: None,
-//         device: Default::default(),
-//         sidecar_port: Default::default(),
-//     }
-// }
