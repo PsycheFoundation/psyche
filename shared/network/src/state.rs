@@ -4,14 +4,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iroh::NodeId;
+use iroh::EndpointId;
 
-use crate::{P2PNodeInfo, download_manager::DownloadUpdate};
+use crate::{P2PEndpointInfo, download_manager::DownloadUpdate};
 
 #[derive(Debug)]
 pub struct State {
-    pub node_id: Option<NodeId>,
-    pub node_connections: Vec<P2PNodeInfo>,
+    pub endpoint_id: Option<EndpointId>,
+    pub connection_info: Vec<P2PEndpointInfo>,
     pub bandwidth_tracker: BandwidthTracker,
     pub bandwidth_history: VecDeque<f64>,
     pub download_progesses: HashMap<iroh_blobs::Hash, DownloadUpdate>,
@@ -20,8 +20,8 @@ pub struct State {
 impl State {
     pub fn new(bandwidth_average_period: u64) -> Self {
         Self {
-            node_id: Default::default(),
-            node_connections: Default::default(),
+            endpoint_id: Default::default(),
+            connection_info: Default::default(),
             bandwidth_tracker: BandwidthTracker::new(bandwidth_average_period),
             bandwidth_history: Default::default(),
             download_progesses: Default::default(),
@@ -38,7 +38,7 @@ struct DownloadEvent {
 #[derive(Debug)]
 pub struct BandwidthTracker {
     average_period_secs: u64,
-    events: HashMap<NodeId, VecDeque<DownloadEvent>>,
+    events: HashMap<EndpointId, VecDeque<DownloadEvent>>,
 }
 
 impl BandwidthTracker {
@@ -49,7 +49,7 @@ impl BandwidthTracker {
         }
     }
 
-    pub fn add_event(&mut self, from: NodeId, num_bytes: u64) {
+    pub fn add_event(&mut self, from: EndpointId, num_bytes: u64) {
         let now = Instant::now();
         let events = self.events.entry(from).or_default();
         events.push_back(DownloadEvent {
@@ -66,16 +66,16 @@ impl BandwidthTracker {
         }
     }
 
-    pub fn get_bandwidth_by_node(&self, id: &NodeId) -> Option<f64> {
-        self.events.get(id).map(node_bandwidth)
+    pub fn get_bandwidth_by_node(&self, id: &EndpointId) -> Option<f64> {
+        self.events.get(id).map(endpoint_bandwidth)
     }
 
     pub fn get_total_bandwidth(&self) -> f64 {
-        self.events.values().map(node_bandwidth).sum()
+        self.events.values().map(endpoint_bandwidth).sum()
     }
 }
 
-fn node_bandwidth(val: &VecDeque<DownloadEvent>) -> f64 {
+fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>) -> f64 {
     if val.is_empty() {
         return 0.0;
     }

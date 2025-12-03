@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 pub struct SignedMessage<T: Networkable> {
     from: PublicKey,
     data: Bytes,
-    signature: ed25519::Signature,
+    signature: iroh::Signature,
     _t: PhantomData<T>,
 }
 
