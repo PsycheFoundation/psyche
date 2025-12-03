@@ -28,5 +28,3 @@ psyche-solana-client set-paused \
     --ws-rpc "${WS_RPC}" \
     --run-id "${RUN_ID}" \
     --resume
-
-echo "all done"

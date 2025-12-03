@@ -301,7 +301,6 @@ async fn test_rejoining_client_delay() {
                    panic!("{}", e);
                }
                let current_epoch = solana_client.get_current_epoch().await;
-               let current_step = solana_client.get_last_step().await;
                if current_epoch > 1 {
                     panic!("Second epoch started and the clients did not get the model");
                }
