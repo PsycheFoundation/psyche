@@ -121,6 +121,7 @@ struct TestCli {
     train_args: TrainArgs,
 }
 
+#[rustfmt::skip]
 pub fn dummy_client_app_params_with_training_delay(
     server_port: u16,
     run_id: &str,
@@ -131,21 +132,14 @@ pub fn dummy_client_app_params_with_training_delay(
         server_addr: format!("localhost:{server_port}").to_string(),
         train_args: TestCli::parse_from([
             "dummy",
-            "--run-id",
-            run_id,
-            "--data-parallelism",
-            "1",
-            "--tensor-parallelism",
-            "1",
-            "--micro-batch-size",
-            "1",
-            "--micro-batch-size",
-            "1",
-            "--hub-max-concurrent-downloads",
-            "1",
-            "--dummy-training-delay-secs",
-            training_delay_secs.to_string().as_str(),
-            "",
+            "--run-id", run_id,
+            "--iroh-discovery", "local",
+            "--data-parallelism", "1",
+            "--tensor-parallelism", "1",
+            "--micro-batch-size", "1",
+            "--max-concurrent-parameter-requests", "10",
+            "--hub-max-concurrent-downloads", "1",
+            "--dummy-training-delay-secs", training_delay_secs.to_string().as_str(),
         ])
         .train_args,
     }
