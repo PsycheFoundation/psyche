@@ -111,16 +111,37 @@ async function main() {
 	const liveRunSummaryListeners: Set<(runData: RunSummariesData) => void> =
 		new Set()
 
-	coordinator.dataStore.eventEmitter.addListener('updateSummaries', () => {
-		const summaries = coordinator.dataStore.getRunSummaries()
-		for (const listener of liveRunSummaryListeners) {
-			try {
-				listener(summaries)
-			} catch (err) {
-				console.error(`Failed to send run summaries to subscribed client...`)
+	// Set up event listeners for run summaries from all coordinators
+	for (const [_programId, coordinator] of coordinators) {
+		coordinator.dataStore.eventEmitter.addListener('updateSummaries', () => {
+			// Aggregate summaries from all coordinators
+			let allRuns: any[] = []
+			let totalTokens = 0n
+			let totalTokensPerSecondActive = 0n
+
+			for (const [_, coord] of coordinators) {
+				const coordinatorSummary = coord.dataStore.getRunSummaries()
+				allRuns = allRuns.concat(coordinatorSummary.runs)
+				totalTokens += coordinatorSummary.totalTokens
+				totalTokensPerSecondActive +=
+					coordinatorSummary.totalTokensPerSecondActive
 			}
-		}
-	})
+
+			const aggregatedSummaries: RunSummariesData = {
+				runs: allRuns,
+				totalTokens,
+				totalTokensPerSecondActive,
+			}
+
+			for (const listener of liveRunSummaryListeners) {
+				try {
+					listener(aggregatedSummaries)
+				} catch (err) {
+					console.error(`Failed to send run summaries to subscribed client...`)
+				}
+			}
+		})
+	}
 
 	const liveMiningPoolListeners: Set<() => void> = new Set()
 	miningPool.dataStore.eventEmitter.addListener('update', () => {
