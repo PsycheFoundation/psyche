@@ -231,12 +231,12 @@ impl HttpDataProvider {
 
         let range = format!("bytes={}-{}", start, start + length - 1);
         let response = client
-            .get(url)
+            .get(url.clone())
             .header("Range", &range)
             .timeout(HTTP_REQUEST_TIMEOUT)
             .send()
             .await
-            .with_context(|| format!("request for bytes {range}"))?;
+            .with_context(|| format!("request for bytes {range}, from {url}"))?;
 
         // Check if we got a 206 Partial Content response
         if !response.status().is_success()
