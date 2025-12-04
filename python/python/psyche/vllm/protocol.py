@@ -63,13 +63,8 @@ def broadcast_parameter(
         param_tensor.dtype
     ]
 
-    logger.debug(f"Broadcasting metadata for {param_name}")
     dist.broadcast(metadata, src=src_rank, group=group)
-
-    logger.debug(f"Broadcasting tensor for {param_name} (shape={param_tensor.shape})")
     dist.broadcast(param_tensor, src=src_rank, group=group)
-
-    logger.debug(f"Broadcasted {param_name}")
 
 
 # Broadcast the entire state dict
@@ -78,15 +73,11 @@ def broadcast_state_dict(
     src_rank: int = 0,
     group=None,
 ):
-    logger.info(f"Broadcasting {len(state_dict)} parameters")
-
     for i, (param_name, param_tensor) in enumerate(state_dict.items()):
         broadcast_parameter(param_name, param_tensor, src_rank, group)
 
         if (i + 1) % 10 == 0:
             logger.info(f"Broadcasted {i + 1}/{len(state_dict)} parameters")
-
-    logger.info(f"Finished broadcasting {len(state_dict)} parameters")
 
 
 # Send shutdown signal
@@ -98,11 +89,7 @@ def broadcast_shutdown_signal(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    logger.info("Broadcasting shutdown signal")
-
     metadata = torch.zeros(128, dtype=torch.long, device=device)
     metadata[0] = -1  # Shutdown flag
 
     dist.broadcast(metadata, src=src_rank, group=group)
-
-    logger.info("Shutdown signal sent")
