@@ -2,8 +2,7 @@ import logging
 import torch
 import torch.distributed as dist
 import numpy as np
-from typing import Dict, Optional, Any
-from collections import defaultdict
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -63,48 +62,20 @@ def weight_updater_process(
     import os
 
     if init_method == "env://":
-        master_addr = os.environ.get("MASTER_ADDR", "NOT_SET")
-        master_port = os.environ.get("MASTER_PORT", "NOT_SET")
-        logger.info(
-            f"Using env:// init method - MASTER_ADDR={master_addr}, MASTER_PORT={master_port}"
-        )
+        if "MASTER_ADDR" not in os.environ or "MASTER_PORT" not in os.environ:
+            raise RuntimeError("MASTER_ADDR/MASTER_PORT not set for env:// init")
 
-        if master_addr == "NOT_SET" or master_port == "NOT_SET":
-            logger.error("MASTER_ADDR or MASTER_PORT not set in environment!")
-            raise RuntimeError(
-                "Cannot initialize process group: MASTER_ADDR/MASTER_PORT not set"
-            )
-
-    logger.info(
-        f"Calling dist.init_process_group(backend={backend}, init_method={init_method}, world_size={world_size}, rank={rank})"
+    dist.init_process_group(
+        backend=backend,
+        init_method=init_method,
+        world_size=world_size,
+        rank=rank,
     )
-    try:
-        dist.init_process_group(
-            backend=backend,
-            init_method=init_method,
-            world_size=world_size,
-            rank=rank,
-        )
-        logger.info(
-            f"Process group initialized successfully (rank {rank}/{world_size})"
-        )
-    except Exception as e:
-        logger.error(f"Failed to initialize process group: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise
+    logger.info(f"Updater process group initialized (rank {rank}/{world_size})")
 
     my_device = list(state_dict.values())[0].device
-    logger.info(f"Using device: {my_device}")
-
-    logger.info(
-        f"Ready to receive weight updates. State dict has {len(state_dict)} parameters."
-    )
 
     with torch.no_grad():
-        logger.info("Entering update receive loop...")
-
         try:
             update_count = 0
             applied_count = 0
@@ -157,11 +128,8 @@ def weight_updater_process(
                 dist.broadcast(param_tensor, src=0)
 
                 update_count += 1
-                logger.debug(f"Received tensor for {param_name}")
 
-                # Apply to state_dict
                 if param_name in state_dict:
-                    # Verify shape
                     if state_dict[param_name].shape != param_tensor.shape:
                         logger.error(
                             f"Shape mismatch for {param_name}: "
@@ -169,30 +137,16 @@ def weight_updater_process(
                         )
                         continue
 
-                    # Apply update to shared memory
                     state_dict[param_name].data.copy_(param_tensor)
                     applied_count += 1
-                    logger.debug(f"✓ Applied update to {param_name}")
 
                     if applied_count % 10 == 0:
-                        logger.info(
-                            f"Applied {applied_count}/{update_count} parameter updates"
-                        )
+                        logger.info(f"Applied {applied_count} parameter updates")
                 else:
-                    logger.warning(
-                        f"Parameter {param_name} not found in state_dict (skipping)"
-                    )
+                    logger.warning(f"Parameter {param_name} not in state_dict")
 
         except KeyboardInterrupt:
-            logger.info("Received interrupt, shutting down")
-        except Exception as e:
-            logger.error(f"Error in update receive loop: {e}")
-            import traceback
+            pass
 
-            traceback.print_exc()
-
-    logger.info(
-        f"Weight updater process exiting: "
-        f"received {update_count} updates, applied {applied_count}"
-    )
+    logger.info(f"Updater exiting: {applied_count}/{update_count} updates applied")
     dist.destroy_process_group()

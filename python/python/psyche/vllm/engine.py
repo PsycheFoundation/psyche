@@ -46,8 +46,6 @@ class UpdatableLLMEngine:
         if not VLLM_AVAILABLE:
             raise ImportError("vLLM is not installed. Cannot start UpdatableLLMEngine.")
 
-        logger.info(f"Initializing UpdatableLLMEngine with model: {model_name}")
-
         engine_args = EngineArgs(
             model=model_name,
             tensor_parallel_size=tensor_parallel_size,
@@ -60,10 +58,6 @@ class UpdatableLLMEngine:
 
         self.engine = LLMEngine.from_engine_args(engine_args)
         self.request_counter = Counter()
-
-        logger.info(
-            "UpdatableLLMEngine initialized. Weight updates will be handled by distributed updater."
-        )
 
     def add_request(self, prompt: str, sampling_params_dict: Dict[str, Any]) -> str:
         request_id = str(next(self.request_counter))
