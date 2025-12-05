@@ -36,19 +36,15 @@ def apply_vllm_patches():
                     if isinstance(val, torch.Tensor):
                         val.share_memory_()
 
-                # Spawn weight updater process
-                # Check if updater is enabled
-                enable_updater = os.environ.get("PSYCHE_ENABLE_WEIGHT_UPDATER", "1")
-                if enable_updater == "1":
+                from psyche.vllm import vllm_patch
+
+                update_queue = getattr(vllm_patch, "_pending_update_queue", None)
+                if update_queue is not None:
                     logger.info("Psyche: Spawning weight updater process")
 
                     from psyche.vllm.weight_updater import weight_updater_process
 
-                    # Create queue for weight update requests
                     ctx = mp.get_context("spawn")
-                    update_queue = ctx.Queue()
-
-                    # Spawn updater process
                     self.psyche_updater_process = ctx.Process(
                         target=weight_updater_process,
                         args=(state_dict, update_queue),
@@ -56,15 +52,12 @@ def apply_vllm_patches():
                     )
                     self.psyche_updater_process.start()
 
-                    global _global_update_queue
-                    _global_update_queue = update_queue
-
                     logger.info(
                         f"Psyche: Weight updater process started (PID: {self.psyche_updater_process.pid})"
                     )
                 else:
                     logger.info(
-                        "Psyche: PSYCHE_ENABLE_WEIGHT_UPDATER=0, skipping updater spawn"
+                        "Psyche: No update queue provided, skipping updater spawn"
                     )
 
         import vllm.v1.worker.gpu_worker
