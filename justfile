@@ -3,13 +3,8 @@ mod nix
 default:
     just --list
 
-# format & lint-fix code
-fmt:
-    echo "deprecated, use 'nix fmt' instead..."
-    sleep 5
-    cargo clippy --fix --allow-staged --all-targets
-    cargo fmt
-    nixfmt .
+check-client:
+    cargo run -p psyche-solana-client -- --help
 
 # spin up a local testnet
 local-testnet *args='':
@@ -123,10 +118,6 @@ run-manager env_file *args='':
 solana-client-tests:
     cargo test --package psyche-solana-client --features solana-localnet-tests
 
-# install deps for building mdbook
-book_deps:
-    cargo install mdbook mdbook-mermaid mdbook-linkcheck
-
 build_book output-dir="../book": generate_cli_docs
     mdbook build psyche-book -d {{ output-dir }}
 
@@ -141,10 +132,11 @@ generate_cli_docs:
     cargo run -p psyche-centralized-server print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-server.md
     cargo run -p psyche-centralized-local-testnet print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-local-testnet.md
     cargo run -p psyche-sidecar print-all-help --markdown > psyche-book/generated/cli/psyche-sidecar.md
+    cargo run -p psyche-solana-client print-all-help --markdown > psyche-book/generated/cli/psyche-solana-client.md
 
 run_docker_client *ARGS:
     just nix build_docker_solana_client
-    docker run -d {{ ARGS }} --gpus all psyche-prod-solana-client
+    docker run -d {{ ARGS }} --gpus all psyche-solana-client
 
 # Setup clients assigning one available GPU to each of them.
 

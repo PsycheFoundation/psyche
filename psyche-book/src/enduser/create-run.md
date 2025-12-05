@@ -1,13 +1,13 @@
 # Creating a run
 
-To create a new training run and make it available for nodes to join, you'll need to create it, configure it, and unpause it.
+To create a new training run and make it available for nodes to join, you'll need to create it, configure it, and unpause it. By default every new run stays in the pause state until being unpaused by the owner and can be paused anytime.
 
-## Creating the account
+## Creating the Coordinator account
 
 First, create the run on-chain.
 You'll need to provide:
 
-- the RPC & websocket RPC urls so the client can communicate with an RPC node.
+- The RPC & websocket RPC urls so the client can communicate with an RPC node.
 - a unique run ID - just a few characters to uniquely identify your run.
 - a name & description for your run
 
