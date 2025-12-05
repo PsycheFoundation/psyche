@@ -143,6 +143,7 @@ impl CoordinatorInstance {
 pub mod psyche_solana_coordinator {
 
     use super::*;
+    use psyche_core::FixedString;
 
     pub fn init_coordinator(
         context: Context<InitCoordinatorAccounts>,
@@ -168,6 +169,24 @@ pub mod psyche_solana_coordinator {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
         account.state.update(metadata, config, model, progress)
+    }
+
+    pub fn update_client_version(
+        ctx: Context<OwnerCoordinatorAccounts>,
+        new_version: String,
+    ) -> Result<()> {
+        let mut account = ctx.accounts.coordinator_account.load_mut()?;
+
+        // Only allow pausing when the coordinator is halted (uninitialized/paused/finished)
+        // We should not really reach here since we pre-check in the client
+        if !account.state.coordinator.halted() {
+            return err!(ProgramError::UpdateConfigNotHalted);
+        }
+
+        account.state.client_version =
+            FixedString::<32>::try_from(new_version.as_str()).unwrap();
+        msg!("new version: {}", account.state.client_version);
+        Ok(())
     }
 
     pub fn set_future_epoch_rates(
