@@ -6,6 +6,6 @@ pub async fn run() {
         include_bytes!("../fixtures/coordinator-account-v0.so").to_vec();
     let coordinator_account =
         coordinator_account_from_bytes(&coordinator_bytes).unwrap();
-    assert_eq!(coordinator_account.state.metadata.vocab_size, 129280);
-    assert_eq!(coordinator_account.nonce, 563234);
+    assert_eq!(coordinator_account.state.metadata.vocab_size, 3033);
+    assert_eq!(coordinator_account.nonce, 3);
 }
