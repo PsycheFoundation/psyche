@@ -1,3 +1,5 @@
+use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
+use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 use bytemuck::Zeroable;
 use psyche_centralized_server::app::App as ServerApp;
 use psyche_centralized_shared::ClientId;
@@ -16,9 +18,6 @@ use tokio::{
     },
 };
 use tracing::debug;
-
-use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
-use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 
 enum TestingQueryMsg {
     Clients {
