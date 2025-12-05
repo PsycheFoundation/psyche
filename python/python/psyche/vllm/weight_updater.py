@@ -22,15 +22,6 @@ from multiprocessing import Queue
 
 logger = logging.getLogger(__name__)
 
-# Global queue for weight update requests (set by patch after spawning updater)
-_update_queue: Queue = None
-
-
-def set_update_queue(queue: Queue):
-    """Set the global update queue (called by vllm_patch after spawning updater)."""
-    global _update_queue
-    _update_queue = queue
-
 
 def trigger_weight_update(safetensors_path: str):
     """
@@ -41,13 +32,15 @@ def trigger_weight_update(safetensors_path: str):
     Args:
         safetensors_path: Path to the safetensors file containing new weights
     """
-    global _update_queue
-    if _update_queue is None:
+    from psyche.vllm.vllm_patch import get_update_queue
+
+    update_queue = get_update_queue()
+    if update_queue is None:
         logger.error("[WeightUpdater] Queue not initialized, cannot trigger update")
         return
 
     logger.info(f"[WeightUpdater] Queuing weight update: {safetensors_path}")
-    _update_queue.put(safetensors_path)
+    update_queue.put(safetensors_path)
 
 
 def weight_updater_process(state_dict: Dict[str, torch.Tensor], update_queue: Queue):

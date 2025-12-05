@@ -6,6 +6,13 @@ import torch.multiprocessing as mp
 
 logger = logging.getLogger(__name__)
 
+# Global queue reference
+_global_update_queue = None
+
+
+def get_update_queue():
+    return _global_update_queue
+
 
 def apply_vllm_patches():
     try:
@@ -15,33 +22,27 @@ def apply_vllm_patches():
 
         class PsychePatchedGPUModelRunner(GPUModelRunner):
             def load_model(self, eep_scale_up: bool = False) -> None:
-                logger.info("🔧 Psyche: Patched load_model() called!")
+                logger.info("Psyche: Patched load_model() called!")
                 super().load_model(eep_scale_up)
-                logger.info("🔧 Psyche: Original load_model() completed")
+                logger.info("Psyche: Original load_model() completed")
 
-                # Share model memory for weight updates (like torchtitan)
-                logger.info("🔧 Psyche: Sharing model memory")
+                logger.info("Psyche: Sharing model memory")
                 self.model.share_memory()
 
                 state_dict = self.model.state_dict()
-                logger.info(
-                    f"🔧 Psyche: Got state_dict with {len(state_dict)} parameters"
-                )
+                logger.info(f"Psyche: Got state_dict with {len(state_dict)} parameters")
 
                 for key, val in state_dict.items():
                     if isinstance(val, torch.Tensor):
                         val.share_memory_()
 
-                # Spawn weight updater process (like torchtitan)
+                # Spawn weight updater process
                 # Check if updater is enabled
                 enable_updater = os.environ.get("PSYCHE_ENABLE_WEIGHT_UPDATER", "1")
                 if enable_updater == "1":
-                    logger.info("🔧 Psyche: Spawning weight updater process")
+                    logger.info("Psyche: Spawning weight updater process")
 
-                    from psyche.vllm.weight_updater import (
-                        weight_updater_process,
-                        set_update_queue,
-                    )
+                    from psyche.vllm.weight_updater import weight_updater_process
 
                     # Create queue for weight update requests
                     ctx = mp.get_context("spawn")
@@ -55,21 +56,21 @@ def apply_vllm_patches():
                     )
                     self.psyche_updater_process.start()
 
-                    # Set global queue so trigger_weight_update() can use it
-                    set_update_queue(update_queue)
+                    global _global_update_queue
+                    _global_update_queue = update_queue
 
                     logger.info(
-                        f"🔧 Psyche: Weight updater process started (PID: {self.psyche_updater_process.pid})"
+                        f"Psyche: Weight updater process started (PID: {self.psyche_updater_process.pid})"
                     )
                 else:
                     logger.info(
-                        "🔧 Psyche: PSYCHE_ENABLE_WEIGHT_UPDATER=0, skipping updater spawn"
+                        "Psyche: PSYCHE_ENABLE_WEIGHT_UPDATER=0, skipping updater spawn"
                     )
 
         import vllm.v1.worker.gpu_worker
 
         vllm.v1.worker.gpu_worker.GPUModelRunner = PsychePatchedGPUModelRunner
-        logger.info("✓ vLLM patch applied successfully")
+        logger.info("vLLM patch applied successfully")
 
     except ImportError as e:
         logger.warning(f"Could not apply vLLM patches: {e}")
