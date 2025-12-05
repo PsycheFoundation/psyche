@@ -1,4 +1,5 @@
 from .engine import UpdatableLLMEngine, VLLM_AVAILABLE
+from . import vllm_patch  # Apply patches on import
 
 _global_engine = None
 

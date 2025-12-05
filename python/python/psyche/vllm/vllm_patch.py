@@ -29,46 +29,15 @@ def apply_vllm_patches():
     try:
         from vllm.v1.worker.gpu_worker import GPUModelRunner
 
-        logger.info("Psyche: Applying vLLM patches for distributed weight updates")
+        logger.info("Psyche: Applying vLLM patches for weight access")
 
         class PsychePatchedGPUModelRunner(GPUModelRunner):
             def load_model(self, eep_scale_up: bool = False) -> None:
                 super().load_model(eep_scale_up)
 
-                self.model.share_memory()
-
+                # Store state_dict reference for Psyche weight updates
                 state_dict = self.model.state_dict()
-                for key, val in state_dict.items():
-                    if isinstance(val, torch.Tensor):
-                        val.share_memory_()
-
                 self.psyche_shared_state_dict = state_dict
-
-                self._spawn_distributed_updater(state_dict)
-
-            def _spawn_distributed_updater(self, state_dict):
-                from psyche.vllm.distributed_updater import weight_updater_process
-                import os
-
-                if "PSYCHE_WORLD_SIZE" not in os.environ:
-                    return
-
-                process_group_config = {
-                    "backend": os.environ.get("PSYCHE_UPDATER_BACKEND", "nccl"),
-                    "init_method": os.environ.get(
-                        "PSYCHE_UPDATER_INIT_METHOD", "env://"
-                    ),
-                    "world_size": int(os.environ["PSYCHE_WORLD_SIZE"]),
-                    "rank": int(os.environ["PSYCHE_RANK"]),
-                }
-
-                ctx = mp.get_context("spawn")
-                self.psyche_updater_process = ctx.Process(
-                    target=weight_updater_process,
-                    args=(state_dict, process_group_config, self.model_config),
-                    daemon=True,
-                )
-                self.psyche_updater_process.start()
 
         import vllm.v1.worker.gpu_worker
 

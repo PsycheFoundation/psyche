@@ -83,15 +83,14 @@ class UpdatableLLMEngine:
             logger.info(f"Loaded {loaded_count}/{len(state_dict)} parameters")
 
     def _get_vllm_state_dict(self) -> Dict[str, torch.Tensor]:
-        if hasattr(self.engine, "model_executor"):
-            if hasattr(self.engine.model_executor, "driver_worker"):
-                worker = self.engine.model_executor.driver_worker
-                if hasattr(worker, "model_runner"):
-                    model_runner = worker.model_runner
-                    if hasattr(model_runner, "model"):
-                        return model_runner.model.state_dict()
+        from psyche.vllm.vllm_patch import get_shared_state_dict_from_engine
 
-        raise RuntimeError("Could not access vLLM model state_dict")
+        state_dict = get_shared_state_dict_from_engine(self.engine)
+        if state_dict is None:
+            raise RuntimeError(
+                "Could not access vLLM state_dict. Make sure vllm_patch.py is imported."
+            )
+        return state_dict
 
     def add_request(self, prompt: str, sampling_params_dict: Dict[str, Any]) -> str:
         request_id = str(next(self.request_counter))
