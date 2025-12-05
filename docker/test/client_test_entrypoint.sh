@@ -1,7 +1,17 @@
 #! /bin/bash
 set -o errexit
 solana config set --url "${RPC}"
-solana-keygen new --no-bip39-passphrase --force
+
+WALLET_FILE="/root/.config/solana/id.json"
+
+# Generate keypair only if it doesn't exist (allows mounting via volume bind)
+if [ ! -f "${WALLET_FILE}" ]; then
+    echo "Generating new client keypair"
+    solana-keygen new --no-bip39-passphrase --force
+else
+    echo "Using existing client keypair"
+fi
+
 solana airdrop 10 "$(solana-keygen pubkey)"
 echo "Python enabled ${PYTHON_ENABLED}"
 
@@ -12,7 +22,7 @@ echo "USING SIDECAR PORT: ${SIDECAR_PORT}"
 if [ "${PYTHON_ENABLED}" = "true" ]; then
     echo "Starting client with Python features enabled"
     psyche-solana-client train \
-        --wallet-private-key-path "/root/.config/solana/id.json" \
+        --wallet-private-key-path "${WALLET_FILE}" \
         --rpc "${RPC}" \
         --ws-rpc "${WS_RPC}" \
         --run-id "${RUN_ID}" \
@@ -22,9 +32,10 @@ if [ "${PYTHON_ENABLED}" = "true" ]; then
 else
     echo "Starting client without Python features"
     psyche-solana-client train \
-        --wallet-private-key-path "/root/.config/solana/id.json" \
+        --wallet-private-key-path "${WALLET_FILE}" \
         --rpc "${RPC}" \
         --ws-rpc "${WS_RPC}" \
         --run-id "${RUN_ID}" \
         --logs "json"
 fi
+

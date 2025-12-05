@@ -68,9 +68,13 @@ let
             mkdir -p $out/bin
             cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
             cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
+            cp ${../docker/test/resume_entrypoint.sh} $out/bin/resume_entrypoint.sh
+            cp ${../docker/test/pause_entrypoint.sh} $out/bin/pause_entrypoint.sh
             cp ${../scripts/join-authorization-create.sh} $out/bin/join-authorization-create.sh
             chmod +x $out/bin/client_test_entrypoint.sh
             chmod +x $out/bin/run_owner_entrypoint.sh
+            chmod +x $out/bin/resume_entrypoint.sh
+            chmod +x $out/bin/pause_entrypoint.sh
             chmod +x $out/bin/join-authorization-create.sh
           '')
         ]
@@ -93,6 +97,7 @@ let
       };
     };
 
+  # test client and validator docker images
   dockerPackages = {
     docker-psyche-solana-client = pkgs.dockerTools.streamLayeredImage {
       name = "psyche-solana-client";
