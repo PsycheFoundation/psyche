@@ -38,13 +38,17 @@ def apply_vllm_patches():
                 # Store state_dict reference for Psyche weight updates
                 state_dict = self.model.state_dict()
                 self.psyche_shared_state_dict = state_dict
+                logger.info(
+                    f"Stored psyche_shared_state_dict with {len(state_dict)} parameters"
+                )
 
         import vllm.v1.worker.gpu_worker
 
         vllm.v1.worker.gpu_worker.GPUModelRunner = PsychePatchedGPUModelRunner
+        logger.info("✓ vLLM patch applied successfully")
 
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.warning(f"Could not apply vLLM patches: {e}")
 
 
 apply_vllm_patches()
