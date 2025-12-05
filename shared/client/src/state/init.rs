@@ -185,13 +185,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         tch::manual_seed(1337);
 
-        // Check CUDA availability early for Python models
-        #[cfg(feature = "python")]
-        if !tch::Cuda::is_available() {
-            return Err(InitRunError::PythonDistributedError(
-                psyche_modeling::PythonDistributedCausalLMError::CUDANotAvailable,
-            ));
-        }
+        // // Check CUDA availability early for Python models
+        // #[cfg(feature = "python")]
+        // if !tch::Cuda::is_available() {
+        //     return Err(InitRunError::PythonDistributedError(
+        //         psyche_modeling::PythonDistributedCausalLMError::CUDANotAvailable,
+        //     ));
+        // }
 
         let model::Model::LLM(llm) = state.model;
 
