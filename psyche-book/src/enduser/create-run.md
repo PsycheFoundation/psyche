@@ -45,7 +45,8 @@ psyche-solana-client create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
+    --client-version "latest"
 ```
 
 ### Creating a run with token rewards
@@ -58,7 +59,8 @@ psyche-solana-client create-run \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
     --treasurer-collateral-mint [COLLATERAL_MINT_PUBKEY] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
+    --client-version "latest"
 ```
 
 ## Initializing configuration

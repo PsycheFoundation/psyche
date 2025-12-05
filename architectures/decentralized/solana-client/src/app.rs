@@ -38,6 +38,8 @@ pub(super) type Tabs = TabbedWidget<(ClientTUI, CoordinatorTui, NetworkTui, Logg
 pub const TAB_NAMES: [&str; 4] = ["Client", "Coordinator", "Network", "Logger"];
 type TabsData = <Tabs as CustomWidget>::Data;
 
+const CLIENT_VERSION: &str = "latest";
+
 pub struct App {
     run_id: String,
     cluster: Cluster,
@@ -163,13 +165,39 @@ impl App {
             self.state_options.private_key.0.clone(),
             CommitmentConfig::confirmed(),
         )?;
-        let coordinator_instance =
+        let coordinator_instance_pubkey =
             psyche_solana_coordinator::find_coordinator_instance(&self.run_id);
-        let coordinator_instance_state = backend
-            .get_coordinator_instance(&coordinator_instance)
+        let coordinator_instance = backend
+            .get_coordinator_instance(&coordinator_instance_pubkey)
             .await?;
 
-        let coordinator_account = coordinator_instance_state.coordinator_account;
+        let coordinator_account = coordinator_instance.coordinator_account;
+        let coordinator_account_pubkey = coordinator_instance.coordinator_account;
+        let coordinator_client_version = String::from(
+            &backend
+                .get_coordinator_account(&coordinator_account_pubkey)
+                .await?
+                .state
+                .client_version,
+        );
+
+        // Check client version compatibility before joining
+        let client_version = CLIENT_VERSION.to_string();
+        info!("Psyche Client version: {}", client_version);
+
+        if client_version != coordinator_client_version && coordinator_client_version != "test" {
+            tracing::error!(
+                client_version = %client_version,
+                coordinator_client_version = %coordinator_client_version,
+                "Version mismatch detected. Client version does not match coordinator version."
+            );
+            std::process::exit(10);
+        }
+        info!(
+            client_version = %client_version,
+            coordinator_client_version = %coordinator_client_version,
+            "Version check passed"
+        );
 
         let backend_runner = backend
             .start(self.run_id.clone(), coordinator_account)
@@ -199,7 +227,7 @@ impl App {
         if start_coordinator_state.run_state == RunState::WaitingForMembers {
             let join_signature = backend
                 .join_run(
-                    coordinator_instance,
+                    coordinator_instance_pubkey,
                     coordinator_account,
                     psyche_solana_coordinator::ClientId {
                         signer,
@@ -282,11 +310,36 @@ impl App {
                                     }
                                 };
                                 if send_tick {
-                                    backend.send_tick(coordinator_instance, coordinator_account);
+                                    backend.send_tick(coordinator_instance_pubkey, coordinator_account);
                                 }
                             }
                         }
-                        Err(CoordinatorError::Halted) => {}, // don't print anything when halted. it's an "error" but no need to spam logs
+                        Err(CoordinatorError::Halted) => {
+                            // If we're waiting to join and the run is halted (paused),
+                            // check if the client version has changed, and if it has exit with error code 10 (version mismatch)
+                            if joined_run_this_epoch.is_none() && !ever_joined_run {
+                                let current_coordinator_state = backend
+                                    .get_coordinator_account(&coordinator_account)
+                                    .await?;
+                                let current_version = String::from(&current_coordinator_state.state.client_version);
+                                tracing::debug!(
+                                    initial_version = %coordinator_client_version,
+                                    current_version = %current_version,
+                                    "Run is halted. Checking for client version changes."
+                                );
+
+                                if current_version != coordinator_client_version {
+                                    tracing::error!(
+                                        initial_version = %coordinator_client_version,
+                                        current_version = %current_version,
+                                        "Client version changed while waiting for run to unpause. Exiting."
+                                    );
+                                    client.shutdown();
+                                    let _ = client.finished().await;
+                                    std::process::exit(10);
+                                }
+                            }
+                        },
                         Err(err) => debug!("Tick simulation error: {err}")
                     };
                 }
@@ -297,7 +350,7 @@ impl App {
                             if joined_run_this_epoch.is_none() {
                                 let join_signature = backend
                                     .join_run(
-                                        coordinator_instance,
+                                        coordinator_instance_pubkey,
                                         coordinator_account,
                                         id,
                                         self.authorizer,
