@@ -1,5 +1,6 @@
 from . import vllm_patch  # Apply patches on import
 from .engine import UpdatableLLMEngine, VLLM_AVAILABLE
+from .weight_updater import trigger_weight_update
 
 _global_engine = None
 
@@ -16,17 +17,12 @@ def get_engine() -> UpdatableLLMEngine:
     return _global_engine
 
 
-def load_weights(safetensors_path: str):
-    engine = get_engine()
-    engine.load_weights(safetensors_path)
-
-
 __all__ = [
     "UpdatableLLMEngine",
     "VLLM_AVAILABLE",
     "init_engine",
     "get_engine",
-    "load_weights",
+    "trigger_weight_update",
 ]
 
 __version__ = "0.1.0"
