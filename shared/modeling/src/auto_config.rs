@@ -13,6 +13,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ModelLoadError {
+    #[error("unavailable device(s)")]
+    UnavailbleDevice(Devices),
+
     #[error("missing config.json")]
     MissingConfigJSON,
 

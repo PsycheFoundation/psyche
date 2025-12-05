@@ -133,6 +133,7 @@ pub fn dummy_client_app_params_with_training_delay(
         train_args: TestCli::parse_from([
             "dummy",
             "--run-id", run_id,
+            "--iroh-relay", "disabled",
             "--iroh-discovery", "local",
             "--data-parallelism", "1",
             "--tensor-parallelism", "1",
