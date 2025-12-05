@@ -119,10 +119,6 @@ start-training-devnet-light-client run_id="test" *args='':
 solana-client-tests:
     cargo test --package psyche-solana-client --features solana-localnet-tests
 
-# install deps for building mdbook
-book_deps:
-    cargo install mdbook mdbook-mermaid mdbook-linkcheck
-
 build_book output-dir="../book": generate_cli_docs
     mdbook build psyche-book -d {{ output-dir }}
 

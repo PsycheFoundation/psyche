@@ -84,7 +84,7 @@ pub enum TrainError {
     #[error("Failed to send health checks, channel must be closed")]
     SendHealthChecks,
 
-    #[error("Healthcheck thread crashed")]
+    #[error("Health check thread crashed")]
     HealthCheckCrashed,
 
     #[error("Coordinator error: {0}")]
@@ -241,7 +241,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             round = round.height,
             epoch = epoch,
             index = client_index,
-            comittee_position = committee_proof.position,
+            committee_position = committee_proof.position,
             committee = %committee_proof.committee,
             witness_position = witness_proof.position,
             witness = %witness_proof.witness,
@@ -682,7 +682,7 @@ fn start_sending_health_checks<T: NodeIdentity>(
                 }
 
                 if !checks.is_empty() {
-                    info!("Sending health check for following indicies: {:?}", checks);
+                    info!("Sending health check for following indices: {:?}", checks);
                     tx_health_check
                         .send(checks)
                         .map_err(|_| TrainError::SendHealthChecks)

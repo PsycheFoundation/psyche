@@ -39,7 +39,7 @@ The status of a `Client` as tracked by the `Coordinator`. Key states include `He
 **Commitment**
 A cryptographic hash (SHA-256) of a client's computational results for a given `Batch`. Submitting commitments allows the `Coordinator` and `Witnesses` to verify work was done without transferring the full results initially.
 
-**Commitee**
+**Committee**
 The particular role of a client in a given round. Can be one of `Trainer`, `Verifier` or `TieBreaker`.
 
 **Cooldown**
