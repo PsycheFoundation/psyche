@@ -16,7 +16,7 @@ exporters:
     endpoint: http://loki:3100/loki/api/v1/push
 
   otlphttp:
-    endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+    endpoint: http://prometheus:9090/api/v1/otlp
 
   # Useful for debugging to see logs in the collector's stdout
   debug:

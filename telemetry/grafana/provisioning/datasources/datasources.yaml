@@ -3,6 +3,7 @@ datasources:
   - name: grafanacloud-logs
     type: loki
     access: proxy
+    uid: grafanacloud-logs
     url: http://loki:3100 # Connects to the Loki service defined in docker-compose.yml
     isDefault: false
     version: 1
@@ -11,6 +12,7 @@ datasources:
   - name: grafanacloud-prom
     type: prometheus
     access: proxy
+    uid: grafanacloud-prom
     url: http://prometheus:9090 # Connects to the Prometheus service defined in docker-compose.yml
     isDefault: true
     version: 1

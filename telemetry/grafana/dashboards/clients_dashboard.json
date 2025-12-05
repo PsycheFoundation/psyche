@@ -388,7 +388,7 @@
 				{
 					"datasource": {
 						"type": "loki",
-						"uid": "P8E80F9AEF21F6940"
+						"uid": "grafanacloud-logs"
 					},
 					"direction": "backward",
 					"disableTextWrap": false,
