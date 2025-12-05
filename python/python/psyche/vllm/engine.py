@@ -83,12 +83,12 @@ class UpdatableLLMEngine:
             logger.info(f"Loaded {loaded_count}/{len(state_dict)} parameters")
 
     def _get_vllm_state_dict(self) -> Dict[str, torch.Tensor]:
-        from psyche.vllm.vllm_patch import get_shared_state_dict_from_engine
+        from psyche.vllm.vllm_patch import get_shared_state_dict
 
-        state_dict = get_shared_state_dict_from_engine(self.engine)
+        state_dict = get_shared_state_dict()
         if state_dict is None:
             raise RuntimeError(
-                "Could not access vLLM state_dict. Make sure vllm_patch.py is imported."
+                "Could not access vLLM state_dict. Make sure the model is loaded first."
             )
         return state_dict
 

@@ -2,48 +2,41 @@ import logging
 from typing import Dict, Optional, Any
 import torch
 import torch.multiprocessing as mp
+import multiprocessing as mp_stdlib
 
 logger = logging.getLogger(__name__)
 
+# Use a multiprocessing Manager to share the state_dict reference across processes
+# This allows the main process to access the dict that was created in the worker subprocess
+_manager = mp_stdlib.Manager()
+_shared_state_dict_proxy = _manager.dict()
 
-# This method gets the state_dict from our vLLM engine for verification.
-# Used for testing that the shared memory mechanism works.
-def get_shared_state_dict_from_engine(engine) -> Optional[Dict[str, torch.Tensor]]:
-    try:
-        logger.info(f"[DEBUG] Engine type: {type(engine)}")
-        logger.info(f"[DEBUG] Has model_executor: {hasattr(engine, 'model_executor')}")
 
-        if hasattr(engine, "model_executor"):
-            logger.info(f"[DEBUG] model_executor type: {type(engine.model_executor)}")
-            logger.info(
-                f"[DEBUG] Has driver_worker: {hasattr(engine.model_executor, 'driver_worker')}"
-            )
+def get_shared_state_dict() -> Optional[Dict[str, torch.Tensor]]:
+    """
+    Get the shared state_dict that was stored by the patched vLLM model runner.
 
-            if hasattr(engine.model_executor, "driver_worker"):
-                worker = engine.model_executor.driver_worker
-                logger.info(f"[DEBUG] driver_worker type: {type(worker)}")
-                logger.info(
-                    f"[DEBUG] Has model_runner: {hasattr(worker, 'model_runner')}"
-                )
-
-                if hasattr(worker, "model_runner"):
-                    model_runner = worker.model_runner
-                    logger.info(f"[DEBUG] model_runner type: {type(model_runner)}")
-                    logger.info(
-                        f"[DEBUG] Has psyche_shared_state_dict: {hasattr(model_runner, 'psyche_shared_state_dict')}"
-                    )
-
-                    if hasattr(model_runner, "psyche_shared_state_dict"):
-                        return model_runner.psyche_shared_state_dict
-
-        logger.warning("Could not access psyche_shared_state_dict from engine")
+    Returns:
+        The shared memory state_dict if available, None otherwise
+    """
+    if len(_shared_state_dict_proxy) == 0:
         return None
-    except Exception as e:
-        logger.error(f"Error accessing shared state_dict: {e}")
-        import traceback
+    # Convert proxy dict back to regular dict
+    return dict(_shared_state_dict_proxy)
 
-        traceback.print_exc()
-        return None
+
+def set_shared_state_dict(state_dict: Dict[str, torch.Tensor]):
+    """
+    Store the shared state_dict reference (called from patched load_model).
+
+    Args:
+        state_dict: The shared memory state_dict from vLLM model
+    """
+    _shared_state_dict_proxy.clear()
+    _shared_state_dict_proxy.update(state_dict)
+    logger.info(
+        f"Stored shared state_dict with {len(state_dict)} parameters in manager"
+    )
 
 
 def apply_vllm_patches():
@@ -72,10 +65,11 @@ def apply_vllm_patches():
                     if isinstance(val, torch.Tensor):
                         val.share_memory_()
 
-                # Store state_dict reference for Psyche weight updates
-                self.psyche_shared_state_dict = state_dict
+                # Store in module-level variable for access from main process
+                # The shared memory tensors can be accessed across processes
+                set_shared_state_dict(state_dict)
                 logger.info(
-                    f"🔧 Psyche: Successfully stored psyche_shared_state_dict with {len(state_dict)} parameters"
+                    f"🔧 Psyche: Successfully stored shared state_dict with {len(state_dict)} parameters"
                 )
 
         import vllm.v1.worker.gpu_worker
