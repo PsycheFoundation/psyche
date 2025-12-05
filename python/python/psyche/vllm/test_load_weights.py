@@ -38,7 +38,7 @@ def test_load_weights():
     logger.info("=" * 80)
 
     # 1. Initialize engine
-    logger.info("\n[1/5] Initializing vLLM engine with GPT-2...")
+    logger.info("\n[1/6] Initializing vLLM engine with GPT-2...")
     engine = init_engine(
         model_name="gpt2",
         max_model_len=512,
@@ -46,16 +46,23 @@ def test_load_weights():
     )
     logger.info("✓ Engine initialized")
 
-    # 2. Get initial weights
-    logger.info("\n[2/5] Reading initial weight values...")
+    # 2. Trigger model loading by running a dummy step
+    logger.info("\n[2/6] Triggering model load (dummy request)...")
+    dummy_id = engine.add_request("test", {"temperature": 0.0, "max_tokens": 1})
+    while engine.has_unfinished_requests():
+        engine.step()
+    logger.info("✓ Model loaded")
+
+    # 3. Get initial weights
+    logger.info("\n[3/6] Reading initial weight values...")
     initial_state = engine._get_vllm_state_dict()
     initial_ln_weight = initial_state["transformer.h.0.ln_1.weight"].clone()
     initial_ln_bias = initial_state["transformer.h.0.ln_1.bias"].clone()
     logger.info(f"  ln_1.weight mean: {initial_ln_weight.mean():.6f}")
     logger.info(f"  ln_1.bias mean: {initial_ln_bias.mean():.6f}")
 
-    # 3. Run inference BEFORE weight update
-    logger.info("\n[3/5] Running inference BEFORE weight update...")
+    # 4. Run inference BEFORE weight update
+    logger.info("\n[4/6] Running inference BEFORE weight update...")
     test_prompt = "Once upon a time"
     request_id = engine.add_request(test_prompt, {"temperature": 0.0, "max_tokens": 10})
 
@@ -67,8 +74,8 @@ def test_load_weights():
     text_before = outputs_before[0].outputs[0].text if outputs_before else ""
     logger.info(f"  Output: '{test_prompt}{text_before}'")
 
-    # 4. Load new weights
-    logger.info("\n[4/5] Loading new weights (scale=10.0)...")
+    # 5. Load new weights
+    logger.info("\n[5/6] Loading new weights (scale=10.0)...")
     weights_path = create_mock_weights(scale=10.0)
     load_weights(weights_path)
     logger.info("✓ Weights loaded")
@@ -90,8 +97,8 @@ def test_load_weights():
         logger.error("✗ Weights did not change!")
         return False
 
-    # 5. Run inference AFTER weight update
-    logger.info("\n[5/5] Running inference AFTER weight update...")
+    # 6. Run inference AFTER weight update
+    logger.info("\n[6/6] Running inference AFTER weight update...")
     request_id = engine.add_request(test_prompt, {"temperature": 0.0, "max_tokens": 10})
 
     outputs_after = []
