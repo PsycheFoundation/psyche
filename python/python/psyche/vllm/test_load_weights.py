@@ -9,8 +9,8 @@ from safetensors.torch import save_file
 from psyche.vllm import init_engine, load_weights, get_engine
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s: %(message)s",
+    level=logging.DEBUG,  # Enable DEBUG for vllm_patch
+    format="[%(asctime)s] %(levelname)s %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
 
