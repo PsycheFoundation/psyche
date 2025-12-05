@@ -20,6 +20,8 @@ in
             torch = pyfinal.torch-bin;
             flash-attn = pyfinal.callPackage ../python/flash-attn.nix { };
             liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
+            torchtitan = pyfinal.callPackage ../python/torchtitan.nix { };
+            torchdata = pyfinal.callPackage ../python/torchdata.nix { };
           };
         };
       })
