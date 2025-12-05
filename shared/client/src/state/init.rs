@@ -185,11 +185,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         tch::manual_seed(1337);
 
-        // Check CUDA availability early for Python models
-        #[cfg(feature = "python")]
-        if !tch::Cuda::is_available() {
-            return Err(InitRunError::PythonDistributedError(
-                psyche_modeling::PythonDistributedCausalLMError::CUDANotAvailable,
+        // Check device availability early
+        if !init_config.device.is_probably_available() {
+            return Err(InitRunError::ModelLoad(
+                psyche_modeling::ModelLoadError::UnavailbleDevice(init_config.device),
             ));
         }
 

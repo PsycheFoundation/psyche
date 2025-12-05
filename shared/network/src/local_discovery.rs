@@ -5,7 +5,7 @@ use iroh::{EndpointId, TransportAddr};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::pin::Pin;
 use tracing::error;
@@ -43,7 +43,14 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
         // Prepare endpoint info for storage
         let endpoint_info = StoredNodeInfo {
             relay_urls: data.relay_urls().map(|u| u.to_string()).collect(),
-            direct_addresses: data.ip_addrs().cloned().collect(),
+            direct_addresses: data
+                .ip_addrs()
+                .map(|ip| {
+                    let mut i = *ip;
+                    i.set_ip(Ipv4Addr::LOCALHOST.into());
+                    i
+                })
+                .collect(),
         };
 
         // Serialize and write to file
