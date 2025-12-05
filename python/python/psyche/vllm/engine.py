@@ -45,9 +45,10 @@ class UpdatableLLMEngine:
         ctx = mp.get_context("spawn")
         self.update_queue = ctx.Queue()
 
-        import psyche.vllm.vllm_patch as vllm_patch
+        # Store queue in shared state so worker subprocess can access it
+        from psyche.vllm.vllm_patch import set_update_queue
 
-        vllm_patch._pending_update_queue = self.update_queue
+        set_update_queue(self.update_queue)
 
         engine_args = EngineArgs(
             model=model_name,

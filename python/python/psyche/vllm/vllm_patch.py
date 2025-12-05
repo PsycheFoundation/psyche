@@ -3,15 +3,25 @@ import os
 from typing import Dict, Optional, Any
 import torch
 import torch.multiprocessing as mp
+from multiprocessing.managers import SyncManager
 
 logger = logging.getLogger(__name__)
 
-# Global queue reference
-_global_update_queue = None
+# Shared state manager for cross-process communication
+_shared_manager = SyncManager()
+_shared_manager.start()
+_shared_state = _shared_manager.dict()
+_shared_state["update_queue"] = None
+
+
+def set_update_queue(queue):
+    """Store the update queue in shared state (called from main process)."""
+    _shared_state["update_queue"] = queue
 
 
 def get_update_queue():
-    return _global_update_queue
+    """Get the update queue from shared state (works from any process)."""
+    return _shared_state.get("update_queue", None)
 
 
 def apply_vllm_patches():
@@ -36,9 +46,7 @@ def apply_vllm_patches():
                     if isinstance(val, torch.Tensor):
                         val.share_memory_()
 
-                from psyche.vllm import vllm_patch
-
-                update_queue = getattr(vllm_patch, "_pending_update_queue", None)
+                update_queue = get_update_queue()
                 if update_queue is not None:
                     logger.info("Psyche: Spawning weight updater process")
 

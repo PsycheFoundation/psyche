@@ -72,8 +72,8 @@ def test_weight_updater():
     logger.info(f"  Output BEFORE: '{test_prompt}{text_before}'")
 
     # 4. Trigger weight update via engine API (what Rust will call)
-    logger.info("\n[4/5] Triggering weight update (scale=10.0)...")
-    weights_path = create_mock_weights(scale=10.0)
+    logger.info("\n[4/5] Triggering weight update (scale=20.0)...")
+    weights_path = create_mock_weights(scale=20.0)
 
     # Call engine.trigger_weight_update() (this is what Rust will call via PyO3)
     engine.trigger_weight_update(weights_path)
