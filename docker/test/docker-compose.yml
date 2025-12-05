@@ -25,6 +25,8 @@ services:
       - 'host.docker.internal:host-gateway'
     env_file:
       - '../../config/client/.env.local'
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
     networks:
       - psyche-test-network
 
