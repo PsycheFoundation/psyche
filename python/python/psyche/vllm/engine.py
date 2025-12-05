@@ -1,12 +1,6 @@
 import logging
+import torch
 from typing import List, Optional, Dict, Any
-
-try:
-    from psyche.vllm import vllm_patch
-
-    VLLM_PATCH_AVAILABLE = True
-except ImportError:
-    VLLM_PATCH_AVAILABLE = False
 
 
 class Counter:
@@ -33,7 +27,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-# A wrapper around vLLM's LLMEngine that supports dynamic weight updates via torch.distributed updater.
+# A wrapper around vLLM's LLMEngine that supports dynamic weight updates.
 class UpdatableLLMEngine:
     def __init__(
         self,
@@ -58,6 +52,46 @@ class UpdatableLLMEngine:
 
         self.engine = LLMEngine.from_engine_args(engine_args)
         self.request_counter = Counter()
+        logger.info(f"Initialized vLLM engine with model: {model_name}")
+
+    def load_weights(self, safetensors_path: str):
+        from safetensors import safe_open
+        import torch
+
+        logger.info(f"Loading weights from: {safetensors_path}")
+
+        state_dict = {}
+        with safe_open(safetensors_path, framework="pt", device="cpu") as f:
+            for key in f.keys():
+                state_dict[key] = f.get_tensor(key)
+
+        vllm_state_dict = self._get_vllm_state_dict()
+
+        with torch.no_grad():
+            loaded_count = 0
+            for name, param in state_dict.items():
+                if name in vllm_state_dict:
+                    device = vllm_state_dict[name].device
+                    dtype = vllm_state_dict[name].dtype
+                    vllm_state_dict[name].data.copy_(
+                        param.to(device=device, dtype=dtype)
+                    )
+                    loaded_count += 1
+                else:
+                    logger.warning(f"Parameter {name} not in vLLM model")
+
+            logger.info(f"Loaded {loaded_count}/{len(state_dict)} parameters")
+
+    def _get_vllm_state_dict(self) -> Dict[str, torch.Tensor]:
+        if hasattr(self.engine, "model_executor"):
+            if hasattr(self.engine.model_executor, "driver_worker"):
+                worker = self.engine.model_executor.driver_worker
+                if hasattr(worker, "model_runner"):
+                    model_runner = worker.model_runner
+                    if hasattr(model_runner, "model"):
+                        return model_runner.model.state_dict()
+
+        raise RuntimeError("Could not access vLLM model state_dict")
 
     def add_request(self, prompt: str, sampling_params_dict: Dict[str, Any]) -> str:
         request_id = str(next(self.request_counter))

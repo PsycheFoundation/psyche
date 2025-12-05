@@ -243,6 +243,8 @@ def test_weight_updates():
         traceback.print_exc()
         return False
 
+    return True
+
 
 def main():
     print("\n" + "=" * 80)

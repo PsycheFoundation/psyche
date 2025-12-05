@@ -19,8 +19,6 @@ DTYPE_MAP = {
     8: torch.uint8,
 }
 
-DTYPE_TO_ID = {v: k for k, v in DTYPE_MAP.items()}
-
 
 def permute_for_rotary(weight: torch.Tensor, n_heads: int) -> torch.Tensor:
     if weight.dim() == 2:
