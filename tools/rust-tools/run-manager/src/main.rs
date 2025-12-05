@@ -21,7 +21,7 @@ struct Args {
     #[arg(
         long,
         global = true,
-        default_value = "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y"
+        default_value = "4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7"
     )]
     coordinator_program_id: String,
 
