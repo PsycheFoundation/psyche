@@ -1,28 +1,24 @@
 from . import vllm_patch  # Apply patches on import
 from .engine import UpdatableLLMEngine, VLLM_AVAILABLE
-from .weight_updater import trigger_weight_update
-
-_global_engine = None
 
 
 def init_engine(model_name: str, **kwargs) -> UpdatableLLMEngine:
-    global _global_engine
-    _global_engine = UpdatableLLMEngine(model_name, **kwargs)
-    return _global_engine
+    """
+    Initialize a vLLM engine with weight update support.
 
+    After calling this and running the first inference request (which triggers model loading),
+    call engine.get_update_queue() to get the queue for triggering weight updates.
 
-def get_engine() -> UpdatableLLMEngine:
-    if _global_engine is None:
-        raise RuntimeError("Engine not initialized. Call init_engine() first.")
-    return _global_engine
+    Returns:
+        UpdatableLLMEngine instance
+    """
+    return UpdatableLLMEngine(model_name, **kwargs)
 
 
 __all__ = [
     "UpdatableLLMEngine",
     "VLLM_AVAILABLE",
     "init_engine",
-    "get_engine",
-    "trigger_weight_update",
 ]
 
 __version__ = "0.1.0"

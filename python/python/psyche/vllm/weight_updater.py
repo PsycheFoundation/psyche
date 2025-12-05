@@ -23,26 +23,6 @@ from multiprocessing import Queue
 logger = logging.getLogger(__name__)
 
 
-def trigger_weight_update(safetensors_path: str):
-    """
-    Trigger a weight update from the main process.
-
-    This function is called by Rust (via PyO3) to signal new weights are available.
-
-    Args:
-        safetensors_path: Path to the safetensors file containing new weights
-    """
-    from psyche.vllm.vllm_patch import get_update_queue
-
-    update_queue = get_update_queue()
-    if update_queue is None:
-        logger.error("[WeightUpdater] Queue not initialized, cannot trigger update")
-        return
-
-    logger.info(f"[WeightUpdater] Queuing weight update: {safetensors_path}")
-    update_queue.put(safetensors_path)
-
-
 def weight_updater_process(state_dict: Dict[str, torch.Tensor], update_queue: Queue):
     """
     Weight updater process that receives weight update requests via queue.

@@ -8,7 +8,7 @@ import tempfile
 import time
 import os
 from safetensors.torch import save_file
-from psyche.vllm import init_engine, trigger_weight_update
+from psyche.vllm import init_engine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,13 +71,13 @@ def test_weight_updater():
     text_before = outputs_before[0].outputs[0].text if outputs_before else ""
     logger.info(f"  Output BEFORE: '{test_prompt}{text_before}'")
 
-    # 4. Trigger weight update via Python API (what Rust will call)
+    # 4. Trigger weight update via engine API (what Rust will call)
     logger.info("\n[4/5] Triggering weight update (scale=10.0)...")
     weights_path = create_mock_weights(scale=10.0)
 
-    # Call trigger_weight_update (this is what Rust will call via PyO3)
-    trigger_weight_update(weights_path)
-    logger.info(f"  Called trigger_weight_update()")
+    # Call engine.trigger_weight_update() (this is what Rust will call via PyO3)
+    engine.trigger_weight_update(weights_path)
+    logger.info(f"  Called engine.trigger_weight_update()")
 
     # Give updater time to load weights
     logger.info("  Waiting for weight updater to apply changes...")

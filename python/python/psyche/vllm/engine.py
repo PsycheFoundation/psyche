@@ -52,6 +52,7 @@ class UpdatableLLMEngine:
 
         self.engine = LLMEngine.from_engine_args(engine_args)
         self.request_counter = Counter()
+        self.update_queue = None  # Will be set by patch after spawning updater
         logger.info(f"Initialized vLLM engine with model: {model_name}")
 
     def load_weights(self, safetensors_path: str):
@@ -114,3 +115,33 @@ class UpdatableLLMEngine:
 
     def get_tokenizer(self):
         return self.engine.tokenizer
+
+    def get_update_queue(self):
+        """
+        Get the weight update queue.
+
+        This queue is created after the model is loaded (after first inference request).
+        Rust code can use this queue to trigger weight updates by calling queue.put(path).
+
+        Returns:
+            Queue for weight update requests, or None if model not loaded yet
+        """
+        from psyche.vllm.vllm_patch import get_update_queue
+
+        return get_update_queue()
+
+    def trigger_weight_update(self, safetensors_path: str):
+        """
+        Trigger a weight update.
+
+        Args:
+            safetensors_path: Path to the safetensors file containing new weights
+        """
+        queue = self.get_update_queue()
+        if queue is None:
+            raise RuntimeError(
+                "Weight updater not initialized. Make sure the model is loaded first."
+            )
+
+        logger.info(f"Queuing weight update: {safetensors_path}")
+        queue.put(safetensors_path)
