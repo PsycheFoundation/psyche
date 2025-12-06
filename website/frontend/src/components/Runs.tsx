@@ -75,7 +75,7 @@ export function Runs({
 	totalTokens,
 	totalTokensPerSecondActive,
 }: ApiGetRuns) {
-	const [runTypeFilter, setRunTypeFilter] = useState<RunType>('active')
+	const [runTypeFilter, setRunTypeFilter] = useState<RunType>('all')
 	const [sort, setSort] = useState<(typeof runSort)[number]>(runSort[0])
 
 	// Create stable sorted list that only changes when sort changes, not when data updates
