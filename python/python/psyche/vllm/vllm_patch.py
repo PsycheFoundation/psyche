@@ -48,18 +48,14 @@ def apply_vllm_patches():
 
             def _spawn_distributed_updater(self, state_dict):
                 from psyche.vllm.distributed_updater import weight_updater_process
-                import os
 
-                if "PSYCHE_WORLD_SIZE" not in os.environ:
-                    return
-
+                # Local process group: broadcaster (rank 0) + updater (rank 1)
+                # Use gloo - reliable, simple, fast enough for localhost broadcasts
                 process_group_config = {
-                    "backend": os.environ.get("PSYCHE_UPDATER_BACKEND", "nccl"),
-                    "init_method": os.environ.get(
-                        "PSYCHE_UPDATER_INIT_METHOD", "env://"
-                    ),
-                    "world_size": int(os.environ["PSYCHE_WORLD_SIZE"]),
-                    "rank": int(os.environ["PSYCHE_RANK"]),
+                    "backend": "gloo",
+                    "init_method": "tcp://127.0.0.1:29500",
+                    "world_size": 2,  # Always 2: local broadcaster + this updater
+                    "rank": 1,  # Updater is always rank 1
                 }
 
                 ctx = mp.get_context("spawn")

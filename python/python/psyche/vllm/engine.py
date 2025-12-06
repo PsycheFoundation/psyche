@@ -1,22 +1,21 @@
 import logging
+from itertools import count
 from typing import List, Optional, Dict, Any
 
+logger = logging.getLogger(__name__)
+
 try:
-    from psyche.vllm import vllm_patch
+    from . import vllm_patch
 
-    VLLM_PATCH_AVAILABLE = True
-except ImportError:
-    VLLM_PATCH_AVAILABLE = False
-
-
-class Counter:
-    def __init__(self, start: int = 0):
-        self._counter = start
-
-    def __next__(self):
-        val = self._counter
-        self._counter += 1
-        return val
+    logger.info(
+        "vLLM patches applied successfully - distributed weight updates enabled"
+    )
+except ImportError as e:
+    logger.warning(
+        f"Failed to apply vLLM patches: {e}. "
+        "Distributed weight updates will not be available. "
+        "UpdatableLLMEngine will work for inference only."
+    )
 
 
 try:
@@ -29,8 +28,6 @@ except ImportError:
     EngineArgs = Any
     SamplingParams = Any
     RequestOutput = Any
-
-logger = logging.getLogger(__name__)
 
 
 # A wrapper around vLLM's LLMEngine that supports dynamic weight updates via torch.distributed updater.
@@ -57,7 +54,7 @@ class UpdatableLLMEngine:
         )
 
         self.engine = LLMEngine.from_engine_args(engine_args)
-        self.request_counter = Counter()
+        self.request_counter = count()
 
     def add_request(self, prompt: str, sampling_params_dict: Dict[str, Any]) -> str:
         request_id = str(next(self.request_counter))

@@ -1,3 +1,7 @@
+"""
+vLLM integration for Psyche.
+"""
+
 from .engine import UpdatableLLMEngine, VLLM_AVAILABLE
 
 __all__ = [

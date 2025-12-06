@@ -19,28 +19,6 @@ DTYPE_MAP = {
     8: torch.uint8,
 }
 
-DTYPE_TO_ID = {v: k for k, v in DTYPE_MAP.items()}
-
-
-def permute_for_rotary(weight: torch.Tensor, n_heads: int) -> torch.Tensor:
-    if weight.dim() == 2:
-        dim1, dim2 = weight.shape
-        return (
-            weight.view(n_heads, dim1 // n_heads // 2, 2, dim2)
-            .transpose(1, 2)
-            .reshape(dim1, dim2)
-        )
-    elif weight.dim() == 1:
-        dim1 = weight.shape[0]
-        return (
-            weight.view(n_heads, dim1 // n_heads // 2, 2).transpose(1, 2).reshape(dim1)
-        )
-    else:
-        logger.warning(
-            f"Unexpected weight dimension for rotary permutation: {weight.dim()}"
-        )
-        return weight
-
 
 # Weight updater process that receives updates via torch.distributed.
 # Runs in a separate Python process and joins a torch.distributed process group.
@@ -50,20 +28,14 @@ def weight_updater_process(
     process_group_config: Dict[str, Any],
     model_config: Any,
 ):
-    backend = process_group_config.get("backend", "nccl")
-    init_method = process_group_config.get("init_method")
-    world_size = process_group_config.get("world_size")
-    rank = process_group_config.get("rank")
+    backend = process_group_config["backend"]
+    init_method = process_group_config["init_method"]
+    world_size = process_group_config["world_size"]
+    rank = process_group_config["rank"]
 
     logger.info(
-        f"Starting weight updater process: rank={rank}, world_size={world_size}, backend={backend}"
+        f"Starting weight updater process: rank={rank}/{world_size}, backend={backend}"
     )
-
-    import os
-
-    if init_method == "env://":
-        if "MASTER_ADDR" not in os.environ or "MASTER_PORT" not in os.environ:
-            raise RuntimeError("MASTER_ADDR/MASTER_PORT not set for env:// init")
 
     dist.init_process_group(
         backend=backend,
@@ -71,7 +43,9 @@ def weight_updater_process(
         world_size=world_size,
         rank=rank,
     )
-    logger.info(f"Updater process group initialized (rank {rank}/{world_size})")
+    logger.info(
+        f"Updater joined local process group (rank {rank}/{world_size}, backend={backend})"
+    )
 
     my_device = list(state_dict.values())[0].device
 
