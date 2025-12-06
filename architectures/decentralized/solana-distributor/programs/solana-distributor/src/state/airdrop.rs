@@ -1,9 +1,11 @@
+use std::fmt;
+
 use anchor_lang::prelude::*;
 
 use crate::state::MerkleHash;
 
 #[account()]
-#[derive(Debug)]
+#[derive(Debug, InitSpace)]
 pub struct Airdrop {
     pub bump: u8,
 
@@ -13,7 +15,7 @@ pub struct Airdrop {
     pub collateral_mint: Pubkey,
     pub total_claimed_collateral_amount: u64,
 
-    pub freeze: bool,
+    pub claim_freeze: bool,
     pub merkle_root: MerkleHash,
     pub metadata: AirdropMetadata,
 }
@@ -22,16 +24,22 @@ impl Airdrop {
     pub const SEEDS_PREFIX: &'static [u8] = b"Airdrop";
 
     pub fn space_with_discriminator() -> usize {
-        8 + std::mem::size_of::<Airdrop>()
+        8 + Airdrop::INIT_SPACE
     }
 }
 
-#[derive(Debug, AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
+#[derive(InitSpace, AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct AirdropMetadata {
-    pub length: u16,
-    pub bytes: [u8; AirdropMetadata::BYTES],
+    pub bytes: [u8; AirdropMetadata::SIZE],
 }
 
 impl AirdropMetadata {
-    pub const BYTES: usize = 400;
+    pub const SIZE: usize = 300;
+}
+
+impl std::fmt::Debug for AirdropMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        let parts = self.bytes.iter().map(|b| format!("{:02X}", b));
+        write!(f, "{}", parts.collect::<String>())
+    }
 }

@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::state::MerkleHash;
 use crate::state::Vesting;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct Allocation {
     pub claimer: Pubkey,
     pub nonce: u64,

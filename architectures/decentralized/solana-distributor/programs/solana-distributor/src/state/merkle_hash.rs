@@ -3,7 +3,7 @@ use std::fmt;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
+#[derive(InitSpace, AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
 pub struct MerkleHash {
     bytes: [u8; 32],
 }
@@ -27,14 +27,14 @@ impl MerkleHash {
 
     pub fn is_valid_proof(
         &self,
+        merkle_leaf: &MerkleHash,
         merkle_proof: &[MerkleHash],
-        merkle_root: &MerkleHash,
     ) -> bool {
-        let mut merkle_hash = *self;
+        let mut merkle_hash = merkle_leaf.clone();
         for merkle_node in merkle_proof {
             merkle_hash = MerkleHash::from_pair(&merkle_hash, merkle_node);
         }
-        merkle_hash == *merkle_root
+        merkle_hash == *self
     }
 }
 

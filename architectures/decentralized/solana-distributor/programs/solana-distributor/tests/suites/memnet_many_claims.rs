@@ -23,42 +23,34 @@ pub async fn run() {
 
     let airdrop_id = 42u64;
     let airdrop_authority = Keypair::new();
-    let airdrop_collateral_amount = 424242;
 
     let collateral_mint_authority = Keypair::new();
     let collateral_mint_decimals = 6;
 
-    // Airdrop merkle tree content
-    let mut expected_total_claimed_collateral = 0;
-    let per_claimer_collateral_amount = 42;
     let mut claimers = vec![];
+    for _ in 0..42 {
+        claimers.push(Keypair::new());
+    }
+    let mut random_seed = 123;
+
+    // Airdrop generated merkle tree content
+    let mut expected_total_collateral = 0;
     let mut allocations = vec![];
-    for i in 0..42 {
-        let claimer = Keypair::new();
-        allocations.push(Allocation {
-            claimer: claimer.pubkey(),
-            nonce: 0,
-            vesting: Vesting {
-                start_unix_timestamp: 0,
-                duration_seconds: 0,
-                end_collateral_amount: per_claimer_collateral_amount,
-            },
-        });
-        expected_total_claimed_collateral += per_claimer_collateral_amount;
-        if i % 3 == 0 {
+    for nonce in 0..3 {
+        for claimer in &claimers {
+            let allocated_collateral_amount =
+                u64::from(pseudo_rand_u32(&mut random_seed));
+            expected_total_collateral += allocated_collateral_amount;
             allocations.push(Allocation {
                 claimer: claimer.pubkey(),
-                nonce: 1,
+                nonce,
                 vesting: Vesting {
                     start_unix_timestamp: 0,
                     duration_seconds: 0,
-                    end_collateral_amount: per_claimer_collateral_amount * 3,
+                    end_collateral_amount: allocated_collateral_amount,
                 },
             });
-            expected_total_claimed_collateral +=
-                per_claimer_collateral_amount * 3;
         }
-        claimers.push(claimer);
     }
     let airdrop_merkle_tree =
         AirdropMerkleTree::try_from(&allocations).unwrap();
@@ -86,10 +78,9 @@ pub async fn run() {
         &payer,
         airdrop_id,
         &airdrop_authority,
-        *airdrop_merkle_tree.root().unwrap(),
+        airdrop_merkle_tree.root().unwrap(),
         AirdropMetadata {
-            length: 0,
-            bytes: [0u8; AirdropMetadata::BYTES],
+            bytes: [0u8; AirdropMetadata::SIZE],
         },
         &collateral_mint,
     )
@@ -117,7 +108,7 @@ pub async fn run() {
             &collateral_mint,
             &collateral_mint_authority,
             &airdrop_collateral,
-            airdrop_collateral_amount,
+            expected_total_collateral,
         )
         .await
         .unwrap();
@@ -182,7 +173,7 @@ pub async fn run() {
             .unwrap()
             .unwrap()
             .amount,
-        expected_total_claimed_collateral
+        expected_total_collateral
     );
     assert_eq!(
         endpoint
@@ -191,6 +182,11 @@ pub async fn run() {
             .unwrap()
             .unwrap()
             .amount,
-        airdrop_collateral_amount - expected_total_claimed_collateral
+        0
     );
+}
+
+fn pseudo_rand_u32(seed: &mut u32) -> u32 {
+    *seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+    *seed
 }

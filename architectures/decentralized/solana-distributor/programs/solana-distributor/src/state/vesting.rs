@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::ProgramError;
 
-#[derive(Debug, AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
+#[derive(Debug, InitSpace, AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub struct Vesting {
     pub start_unix_timestamp: i64,
     pub duration_seconds: u32,

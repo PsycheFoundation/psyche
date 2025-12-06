@@ -75,10 +75,9 @@ pub async fn run() {
         &payer,
         airdrop_id,
         &airdrop_authority,
-        *airdrop_merkle_tree.root().unwrap(),
+        airdrop_merkle_tree.root().unwrap(),
         AirdropMetadata {
-            length: 0,
-            bytes: [0u8; AirdropMetadata::BYTES],
+            bytes: [0u8; AirdropMetadata::SIZE],
         },
         &collateral_mint,
     )

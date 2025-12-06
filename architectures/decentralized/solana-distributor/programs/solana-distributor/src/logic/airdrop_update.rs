@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 
-use crate::ProgramError;
 use crate::state::Airdrop;
 use crate::state::AirdropMetadata;
 use crate::state::MerkleHash;
@@ -18,7 +17,7 @@ pub struct AirdropUpdateAccounts<'info> {
     pub airdrop: Box<Account<'info, Airdrop>>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct AirdropUpdateParams {
     pub freeze: Option<bool>,
     pub merkle_root: Option<MerkleHash>,
@@ -33,7 +32,7 @@ pub fn airdrop_update_processor(
 
     if let Some(freeze) = params.freeze {
         msg!("freeze: {}", freeze);
-        airdrop.freeze = freeze;
+        airdrop.claim_freeze = freeze;
     }
 
     if let Some(merkle_root) = params.merkle_root {
@@ -42,9 +41,7 @@ pub fn airdrop_update_processor(
     }
 
     if let Some(metadata) = params.metadata {
-        if usize::from(metadata.length) > AirdropMetadata::BYTES {
-            return err!(ProgramError::ParamsMetadataLengthIsTooLarge);
-        }
+        msg!("metadata: {:?}", metadata);
         airdrop.metadata = metadata;
     }
 

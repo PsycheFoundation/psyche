@@ -48,14 +48,12 @@ pub mod psyche_solana_distributor {
 
 #[error_code]
 pub enum ProgramError {
-    #[msg("math overflow")]
-    MathOverflow,
-    #[msg("airdrop.freeze is true")]
-    AirdropFreezeIsTrue,
-    #[msg("params.metadata.length is too large")]
-    ParamsMetadataLengthIsTooLarge,
+    #[msg("airdrop.claim_freeze is true")]
+    AirdropClaimFreezeIsTrue,
     #[msg("params.merkle_proof is invalid")]
     ParamsMerkleProofIsInvalid,
     #[msg("params.collateral_amount is too large")]
     ParamsCollateralAmountIsTooLarge,
+    #[msg("math overflow")]
+    MathOverflow,
 }

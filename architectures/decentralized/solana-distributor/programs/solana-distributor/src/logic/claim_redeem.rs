@@ -70,8 +70,8 @@ pub fn claim_redeem_processor(
     params: ClaimRedeemParams,
 ) -> Result<()> {
     let airdrop = &mut context.accounts.airdrop;
-    if airdrop.freeze {
-        return err!(ProgramError::AirdropFreezeIsTrue);
+    if airdrop.claim_freeze {
+        return err!(ProgramError::AirdropClaimFreezeIsTrue);
     }
 
     let allocation = Allocation {
@@ -79,15 +79,14 @@ pub fn claim_redeem_processor(
         nonce: params.nonce,
         vesting: params.vesting,
     };
-    if !allocation
-        .to_merkle_hash()
-        .is_valid_proof(&params.merkle_proof, &airdrop.merkle_root)
+    if !airdrop
+        .merkle_root
+        .is_valid_proof(&allocation.to_merkle_hash(), &params.merkle_proof)
     {
         return err!(ProgramError::ParamsMerkleProofIsInvalid);
     }
 
     let claim = &mut context.accounts.claim;
-
     let claimable_collateral_amount = params
         .vesting
         .compute_vested_collateral_amount(Clock::get()?.unix_timestamp)?
@@ -95,10 +94,9 @@ pub fn claim_redeem_processor(
     if claimable_collateral_amount < i128::from(params.collateral_amount) {
         return err!(ProgramError::ParamsCollateralAmountIsTooLarge);
     }
-
-    airdrop.total_claimed_collateral_amount += params.collateral_amount;
     claim.claimed_collateral_amount += params.collateral_amount;
 
+    airdrop.total_claimed_collateral_amount += params.collateral_amount;
     let airdrop_signer_seeds: &[&[&[u8]]] = &[&[
         Airdrop::SEEDS_PREFIX,
         &airdrop.id.to_le_bytes(),

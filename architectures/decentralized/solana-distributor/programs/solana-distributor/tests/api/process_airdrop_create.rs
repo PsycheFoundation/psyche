@@ -20,7 +20,7 @@ pub async fn process_airdrop_create(
     payer: &Keypair,
     airdrop_id: u64,
     airdrop_authority: &Keypair,
-    airdrop_merkle_root: MerkleHash,
+    airdrop_merkle_root: &MerkleHash,
     airdrop_metadata: AirdropMetadata,
     collateral_mint: &Pubkey,
 ) -> Result<()> {
@@ -46,7 +46,7 @@ pub async fn process_airdrop_create(
         AirdropCreate {
             params: AirdropCreateParams {
                 id: airdrop_id,
-                merkle_root: airdrop_merkle_root,
+                merkle_root: airdrop_merkle_root.clone(),
                 metadata: airdrop_metadata,
             },
         },

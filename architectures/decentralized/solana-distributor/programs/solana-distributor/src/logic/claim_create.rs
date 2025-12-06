@@ -44,12 +44,11 @@ pub fn claim_create_processor(
     _params: ClaimCreateParams,
 ) -> Result<()> {
     let airdrop = &context.accounts.airdrop;
-    if airdrop.freeze {
-        return err!(ProgramError::AirdropFreezeIsTrue);
+    if airdrop.claim_freeze {
+        return err!(ProgramError::AirdropClaimFreezeIsTrue);
     }
 
     let claim = &mut context.accounts.claim;
-
     claim.bump = context.bumps.claim;
     claim.claimed_collateral_amount = 0;
 

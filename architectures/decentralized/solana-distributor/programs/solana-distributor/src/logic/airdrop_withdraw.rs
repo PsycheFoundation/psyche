@@ -6,7 +6,6 @@ use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
 use anchor_spl::token::transfer;
 
-use crate::ProgramError;
 use crate::state::Airdrop;
 
 #[derive(Accounts)]
@@ -58,10 +57,6 @@ pub fn airdrop_withdraw_processor(
     params: AirdropWithdrawParams,
 ) -> Result<()> {
     let airdrop = &mut context.accounts.airdrop;
-    if airdrop.freeze {
-        return err!(ProgramError::AirdropFreezeIsTrue);
-    }
-
     let airdrop_signer_seeds: &[&[&[u8]]] = &[&[
         Airdrop::SEEDS_PREFIX,
         &airdrop.id.to_le_bytes(),

@@ -1,6 +1,7 @@
 use anchor_spl::associated_token;
 use psyche_solana_distributor::state::AirdropMetadata;
 use psyche_solana_distributor::state::Allocation;
+use psyche_solana_distributor::state::MerkleHash;
 use psyche_solana_distributor::state::Vesting;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
@@ -10,6 +11,7 @@ use crate::api::airdrop_merkle_tree::AirdropMerkleTree;
 use crate::api::create_memnet_endpoint::create_memnet_endpoint;
 use crate::api::find_pdas::find_pda_airdrop;
 use crate::api::process_airdrop_create::process_airdrop_create;
+use crate::api::process_airdrop_update::process_airdrop_update;
 use crate::api::process_airdrop_withdraw::process_airdrop_withdraw;
 use crate::api::process_claim_create::process_claim_create;
 use crate::api::process_claim_redeem::process_claim_redeem;
@@ -92,10 +94,9 @@ pub async fn run() {
         &payer,
         airdrop_id,
         &airdrop_authority,
-        *airdrop_merkle_tree.root().unwrap(),
+        airdrop_merkle_tree.root().unwrap(),
         AirdropMetadata {
-            length: 0,
-            bytes: [0u8; AirdropMetadata::BYTES],
+            bytes: [0u8; AirdropMetadata::SIZE],
         },
         &collateral_mint,
     )
@@ -132,21 +133,6 @@ pub async fn run() {
         )
         .await
         .unwrap();
-
-    // Redeem nothing should work with a valid input
-    process_claim_redeem(
-        &mut endpoint,
-        &payer,
-        &claimer,
-        &receiver_collateral,
-        airdrop_id,
-        &claimer_allocation,
-        &claimer_merkle_proof,
-        &collateral_mint,
-        0,
-    )
-    .await
-    .unwrap();
 
     // Redeem should fail with an invalid proof
     process_claim_redeem(
@@ -196,6 +182,38 @@ pub async fn run() {
     )
     .await
     .unwrap_err();
+
+    // Redeem should fail with an invalid allocation timestamp
+    let mut claimer_allocation_corrupted3 = claimer_allocation;
+    claimer_allocation_corrupted3.vesting.start_unix_timestamp -= 1;
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation_corrupted3,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Redeem nothing should work with a valid input
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap();
 
     // Redeeming something should fail (not enough collateral deposited in airdrop)
     process_claim_redeem(
@@ -258,7 +276,159 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Withdraw the rest left from the airdrop
+    // Freezing the airdrop should make redeeming fail
+    endpoint.forward_clock_slot(1).await.unwrap();
+    process_airdrop_update(
+        &mut endpoint,
+        &payer,
+        airdrop_id,
+        &airdrop_authority,
+        Some(true),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Unfreeze the airdrop should make redeeming possible again
+    endpoint.forward_clock_slot(1).await.unwrap();
+    process_airdrop_update(
+        &mut endpoint,
+        &payer,
+        airdrop_id,
+        &airdrop_authority,
+        Some(false),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap();
+
+    // Putting a dummy merkle root should make redeeming fail
+    endpoint.forward_clock_slot(1).await.unwrap();
+    process_airdrop_update(
+        &mut endpoint,
+        &payer,
+        airdrop_id,
+        &airdrop_authority,
+        None,
+        Some(MerkleHash::from_parts(&[b"dummy"])),
+        None,
+    )
+    .await
+    .unwrap();
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Restoring the correct merkle root should make redeeming work again
+    endpoint.forward_clock_slot(1).await.unwrap();
+    process_airdrop_update(
+        &mut endpoint,
+        &payer,
+        airdrop_id,
+        &airdrop_authority,
+        None,
+        Some(airdrop_merkle_tree.root().unwrap().clone()),
+        None,
+    )
+    .await
+    .unwrap();
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap();
+
+    // Chaning the metadata should have no negative effect on claims
+    endpoint.forward_clock_slot(1).await.unwrap();
+    process_airdrop_update(
+        &mut endpoint,
+        &payer,
+        airdrop_id,
+        &airdrop_authority,
+        None,
+        None,
+        Some(AirdropMetadata {
+            bytes: [2u8; AirdropMetadata::SIZE],
+        }),
+    )
+    .await
+    .unwrap();
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap();
+
+    // Check that after all these operations, redeeming past the cap still fails
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        &claimer_allocation,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        1,
+    )
+    .await
+    .unwrap_err();
+
+    // Withdraw the rest of the collateral left from the airdrop
     let spill_collateral = endpoint
         .process_spl_associated_token_account_get_or_init(
             &payer,

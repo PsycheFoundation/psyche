@@ -3,7 +3,7 @@ use psyche_solana_distributor::state::Allocation;
 use psyche_solana_distributor::state::MerkleHash;
 use solana_sdk::pubkey::Pubkey;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct AirdropMerkleTree {
     allocations: Vec<Allocation>,
     merkle_layers: Vec<Vec<MerkleHash>>,
@@ -25,9 +25,9 @@ impl AirdropMerkleTree {
         while merkle_layer.len() > 1 {
             let mut merkle_parents = vec![];
             for pair in merkle_layer.chunks(2) {
-                let left = pair[0];
-                let right = if pair.len() == 2 { pair[1] } else { pair[0] };
-                merkle_parents.push(MerkleHash::from_pair(&left, &right));
+                let left = &pair[0];
+                let right = if pair.len() == 2 { &pair[1] } else { &pair[0] };
+                merkle_parents.push(MerkleHash::from_pair(left, right));
             }
             merkle_layers.push(merkle_parents.clone());
             merkle_layer = merkle_parents;
@@ -74,9 +74,9 @@ impl AirdropMerkleTree {
             let sibling_index =
                 if index % 2 == 0 { index + 1 } else { index - 1 };
             if sibling_index >= layer.len() {
-                proof.push(layer[index]);
+                proof.push(layer[index].clone());
             } else {
-                proof.push(layer[sibling_index]);
+                proof.push(layer[sibling_index].clone());
             }
             index /= 2;
         }
