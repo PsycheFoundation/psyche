@@ -1,0 +1,49 @@
+use anchor_lang::prelude::*;
+
+use crate::state::Airdrop;
+use crate::state::AirdropMetadata;
+use crate::state::MerkleHash;
+
+#[derive(Accounts)]
+#[instruction(params: AirdropUpdateParams)]
+pub struct AirdropUpdateAccounts<'info> {
+    #[account()]
+    pub authority: Signer<'info>,
+
+    #[account(
+        mut,
+        constraint = airdrop.authority == authority.key(),
+    )]
+    pub airdrop: Box<Account<'info, Airdrop>>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct AirdropUpdateParams {
+    pub freeze: Option<bool>,
+    pub merkle_root: Option<MerkleHash>,
+    pub metadata: Option<AirdropMetadata>,
+}
+
+pub fn airdrop_update_processor(
+    context: Context<AirdropUpdateAccounts>,
+    params: AirdropUpdateParams,
+) -> Result<()> {
+    let airdrop = &mut context.accounts.airdrop;
+
+    if let Some(freeze) = params.freeze {
+        msg!("freeze: {}", freeze);
+        airdrop.claim_freeze = freeze;
+    }
+
+    if let Some(merkle_root) = params.merkle_root {
+        msg!("merkle_root: {:?}", merkle_root);
+        airdrop.merkle_root = merkle_root;
+    }
+
+    if let Some(metadata) = params.metadata {
+        msg!("metadata: {:?}", metadata);
+        airdrop.metadata = metadata;
+    }
+
+    Ok(())
+}

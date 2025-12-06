@@ -16,6 +16,7 @@ tasks:
       - task treasurer_fmt
       - task tooling_fmt
       - task mining_pool_fmt
+      - task distributor_fmt
 
   # Linting everything
   lint:
@@ -25,12 +26,14 @@ tasks:
       - task treasurer_lint
       - task tooling_lint
       - task mining_pool_lint
+      - task distributor_lint
 
   # Testing everything
   test:
     cmds:
       - task tooling_test
       - task mining_pool_test
+      - task distributor_test
 
   # Authorizer
   authorizer_fmt:
@@ -87,5 +90,19 @@ tasks:
       - task lint
   mining_pool_test:
     dir: '{{ .TASKFILE_DIR }}/solana-mining-pool'
+    cmds:
+      - task test
+
+  # Distributor
+  distributor_fmt:
+    dir: '{{ .TASKFILE_DIR }}/solana-distributor'
+    cmds:
+      - task fmt
+  distributor_lint:
+    dir: '{{ .TASKFILE_DIR }}/solana-distributor'
+    cmds:
+      - task lint
+  distributor_test:
+    dir: '{{ .TASKFILE_DIR }}/solana-distributor'
     cmds:
       - task test
