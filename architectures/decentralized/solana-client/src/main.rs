@@ -1,3 +1,4 @@
+use crate::app::build_app;
 use crate::command::can_join::CommandCanJoinParams;
 use crate::command::can_join::command_can_join_execute;
 use crate::command::checkpoint::CommandCheckpointParams;
@@ -20,10 +21,12 @@ use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
 use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
 use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
 use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
+use crate::command::update_client_version::CommandUpdateClientVersionParams;
+use crate::command::update_client_version::command_update_client_version_execute;
 use crate::command::update_config::CommandUpdateConfigParams;
 use crate::command::update_config::command_update_config_execute;
 use crate::{
-    app::{AppBuilder, AppParams, TAB_NAMES, Tabs},
+    app::{AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
 };
 
@@ -38,16 +41,13 @@ use anchor_client::{
 };
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
-use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
-use psyche_core::sha256;
+use psyche_client::{TrainArgs, print_identity_keys};
 use psyche_network::SecretKey;
 use psyche_tui::{
     LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
     maybe_start_render_loop,
 };
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 use std::sync::Arc;
 use std::{io::Cursor, path::PathBuf, time::Duration};
 use time::OffsetDateTime;
@@ -122,6 +122,14 @@ enum Commands {
         wallet: WalletArgs,
         #[clap(flatten)]
         params: CommandUpdateConfigParams,
+    },
+    UpdateClientVersion {
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandUpdateClientVersionParams,
     },
     Tick {
         #[clap(flatten)]
@@ -260,7 +268,7 @@ async fn async_main() -> Result<()> {
         } => print_identity_keys(identity_secret_key_path.as_ref()),
         Commands::CreateStaticP2PIdentity { save_path } => {
             let identity_secret_key = SecretKey::generate(&mut rand::rng());
-            std::fs::write(&save_path, identity_secret_key.secret().as_bytes())?;
+            std::fs::write(&save_path, identity_secret_key.to_bytes())?;
             print_identity_keys(Some(&save_path))?;
             println!("Wrote secret key to {}", save_path.display());
             Ok(())
@@ -370,6 +378,21 @@ async fn async_main() -> Result<()> {
             .unwrap();
             command_treasurer_claim_rewards_execute(backend, params).await
         }
+        Commands::UpdateClientVersion {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                key_pair.clone(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_update_client_version_execute(backend, params).await
+        }
         Commands::TreasurerTopUpRewards {
             cluster,
             wallet,
@@ -412,30 +435,12 @@ async fn async_main() -> Result<()> {
         } => {
             psyche_client::prepare_environment();
 
-            let hub_read_token = std::env::var("HF_TOKEN").ok();
-            let checkpoint_upload_info = args.checkpoint_config()?;
-            let eval_tasks = args.eval_tasks()?;
-
             info!(
                 "============ Client Startup at {} ============",
                 OffsetDateTime::now_utc()
             );
 
-            let run_id = args.run_id.trim_matches('"').to_string(); // Trim quotes, if any
-
             let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-
-            let solana_pubkey = wallet_keypair.pubkey();
-            let wandb_info = args.wandb_info(format!("{run_id}-{solana_pubkey}"))?;
-
-            let identity_secret_key: SecretKey =
-                read_identity_secret_key(args.identity_secret_key_path.as_ref())?
-                    // Iroh key should be deterministically derived from Solana key
-                    .unwrap_or_else(|| {
-                        let mut rng =
-                            ChaCha8Rng::from_seed(sha256(wallet_keypair.secret().as_bytes()));
-                        SecretKey::generate(&mut rng)
-                    });
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
@@ -490,37 +495,15 @@ async fn async_main() -> Result<()> {
                 backup_clusters.push(Cluster::Custom(rpc, ws))
             }
 
-            let app = AppBuilder::new(AppParams {
+            let app = build_app(AppParams {
                 cancel,
                 tx_tui_state,
-                identity_secret_key,
                 wallet_keypair,
                 cluster: cluster.into(),
                 backup_clusters,
-                run_id,
-                p2p_port: args.bind_p2p_port,
-                p2p_interface: args.bind_p2p_interface,
-                data_parallelism: args.data_parallelism,
-                tensor_parallelism: args.tensor_parallelism,
-                micro_batch_size: args.micro_batch_size,
-                write_gradients_dir: args.write_gradients_dir,
-                eval_task_max_docs: args.eval_task_max_docs,
-                eval_tasks,
-                prompt_task: args.prompt_task,
-                checkpoint_upload_info,
-                hub_read_token,
-                hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
-                wandb_info,
-                optim_stats: args.optim_stats_steps,
-                grad_accum_in_fp32: args.grad_accum_in_fp32,
-                dummy_training_delay_secs: args.dummy_training_delay_secs,
-                max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
                 authorizer,
-                metrics_local_port: args.metrics_local_port,
-                device: args.device,
-                sidecar_port: args.sidecar_port,
+                train_args: args,
             })
-            .build()
             .await?;
 
             app.run().await?;
