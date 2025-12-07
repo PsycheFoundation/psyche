@@ -19,7 +19,7 @@ pub struct AirdropUpdateAccounts<'info> {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct AirdropUpdateParams {
-    pub freeze: Option<bool>,
+    pub claim_freeze: Option<bool>,
     pub merkle_root: Option<MerkleHash>,
     pub metadata: Option<AirdropMetadata>,
 }
@@ -30,9 +30,9 @@ pub fn airdrop_update_processor(
 ) -> Result<()> {
     let airdrop = &mut context.accounts.airdrop;
 
-    if let Some(freeze) = params.freeze {
-        msg!("freeze: {}", freeze);
-        airdrop.claim_freeze = freeze;
+    if let Some(claim_freeze) = params.claim_freeze {
+        msg!("claim_freeze: {}", claim_freeze);
+        airdrop.claim_freeze = claim_freeze;
     }
 
     if let Some(merkle_root) = params.merkle_root {

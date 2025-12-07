@@ -16,7 +16,7 @@ pub async fn process_airdrop_update(
     payer: &Keypair,
     airdrop_id: u64,
     airdrop_authority: &Keypair,
-    airdrop_freeze: Option<bool>,
+    airdrop_claim_freeze: Option<bool>,
     airdrop_merkle_root: Option<MerkleHash>,
     airdrop_metadata: Option<AirdropMetadata>,
 ) -> Result<()> {
@@ -31,7 +31,7 @@ pub async fn process_airdrop_update(
         },
         AirdropUpdate {
             params: AirdropUpdateParams {
-                freeze: airdrop_freeze,
+                claim_freeze: airdrop_claim_freeze,
                 merkle_root: airdrop_merkle_root,
                 metadata: airdrop_metadata,
             },
