@@ -72,6 +72,7 @@ pub async fn run() {
         epoch_earning_rate_total_shared: Some(66),
         epoch_slashing_rate_per_client: None,
         paused: Some(false),
+        client_version: None,
     };
 
     // Prepare the collateral mint

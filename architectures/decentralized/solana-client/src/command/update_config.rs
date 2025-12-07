@@ -134,11 +134,11 @@ pub async fn command_update_config_execute(
         bail!("this invocation would not update anything, bailing.")
     }
 
-    let instruction = if let Some(treasurer_index) = backend
+    let instructions = if let Some(treasurer_index) = backend
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
-        instructions::treasurer_run_update(
+        vec![instructions::treasurer_run_update(
             &run_id,
             treasurer_index,
             &coordinator_account,
@@ -151,21 +151,30 @@ pub async fn command_update_config_execute(
                 epoch_earning_rate_total_shared: None,
                 epoch_slashing_rate_per_client: None,
                 paused: None,
+                client_version: Some("test-client-version".to_string()),
             },
-        )
+        )]
     } else {
-        instructions::coordinator_update(
-            &run_id,
-            &coordinator_account,
-            &main_authority,
-            metadata,
-            config,
-            model,
-            progress,
-        )
+        vec![
+            instructions::coordinator_update_client_version(
+                &run_id,
+                &coordinator_account,
+                &main_authority,
+                "test-client-version",
+            ),
+            instructions::coordinator_update(
+                &run_id,
+                &coordinator_account,
+                &main_authority,
+                metadata,
+                config,
+                model,
+                progress,
+            ),
+        ]
     };
     let signature = backend
-        .send_and_retry("Update config", &[instruction], &[])
+        .send_and_retry("Update config", &instructions, &[])
         .await?;
     println!("Updated config of {run_id} with transaction {signature}");
 
