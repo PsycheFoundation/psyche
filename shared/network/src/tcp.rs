@@ -132,7 +132,7 @@ where
 
         // Generate and send challenge
         let mut challenge = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut challenge);
+        rand::rng().fill_bytes(&mut challenge);
         framed
             .send(
                 ServerToClientMessage::<ToClient>::Challenge(challenge)

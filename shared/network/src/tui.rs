@@ -1,6 +1,7 @@
-use crate::{NetworkConnection, Networkable, peer_list::PeerList, util::fmt_bytes};
+use crate::{NetworkConnection, Networkable, P2PEndpointInfo, util::fmt_bytes};
 
-use iroh::{PublicKey, endpoint::ConnectionType};
+use futures_util::StreamExt;
+use iroh::{EndpointId, endpoint::ConnectionType};
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -11,11 +12,7 @@ use psyche_tui::ratatui::{
         Widget, Wrap,
     },
 };
-use std::{
-    collections::{HashMap, VecDeque},
-    ops::Sub,
-    time::Instant,
-};
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Default, Debug)]
 pub struct NetworkTui;
@@ -42,26 +39,36 @@ impl psyche_tui::CustomWidget for NetworkTui {
 
             // Clients
             {
-                Paragraph::new(state.join_ticket.to_string())
-                    .wrap(Wrap { trim: true })
-                    .block(
-                        Block::default()
-                            .title("Join Ticket")
-                            .padding(Padding::symmetric(1, 0))
-                            .borders(Borders::ALL),
-                    )
-                    .render(chunks[0], buf);
+                Paragraph::new(
+                    state
+                        .endpoint_id
+                        .map(|m| m.to_string())
+                        .unwrap_or("unknown".to_string()),
+                )
+                .wrap(Wrap { trim: true })
+                .block(
+                    Block::default()
+                        .title("Node ID")
+                        .padding(Padding::symmetric(1, 0))
+                        .borders(Borders::ALL),
+                )
+                .render(chunks[0], buf);
 
-                List::new(state.last_seen.iter().map(
-                    |(peer_id, (peer_connection_method, last_seen_instant))| {
-                        let last_seen_time = Instant::now().sub(*last_seen_instant).as_secs_f64();
+                List::new(state.endpoint_connections.iter().map(
+                    |P2PEndpointInfo {
+                         id: endpoint_id,
+                         path,
+                         bandwidth,
+                         latency,
+                     }| {
                         let li = ListItem::new(format!(
-                            "{} ({}): {:.2} seconds ago",
-                            peer_id.fmt_short(),
-                            peer_connection_method,
-                            last_seen_time
+                            "{} ({}): {} ({:.2}s)",
+                            endpoint_id.fmt_short(),
+                            path,
+                            bandwidth,
+                            latency,
                         ));
-                        if last_seen_time < 1.0 {
+                        if *bandwidth > 1.0 && !matches!(path, ConnectionType::None) {
                             li.bg(Color::LightYellow).fg(Color::Black)
                         } else {
                             li
@@ -196,8 +203,8 @@ pub struct UIDownloadProgress {
 
 #[derive(Default, Debug, Clone)]
 pub struct NetworkTUIStateInner {
-    pub join_ticket: PeerList,
-    pub last_seen: HashMap<PublicKey, (ConnectionType, Instant)>,
+    pub endpoint_id: Option<EndpointId>,
+    pub endpoint_connections: Vec<P2PEndpointInfo>,
     // pub data_per_sec_per_client: HashMap<PublicKey, f64>,
     pub total_data_per_sec: f64,
     pub download_bandwidth_history: VecDeque<f64>,
@@ -212,17 +219,26 @@ pub struct NetworkTUIState {
     pub inner: Option<NetworkTUIStateInner>,
 }
 
-impl<M, D> From<&NetworkConnection<M, D>> for NetworkTUIState
-where
-    M: Networkable,
-    D: Networkable,
-{
-    fn from(nc: &NetworkConnection<M, D>) -> Self {
+impl NetworkTUIState {
+    pub async fn from_network_connection<M, D>(nc: &NetworkConnection<M, D>) -> anyhow::Result<Self>
+    where
+        M: Networkable,
+        D: Networkable,
+    {
         let s = &nc.state;
-        Self {
+        let blob_hashes = nc
+            .blobs_store
+            .list()
+            .stream()
+            .await?
+            .filter_map(|hash_result| async move { hash_result.ok().map(|h| h.to_string()) })
+            .collect::<Vec<_>>()
+            .await;
+
+        Ok(Self {
             inner: Some(NetworkTUIStateInner {
-                join_ticket: s.join_ticket.clone(),
-                last_seen: s.last_seen.clone(),
+                endpoint_id: s.endpoint_id,
+                endpoint_connections: s.connection_info.clone(),
                 total_data_per_sec: s.bandwidth_tracker.get_total_bandwidth(),
                 download_bandwidth_history: s.bandwidth_history.clone(),
                 downloads: s
@@ -238,12 +254,8 @@ where
                         )
                     })
                     .collect(),
-                blob_hashes: s
-                    .currently_sharing_blobs
-                    .iter()
-                    .map(|blob| blob.to_string())
-                    .collect(),
+                blob_hashes,
             }),
-        }
+        })
     }
 }

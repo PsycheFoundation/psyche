@@ -2,7 +2,6 @@ use std::{fs::OpenOptions, path::PathBuf, time::Duration};
 
 use crate::CustomWidget;
 use clap::ValueEnum;
-use console_subscriber::ConsoleLayer;
 use crossterm::event::{Event, KeyCode, MouseEventKind};
 use logfire::{
     bridges::tracing::LogfireTracingPendingSpanNotSentLayer,
@@ -245,15 +244,17 @@ pub struct ServiceInfo {
     pub instance_id: String,
     pub namespace: String,
     pub deployment_environment: String,
+    pub run_id: Option<String>,
 }
 
 impl ServiceInfo {
-    pub fn into_attributes(self) -> [KeyValue; 4] {
+    pub fn into_attributes(self) -> [KeyValue; 5] {
         [
             KeyValue::new("service.name", self.name),
             KeyValue::new("service.instance.id", self.instance_id),
             KeyValue::new("service.namespace", self.namespace),
             KeyValue::new("deployment.environment.name", self.deployment_environment),
+            KeyValue::new("run.id", self.run_id.unwrap_or("".to_string())),
         ]
     }
 }
@@ -566,9 +567,6 @@ fn init_logging_core(
     };
 
     let mut layers: Vec<Box<dyn tracing_subscriber::Layer<_> + Send + Sync>> = Vec::new();
-
-    // add console layer
-    layers.push(ConsoleLayer::builder().with_default_env().spawn().boxed());
 
     // add output layer
     match output {

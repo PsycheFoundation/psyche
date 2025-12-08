@@ -3,7 +3,8 @@ use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
-use psyche_network::SecretKey;
+use psyche_modeling::Devices;
+use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
 
@@ -38,8 +39,12 @@ pub fn print_identity_keys(key: Option<&PathBuf>) -> Result<()> {
         anyhow!("Use --identity-secret-key-path or use `RAW_IDENTITY_SECRET_KEY` env variable")
     })?;
     println!("Public key: {}", key.public());
-    println!("Secret key: {}", hex::encode(key.secret().as_bytes()));
+    println!("Secret key: {}", hex::encode(key.to_bytes()));
     Ok(())
+}
+
+fn parse_trim_quotes(s: &str) -> Result<String, String> {
+    Ok(s.trim_matches('"').to_string())
 }
 
 #[derive(Args, Debug)]
@@ -55,6 +60,14 @@ pub struct TrainArgs {
     /// Sets the network interface for the client's P2P network participation. If not provided, will bind to all interfaces.
     #[clap(long, env)]
     pub bind_p2p_interface: Option<String>,
+
+    /// What relays to use - public n0 or the private Psyche ones
+    #[clap(long, env, default_value = "psyche")]
+    pub iroh_relay: RelayKind,
+
+    /// What discovery to use - public n0 or local
+    #[clap(long, env, default_value = "n0")]
+    pub iroh_discovery: DiscoveryMode,
 
     /// Sets clients logs interface
     /// tui: Enables a terminal-based graphical interface for monitoring analytics.
@@ -96,7 +109,7 @@ pub struct TrainArgs {
     pub metrics_local_port: Option<u16>,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
-    #[clap(long, env)]
+    #[clap(long, env, value_parser = parse_trim_quotes)]
     pub run_id: String,
 
     #[clap(long, default_value_t = 1, env)]
@@ -165,6 +178,22 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 4, env)]
     pub max_concurrent_downloads: usize,
+
+    #[arg(
+        long,
+        help = "Device(s) to use: auto, cpu, mps, cuda, cuda:N, cuda:X,Y,Z",
+        default_value = "auto"
+    )]
+    pub device: Devices,
+
+    #[clap(long, env)]
+    pub sidecar_port: Option<u16>,
+
+    #[clap(long, default_value_t = true, env)]
+    pub delete_old_steps: bool,
+
+    #[clap(long, default_value_t = 3, env)]
+    pub keep_steps: u32,
 }
 
 impl TrainArgs {
@@ -199,25 +228,36 @@ impl TrainArgs {
             &hub_read_token,
             self.hub_repo.clone(),
             self.checkpoint_dir.clone(),
+            self.delete_old_steps,
+            self.keep_steps,
         ) {
-            (Some(token), Some(repo), Some(dir)) => Some(CheckpointConfig {
-                checkpoint_dir: dir,
-                hub_upload: Some(HubUploadInfo {
-                    hub_repo: repo,
-                    hub_token: token.to_string(),
-                }),
-            }),
-            (None, Some(_), Some(_)) => {
+            (Some(token), Some(repo), Some(dir), delete_old_steps, keep_steps) => {
+                if keep_steps == 0 {
+                    bail!("keep_steps must be >= 1 for hub repository uploads (got {keep_steps})")
+                }
+                Some(CheckpointConfig {
+                    checkpoint_dir: dir,
+                    hub_upload: Some(HubUploadInfo {
+                        hub_repo: repo,
+                        hub_token: token.to_string(),
+                    }),
+                    delete_old_steps,
+                    keep_steps,
+                })
+            }
+            (None, Some(_), Some(_), _, _) => {
                 bail!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
             }
-            (_, Some(_), None) => {
+            (_, Some(_), None, _, _) => {
                 bail!("--hub-repo was set, but no --checkpoint-dir was passed!")
             }
-            (_, None, Some(dir)) => Some(CheckpointConfig {
+            (_, None, Some(dir), delete_old_steps, keep_steps) => Some(CheckpointConfig {
                 checkpoint_dir: dir,
                 hub_upload: None,
+                delete_old_steps,
+                keep_steps,
             }),
-            (_, None, _) => None,
+            (_, None, _, _, _) => None,
         };
 
         Ok(checkpoint_upload_info)
@@ -238,7 +278,10 @@ impl TrainArgs {
         let result: Result<Vec<psyche_eval::Task>> = eval_tasks
             .split(",")
             .map(|eval_task| {
-                let fewshot = { if eval_task == "mmlu_pro" { 5 } else { 0 } };
+                let fewshot = match eval_task {
+                    "mmlu_pro" => 5,
+                    _ => 0,
+                };
                 tasktype_from_name(eval_task)
                     .map(|task_type| psyche_eval::Task::new(task_type, fewshot, eval_seed))
             })

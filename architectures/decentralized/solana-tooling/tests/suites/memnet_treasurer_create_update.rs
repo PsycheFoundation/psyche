@@ -27,7 +27,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 5_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -49,7 +49,7 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 1,
-            rounds_per_epoch: 44,
+            epoch_time: 30,
             total_steps: 100,
             waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
                 as u8,
@@ -72,9 +72,10 @@ pub async fn run() {
             cold_start_warmup_steps: 0,
         })),
         progress: None,
-        epoch_earning_rate: Some(66),
-        epoch_slashing_rate: None,
+        epoch_earning_rate_total_shared: Some(66),
+        epoch_slashing_rate_per_client: None,
         paused: Some(false),
+        client_version: None,
     };
 
     // Prepare the collateral mint
@@ -104,6 +105,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -120,6 +122,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -136,6 +139,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -178,6 +182,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -204,6 +209,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -220,6 +226,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -236,6 +243,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await

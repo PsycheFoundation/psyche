@@ -1,6 +1,7 @@
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use crate::{
-    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA,
+    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUCF, MMLUPro, OpenbookQA,
+    PIQA,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
@@ -14,12 +15,22 @@ use tch::{Kind, Tensor};
 use tokenizers::Tokenizer;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
-const GENERATE_UNTIL_MAX_TOKENS: usize = 600;
+const GENERATE_UNTIL_MAX_TOKENS: usize = 1024;
 
-const TASKS_WITH_ACC_NORM: [&str; 5] = [
+pub const PROGRESS_BAR_TEMPLATE: &str =
+    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}";
+
+pub fn progress_bar_template_with_task(task_name: &str) -> String {
+    format!(
+        "{{spinner:.green}} [{task_name}] [{{elapsed_precise}}] [{{bar:40.cyan/blue}}] {{pos}}/{{len}} ({{eta}}) {{msg}}"
+    )
+}
+
+const TASKS_WITH_ACC_NORM: [&str; 6] = [
     ArcChallenge::name(),
     ArcEasy::name(),
     Hellaswag::name(),
+    MMLUCF::name(),
     OpenbookQA::name(),
     PIQA::name(),
 ];
@@ -31,7 +42,7 @@ pub enum TaskType {
 
 pub struct Task {
     task_type: TaskType,
-    num_fewshot: usize,
+    pub num_fewshot: usize,
     rand: ChaCha8Rng,
 }
 
@@ -67,7 +78,8 @@ enum PreparedTaskType {
         // Since a single GenerateUntil request can take a long time to generate a answer, we cache the generated tokens
         // in case the task gets interrupted, so next time we can resume from where we left off.
         cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
-        answer_regex: Regex,
+        stop_tokens: Vec<String>,
+        answer_extraction_regex: Regex,
     },
 }
 
@@ -75,7 +87,7 @@ enum PreparedTaskType {
 pub struct PreparedTask {
     prepared_task_type: PreparedTaskType,
     name: String,
-    num: usize,
+    pub num: usize,
 }
 
 pub struct PreparedTaskResult {
@@ -295,8 +307,9 @@ impl Task {
                     requests.push(tokenized_doc);
                 }
 
-                // Regex to match "The answer is (X)." where X is a single uppercase letter;
-                let answer_regex = Regex::new(r"The answer is \(([A-Z])\)\.").unwrap();
+                let stop_tokens = gu_docs.get_stop_string();
+                let answer_extraction_regex =
+                    Regex::new(&gu_docs.get_answer_extraction_regex()).unwrap();
 
                 PreparedTask {
                     name,
@@ -305,7 +318,8 @@ impl Task {
                         requests,
                         tokenizer: tokenizer.clone(),
                         cache: Arc::new(RwLock::new(HashMap::new())),
-                        answer_regex,
+                        stop_tokens,
+                        answer_extraction_regex,
                     },
                 }
             }
@@ -319,20 +333,28 @@ pub struct EvalTaskOptions<'a> {
     pub live_results: Option<Arc<RunningAverage>>,
     pub cancel: Option<CancellationToken>,
     pub limit: Option<usize>,
+    pub shared_progress_bar: Option<Arc<ProgressBar>>,
 }
 
 impl PreparedTask {
     pub fn run(&self, options: EvalTaskOptions, progress_bar: bool) -> PreparedTaskResult {
-        let pbar = match progress_bar {
-            false => None,
-            true => {
+        let pbar = match (progress_bar, &options.shared_progress_bar) {
+            (false, _) => None,
+            (true, Some(shared_pbar)) => {
+                // Use the existing progress bar
+                Some(shared_pbar.clone())
+            }
+            (true, None) => {
+                // No progress bar created already so create a new one
                 info!("Running {}", self.name);
                 let pbar = ProgressBar::new(self.num as u64);
-                pbar.set_style(ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
-                    .unwrap()
-                    .progress_chars("#>-"));
-                Some(pbar)
+                pbar.set_style(
+                    ProgressStyle::default_bar()
+                        .template(PROGRESS_BAR_TEMPLATE)
+                        .unwrap()
+                        .progress_chars("#>-"),
+                );
+                Some(Arc::new(pbar))
             }
         };
 
@@ -344,14 +366,16 @@ impl PreparedTask {
                 requests,
                 tokenizer,
                 cache,
-                answer_regex,
+                stop_tokens,
+                answer_extraction_regex,
             } => Self::run_generate_until(
                 &self.name,
                 options,
                 cache.clone(),
                 requests,
                 tokenizer,
-                answer_regex,
+                stop_tokens,
+                answer_extraction_regex,
                 pbar,
             ),
         }
@@ -361,7 +385,7 @@ impl PreparedTask {
         eval_name: &String,
         options: EvalTaskOptions,
         docs: &[TokenizedLLHDocument],
-        pbar: Option<ProgressBar>,
+        pbar: Option<Arc<ProgressBar>>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
@@ -406,7 +430,6 @@ impl PreparedTask {
                 }
             }
             let mut scores: Vec<(f32, bool)> = Vec::new();
-
             for idx in 0..doc.requests.len() {
                 // e.g:
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
@@ -425,7 +448,6 @@ impl PreparedTask {
                 let request_tensor = Tensor::from_slice(&full_request)
                     .to(options.model.device())
                     .unsqueeze(0);
-
                 let (logits, _) = {
                     let _no_grad = tch::no_grad_guard();
                     options
@@ -433,7 +455,7 @@ impl PreparedTask {
                         .forward(&request_tensor, None, None, None, None, None)
                 };
 
-                let logits = logits.squeeze_dim(0).slice(0, 0, None, 1);
+                let logits = logits.unwrap().squeeze_dim(0).slice(0, 0, None, 1);
 
                 // Get tensor of shape `[choice.len(), vocab_size]` containing the
                 // model's logits for each token of the `choice` text.
@@ -508,14 +530,16 @@ impl PreparedTask {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_generate_until(
         eval_name: &String,
         options: EvalTaskOptions,
         cache: Arc<RwLock<HashMap<usize, Vec<u32>>>>,
         requests: &[TokenizedGenerateUntilDocument],
         tokenizer: &Tokenizer,
-        answer_regex: &Regex,
-        pbar: Option<ProgressBar>,
+        stop_tokens: &[String],
+        answer_extraction_regex: &Regex,
+        pbar: Option<Arc<ProgressBar>>,
     ) -> PreparedTaskResult {
         let results = options.live_results.unwrap_or_default();
         let (mut skip, step_by) = options.skip_and_step_by.unwrap_or((0, 1));
@@ -634,7 +658,7 @@ impl PreparedTask {
                     options
                         .model
                         .forward(&model_input, None, None, None, Some(1), None);
-                let logits = logits.squeeze();
+                let logits = logits.unwrap().squeeze();
 
                 let next_token = logits_processor.sample(&logits).unwrap();
                 full_sequence.push(next_token as i64);
@@ -649,21 +673,17 @@ impl PreparedTask {
                     }
                 }
 
-                // Decode all generated tokens together
+                // Decode all generated tokens together to check for stop tokens
                 if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
-                    // Check if we've generated "The answer is (X)" pattern using regex
-                    if let Some(captures) = answer_regex.captures(&generated_text) {
-                        if let Some(answer_char) = captures.get(1) {
-                            generated_answer = Some(
-                                crate::ASCII_UPPERCASE
-                                    .iter()
-                                    .position(|&c| c == answer_char.as_str())
-                                    .unwrap_or(usize::MAX),
-                            );
+                    // Check if we've hit any stop tokens
+                    for stop_token in stop_tokens {
+                        if generated_text.contains(stop_token) {
                             generation_complete = true;
-
                             break;
                         }
+                    }
+                    if generation_complete {
+                        break;
                     }
                 }
 
@@ -676,6 +696,26 @@ impl PreparedTask {
             // Clear the cache for this document after successful completion
             if generation_complete {
                 cache.write().unwrap().remove(&doc_index);
+
+                // Extract answer from the complete generated text using regex
+                // Use captures_iter to find all matches and take the last one (final answer)
+                if let Ok(generated_text) = tokenizer.decode(&generated_tokens, false) {
+                    if let Some(last_capture) = answer_extraction_regex
+                        .captures_iter(&generated_text)
+                        .last()
+                    {
+                        // last_capture.get(1) returns just the letter (A, B, C, ...)
+                        if let Some(answer_char) = last_capture.get(1) {
+                            // Gets the index of the letter (A=0, B=1, C=2, ...)
+                            generated_answer = Some(
+                                crate::ASCII_UPPERCASE
+                                    .iter()
+                                    .position(|&c| c == answer_char.as_str())
+                                    .unwrap_or(usize::MAX),
+                            );
+                        }
+                    }
+                }
 
                 let score = if generated_answer == Some(answer) {
                     1.
@@ -725,6 +765,7 @@ fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
         || eval_name == Hellaswag::name()
         || eval_name == OpenbookQA::name()
         || eval_name == MMLU::name()
+        || eval_name == MMLUCF::name()
         || eval_name == PIQA::name()
     {
         Some(0.5)

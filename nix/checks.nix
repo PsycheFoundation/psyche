@@ -1,8 +1,7 @@
-{ lib, ... }:
+{ ... }:
 {
   perSystem =
     {
-      system,
       pkgs,
       self',
       ...
@@ -24,7 +23,7 @@
               rustWorkspaceArgsWithPython
               // {
                 inherit cargoArtifacts;
-
+                RUST_BACKTRACE = "full";
                 RUST_LOG = "info,psyche=trace";
                 partitions = 1;
                 partitionType = "count";
@@ -50,9 +49,10 @@
           workspace-test-parallelism = testWithProfile "parallelism";
 
           validate-all-configs =
-            pkgs.runCommandNoCC "validate-configs"
+            pkgs.runCommand "validate-configs"
               { nativeBuildInputs = [ self'.packages.psyche-centralized-server ]; }
               ''
+                export NIXGL_HOST_CACHE_DIR=$TMPDIR/nixglhost
                 dir="${../config}"
                 if [ ! -d "$dir" ]; then
                   echo "config dir $dir does not exist."
@@ -61,10 +61,10 @@
 
                 for f in $dir/*; do
                   if [ -f $f/data.toml ]; then
-                    psyche-centralized-server-wrapped validate-config --state $f/state.toml --data-config $f/data.toml || exit 1
+                    psyche-centralized-server validate-config --state $f/state.toml --data-config $f/data.toml || exit 1
                     echo "config $f/data.toml and $f/state.toml ok!"
                   else
-                    psyche-centralized-server-wrapped validate-config --state $f/state.toml|| exit 1
+                    psyche-centralized-server validate-config --state $f/state.toml|| exit 1
                     echo "config $f/state.toml ok!"
                   fi
                 done;

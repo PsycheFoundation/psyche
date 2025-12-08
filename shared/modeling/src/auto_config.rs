@@ -1,5 +1,5 @@
 use crate::{
-    DeepseekConfig, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
+    DeepseekConfig, Devices, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
     safetensor_utils::load_safetensors_into_variables,
 };
 use std::{
@@ -13,6 +13,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ModelLoadError {
+    #[error("unavailable device(s)")]
+    UnavailbleDevice(Devices),
+
     #[error("missing config.json")]
     MissingConfigJSON,
 
@@ -56,6 +59,9 @@ pub enum ModelLoadError {
     #[cfg(feature = "python")]
     #[error("Python distributed error: {0}")]
     PythonDistributedError(String),
+
+    #[error("No device available for rank {0} for devices config {1}")]
+    NoDeviceForRank(usize, Devices),
 }
 
 pub trait ModelConfig: serde::Serialize + Clone {
@@ -149,6 +155,17 @@ pub enum AttentionImplementation {
     #[cfg(feature = "parallelism")]
     #[serde(rename = "flash_attention_2")]
     FlashAttention2,
+}
+
+impl AttentionImplementation {
+    pub fn to_pytorch_attn_impl_str(&self) -> &str {
+        match self {
+            AttentionImplementation::Eager => "eager",
+            AttentionImplementation::Sdpa => "sdpa",
+            #[cfg(feature = "parallelism")]
+            AttentionImplementation::FlashAttention2 => "flash_attention_2",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

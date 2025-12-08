@@ -18,6 +18,7 @@ import { makeRateLimitedFetch } from './rateLimit.js'
 import { PassThrough } from 'node:stream'
 import { getRunFromKey, runKey, UniqueRunKey } from './coordinator.js'
 import { CURRENT_VERSION } from 'shared/formats/type.js'
+import { RunSummariesData } from './dataStore.js'
 
 const requiredEnvVars = ['COORDINATOR_RPC', 'MINING_POOL_RPC'] as const
 
@@ -106,6 +107,20 @@ async function main() {
 		}
 	})
 
+	const liveRunSummaryListeners: Set<(runData: RunSummariesData) => void> =
+		new Set()
+
+	coordinator.dataStore.eventEmitter.addListener('updateSummaries', () => {
+		const summaries = coordinator.dataStore.getRunSummaries()
+		for (const listener of liveRunSummaryListeners) {
+			try {
+				listener(summaries)
+			} catch (err) {
+				console.error(`Failed to send run summaries to subscribed client...`)
+			}
+		}
+	})
+
 	const liveMiningPoolListeners: Set<() => void> = new Set()
 	miningPool.dataStore.eventEmitter.addListener('update', () => {
 		for (const listener of liveMiningPoolListeners) {
@@ -126,9 +141,28 @@ async function main() {
 	const shutdown = async () => {
 		console.log('got shutdown signal, shutting down!')
 		cancel()
-		await fastify.close()
-		await Promise.all([coordinator.stopped, miningPool.stopped])
-		process.exit(0)
+
+		try {
+			await fastify.close()
+		} catch (err) {
+			console.error('Error closing fastify:', err)
+		}
+
+		const shutdownTimeout = setTimeout(() => {
+			console.error('Shutdown timeout reached, forcing exit!')
+			process.exit(1)
+		}, 10000)
+
+		try {
+			await Promise.all([coordinator.stopped, miningPool.stopped])
+			clearTimeout(shutdownTimeout)
+			console.log('Clean shutdown completed')
+			process.exit(0)
+		} catch (err) {
+			console.error('Error during shutdown:', err)
+			clearTimeout(shutdownTimeout)
+			process.exit(1)
+		}
 	}
 
 	let coordinatorCrashed: Error | null = null
@@ -214,21 +248,58 @@ async function main() {
 		}
 	)
 
-	fastify.get('/runs', (_req, res) => {
-		const runs: ApiGetRuns = {
+	fastify.get('/runs', (req, res) => {
+		const isStreamingRequest = req.headers.accept?.includes(
+			'application/x-ndjson'
+		)
+
+		const data: ApiGetRuns = {
 			...coordinator.dataStore.getRunSummaries(),
 			error: coordinatorCrashed,
 		}
 
-		res
-			.header('content-type', 'application/json')
-			.send(JSON.stringify(runs, replacer))
+		// set header for streaming/non
+		res.header(
+			'content-type',
+			isStreamingRequest ? 'application/x-ndjson' : 'application/json'
+		)
+
+		if (!isStreamingRequest) {
+			res.send(JSON.stringify(data, replacer))
+			return
+		}
+
+		// start streaming newline-delimited json
+		const stream = new PassThrough()
+		res.send(stream)
+
+		function sendRunSummariesData(runSummariesData: RunSummariesData) {
+			const data: ApiGetRuns = {
+				...runSummariesData,
+				error: coordinatorCrashed,
+			}
+			stream.write(JSON.stringify(data, replacer) + '\n')
+		}
+
+		// send the initial run summaries data to populate the UI
+		sendRunSummariesData(data)
+
+		// this listener will be called every time we see a state change.
+		liveRunSummaryListeners.add(sendRunSummariesData)
+
+		// when the req closes, stop sending them updates
+		req.socket.on('close', () => {
+			liveRunSummaryListeners.delete(sendRunSummariesData)
+			stream.end()
+		})
 	})
 
 	fastify.get(
 		'/run/:runId/:indexStr',
 		(
-			req: FastifyRequest<{ Params: { runId?: string; indexStr?: string } }>,
+			req: FastifyRequest<{
+				Params: { runId?: string; indexStr?: string }
+			}>,
 			res
 		) => {
 			const isStreamingRequest = req.headers.accept?.includes(
@@ -296,6 +367,21 @@ async function main() {
 		}
 	)
 
+	fastify.get<{
+		Querystring: { owner: string; repo: string; revision?: string }
+	}>('/check-checkpoint', async (request) => {
+		const { owner, repo, revision } = request.query
+		const url = `https://huggingface.co/${owner}/${repo}${revision ? `/tree/${revision}` : ''}`
+		try {
+			const response = await fetch(url, { method: 'HEAD' })
+			return { isValid: response.ok, description: response.statusText }
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : 'Unknown error'
+			return { isValid: false, description: errorMessage }
+		}
+	})
+
 	fastify.get('/status', async (_, res) => {
 		const data = {
 			commit: process.env.GITCOMMIT ?? '???',
@@ -303,9 +389,11 @@ async function main() {
 			coordinator: {
 				status: coordinatorCrashed ? coordinatorCrashed.toString() : 'ok',
 				errors: coordinator.errors,
-				trackedRuns: coordinator.dataStore
-					.getRunSummaries()
-					.runs.map((r) => ({ id: r.id, index: r.index, status: r.status })),
+				trackedRuns: coordinator.dataStore.getRunSummaries().runs.map((r) => ({
+					id: r.id,
+					index: r.index,
+					status: r.status,
+				})),
 				chain: {
 					chainSlotHeight: await coordinatorRpc.getSlot('confirmed'),
 					indexedSlot:
@@ -333,6 +421,6 @@ async function main() {
 			.send(JSON.stringify(data, replacer))
 	})
 
-	await fastify.listen({ port: 3000 })
+	await fastify.listen({ host: '0.0.0.0', port: 3000 })
 }
 main()

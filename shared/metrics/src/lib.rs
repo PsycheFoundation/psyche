@@ -124,6 +124,7 @@ impl Drop for ClientMetrics {
 
 #[derive(Debug, Serialize, Clone, Copy)]
 pub enum ConnectionType {
+    None,
     Direct,
     Mixed,
     Relay,
@@ -131,22 +132,17 @@ pub enum ConnectionType {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct PeerConnection {
-    pub node_id: String,
+    pub endpoint_id: String,
     pub connection_type: ConnectionType,
     pub latency: f32,
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy, Default)]
 pub enum ClientRoleInRound {
+    #[default]
     NotInRound,
     Trainer,
     Witness,
-}
-
-impl Default for ClientRoleInRound {
-    fn default() -> Self {
-        Self::NotInRound
-    }
 }
 
 impl ClientMetrics {
@@ -486,8 +482,12 @@ impl ClientMetrics {
             ..
         } in connections
         {
+            if matches!(connection_type, ConnectionType::None) {
+                continue;
+            }
             *connection_counts
                 .entry(match connection_type {
+                    ConnectionType::None => unreachable!(),
                     ConnectionType::Direct => "direct",
                     ConnectionType::Mixed => "mixed",
                     ConnectionType::Relay => "relay",

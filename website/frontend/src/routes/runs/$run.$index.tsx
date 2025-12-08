@@ -2,13 +2,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Button } from '../../components/Button.js'
 import ArrowLeft from '../../assets/icons/arrow-left.svg?react'
 import Fullscreen from '../../assets/icons/fullscreen.svg?react'
-import HuggingfaceIcon from '../../assets/icons/huggingface.svg?react'
 import { styled } from '@linaria/react'
 import { text } from '../../fonts.js'
 import { StatusChip } from '../../components/StatusChip.js'
 import { MiniCard } from '../../components/MiniCard.js'
 import { RadialGraph } from '../../components/RadialGraph.js'
-import { c, formatBytes, formatNumber, metricToGraph } from '../../utils.js'
+import { c, formatNumber, metricToGraph } from '../../utils.js'
 import { ResponsiveLineGraph } from '../../components/Chart.js'
 import { useMemo, useState } from 'react'
 import { css } from '@linaria/core'
@@ -17,7 +16,9 @@ import {
 	runHasState,
 	RunStateIndicator,
 } from '../../components/RunStateIndicator.js'
+import { CheckpointButton } from '../../components/CheckpointButton.js'
 import { fetchRunStreaming } from '../../fetchRuns.js'
+import { PromptResults } from '../../components/PromptResults.js'
 import { useStreamingLoaderData } from '../../useStreamingData.js'
 import { RunBox } from '../../components/RunBox.js'
 import { FullPagePortal } from '../../components/FullPagePortal.js'
@@ -49,10 +50,20 @@ function RouteComponent() {
 	)
 	const graphData = useMemo(() => {
 		if (run) {
-			const graphs = metricToGraph(run.metrics.history)
-			for (const vals of Object.values(graphs.evals)) {
-				for (const val of vals) {
-					val.y *= 100
+			const {
+				promptResults,
+				promptIndex,
+				cumulativePromptResults,
+				...historyForGraph
+			} = run.metrics.history
+			const graphs = metricToGraph(historyForGraph)
+			if (graphs.evals) {
+				for (const vals of Object.values(graphs.evals)) {
+					if (Array.isArray(vals)) {
+						for (const val of vals) {
+							val.y *= 100
+						}
+					}
 				}
 			}
 			return graphs
@@ -190,21 +201,13 @@ function RouteComponent() {
 									</div>
 								)}
 								{run.state?.checkpoint && (
-									<Button
-										style="secondary"
-										center
-										icon={{
-											side: 'left',
-											svg: HuggingfaceIcon,
-											autoColor: false,
-										}}
-										href={`https://huggingface.co/${run.state.checkpoint.repo_id}/${run.state.checkpoint.revision ? `tree/${run.state.checkpoint.revision}` : ''}`}
-										target="_blank"
-									>
-										latest checkpoint:{' '}
-										{run.state.checkpoint.repo_id.split('/')[1]}
-									</Button>
+									<CheckpointButton checkpoint={run.state.checkpoint} />
 								)}
+
+								<PromptResults
+									tokens={run.cumulativePromptResults || []}
+									promptIndex={run.promptIndex || undefined}
+								/>
 
 								<StatsContainer>
 									{Object.entries(goodEvals).length >= 3 && (
@@ -220,16 +223,6 @@ function RouteComponent() {
 											<MiniCard
 												text="loss"
 												value={`${run.metrics.summary.loss.toFixed(2)}`}
-											/>
-										)}
-										{run.metrics.summary.bandwidth !== null && (
-											<MiniCard
-												text="bandwidth"
-												value={`${formatBytes(
-													run.metrics.summary.bandwidth,
-													2,
-													'bits'
-												)}ps`}
 											/>
 										)}
 										{run.metrics.summary.tokensPerSecond !== null && (
@@ -291,33 +284,21 @@ function RouteComponent() {
 										/>
 									</LineGraphContainer>
 
-									<LineGraphContainer>
-										<ResponsiveLineGraph
-											renderValue={(x) => `${formatBytes(x, 0, 'bits')}`}
-											xLabel="step"
-											title="inter-node bandwidth"
-											line={{
-												label: 'bandwidth',
-												points: graphData.bandwidth,
-												unit: '/s',
-											}}
-										/>
-									</LineGraphContainer>
-
-									{Object.entries(graphData.evals).map(([label, points]) => (
-										<LineGraphContainer key={label}>
-											<ResponsiveLineGraph
-												renderValue={(x) => (+`${x.toFixed(2)}`).toString()}
-												xLabel="step"
-												title={`Model Evaluation: ${label}`}
-												line={{
-													label,
-													points,
-													unit: '%',
-												}}
-											/>
-										</LineGraphContainer>
-									))}
+									{graphData &&
+										Object.entries(graphData.evals).map(([label, points]) => (
+											<LineGraphContainer key={label}>
+												<ResponsiveLineGraph
+													renderValue={(x) => (+`${x.toFixed(2)}`).toString()}
+													xLabel="step"
+													title={`Model Evaluation: ${label}`}
+													line={{
+														label,
+														points,
+														unit: '%',
+													}}
+												/>
+											</LineGraphContainer>
+										))}
 								</>
 							)}
 						</HistoryContainer>

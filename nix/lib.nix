@@ -3,9 +3,10 @@
   inputs,
   lib ? pkgs.lib,
   gitcommit ? inputs.self.rev or inputs.self.dirtyRev or "unknown",
-  system ? pkgs.stdenv.hostPlatform.system,
 }:
 let
+  system = pkgs.stdenv.hostPlatform.system;
+
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
     extensions = [ "rust-src" ];
     targets = [ "wasm32-unknown-unknown" ];
@@ -19,7 +20,7 @@ let
     || (builtins.match ".*tests/fixtures/.*$" path != null)
     || (builtins.match ".*.config/.*$" path != null)
     || (builtins.match ".*local-dev-keypair.json$" path != null)
-    || (builtins.match ".*shared/client/src/state/prompt_texts/.*\\.txt$" path != null);
+    || (builtins.match ".*shared/client/src/state/prompt_texts/index\\.json$" path != null);
 
   src = lib.cleanSourceWith {
     src = ../.;
@@ -32,51 +33,60 @@ let
 
   rustWorkspaceDeps = {
     nativeBuildInputs = with pkgs; [
+      python312
       pkg-config
       perl
-      python312
     ];
 
-    buildInputs = [
-      pkgs.python312Packages.torch-bin
-    ]
-    ++ (with pkgs; [
-      openssl
-      fontconfig # for lr plot
-    ])
-    ++ lib.optionals pkgs.config.cudaSupport (
-      with pkgs.cudaPackages;
-      [
-        cudatoolkit
-        cuda_cudart
-        nccl
-      ]
-    );
+    buildInputs =
+      (with pkgs; [
+        openssl
+        python312Packages.torch
+        fontconfig # for lr plot
+      ])
+      ++ lib.optionals pkgs.config.cudaSupport (
+        with pkgs.cudaPackages;
+        [
+          cudatoolkit
+          cuda_cudart
+          nccl
+        ]
+        ++ (with pkgs; [
+          rdma-core
+        ])
+      );
   };
 
   rustWorkspaceArgs = rustWorkspaceDeps // {
     inherit env src;
     strictDeps = true;
-    cargoExtraArgs = "--features parallelism,python";
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = "--features python" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
   };
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
-      pythonWithPsycheExtension
+      psychePythonVenv
     ];
-    cargoExtraArgs = rustWorkspaceArgs.cargoExtraArgs;
-    NIX_LDFLAGS = "-L${pythonWithPsycheExtension}/lib -lpython3.12";
+    NIX_LDFLAGS = "-L${psychePythonVenv}/lib -lpython3.12";
+  };
+
+  rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
+    inherit env src;
+    strictDeps = true;
+    # Enable parallelism feature only on CUDA-supported platforms
+    cargoExtraArgs = lib.optionalString (pkgs.config.cudaSupport) "--features parallelism";
   };
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
+  cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
-  pythonWithPsycheExtension = (
-    pkgs.python312.withPackages (ps: [
-      (pkgs.callPackage ../python { })
-    ])
-  );
+  # Runtime python environment = build-time env + rust extension
+  psychePythonVenv = pkgs.callPackage ../python {
+    inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
+  };
 
-  buildRustPackageWithPythonSidecar =
+  buildRustPackageWithPsychePythonEnvironment =
     {
       name,
       isExample ? false,
@@ -91,19 +101,40 @@ let
             rustWorkspaceArgsWithPython.cargoExtraArgs
             + (if isExample then " --example ${name}" else " --bin ${name}");
           doCheck = false;
+
+          meta.mainProgram = name;
         }
       );
     in
-    pkgs.runCommand "${name}-wrapped"
+    pkgs.runCommand "${name}"
       {
         buildInputs = [ pkgs.makeWrapper ];
+        meta.mainProgram = name;
       }
       ''
         mkdir -p $out/bin
-        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name}-wrapped \
-          --set PYTHONPATH "${pythonWithPsycheExtension}/${pythonWithPsycheExtension.sitePackages}" \
-          --prefix PATH : "${pythonWithPsycheExtension}/bin"
+        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
+          --prefix PATH : "${psychePythonVenv}/bin"
       '';
+
+  buildRustPackageWithoutPython =
+    {
+      name,
+      isExample ? false,
+    }:
+    craneLib.buildPackage (
+      rustWorkspaceArgsNoPython
+      // {
+        cargoArtifacts = cargoArtifactsNoPython;
+        pname = name;
+        cargoExtraArgs =
+          rustWorkspaceArgsNoPython.cargoExtraArgs
+          + (if isExample then " --example ${name}" else " --bin ${name}");
+        doCheck = false;
+
+        meta.mainProgram = name;
+      }
+    );
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
@@ -122,6 +153,7 @@ let
         nativeBuildInputs =
           rustWorkspaceArgs.nativeBuildInputs
           ++ (with pkgs; [
+            binaryen # wasm-opt
             wasm-pack
             jq
             wasm-bindgen-cli
@@ -130,9 +162,9 @@ let
         buildPhaseCargoCommand = ''
           export CRATE_PATH=$(cargo metadata --format-version=1 --no-deps | jq -r ".packages[] | select(.name == \"${name}\") | .manifest_path" | xargs dirname)
 
-          # wasm-pack needs a $HOME dir set.
           echo "building wasm"
-          HOME=$TMPDIR wasm-pack build --target nodejs --mode no-install $CRATE_PATH
+          # wasm-pack needs a $HOME dir set.
+          RUST_LOG=debug HOME=$TMPDIR wasm-pack build --target nodejs --mode no-install $CRATE_PATH
 
           echo "building ts bindings"
           cargo test -p ${name} export_bindings
@@ -160,9 +192,13 @@ let
     if pkgs.config.cudaSupport then
       (
         package:
-        pkgs.runCommandNoCC "${package.name}-nixgl-wrapped"
+        assert lib.assertMsg (
+          package.meta ? mainProgram
+        ) "Package ${package.name} must have meta.mainProgram set to use useHostGpuDrivers";
+        pkgs.runCommand "${package.name}-nixgl-wrapped"
           {
             nativeBuildInputs = [ pkgs.makeWrapper ];
+            meta.mainProgram = package.meta.mainProgram;
           }
           ''
             mkdir -p $out/bin
@@ -255,13 +291,14 @@ in
     rustWorkspaceArgs
     rustWorkspaceArgsWithPython
     cargoArtifacts
-    buildRustPackageWithPythonSidecar
+    buildRustPackageWithPsychePythonEnvironment
+    buildRustPackageWithoutPython
     buildRustWasmTsPackage
     useHostGpuDrivers
     env
     src
     gitcommit
-    pythonWithPsycheExtension
+    psychePythonVenv
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

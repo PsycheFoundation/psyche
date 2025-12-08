@@ -16,7 +16,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -66,6 +66,7 @@ pub async fn run() {
             run_id: "This is my run's dummy run_id1".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -80,6 +81,7 @@ pub async fn run() {
             run_id: "This is my run's dummy run_id2".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "latest".to_string(),
         },
     )
     .await
