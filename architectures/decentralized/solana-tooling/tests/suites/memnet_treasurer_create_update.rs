@@ -101,6 +101,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -117,6 +118,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -133,6 +135,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -175,6 +178,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -201,6 +205,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -217,6 +222,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -233,6 +239,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
