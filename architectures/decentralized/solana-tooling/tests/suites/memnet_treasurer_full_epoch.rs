@@ -253,6 +253,7 @@ pub async fn run() {
             ),
             epoch_slashing_rate_per_client: None,
             paused: Some(false),
+            client_version: None,
         },
     )
     .await

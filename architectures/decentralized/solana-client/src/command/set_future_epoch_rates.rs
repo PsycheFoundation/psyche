@@ -53,6 +53,7 @@ pub async fn command_set_future_epoch_rates_execute(
                 epoch_earning_rate_total_shared: earning_rate_total_shared,
                 epoch_slashing_rate_per_client: slashing_rate_per_client,
                 paused: None,
+                client_version: None,
             },
         )
     } else {

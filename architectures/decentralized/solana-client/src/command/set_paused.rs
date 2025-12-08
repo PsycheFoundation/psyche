@@ -51,6 +51,7 @@ pub async fn command_set_paused_execute(
                 epoch_earning_rate_total_shared: None,
                 epoch_slashing_rate_per_client: None,
                 paused: Some(paused),
+                client_version: None,
             },
         )
     } else {
