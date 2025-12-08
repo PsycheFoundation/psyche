@@ -87,80 +87,114 @@ def init_process_group(
     return pg
 
 
-# Weight updater process that watches for checkpoint files and applies them.
-# Runs in a separate Python process and monitors a queue for update notifications.
-# When notified, loads checkpoint from disk and updates the shared memory state_dict.
+# Weight updater process that watches a directory for checkpoint files.
+# Runs in a separate Python process and polls for new checkpoints.
+# When found, loads checkpoint from disk and updates the shared memory state_dict.
 def weight_updater_process(
     state_dict: Dict[str, torch.Tensor],
-    update_queue,  # multiprocessing.Queue for receiving checkpoint paths
+    checkpoint_dir: str,
     model_config: Any,
 ):
     from safetensors import safe_open
+    import time
+    from pathlib import Path
 
     # Get device from state_dict
     device = list(state_dict.values())[0].device
 
     logger.info(f"Starting weight updater process on device {device}")
-    logger.info("Waiting for checkpoint updates via queue...")
+    logger.info(f"Watching directory: {checkpoint_dir}")
+
+    checkpoint_path = Path(checkpoint_dir)
+    checkpoint_path.mkdir(parents=True, exist_ok=True)
+
+    # Track which checkpoints we've already processed
+    processed_checkpoints = set()
 
     with torch.no_grad():
         try:
             update_count = 0
 
             while True:
-                # Wait for checkpoint path from queue
-                checkpoint_path = update_queue.get()
-
-                # Check for shutdown signal
-                if checkpoint_path is None:
+                # Check for shutdown signal file
+                shutdown_file = checkpoint_path / "SHUTDOWN"
+                if shutdown_file.exists():
                     logger.info("Received shutdown signal, exiting")
+                    shutdown_file.unlink()
                     break
 
-                logger.info(f"Received checkpoint update: {checkpoint_path}")
+                # List all .safetensors files in directory (excluding temp files)
+                checkpoint_files = sorted(
+                    f
+                    for f in checkpoint_path.glob("*.safetensors")
+                    if not f.name.startswith(".tmp_")
+                )
 
-                try:
-                    # Load checkpoint from disk
-                    logger.info(f"Loading checkpoint from {checkpoint_path}")
-                    with safe_open(
-                        checkpoint_path, framework="pt", device=str(device)
-                    ) as f:
-                        applied_count = 0
-                        for key in f.keys():
-                            if key in state_dict:
-                                tensor = f.get_tensor(key)
+                # Find new checkpoints we haven't processed
+                new_checkpoints = [
+                    f for f in checkpoint_files if f not in processed_checkpoints
+                ]
 
-                                # Verify shape matches
-                                if state_dict[key].shape != tensor.shape:
-                                    logger.error(
-                                        f"Shape mismatch for {key}: "
-                                        f"expected {state_dict[key].shape}, got {tensor.shape}"
+                if new_checkpoints:
+                    # Process the oldest new checkpoint
+                    checkpoint_file = new_checkpoints[0]
+                    logger.info(f"Found new checkpoint: {checkpoint_file}")
+
+                    try:
+                        # Load checkpoint from disk
+                        logger.info(f"Loading checkpoint from {checkpoint_file}")
+                        with safe_open(
+                            str(checkpoint_file), framework="pt", device=str(device)
+                        ) as f:
+                            applied_count = 0
+                            for key in f.keys():
+                                if key in state_dict:
+                                    tensor = f.get_tensor(key)
+
+                                    # Verify shape matches
+                                    if state_dict[key].shape != tensor.shape:
+                                        logger.error(
+                                            f"Shape mismatch for {key}: "
+                                            f"expected {state_dict[key].shape}, got {tensor.shape}"
+                                        )
+                                        continue
+
+                                    # Copy to shared memory
+                                    state_dict[key].copy_(tensor)
+                                    applied_count += 1
+
+                                    if applied_count % 100 == 0:
+                                        logger.debug(
+                                            f"Applied {applied_count} parameters..."
+                                        )
+                                else:
+                                    logger.warning(
+                                        f"Parameter {key} not in vLLM state_dict"
                                     )
-                                    continue
 
-                                # Copy to shared memory
-                                state_dict[key].copy_(tensor)
-                                applied_count += 1
+                        update_count += 1
+                        logger.info(
+                            f"✓ Checkpoint {update_count} applied successfully "
+                            f"({applied_count} parameters updated)"
+                        )
 
-                                if applied_count % 100 == 0:
-                                    logger.debug(
-                                        f"Applied {applied_count} parameters..."
-                                    )
-                            else:
-                                logger.warning(
-                                    f"Parameter {key} not in vLLM state_dict"
-                                )
+                        # Mark as processed and delete the file
+                        processed_checkpoints.add(checkpoint_file)
+                        checkpoint_file.unlink()
+                        logger.info(f"Deleted checkpoint file: {checkpoint_file}")
 
-                    update_count += 1
-                    logger.info(
-                        f"✓ Checkpoint {update_count} applied successfully "
-                        f"({applied_count} parameters updated)"
-                    )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to load checkpoint {checkpoint_file}: {e}"
+                        )
+                        import traceback
 
-                except Exception as e:
-                    logger.error(f"Failed to load checkpoint {checkpoint_path}: {e}")
-                    import traceback
+                        traceback.print_exc()
+                        # Mark as processed even on error to avoid infinite retry
+                        processed_checkpoints.add(checkpoint_file)
 
-                    traceback.print_exc()
+                # Sleep before checking again
+                time.sleep(0.5)
 
         except KeyboardInterrupt:
             pass

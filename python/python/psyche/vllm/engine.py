@@ -1,10 +1,13 @@
 import logging
 from itertools import count
 from typing import List, Optional, Dict, Any
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_current_update_queue = None
+# Fixed checkpoint directory for weight updates
+# Both main process and vLLM subprocess use this well-known location
+CHECKPOINT_DIR = Path("/tmp/psyche_vllm_updates")
 
 try:
     from . import vllm_patch
@@ -55,12 +58,13 @@ class UpdatableLLMEngine:
             disable_log_stats=False,
         )
 
-        from multiprocessing import Manager
+        # Create and clean checkpoint directory
+        CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
-        global _current_update_queue
-        self._manager = Manager()
-        self._update_queue = self._manager.Queue()
-        _current_update_queue = self._update_queue
+        # Clean any old checkpoints
+        for old_checkpoint in CHECKPOINT_DIR.glob("*.safetensors"):
+            old_checkpoint.unlink()
+        logger.info(f"Using checkpoint directory: {CHECKPOINT_DIR}")
 
         self.engine = LLMEngine.from_engine_args(engine_args)
         self.request_counter = count()

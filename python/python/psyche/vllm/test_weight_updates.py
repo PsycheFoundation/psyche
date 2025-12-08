@@ -72,6 +72,24 @@ def test_weight_updates():
         for key, tensor in state_dict.items():
             # Modify weights slightly
             modified_tensor = tensor * 1.05
+
+            # Transpose linear layer weights to match vLLM format
+            # HuggingFace stores as [in_features, out_features]
+            # vLLM expects [out_features, in_features]
+            if len(modified_tensor.shape) == 2:
+                # Check if this is a linear layer weight that needs transposition
+                if any(
+                    pattern in key
+                    for pattern in [
+                        "attn.c_attn",
+                        "attn.c_proj",
+                        "mlp.c_fc",
+                        "mlp.c_proj",
+                        "lm_head",
+                    ]
+                ):
+                    modified_tensor = modified_tensor.T.contiguous()
+
             modified_state_dict[key] = modified_tensor.cpu()
 
         # Save to temporary file

@@ -65,36 +65,24 @@ def apply_vllm_patches():
 
             def _spawn_distributed_updater(self, state_dict):
                 from psyche.vllm.distributed_updater import weight_updater_process
-                from psyche.vllm import engine as engine_mod
+                from psyche.vllm.engine import CHECKPOINT_DIR
 
                 # Get the device that vLLM is using
                 first_tensor = next(iter(state_dict.values()))
                 device = first_tensor.device
 
                 logger.info(f"Spawning weight updater on device {device}")
-
-                # Get the queue from the engine module
-                # It's a Manager().Queue() created in UpdatableLLMEngine.__init__
-                if engine_mod._current_update_queue is None:
-                    logger.error(
-                        "No update queue found - was UpdatableLLMEngine created?"
-                    )
-                    return
-
-                update_queue = engine_mod._current_update_queue
-                logger.info("Got update queue from engine module")
+                logger.info(f"Using checkpoint directory: {CHECKPOINT_DIR}")
 
                 ctx = mp.get_context("spawn")
                 self.psyche_updater_process = ctx.Process(
                     target=weight_updater_process,
-                    args=(state_dict, update_queue, self.model_config),
+                    args=(state_dict, str(CHECKPOINT_DIR), self.model_config),
                     daemon=True,
                 )
                 self.psyche_updater_process.start()
 
-                logger.info(
-                    "Weight updater process started, waiting for checkpoint updates"
-                )
+                logger.info("Weight updater process started, watching for checkpoints")
 
         import vllm.v1.worker.gpu_worker
 

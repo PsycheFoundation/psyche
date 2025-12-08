@@ -1,12 +1,14 @@
 """
 Bridge API for Rust to trigger weight updates on inference nodes.
 
-This module provides a simple function that Rust calls via PyO3 to notify
-the vLLM updater subprocess about new checkpoint files.
+This module provides a simple function that Rust calls via PyO3 to copy
+checkpoint files to the update directory where vLLM watches for them.
 """
 
 import logging
 from pathlib import Path
+import shutil
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -30,33 +32,35 @@ def init_weight_updater(vllm_engine) -> None:
 
 def update_weights_from_file(checkpoint_path: str) -> None:
     """
-    Notify the updater subprocess about a new checkpoint file.
+    Copy checkpoint to the update directory for the updater to process.
 
     This is the main function that Rust calls via PyO3 after downloading
-    a new checkpoint from iroh. The path is sent to the updater via a queue,
-    and the updater loads it asynchronously.
+    a new checkpoint from iroh. The file is copied to the watched directory
+    with a timestamp-based name.
 
     Args:
         checkpoint_path: Path to the safetensors checkpoint file
     """
-    if _vllm_engine is None:
-        raise RuntimeError(
-            "Weight updater not initialized. Call init_weight_updater() first."
-        )
+    from .engine import CHECKPOINT_DIR
 
     # Verify file exists
-    path = Path(checkpoint_path)
-    if not path.exists():
+    source_path = Path(checkpoint_path)
+    if not source_path.exists():
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
 
-    logger.info(f"Queueing checkpoint update: {checkpoint_path}")
+    logger.info(f"Copying checkpoint to update directory: {checkpoint_path}")
 
-    if not hasattr(_vllm_engine, "_update_queue") or _vllm_engine._update_queue is None:
-        raise RuntimeError("Update queue not initialized on engine")
+    # Create unique filename with timestamp
+    timestamp = int(time.time() * 1000000)  # microseconds
+    final_path = CHECKPOINT_DIR / f"checkpoint_{timestamp}.safetensors"
+    temp_path = CHECKPOINT_DIR / f".tmp_{timestamp}.safetensors"
 
-    _vllm_engine._update_queue.put(str(checkpoint_path))
+    # Copy to temp file first, then atomically rename
+    # This prevents the updater from seeing incomplete files
+    shutil.copy2(source_path, temp_path)
+    temp_path.rename(final_path)
 
-    logger.info(f"✓ Checkpoint update queued successfully")
+    logger.info(f"✓ Checkpoint copied to {final_path}")
 
 
 def shutdown_updater() -> None:
@@ -65,16 +69,12 @@ def shutdown_updater() -> None:
 
     Call this when shutting down the inference node.
     """
-    if _vllm_engine is None:
-        logger.warning("Weight updater not initialized, nothing to shut down")
-        return
+    from .engine import CHECKPOINT_DIR
 
     logger.info("Sending shutdown signal to updater subprocess...")
 
-    from .vllm_patch import get_update_queue_from_engine
-
-    queue = get_update_queue_from_engine(_vllm_engine.engine)
-    if queue is not None:
-        queue.put(None)  # None signals shutdown
+    # Create shutdown signal file
+    shutdown_file = CHECKPOINT_DIR / "SHUTDOWN"
+    shutdown_file.touch()
 
     logger.info("✓ Shutdown signal sent")
