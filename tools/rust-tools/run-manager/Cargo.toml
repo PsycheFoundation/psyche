@@ -1,0 +1,23 @@
+[package]
+name = "run-manager"
+edition = "2021"
+version.workspace = true
+
+[[bin]]
+name = "run-manager"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+psyche-solana-coordinator.workspace = true
+psyche-coordinator.workspace = true
+anchor-client.workspace = true
+anchor-lang.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap-markdown.workspace = true
+
+# Solana RPC
+solana-client = "=2.1.4"

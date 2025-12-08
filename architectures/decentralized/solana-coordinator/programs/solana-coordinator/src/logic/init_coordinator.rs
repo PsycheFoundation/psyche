@@ -41,6 +41,7 @@ pub struct InitCoordinatorParams {
     pub main_authority: Pubkey,
     pub join_authority: Pubkey,
     pub run_id: String,
+    pub client_version: String,
 }
 
 pub fn init_coordinator_processor(
@@ -72,12 +73,17 @@ pub fn init_coordinator_processor(
         return err!(ErrorCode::AccountDiscriminatorAlreadySet);
     }
     data_disc.copy_from_slice(disc);
+
     // Ready to prepare the coordinator content
     let account = bytemuck::from_bytes_mut::<CoordinatorAccount>(
         &mut data[disc.len()..CoordinatorAccount::space_with_discriminator()],
     );
     account.version = CoordinatorAccount::VERSION;
     account.nonce = 0;
+
+    account.state.client_version =
+        FixedString::from_str_truncated(&params.client_version);
+
     // Setup the run_id const
     account.state.coordinator.run_id =
         FixedString::from_str_truncated(&params.run_id);
