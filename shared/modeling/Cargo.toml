@@ -15,16 +15,23 @@ tokenizers.workspace = true
 tracing.workspace = true
 byteorder = "1.4.3"
 safetensors = "0.3.0"
+itertools = "0.14"
 thiserror.workspace = true
 tokio-util.workspace = true
 psyche-core.workspace = true
+pyo3 = { workspace = true, optional = true }
+pyo3-tch = { workspace = true, optional = true }
+flume.workspace = true
 
 # for examples
 [dev-dependencies]
 clap.workspace = true
 psyche-data-provider.workspace = true
+psyche-network.workspace = true
+psyche-python-extension-impl.workspace = true
 psyche-tui.workspace = true
-itertools = "0.14"
+tokio.workspace = true
 
 [features]
 parallelism = ["tch/nccl", "torch-sys/nccl"]
+python = ["pyo3", "pyo3-tch"]

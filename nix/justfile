@@ -1,0 +1,31 @@
+default:
+    just --list
+
+# Build & test & check format - what runs in CI
+check:
+    garnix run --as-branch main
+
+# Build the centralized client Docker image
+build_docker_centralized_client:
+    nom build .#docker-psyche-centralized-client --out-link nix-results/docker-psyche-centralized-client
+    nix-results/docker-psyche-centralized-client | docker load
+
+# Build the solana client Docker image
+build_docker_solana_client:
+    nom build .#docker-psyche-solana-client --out-link nix-results/docker-psyche-solana-client
+    nix-results/docker-psyche-solana-client | docker load
+
+# Build the image for the solana client used for testing
+build_docker_solana_test_client:
+    nix build .#docker-psyche-solana-test-client --out-link nix-results/docker-psyche-solana-test-client
+    nix-results/docker-psyche-solana-test-client | docker load
+
+# Build the image for the solana client used for testing (without Python dependencies)
+build_docker_solana_test_client_no_python:
+    nix build .#docker-psyche-solana-test-client-no-python --out-link nix-results/docker-psyche-solana-test-client
+    nix-results/docker-psyche-solana-test-client | docker load
+
+# Build the image for the solana vaidator used for testing
+build_docker_solana_test_validator:
+    PSYCHE_HOME=$(realpath ..) nix build .#docker-psyche-solana-test-validator --out-link nix-results/docker-psyche-solana-test-validator --impure
+    nix-results/docker-psyche-solana-test-validator | docker load

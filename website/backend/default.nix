@@ -1,10 +1,10 @@
-{ pkgs, ... }:
-let
-  psyche-website-wasm = pkgs.callPackage ../wasm { };
-  psyche-website-shared = pkgs.callPackage ../shared { };
-  mkWebsitePackage = pkgs.callPackage ../common.nix { };
-in
-mkWebsitePackage {
+{
+  nodejs,
+  psycheLib,
+  psyche-website-wasm,
+  psyche-website-shared,
+}:
+psycheLib.mkWebsitePackage {
   package = "backend";
   meta.mainProgram = "backend";
 
@@ -15,7 +15,7 @@ mkWebsitePackage {
     mkdir -p shared
     cp -r ${psyche-website-shared}/shared/* shared/
 
-    export GITCOMMIT=${pkgs.psycheLib.gitcommit}
+    export GITCOMMIT=${psycheLib.gitcommit}
   '';
 
   installPhase = ''
@@ -28,7 +28,7 @@ mkWebsitePackage {
 
     cat - <<EOF > $out/bin/backend
     #!/usr/bin/env bash
-    exec ${pkgs.nodejs}/bin/node ${placeholder "out"}/lib/index.cjs "$@"
+    exec ${nodejs}/bin/node --max-old-space-size=12288 ${placeholder "out"}/lib/index.cjs "$@"
     EOF
 
     chmod +x $out/bin/backend

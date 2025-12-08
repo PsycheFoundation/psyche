@@ -21,5 +21,6 @@ rec {
   allKeys = [
     nousRepoKey
     psycheRepoKey
-  ] ++ allDevKeys;
+  ]
+  ++ allDevKeys;
 }

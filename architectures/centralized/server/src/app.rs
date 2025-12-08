@@ -1,21 +1,19 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{
-    self, Checkpoint, LLMTrainingDataLocation, LLMTrainingDataType, Model, LLM,
-};
+use psyche_coordinator::model::{self, Checkpoint, LLM, LLMTrainingDataLocation, Model};
 use psyche_coordinator::{
-    Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState, TickResult,
-    SOLANA_MAX_NUM_CLIENTS,
+    Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
+    SOLANA_MAX_NUM_CLIENTS, TickResult,
 };
 
 use psyche_core::{FixedVec, Shuffle, SizedIterator, TokenSize};
 use psyche_data_provider::{
-    download_model_repo_async, DataProviderTcpServer, DataServerTui, LocalDataProvider,
+    DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_repo_async,
 };
 use psyche_network::{ClientNotification, TcpServer};
 use psyche_tui::{
-    logging::LoggerWidget, maybe_start_render_loop, CustomWidget, MaybeTui, TabbedWidget,
+    CustomWidget, MaybeTui, TabbedWidget, logging::LoggerWidget, maybe_start_render_loop,
 };
 use psyche_watcher::{CoordinatorTui, OpportunisticData};
 use rand::RngCore;
@@ -26,12 +24,12 @@ use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::Notify;
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::time::{MissedTickBehavior, interval};
 use tokio::{select, time::Interval};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, info_span, warn, Instrument};
+use tracing::{Instrument, debug, info, info_span, warn};
 
 use crate::dashboard::{DashboardState, DashboardTui};
 
@@ -180,15 +178,21 @@ impl App {
             let training_data_server = match &coordinator.model {
                 Model::LLM(LLM {
                     data_locations,
-                    data_type,
                     checkpoint,
                     ..
                 }) => {
-                    let data_location = data_locations.get(0).ok_or_else(|| anyhow!("No data location provided"))?;
-                    if let LLMTrainingDataType::Finetuning = data_type {
-                        panic!("Finetuning is not supported yet.")
+                    let data_location_server_urls:Vec<_> = data_locations.iter().filter_map(|l| match l {LLMTrainingDataLocation::Server(url) => Some(url.to_string()), _=> None}).collect();
+
+                    if data_location_server_urls.is_empty() {
+                        None
+                    } else {
+                    if data_location_server_urls.len() > 1 {
+                        bail!("More than one LLMTrainingDataLocation::Server configured, but we only support hosting a single one.");
                     }
-                    if let LLMTrainingDataLocation::Server(url) = data_location {
+
+                    // we know there's a single url, and it's the one that includes the port we want to host on.
+                    let url = data_location_server_urls.first().unwrap();
+
                         match checkpoint {
                             Checkpoint::Hub(hub_repo) => {
                                 let repo_id = String::from(&hub_repo.repo_id);
@@ -213,7 +217,7 @@ impl App {
                             }
                         }
 
-                        let server_addr: SocketAddr = String::from(url).parse().map_err(|e| {
+                        let server_addr: SocketAddr = url.parse().map_err(|e| {
                             anyhow!("Failed to parse training data server URL {:?}: {}", url, e)
                         })?;
                         let data_server_port = server_addr.port();
@@ -238,8 +242,6 @@ impl App {
                             DataProviderTcpServer::start(local_data_provider, backend, data_server_port)
                                 .await?;
                         Some((tx, data_server))
-                    } else {
-                        None
                     }
                 }
             };
@@ -400,7 +402,7 @@ impl App {
                         &from,
                         witness,
                         Self::get_timestamp(),
-                        rand::thread_rng().next_u64(),
+                        rand::rng().next_u64(),
                     ),
                 } {
                     warn!("Error when processing witness: {error}");
@@ -451,13 +453,13 @@ impl App {
                 self.backend.pending_clients.len(),
             )),
             Self::get_timestamp(),
-            rand::thread_rng().next_u64(),
+            rand::rng().next_u64(),
         ) {
             Ok(TickResult::EpochEnd(result)) => {
                 if result {
                     if let Some(save_state_dir) = &self.save_state_dir {
                         let mut state = self.coordinator;
-                        print!("{:?}", state);
+                        print!("{state:?}");
                         Self::reset_ephemeral(&mut state);
                         match toml::to_string_pretty(&state) {
                             Ok(toml) => {

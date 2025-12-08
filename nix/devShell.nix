@@ -1,12 +1,6 @@
 {
-  self,
-  inputs,
-  ...
-}:
-{
   perSystem =
     {
-      system,
       config,
       pkgs,
       lib,
@@ -16,61 +10,107 @@
     }:
     let
       inherit (pkgs.psycheLib)
-        buildWholeWorkspace
+        rustWorkspaceArgs
+        craneLib
         env
+        psychePythonVenv
         ;
     in
     {
-
       # fmt as precommit hook
       pre-commit = {
         check.enable = false;
         settings.hooks.treefmt.enable = true;
       };
 
-      devShells.default = pkgs.mkShell {
-        inputsFrom = [
-          buildWholeWorkspace
-          self'.packages.psyche-book
-        ];
-        inherit env;
-        buildInputs = with pkgs; [
-          # for local-testnet
-          tmux
-          nvtopPackages.full
+      devShells =
+        let
+          defaultShell = {
+            inputsFrom = [
+              self'.packages.psyche-book
+            ];
+            env = env // {
+              UV_NO_SYNC = 1;
+              # UV_PYTHON = pkgs.psycheLib.psychePythonVenv.interpreter;
+              UV_PYTHON_DOWNLOADS = "never";
+            };
+            packages =
+              with pkgs;
+              [
+                # for local-testnet
+                tmux
+                nvtopPackages.full
 
-          # task runner
-          just
+                # task runner
+                just
 
-          # for some build scripts
-          jq
-          # it pretty :3
-          nix-output-monitor
+                # for some build scripts
+                jq
+                gnused # not installed by default on MacOS!
 
-          # for running pkgs on non-nix
-          pkgs.nix-gl-host
+                # it pretty :3
+                nix-output-monitor
 
-          # solana
-          inputs'.solana-pkgs.packages.default
+                # treefmt
+                self'.formatter
 
-          # nixfmt
-          nixfmt-rfc-style
+                # for pnpm stuff
+                nodejs
+                pnpm
+                wasm-pack
 
-          # for pnpm stuff
-          nodejs
-          pnpm
-          wasm-pack
-        ];
+                # cargo stuff
+                cargo-watch
 
-        shellHook = ''
-          source ${lib.getExe config.agenix-shell.installationScript}
-          ${config.pre-commit.installationScript}
-          # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
-          # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(${pkgs.nix-gl-host}/bin/nixglhost -p)
+                self'.packages.solana_toolbox_cli
 
-          echo "Welcome to the Psyche development shell.";
-        '';
-      };
+                # for ci emulation
+                inputs'.garnix-cli.packages.default
+
+                # python stuff
+                uv
+              ]
+              ++ (with inputs'.solana-pkgs.packages; [
+                solana
+                anchor
+              ])
+              ++ rustWorkspaceArgs.buildInputs
+              ++ rustWorkspaceArgs.nativeBuildInputs;
+
+            shellHook = ''
+              source ${lib.getExe config.agenix-shell.installationScript}
+              ${config.pre-commit.installationScript}
+            ''
+            + lib.optionalString pkgs.config.cudaSupport ''
+              # put nixglhost paths in LD_LIBRARY_PATH so you can use gpu stuff on non-NixOS
+              # the docs for nix-gl-host say this is a dangerous footgun but.. yolo
+              export LD_LIBRARY_PATH=$(${pkgs.nix-gl-host}/bin/nixglhost -p):${pkgs.rdma-core}/lib
+            ''
+            + lib.optionalString pkgs.config.metalSupport ''
+              # macOS: Ensure PyTorch can use Metal Performance Shaders
+              export PYTORCH_ENABLE_MPS_FALLBACK=1
+
+              # Set up PyTorch library path for test execution
+              export DYLD_LIBRARY_PATH="${psychePythonVenv}/lib/python3.12/site-packages/torch/lib"
+            ''
+            + ''
+              echo "Welcome to the Psyche development shell.";
+            '';
+          };
+        in
+        {
+          default = craneLib.devShell defaultShell;
+          dev-python = craneLib.devShell (
+            defaultShell
+            // {
+              packages = defaultShell.packages ++ [
+                psychePythonVenv
+              ];
+              shellHook = defaultShell.shellHook + ''
+                echo "This shell has the 'psyche' module available in its python interpreter.";
+              '';
+            }
+          );
+        };
     };
 }

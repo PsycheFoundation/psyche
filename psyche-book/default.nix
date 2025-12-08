@@ -1,15 +1,22 @@
 {
-  pkgs,
+  lib,
+  mdbook,
+  fetchFromGitHub,
+  rustPlatform,
+  stdenvNoCC,
+  mdbook-mermaid,
+  mdbook-linkcheck,
+
+  # custom args
   rustPackages,
   rustPackageNames,
-  ...
 }:
 let
-  mdbook-0-4-47 = pkgs.mdbook.overrideAttrs (
+  mdbook-0-4-47 = mdbook.overrideAttrs (
     oldAttrs:
     let
       version = "0.4.47";
-      src = pkgs.fetchFromGitHub {
+      src = fetchFromGitHub {
         owner = "rust-lang";
         repo = "mdBook";
         tag = "v${version}";
@@ -18,7 +25,7 @@ let
     in
     {
       inherit version src;
-      cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+      cargoDeps = rustPlatform.fetchCargoVendor {
         inherit (oldAttrs) pname;
         inherit version src;
         allowGitDependencies = false;
@@ -27,27 +34,39 @@ let
     }
   );
 in
-pkgs.stdenv.mkDerivation {
+stdenvNoCC.mkDerivation {
+  __structuredAttrs = true;
+
   name = "psyche-book";
   src = ./.;
-  nativeBuildInputs = with pkgs; [
+
+  nativeBuildInputs = [
     mdbook-0-4-47
     mdbook-mermaid
     mdbook-linkcheck
   ];
+
   postPatch = ''
     mkdir -p generated/cli
-    ${builtins.concatStringsSep "\n" (
-      map (
-        name:
-        "${rustPackages.${name}}/bin/${name} print-all-help --markdown > generated/cli/${
-          builtins.replaceStrings [ "-" ] [ "-" ] name
-        }.md"
-      ) rustPackageNames
-    )}
+
+    # we set HOME to a writable directory to avoid cache dir permission issues
+    export HOME=$TMPDIR
+
+    ${lib.concatMapStringsSep "\n" (
+      name:
+      let
+        noPythonPackage = "${name}-nopython";
+      in
+      "${rustPackages.${noPythonPackage}}/bin/${name} print-all-help --markdown > generated/cli/${
+        lib.replaceStrings [ "-" ] [ "-" ] name
+      }.md"
+    ) rustPackageNames}
+
     cp ${../secrets.nix} generated/secrets.nix
   '';
+
   buildPhase = "mdbook build";
+
   installPhase = ''
     mkdir -p $out
     cp -r book/html/* $out/

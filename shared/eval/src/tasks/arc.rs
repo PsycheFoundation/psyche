@@ -1,7 +1,7 @@
-use crate::{load_dataset, traits::Document, traits::LogLikelihoodTask, TaskType};
+use crate::{TaskType, load_dataset, traits::Document, traits::LogLikelihoodTask};
 use anyhow::Result;
 use psyche_data_provider::{Dataset, Field, Row, RowAccessor, Split};
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 struct Arc {
     test_split: Dataset,
@@ -54,7 +54,7 @@ impl Arc {
             .unwrap();
         let choices = choices_and_labels.get_list(0).unwrap();
         let labels = choices_and_labels.get_list(1).unwrap();
-        let text = format!("Question: {}\nAnswer:", text);
+        let text = format!("Question: {text}\nAnswer:");
         let answer = row
             .get_string(dataset.get_column_id("answerKey").unwrap())
             .unwrap();
@@ -72,6 +72,8 @@ impl Arc {
             text,
             choices,
             answer,
+            category: None,
+            cot_content: None,
         }
     }
 }
@@ -84,11 +86,15 @@ impl LogLikelihoodTask for Arc {
             .collect()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
-        self.validation_dataset
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
+        let mut fewshot_documents = HashMap::new();
+        let docs: Vec<Document> = self
+            .validation_dataset
             .iter()
             .map(|row| Arc::row_to_document(&self.validation_dataset, row))
-            .collect()
+            .collect();
+        fewshot_documents.insert("default".to_string(), docs);
+        fewshot_documents
     }
 }
 
@@ -113,7 +119,7 @@ impl LogLikelihoodTask for ArcEasy {
         self.task.get_documents()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
         self.task.get_fewshot_documents()
     }
 }
@@ -139,7 +145,7 @@ impl LogLikelihoodTask for ArcChallenge {
         self.task.get_documents()
     }
 
-    fn get_fewshot_documents(&self) -> Vec<Document> {
+    fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
         self.task.get_fewshot_documents()
     }
 }

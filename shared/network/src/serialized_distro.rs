@@ -78,11 +78,11 @@ impl TryFrom<&SerializedDistroResult> for DistroResult {
             totalk: value.totalk as i64,
             stats: None,
         };
-        // don't pin - it would crash if no CUDA is available.
-        if Device::cuda_if_available().is_cuda() {
-            // the index of the CUDA device doesn't matter here.
-            distro_result.sparse_idx = distro_result.sparse_idx.pin_memory(None);
-            distro_result.sparse_val = distro_result.sparse_val.pin_memory(None);
+        // only pin if we have a device to pin to
+        let potential_cuda_device = Device::cuda_if_available();
+        if potential_cuda_device.is_cuda() {
+            distro_result.sparse_idx = distro_result.sparse_idx.pin_memory();
+            distro_result.sparse_val = distro_result.sparse_val.pin_memory();
         }
         Ok(distro_result)
     }
@@ -119,8 +119,8 @@ impl Error for DistroResultsReaderError {
 impl fmt::Display for DistroResultsReaderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard error: {}", err),
-            DistroResultsReaderError::Io(err) => write!(f, "I/O error: {}", err),
+            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard error: {err}"),
+            DistroResultsReaderError::Io(err) => write!(f, "I/O error: {err}"),
         }
     }
 }
@@ -128,8 +128,8 @@ impl fmt::Display for DistroResultsReaderError {
 impl fmt::Debug for DistroResultsReaderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard({:?})", err),
-            DistroResultsReaderError::Io(err) => write!(f, "Io({:?})", err),
+            DistroResultsReaderError::Postcard(err) => write!(f, "Postcard({err:?})"),
+            DistroResultsReaderError::Io(err) => write!(f, "Io({err:?})"),
         }
     }
 }
@@ -166,7 +166,7 @@ impl<R: Read> Iterator for DistroResultIterator<R> {
                         Ok(0) => {
                             return Some(Err(DistroResultsReaderError::Postcard(
                                 postcard::Error::DeserializeUnexpectedEnd,
-                            )))
+                            )));
                         }
                         Ok(n) => self.buffer.extend_from_slice(&chunk[..n]),
                         Err(e) => return Some(Err(DistroResultsReaderError::Io(e))),

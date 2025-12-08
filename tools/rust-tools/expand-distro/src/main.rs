@@ -27,6 +27,9 @@ enum Commands {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "python")]
+    psyche_python_extension_impl::init_embedded_python()?;
+
     let args = Args::parse();
     let cpu = match args.command {
         Commands::PrintAllHelp { markdown } => {

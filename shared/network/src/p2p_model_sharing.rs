@@ -1,17 +1,202 @@
 use anyhow::Result;
+use iroh::EndpointId;
+use iroh::protocol::AcceptError;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
+use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
-use psyche_core::BoxedFuture;
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
-use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    oneshot,
+};
 use tokio::task::JoinHandle;
-use tracing::{debug, trace};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
+
+#[derive(Debug)]
+/// Manager for the list of peers to ask for the model parameters and config
+pub struct PeerManagerHandle {
+    peer_tx: mpsc::UnboundedSender<PeerCommand>,
+}
+
+#[derive(Debug)]
+/// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
+enum PeerCommand {
+    SetPeers {
+        peers: Vec<EndpointId>,
+    },
+    GetPeer {
+        reply: oneshot::Sender<Option<EndpointId>>,
+    },
+    ReportSuccess {
+        peer_id: EndpointId,
+    },
+    ReportModelDownloadError {
+        blob_ticket: Option<BlobTicket>,
+        peer_id: EndpointId,
+    },
+}
+
+impl PeerManagerHandle {
+    pub fn new(max_errors_per_peer: u8, cancellation_token: CancellationToken) -> Self {
+        let (peer_tx, peer_rx) = mpsc::unbounded_channel();
+
+        // Spawn the peer manager actor
+        tokio::spawn(peer_manager_actor(
+            peer_rx,
+            max_errors_per_peer,
+            cancellation_token,
+        ));
+
+        Self { peer_tx }
+    }
+
+    /// Set the list of peers that the manager will use to download the model parameters
+    pub fn set_peers(&self, peers: Vec<EndpointId>) {
+        let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
+    }
+
+    /// Get the next peer to download the model parameters from
+    /// We'll get a None if no peers are available, a peer might be available later when it finishes sharing a parameter
+    pub async fn get_next_peer(&self) -> Option<EndpointId> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        if self
+            .peer_tx
+            .send(PeerCommand::GetPeer { reply: reply_tx })
+            .is_err()
+        {
+            return None; // Manager actor is dead
+        }
+
+        reply_rx.await.unwrap_or(None)
+    }
+
+    /// Report that a peer has successfully shared the hash of a blob ticket for a parameter
+    pub fn report_success(&self, peer_id: EndpointId) {
+        let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
+    }
+
+    /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
+    pub fn report_blob_ticket_request_error(
+        &self,
+        peer_id: EndpointId,
+        blob_ticket: Option<BlobTicket>,
+    ) {
+        if self
+            .peer_tx
+            .send(PeerCommand::ReportModelDownloadError {
+                peer_id,
+                blob_ticket,
+            })
+            .is_err()
+        {
+            tracing::error!("Failed to report error for peer {peer_id}, PeerManager actor is dead");
+        }
+    }
+}
+
+struct PeerManagerActor {
+    /// Peers that are available to request the model to
+    available_peers: VecDeque<EndpointId>,
+    /// A map for the peer's blob ticket to their errors
+    errors_per_peers: HashMap<EndpointId, u8>,
+    /// Max errors we tolerate for a peer to share a parameter blob ticket
+    max_errors_per_peer: u8,
+}
+
+impl PeerManagerActor {
+    pub fn new(max_errors_per_peer: u8) -> Self {
+        Self {
+            available_peers: VecDeque::new(),
+            errors_per_peers: HashMap::new(),
+            max_errors_per_peer,
+        }
+    }
+
+    fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
+        match message {
+            PeerCommand::SetPeers { peers } => {
+                self.available_peers = VecDeque::from(peers);
+                let errors_per_peers_vec = self.available_peers.iter().map(|peer| (*peer, 0_u8));
+                self.errors_per_peers = HashMap::from_iter(errors_per_peers_vec);
+
+                info!(
+                    "Updated peer list: {} peers available to ask for the model parameters",
+                    self.available_peers.len()
+                );
+            }
+            PeerCommand::GetPeer { reply } => {
+                let peer = if let Some(peer) = self.available_peers.pop_front() {
+                    info!("Selected peer {peer} to ask for the model parameters");
+                    Some(peer)
+                } else {
+                    info!("No available peers to ask for the model parameters at the moment");
+                    None
+                };
+                let _ = reply.send(peer);
+            }
+            PeerCommand::ReportSuccess { peer_id } => {
+                if !self.available_peers.contains(&peer_id) {
+                    self.available_peers.push_back(peer_id);
+                } else {
+                    warn!("Peer was already available but we tried to add it again");
+                }
+                info!("Peer {peer_id} correctly provided the blob ticket");
+            }
+            PeerCommand::ReportModelDownloadError {
+                peer_id,
+                blob_ticket,
+            } => {
+                let error_count = self.errors_per_peers.entry(peer_id).or_insert(0);
+                *error_count += 1;
+
+                warn!(
+                    "Error requesting a blob ticket {:?} from peer {peer_id}, it already failed {} time(s)",
+                    blob_ticket.map(|bl| bl.hash()),
+                    error_count
+                );
+                if *error_count >= self.max_errors_per_peer {
+                    self.available_peers.retain(|id| *id != peer_id);
+                    warn!("Removing peer {peer_id} after {} errors", error_count);
+
+                    if self.available_peers.is_empty()
+                        && self
+                            .errors_per_peers
+                            .iter()
+                            .all(|(_, e)| *e >= self.max_errors_per_peer)
+                    {
+                        error!(
+                            "No more peers available to ask for model blob tickets, terminate process"
+                        );
+                        cancellation_token.cancel();
+                    }
+                } else if !self.available_peers.contains(&peer_id) {
+                    self.available_peers.push_back(peer_id);
+                };
+            }
+        }
+    }
+}
+
+async fn peer_manager_actor(
+    mut rx: mpsc::UnboundedReceiver<PeerCommand>,
+    max_errors_per_peer: u8,
+    cancellation_token: CancellationToken,
+) {
+    let mut actor = PeerManagerActor::new(max_errors_per_peer);
+
+    while let Some(message) = rx.recv().await {
+        actor.handle_message(message, cancellation_token.clone());
+    }
+}
 
 pub const ALPN: &[u8] = b"model-sharing/0";
 pub const MODEL_REQUEST_TIMEOUT_SECS: u64 = 10;
@@ -52,7 +237,7 @@ pub enum SharableModelError {
     P2PAddDownloadError(String),
 }
 
-// This convertions are done manually since the original errors does not implement serialize and deserialize
+// This conversions are done manually since the original errors does not implement serialize and deserialize
 impl From<tch::TchError> for SharableModelError {
     fn from(err: tch::TchError) -> Self {
         SharableModelError::TchSerializeError(err.to_string())
@@ -230,7 +415,7 @@ impl SharableModel {
         &mut self,
         param_name: &str,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
-        tag: u32,
+        tag: Tag,
     ) -> Result<BlobTicket, SharableModelError> {
         let Some(loading_parameters) = self.serializing_parameters.as_mut() else {
             return Err(SharableModelError::ParametersNotInitialized);
@@ -241,7 +426,7 @@ impl SharableModel {
 
         match loaded_parameters.get(param_name) {
             Some(blob_ticket) => {
-                trace!("Using cached downloadable for {param_name}");
+                info!("Using cached downloadable for {param_name}");
                 Ok(blob_ticket.clone())
             }
             None => match loading_parameters.remove(param_name) {
@@ -252,13 +437,13 @@ impl SharableModel {
                         .map_err(|_| SharableModelError::LoadThreadCrashed)??;
                     let transmittable_download =
                         TransmittableDownload::ModelParameter(transmittable_parameter);
-                    trace!("Adding paramerter downloadable {param_name}");
+                    trace!("Adding parameter downloadable {param_name}");
                     let blob_ticket = p2p
                         .add_downloadable(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                     loaded_parameters.insert(param_name.to_string(), blob_ticket.clone());
-                    trace!("Finished adding paramerter downloadable {param_name}");
+                    info!("Finished adding parameter downloadable {param_name}");
                     Ok(blob_ticket)
                 }
                 None => Err(SharableModelError::ParameterUnknown(param_name.to_string())),
@@ -270,7 +455,7 @@ impl SharableModel {
     pub async fn get_transmittable_config<B: Networkable>(
         &mut self,
         p2p: &mut NetworkConnection<B, TransmittableDownload>,
-        tag: u32,
+        tag: &str,
     ) -> Result<BlobTicket, SharableModelError> {
         match self.config_and_tokenizer_ticket.as_ref() {
             Some(ticket) => {
@@ -293,7 +478,7 @@ impl SharableModel {
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
                 let ticket = p2p
-                    .add_downloadable(transmittable_download, tag)
+                    .add_downloadable(transmittable_download, Tag::from(tag))
                     .await
                     .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                 self.config_and_tokenizer_ticket = Some(ticket.clone());
@@ -352,7 +537,10 @@ impl SharableModel {
             Entry::Occupied(mut param_entry) => {
                 let param = param_entry.get_mut();
                 if param.is_some() {
-                    return Err(SharableModelError::ParameterAlreadyAdded);
+                    warn!(
+                        "Parameter {} was already added to the model, ignoring it",
+                        param_name
+                    );
                 }
                 *param = Some(param_value);
                 Ok(())
@@ -403,7 +591,9 @@ impl SharableModel {
                 };
                 parameters_to_send.insert(param_name, tensor);
             }
-            tx_params_response.send(parameters_to_send).unwrap();
+            tx_params_response
+                .send(parameters_to_send)
+                .map_err(|_e| SharableModelError::ResponseChannelNotInitialized)?;
             return Ok(());
         }
         Err(SharableModelError::ResponseChannelNotInitialized)
@@ -443,65 +633,63 @@ impl ModelSharing {
             tx_model_config_req,
         }
     }
-    pub(crate) fn _accept_connection(
+    pub(crate) async fn _accept_connection(
         connection: Connection,
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
-    ) -> BoxedFuture<Result<()>> {
-        Box::pin(async move {
-            let (mut send, mut recv) = connection.accept_bi().await?;
-            let model_request_type_bytes = recv.read_to_end(1000).await?;
-            let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes)?;
-            let blob_ticket = match model_request_type {
-                ModelRequestType::Parameter(parameter_request) => {
-                    // Create channel for requesting the model parameter to the client backend
-                    // and add a new blob for it
-                    let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
-                    let request = ParameterSharingMessage::Get(parameter_request, tx_req);
-                    tx_model_parameter_req.send(request)?;
+    ) -> Result<()> {
+        let (mut send, mut recv) = connection.accept_bi().await?;
+        let model_request_type_bytes = recv.read_to_end(1000).await?;
+        let model_request_type = ModelRequestType::from_bytes(&model_request_type_bytes)?;
+        let blob_ticket = match model_request_type {
+            ModelRequestType::Parameter(parameter_request) => {
+                // Create channel for requesting the model parameter to the client backend
+                // and add a new blob for it
+                let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                let request = ParameterSharingMessage::Get(parameter_request, tx_req);
+                tx_model_parameter_req.send(request)?;
 
-                    // Receive the blob ticket and forward it to the requesting client
-                    rx_req.await?
-                }
-                ModelRequestType::Config => {
-                    // Create channel for requesting the model config to the client backend and add a new blob for it
-                    let (tx_req, rx_req) =
-                        oneshot::channel::<Result<BlobTicket, SharableModelError>>();
-                    let request = ModelConfigSharingMessage::Get(tx_req);
-                    tx_model_config_req.send(request)?;
+                // Receive the blob ticket and forward it to the requesting client
+                rx_req.await?
+            }
+            ModelRequestType::Config => {
+                // Create channel for requesting the model config to the client backend and add a new blob for it
+                let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                let request = ModelConfigSharingMessage::Get(tx_req);
+                tx_model_config_req.send(request)?;
 
-                    // Receive the blob ticket and forward it to the requesting client
-                    rx_req.await?
-                }
-            };
-            let data = postcard::to_stdvec(&blob_ticket)?;
-            send.write_all(&data).await?;
-            send.finish()?;
+                // Receive the blob ticket and forward it to the requesting client
+                rx_req.await?
+            }
+        };
 
-            // Wait until the remote closes the connection, which it does once it
-            // received the response.
-            connection.closed().await;
+        let data = postcard::to_stdvec(&blob_ticket)?;
+        send.write_all(&data).await?;
+        send.finish()?;
 
-            Ok(())
-        })
+        // Wait until the remote closes the connection, which it does once it
+        // received the response.
+        connection.closed().await;
+
+        Ok(())
     }
 
-    pub fn accept_connection(&self, connection: Connection) -> BoxedFuture<Result<()>> {
+    pub async fn accept_connection(&self, connection: Connection) -> Result<()> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
-        Box::pin(async move {
-            Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
-        })
+        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
     }
 }
 
 impl ProtocolHandler for ModelSharing {
-    fn accept(&self, connection: Connection) -> BoxedFuture<Result<()>> {
+    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
-        Box::pin(async move {
-            Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
-        })
+        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req)
+            .await
+            .map_err(|e| {
+                let io_error = std::io::Error::other(e.to_string());
+                AcceptError::from_err(io_error)
+            })
     }
 }

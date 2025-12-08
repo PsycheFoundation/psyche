@@ -18,7 +18,8 @@ pub fn fmt_relay_mode(relay_mode: &RelayMode) -> String {
         RelayMode::Default => "Default iroh relay (production) servers".to_string(),
         RelayMode::Staging => "Default iroh relay (staging) servers".to_string(),
         RelayMode::Custom(map) => map
-            .urls()
+            .urls::<Vec<_>>()
+            .into_iter()
             .map(|url| url.to_string())
             .collect::<Vec<_>>()
             .join(", "),
@@ -33,7 +34,7 @@ pub fn fmt_bytes(bytes: f64) -> String {
     const PB: f64 = TB * 1024.0;
 
     if bytes < KB {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     } else if bytes < MB {
         format!("{:.2} KB", bytes / KB)
     } else if bytes < GB {

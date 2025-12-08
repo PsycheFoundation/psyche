@@ -1,6 +1,6 @@
 use crate::{
-    safetensor_utils::load_safetensors_into_variables, tensor_parallelism::tensor_shard,
-    DeepseekConfig, LlamaConfig, LoadSafetensorsError,
+    DeepseekConfig, Devices, LlamaConfig, LoadSafetensorsError, parallelism::tensor_shard,
+    safetensor_utils::load_safetensors_into_variables,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -13,6 +13,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ModelLoadError {
+    #[error("unavailable device(s)")]
+    UnavailbleDevice(Devices),
+
     #[error("missing config.json")]
     MissingConfigJSON,
 
@@ -25,9 +28,7 @@ pub enum ModelLoadError {
     #[error("this model uses tied embeddings, which aren't supported.")]
     ModelHasTiedEmbeddings,
 
-    #[error(
-        "Directly setting attention implementation to FlashAttention-2 is unsupported for now"
-    )]
+    #[error("Directly setting attention implementation to FlashAttention-2 is unsupported for now")]
     ModelExplicitlyUsesFA2,
 
     #[error("Failed to initialize CNCCL for tensor parallelism {0}")]
@@ -47,6 +48,20 @@ pub enum ModelLoadError {
 
     #[error("Wrong config type")]
     WrongConfigType,
+
+    #[error("Communicator/CommunicatorId mismatch")]
+    CommunicatorMismatch,
+
+    #[cfg(feature = "python")]
+    #[error("Python error: {0}")]
+    PythonError(#[from] pyo3::PyErr),
+
+    #[cfg(feature = "python")]
+    #[error("Python distributed error: {0}")]
+    PythonDistributedError(String),
+
+    #[error("No device available for rank {0} for devices config {1}")]
+    NoDeviceForRank(usize, Devices),
 }
 
 pub trait ModelConfig: serde::Serialize + Clone {
@@ -60,6 +75,7 @@ pub enum PretrainedSource<T: ModelConfig> {
 }
 
 unsafe impl<T: ModelConfig> Send for PretrainedSource<T> {}
+unsafe impl<T: ModelConfig> Sync for PretrainedSource<T> {}
 
 impl<T: ModelConfig + serde::de::DeserializeOwned> PretrainedSource<T> {
     pub fn get_config(&self) -> Result<T, ModelLoadError> {
@@ -129,35 +145,25 @@ impl<T: ModelConfig> PretrainedSource<T> {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug, Default, Clone, Copy, PartialEq)]
 pub enum AttentionImplementation {
     #[serde(rename = "eager")]
     Eager,
     #[serde(rename = "sdpa")]
+    #[default]
     Sdpa,
+    #[cfg(feature = "parallelism")]
     #[serde(rename = "flash_attention_2")]
     FlashAttention2,
 }
 
-pub trait UseSDPA {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError>;
-}
-
-impl UseSDPA for AttentionImplementation {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError> {
+impl AttentionImplementation {
+    pub fn to_pytorch_attn_impl_str(&self) -> &str {
         match self {
-            AttentionImplementation::Eager => Ok(false),
-            AttentionImplementation::FlashAttention2 => Err(ModelLoadError::ModelExplicitlyUsesFA2),
-            AttentionImplementation::Sdpa => Ok(true),
-        }
-    }
-}
-
-impl UseSDPA for Option<AttentionImplementation> {
-    fn use_sdpa(&self) -> Result<bool, ModelLoadError> {
-        match self {
-            Some(x) => x.use_sdpa(),
-            None => Ok(true),
+            AttentionImplementation::Eager => "eager",
+            AttentionImplementation::Sdpa => "sdpa",
+            #[cfg(feature = "parallelism")]
+            AttentionImplementation::FlashAttention2 => "flash_attention_2",
         }
     }
 }
@@ -167,6 +173,8 @@ impl UseSDPA for Option<AttentionImplementation> {
 pub enum AutoConfig {
     Llama(LlamaConfig),
     Deepseek(DeepseekConfig),
+    #[cfg(feature = "python")]
+    Auto(crate::PythonModelConfig),
 }
 
 impl serde::Serialize for AutoConfig {
@@ -177,6 +185,8 @@ impl serde::Serialize for AutoConfig {
         match self {
             AutoConfig::Llama(config) => config.serialize(serializer),
             AutoConfig::Deepseek(config) => config.serialize(serializer),
+            #[cfg(feature = "python")]
+            AutoConfig::Auto(config) => config.serialize(serializer),
         }
     }
 }
@@ -186,6 +196,8 @@ impl ModelConfig for AutoConfig {
         match self {
             AutoConfig::Llama(config) => config.get_parameter_names(),
             AutoConfig::Deepseek(config) => config.get_parameter_names(),
+            #[cfg(feature = "python")]
+            AutoConfig::Auto(config) => config.get_parameter_names(),
         }
     }
 }

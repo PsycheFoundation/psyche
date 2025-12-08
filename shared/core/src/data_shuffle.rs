@@ -1,4 +1,4 @@
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -16,13 +16,9 @@ use ts_rs::TS;
     TS,
 )]
 #[repr(C)]
+#[derive(Default)]
 pub enum Shuffle {
+    #[default]
     DontShuffle,
     Seeded([u8; 32]),
-}
-
-impl Default for Shuffle {
-    fn default() -> Self {
-        Self::DontShuffle
-    }
 }

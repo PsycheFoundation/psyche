@@ -342,10 +342,23 @@ export async function startWatchCoordinatorChainLoop(
 						})
 						break
 					}
+					case 'update_client_version': {
+						const runPdaAddr = i.accounts[1].toString()
+						const coordinatorAddr = i.accounts[2].toString()
+						runUpdates.getAndTouchCurrentRun({
+							runPdaAddr,
+							coordinatorAddr,
+							decoded,
+							tx,
+						})
+						break
+					}
 					default: {
 						const _missed_tx: never = decoded
 						throw new Error(
-							`Unexpected instruction ${JSON.stringify(_missed_tx)} at slot ${tx.slot} ${JSON.stringify(decoded)}`
+							`Unexpected instruction ${JSON.stringify(_missed_tx)} at slot ${
+								tx.slot
+							} ${JSON.stringify(decoded)}`
 						)
 					}
 				}
@@ -401,7 +414,9 @@ export async function startWatchCoordinatorChainLoop(
 				)
 				for (const [i, [pubkey, runs]] of allRunsWithState.entries()) {
 					console.log(
-						`[coordinator] applying update for run ${i + 1}/${allRunsWithState.length}`
+						`[coordinator] applying update for run ${i + 1}/${
+							allRunsWithState.length
+						}`
 					)
 					for (const run of runs) {
 						if (run.created) {
@@ -430,9 +445,7 @@ export async function startWatchCoordinatorChainLoop(
 								tx.timestamp
 							)
 						}
-						for (const [witness, timestamp] of run.witnessUpdates) {
-							store.witnessRun(pubkey, witness, timestamp)
-						}
+						store.appendRunWitnesses(pubkey, run.witnessUpdates)
 						for (const [pause, timestamp] of run.pauseTimestamps) {
 							store.setRunPaused(pubkey, pause === 'paused', timestamp)
 						}

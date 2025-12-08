@@ -1,28 +1,28 @@
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
-use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::Model;
 use psyche_coordinator::ClientState;
 use psyche_coordinator::Coordinator;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::HealthChecks;
 use psyche_coordinator::RunState;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
-use psyche_core::sha256v;
+use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::Model;
 use psyche_core::FixedString;
 use psyche_core::SmallBoolean;
+use psyche_core::sha256v;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::client::Client;
-use crate::clients_state::ClientsState;
 use crate::ClientId;
 use crate::ProgramError;
+use crate::client::Client;
+use crate::clients_state::ClientsState;
 
 #[derive(
     Debug,
@@ -67,6 +67,7 @@ pub struct CoordinatorInstanceState {
     pub clients_state: ClientsState,
     pub is_warmup_first_tick: SmallBoolean,
     pub is_training_first_tick: SmallBoolean,
+    pub client_version: FixedString<32>,
 }
 
 unsafe impl Pod for CoordinatorInstanceState {}
@@ -128,35 +129,42 @@ impl CoordinatorInstanceState {
             Ok(TickResult::EpochEnd(success)) => {
                 msg!("Epoch end, sucecsss: {}", success);
 
-                let mut i = 0;
-                let mut j = 0;
                 let finished_clients = &self.coordinator.epoch_state.clients;
                 let exited_clients =
                     &self.coordinator.epoch_state.exited_clients;
 
+                let mut finished_client_index = 0;
+                let mut exited_client_index = 0;
+
                 for client in self.clients_state.clients.iter_mut() {
-                    if i < finished_clients.len()
-                        && client.id == finished_clients[i].id
+                    if finished_client_index < finished_clients.len()
+                        && client.id.signer
+                            == finished_clients[finished_client_index].id.signer
                     {
-                        if finished_clients[i].state == ClientState::Healthy {
+                        if finished_clients[finished_client_index].state
+                            == ClientState::Healthy
+                        {
                             client.earned += self
                                 .clients_state
                                 .current_epoch_rates
-                                .earning_rate;
+                                .earning_rate_total_shared
+                                .saturating_div(finished_clients.len() as u64);
                         }
-                        i += 1;
+                        finished_client_index += 1;
                     }
-
-                    if j < exited_clients.len()
-                        && client.id == exited_clients[j].id
+                    if exited_client_index < exited_clients.len()
+                        && client.id.signer
+                            == exited_clients[exited_client_index].id.signer
                     {
-                        if exited_clients[j].state == ClientState::Ejected {
+                        if exited_clients[exited_client_index].state
+                            == ClientState::Ejected
+                        {
                             client.slashed += self
                                 .clients_state
                                 .current_epoch_rates
-                                .slashing_rate;
+                                .slashing_rate_per_client;
                         }
-                        j += 1;
+                        exited_client_index += 1;
                     }
                 }
             },
@@ -169,6 +177,11 @@ impl CoordinatorInstanceState {
 
     pub fn set_paused(&mut self, paused: bool) -> Result<()> {
         let unix_timestamp = Clock::get()?.unix_timestamp as u64;
+        msg!(
+            "set_paused called: paused={}, state={}",
+            paused,
+            self.coordinator.run_state
+        );
         if let Err(err) = match paused {
             true => self.coordinator.pause(unix_timestamp),
             false => {
@@ -242,16 +255,22 @@ impl CoordinatorInstanceState {
 
     pub fn set_future_epoch_rates(
         &mut self,
-        epoch_earning_rate: Option<u64>,
-        epoch_slashing_rate: Option<u64>,
+        epoch_earning_rate_total_shared: Option<u64>,
+        epoch_slashing_rate_per_client: Option<u64>,
     ) -> Result<()> {
-        if let Some(epoch_earning_rate) = epoch_earning_rate {
-            self.clients_state.future_epoch_rates.earning_rate =
-                epoch_earning_rate;
+        if let Some(epoch_earning_rate_total_shared) =
+            epoch_earning_rate_total_shared
+        {
+            self.clients_state
+                .future_epoch_rates
+                .earning_rate_total_shared = epoch_earning_rate_total_shared;
         }
-        if let Some(epoch_slashing_rate) = epoch_slashing_rate {
-            self.clients_state.future_epoch_rates.slashing_rate =
-                epoch_slashing_rate;
+        if let Some(epoch_slashing_rate_per_client) =
+            epoch_slashing_rate_per_client
+        {
+            self.clients_state
+                .future_epoch_rates
+                .slashing_rate_per_client = epoch_slashing_rate_per_client;
         }
         Ok(())
     }
@@ -317,7 +336,7 @@ impl CoordinatorInstanceState {
                 }
                 client.id = id; // IMPORTANT. Equality is on wallet key but includes ephemeral p2p key
                 client.active = self.clients_state.next_active;
-                msg!("Exisiting client {} re-joined", id.signer);
+                msg!("Existing client {} re-joined", id.signer);
                 true
             },
             None => false,
@@ -384,6 +403,17 @@ impl CoordinatorInstanceState {
         self.coordinator
             .checkpoint(id, index as u64, repo)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
-        self.tick()
+
+        // Only tick if not halted (Paused/Uninitialized/Finished)
+        // Checkpoint update itself doesn't require state transitions
+        if !self.coordinator.halted() {
+            self.tick()
+        } else {
+            msg!(
+                "Checkpoint recorded while halted (state: {}), skipping tick",
+                self.coordinator.run_state
+            );
+            Ok(())
+        }
     }
 }

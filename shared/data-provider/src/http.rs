@@ -1,18 +1,19 @@
 use std::{str::FromStr, time::Duration};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use futures::future::join_all;
 use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use psyche_coordinator::model::HttpTrainingDataLocation;
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use rand::seq::SliceRandom;
-use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use rand_chacha::rand_core::SeedableRng;
 use reqwest::IntoUrl;
 use tokio::task::JoinHandle;
 use tracing::{info, trace};
 
 use crate::{
+    TokenizedData,
     file_extensions::DATA_FILE_EXTENSIONS,
     traits::{LengthKnownDataProvider, TokenizedDataProvider},
 };
@@ -64,7 +65,9 @@ impl FileURLs {
             .filter(|&w| w == "{}".as_bytes())
             .count();
         if num_templates != 1 {
-            bail!("invalid url {url_template}. expected 1 set of {{}} for number substitution, got {num_templates}");
+            bail!(
+                "invalid url {url_template}. expected 1 set of {{}} for number substitution, got {num_templates}"
+            );
         }
 
         let urls: Result<Vec<reqwest::Url>, <reqwest::Url as FromStr>::Err> = (0..num_files)
@@ -228,12 +231,12 @@ impl HttpDataProvider {
 
         let range = format!("bytes={}-{}", start, start + length - 1);
         let response = client
-            .get(url)
+            .get(url.clone())
             .header("Range", &range)
             .timeout(HTTP_REQUEST_TIMEOUT)
             .send()
             .await
-            .with_context(|| format!("request for bytes {range}"))?;
+            .with_context(|| format!("request for bytes {range}, from {url}"))?;
 
         // Check if we got a 206 Partial Content response
         if !response.status().is_success()
@@ -283,7 +286,7 @@ impl HttpDataProvider {
         Ok(tokens)
     }
 
-    async fn internal_get_samples(&self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn internal_get_samples(&self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         trace!("get samples for {data_ids:?}");
 
         let sequences: Result<Vec<SequencePointer>> = data_ids
@@ -340,7 +343,9 @@ impl HttpDataProvider {
             for i in 0..sequences.len() {
                 let start_idx = i * self.seq_len as usize;
                 let end_idx = start_idx + single_seq_len;
-                result.push(all_data[start_idx..end_idx].to_vec());
+                result.push(TokenizedData::from_input_ids(
+                    all_data[start_idx..end_idx].to_vec(),
+                ));
             }
 
             Ok(result)
@@ -368,7 +373,7 @@ impl HttpDataProvider {
 
             let mut ret = Vec::with_capacity(finished.len());
             for finish in finished {
-                ret.push(finish??);
+                ret.push(TokenizedData::from_input_ids(finish??));
             }
 
             Ok(ret)
@@ -377,7 +382,7 @@ impl HttpDataProvider {
 }
 
 impl TokenizedDataProvider for HttpDataProvider {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         self.internal_get_samples(data_ids).await
     }
 }

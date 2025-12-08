@@ -1,9 +1,11 @@
 # Client FAQ
 
 - Which operating systems are supported?
-  - We support officially suport modern Linux versions, with Mac support planned for the future once the Metal backend is implemented.
-- Which are the hardware requirements to run a client?
-  - You need a CUDA-compatible GPU. As for the exact specs this will depend on the size of the model being trained. Support for AMD ROCm is planned for the future.
+  - We officially support modern Linux versions. macOS is supported for development purposes only (not for production training).
+- What are the hardware requirements to run a client?
+  - Linux: You need a CUDA-compatible GPU. As for the exact specs this will depend on the size of the model being trained.
+  - macOS (development only): Apple Silicon Macs can use Metal Performance Shaders for GPU acceleration.
+  - Support for AMD ROCm is planned for the future.
 - Can I join a run at any moment?
   - Yes! You will remain as a pending client and start training in the next epoch.
 - Can I leave a run at any moment? How do I leave a run?

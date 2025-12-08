@@ -150,6 +150,7 @@ export function startWatchChainLoop<D>(): <
 					}
 					await process.onDoneCatchup(dataStore, state)
 					await dataStore.sync(lastUpdate)
+					console.log(`[${name}] written to disk.`)
 				}
 			} catch (err) {
 				console.error(
@@ -159,9 +160,12 @@ export function startWatchChainLoop<D>(): <
 			} finally {
 				if (wsListener) {
 					wsListener.disconnect()
+					wsListener = null
 				}
 			}
-			console.info(`[${name}] chain loop was cancelled, exiting cleanly...`)
+			if (cancelled.cancelled) {
+				console.info(`[${name}] chain loop was cancelled, exiting cleanly...`)
+			}
 		}
 	}
 }

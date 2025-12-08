@@ -1,12 +1,12 @@
-use crate::{CausalLM, EosToks};
+use crate::{CausalLM, EosToks, StableVarStoreIterator, StableVariableIterator};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
 use tch::{
-    nn::{VarStore, Variables},
     Device, Kind, Tensor,
+    nn::{VarStore, Variables},
 };
 
 #[derive(Debug)]
@@ -60,19 +60,26 @@ impl DummyModel {
 
 impl CausalLM for DummyModel {
     fn forward(
-        &mut self,
+        &self,
         x: &tch::Tensor,
         _labels: Option<&tch::Tensor>,
+        _position_ids: Option<&tch::Tensor>,
+        _sequence_lengths: Option<&Vec<Vec<i32>>>,
         _num_logits_to_keep: Option<i64>,
-    ) -> (tch::Tensor, Option<tch::Tensor>) {
+        loss_scale: Option<f64>,
+    ) -> (Option<tch::Tensor>, Option<tch::Tensor>) {
         let result = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = tch::Tensor::zeros([1], (Kind::BFloat16, x.device()));
         let loss = loss.set_requires_grad(true);
         let loss = loss.g_add_scalar(1.0);
+        let loss = match loss_scale {
+            Some(loss_scale) => loss / loss_scale,
+            None => loss,
+        };
 
         // sleep some time just to simulate training
         std::thread::sleep(self.training_delay_secs);
-        (result, Some(loss))
+        (Some(result), Some(loss))
     }
 
     fn bos_token_id(&self) -> Option<i64> {
@@ -87,15 +94,19 @@ impl CausalLM for DummyModel {
         Device::cuda_if_available()
     }
 
-    fn variables(&self) -> &tch::nn::VarStore {
-        &self.var_store
+    fn max_context_length(&self) -> usize {
+        2048
+    }
+
+    fn variables(&self) -> StableVariableIterator {
+        Box::new(StableVarStoreIterator::new(&self.var_store, None))
     }
 
     fn communicator(&self) -> Option<std::sync::Arc<crate::Communicator>> {
         None
     }
 
-    fn prepare_for_training(&mut self) {}
+    fn prepare_for_training(&self) {}
 
-    fn clip_grad_norm(&mut self, _max_grad_norm: f64) {}
+    fn clip_grad_norm(&self, _max_grad_norm: f64) {}
 }

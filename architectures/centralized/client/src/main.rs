@@ -1,14 +1,18 @@
-use crate::app::{AppBuilder, AppParams, Tabs, TAB_NAMES};
+use crate::app::{TAB_NAMES, Tabs, build_app};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
-use psyche_network::{DiscoveryMode, SecretKey};
-use psyche_tui::{maybe_start_render_loop, LogOutput};
-use std::path::PathBuf;
+use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
+use psyche_network::SecretKey;
+use psyche_tui::{
+    LogOutput, ServiceInfo,
+    logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
+    maybe_start_render_loop,
+};
+use std::{path::PathBuf, time::Duration};
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
-use tracing::{info, Level};
+use tracing::info;
 
 mod app;
 
@@ -53,68 +57,57 @@ async fn async_main() -> Result<()> {
         Commands::Train { args, server_addr } => {
             psyche_client::prepare_environment();
 
-            let hub_read_token = std::env::var("HF_TOKEN").ok();
-            let checkpoint_upload_info = args.checkpoint_config()?;
-            let eval_tasks = args.eval_tasks()?;
-
             info!(
                 "============ Client Startup at {} ============",
                 OffsetDateTime::now_utc()
             );
 
-            let identity_secret_key: SecretKey =
+            let identity_secret_key =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
-                    .unwrap_or_else(|| SecretKey::generate(&mut rand::rngs::OsRng));
+                    .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
 
-            let logger = psyche_tui::init_logging(
-                args.logs,
-                Level::INFO,
-                args.write_log.clone(),
-                true,
-                Some(format!(
-                    "client-{}",
-                    identity_secret_key.public().fmt_short()
-                )),
-            )?;
-
-            let wandb_info = args.wandb_info(format!(
-                "{}-{}",
-                args.run_id.clone(),
-                identity_secret_key.public().fmt_short()
-            ))?;
+            let logger = psyche_tui::logging()
+                .with_output(args.logs)
+                .with_log_file(args.write_log.clone())
+                .with_metrics_destination(args.oltp_metrics_url.clone().map(|endpoint| {
+                    MetricsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_trace_destination(args.oltp_tracing_url.clone().map(|endpoint| {
+                    TraceDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: args.oltp_report_interval,
+                    })
+                }))
+                .with_remote_logs(args.oltp_logs_url.clone().map(|endpoint| {
+                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                        endpoint,
+                        authorization_header: args.oltp_auth_header.clone(),
+                        report_interval: Duration::from_secs(4),
+                    })
+                }))
+                .with_service_info(ServiceInfo {
+                    name: "psyche-centralized-client".to_string(),
+                    instance_id: identity_secret_key.public().to_string(),
+                    namespace: "psyche".to_string(),
+                    deployment_environment: std::env::var("DEPLOYMENT_ENV")
+                        .unwrap_or("development".to_string()),
+                    run_id: Some(args.run_id.clone()),
+                })
+                .init()?;
 
             let (cancel, tx_tui_state) = maybe_start_render_loop(
                 (args.logs == LogOutput::TUI).then(|| Tabs::new(Default::default(), &TAB_NAMES)),
             )?;
 
-            let (mut app, allowlist, p2p, state_options) = AppBuilder::new(AppParams {
-                cancel,
-                identity_secret_key,
-                server_addr,
-                tx_tui_state,
-                run_id: args.run_id,
-                p2p_port: args.bind_p2p_port,
-                p2p_interface: args.bind_p2p_interface,
-                data_parallelism: args.data_parallelism,
-                tensor_parallelism: args.tensor_parallelism,
-                micro_batch_size: args.micro_batch_size,
-                write_gradients_dir: args.write_gradients_dir,
-                eval_task_max_docs: args.eval_task_max_docs,
-                eval_tasks,
-                checkpoint_upload_info,
-                hub_read_token,
-                hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
-                wandb_info,
-                optim_stats: args.optim_stats_steps,
-                grad_accum_in_fp32: args.grad_accum_in_fp32,
-                dummy_training_delay_secs: args.dummy_training_delay_secs,
-                discovery_mode: DiscoveryMode::N0,
-                max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
-                max_concurrent_downloads: args.max_concurrent_downloads,
-            })
-            .build()
-            .await
-            .unwrap();
+            let (mut app, allowlist, p2p, state_options) =
+                build_app(cancel, server_addr, tx_tui_state, args)
+                    .await
+                    .unwrap();
 
             app.run(allowlist, p2p, state_options).await?;
             logger.shutdown()?;
@@ -133,6 +126,9 @@ async fn async_main() -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    #[cfg(feature = "python")]
+    psyche_python_extension_impl::init_embedded_python()?;
+
     // let shutdown_handler =
     let runtime = Builder::new_multi_thread()
         .enable_io()

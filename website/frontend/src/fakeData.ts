@@ -58,16 +58,15 @@ export const fakeRunSummaries: RunSummary[] = [
 		name: 'Vision Model Alpha',
 		description: 'Training a vision model to recognize everyday objects',
 		status: { type: 'paused' },
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
-		}, // 2 weeks ago
 		totalTokens: 100000n,
-		completedTokens: 65000n,
-		size: BigInt('1000000000'),
+		size: 1000000000n,
 		arch: 'HfLlama',
 		type: 'vision',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 	{
 		id: 'run-002',
@@ -76,16 +75,15 @@ export const fakeRunSummaries: RunSummary[] = [
 		name: 'Text Assistant Beta',
 		description: 'Assistant-like model with reasoning capabilities',
 		status: { type: 'active' },
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-		}, // 3 days ago
 		totalTokens: 200000n,
-		completedTokens: 0n,
-		size: BigInt('2000000000'),
+		size: 2000000000n,
 		arch: 'HfLlama',
 		type: 'text',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 	{
 		id: 'run-003',
@@ -100,16 +98,15 @@ export const fakeRunSummaries: RunSummary[] = [
 				time: new Date(Date.now() - 1000 * 60 * 60 * 24),
 			},
 		}, // 1 day ago
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10),
-		}, // 10 days ago
 		totalTokens: 50000n,
-		completedTokens: 50000n,
-		size: BigInt('500000000'),
+		size: 500000000n,
 		arch: 'HfLlama',
 		type: 'text',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 	{
 		id: 'run-001',
@@ -118,16 +115,15 @@ export const fakeRunSummaries: RunSummary[] = [
 		name: 'Vision Model Alpha',
 		description: 'Training a vision model to recognize everyday objects',
 		status: { type: 'active' },
-		startTime: {
-			slot: 12345n,
-			time: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
-		}, // 2 weeks ago
 		totalTokens: 100000n,
-		completedTokens: 65000n,
-		size: BigInt('1000000000'),
+		size: 1000000000n,
 		arch: 'HfLlama',
 		type: 'vision',
 		pauseHistory: [],
+		lastUpdate: {
+			time: new Date('2025-01-15T09:30:00'),
+			slot: 123440n,
+		},
 	},
 ]
 
@@ -141,6 +137,9 @@ export const makeFakeRunData: Record<
 			: {
 					info: fakeRunSummaries[0],
 					recentTxs: [],
+					promptResults: [],
+					promptIndex: 0,
+					cumulativePromptResults: [],
 					metrics: {
 						summary: {
 							loss: 0.0,
@@ -148,6 +147,9 @@ export const makeFakeRunData: Record<
 							tokensPerSecond: 0.0,
 							evals: {},
 							lr: 0.004,
+							promptResults: [],
+							promptIndex: 0,
+							cumulativePromptResults: [],
 						},
 						history: {
 							loss: [],
@@ -155,12 +157,18 @@ export const makeFakeRunData: Record<
 							tokensPerSecond: [],
 							evals: {},
 							lr: [],
+							promptResults: [],
+							promptIndex: [],
+							cumulativePromptResults: [],
 						},
 					},
 				},
 	'run-002': () => ({
 		info: fakeRunSummaries[1],
 		recentTxs: [],
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.0,
@@ -168,6 +176,9 @@ export const makeFakeRunData: Record<
 				tokensPerSecond: 0.0,
 				evals: {},
 				lr: 0.004,
+				promptResults: [],
+				promptIndex: 0,
+				cumulativePromptResults: [],
 			},
 			history: {
 				loss: [],
@@ -175,12 +186,18 @@ export const makeFakeRunData: Record<
 				tokensPerSecond: [],
 				evals: {},
 				lr: [],
+				promptResults: [],
+				promptIndex: [],
+				cumulativePromptResults: [],
 			},
 		},
 	}),
 	'run-003': () => ({
 		info: fakeRunSummaries[2],
 		recentTxs: [],
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.18,
@@ -192,6 +209,9 @@ export const makeFakeRunData: Record<
 					recall: 0.9,
 				},
 				lr: 0.0005,
+				promptResults: [],
+				promptIndex: 0,
+				cumulativePromptResults: [],
 			},
 			history: {
 				loss: randomWalk(1, 1, 1, 1.1),
@@ -203,6 +223,9 @@ export const makeFakeRunData: Record<
 					precision: randomWalk(1, 1),
 					recall: randomWalk(1, 1),
 				},
+				promptResults: [],
+				promptIndex: [],
+				cumulativePromptResults: [],
 			},
 		},
 	}),
@@ -251,10 +274,11 @@ export const fakeContributionInfo: ContributionInfo = {
 function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 	const seededRandom = createSeededRandom(seed)
 
-	const roundsPerEpoch = Math.round(seededRandom() * 10) + 10
+	const epochTime = 3600
 	const minClients = Math.round(seededRandom() * 10) + 2
 	const totalClients = minClients
 
+	const roundsPerEpoch = Math.round(seededRandom() * 10) + 10
 	const stepsPerEpoch = roundsPerEpoch + 2 + totalClients // +2 for warmup and cooldown, +n for num clients
 	const epochStep = step % stepsPerEpoch
 
@@ -316,6 +340,9 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 				time: new Date(Date.now() - step * 3_000),
 			},
 		})),
+		promptResults: [],
+		promptIndex: 0,
+		cumulativePromptResults: [],
 		metrics: {
 			summary: {
 				loss: 0.32 + seededRandom() * 0.3,
@@ -329,6 +356,9 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 					bananas: 0.85,
 					sphereEval: 0.85,
 				},
+				promptResults: [],
+				promptIndex: 0,
+				cumulativePromptResults: [],
 			},
 			history: {
 				loss: randomWalk(seed, 1, undefined, undefined, step),
@@ -340,11 +370,15 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 					precision: randomWalk(seed, 1, undefined, undefined, step),
 					recall: randomWalk(seed, 1, undefined, undefined, step),
 				},
+				promptResults: [],
+				promptIndex: [],
+				cumulativePromptResults: [],
 			},
 		},
 		state: {
 			phase,
 			phaseStartTime: new Date(Date.now() - seededRandom() * 2_000),
+			epochStartTime: new Date(Date.now() - seededRandom() * 10_000),
 			round,
 			clients,
 			checkpoint: {
@@ -357,7 +391,7 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 				warmupTime: 3_000,
 				roundWitnessTime: 2_000,
 				minClients,
-				roundsPerEpoch,
+				epochTime,
 				lrSchedule: {
 					Cosine: {
 						base_lr: 4.0e-4,

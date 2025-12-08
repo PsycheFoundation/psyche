@@ -34,8 +34,8 @@ impl Optimizer {
                         false,
                     )
                     .unwrap();
-                    for (_, tensor) in model.variables().variables() {
-                        //let tensor = var.logical_tensor();
+                    for var in model.variables() {
+                        let tensor = var.logical_tensor();
                         adamw.add_parameters(&tensor, 0).unwrap();
                     }
                     adamw
@@ -51,12 +51,11 @@ impl Optimizer {
                 quantize_1bit,
             } => Self::Distro {
                 optimizer: Distro::new(
-                    model.variables(),
+                    model,
                     compression_decay as f64,
                     compression_chunk as i64,
                     compression_topk as i64,
                     weight_decay.unwrap_or(0.0) as f64,
-                    model.communicator(),
                 )
                 .into(),
                 clip_grad_norm,

@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use psyche_tui::{init_logging, start_render_loop, CustomWidget, TabbedWidget};
-use rand::{seq::SliceRandom, Rng};
+use psyche_tui::{CustomWidget, TabbedWidget, logging, start_render_loop};
+use rand::{Rng, seq::IndexedRandom};
 use ratatui::widgets::{Paragraph, Widget};
 use tokio::{select, time::interval};
-use tracing::{error, info, warn, Level};
+use tracing::{error, info, warn};
 
 mod minimal;
 use minimal::MinimalWidget;
@@ -38,7 +38,7 @@ const BARKS: [&str; 5] = ["bork", "woof", "boof", "bark", "hello im a dog"];
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let logger = init_logging(psyche_tui::LogOutput::TUI, Level::INFO, None, false, None)?;
+    let logger = logging().with_output(psyche_tui::LogOutput::TUI).init()?;
 
     info!("foo");
     warn!("bar");
@@ -56,8 +56,8 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             _ = interval.tick() => {
-                let mut rng = rand::thread_rng();
-                let random_num = rng.gen::<u64>();
+                let mut rng = rand::rng();
+                let random_num = rng.random::<u64>();
                 let bark = BARKS.choose(&mut rng).unwrap().to_string();
                 let states = (bark, random_num);
                 tx.send(states).await.expect("sending works!");

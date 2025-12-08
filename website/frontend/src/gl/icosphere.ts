@@ -92,18 +92,18 @@ function subdivide(complex: Complex): Complex {
 		const c = getMidpoint(v2, v0)
 
 		let ai = newPositions.indexOf(a)
-		if (ai === -1) (ai = l++), newPositions.push(a)
+		if (ai === -1) ((ai = l++), newPositions.push(a))
 		let bi = newPositions.indexOf(b)
-		if (bi === -1) (bi = l++), newPositions.push(b)
+		if (bi === -1) ((bi = l++), newPositions.push(b))
 		let ci = newPositions.indexOf(c)
-		if (ci === -1) (ci = l++), newPositions.push(c)
+		if (ci === -1) ((ci = l++), newPositions.push(c))
 
 		let v0i = newPositions.indexOf(v0)
-		if (v0i === -1) (v0i = l++), newPositions.push(v0)
+		if (v0i === -1) ((v0i = l++), newPositions.push(v0))
 		let v1i = newPositions.indexOf(v1)
-		if (v1i === -1) (v1i = l++), newPositions.push(v1)
+		if (v1i === -1) ((v1i = l++), newPositions.push(v1))
 		let v2i = newPositions.indexOf(v2)
-		if (v2i === -1) (v2i = l++), newPositions.push(v2)
+		if (v2i === -1) ((v2i = l++), newPositions.push(v2))
 
 		newCells.push([v0i, ai, ci], [v1i, bi, ai], [v2i, ci, bi], [ai, bi, ci])
 	}

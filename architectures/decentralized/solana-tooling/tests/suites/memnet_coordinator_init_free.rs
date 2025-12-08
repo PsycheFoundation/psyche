@@ -1,5 +1,5 @@
-use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_free;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_init;
@@ -14,7 +14,7 @@ pub async fn run() {
     // Create payer key and fund it
     let payer = Keypair::new();
     endpoint
-        .process_airdrop(&payer.pubkey(), 10_000_000_000)
+        .request_airdrop(&payer.pubkey(), 5_000_000_000)
         .await
         .unwrap();
 
@@ -53,6 +53,7 @@ pub async fn run() {
             run_id: "this is a dummy run_id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "test".to_string(),
         },
     )
     .await
@@ -75,16 +76,20 @@ pub async fn run() {
     assert_eq!(main_authority_balance_after, main_authority_balance_start);
 
     // Check that the coordinator instance and account do actually exists now
-    assert!(endpoint
-        .get_account(&coordinator_instance)
-        .await
-        .unwrap()
-        .is_some());
-    assert!(endpoint
-        .get_account(&coordinator_account)
-        .await
-        .unwrap()
-        .is_some());
+    assert!(
+        endpoint
+            .get_account(&coordinator_instance)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        endpoint
+            .get_account(&coordinator_account)
+            .await
+            .unwrap()
+            .is_some()
+    );
 
     // This spill account will be reimbursed for the costs of the rent
     let spill = Pubkey::new_unique();
@@ -129,14 +134,18 @@ pub async fn run() {
     assert!(spill_balance_before < spill_balance_final);
 
     // Check that the coordinator account and instances were actually closed
-    assert!(endpoint
-        .get_account(&coordinator_instance)
-        .await
-        .unwrap()
-        .is_none());
-    assert!(endpoint
-        .get_account(&coordinator_account)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        endpoint
+            .get_account(&coordinator_instance)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        endpoint
+            .get_account(&coordinator_account)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

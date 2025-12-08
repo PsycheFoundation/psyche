@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use psyche_tui::{start_render_loop, CustomWidget};
+use psyche_tui::{CustomWidget, start_render_loop};
 use rand::RngCore;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -31,7 +31,7 @@ impl CustomWidget for MinimalWidget {
         Paragraph::new(format!("persistant state is {}", self.persistant_state))
             .centered()
             .render(chunks[0], buf);
-        Paragraph::new(format!("state passed from main thread is {}", state))
+        Paragraph::new(format!("state passed from main thread is {state}"))
             .centered()
             .render(chunks[1], buf);
     }
@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             _ = interval.tick() => {
-                let prng_num = rand::thread_rng().next_u64();
+                let prng_num = rand::rng().next_u64();
                 tx.send(prng_num).await.expect("sending works!");
             }
         }

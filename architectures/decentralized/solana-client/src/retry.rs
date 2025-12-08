@@ -1,10 +1,10 @@
 use std::future::Future;
 use std::time::Duration;
 
+use anchor_client::ClientError;
 use anchor_client::solana_client::client_error::ClientErrorKind as ErrorKind;
 use anchor_client::solana_client::rpc_request::{RpcError, RpcResponseErrorData};
 use anchor_client::solana_sdk::transaction::TransactionError;
-use anchor_client::ClientError;
 use backon::{ExponentialBuilder, Retryable};
 use tracing::{error, warn};
 
@@ -23,9 +23,9 @@ pub enum RetryError<E> {
 impl<E: std::fmt::Display> std::fmt::Display for RetryError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            RetryError::Retryable(e) => write!(f, "{}", e),
-            RetryError::NonRetryable(e) => write!(f, "{}", e),
-            RetryError::Fatal(e) => write!(f, "{}", e),
+            RetryError::Retryable(e) => write!(f, "{e}"),
+            RetryError::NonRetryable(e) => write!(f, "{e}"),
+            RetryError::Fatal(e) => write!(f, "{e}"),
         }
     }
 }
@@ -173,10 +173,11 @@ impl RetryError<String> {
     }
 
     pub fn fatal_error(msg: &str) -> Self {
-        RetryError::Fatal(format!("FATAL {}", msg))
+        RetryError::Fatal(format!("FATAL {msg}"))
     }
 }
 
+#[allow(dead_code)] // TODO (vbrunet) - shall we re-use this for the generic retry mechanism
 pub async fn retry_function<FutureFn, Fut, T, E>(
     log_str: &str,
     function: FutureFn,

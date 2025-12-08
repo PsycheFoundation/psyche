@@ -1,8 +1,8 @@
-use anyhow::{bail, Result};
-use psyche_coordinator::{get_batch_ids_for_node, Coordinator};
+use anyhow::{Result, bail};
+use psyche_coordinator::{Coordinator, get_batch_ids_for_node};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{DataProvider, TokenizedDataProvider};
-use psyche_modeling::{Batch, BatchData};
+use psyche_modeling::{Batch, BatchData, BatchDataCPU};
 use psyche_network::AuthenticatableIdentity;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -11,11 +11,11 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     task::JoinHandle,
     time::sleep,
 };
-use tracing::{debug, error, info, trace, trace_span, warn, Instrument};
+use tracing::{Instrument, debug, error, info, trace, trace_span, warn};
 
 use crate::IntegrationTestLogMarker;
 
@@ -136,8 +136,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                             attempt = retry_count,
                                             max_retries = MAX_RETRIES,
                                             error = %err,
-                                            "Data fetch error with provider {}. Retrying in {}ms",
-                                            provider_idx, delay_ms.as_millis()
+                                            "Data fetch error for batch_id={} (attempt {}/{}) with provider {} \"{:#}\". Retrying in {}ms",
+                                            provider_idx, batch_id, retry_count, MAX_RETRIES, err, delay_ms.as_millis()
                                         );
                                         sleep(delay_ms).await;
                                         continue; // Continue retry loop
@@ -167,7 +167,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                         let batch = match batch_option {
                             Some(b) => b,
                             None => {
-                                error!(batch_id = %batch_id, "Failed to fetch batch after trying all data providers.");
+                                error!(batch_id = %batch_id, "Failed to fetch batch {} after {} attempts after trying all data providers.", batch_id, MAX_RETRIES);
                                 continue; // Skip this batch and try the next assigned ID
                             }
                         };
@@ -175,7 +175,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                         if tx_next_sample
                             .send(Batch {
                                 id: batch_id,
-                                data: BatchData::CPU(batch),
+                                data: BatchData::CPU(batch.into_iter().map(|batch| {
+                                    BatchDataCPU {
+                                        input_ids: batch.input_ids,
+                                        labels: batch.labels,
+                                        position_ids: batch.position_ids,
+                                        sequence_lengths: batch.sequence_lengths,
+                                    }
+                                }).collect()),
                             })
                             .await
                             .is_err()

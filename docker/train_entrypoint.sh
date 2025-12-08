@@ -1,26 +1,32 @@
-#! /bin/bash
+#!/bin/bash
 
 set -o errexit
 set -euo pipefail
 
+# check if this should run as a sidecar instead of main training
+if [[ "${PSYCHE_MAIN_HOST:-}" != "" ]]; then
+    echo "PSYCHE_MAIN_HOST detected - switching to sidecar mode"
+    exec /bin/sidecar_entrypoint.sh
+fi
+
 # Some sanity checks before starting
 
-if [[ "$NVIDIA_DRIVER_CAPABILITIES" == "" ]]; then
+if [[ "${NVIDIA_DRIVER_CAPABILITIES:-}" == "" ]]; then
     echo -e "\n[!] The NVIDIA_DRIVER_CAPABILITIES env variable was not set."
     exit 1
 fi
 
-if [[ "$RPC" == "" ]]; then
+if [[ "${RPC:-}" == "" ]]; then
     echo -e "\n[!] The RPC env variable was not set."
     exit 1
 fi
 
-if [[ "$WS_RPC" == "" ]]; then
+if [[ "${WS_RPC:-}" == "" ]]; then
     echo -e "\n[!] The WS_RPC env variable was not set."
     exit 1
 fi
 
-if [[ "$RUN_ID" == "" ]]; then
+if [[ "${RUN_ID:-}" == "" ]]; then
     echo -e "\n[!] The RUN_ID env variable was not set."
     exit 1
 fi
@@ -66,21 +72,29 @@ while true; do
 
     start_time=$SECONDS  # Record start time
 
-    /usr/local/bin/psyche-solana-client train \
+    psyche-solana-client train \
         --rpc ${RPC} \
         --ws-rpc ${WS_RPC} \
         --run-id ${RUN_ID} \
         --logs "console" &
 
     PSYCHE_CLIENT_PID=$!
-    wait "$PSYCHE_CLIENT_PID" || true  # Wait for the app to exit; continue on signal interrupt
+    set +e
+    wait "$PSYCHE_CLIENT_PID"
+    EXIT_STATUS=$?
+    set -e
 
     duration=$((SECONDS - start_time))  # Calculate runtime duration
-    EXIT_STATUS=$?
     echo -e "\n[!] Psyche client exited with status '$EXIT_STATUS'."
 
     # Reset PID after client exits
     PSYCHE_CLIENT_PID=0
+
+    # Exit code 10 means version mismatch - exit container immediately (no retry)
+    if [[ $EXIT_STATUS -eq 10 ]]; then
+        echo -e "[!] Version mismatch detected. Exiting container without retry..."
+        exit 10
+    fi
 
     # Reset restart counter if client ran longer than RESET_TIME
     if [ $duration -ge $RESET_TIME ]; then

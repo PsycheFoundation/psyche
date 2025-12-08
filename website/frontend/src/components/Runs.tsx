@@ -1,10 +1,11 @@
 import { styled } from '@linaria/react'
-import { useState } from 'react'
+import { PropsWithChildren, useState, useMemo } from 'react'
 import { RadioSelectBar } from './RadioSelectBar.js'
 import { RunSummaryCard } from './RunSummary.js'
 import { ApiGetRuns } from 'shared'
 import { Sort } from './Sort.js'
 import { text } from '../fonts.js'
+import AnimatedTokensCounter from './AnimatedTokensCounter.js'
 
 const RunsContainer = styled.div`
 	height: 100%;
@@ -62,24 +63,47 @@ const runSort = [
 
 type RunType = (typeof runTypes)[number]['value']
 
+const sortFuncs = {
+	updated: (a: ApiGetRuns['runs'][0], b: ApiGetRuns['runs'][0]) =>
+		b.lastUpdate.time.getTime() - a.lastUpdate.time.getTime(),
+	size: (a: ApiGetRuns['runs'][0], b: ApiGetRuns['runs'][0]) =>
+		Number(b.size - a.size),
+} as const
+
 export function Runs({
 	runs,
 	totalTokens,
 	totalTokensPerSecondActive,
 }: ApiGetRuns) {
-	const [runTypeFilter, setRunTypeFilter] = useState<RunType>('active')
+	const [runTypeFilter, setRunTypeFilter] = useState<RunType>('all')
 	const [sort, setSort] = useState<(typeof runSort)[number]>(runSort[0])
+
+	// Create stable sorted list that only changes when sort changes, not when data updates
+	const sortedRuns = useMemo(() => {
+		return [...runs].sort(sortFuncs[sort.value])
+	}, [runs.length, sort.value]) // Only resort when sort changes or runs count changes
+
 	return (
 		<RunsContainer>
 			<GlobalStats>
-				<GlobalStat
-					label="tokens/sec"
-					value={totalTokensPerSecondActive.toLocaleString()}
-				/>
-				<GlobalStat
-					label="tokens trained"
-					value={totalTokens.toLocaleString()}
-				/>
+				<GlobalStat label="tokens/sec">
+					{totalTokensPerSecondActive.toLocaleString()}
+				</GlobalStat>
+				<GlobalStat label="tokens trained">
+					<AnimatedTokensCounter
+						lastValue={totalTokens}
+						lastTimestamp={runs.reduce((d, r) => {
+							if (r.lastUpdate.time > d) {
+								return r.lastUpdate.time
+							}
+							return d
+						}, new Date(0))}
+						perSecondRate={totalTokensPerSecondActive}
+						pausedAt={
+							totalTokensPerSecondActive === 0n ? new Date(0) : undefined
+						}
+					/>
+				</GlobalStat>
 			</GlobalStats>
 			<RunsHeader>
 				<RadioSelectBar
@@ -91,7 +115,7 @@ export function Runs({
 				{/* <Button style="secondary">train a new model</Button> */}
 			</RunsHeader>
 			<RunBoxesContainer>
-				{runs
+				{sortedRuns
 					.filter(
 						(r) => runTypeFilter === 'all' || runTypeFilter === r.status.type
 					)
@@ -111,10 +135,10 @@ const StatBox = styled.span`
 	padding: 0.5em;
 `
 
-function GlobalStat({ label, value }: { value: string; label: string }) {
+function GlobalStat({ label, children }: PropsWithChildren<{ label: string }>) {
 	return (
 		<StatBox>
-			<span className={text['display/2xl']}>{value}</span>
+			<span className={text['display/2xl']}>{children}</span>
 			<span className={text['body/sm/regular']}>{label}</span>
 		</StatBox>
 	)

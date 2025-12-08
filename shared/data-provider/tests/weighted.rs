@@ -2,7 +2,8 @@ use anyhow::Result;
 use psyche_coordinator::model::DummyType;
 use psyche_core::{BatchId, ClosedInterval, Shuffle, TokenSize};
 use psyche_data_provider::{
-    DummyDataProvider, LengthKnownDataProvider, TokenizedDataProvider, WeightedDataProvider,
+    DummyDataProvider, LengthKnownDataProvider, TokenizedData, TokenizedDataProvider,
+    WeightedDataProvider,
 };
 use std::collections::HashMap;
 use test_log::test;
@@ -30,7 +31,7 @@ impl LengthKnownDataProvider for MockDataProvider {
 }
 
 impl TokenizedDataProvider for MockDataProvider {
-    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<Vec<i32>>> {
+    async fn get_samples(&mut self, data_ids: BatchId) -> Result<Vec<TokenizedData>> {
         // Create sample sequences where each token is provider_id * 1000 + sample_id
         let mut results = Vec::with_capacity(data_ids.len());
 
@@ -41,7 +42,7 @@ impl TokenizedDataProvider for MockDataProvider {
                 .iter()
                 .map(|&pattern| base_value + pattern)
                 .collect();
-            results.push(sequence);
+            results.push(TokenizedData::from_input_ids(sequence));
         }
 
         Ok(results)
@@ -70,7 +71,7 @@ async fn test_weighted_data_provider_equal_weights() -> Result<()> {
     let mut provider_counts = HashMap::new();
     for sample in &samples {
         // first token's value will tell us which provider it came from
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         *provider_counts.entry(provider_id).or_insert(0) += 1;
     }
 
@@ -79,7 +80,7 @@ async fn test_weighted_data_provider_equal_weights() -> Result<()> {
     let count1 = *provider_counts.get(&1).unwrap_or(&0);
     let count2 = *provider_counts.get(&2).unwrap_or(&0);
 
-    println!("Provider 1 count: {}, Provider 2 count: {}", count1, count2);
+    println!("Provider 1 count: {count1}, Provider 2 count: {count2}");
 
     assert!((40..=60).contains(&count1));
     assert!((40..=60).contains(&count2));
@@ -104,14 +105,14 @@ async fn test_weighted_data_provider_unequal_weights() -> Result<()> {
 
     let mut provider_counts = HashMap::new();
     for sample in &samples {
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         *provider_counts.entry(provider_id).or_insert(0) += 1;
     }
 
     let count1 = *provider_counts.get(&1).unwrap_or(&0);
     let count2 = *provider_counts.get(&2).unwrap_or(&0);
 
-    println!("Provider 1 count: {}, Provider 2 count: {}", count1, count2);
+    println!("Provider 1 count: {count1}, Provider 2 count: {count2}");
 
     assert!((65..=85).contains(&count1));
     assert!((15..=35).contains(&count2));
@@ -134,14 +135,14 @@ async fn test_weighted_data_provider_auto_weights() -> Result<()> {
 
     let mut provider_counts = HashMap::new();
     for sample in &samples {
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         *provider_counts.entry(provider_id).or_insert(0) += 1;
     }
 
     let count1 = *provider_counts.get(&1).unwrap_or(&0);
     let count2 = *provider_counts.get(&2).unwrap_or(&0);
 
-    println!("Provider 1 count: {}, Provider 2 count: {}", count1, count2);
+    println!("Provider 1 count: {count1}, Provider 2 count: {count2}");
 
     assert!((15..=35).contains(&count1)); // ~25%
     assert!((65..=85).contains(&count2)); // ~75%
@@ -200,7 +201,7 @@ async fn test_weighted_data_provider_with_dummy_provider() -> Result<()> {
     assert_eq!(samples.len(), 10);
     // each sample should have 11 tokens (10 + 1 for next token prediction)
     for sample in samples {
-        assert_eq!(sample.len(), 11);
+        assert_eq!(sample.input_ids.len(), 11);
     }
 
     Ok(())
@@ -255,7 +256,7 @@ async fn test_weighted_data_provider_exhaustive() -> Result<()> {
     let mut provider2_samples = 0;
 
     for sample in &samples {
-        let provider_id = sample[0] / 1000;
+        let provider_id = sample.input_ids[0] / 1000;
         match provider_id {
             1 => provider1_samples += 1,
             2 => provider2_samples += 1,
@@ -308,14 +309,17 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
 
     for sample in samples.iter() {
         // MockDataProvider encodes provider_id * 1000 + sample_id in the token
-        let value = sample.first().expect("Sample should not be empty");
+        let value = sample
+            .input_ids
+            .first()
+            .expect("Sample should not be empty");
         let provider_id = value / 1000;
         let sample_id_within_provider = value % 1000;
 
         match provider_id {
             1 => provider1_yielded_sample_ids.push(sample_id_within_provider),
             2 => provider2_yielded_sample_ids.push(sample_id_within_provider),
-            _ => panic!("Unexpected provider ID encountered: {}", provider_id),
+            _ => panic!("Unexpected provider ID encountered: {provider_id}"),
         }
     }
 
@@ -325,8 +329,7 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
 
     assert!(
         (12..=13).contains(&p1_total_count),
-        "Provider 1 count ({}) not in expected range [12, 13]",
-        p1_total_count
+        "Provider 1 count ({p1_total_count}) not in expected range [12, 13]"
     );
 
     assert_eq!(
@@ -337,21 +340,19 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
     for i in 0..5 {
         assert!(
             p1_unique_yielded_ids.contains(&i),
-            "Provider 1 unique IDs should contain {}",
-            i
+            "Provider 1 unique IDs should contain {i}"
         );
     }
 
     assert!(
         p1_total_count > 5,
-        "Provider 1 count ({}) must be > 5 to indicate repetition occurred",
-        p1_total_count
+        "Provider 1 count ({p1_total_count}) must be > 5 to indicate repetition occurred"
     );
 
     let mut first_5_p1_ids = std::collections::HashSet::new();
     let mut p1_occurrences = 0;
     for sample in &samples {
-        let value = sample[0];
+        let value = sample.input_ids[0];
         if value / 1000 == 1 {
             // If it's from provider 1
             if p1_occurrences < 5 {
@@ -372,8 +373,7 @@ async fn test_weighted_data_provider_exhausts_small_dataset_before_repeat() -> R
 
     assert!(
         (12..=13).contains(&p2_total_count),
-        "Provider 2 count ({}) not in expected range [12, 13]",
-        p2_total_count
+        "Provider 2 count ({p2_total_count}) not in expected range [12, 13]"
     );
 
     assert_eq!(

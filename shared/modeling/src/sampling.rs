@@ -1,5 +1,8 @@
 use anyhow::{Error, Result};
-use rand::{distributions::Distribution, SeedableRng};
+use rand::{
+    SeedableRng,
+    distr::{Distribution, weighted::WeightedIndex},
+};
 use tch::{Kind, Tensor};
 
 // from https://github.com/huggingface/candle/blob/afb6575835599938248c027f50a8100c289a1a96/candle-transformers/src/generation/mod.rs
@@ -48,7 +51,7 @@ impl LogitsProcessor {
     }
 
     fn sample_multinomial(&mut self, prs: &Vec<f32>) -> Result<u32> {
-        let distr = rand::distributions::WeightedIndex::new(prs).map_err(Error::msg)?;
+        let distr = WeightedIndex::new(prs).map_err(Error::msg)?;
         let next_token = distr.sample(&mut self.rng) as u32;
         Ok(next_token)
     }

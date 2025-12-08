@@ -1,7 +1,7 @@
-use crate::{AllReduce, Communicator, ReduceType};
+use crate::{AllReduce, CausalLM, Communicator, ReduceType};
 
 use std::sync::Arc;
-use tch::{Device, Kind, Tensor};
+use tch::{Kind, Tensor};
 
 pub struct Fp32GradientAccumulator {
     parameters: Vec<(Tensor, (i64, i64))>,
@@ -9,27 +9,30 @@ pub struct Fp32GradientAccumulator {
 }
 
 impl Fp32GradientAccumulator {
-    pub fn new(parameters: &[Tensor], device: Device) -> Self {
+    pub fn new(model: &dyn CausalLM) -> Self {
         let _no_grad = tch::no_grad_guard();
         let mut total_numel: i64 = 0;
 
-        let parameters = parameters
-            .iter()
-            .filter_map(|parameter| match parameter.requires_grad() {
-                true => {
-                    let numel = parameter.numel() as i64;
-                    let ret = (
-                        parameter.shallow_clone(),
-                        (total_numel, total_numel + numel),
-                    );
-                    total_numel += numel;
-                    Some(ret)
+        let parameters = model
+            .variables()
+            .filter_map(|parameter| {
+                let parameter = parameter.local_tensor();
+                match parameter.requires_grad() {
+                    true => {
+                        let numel = parameter.numel() as i64;
+                        let ret = (
+                            parameter.shallow_clone(),
+                            (total_numel, total_numel + numel),
+                        );
+                        total_numel += numel;
+                        Some(ret)
+                    }
+                    false => None,
                 }
-                false => None,
             })
             .collect::<Vec<_>>();
 
-        let fp32_grads = Tensor::zeros([total_numel], (Kind::Float, device));
+        let fp32_grads = Tensor::zeros([total_numel], (Kind::Float, model.device()));
 
         Self {
             parameters,
@@ -65,6 +68,6 @@ impl Fp32GradientAccumulator {
     }
 
     pub fn reduce_gradients(&mut self, comm: Arc<Communicator>) {
-        self.fp32_grads.all_reduce_(&Some(comm), ReduceType::Avg);
+        self.fp32_grads.all_reduce(&Some(comm), ReduceType::Mean);
     }
 }

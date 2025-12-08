@@ -1,18 +1,7 @@
+mod nix
+
 default:
     just --list
-
-# build & test & check format - what runs in CI
-check: build-all-flake-outputs
-    # run checks
-    nix flake check |& nom
-
-# build all flake outputs in one command (no checks)
-build-all-flake-outputs:
-    nix flake show --json | jq -r '\
-    	(.packages."x86_64-linux" | keys[] | ".#" + .),\
-    	(.devShells."x86_64-linux" | keys[] | ".#devShells.\"x86_64-linux\"." + .),\
-    	(.nixosConfigurations | keys[] | ".#nixosConfigurations." + . + ".config.system.build.toplevel")\
-    ' | xargs nom build
 
 # format & lint-fix code
 fmt:
@@ -22,23 +11,9 @@ fmt:
     cargo fmt
     nixfmt .
 
-# build the centralized client Docker image
-docker-build-centralized-client:
-    nom build .#stream-docker-psyche-centralized-client --out-link nix-results/stream-docker-psyche-centralized-client
-    nix-results/stream-docker-psyche-centralized-client | docker load
-
-# build & push the centralized client Docker image
-docker-push-centralized-client: docker-build-centralized-client
-    docker push docker.io/nousresearch/psyche-centralized-client
-
-# build the solana client Docker image
-docker-build-solana-client:
-    nom build .#stream-docker-psyche-solana-client --out-link nix-results/stream-docker-psyche-solana-client
-    nix-results/stream-docker-psyche-solana-client | docker load
-
 # spin up a local testnet
 local-testnet *args='':
-    cargo run -p psyche-centralized-local-testnet -- start {{ args }}
+    OLTP_METRICS_URL="http://localhost:4318/v1/metrics" OLTP_TRACING_URL="http://localhost:4318/v1/traces" OLTP_LOGS_URL="http://localhost:4318/v1/logs" cargo run -p psyche-centralized-local-testnet -- start {{ args }}
 
 # run integration tests
 integration-test test_name="":
@@ -48,12 +23,47 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-# run integration decentralized tests
-decentralized-integration-test test_name="":
-    if [ "{{ test_name }}" = "" ]; then \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
-    else \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
+# Determine whether to use Python support based on environment variable
+
+use_python := env("USE_PYTHON", "0")
+
+# Run decentralized integration tests with optional Python support and test filtering
+decentralized-integration-tests test_name="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [[ "{{ use_python }}" == "1" ]]; then
+        echo "Running tests with Python support"
+        just setup_python_test_infra
+
+        if [[ -z "{{ test_name }}" ]]; then
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --features python,parallelism \
+                --test integration_tests \
+                -- --nocapture
+        else
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --features python,parallelism \
+                --test integration_tests \
+                -- --nocapture "{{ test_name }}"
+        fi
+    else
+        echo "Running tests without Python support"
+        just setup_test_infra
+
+        if [[ -z "{{ test_name }}" ]]; then
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --test integration_tests \
+                -- --nocapture
+        else
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --test integration_tests \
+                -- --nocapture "{{ test_name }}"
+        fi
     fi
 
 # run integration decentralized chaos tests
@@ -80,6 +90,13 @@ start-training-localnet-client run_id="test" *args='':
 start-training-localnet-light-client run_id="test" *args='':
     RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
+OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
+OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
+
+# The same command as above but with arguments set to export telemetry data
+start-training-localnet-light-client-telemetry run_id="test" *args='':
+    OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
 DEVNET_RPC := "https://api.devnet.solana.com"
 DEVNET_WS_RPC := "wss://api.devnet.solana.com"
 
@@ -98,6 +115,10 @@ start-training-devnet-client run_id="test" *args='':
 # Start client for training on localnet without data parallelism features and using light model.
 start-training-devnet-light-client run_id="test" *args='':
     RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+# Run the run-manager with an env file
+run-manager env_file *args='':
+    cargo run --release -p run-manager -- --env-file {{ env_file }} {{ args }}
 
 solana-client-tests:
     cargo test --package psyche-solana-client --features solana-localnet-tests
@@ -119,45 +140,62 @@ generate_cli_docs:
     cargo run -p psyche-centralized-client print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-client.md
     cargo run -p psyche-centralized-server print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-server.md
     cargo run -p psyche-centralized-local-testnet print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-local-testnet.md
+    cargo run -p psyche-sidecar print-all-help --markdown > psyche-book/generated/cli/psyche-sidecar.md
 
-build_docker_test_client:
-    ./scripts/coordinator-address-check.sh
-    docker build -t psyche-base -f docker/psyche_base.Dockerfile .
-    docker build -t psyche-test-client -f docker/test/psyche_test_client.Dockerfile .
-
-# Setup the infrastructure for testing locally using Docker.
-setup_test_infra num_clients="1":
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    cd docker/test && docker compose build
-    cd docker/test && NUM_REPLICAS={{ num_clients }} docker compose up -d --force-recreate
-
-setup_test_infra_with_proxies_validator num_clients="1":
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    cd docker/test && docker compose build
-    cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
-
-setup_test_infra_three_clients:
-    cd architectures/decentralized/solana-coordinator && anchor keys sync && anchor build --no-idl
-    cd architectures/decentralized/solana-authorizer && anchor keys sync && anchor build --no-idl
-    cd docker/test && docker compose build
-    cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
-
-stop_test_infra:
-    cd docker/test &&docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
+run_docker_client *ARGS:
+    just nix build_docker_solana_client
+    docker run -d {{ ARGS }} --gpus all psyche-prod-solana-client
 
 # Setup clients assigning one available GPU to each of them.
 
-# There's no way to do this using the replicas from docker-compose file, so we have to do it manually.
-setup_clients num_clients="1": build_docker_test_client
-    ./scripts/train-multiple-gpu-localnet.sh {{ num_clients }}
-
-# Build the docker psyche client
-build_docker_psyche_client:
+# There's no way to do this using the replicas from docker compose file, so we have to do it manually.
+setup_gpu_clients num_clients="1":
     ./scripts/coordinator-address-check.sh
-    docker build -t psyche-base -f docker/psyche_base.Dockerfile .
-    docker build -t psyche-client -f docker/psyche_client.Dockerfile .
+    just nix build_docker_solana_test_client
+    ./scripts/train-multiple-gpu-localnet.sh {{ num_clients }}
 
 clean_stale_images:
     docker rmi $(docker images -f dangling=true -q)
+
+# Build & push the centralized client Docker image
+docker_push_centralized_client:
+    just nix docker_build_centralized_client
+    docker push docker.io/nousresearch/psyche-centralized-client
+
+# Setup the infrastructure for testing locally using Docker.
+setup_test_infra:
+    cd architectures/decentralized/solana-coordinator && anchor build
+    cd architectures/decentralized/solana-authorizer && anchor build
+    just nix build_docker_solana_test_client_no_python
+    just nix build_docker_solana_test_validator
+
+# Setup the infrastructure for testing locally using Docker.
+setup_python_test_infra:
+    cd architectures/decentralized/solana-coordinator && anchor build
+    cd architectures/decentralized/solana-authorizer && anchor build
+    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_validator
+
+run_test_infra num_clients="1":
+    #!/usr/bin/env bash
+    cd docker/test
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --force-recreate
+    else
+        echo "Running without GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+    fi
+
+run_test_infra_with_proxies_validator num_clients="1":
+    #!/usr/bin/env bash
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
+        cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml -f ../docker-compose.gpu.yml up -d --force-recreate
+    else
+        echo "Running without GPU support"
+        cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
+    fi
+
+stop_test_infra:
+    cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down

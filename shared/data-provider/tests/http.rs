@@ -1,8 +1,8 @@
 use anyhow::Result;
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use psyche_data_provider::{
-    http::{FileURLs, HttpDataProvider},
     TokenizedDataProvider,
+    http::{FileURLs, HttpDataProvider},
 };
 use std::io::Write;
 use std::net::SocketAddr;
@@ -27,7 +27,7 @@ impl TestServer {
         let temp_dir = tempfile::tempdir()?;
 
         for (idx, data) in files.iter().enumerate() {
-            let file_path = temp_dir.path().join(format!("{:0>3}.ds", idx));
+            let file_path = temp_dir.path().join(format!("{idx:0>3}.ds"));
             let mut file = File::create(&file_path)?;
             file.write_all(data)?;
             debug!("created temp test file {file_path:?}");
@@ -81,7 +81,7 @@ async fn test_http_data_provider() -> Result<()> {
     .await??;
 
     assert_eq!(samples.len(), 1);
-    let first_sequence = &samples[0];
+    let first_sequence = &samples[0].input_ids;
 
     let expected_sequence: Vec<i32> = vec![
         i32::from_le_bytes([0, 1, 0, 0]),
@@ -107,7 +107,10 @@ async fn test_http_data_provider() -> Result<()> {
         i32::from_le_bytes([12, 13, 0, 0]),
     ];
 
-    assert_eq!(last_sequence_first_file[0], expected_last_sequence);
+    assert_eq!(
+        last_sequence_first_file[0].input_ids,
+        expected_last_sequence
+    );
 
     Ok(())
 }

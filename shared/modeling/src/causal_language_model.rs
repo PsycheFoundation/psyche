@@ -1,12 +1,13 @@
 use crate::{
-    AttentionImplementation, Communicator, CommunicatorId, ModelConfig, ModelLoadError,
-    PretrainedSource, RoPEConfig,
+    AllReduce, AttentionImplementation, Communicator, CommunicatorId, ModelConfig, ModelLoadError,
+    PretrainedSource, ReduceType, RoPEConfig, StableVarStoreIterator, StableVariableIterator,
 };
-use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::{fmt::Debug, sync::atomic::AtomicBool};
 use tch::{
-    nn::{self, Module, VarStore},
     Device, Kind, Tensor,
+    nn::{self, Module},
 };
 
 #[cfg(feature = "parallelism")]
@@ -24,23 +25,35 @@ pub enum EosToks {
 /// Its internal implementation is completely hidden, so this can be impl'd
 /// for a wrapper struct that does something like data parallelism.
 pub trait CausalLM: Send {
+    // returns (logits, loss)
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
-    ) -> (Tensor, Option<Tensor>);
+        loss_scale: Option<f64>,
+    ) -> (Option<Tensor>, Option<Tensor>);
     fn bos_token_id(&self) -> Option<i64>;
     fn eos_token_ids(&self) -> Option<EosToks>;
     fn device(&self) -> Device;
-    fn variables(&self) -> &VarStore;
+    fn max_context_length(&self) -> usize;
+    fn variables(&self) -> StableVariableIterator;
     fn communicator(&self) -> Option<Arc<Communicator>>;
-    fn prepare_for_training(&mut self);
-    fn clip_grad_norm(&mut self, max_grad_norm: f64);
+    fn prepare_for_training(&self);
+    fn clip_grad_norm(&self, max_grad_norm: f64);
+    fn shutdown(&self) {}
 }
 
 pub trait LanguageModelForward: Send + Debug {
-    fn forward(&self, x: &Tensor, index_pos: i64, training: bool) -> Tensor;
+    fn forward(
+        &self,
+        x: &Tensor,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
+        training: bool,
+    ) -> Tensor;
 }
 
 pub trait LanguageModelConfig: ModelConfig + Send + Debug + serde::de::DeserializeOwned {
@@ -61,11 +74,11 @@ pub trait LanguageModelConfig: ModelConfig + Send + Debug + serde::de::Deseriali
 pub struct CausalLanguageModel<M: LanguageModelForward, C: LanguageModelConfig> {
     pub model: M,
     pub config: C,
-    pub variables: VarStore,
+    pub variables: StableVarStoreIterator,
     pub device: Device,
     pub lm_head: nn::Linear,
     pub comm: Option<Arc<Communicator>>,
-    pub training: bool,
+    pub training: AtomicBool,
 }
 
 // this is absolutely unsafe, if you use it across threads with NCCL you will have a bad day
@@ -85,7 +98,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
         kind: Option<Kind>,
         attn_implementation: Option<AttentionImplementation>,
         device: Option<Device>,
-        tensor_parallelism_world: Option<(Arc<CommunicatorId>, usize, usize)>,
+        tensor_parallelism_world: Option<(CommunicatorId, usize, usize)>,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<Self, ModelLoadError> {
         let mut config = source.get_config()?;
@@ -99,15 +112,23 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
         }
 
         let device = device.unwrap_or(Device::cuda_if_available());
+
         #[cfg(feature = "parallelism")]
         let comm = match tensor_parallelism_world {
-            // TODO: CNCCL is not Sync, though it is Send.
-            // since we can't safely use it on two threads at once,
-            // we should either wrap it in a Mutex, or just switch to Rc if we don't need mutability.
             #[allow(clippy::arc_with_non_send_sync)]
+            // TODO: analyze how we're using Arc here, is this right?
             Some((id, rank, world_size)) => Some(Arc::new(
-                CNCCL::new(id, rank as i64, world_size as i64, device)
-                    .map_err(ModelLoadError::TensorParallelismFailedInit)?,
+                CNCCL::new(
+                    match id {
+                        CommunicatorId::NCCL(cstore) => cstore,
+                        _ => return Err(ModelLoadError::CommunicatorMismatch),
+                    },
+                    rank as i64,
+                    world_size as i64,
+                    device,
+                )
+                .map_err(ModelLoadError::TensorParallelismFailedInit)?
+                .into(),
             )),
             None => None,
         };
@@ -139,6 +160,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
 
             (model, lm_head)
         };
+        let variables = StableVarStoreIterator::new(&variables, comm.clone());
         Ok(Self {
             model,
             config,
@@ -146,20 +168,28 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLanguageModel<M, C> 
             device,
             lm_head,
             comm,
-            training: false,
+            training: AtomicBool::new(false),
         })
     }
 }
 
 impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguageModel<M, C> {
     fn forward(
-        &mut self,
+        &self,
         x: &Tensor,
         labels: Option<&Tensor>,
+        position_ids: Option<&Tensor>,
+        sequence_lengths: Option<&Vec<Vec<i32>>>,
         num_logits_to_keep: Option<i64>,
-    ) -> (Tensor, Option<Tensor>) {
+        loss_scale: Option<f64>,
+    ) -> (Option<Tensor>, Option<Tensor>) {
         let (_, t) = x.size2().unwrap();
-        let mut x = self.model.forward(x, 0, self.training);
+        let mut x = self.model.forward(
+            x,
+            position_ids,
+            sequence_lengths,
+            self.training.load(Ordering::Relaxed),
+        );
         if let Some(num_logits_to_keep) = num_logits_to_keep {
             // Only compute necessary logits, and do not upcast them to float if we are not computing the loss
             x = x.slice(1, t - num_logits_to_keep, t, 1);
@@ -174,18 +204,21 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
                 let shift_labels = labels.slice(1, 1, None, 1).contiguous();
                 let shift_logits = shift_logits.view([-1i64, self.config.vocab_size() as i64]);
                 let shift_targets = shift_labels.view(-1).to_kind(Kind::Int64);
-                let loss = shift_logits.cross_entropy_loss::<Tensor>(
+                let mut loss = shift_logits.cross_entropy_loss::<Tensor>(
                     &shift_targets,
                     None,
                     tch::Reduction::Mean,
                     -100,
                     0.0,
                 );
+                if let Some(loss_scale) = loss_scale {
+                    loss /= loss_scale;
+                }
                 Some(loss)
             }
             None => None,
         };
-        (logits, loss)
+        (Some(logits), loss)
     }
 
     fn bos_token_id(&self) -> Option<i64> {
@@ -200,16 +233,20 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
         self.device
     }
 
-    fn variables(&self) -> &VarStore {
-        &self.variables
+    fn max_context_length(&self) -> usize {
+        self.config.max_position_embeddings()
+    }
+
+    fn variables(&self) -> StableVariableIterator {
+        Box::new(self.variables.clone())
     }
 
     fn communicator(&self) -> Option<Arc<Communicator>> {
         self.comm.clone()
     }
 
-    fn prepare_for_training(&mut self) {
-        self.training = true;
+    fn prepare_for_training(&self) {
+        self.training.store(true, Ordering::Relaxed);
     }
 
     /// Clips gradient norm, properly handling tensor-parallel parameters.
@@ -229,46 +266,25 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
     /// The orthogonality of sharded parameters across ranks ensures that:
     /// total_norm = sqrt(all_reduce(||w_shared_local||^2) + ||w_replicated||^2)
     /// gives us the correct global L2 norm as if all parameters were on a single device.
-    fn clip_grad_norm(&mut self, max_norm: f64) {
-        let vars = {
-            let variables = self.variables().variables_.lock().unwrap();
-            variables
-                .trainable_variables
-                .iter()
-                .map(|v| (v.0.tensor.shallow_clone(), v.1))
-                .collect::<Vec<_>>()
-        };
+    fn clip_grad_norm(&self, max_norm: f64) {
+        let mut sharded_norm_sq = Tensor::zeros([], (Kind::Float, self.device));
+        let mut replicated_norm_sq = Tensor::zeros([], (Kind::Float, self.device));
 
-        let device = if !vars.is_empty() {
-            vars[0].0.device()
-        } else {
-            return;
-        };
-
-        let mut sharded_norm_sq = Tensor::zeros([], (Kind::Float, device));
-        let mut replicated_norm_sq = Tensor::zeros([], (Kind::Float, device));
-
-        for (param, shard) in &vars {
-            let grad = param.grad();
+        for var in self.variables() {
+            let grad = var.logical_tensor().grad();
             if grad.defined() {
                 let local_norm = grad.norm();
                 let local_norm_sq = &local_norm * &local_norm;
 
-                match shard {
-                    Some(_) => sharded_norm_sq += local_norm_sq,
-                    None => replicated_norm_sq += local_norm_sq,
+                if var.is_sharded() {
+                    sharded_norm_sq += local_norm_sq
+                } else {
+                    replicated_norm_sq += local_norm_sq
                 }
             }
         }
-        #[cfg(feature = "parallelism")]
-        if let Some(comm) = &self.comm {
-            comm.all_reduce(&[&sharded_norm_sq], tch::ReduceOpType::Sum)
-                .unwrap();
-        }
-        #[cfg(not(feature = "parallelism"))]
-        if self.comm.is_some() {
-            panic!("communicator passed, but parallelism is not enabled.");
-        }
+
+        sharded_norm_sq.all_reduce(&self.comm, ReduceType::Sum);
 
         let total_norm: f64 = (sharded_norm_sq + replicated_norm_sq)
             .sqrt()
@@ -277,12 +293,21 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
 
         if total_norm > max_norm {
             let scale = max_norm / (total_norm + 1e-6);
-            for (param, _) in vars {
-                let mut grad = param.grad();
+            for var in self.variables() {
+                let mut grad = var.logical_tensor().grad();
                 if grad.defined() {
                     let _t = grad.g_mul_scalar_(scale);
                 }
             }
+        }
+    }
+}
+
+impl EosToks {
+    pub fn contains(&self, token: i64) -> bool {
+        match self {
+            EosToks::Single(x) => *x == token,
+            EosToks::Multiple(items) => items.contains(&token),
         }
     }
 }

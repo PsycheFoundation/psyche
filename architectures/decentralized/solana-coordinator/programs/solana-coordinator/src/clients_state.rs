@@ -7,10 +7,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::client::Client;
-use crate::program_error::ProgramError;
 use crate::ClientId;
 use crate::SOLANA_MAX_NUM_PENDING_CLIENTS;
+use crate::client::Client;
+use crate::program_error::ProgramError;
 
 #[derive(
     Debug,
@@ -44,8 +44,8 @@ pub struct ClientsState {
 )]
 #[repr(C)]
 pub struct ClientsEpochRates {
-    pub earning_rate: u64,
-    pub slashing_rate: u64,
+    pub earning_rate_total_shared: u64,
+    pub slashing_rate_per_client: u64,
 }
 
 unsafe impl Pod for ClientsState {}

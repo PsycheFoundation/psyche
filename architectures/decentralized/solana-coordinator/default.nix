@@ -1,9 +1,6 @@
-{
-  pkgs,
-  ...
-}:
-pkgs.psycheLib.buildSolanaIdl {
-  src = pkgs.psycheLib.src;
+{ psycheLib }:
+psycheLib.buildSolanaIdl {
+  src = psycheLib.src;
   workspaceDir = ./.;
   sourceRoot = "source/architectures/decentralized/solana-coordinator";
   programName = "solana-coordinator";

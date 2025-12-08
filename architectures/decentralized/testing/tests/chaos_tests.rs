@@ -1,13 +1,13 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use bollard::Docker;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_decentralized_testing::{
+    CLIENT_CONTAINER_PREFIX, VALIDATOR_CONTAINER_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::e2e_testing_setup,
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
-    CLIENT_CONTAINER_PREFIX, VALIDATOR_CONTAINER_PREFIX,
 };
 
 use rstest::*;
@@ -36,16 +36,9 @@ async fn test_pause_solana_validator(
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, None).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(
-            docker.clone(),
-            2,
-            Some(PathBuf::from(
-                "../../config/solana-test/light-two-min-clients.toml",
-            )),
-        )
-        .await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client
@@ -55,7 +48,7 @@ async fn test_pause_solana_validator(
     for i in 1..=n_clients {
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i),
+                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
                 vec![IntegrationTestLogMarker::Loss],
             )
             .unwrap();
@@ -92,8 +85,7 @@ async fn test_pause_solana_validator(
                if let Some(Response::Loss(client, epoch, step, loss)) = response {
                    let loss = loss.unwrap();
                    println!(
-                       "client: {:?}, epoch: {}, step: {}, Loss: {}",
-                       client, epoch, step, loss
+                       "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss}"
                    );
                    if epoch as i64 > current_epoch {
                        current_epoch = epoch as i64;
@@ -132,16 +124,9 @@ async fn test_delay_solana_test_validator(
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, None).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(
-            docker.clone(),
-            2,
-            Some(PathBuf::from(
-                "../../config/solana-test/light-two-min-clients.toml",
-            )),
-        )
-        .await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client
@@ -151,7 +136,7 @@ async fn test_delay_solana_test_validator(
     for i in 1..=n_clients {
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i),
+                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
                 vec![IntegrationTestLogMarker::Loss],
             )
             .unwrap();
@@ -188,8 +173,7 @@ async fn test_delay_solana_test_validator(
                if let Some(Response::Loss(client, epoch, step, loss)) = response {
                    let loss = loss.unwrap();
                    println!(
-                       "client: {:?}, epoch: {}, step: {}, Loss: {}",
-                       client, epoch, step, loss
+                       "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss}"
                    );
                    if epoch as i64 > current_epoch {
                        current_epoch = epoch as i64;
@@ -224,16 +208,9 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, None).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(
-            docker.clone(),
-            2,
-            Some(PathBuf::from(
-                "../../config/solana-test/light-two-min-clients.toml",
-            )),
-        )
-        .await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client
@@ -243,7 +220,7 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
     for i in 1..=n_clients {
         let _monitor_client = watcher
             .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i),
+                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
                 vec![IntegrationTestLogMarker::Loss],
             )
             .unwrap();
@@ -253,7 +230,7 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     let chaos_targets = (1..=n_clients)
-        .map(|i| format!("{CLIENT_CONTAINER_PREFIX}-{}", i))
+        .map(|i| format!("{CLIENT_CONTAINER_PREFIX}-{i}"))
         .collect::<Vec<String>>();
 
     let chaos_scheduler = ChaosScheduler::new(docker.clone(), solana_client);
@@ -281,8 +258,7 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
                if let Some(Response::Loss(client, epoch, step, loss)) = response {
                    let loss = loss.unwrap();
                    println!(
-                       "client: {:?}, epoch: {}, step: {}, Loss: {}",
-                       client, epoch, step, loss
+                       "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss}"
                    );
 
                    if epoch as i64 > current_epoch {

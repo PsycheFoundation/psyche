@@ -1,9 +1,11 @@
 import {
-	psycheJsonReviver,
 	IndexerStatus,
 	ApiGetRuns,
 	ApiGetRun,
 	ApiGetContributionInfo,
+	ApiGetCheckpointStatus,
+	formats,
+	CURRENT_VERSION,
 } from 'shared'
 import {
 	fakeContributionInfo,
@@ -23,7 +25,7 @@ if (path && !path.startsWith('/')) {
 	path = `/${path}`
 }
 
-const BACKEND_URL = `${origin}${path}`
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? `${origin}${path}`
 
 function psycheJsonFetch(path: string) {
 	return fetch(`${BACKEND_URL}/${path}`)
@@ -34,7 +36,7 @@ function psycheJsonFetch(path: string) {
 			}
 			return text
 		})
-		.then((text) => JSON.parse(text, psycheJsonReviver))
+		.then((text) => JSON.parse(text, formats[CURRENT_VERSION].reviver))
 }
 
 export async function fetchStatus(): Promise<IndexerStatus> {
@@ -51,6 +53,15 @@ export async function fetchRuns(): Promise<ApiGetRuns> {
 				totalTokensPerSecondActive: 23_135_234n,
 			} satisfies ApiGetRuns)
 		: psycheJsonFetch('runs')
+}
+
+export async function fetchCheckpointStatus(
+	owner: string,
+	repo: string,
+	revision?: string
+): Promise<ApiGetCheckpointStatus> {
+	const queryParams = `owner=${owner}&repo=${repo}${revision ? `&revision=${revision}` : ''}`
+	return psycheJsonFetch(`check-checkpoint?${queryParams}`)
 }
 
 interface DecodeState {
@@ -104,6 +115,32 @@ export async function fetchRunStreaming(
 	return makeStreamingNdJsonDecode(`run/${runId}/${indexStr}`)
 }
 
+export async function fetchSummariesStreaming(): Promise<
+	ReadableStream<ApiGetRuns>
+> {
+	if (import.meta.env.VITE_FAKE_DATA) {
+		return new ReadableStream<ApiGetRuns>({
+			async start(controller) {
+				let i = 0
+				while (true) {
+					controller.enqueue({
+						runs: fakeRunSummaries,
+						totalTokens: 1_000_000_000n + BigInt(i * 10000),
+						totalTokensPerSecondActive: 23_135_234n,
+					})
+					const nextFakeDataDelay = 1000 + Math.random() * 1000
+					await new Promise((r) => setTimeout(r, nextFakeDataDelay))
+					i++
+				}
+			},
+		})
+	}
+
+	console.log('opening summaries stream')
+
+	return makeStreamingNdJsonDecode(`runs`)
+}
+
 export async function fetchContributionsStreaming(): Promise<
 	ReadableStream<ApiGetContributionInfo>
 > {
@@ -130,6 +167,7 @@ async function makeStreamingNdJsonDecode<T>(backendPath: string) {
 	let { reader, decodeState } = await openStreamToBackendPath(backendPath)
 	let streamController: ReadableStreamDefaultController<T>
 	let lastData: T | null = null
+	let isCanceled = false
 	const stream = new ReadableStream<T>({
 		async start(controller) {
 			streamController = controller
@@ -146,13 +184,30 @@ async function makeStreamingNdJsonDecode<T>(backendPath: string) {
 					if (nextPayload) {
 						decodeState = nextPayload.decodeState
 						lastData = nextPayload.parsedPayload
-						controller.enqueue(nextPayload.parsedPayload)
+						// only enqueue if not canceled and controller is not closed
+						if (!isCanceled) {
+							try {
+								controller.enqueue(nextPayload.parsedPayload)
+							} catch (err) {
+								console.log(
+									'Failed to enqueue data (stream likely closed):',
+									err
+								)
+								break
+							}
+						}
 						continue
 					}
 
 					console.log('closing reader')
 
 					await reader.cancel()
+
+					// don't reconnect if the stream was canceled
+					if (isCanceled) {
+						console.log('Stream was canceled, not reconnecting')
+						break
+					}
 
 					// we failed to fetch the next json data because the stream ended - let's reconnect
 					if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -191,6 +246,8 @@ async function makeStreamingNdJsonDecode<T>(backendPath: string) {
 			}
 		},
 		cancel(reason) {
+			console.log(`Canceling stream for ${backendPath}`, reason)
+			isCanceled = true
 			reader.cancel(reason)
 		},
 	})
@@ -200,8 +257,12 @@ async function makeStreamingNdJsonDecode<T>(backendPath: string) {
 	stream.getReader = ((...args: Parameters<typeof getReader>) => {
 		const reader = getReader(...args)
 
-		if (lastData) {
-			streamController.enqueue(lastData)
+		if (lastData && !isCanceled) {
+			try {
+				streamController.enqueue(lastData)
+			} catch (err) {
+				console.log('Failed to enqueue lastData (stream likely closed):', err)
+			}
 		}
 
 		return reader
@@ -221,14 +282,19 @@ async function getOneJsonPayloadFromStream<T>(
 			return null
 		}
 
-		decodeState.buffer += decodeState.decoder.decode(value, { stream: true })
+		decodeState.buffer += decodeState.decoder.decode(value, {
+			stream: true,
+		})
 		const lines = decodeState.buffer.split('\n')
 
 		if (lines.length > 1) {
 			// we have at least one complete line, so one full JSON object
 			const firstLine = lines[0].trim()
 			if (firstLine) {
-				parsedPayload = JSON.parse(firstLine, psycheJsonReviver) as T
+				parsedPayload = JSON.parse(
+					firstLine,
+					formats[CURRENT_VERSION].reviver
+				) as T
 				decodeState.buffer = lines.slice(1).join('\n')
 			} else {
 				decodeState.buffer = lines.slice(1).join('\n')
@@ -258,5 +324,8 @@ async function openStreamToBackendPath(path: string) {
 		)
 	}
 
-	return { reader: response.body.getReader(), decodeState: makeDecodeState() }
+	return {
+		reader: response.body.getReader(),
+		decodeState: makeDecodeState(),
+	}
 }

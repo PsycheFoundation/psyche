@@ -1,20 +1,17 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::transfer;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
+use anchor_spl::token::transfer;
 use psyche_solana_coordinator::CoordinatorAccount;
 
+use crate::ProgramError;
 use crate::state::Participant;
 use crate::state::Run;
-use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: ParticipantClaimParams)]
 pub struct ParticipantClaimAccounts<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
     #[account()]
     pub user: Signer<'info>,
 
@@ -39,7 +36,9 @@ pub struct ParticipantClaimAccounts<'info> {
     )]
     pub run_collateral: Box<Account<'info, TokenAccount>>,
 
-    #[account()]
+    #[account(
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
+    )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 
     #[account(
@@ -78,15 +77,16 @@ pub fn participant_claim_processor(
     {
         if client.id.signer == context.accounts.user.key() {
             participant_earned_points = client.earned;
+            break;
         }
     }
 
     let participant = &mut context.accounts.participant;
     let run = &mut context.accounts.run;
 
-    if params.claim_earned_points
-        > participant_earned_points - participant.claimed_earned_points
-    {
+    let participant_unclaimed_earned_points =
+        participant_earned_points - participant.claimed_earned_points;
+    if params.claim_earned_points > participant_unclaimed_earned_points {
         return err!(ProgramError::InvalidParameter);
     }
 

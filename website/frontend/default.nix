@@ -1,17 +1,13 @@
 {
-  pkgs,
   miningPoolRpc,
   miningPoolCluster,
   coordinatorCluster,
   backendPath,
-  ...
+  psyche-website-wasm,
+  psyche-website-shared,
+  psycheLib,
 }:
-let
-  psyche-website-wasm = pkgs.callPackage ../wasm { };
-  psyche-website-shared = pkgs.callPackage ../shared { };
-  mkWebsitePackage = pkgs.callPackage ../common.nix { };
-in
-mkWebsitePackage {
+psycheLib.mkWebsitePackage {
   package = "frontend";
 
   preBuild = ''
@@ -21,7 +17,11 @@ mkWebsitePackage {
     mkdir -p shared
     cp -r ${psyche-website-shared}/shared/* shared/
 
-    export VITE_MINING_POOL_RPC=${miningPoolRpc} 
+    cp ${../../shared/data-provider/tests/resources/llama2_tokenizer.json} frontend/public/tokenizers/
+    cp ${../../shared/data-provider/tests/resources/llama3_tokenizer.json} frontend/public/tokenizers/
+
+    cp ${../../shared/client/src/state/prompt_texts/index.json} frontend/public/prompts/
+    export VITE_MINING_POOL_RPC=${miningPoolRpc}
     export VITE_BACKEND_PATH=${backendPath}
     export VITE_MINING_POOL_CLUSTER=${miningPoolCluster}
     export VITE_COORDINATOR_CLUSTER=${coordinatorCluster}

@@ -88,7 +88,7 @@ mod tests {
     use tokio::time::timeout;
     use tracing::{debug, info};
 
-    use crate::{http::HttpDataProvider, TokenizedDataProvider, WeightedDataProvider};
+    use crate::{TokenizedDataProvider, WeightedDataProvider, http::HttpDataProvider};
 
     use super::WeightedHttpProvidersConfig;
 
@@ -113,7 +113,7 @@ mod tests {
                 let provider_folder = temp_dir.path().join(format!("provider_{provider_idx}"));
                 fs::create_dir_all(&provider_folder)?;
                 for (idx, data) in files.iter().enumerate() {
-                    let file_path = provider_folder.clone().join(format!("{:0>3}.ds", idx));
+                    let file_path = provider_folder.clone().join(format!("{idx:0>3}.ds"));
                     let mut file = File::create(&file_path)?;
                     file.write_all(data)?;
                     debug!("created temp test file {file_path:?}");
@@ -209,7 +209,10 @@ mod tests {
             Duration::from_secs(2),
             provider.get_samples(BatchId((0, 8).into())),
         )
-        .await??;
+        .await??
+        .into_iter()
+        .map(|x| x.input_ids)
+        .collect::<Vec<_>>();
 
         assert_eq!(samples.len(), 9);
         assert_eq!(

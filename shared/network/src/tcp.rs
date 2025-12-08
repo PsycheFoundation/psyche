@@ -10,8 +10,8 @@ use tokio::{
     net::{TcpListener, TcpStream},
     select,
     sync::{
-        mpsc::{self, error::SendError},
         Mutex,
+        mpsc::{self, error::SendError},
     },
 };
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
@@ -132,7 +132,7 @@ where
 
         // Generate and send challenge
         let mut challenge = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut challenge);
+        rand::rng().fill_bytes(&mut challenge);
         framed
             .send(
                 ServerToClientMessage::<ToClient>::Challenge(challenge)
@@ -195,12 +195,7 @@ where
     }
 
     pub async fn get_connected_clients(&self) -> Vec<I> {
-        self.clients
-            .lock()
-            .await
-            .iter()
-            .map(|(identity, _)| identity.clone())
-            .collect()
+        self.clients.lock().await.keys().cloned().collect()
     }
 
     pub async fn next(&mut self) -> Option<ClientNotification<(I, ToServer), I>> {

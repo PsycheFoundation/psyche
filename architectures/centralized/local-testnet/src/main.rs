@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{ArgAction, Parser};
 use rand::seq::SliceRandom;
 use serde::Deserialize;
@@ -7,8 +7,8 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
-use time::macros::format_description;
 use time::OffsetDateTime;
+use time::macros::format_description;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -121,7 +121,7 @@ fn validate_config_path(s: &str) -> Result<PathBuf, String> {
     if path.exists() {
         Ok(path)
     } else {
-        Err(format!("Config path {} does not exist", s))
+        Err(format!("Config path {s} does not exist"))
     }
 }
 
@@ -136,6 +136,9 @@ fn extract_run_id(state_path: &PathBuf) -> Result<String> {
 }
 
 fn main() -> Result<()> {
+    #[cfg(feature = "python")]
+    psyche_python_extension_impl::init_embedded_python()?;
+
     let args = Args::parse();
     let command = args.command;
 
@@ -144,9 +147,9 @@ fn main() -> Result<()> {
             if let Some(n_kill) = start_args.random_kill_num {
                 if n_kill > start_args.num_clients {
                     bail!(
-                "You requested to kill {n_kill} clients randomly, but you only have {} clients.",
-                start_args.num_clients
-            );
+                        "You requested to kill {n_kill} clients randomly, but you only have {} clients.",
+                        start_args.num_clients
+                    );
                 }
             }
             let state_path = start_args.config_path.join("state.toml");
@@ -330,7 +333,7 @@ fn main() -> Result<()> {
                                 .filter(allowed_to_kill)
                                 .collect();
 
-                            client_nums.shuffle(&mut rand::thread_rng());
+                            client_nums.shuffle(&mut rand::rng());
 
                             client_nums.truncate(kill_num);
                             client_nums
@@ -404,10 +407,10 @@ fn start_client(
         OsString::new()
     };
 
-    let tokio_console_port = 6669 + i - 1;
+    let metrics_local_port = 6269 + i - 1;
 
     cmd.push(format!(
-        "TOKIO_CONSOLE_BIND=127.0.0.1:{tokio_console_port} RUST_LOG={} RUST_BACKTRACE=1 RAW_IDENTITY_SECRET_KEY={} cargo run -p psyche-centralized-client train --run-id {} --server-addr localhost:{} --logs {}",
+        "METRICS_LOCAL_PORT={metrics_local_port} RUST_LOG={} RUST_BACKTRACE=1 RAW_IDENTITY_SECRET_KEY={} cargo run -p psyche-centralized-client train --run-id {} --server-addr localhost:{} --logs {}",
         args.log,
         raw_key,
         run_id,

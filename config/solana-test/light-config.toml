@@ -1,7 +1,7 @@
 [config]
 warmup_time = 30
 cooldown_time = 30
-rounds_per_epoch = 20
+epoch_time = 30
 max_round_train_time = 30
 round_witness_time = 1
 min_clients = 1
@@ -31,7 +31,6 @@ warmup_steps = 250
 warmup_init_lr = 0.0
 total_steps = 25000
 final_lr = 4.0e-5
-
 [model.LLM.optimizer.Distro]
 clip_grad_norm = 1.0
 compression_decay = 0.999

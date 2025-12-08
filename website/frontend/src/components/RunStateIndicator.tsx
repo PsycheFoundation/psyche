@@ -150,7 +150,7 @@ export function runHasState(run: RunData): run is RunWithState {
 }
 
 export function RunStateIndicator({
-	state: { state, info },
+	state: { state },
 	recentTxs,
 	disconnected,
 	paused,
@@ -162,9 +162,9 @@ export function RunStateIndicator({
 }) {
 	const {
 		phase,
-		round,
-		config: { roundsPerEpoch, minClients },
+		config: { minClients, epochTime },
 		clients,
+		epochStartTime,
 	} = state
 	const [now, setNow] = useState(new Date(Date.now()))
 	useInterval(() => setNow(new Date(Date.now())), 100)
@@ -173,12 +173,10 @@ export function RunStateIndicator({
 		<OuterContainer>
 			<Title className="toEdge">
 				<span className={text['aux/xl/medium']} title="the number of tokens">
-					training progress{' '}
-					{(
-						(Number(info.completedTokens) / Number(info.totalTokens)) *
-						100
-					).toFixed(2)}
-					%
+					training status
+					{clients
+						? `: ${clients.length} node${clients.length === 1 ? '' : 's'} connected`
+						: ''}
 				</span>
 				{!paused && (
 					<span>
@@ -205,25 +203,33 @@ export function RunStateIndicator({
 					{(phase === 'Warmup' ||
 						phase === 'RoundTrain' ||
 						phase === 'RoundWitness' ||
-						phase === 'Cooldown') && (
-						<Progress
-							chunkHeight={8}
-							chunkWidth={4}
-							chunkSpacing={1}
-							ratio={
-								(round +
-									(phase === 'RoundWitness'
-										? 0.5
-										: phase === 'Cooldown'
+						phase === 'Cooldown') &&
+						(() => {
+							const elapsedMs = now.getTime() - epochStartTime.getTime()
+							const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000))
+							const isFinalizingEpoch =
+								elapsedSeconds >= epochTime && elapsedSeconds > 0
+
+							return (
+								<Progress
+									chunkHeight={8}
+									chunkWidth={4}
+									chunkSpacing={1}
+									ratio={
+										isFinalizingEpoch
 											? 1
-											: 0)) /
-								roundsPerEpoch
-							}
-							current={round + 1}
-							total={roundsPerEpoch}
-							label="round"
-						/>
-					)}
+											: (now.getTime() - epochStartTime.getTime()) /
+												(epochTime * 1000)
+									}
+									current={elapsedSeconds}
+									total={epochTime}
+									label={
+										isFinalizingEpoch ? 'finalizing epoch' : 'epoch time (s)'
+									}
+									showRight={!isFinalizingEpoch}
+								/>
+							)
+						})()}
 					{phase === 'WaitingForMembers' && (
 						<Progress
 							chunkHeight={8}
@@ -539,4 +545,38 @@ const ClientsBox = styled.div`
 	width: 100%;
 	gap: 1em;
 	min-height: 82px;
+	max-height: 50vh;
+	overflow-y: scroll;
+	padding: 0 8px;
+	overflow-x: hidden;
+
+	--bgRGB: 73, 89, 99;
+	--bg: var(--color-bg);
+	--bgTrans: rgb(from var(--color-bg) r g b / 0%);
+
+	--shadow: rgba(41, 50, 56, 0.5);
+
+	background:
+    /* Shadow Cover TOP */
+		linear-gradient(var(--bg) 30%, var(--bgTrans)) center top,
+		/* Shadow Cover BOTTOM */ linear-gradient(var(--bgTrans), var(--bg) 70%)
+			center bottom,
+		/* Shadow TOP */
+			radial-gradient(farthest-side at 50% 0, var(--shadow), rgba(0, 0, 0, 0))
+			center top,
+		/* Shadow BOTTOM */
+			radial-gradient(
+				farthest-side at 50% 100%,
+				var(--shadow),
+				rgba(0, 0, 0, 0)
+			)
+			center bottom;
+
+	background-repeat: no-repeat;
+	background-size:
+		100% 40px,
+		100% 40px,
+		100% 14px,
+		100% 14px;
+	background-attachment: local, local, scroll, scroll;
 `

@@ -1,51 +1,67 @@
-{ pkgs, ... }:
+{
+  lib,
+  pnpm,
+  stdenv,
+  nodejs,
+  curl,
+  ...
+}:
 let
   workspaceSrc = ./.;
-  packageJson = pkgs.lib.importJSON (workspaceSrc + "/package.json");
-  pnpmDeps = pkgs.pnpm.fetchDeps {
-    pname = packageJson.name;
-    version = packageJson.version;
-    src = workspaceSrc;
-    hash = "sha256-FjZt0cNKlMBdgocLTbr6RkGMBjqu3rp7NWgyAX3imY4=";
-  };
+  packageJson = lib.importJSON (workspaceSrc + "/package.json");
 in
-{
-  package,
-  preBuild,
-  buildCommand ? "build",
-  installPhase,
-  extraInputs ? [ ],
-  meta ? { },
-}:
-pkgs.stdenv.mkDerivation {
-  pname = "${packageJson.name}-${package}";
-  version = packageJson.version;
-  src = workspaceSrc;
+lib.extendMkDerivation {
+  constructDrv = stdenv.mkDerivation;
 
-  inherit pnpmDeps meta;
+  extendDrvArgs =
+    finalAttrs:
+    {
+      package,
+      preBuild,
+      buildCommand ? "build",
+      installPhase,
+      extraInputs ? [ ],
+      meta ? { },
+    }@args:
+    {
+      __structuredAttrs = true;
 
-  nativeBuildInputs =
-    with pkgs;
-    [
-      pnpm.configHook
-      nodejs
-    ]
-    ++ extraInputs;
+      pname = "${packageJson.name}-${package}";
+      version = packageJson.version;
+      src = workspaceSrc;
 
-  inherit preBuild installPhase;
+      pnpmDeps = pnpm.fetchDeps {
+        inherit (finalAttrs) pname version;
+        fetcherVersion = 2;
+        src = workspaceSrc;
+        hash = "sha256-PUXS9VkAOt9Gcjl0pdzHt0A3jmeSQFZ88+WFUqPgVxE=";
+      };
 
-  # pnpm stuff is a lilllll broken
-  dontCheckForBrokenSymlinks = true;
+      nativeBuildInputs = [
+        pnpm.configHook
+        nodejs
+        curl
+      ]
+      ++ extraInputs;
 
-  buildPhase = ''
-    runHook preBuild
+      inherit preBuild installPhase;
 
-    pnpm -C ${package} exec tsc -p . --noEmit
+      # pnpm stuff is a lilllll broken
+      dontCheckForBrokenSymlinks = true;
 
-    pnpm -C ${package} ${buildCommand}
+      buildPhase =
+        args.buildPhase or ''
+          runHook preBuild
 
-    runHook postBuild
-  '';
+          pnpm -C ${package} exec tsc -p . --noEmit
 
-  checkPhase = "pnpm exec tsc -p . --noEmit";
+          pnpm -C ${package} ${buildCommand}
+
+          runHook postBuild
+        '';
+
+      checkPhase = args.checkPhase or "pnpm exec tsc -p . --noEmit";
+
+      inherit meta;
+    };
 }
