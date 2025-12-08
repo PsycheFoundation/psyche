@@ -89,9 +89,9 @@ def init_process_group(
 
 # Weight updater process that watches a directory for checkpoint files.
 # Runs in a separate Python process and polls for new checkpoints.
-# When found, loads checkpoint from disk and updates the shared memory state_dict.
+# When found, loads checkpoint from disk and updates the shared model's parameters.
 def weight_updater_process(
-    state_dict: Dict[str, torch.Tensor],
+    model: Any,  # The actual vLLM model (shared via .share_memory())
     checkpoint_dir: str,
     model_config: Any,
 ):
@@ -99,11 +99,15 @@ def weight_updater_process(
     import time
     from pathlib import Path
 
-    # Get device from state_dict
-    device = list(state_dict.values())[0].device
+    # Get state_dict from the shared model
+    state_dict = model.state_dict()
+    first_tensor = list(state_dict.values())[0]
+    device = first_tensor.device
 
     logger.info(f"Starting weight updater process on device {device}")
     logger.info(f"Watching directory: {checkpoint_dir}")
+    logger.info(f"First tensor is_shared: {first_tensor.is_shared()}")
+    logger.info(f"State dict has {len(state_dict)} parameters")
 
     checkpoint_path = Path(checkpoint_dir)
     checkpoint_path.mkdir(parents=True, exist_ok=True)
@@ -160,8 +164,15 @@ def weight_updater_process(
                                         continue
 
                                     # Copy to shared memory
+                                    old_sum = state_dict[key].sum().item()
                                     state_dict[key].copy_(tensor)
+                                    new_sum = state_dict[key].sum().item()
                                     applied_count += 1
+
+                                    if applied_count <= 3:
+                                        logger.info(
+                                            f"Updated {key}: sum changed from {old_sum:.4f} to {new_sum:.4f}"
+                                        )
 
                                     if applied_count % 100 == 0:
                                         logger.debug(

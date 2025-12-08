@@ -71,7 +71,7 @@ def test_weight_updates():
         modified_state_dict = {}
         for key, tensor in state_dict.items():
             # Modify weights slightly
-            modified_tensor = tensor * 1.05
+            modified_tensor = tensor * 5.05
 
             # Transpose linear layer weights to match vLLM format
             # HuggingFace stores as [in_features, out_features]

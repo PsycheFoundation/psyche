@@ -52,22 +52,19 @@ def apply_vllm_patches():
             def load_model(self, eep_scale_up: bool = False) -> None:
                 super().load_model(eep_scale_up)
 
+                # Share the model itself in memory so the updater can access it
                 self.model.share_memory()
 
-                state_dict = self.model.state_dict()
-                for key, val in state_dict.items():
-                    if isinstance(val, torch.Tensor):
-                        val.share_memory_()
+                self.psyche_shared_state_dict = self.model.state_dict()
 
-                self.psyche_shared_state_dict = state_dict
+                self._spawn_distributed_updater(self.model)
 
-                self._spawn_distributed_updater(state_dict)
-
-            def _spawn_distributed_updater(self, state_dict):
+            def _spawn_distributed_updater(self, model):
                 from psyche.vllm.distributed_updater import weight_updater_process
                 from psyche.vllm.engine import CHECKPOINT_DIR
 
                 # Get the device that vLLM is using
+                state_dict = model.state_dict()
                 first_tensor = next(iter(state_dict.values()))
                 device = first_tensor.device
 
@@ -77,7 +74,7 @@ def apply_vllm_patches():
                 ctx = mp.get_context("spawn")
                 self.psyche_updater_process = ctx.Process(
                     target=weight_updater_process,
-                    args=(state_dict, str(CHECKPOINT_DIR), self.model_config),
+                    args=(model, str(CHECKPOINT_DIR), self.model_config),
                     daemon=True,
                 )
                 self.psyche_updater_process.start()
