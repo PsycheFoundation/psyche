@@ -20,14 +20,17 @@ def training_process():
     try:
         print(f"[Training Process] Initializing process group...")
 
-        dist.init_process_group(
+        from psyche.vllm.distributed_updater import init_process_group
+
+        vllm_group = init_process_group(
             backend="gloo",
             init_method="tcp://127.0.0.1:29500",
             world_size=world_size,
             rank=rank,
+            group_name="vllm_updater",
         )
         print(
-            f"[Training Process] Process group initialized (rank {rank}/{world_size})"
+            f"[Training Process] vLLM process group initialized (rank {rank}/{world_size})"
         )
 
         print(f"[Training Process] Waiting for vLLM updater to join...")
@@ -53,7 +56,7 @@ def training_process():
                 f"[Training Process] Broadcasting {param_name} "
                 f"(shape={param_tensor.shape}, dtype={param_tensor.dtype})"
             )
-            broadcast_parameter(param_name, param_tensor, src_rank=0)
+            broadcast_parameter(param_name, param_tensor, src_rank=0, group=vllm_group)
             print(f"[Training Process] Broadcasted {param_name}")
             time.sleep(0.2)
 
@@ -62,7 +65,9 @@ def training_process():
         # Send shutdown signal
         time.sleep(0.5)
         print(f"[Training Process] Sending shutdown signal")
-        broadcast_shutdown_signal(src_rank=0, device=torch.device("cpu"))
+        broadcast_shutdown_signal(
+            src_rank=0, device=torch.device("cpu"), group=vllm_group
+        )
 
         print(f"[Training Process] Cleaning up...")
         dist.destroy_process_group()
