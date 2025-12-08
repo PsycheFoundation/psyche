@@ -103,7 +103,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"editorMode": "builder",
@@ -144,7 +144,7 @@
 				"sortOrder": "Descending",
 				"wrapLogMessage": false
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"datasource": {
@@ -242,7 +242,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"disableTextWrap": false,
@@ -340,7 +340,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"disableTextWrap": false,
@@ -438,7 +438,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"disableTextWrap": false,
@@ -536,7 +536,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.3.0-17940193463.patch1",
 			"targets": [
 				{
 					"datasource": {

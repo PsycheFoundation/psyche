@@ -18,7 +18,7 @@
 	"editable": true,
 	"fiscalYearStartMonth": 0,
 	"graphTooltip": 0,
-	"id": 5,
+	"id": 29,
 	"links": [],
 	"panels": [
 		{
@@ -81,7 +81,7 @@
 				"showThresholdMarkers": false,
 				"sizing": "auto"
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"datasource": {
@@ -89,9 +89,9 @@
 						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
-					"editorMode": "builder",
+					"editorMode": "code",
 					"exemplar": false,
-					"expr": "max(psyche_round_step{run_id=\"$run_id\"})",
+					"expr": "max(psyche_round_step * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"})",
 					"fullMetaSearch": false,
 					"includeNullMetadata": true,
 					"legendFormat": "__auto",
@@ -184,7 +184,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"datasource": {
@@ -192,8 +192,8 @@
 						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
-					"editorMode": "builder",
-					"expr": "psyche_gossip_neighbors{run_id=\"$run_id\"}",
+					"editorMode": "code",
+					"expr": "psyche_gossip_neighbors * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
 					"fullMetaSearch": false,
 					"includeNullMetadata": true,
 					"legendFormat": "__auto",
@@ -272,7 +272,7 @@
 				"x": 0,
 				"y": 9
 			},
-			"id": 9,
+			"id": 17,
 			"options": {
 				"legend": {
 					"calcs": [],
@@ -286,7 +286,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"datasource": {
@@ -295,11 +295,12 @@
 					},
 					"direction": "backward",
 					"disableTextWrap": false,
-					"editorMode": "builder",
-					"expr": "{run_id=\"$run_id\"}",
+					"editorMode": "code",
+					"expr": "psyche_total_tokens * on(instance) group_left(run_id) target_info {run_id = \"$run_id\"}",
 					"fullMetaSearch": false,
 					"hide": false,
 					"includeNullMetadata": true,
+					"legendFormat": "__auto",
 					"queryType": "range",
 					"range": true,
 					"refId": "A",
@@ -324,6 +325,7 @@
 						},
 						"mode": "reduceRow",
 						"reduce": {
+							"include": [],
 							"reducer": "sum"
 						}
 					}
@@ -419,7 +421,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
 					"datasource": {
@@ -427,8 +429,8 @@
 						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
-					"editorMode": "builder",
-					"expr": "psyche_last_train_time_seconds{run_id=\"$run_id\"}",
+					"editorMode": "code",
+					"expr": "psyche_last_train_time_seconds * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
 					"fullMetaSearch": false,
 					"hide": false,
 					"includeNullMetadata": true,
@@ -452,210 +454,116 @@
 			"type": "xychart"
 		},
 		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 0,
+				"y": 17
+			},
+			"id": 18,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.4.0-19576184216",
+			"targets": [
+				{
+					"editorMode": "builder",
+					"expr": "count(target_info{run_id=\"$run_id\"})",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Total Clients",
+			"type": "timeseries"
+		},
+		{
 			"collapsed": false,
 			"gridPos": {
 				"h": 1,
 				"w": 24,
 				"x": 0,
-				"y": 17
+				"y": 25
 			},
-			"id": 12,
+			"id": 19,
 			"panels": [],
-			"title": "Instances",
+			"title": "Psyche",
 			"type": "row"
 		},
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PA396B7035A9690C9"
-			},
-			"fieldConfig": {
-				"defaults": {
-					"color": {
-						"mode": "palette-classic"
-					},
-					"custom": {
-						"axisBorderShow": false,
-						"axisCenteredZero": false,
-						"axisColorMode": "text",
-						"axisLabel": "",
-						"axisPlacement": "auto",
-						"barAlignment": 0,
-						"barWidthFactor": 0.6,
-						"drawStyle": "line",
-						"fillOpacity": 0,
-						"gradientMode": "none",
-						"hideFrom": {
-							"legend": false,
-							"tooltip": false,
-							"viz": false
-						},
-						"insertNulls": false,
-						"lineInterpolation": "linear",
-						"lineWidth": 1,
-						"pointSize": 5,
-						"scaleDistribution": {
-							"type": "linear"
-						},
-						"showPoints": "auto",
-						"showValues": false,
-						"spanNulls": false,
-						"stacking": {
-							"group": "A",
-							"mode": "none"
-						},
-						"thresholdsStyle": {
-							"mode": "off"
-						}
-					},
-					"mappings": [],
-					"thresholds": {
-						"mode": "absolute",
-						"steps": [
-							{
-								"color": "green",
-								"value": 0
-							},
-							{
-								"color": "red",
-								"value": 80
-							}
-						]
-					}
-				},
-				"overrides": []
-			},
-			"gridPos": {
-				"h": 8,
-				"w": 12,
-				"x": 0,
-				"y": 18
-			},
-			"id": 11,
-			"options": {
-				"legend": {
-					"calcs": [],
-					"displayMode": "list",
-					"placement": "bottom",
-					"showLegend": true
-				},
-				"tooltip": {
-					"hideZeros": false,
-					"mode": "single",
-					"sort": "none"
-				}
-			},
-			"pluginVersion": "12.2.0",
-			"targets": [
-				{
-					"editorMode": "builder",
-					"expr": "psyche_cpu_usage_percent{run_id=\"$run_id\"}",
-					"legendFormat": "__auto",
-					"range": true,
-					"refId": "A"
-				}
-			],
-			"title": "CPU Utilization %",
-			"type": "timeseries"
-		},
-		{
-			"datasource": {
-				"type": "prometheus",
-				"uid": "PA396B7035A9690C9"
-			},
-			"fieldConfig": {
-				"defaults": {
-					"color": {
-						"mode": "palette-classic"
-					},
-					"custom": {
-						"axisBorderShow": false,
-						"axisCenteredZero": false,
-						"axisColorMode": "text",
-						"axisLabel": "",
-						"axisPlacement": "auto",
-						"barAlignment": 0,
-						"barWidthFactor": 0.6,
-						"drawStyle": "line",
-						"fillOpacity": 0,
-						"gradientMode": "none",
-						"hideFrom": {
-							"legend": false,
-							"tooltip": false,
-							"viz": false
-						},
-						"insertNulls": false,
-						"lineInterpolation": "linear",
-						"lineWidth": 1,
-						"pointSize": 5,
-						"scaleDistribution": {
-							"type": "linear"
-						},
-						"showPoints": "auto",
-						"showValues": false,
-						"spanNulls": false,
-						"stacking": {
-							"group": "A",
-							"mode": "none"
-						},
-						"thresholdsStyle": {
-							"mode": "off"
-						}
-					},
-					"mappings": [],
-					"thresholds": {
-						"mode": "absolute",
-						"steps": [
-							{
-								"color": "green",
-								"value": 0
-							},
-							{
-								"color": "red",
-								"value": 80
-							}
-						]
-					}
-				},
-				"overrides": []
-			},
-			"gridPos": {
-				"h": 8,
-				"w": 12,
-				"x": 12,
-				"y": 18
-			},
-			"id": 13,
-			"options": {
-				"legend": {
-					"calcs": [],
-					"displayMode": "list",
-					"placement": "bottom",
-					"showLegend": true
-				},
-				"tooltip": {
-					"hideZeros": false,
-					"mode": "single",
-					"sort": "none"
-				}
-			},
-			"pluginVersion": "12.2.0",
-			"targets": [
-				{
-					"editorMode": "builder",
-					"expr": "psyche_memory_usage_bytes{run_id=\"$run_id\"}",
-					"legendFormat": "__auto",
-					"range": true,
-					"refId": "A"
-				}
-			],
-			"title": "Memory Usage (bytes)",
-			"type": "timeseries"
-		},
-		{
-			"datasource": {
-				"type": "prometheus",
-				"uid": "PA396B7035A9690C9"
+				"uid": "grafanacloud-prom"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -719,7 +627,7 @@
 				"x": 0,
 				"y": 26
 			},
-			"id": 14,
+			"id": 22,
 			"options": {
 				"legend": {
 					"calcs": [],
@@ -733,23 +641,23 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
-					"editorMode": "builder",
-					"expr": "psyche_gpu_usage_percent{run_id=\"$run_id\"}",
+					"editorMode": "code",
+					"expr": "rate(psyche_apply_message_success_total[$__rate_interval]) * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
 				}
 			],
-			"title": "GPU Utilization %",
+			"title": "Apply Message Success Rate",
 			"type": "timeseries"
 		},
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PA396B7035A9690C9"
+				"uid": "grafanacloud-prom"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -813,7 +721,7 @@
 				"x": 12,
 				"y": 26
 			},
-			"id": 15,
+			"id": 23,
 			"options": {
 				"legend": {
 					"calcs": [],
@@ -827,23 +735,23 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.4.0-19576184216",
 			"targets": [
 				{
-					"editorMode": "builder",
-					"expr": "psyche_gpu_memory{run_id=\"$run_id\"}",
+					"editorMode": "code",
+					"expr": "rate(psyche_apply_message_failure_total[$__rate_interval]) * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
 				}
 			],
-			"title": "GPU Memory",
+			"title": "Apply Message Failure Rate",
 			"type": "timeseries"
 		},
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PA396B7035A9690C9"
+				"uid": "grafanacloud-prom"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -907,6 +815,691 @@
 				"x": 0,
 				"y": 34
 			},
+			"id": 24,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.4.0-19576184216",
+			"targets": [
+				{
+					"editorMode": "code",
+					"expr": "rate(psyche_apply_message_ignored_total[$__rate_interval]) * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Apply Message Ignored Rate",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 12,
+				"y": 34
+			},
+			"id": 21,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.4.0-19576184216",
+			"targets": [
+				{
+					"editorMode": "code",
+					"expr": "rate(psyche_broadcasts_seen_total[$__rate_interval]) * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Broadcasts Seen Rate",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "left",
+						"fillOpacity": 50,
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"pointShape": "circle",
+						"pointSize": {
+							"fixed": 5
+						},
+						"pointStrokeWidth": 3,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"show": "points+lines"
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 0,
+				"y": 42
+			},
+			"id": 20,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": false
+				},
+				"mapping": "auto",
+				"series": [
+					{
+						"x": {
+							"matcher": {
+								"id": "byName",
+								"options": "Time"
+							}
+						}
+					}
+				],
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.3.0-18940657299.patch1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus",
+						"uid": "grafanacloud-prom"
+					},
+					"disableTextWrap": false,
+					"editorMode": "code",
+					"expr": "rate(psyche_downloads_finished_total[$__rate_interval]) * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
+					"fullMetaSearch": false,
+					"hide": false,
+					"includeNullMetadata": true,
+					"instant": false,
+					"legendFormat": "time",
+					"range": true,
+					"refId": "B",
+					"useBackend": false
+				}
+			],
+			"title": "Downloads Completed Rate",
+			"transformations": [
+				{
+					"id": "concatenate",
+					"options": {
+						"frameNameLabel": "Hola",
+						"frameNameMode": "field"
+					}
+				}
+			],
+			"type": "xychart"
+		},
+		{
+			"collapsed": false,
+			"gridPos": {
+				"h": 1,
+				"w": 24,
+				"x": 0,
+				"y": 50
+			},
+			"id": 12,
+			"panels": [],
+			"title": "Instances",
+			"type": "row"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 0,
+				"y": 51
+			},
+			"id": 11,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.3.0-18940657299.patch1",
+			"targets": [
+				{
+					"editorMode": "code",
+					"expr": "psyche_cpu_usage_percent * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "CPU Utilization %",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 12,
+				"y": 51
+			},
+			"id": 13,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.3.0-18940657299.patch1",
+			"targets": [
+				{
+					"editorMode": "code",
+					"expr": "psyche_memory_usage_bytes * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Memory Usage (bytes)",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 0,
+				"y": 59
+			},
+			"id": 14,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.3.0-18940657299.patch1",
+			"targets": [
+				{
+					"editorMode": "code",
+					"expr": "psyche_gpu_usage_percent * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "GPU Utilization %",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 12,
+				"y": 59
+			},
+			"id": 15,
+			"options": {
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "12.3.0-18940657299.patch1",
+			"targets": [
+				{
+					"editorMode": "code",
+					"expr": "psyche_gpu_memory * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "GPU Memory",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 0,
+				"y": 67
+			},
 			"id": 16,
 			"options": {
 				"legend": {
@@ -921,11 +1514,11 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
-					"editorMode": "builder",
-					"expr": "psyche_gpu_temp{run_id=\"$run_id\"}",
+					"editorMode": "code",
+					"expr": "psyche_gpu_temp * on(instance) group_left(run_id) target_info {run_id=\"$run_id\"}",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -940,7 +1533,7 @@
 				"h": 1,
 				"w": 24,
 				"x": 0,
-				"y": 42
+				"y": 75
 			},
 			"id": 6,
 			"panels": [],
@@ -960,7 +1553,7 @@
 				"h": 10,
 				"w": 24,
 				"x": 0,
-				"y": 43
+				"y": 76
 			},
 			"id": 1,
 			"options": {
@@ -975,7 +1568,7 @@
 				"sortOrder": "Descending",
 				"wrapLogMessage": false
 			},
-			"pluginVersion": "12.2.0",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"repeat": "clients",
 			"repeatDirection": "h",
 			"targets": [
@@ -1003,17 +1596,17 @@
 		"list": [
 			{
 				"current": {
-					"text": "consilience-match-llama2-20m-fineweb",
-					"value": "consilience-match-llama2-20m-fineweb"
+					"text": "dm-dclm-baseline",
+					"value": "dm-dclm-baseline"
 				},
-				"definition": "label_values(psyche_gossip_neighbors,run_id)",
+				"definition": "label_values(target_info,run_id)",
 				"description": "The ID of a specific run",
 				"label": "Run ID",
 				"name": "run_id",
 				"options": [],
 				"query": {
 					"qryType": 1,
-					"query": "label_values(psyche_gossip_neighbors,run_id)",
+					"query": "label_values(target_info,run_id)",
 					"refId": "PrometheusVariableQueryEditor-VariableQuery"
 				},
 				"refresh": 1,
@@ -1030,5 +1623,5 @@
 	"timezone": "browser",
 	"title": "Runs",
 	"uid": "516c64b6-0d50-4a36-a3fe-c562a5a91772",
-	"version": 3
+	"version": 7
 }

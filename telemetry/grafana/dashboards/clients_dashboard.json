@@ -102,7 +102,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"targets": [
 				{
 					"disableTextWrap": false,
@@ -179,12 +179,12 @@
 				"showThresholdMarkers": false,
 				"sizing": "auto"
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"targets": [
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "grafanacloud-prom"
+						"uid": "PBFA97CFB590B2093"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -281,12 +281,12 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"targets": [
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "grafanacloud-prom"
+						"uid": "PBFA97CFB590B2093"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -383,7 +383,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"targets": [
 				{
 					"datasource": {
@@ -516,12 +516,12 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"targets": [
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "grafanacloud-prom"
+						"uid": "PBFA97CFB590B2093"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -644,12 +644,12 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"targets": [
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "grafanacloud-prom"
+						"uid": "PBFA97CFB590B2093"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -746,12 +746,12 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"targets": [
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "grafanacloud-prom"
+						"uid": "PBFA97CFB590B2093"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -808,7 +808,7 @@
 				"sortOrder": "Descending",
 				"wrapLogMessage": false
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.4.0-19576184216.patch1",
 			"repeat": "clients",
 			"repeatDirection": "h",
 			"targets": [
@@ -836,8 +836,8 @@
 		"list": [
 			{
 				"current": {
-					"text": "1257PEnV2hmFz3uFkB9ivLNWSUGysmWzD81RX9xFV6if",
-					"value": "1257PEnV2hmFz3uFkB9ivLNWSUGysmWzD81RX9xFV6if"
+					"text": "",
+					"value": ""
 				},
 				"definition": "label_values(psyche_gossip_neighbors,service_instance_id)",
 				"name": "clients",
