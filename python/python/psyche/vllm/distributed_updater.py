@@ -87,118 +87,82 @@ def init_process_group(
     return pg
 
 
-# Weight updater process that receives updates via torch.distributed.
-# Runs in a separate Python process and joins a torch.distributed process group.
-# Receives weight updates and applies them to the shared memory state_dict.
+# Weight updater process that watches for checkpoint files and applies them.
+# Runs in a separate Python process and monitors a queue for update notifications.
+# When notified, loads checkpoint from disk and updates the shared memory state_dict.
 def weight_updater_process(
     state_dict: Dict[str, torch.Tensor],
-    process_group_config: Dict[str, Any],
+    update_queue,  # multiprocessing.Queue for receiving checkpoint paths
     model_config: Any,
 ):
-    backend = process_group_config["backend"]
-    init_method = process_group_config["init_method"]
-    world_size = process_group_config["world_size"]
-    rank = process_group_config["rank"]
-    device_str = process_group_config.get("device", "cuda:0")
+    from safetensors import safe_open
 
-    logger.info(
-        f"Starting weight updater process: rank={rank}/{world_size}, backend={backend}, device={device_str}"
-    )
+    # Get device from state_dict
+    device = list(state_dict.values())[0].device
 
-    my_device = torch.device(device_str)
-    if my_device.type == "cuda":
-        torch.cuda.set_device(my_device)
-        logger.info(f"Set CUDA device to {my_device}")
-
-    vllm_group = init_process_group(
-        backend=backend,
-        init_method=init_method,
-        world_size=world_size,
-        rank=rank,
-        group_name="vllm_updater",
-    )
-    logger.info(
-        f"Updater joined vLLM process group (rank {rank}/{world_size}, backend={backend})"
-    )
-
-    # Verify device from state_dict matches
-    actual_device = list(state_dict.values())[0].device
-    logger.info(f"State dict tensors are on device: {actual_device}")
-
-    comm_device = my_device if backend == "nccl" else actual_device
+    logger.info(f"Starting weight updater process on device {device}")
+    logger.info("Waiting for checkpoint updates via queue...")
 
     with torch.no_grad():
         try:
             update_count = 0
-            applied_count = 0
 
             while True:
-                # Metadata header format: [shutdown_flag, param_name_len, ndim, dim0, dim1, ..., dtype_id, ...]
-                metadata = torch.zeros(128, dtype=torch.long, device=comm_device)
+                # Wait for checkpoint path from queue
+                checkpoint_path = update_queue.get()
 
-                logger.debug(f"Waiting for metadata broadcast #{update_count + 1}...")
-                dist.broadcast(metadata, src=0, group=vllm_group)
-
-                shutdown_flag = metadata[0].item()
-                if shutdown_flag == -1:
+                # Check for shutdown signal
+                if checkpoint_path is None:
                     logger.info("Received shutdown signal, exiting")
                     break
 
-                param_name_len = int(metadata[1].item())
-                if param_name_len == 0 or param_name_len > 100:
-                    logger.error(f"Invalid param_name_len: {param_name_len}")
-                    break
+                logger.info(f"Received checkpoint update: {checkpoint_path}")
 
-                param_name_bytes = (
-                    metadata[2 : 2 + param_name_len]
-                    .cpu()
-                    .numpy()
-                    .astype(np.uint8)
-                    .tobytes()
-                )
-                param_name = param_name_bytes.decode("utf-8").rstrip("\x00")
+                try:
+                    # Load checkpoint from disk
+                    logger.info(f"Loading checkpoint from {checkpoint_path}")
+                    with safe_open(
+                        checkpoint_path, framework="pt", device=str(device)
+                    ) as f:
+                        applied_count = 0
+                        for key in f.keys():
+                            if key in state_dict:
+                                tensor = f.get_tensor(key)
 
-                # Extract shape
-                ndim = int(metadata[2 + param_name_len].item())
-                shape = tuple(
-                    int(metadata[3 + param_name_len + i].item()) for i in range(ndim)
-                )
+                                # Verify shape matches
+                                if state_dict[key].shape != tensor.shape:
+                                    logger.error(
+                                        f"Shape mismatch for {key}: "
+                                        f"expected {state_dict[key].shape}, got {tensor.shape}"
+                                    )
+                                    continue
 
-                # Extract dtype
-                dtype_id = int(metadata[3 + param_name_len + ndim].item())
-                if dtype_id not in DTYPE_MAP:
-                    logger.error(f"Unknown dtype_id: {dtype_id}")
-                    continue
-                dtype = DTYPE_MAP[dtype_id]
+                                # Copy to shared memory
+                                state_dict[key].copy_(tensor)
+                                applied_count += 1
 
-                logger.info(
-                    f"Receiving parameter: {param_name} (shape={shape}, dtype={dtype})"
-                )
+                                if applied_count % 100 == 0:
+                                    logger.debug(
+                                        f"Applied {applied_count} parameters..."
+                                    )
+                            else:
+                                logger.warning(
+                                    f"Parameter {key} not in vLLM state_dict"
+                                )
 
-                # Parameter tensor
-                param_tensor = torch.zeros(shape, dtype=dtype, device=comm_device)
-                dist.broadcast(param_tensor, src=0, group=vllm_group)
+                    update_count += 1
+                    logger.info(
+                        f"✓ Checkpoint {update_count} applied successfully "
+                        f"({applied_count} parameters updated)"
+                    )
 
-                update_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to load checkpoint {checkpoint_path}: {e}")
+                    import traceback
 
-                if param_name in state_dict:
-                    if state_dict[param_name].shape != param_tensor.shape:
-                        logger.error(
-                            f"Shape mismatch for {param_name}: "
-                            f"expected {state_dict[param_name].shape}, got {param_tensor.shape}"
-                        )
-                        continue
-
-                    state_dict[param_name].data.copy_(param_tensor)
-                    applied_count += 1
-
-                    if applied_count % 10 == 0:
-                        logger.info(f"Applied {applied_count} parameter updates")
-                else:
-                    logger.warning(f"Parameter {param_name} not in state_dict")
+                    traceback.print_exc()
 
         except KeyboardInterrupt:
             pass
 
-    logger.info(f"Updater exiting: {applied_count}/{update_count} updates applied")
-    dist.destroy_process_group()
+    logger.info(f"Updater exiting: {update_count} checkpoints applied")

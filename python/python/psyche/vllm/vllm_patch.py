@@ -25,6 +25,23 @@ def get_shared_state_dict_from_engine(engine) -> Optional[Dict[str, torch.Tensor
         return None
 
 
+def get_update_queue_from_engine(engine):
+    try:
+        if hasattr(engine, "model_executor"):
+            if hasattr(engine.model_executor, "driver_worker"):
+                worker = engine.model_executor.driver_worker
+                if hasattr(worker, "model_runner"):
+                    model_runner = worker.model_runner
+                    if hasattr(model_runner, "psyche_update_queue"):
+                        return model_runner.psyche_update_queue
+
+        logger.warning("Could not access psyche_update_queue from engine")
+        return None
+    except Exception as e:
+        logger.error(f"Error accessing update queue: {e}")
+        return None
+
+
 def apply_vllm_patches():
     try:
         from vllm.v1.worker.gpu_worker import GPUModelRunner
@@ -50,33 +67,25 @@ def apply_vllm_patches():
                 from psyche.vllm.distributed_updater import weight_updater_process
 
                 # Get the device that vLLM is using
-                # vLLM model weights are already on GPU
                 first_tensor = next(iter(state_dict.values()))
                 device = first_tensor.device
 
-                logger.info(
-                    f"Spawning weight updater on device {device} with NCCL backend"
-                )
+                logger.info(f"Spawning weight updater on device {device}")
 
-                # Local process group: broadcaster (rank 0) + updater (rank 1)
-                # Use NCCL for fast GPU-to-GPU communication (avoids GPU→CPU→GPU copies)
-                # IMPORTANT: Don't set global NCCL env vars here as they would affect
-                # vLLM's own NCCL groups (e.g., for multi-node tensor parallelism with IB)
-                process_group_config = {
-                    "backend": "nccl",
-                    "init_method": "tcp://127.0.0.1:29500",
-                    "world_size": 2,  # Always 2: local broadcaster + this updater
-                    "rank": 1,  # Updater is always rank 1
-                    "device": str(device),  # Pass device info to updater
-                }
-
+                # Create a queue for sending checkpoint paths to updater
                 ctx = mp.get_context("spawn")
+                self.psyche_update_queue = ctx.Queue()
+
                 self.psyche_updater_process = ctx.Process(
                     target=weight_updater_process,
-                    args=(state_dict, process_group_config, self.model_config),
+                    args=(state_dict, self.psyche_update_queue, self.model_config),
                     daemon=True,
                 )
                 self.psyche_updater_process.start()
+
+                logger.info(
+                    "Weight updater process started, waiting for checkpoint updates"
+                )
 
         import vllm.v1.worker.gpu_worker
 
