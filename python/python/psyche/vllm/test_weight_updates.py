@@ -22,8 +22,12 @@ def training_process():
 
         from psyche.vllm.distributed_updater import init_process_group
 
+        device = torch.device("cuda:0")
+        torch.cuda.set_device(device)
+        print(f"[Training Process] Set CUDA device to {device}")
+
         vllm_group = init_process_group(
-            backend="gloo",
+            backend="nccl",
             init_method="tcp://127.0.0.1:29500",
             world_size=world_size,
             rank=rank,
@@ -43,18 +47,18 @@ def training_process():
         # Create mock parameters with large changes to ensure output differs
         # Note: we send transposed weight matrices (out_features, in_features)
         params_to_send = [
-            ("transformer.h.0.ln_1.weight", torch.ones(768) * 10.0),
-            ("transformer.h.0.ln_1.bias", torch.ones(768) * 5.0),
+            ("transformer.h.0.ln_1.weight", torch.ones(768, device=device) * 10.0),
+            ("transformer.h.0.ln_1.bias", torch.ones(768, device=device) * 5.0),
             (
                 "transformer.h.0.attn.c_attn.weight",
-                torch.randn(2304, 768) * 0.5,
+                torch.randn(2304, 768, device=device) * 0.5,
             ),
         ]
 
         for i, (param_name, param_tensor) in enumerate(params_to_send):
             print(
                 f"[Training Process] Broadcasting {param_name} "
-                f"(shape={param_tensor.shape}, dtype={param_tensor.dtype})"
+                f"(shape={param_tensor.shape}, dtype={param_tensor.dtype}, device={param_tensor.device})"
             )
             broadcast_parameter(param_name, param_tensor, src_rank=0, group=vllm_group)
             print(f"[Training Process] Broadcasted {param_name}")
@@ -65,9 +69,7 @@ def training_process():
         # Send shutdown signal
         time.sleep(0.5)
         print(f"[Training Process] Sending shutdown signal")
-        broadcast_shutdown_signal(
-            src_rank=0, device=torch.device("cpu"), group=vllm_group
-        )
+        broadcast_shutdown_signal(src_rank=0, device=device, group=vllm_group)
 
         print(f"[Training Process] Cleaning up...")
         dist.destroy_process_group()
@@ -174,7 +176,8 @@ def test_weight_updates():
         print(f"Setting up local distributed environment:")
         print(f"  World size: 2 (broadcaster + updater)")
         print(f"  Address: tcp://127.0.0.1:29500")
-        print(f"  Backend: gloo")
+        print(f"  Backend: nccl")
+        print(f"  Device: cuda:0")
 
         # Spawn both processes
         ctx = mp.get_context("spawn")

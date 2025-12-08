@@ -49,13 +49,25 @@ def apply_vllm_patches():
             def _spawn_distributed_updater(self, state_dict):
                 from psyche.vllm.distributed_updater import weight_updater_process
 
+                # Get the device that vLLM is using
+                # vLLM model weights are already on GPU
+                first_tensor = next(iter(state_dict.values()))
+                device = first_tensor.device
+
+                logger.info(
+                    f"Spawning weight updater on device {device} with NCCL backend"
+                )
+
                 # Local process group: broadcaster (rank 0) + updater (rank 1)
-                # Use gloo - reliable, simple, fast enough for localhost broadcasts
+                # Use NCCL for fast GPU-to-GPU communication (avoids GPU→CPU→GPU copies)
+                # IMPORTANT: Don't set global NCCL env vars here as they would affect
+                # vLLM's own NCCL groups (e.g., for multi-node tensor parallelism with IB)
                 process_group_config = {
-                    "backend": "gloo",
+                    "backend": "nccl",
                     "init_method": "tcp://127.0.0.1:29500",
                     "world_size": 2,  # Always 2: local broadcaster + this updater
                     "rank": 1,  # Updater is always rank 1
+                    "device": str(device),  # Pass device info to updater
                 }
 
                 ctx = mp.get_context("spawn")

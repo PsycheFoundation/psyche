@@ -31,12 +31,6 @@ def init_process_group(
     group_name: str = None,
     pg_options: Optional[Any] = None,
 ):
-    """
-    Initialize a named process group without interfering with the default training group.
-
-    Based on TorchTitan's implementation to support multiple independent process groups.
-    This allows vLLM updater to have its own group while training uses the default group.
-    """
     from torch.distributed.distributed_c10d import (
         _new_process_group_helper,
         _world,
@@ -69,12 +63,9 @@ def init_process_group(
         rendezvous_iterator = rendezvous(init_method, rank, world_size, timeout=timeout)
         store, rank, world_size = next(rendezvous_iterator)
         store.set_timeout(timeout)
-
-        # Use a PrefixStore to avoid accidental overrides of keys used by
-        # different systems (e.g. RPC) in case the store is multi-tenant.
         store = PrefixStore(group_name, store)
 
-    # NOTE: The pg_options parameter was renamed into backend_options in PyTorch 2.6.0
+    # The pg_options parameter was renamed into backend_options in PyTorch 2.6.0
     # https://github.com/pytorch/pytorch/commit/a0c7029a75628cd5fa8df83c0de0ea98ee7fd844
     # We need to determine the appropriate parameter name based on PyTorch version
     pg_options_param_name = (
@@ -108,13 +99,17 @@ def weight_updater_process(
     init_method = process_group_config["init_method"]
     world_size = process_group_config["world_size"]
     rank = process_group_config["rank"]
+    device_str = process_group_config.get("device", "cuda:0")
 
     logger.info(
-        f"Starting weight updater process: rank={rank}/{world_size}, backend={backend}"
+        f"Starting weight updater process: rank={rank}/{world_size}, backend={backend}, device={device_str}"
     )
 
-    # Use custom init_process_group to create named group
-    # This avoids interfering with the default training process group
+    my_device = torch.device(device_str)
+    if my_device.type == "cuda":
+        torch.cuda.set_device(my_device)
+        logger.info(f"Set CUDA device to {my_device}")
+
     vllm_group = init_process_group(
         backend=backend,
         init_method=init_method,
@@ -126,7 +121,11 @@ def weight_updater_process(
         f"Updater joined vLLM process group (rank {rank}/{world_size}, backend={backend})"
     )
 
-    my_device = list(state_dict.values())[0].device
+    # Verify device from state_dict matches
+    actual_device = list(state_dict.values())[0].device
+    logger.info(f"State dict tensors are on device: {actual_device}")
+
+    comm_device = my_device if backend == "nccl" else actual_device
 
     with torch.no_grad():
         try:
@@ -135,7 +134,7 @@ def weight_updater_process(
 
             while True:
                 # Metadata header format: [shutdown_flag, param_name_len, ndim, dim0, dim1, ..., dtype_id, ...]
-                metadata = torch.zeros(128, dtype=torch.long, device=my_device)
+                metadata = torch.zeros(128, dtype=torch.long, device=comm_device)
 
                 logger.debug(f"Waiting for metadata broadcast #{update_count + 1}...")
                 dist.broadcast(metadata, src=0, group=vllm_group)
@@ -177,7 +176,7 @@ def weight_updater_process(
                 )
 
                 # Parameter tensor
-                param_tensor = torch.zeros(shape, dtype=dtype, device=my_device)
+                param_tensor = torch.zeros(shape, dtype=dtype, device=comm_device)
                 dist.broadcast(param_tensor, src=0, group=vllm_group)
 
                 update_count += 1
