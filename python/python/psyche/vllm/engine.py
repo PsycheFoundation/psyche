@@ -4,6 +4,8 @@ from typing import List, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+_current_update_queue = None
+
 try:
     from . import vllm_patch
 
@@ -52,6 +54,13 @@ class UpdatableLLMEngine:
             enforce_eager=False,
             disable_log_stats=False,
         )
+
+        from multiprocessing import Manager
+
+        global _current_update_queue
+        self._manager = Manager()
+        self._update_queue = self._manager.Queue()
+        _current_update_queue = self._update_queue
 
         self.engine = LLMEngine.from_engine_args(engine_args)
         self.request_counter = count()

@@ -51,15 +51,10 @@ def update_weights_from_file(checkpoint_path: str) -> None:
 
     logger.info(f"Queueing checkpoint update: {checkpoint_path}")
 
-    # Get the update queue from the engine
-    from .vllm_patch import get_update_queue_from_engine
+    if not hasattr(_vllm_engine, "_update_queue") or _vllm_engine._update_queue is None:
+        raise RuntimeError("Update queue not initialized on engine")
 
-    queue = get_update_queue_from_engine(_vllm_engine.engine)
-    if queue is None:
-        raise RuntimeError("Could not access update queue from vLLM engine")
-
-    # Send checkpoint path to updater subprocess
-    queue.put(str(checkpoint_path))
+    _vllm_engine._update_queue.put(str(checkpoint_path))
 
     logger.info(f"✓ Checkpoint update queued successfully")
 
