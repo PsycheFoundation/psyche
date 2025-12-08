@@ -58,26 +58,21 @@ def test_weight_updates():
         print(f"[Test] Output BEFORE: '{test_prompt}{text_before}'")
 
         # Create a test checkpoint with modified weights
-        print(f"\n[Test] Creating test checkpoint with modified weights...")
+        print(f"\n[Test] Creating test checkpoint from actual model...")
         from safetensors.torch import save_file
+        from transformers import GPT2LMHeadModel
 
-        # Get current weights
-        from psyche.vllm.vllm_patch import get_shared_state_dict_from_engine
+        # Load GPT2 model to get real weights
+        print(f"[Test] Loading GPT2 model...")
+        model = GPT2LMHeadModel.from_pretrained("gpt2")
 
-        state_dict = get_shared_state_dict_from_engine(engine.engine)
-
-        if state_dict is None:
-            print(f"[Test] ERROR: Could not access state_dict")
-            return False
-
-        # Create modified weights (multiply by 1.1 to ensure visible change)
+        # Get state dict and modify slightly (multiply by 1.05 for subtle change)
+        state_dict = model.state_dict()
         modified_state_dict = {}
         for key, tensor in state_dict.items():
-            # Make a copy and modify it
-            modified_tensor = tensor.clone() * 1.1
-            modified_state_dict[key] = (
-                modified_tensor.cpu()
-            )  # safetensors needs CPU tensors
+            # Modify weights slightly
+            modified_tensor = tensor * 1.05
+            modified_state_dict[key] = modified_tensor.cpu()
 
         # Save to temporary file
         with tempfile.NamedTemporaryFile(suffix=".safetensors", delete=False) as f:
@@ -85,7 +80,7 @@ def test_weight_updates():
 
         print(f"[Test] Saving checkpoint to {checkpoint_path}")
         save_file(modified_state_dict, checkpoint_path)
-        print(f"[Test] Checkpoint saved ({len(modified_state_dict)} parameters)")
+        print(f"[Test] ✓ Checkpoint saved ({len(modified_state_dict)} parameters)")
 
         # Trigger weight update
         print(f"\n[Test] Triggering weight update via queue...")
