@@ -48,7 +48,7 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 1,
-            rounds_per_epoch: 44,
+            epoch_time: 30,
             total_steps: 100,
         }),
         model: Some(Model::LLM(LLM {
@@ -72,6 +72,7 @@ pub async fn run() {
         epoch_earning_rate_total_shared: Some(66),
         epoch_slashing_rate_per_client: None,
         paused: Some(false),
+        client_version: None,
     };
 
     // Prepare the collateral mint

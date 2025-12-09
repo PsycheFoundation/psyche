@@ -78,6 +78,7 @@ pub fn init_coordinator_processor(
     let account = bytemuck::from_bytes_mut::<CoordinatorAccount>(
         &mut data[disc.len()..CoordinatorAccount::space_with_discriminator()],
     );
+    account.version = CoordinatorAccount::VERSION;
     account.nonce = 0;
 
     account.state.client_version =
