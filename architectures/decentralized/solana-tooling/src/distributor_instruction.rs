@@ -221,7 +221,7 @@ pub async fn process_claim_redeem(
         data: ClaimRedeem {
             params: ClaimRedeemParams {
                 nonce: allocation_nonce,
-                vesting: allocation_vesting.clone(),
+                vesting: *allocation_vesting,
                 merkle_proof: merkle_proof.to_vec(),
                 collateral_amount,
             },

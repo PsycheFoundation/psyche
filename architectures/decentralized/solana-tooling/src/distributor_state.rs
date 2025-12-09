@@ -98,8 +98,11 @@ impl AirdropMerkleTree {
             if layer.len() == 1 {
                 break;
             }
-            let sibling_index =
-                if index % 2 == 0 { index + 1 } else { index - 1 };
+            let sibling_index = if index.is_multiple_of(2) {
+                index + 1
+            } else {
+                index - 1
+            };
             if sibling_index >= layer.len() {
                 proof.push(layer[index].clone());
             } else {
