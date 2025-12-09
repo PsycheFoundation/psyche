@@ -1,5 +1,5 @@
 pub mod create_memnet_endpoint;
-pub mod distributor_instructions;
+pub mod distributor_instruction;
 pub mod distributor_state;
 pub mod get_accounts;
 pub mod process_authorizer_instructions;

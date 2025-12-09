@@ -6,12 +6,12 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
-use crate::api::create_memnet_endpoint::create_memnet_endpoint;
-use crate::api::distributor_instructions::process_airdrop_create;
-use crate::api::distributor_instructions::process_claim_create;
-use crate::api::distributor_instructions::process_claim_redeem;
-use crate::api::distributor_state::find_pda_airdrop;
-use crate::api::distributor_state::AirdropMerkleTree;
+use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
+use psyche_solana_tooling::distributor_instruction::process_airdrop_create;
+use psyche_solana_tooling::distributor_instruction::process_claim_create;
+use psyche_solana_tooling::distributor_instruction::process_claim_redeem;
+use psyche_solana_tooling::distributor_state::AirdropMerkleTree;
+use psyche_solana_tooling::distributor_state::find_pda_airdrop;
 
 #[tokio::test]
 pub async fn run() {
@@ -141,7 +141,7 @@ pub async fn run() {
                 claimer,
                 &receiver_collateral,
                 airdrop_id,
-                &claimer_allocation.nonce,
+                claimer_allocation.nonce,
                 &claimer_allocation.vesting,
                 &claimer_merkle_proof,
                 &collateral_mint,
@@ -156,7 +156,7 @@ pub async fn run() {
                 claimer,
                 &receiver_collateral,
                 airdrop_id,
-                &claimer_allocation.nonce,
+                claimer_allocation.nonce,
                 &claimer_allocation.vesting,
                 &claimer_merkle_proof,
                 &collateral_mint,

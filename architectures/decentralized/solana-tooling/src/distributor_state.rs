@@ -1,11 +1,13 @@
 use anyhow::Result;
+use psyche_solana_distributor::state::Airdrop;
 use psyche_solana_distributor::state::Allocation;
+use psyche_solana_distributor::state::Claim;
 use psyche_solana_distributor::state::MerkleHash;
 use solana_sdk::pubkey::Pubkey;
 
 pub fn find_pda_airdrop(airdrop_id: u64) -> Pubkey {
     Pubkey::find_program_address(
-        &[state::Airdrop::SEEDS_PREFIX, &airdrop_id.to_le_bytes()],
+        &[Airdrop::SEEDS_PREFIX, &airdrop_id.to_le_bytes()],
         &psyche_solana_distributor::ID,
     )
     .0
@@ -18,7 +20,7 @@ pub fn find_pda_claim(
 ) -> Pubkey {
     Pubkey::find_program_address(
         &[
-            state::Claim::SEEDS_PREFIX,
+            Claim::SEEDS_PREFIX,
             airdrop.as_ref(),
             claimer.as_ref(),
             nonce.to_le_bytes().as_ref(),

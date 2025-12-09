@@ -7,14 +7,14 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
-use crate::api::create_memnet_endpoint::create_memnet_endpoint;
-use crate::api::distributor_instructions::process_airdrop_create;
-use crate::api::distributor_instructions::process_airdrop_update;
-use crate::api::distributor_instructions::process_airdrop_withdraw;
-use crate::api::distributor_instructions::process_claim_create;
-use crate::api::distributor_instructions::process_claim_redeem;
-use crate::api::distributor_state::find_pda_airdrop;
-use crate::api::distributor_state::AirdropMerkleTree;
+use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
+use psyche_solana_tooling::distributor_instruction::process_airdrop_create;
+use psyche_solana_tooling::distributor_instruction::process_airdrop_update;
+use psyche_solana_tooling::distributor_instruction::process_airdrop_withdraw;
+use psyche_solana_tooling::distributor_instruction::process_claim_create;
+use psyche_solana_tooling::distributor_instruction::process_claim_redeem;
+use psyche_solana_tooling::distributor_state::AirdropMerkleTree;
+use psyche_solana_tooling::distributor_state::find_pda_airdrop;
 
 #[tokio::test]
 pub async fn run() {
@@ -41,8 +41,8 @@ pub async fn run() {
             claimer: claimer.pubkey(),
             nonce: 77,
             vesting: Vesting {
-                start_unix_timestamp: 0,
-                duration_seconds: 0,
+                start_unix_timestamp: 10,
+                duration_seconds: 10,
                 end_collateral_amount: claimer_total_collateral_amount,
             },
         },
@@ -141,7 +141,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &[],
         &collateral_mint,
@@ -150,7 +150,7 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Redeem should fail with an invalid allocation vesting
+    // Redeem should fail with an invalid vesting end_collateral_amount
     let mut claimer_vesting_corrupted1 = claimer_allocation.vesting;
     claimer_vesting_corrupted1.end_collateral_amount += 1;
     process_claim_redeem(
@@ -159,7 +159,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_vesting_corrupted1,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -168,16 +168,16 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Redeem should fail with an invalid allocation nonce
+    // Redeem should fail with an invalid vesting start_unix_timestamp
     let mut claimer_vesting_corrupted2 = claimer_allocation.vesting;
-    claimer_vesting_corrupted2.nonce += 1;
+    claimer_vesting_corrupted2.start_unix_timestamp -= 1;
     process_claim_redeem(
         &mut endpoint,
         &payer,
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_vesting_corrupted2,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -186,17 +186,49 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    // Redeem should fail with an invalid allocation timestamp
+    // Redeem should fail with an invalid vesting duration_seconds
     let mut claimer_vesting_corrupted3 = claimer_allocation.vesting;
-    claimer_vesting_corrupted3.start_unix_timestamp -= 1;
+    claimer_vesting_corrupted3.duration_seconds -= 1;
     process_claim_redeem(
         &mut endpoint,
         &payer,
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_vesting_corrupted3,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Redeem should fail with an invalid allocation nonce
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &claimer,
+        &receiver_collateral,
+        airdrop_id,
+        claimer_allocation.nonce + 1,
+        &claimer_allocation.vesting,
+        &claimer_merkle_proof,
+        &collateral_mint,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Redeem should fail with an invalid claimer
+    process_claim_redeem(
+        &mut endpoint,
+        &payer,
+        &Keypair::new(),
+        &receiver_collateral,
+        airdrop_id,
+        claimer_allocation.nonce,
+        &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
         0,
@@ -211,7 +243,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -227,7 +259,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -259,7 +291,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -275,7 +307,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -303,7 +335,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -331,7 +363,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -359,7 +391,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -387,7 +419,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -417,7 +449,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
@@ -433,7 +465,7 @@ pub async fn run() {
         &claimer,
         &receiver_collateral,
         airdrop_id,
-        &claimer_allocation.nonce,
+        claimer_allocation.nonce,
         &claimer_allocation.vesting,
         &claimer_merkle_proof,
         &collateral_mint,
