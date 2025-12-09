@@ -1,4 +1,5 @@
 use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
@@ -7,6 +8,7 @@ use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
+use psyche_core::FixedVec;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_coordinator::CoordinatorAccount;
@@ -48,15 +50,20 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 1,
-            rounds_per_epoch: 44,
+            epoch_time: 30,
             total_steps: 100,
+            waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
+                as u8,
         }),
         model: Some(Model::LLM(LLM {
             architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_location: LLMTrainingDataLocation::default(),
+            data_locations: FixedVec::try_from_iter([
+                LLMTrainingDataLocation::default(),
+            ])
+            .unwrap(),
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,
@@ -72,6 +79,7 @@ pub async fn run() {
         epoch_earning_rate_total_shared: Some(66),
         epoch_slashing_rate_per_client: None,
         paused: Some(false),
+        client_version: None,
     };
 
     // Prepare the collateral mint
@@ -101,6 +109,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -117,6 +126,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -133,6 +143,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -175,6 +186,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -201,6 +213,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -217,6 +230,7 @@ pub async fn run() {
             run_id: run_id.clone(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -233,6 +247,7 @@ pub async fn run() {
             run_id: "another run id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: Pubkey::new_unique(),
+            client_version: "latest".to_string(),
         },
     )
     .await

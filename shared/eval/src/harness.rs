@@ -1,6 +1,7 @@
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use crate::{
-    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA,
+    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUCF, MMLUPro, OpenbookQA,
+    PIQA,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
@@ -25,10 +26,11 @@ pub fn progress_bar_template_with_task(task_name: &str) -> String {
     )
 }
 
-const TASKS_WITH_ACC_NORM: [&str; 5] = [
+const TASKS_WITH_ACC_NORM: [&str; 6] = [
     ArcChallenge::name(),
     ArcEasy::name(),
     Hellaswag::name(),
+    MMLUCF::name(),
     OpenbookQA::name(),
     PIQA::name(),
 ];
@@ -763,6 +765,7 @@ fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
         || eval_name == Hellaswag::name()
         || eval_name == OpenbookQA::name()
         || eval_name == MMLU::name()
+        || eval_name == MMLUCF::name()
         || eval_name == PIQA::name()
     {
         Some(0.5)

@@ -18,7 +18,8 @@ pub fn fmt_relay_mode(relay_mode: &RelayMode) -> String {
         RelayMode::Default => "Default iroh relay (production) servers".to_string(),
         RelayMode::Staging => "Default iroh relay (staging) servers".to_string(),
         RelayMode::Custom(map) => map
-            .urls()
+            .urls::<Vec<_>>()
+            .into_iter()
             .map(|url| url.to_string())
             .collect::<Vec<_>>()
             .join(", "),
