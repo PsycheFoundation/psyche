@@ -27,7 +27,7 @@ use tokio::{
     sync::{mpsc::UnboundedSender, oneshot},
     task::{JoinError, JoinHandle},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use super::{
     CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::ModelTaskRunner,
@@ -185,75 +185,151 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         tch::manual_seed(1337);
 
+        // Check device availability early
+        if !init_config.device.is_probably_available() {
+            return Err(InitRunError::ModelLoad(
+                psyche_modeling::ModelLoadError::UnavailbleDevice(init_config.device),
+            ));
+        }
+
         let model::Model::LLM(llm) = state.model;
 
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
         let data_future = async {
-            debug!("Setting up data provider from {:?}", llm.data_location);
-            let data_provider = match llm.data_location {
-                LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
-                    DataProviderTcpClient::connect(
-                        (&data_server).into(),
-                        init_config.network_identity,
-                        init_config.private_key,
-                    )
-                    .await?,
-                ),
-                LLMTrainingDataLocation::Local(_) => todo!(),
-                LLMTrainingDataLocation::Dummy => {
-                    DataProvider::Dummy(DummyDataProvider::new(TokenSize::TwoBytes, 2048, u64::MAX))
-                }
-                LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
-                    location,
-                    token_size_in_bytes,
-                    shuffle,
-                }) => {
-                    let file_urls = FileURLs::from_location(&location).await?;
-                    DataProvider::Http(HttpDataProvider::new(
-                        file_urls,
-                        token_size_in_bytes,
-                        llm.max_seq_len,
-                        shuffle,
-                    )?)
-                }
-                LLMTrainingDataLocation::WeightedHttp(config_url) => DataProvider::WeightedHttp(
-                    WeightedDataProvider::<HttpDataProvider>::from_config_url(
-                        &String::from(&config_url),
-                        llm.max_seq_len,
-                    )
-                    .await?,
-                ),
-                LLMTrainingDataLocation::Preprocessed(url) => {
-                    let url: String = (&url).into();
-                    let dir = if std::fs::exists(&url).unwrap_or_default() {
-                        PathBuf::from(url)
-                    } else {
-                        download_dataset_repo_async(
-                            url.clone(),
-                            None,
-                            None,
-                            hub_read_token,
-                            Some(hub_max_concurrent_downloads),
-                            false,
+            debug!("Setting up data providers from {:?}", llm.data_locations);
+            let mut data_providers = Vec::new();
+
+            for data_location in llm.data_locations.iter() {
+                let provider = match data_location {
+                    LLMTrainingDataLocation::Server(data_server) => {
+                        let client = match DataProviderTcpClient::connect(
+                            data_server.into(),
+                            init_config.network_identity.clone(),
+                            init_config.private_key.clone(),
                         )
-                        .await?
-                        .first()
-                        .ok_or(anyhow::anyhow!("No files downloaded for {url}"))?
-                        .parent()
-                        .unwrap()
-                        .into()
-                    };
-                    DataProvider::Preprocessed(PreprocessedDataProvider::new_from_directory(
-                        dir,
-                        llm.max_seq_len as usize,
-                        Shuffle::DontShuffle,
-                        Some(Split::Train),
-                        None,
-                    )?)
+                        .await
+                        {
+                            Ok(client) => client,
+                            Err(e) => {
+                                warn!("Failed to connect to data server at {}: {}", data_server, e);
+                                continue;
+                            }
+                        };
+                        Some(DataProvider::Server(client))
+                    }
+                    LLMTrainingDataLocation::Local(_) => todo!(),
+                    LLMTrainingDataLocation::Dummy(dummy_type) => Some(DataProvider::Dummy(
+                        DummyDataProvider::new(TokenSize::TwoBytes, 2048, u64::MAX, *dummy_type),
+                    )),
+                    LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
+                        location,
+                        token_size_in_bytes,
+                        shuffle,
+                    }) => {
+                        if let Ok(file_urls) = FileURLs::from_location(location).await {
+                            if let Ok(provider) = HttpDataProvider::new(
+                                file_urls,
+                                *token_size_in_bytes,
+                                llm.max_seq_len,
+                                *shuffle,
+                            ) {
+                                Some(DataProvider::Http(provider))
+                            } else {
+                                warn!(
+                                    "Failed to create HTTP data provider for location: {:?}",
+                                    location
+                                );
+                                None
+                            }
+                        } else {
+                            warn!(
+                                "Failed to create HTTP data provider for location: {:?}",
+                                location
+                            );
+                            None
+                        }
+                    }
+                    LLMTrainingDataLocation::WeightedHttp(config_url) => {
+                        if let Ok(provider) =
+                            WeightedDataProvider::<HttpDataProvider>::from_config_url(
+                                &String::from(config_url),
+                                llm.max_seq_len,
+                            )
+                            .await
+                        {
+                            Some(DataProvider::WeightedHttp(provider))
+                        } else {
+                            warn!(
+                                "Failed to create Weighted HTTP data provider for config URL: {}",
+                                config_url
+                            );
+                            None
+                        }
+                    }
+
+                    LLMTrainingDataLocation::Preprocessed(url) => {
+                        let url: String = (url).into();
+                        let dir: anyhow::Result<PathBuf> =
+                            if std::fs::exists(&url).unwrap_or_default() {
+                                Ok(PathBuf::from(url.clone()))
+                            } else {
+                                let dataset_download = download_dataset_repo_async(
+                                    url.clone(),
+                                    None,
+                                    None,
+                                    hub_read_token.clone(),
+                                    Some(hub_max_concurrent_downloads),
+                                    false,
+                                )
+                                .await
+                                .map_err(|e| {
+                                    anyhow::anyhow!("Failed to download repo for {url}: {e:?}")
+                                });
+                                let file_in_repo = dataset_download.and_then(|r| {
+                                    r.into_iter()
+                                        .nth(0)
+                                        .ok_or(anyhow::anyhow!("No files downloaded for {url}"))
+                                });
+                                file_in_repo.and_then(|f| {
+                                    f.parent()
+                                        .map(|p| p.to_owned())
+                                        .ok_or(anyhow::anyhow!("Path has no parent"))
+                                })
+                            };
+                        let provider = dir.and_then(|dir| {
+                            PreprocessedDataProvider::new_from_directory(
+                                dir,
+                                llm.max_seq_len as usize,
+                                Shuffle::DontShuffle,
+                                Some(Split::Train),
+                                None,
+                            )
+                        });
+                        match provider {
+                            Ok(provider) => Some(DataProvider::Preprocessed(provider)),
+                            Err(err) => {
+                                warn!(
+                                    "Failed to create Preprocessed data provider for URL: {}\n{:?}",
+                                    url, err
+                                );
+                                None
+                            }
+                        }
+                    }
+                };
+                if let Some(provider) = provider {
+                    data_providers.push(provider);
                 }
-            };
-            Ok(data_provider)
+            }
+            if data_providers.is_empty() {
+                Err(InitRunError::DataProviderConnect(anyhow::anyhow!(
+                    "No valid data providers could be initialized."
+                )))
+            } else {
+                info!("Initialized {} data providers", data_providers.len());
+                Ok(data_providers)
+            }
         };
 
         let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &llm.architecture
@@ -324,7 +400,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     }
                                     ret
                                 } else {
-                                    info!("Downloading {} (if needed)", hub_repo.repo_id);
+                                    info!(
+                                        "Downloading {}, revision: {:?} (if needed)",
+                                        hub_repo.repo_id, revision
+                                    );
                                     download_model_repo_async(
                                         &repo_id,
                                         revision,
@@ -625,7 +704,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     state.config.global_batch_size_warmup_tokens,
                                 ),
                                 ("total_steps", state.config.total_steps),
-                                ("rounds_per_epoch", state.config.rounds_per_epoch),
                                 ("run_id", run_id),
                             ));
                         if let Some(entity) = wandb_info.entity {
@@ -664,9 +742,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         } = models.map_err(InitRunError::ModelLoadingThreadCrashed)??;
 
         // TODO add data fetching for verifying, too..
-        let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
+        let data_providers = data?;
+
         let data_fetcher =
-            DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
+            DataFetcher::<T, A>::new(data_providers, init_config.data_parallelism * 2);
 
         let trainers: Vec<Trainer> = match models {
             RawLoadedModelType::ParallelNativeModels(models) => {
@@ -792,7 +871,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         };
 
         let training = TrainingStepMetadata {
-            data_fetcher,
+            data_fetcher: data_fetcher.map_err(InitRunError::DataProviderConnect)?,
             identity: init_config.identity,
             write_gradients_dir: init_config.write_gradients_dir,
             tx_health_check,

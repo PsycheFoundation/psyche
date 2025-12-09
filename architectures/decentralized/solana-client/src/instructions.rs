@@ -9,6 +9,7 @@ use anchor_spl::token;
 pub fn coordinator_init_coordinator(
     payer: &Pubkey,
     run_id: &str,
+    client_version: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
     join_authority: &Pubkey,
@@ -27,6 +28,7 @@ pub fn coordinator_init_coordinator(
                 main_authority: *main_authority,
                 join_authority: *join_authority,
                 run_id: run_id.to_string(),
+                client_version: client_version.to_string(),
             },
         },
     )
@@ -99,8 +101,8 @@ pub fn coordinator_set_future_epoch_rates(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
-    epoch_earning_rate: Option<u64>,
-    epoch_slashing_rate: Option<u64>,
+    epoch_earning_rate_total_shared: Option<u64>,
+    epoch_slashing_rate_per_client: Option<u64>,
 ) -> Instruction {
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     anchor_instruction(
@@ -111,8 +113,8 @@ pub fn coordinator_set_future_epoch_rates(
             coordinator_account: *coordinator_account,
         },
         psyche_solana_coordinator::instruction::SetFutureEpochRates {
-            epoch_earning_rate,
-            epoch_slashing_rate,
+            epoch_earning_rate_total_shared,
+            epoch_slashing_rate_per_client,
         },
     )
 }
@@ -239,9 +241,31 @@ pub fn coordinator_checkpoint(
     )
 }
 
+pub fn coordinator_update_client_version(
+    run_id: &str,
+    coordinator_account: &Pubkey,
+    main_authority: &Pubkey,
+    new_version: &str,
+) -> Instruction {
+    let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
+    anchor_instruction(
+        psyche_solana_coordinator::ID,
+        psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
+            authority: *main_authority,
+            coordinator_instance,
+            coordinator_account: *coordinator_account,
+        },
+        psyche_solana_coordinator::instruction::UpdateClientVersion {
+            new_version: new_version.to_string(),
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn treasurer_run_create(
     payer: &Pubkey,
     run_id: &str,
+    client_version: &str,
     treasurer_index: u64,
     collateral_mint: &Pubkey,
     coordinator_account: &Pubkey,
@@ -271,6 +295,7 @@ pub fn treasurer_run_create(
                 main_authority: *main_authority,
                 join_authority: *join_authority,
                 run_id: run_id.to_string(),
+                client_version: client_version.to_string(),
             },
         },
     )
