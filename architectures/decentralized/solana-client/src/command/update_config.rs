@@ -36,6 +36,7 @@ pub struct CommandUpdateConfigParams {
     #[clap(long)]
     vocab_size: Option<u64>,
     // end metadata
+    #[clap(long, env)]
     client_version: Option<String>,
 }
 
