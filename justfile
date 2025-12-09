@@ -3,13 +3,8 @@ mod nix
 default:
     just --list
 
-# format & lint-fix code
-fmt:
-    echo "deprecated, use 'nix fmt' instead..."
-    sleep 5
-    cargo clippy --fix --allow-staged --all-targets
-    cargo fmt
-    nixfmt .
+check-client:
+    cargo run -p psyche-solana-client -- --help
 
 # spin up a local testnet
 local-testnet *args='':
@@ -136,7 +131,7 @@ generate_cli_docs:
 
 run_docker_client *ARGS:
     just nix build_docker_solana_client
-    docker run -d {{ ARGS }} --gpus all psyche-prod-solana-client
+    docker run -d {{ ARGS }} --gpus all psyche-solana-client
 
 # Setup clients assigning one available GPU to each of them.
 

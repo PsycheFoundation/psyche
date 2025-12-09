@@ -46,7 +46,7 @@ The particular role of a client in a given round. Can be one of `Trainer`, `Veri
 A phase (`RunState` and `ActiveStep`) at the end of an `Epoch` where model `Checkpoints` are saved and the system prepares for the next epoch.
 
 **Coordinator**
-The central orchestrator of the Psyche training system, implemented as a Solana program. It manages the training lifecycle (`RunState`), client participation (`ClientState`), data batch assignment, and `Witnessing`.
+The central orchestrator of the Psyche training system, implemented as a Solana program. It manages the training life cycle (`RunState`), client participation (`ClientState`), data batch assignment, and `Witnessing`.
 
 **CoordinatorConfig**
 The set of parameters defining how a specific training run operates (e.g., `warmup_time`, `witness_quorum`, `rounds_per_epoch`).
