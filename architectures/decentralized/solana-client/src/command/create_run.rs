@@ -8,6 +8,7 @@ use anchor_client::solana_sdk::system_instruction;
 use anyhow::Result;
 use anyhow::bail;
 use clap::Args;
+use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
 
 use crate::SolanaBackend;
 use crate::instructions;
@@ -17,6 +18,8 @@ use crate::instructions;
 pub struct CommandCreateRunParams {
     #[clap(short, long, env)]
     run_id: String,
+    #[clap(short, long, env)]
+    client_version: String,
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
@@ -31,10 +34,18 @@ pub async fn command_create_run_execute(
 ) -> Result<()> {
     let CommandCreateRunParams {
         run_id,
+        client_version,
         treasurer_index,
         treasurer_collateral_mint,
         join_authority,
     } = params;
+
+    if run_id.len() > SOLANA_RUN_ID_MAX_LEN {
+        bail!(
+            "run_id must be 32 bytes or less, got {} bytes",
+            run_id.len()
+        );
+    }
 
     let payer = backend.get_payer();
     let main_authority = payer;
@@ -70,6 +81,7 @@ pub async fn command_create_run_execute(
         instructions::treasurer_run_create(
             &payer,
             &run_id,
+            &client_version,
             treasurer_index,
             &treasurer_collateral_mint,
             &coordinator_account,
@@ -80,6 +92,7 @@ pub async fn command_create_run_execute(
         instructions::coordinator_init_coordinator(
             &payer,
             &run_id,
+            &client_version,
             &coordinator_account,
             &main_authority,
             &join_authority,

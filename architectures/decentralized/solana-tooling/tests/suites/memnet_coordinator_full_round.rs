@@ -3,13 +3,16 @@ use psyche_coordinator::RunState;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::DummyType;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
+use psyche_coordinator::model::MAX_DATA_LOCATIONS;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
+use psyche_core::FixedVec;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
@@ -69,6 +72,7 @@ pub async fn run() {
             run_id: "This is a random run id!".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "test".to_string(),
         },
     )
     .await
@@ -84,6 +88,14 @@ pub async fn run() {
             .run_state,
         RunState::Uninitialized
     );
+
+    let mut data_locations: FixedVec<
+        LLMTrainingDataLocation,
+        MAX_DATA_LOCATIONS,
+    > = FixedVec::default();
+    data_locations
+        .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
+        .unwrap();
 
     // update the coordinator's model
     process_update(
@@ -105,15 +117,16 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 1,
-            rounds_per_epoch: 10,
+            epoch_time: 30,
             total_steps: 100,
+            waiting_for_members_extra_time: 3,
         }),
         Some(Model::LLM(LLM {
             architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_location: LLMTrainingDataLocation::default(),
+            data_locations,
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,

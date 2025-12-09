@@ -1,0 +1,37 @@
+[config]
+warmup_time = 30
+cooldown_time = 30
+rounds_per_epoch = 10
+max_round_train_time = 30
+round_witness_time = 1
+min_clients = 3
+verification_percent = 0
+witness_nodes = 3
+global_batch_size = 8
+total_steps = 25000
+checkpointers = []
+
+[model.LLM]
+architecture = "HfLlama"
+data_type = "Pretraining"
+max_seq_len = 2048
+data_locations = [
+  { Http = { location = { Gcp = { bucket_name = "nous-pretraining-public-us", filter_directory = "fineweb-edu-tokenized-llama2" } }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } },
+]
+
+[model.LLM.checkpoint.Hub]
+repo_id = "emozilla/llama2-20m-init"
+
+[model.LLM.lr_schedule.Cosine]
+base_lr = 4.0e-4
+warmup_steps = 250
+warmup_init_lr = 0.0
+total_steps = 25000
+final_lr = 4.0e-5
+
+[model.LLM.optimizer.Distro]
+clip_grad_norm = 1.0
+compression_decay = 0.999
+compression_chunk = 64
+compression_topk = 8
+quantize_1bit = true

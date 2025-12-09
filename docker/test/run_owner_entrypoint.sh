@@ -24,7 +24,8 @@ psyche-solana-client create-run \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \
     --ws-rpc "${WS_RPC}" \
-    --run-id "${RUN_ID}"
+    --run-id "${RUN_ID}" \
+    --client-version "latest"
 
 psyche-solana-client update-config \
     --wallet-private-key-path ${WALLET_FILE} \

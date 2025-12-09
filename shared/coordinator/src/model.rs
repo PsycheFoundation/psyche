@@ -74,16 +74,40 @@ pub enum LLMTrainingDataType {
 )]
 #[repr(C)]
 #[allow(clippy::large_enum_variant)]
-#[derive(Default)]
 pub enum LLMTrainingDataLocation {
-    #[default]
-    Dummy,
+    Dummy(DummyType),
     Server(FixedString<{ SOLANA_MAX_STRING_LEN }>),
     Local(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     Http(HttpLLMTrainingDataLocation),
     /// link to a JSON file that deserializes to a Vec<LLMTrainingDataLocationAndWeight>
     WeightedHttp(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     Preprocessed(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
+}
+
+impl Default for LLMTrainingDataLocation {
+    fn default() -> Self {
+        Self::Dummy(DummyType::Working)
+    }
+}
+
+#[derive(
+    AnchorSerialize,
+    AnchorDeserialize,
+    InitSpace,
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    TS,
+    PartialEq,
+    Eq,
+)]
+#[repr(C)]
+pub enum DummyType {
+    Working,
+    Failing,
 }
 
 #[derive(
@@ -170,6 +194,8 @@ pub enum HttpTrainingDataLocation {
     },
 }
 
+pub const MAX_DATA_LOCATIONS: usize = 4;
+
 #[derive(
     AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
 )]
@@ -180,17 +206,22 @@ pub struct LLM {
     pub architecture: LLMArchitecture,
     pub checkpoint: Checkpoint,
     pub data_type: LLMTrainingDataType,
-    pub data_location: LLMTrainingDataLocation,
+    pub data_locations: FixedVec<LLMTrainingDataLocation, { MAX_DATA_LOCATIONS }>,
     pub lr_schedule: LearningRateSchedule,
     pub optimizer: OptimizerDefinition,
 }
 
 impl LLM {
     pub fn dummy() -> Self {
+        let mut data_locations: FixedVec<LLMTrainingDataLocation, { MAX_DATA_LOCATIONS }> =
+            FixedVec::new();
+        data_locations
+            .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
+            .unwrap();
         Self {
             architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
-            data_location: LLMTrainingDataLocation::default(),
+            data_locations,
             data_type: LLMTrainingDataType::Pretraining,
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             max_seq_len: 2048,
@@ -268,28 +299,34 @@ impl Model {
                     return false;
                 }
 
-                let bad_data_location = match llm.data_location {
-                    LLMTrainingDataLocation::Dummy => false,
-                    LLMTrainingDataLocation::Server(url) => url.is_empty(),
-                    LLMTrainingDataLocation::Local(_) => false,
-                    LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
-                        location, ..
-                    }) => match location {
-                        HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
-                        HttpTrainingDataLocation::NumberedFiles {
-                            url_template,
-                            num_files,
+                for data_location in llm.data_locations.iter() {
+                    let bad_data_location = match data_location {
+                        LLMTrainingDataLocation::Dummy(_) => false,
+                        LLMTrainingDataLocation::Server(url) => url.is_empty(),
+                        LLMTrainingDataLocation::Local(_) => false,
+                        LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
+                            location,
                             ..
-                        } => url_template.is_empty() || num_files == 0,
-                        HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
-                    },
-                    LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
-                    LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
-                };
-                if bad_data_location {
-                    msg!("model check failed: bad LLM training data location.");
-                    return false;
+                        }) => match location {
+                            HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
+                            HttpTrainingDataLocation::NumberedFiles {
+                                url_template,
+                                num_files,
+                                ..
+                            } => url_template.is_empty() || *num_files == 0,
+                            HttpTrainingDataLocation::Gcp { bucket_name, .. } => {
+                                bucket_name.is_empty()
+                            }
+                        },
+                        LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
+                        LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
+                    };
+                    if bad_data_location {
+                        msg!("model check failed: bad LLM training data location.");
+                        return false;
+                    }
                 }
+
                 let bad_checkpoint = match llm.checkpoint {
                     Checkpoint::Dummy(_hub_repo) => false,
                     Checkpoint::Ephemeral => true,
