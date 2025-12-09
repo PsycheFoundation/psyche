@@ -3,13 +3,16 @@ use psyche_coordinator::RunState;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::DummyType;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
+use psyche_coordinator::model::MAX_DATA_LOCATIONS;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
+use psyche_core::FixedVec;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
@@ -86,6 +89,14 @@ pub async fn run() {
         RunState::Uninitialized
     );
 
+    let mut data_locations: FixedVec<
+        LLMTrainingDataLocation,
+        MAX_DATA_LOCATIONS,
+    > = FixedVec::default();
+    data_locations
+        .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
+        .unwrap();
+
     // update the coordinator's model
     process_update(
         &mut endpoint,
@@ -115,7 +126,7 @@ pub async fn run() {
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_location: LLMTrainingDataLocation::default(),
+            data_locations,
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,
