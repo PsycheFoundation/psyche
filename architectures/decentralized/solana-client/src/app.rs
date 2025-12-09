@@ -32,13 +32,11 @@ use tokio::{
     time::{Interval, MissedTickBehavior, interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub(super) type Tabs = TabbedWidget<(ClientTUI, CoordinatorTui, NetworkTui, LoggerWidget)>;
 pub const TAB_NAMES: [&str; 4] = ["Client", "Coordinator", "Network", "Logger"];
 type TabsData = <Tabs as CustomWidget>::Data;
-
-const CLIENT_VERSION: &str = "latest";
 
 pub struct App {
     run_id: String,
@@ -182,22 +180,28 @@ impl App {
         );
 
         // Check client version compatibility before joining
-        let client_version = CLIENT_VERSION.to_string();
-        info!("Psyche Client version: {}", client_version);
-
-        if client_version != coordinator_client_version && coordinator_client_version != "test" {
-            tracing::error!(
+        let client_version = std::env::var("CLIENT_VERSION").ok();
+        if let Some(client_version) = client_version {
+            info!("Psyche Client version: {}", client_version);
+            if client_version != coordinator_client_version && coordinator_client_version != "test"
+            {
+                tracing::error!(
+                    client_version = %client_version,
+                    coordinator_client_version = %coordinator_client_version,
+                    "Version mismatch detected. Client version does not match coordinator version."
+                );
+                std::process::exit(10);
+            }
+            info!(
                 client_version = %client_version,
                 coordinator_client_version = %coordinator_client_version,
-                "Version mismatch detected. Client version does not match coordinator version."
+                "Version check passed"
             );
-            std::process::exit(10);
+        } else {
+            warn!(
+                "Client version env variable was not set - continuing without validating with Coordinator client version"
+            )
         }
-        info!(
-            client_version = %client_version,
-            coordinator_client_version = %coordinator_client_version,
-            "Version check passed"
-        );
 
         let backend_runner = backend
             .start(self.run_id.clone(), coordinator_account)
@@ -263,6 +267,8 @@ impl App {
             self.state_options,
             self.metrics,
         );
+
+        println!("hello world!");
 
         let id = psyche_solana_coordinator::ClientId {
             signer,

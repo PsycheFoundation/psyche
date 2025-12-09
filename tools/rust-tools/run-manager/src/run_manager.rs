@@ -114,6 +114,8 @@ impl RunManager {
     fn run_container(&self, image_name: &str) -> Result<String> {
         info!("Creating container from image: {}", image_name);
 
+        let image_digest = self.get_image_digest(image_name)?;
+
         let mut cmd = Command::new("docker");
         cmd.arg("run")
             .arg("-d") // detached mode
@@ -124,6 +126,8 @@ impl RunManager {
             .arg("--device=/dev/infiniband:/dev/infiniband")
             .arg("--env")
             .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key));
+
+        cmd.arg(format! {"-e CLIENT_VERSION={image_digest}"});
         cmd.arg("--env-file").arg(&self.env_file);
         cmd.arg(image_name);
 
@@ -218,6 +222,53 @@ impl RunManager {
         }
 
         Ok(())
+    }
+
+    fn get_image_digest(&self, image_name: &str) -> Result<String> {
+        println!("IMAGE NAME: {image_name}");
+        let output = if self.local_docker {
+            let splitted_image_name = image_name
+                .split('@')
+                .nth(1)
+                .context("Could not split image digest")?
+                .to_string();
+
+            Command::new("docker")
+                .arg("inspect")
+                .arg("--format='{{.Id}}")
+                .arg(splitted_image_name)
+                .output()
+                .context("Failed to inspect image")?
+        } else {
+            Command::new("docker")
+                .arg("inspect")
+                .arg("--format={{index .RepoDigests 0}}")
+                .arg(image_name)
+                .output()
+                .context("Failed to inspect image")?
+        };
+
+        // let output = Command::new("docker")
+        //     .arg("inspect")
+        //     .arg("--format={{index .RepoDigests 0}}")
+        //     .arg(image_name)
+        //     .output()
+        //     .context("Failed to inspect image")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Failed getting image digest: {}", stderr));
+        }
+
+        let digest = String::from_utf8(output.stdout)
+            .context("Failed to parse digest")?
+            .trim()
+            .split('@')
+            .nth(1)
+            .context("Could not split image digest")?
+            .to_string();
+
+        Ok(digest)
     }
 
     pub async fn run(&self) -> Result<()> {
