@@ -8,6 +8,7 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use futures_util::StreamExt;
+use psyche_coordinator::model::LLMTrainingDataLocation;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
@@ -58,15 +59,22 @@ impl Drop for DockerTestCleanup {
     }
 }
 
-/// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
     min_clients: usize,
 ) -> DockerTestCleanup {
+    e2e_testing_setup_with_datasource(docker_client, init_num_clients, None).await
+}
+
+pub async fn e2e_testing_setup_with_datasource(
+    docker_client: Arc<Docker>,
+    init_num_clients: usize,
+    data_source: Option<Vec<LLMTrainingDataLocation>>,
+) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
 
-    spawn_psyche_network(init_num_clients, min_clients).unwrap();
+    spawn_psyche_network(init_num_clients, data_source, min_clients).unwrap();
 
     spawn_ctrl_c_task();
 
@@ -76,6 +84,7 @@ pub async fn e2e_testing_setup(
 pub async fn e2e_testing_setup_subscription(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
+    data_source: Option<Vec<LLMTrainingDataLocation>>,
     min_clients: usize,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client.clone()).await;
@@ -83,10 +92,12 @@ pub async fn e2e_testing_setup_subscription(
     #[cfg(not(feature = "python"))]
     let builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .with_min_clients(min_clients);
     #[cfg(feature = "python")]
     let builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .with_min_clients(min_clients)
         .with_architecture("HfAuto")
         .with_batch_size(8 * init_num_clients as u32);
@@ -339,15 +350,18 @@ pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Ve
 // Updated spawn function
 pub fn spawn_psyche_network(
     init_num_clients: usize,
+    data_source: Option<Vec<LLMTrainingDataLocation>>,
     min_clients: usize,
 ) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
     let builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .with_min_clients(min_clients);
     #[cfg(feature = "python")]
     let builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .with_min_clients(min_clients)
         .with_architecture("HfAuto")
         .with_batch_size(8 * init_num_clients as u32);
