@@ -1,4 +1,4 @@
-run_id = "consilience-match-llama2-20m-fineweb"
+run_id = "consilience-llama2-20m-fineweb"
 run_state = "WaitingForMembers"
 [config]
 warmup_time = 30
