@@ -24,6 +24,9 @@ psyche-solana-coordinator = { path = "../solana-coordinator/programs/solana-coor
 psyche-solana-treasurer = { path = "../solana-treasurer/programs/solana-treasurer", features = [
   "cpi",
 ] }
+psyche-solana-mining-pool = { path = "../solana-mining-pool/programs/solana-mining-pool", features = [
+  "cpi",
+] }
 
 [dev-dependencies]
 tokio = "1.42.0"

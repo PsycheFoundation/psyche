@@ -3,14 +3,14 @@ use psyche_solana_mining_pool::state::PoolMetadata;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
-use crate::api::create_memnet_endpoint::create_memnet_endpoint;
-use crate::api::process_lender_claim::process_lender_claim;
-use crate::api::process_lender_create::process_lender_create;
-use crate::api::process_lender_deposit::process_lender_deposit;
-use crate::api::process_pool_claimable::process_pool_claimable;
-use crate::api::process_pool_create::process_pool_create;
-use crate::api::process_pool_extract::process_pool_extract;
-use crate::api::process_pool_update::process_pool_update;
+use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
+use psyche_solana_tooling::mining_pool::process_lender_claim;
+use psyche_solana_tooling::mining_pool::process_lender_create;
+use psyche_solana_tooling::mining_pool::process_lender_deposit;
+use psyche_solana_tooling::mining_pool::process_pool_claimable;
+use psyche_solana_tooling::mining_pool::process_pool_create;
+use psyche_solana_tooling::mining_pool::process_pool_extract;
+use psyche_solana_tooling::mining_pool::process_pool_update;
 
 #[tokio::test]
 pub async fn run() {
@@ -52,11 +52,7 @@ pub async fn run() {
 
     // Create collateral ATAs
     let user_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &user.pubkey(),
-            &collateral_mint,
-        )
+        .process_spl_associated_token_account_get_or_init(&payer, &user.pubkey(), &collateral_mint)
         .await
         .unwrap();
     let pool_authority_collateral = endpoint
@@ -93,11 +89,7 @@ pub async fn run() {
 
     // Create redeemable ATAs
     let user_redeemable = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &user.pubkey(),
-            &redeemable_mint,
-        )
+        .process_spl_associated_token_account_get_or_init(&payer, &user.pubkey(), &redeemable_mint)
         .await
         .unwrap();
     let pool_authority_redeemable = endpoint
@@ -163,11 +155,7 @@ pub async fn run() {
     // Find the pool's ATA
     let pool = find_pool(pool_index);
     let pool_redeemable = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &pool,
-            &redeemable_mint,
-        )
+        .process_spl_associated_token_account_get_or_init(&payer, &pool, &redeemable_mint)
         .await
         .unwrap();
 

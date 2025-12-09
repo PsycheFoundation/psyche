@@ -430,7 +430,7 @@ async fn disconnect_client() {
                     );
                     break;
                 }
-            }
+            },
 
             // track HealthChecks send
             Response::HealthCheck(unhealthy_client_id, _index, current_step) => {
@@ -444,15 +444,15 @@ async fn disconnect_client() {
                     .collect();
                 seen_health_checks.push(current_step);
                 assert!(clients_ids.contains(&unhealthy_client_id));
-            }
+            },
 
             // track untrained batches
             Response::UntrainedBatches(untrained_batch_ids) => {
                 println!("untrained_batch_ids: {untrained_batch_ids:?}");
                 untrained_batches.push(untrained_batch_ids);
-            }
+            },
 
-            _ => {}
+            _ => {},
         }
     }
 
@@ -530,7 +530,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
                     println!("WaitingForMembers seen");
                     break;
                 }
-            }
+            },
             Response::Loss(client, epoch, step, loss) => {
                 println!("client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}");
 
@@ -541,8 +541,8 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
                         break;
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
