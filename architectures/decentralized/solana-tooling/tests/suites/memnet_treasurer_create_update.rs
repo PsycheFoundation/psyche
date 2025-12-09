@@ -1,4 +1,5 @@
 use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
@@ -7,6 +8,7 @@ use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
+use psyche_core::FixedVec;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_coordinator::CoordinatorAccount;
@@ -50,13 +52,18 @@ pub async fn run() {
             witness_nodes: 1,
             epoch_time: 30,
             total_steps: 100,
+            waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
+                as u8,
         }),
         model: Some(Model::LLM(LLM {
             architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_location: LLMTrainingDataLocation::default(),
+            data_locations: FixedVec::try_from_iter([
+                LLMTrainingDataLocation::default(),
+            ])
+            .unwrap(),
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,

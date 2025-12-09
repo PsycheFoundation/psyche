@@ -256,6 +256,7 @@ pub struct CoordinatorConfig {
     pub global_batch_size_end: u16,
 
     pub verification_percent: u8,
+    pub waiting_for_members_extra_time: u8,
 }
 
 #[derive(
@@ -883,7 +884,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         };
 
         if pending_clients.len() as u16 >= self.config.init_min_clients
-            && self.check_timeout(unix_timestamp, WAITING_FOR_MEMBERS_EXTRA_SECONDS)
+            && self.check_timeout(
+                unix_timestamp,
+                self.config.waiting_for_members_extra_time as u64,
+            )
         // This extra time allows for more clients to join even if the minimum number of clients is reached
         {
             // Make sure that all unhealthy clients are kicked at this point
@@ -1173,6 +1177,7 @@ impl CoordinatorConfig {
             && self.witness_nodes <= self.min_clients
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0
+            && self.waiting_for_members_extra_time > 0
     }
 
     pub fn get_batch_size(&self, total_tokens_processed: u64) -> u16 {
