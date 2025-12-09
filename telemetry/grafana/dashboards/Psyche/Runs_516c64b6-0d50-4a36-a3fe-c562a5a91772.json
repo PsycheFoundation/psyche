@@ -81,7 +81,7 @@
 				"showThresholdMarkers": false,
 				"sizing": "auto"
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"datasource": {
@@ -184,7 +184,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"datasource": {
@@ -286,7 +286,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"datasource": {
@@ -421,7 +421,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"datasource": {
@@ -534,7 +534,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"editorMode": "builder",
@@ -641,7 +641,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"editorMode": "code",
@@ -735,7 +735,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"editorMode": "code",
@@ -829,7 +829,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"editorMode": "code",
@@ -923,7 +923,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.4.0-19576184216",
+			"pluginVersion": "12.3.0-18940657299.patch1",
 			"targets": [
 				{
 					"editorMode": "code",
@@ -1545,10 +1545,6 @@
 				"type": "loki",
 				"uid": "grafanacloud-logs"
 			},
-			"fieldConfig": {
-				"defaults": {},
-				"overrides": []
-			},
 			"gridPos": {
 				"h": 10,
 				"w": 24,
@@ -1596,8 +1592,8 @@
 		"list": [
 			{
 				"current": {
-					"text": "dm-dclm-baseline",
-					"value": "dm-dclm-baseline"
+					"text": "consilience-match-llama2-20m-fineweb",
+					"value": "consilience-match-llama2-20m-fineweb"
 				},
 				"definition": "label_values(target_info,run_id)",
 				"description": "The ID of a specific run",
@@ -1623,5 +1619,6 @@
 	"timezone": "browser",
 	"title": "Runs",
 	"uid": "516c64b6-0d50-4a36-a3fe-c562a5a91772",
-	"version": 7
+	"version": 9,
+	"weekStart": ""
 }

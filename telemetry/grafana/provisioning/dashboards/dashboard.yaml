@@ -3,7 +3,7 @@ apiVersion: 1
 providers:
   - name: 'default'
     orgId: 1
-    folder: 'Psyche' # Empty for root folder, or specify a folder name
+    folder: '' # Empty for root folder, or specify a folder name
     type: file
     disableDeletion: false
     updateIntervalSeconds: 10

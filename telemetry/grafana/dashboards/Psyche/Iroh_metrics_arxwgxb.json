@@ -55,7 +55,6 @@
 							"type": "linear"
 						},
 						"showPoints": "auto",
-						"showValues": false,
 						"spanNulls": false,
 						"stacking": {
 							"group": "A",
@@ -102,7 +101,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.1.0-91295",
 			"targets": [
 				{
 					"disableTextWrap": false,
@@ -153,7 +152,6 @@
 							"type": "linear"
 						},
 						"showPoints": "auto",
-						"showValues": false,
 						"spanNulls": false,
 						"stacking": {
 							"group": "A",
@@ -200,7 +198,7 @@
 					"sort": "none"
 				}
 			},
-			"pluginVersion": "12.3.0-18186912471",
+			"pluginVersion": "12.1.0-91295",
 			"targets": [
 				{
 					"adhocFilters": [],
@@ -236,5 +234,6 @@
 	"timezone": "browser",
 	"title": "Iroh metrics",
 	"uid": "arxwgxb",
-	"version": 6
+	"version": 7,
+	"weekStart": ""
 }
