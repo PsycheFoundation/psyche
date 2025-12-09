@@ -97,6 +97,7 @@ impl CoordinatorInstanceState {
                     "Pending active clients ids: {}",
                     active_clients_ids.len()
                 );
+
                 Some(active_clients_ids)
             },
             _ => None,

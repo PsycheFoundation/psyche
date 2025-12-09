@@ -10,7 +10,8 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, IntegrationTestLogMarker, NC, RunInitConfig, TrainArgs,
+    read_identity_secret_key,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_core::sha256;
@@ -386,6 +387,11 @@ impl App {
                                     }
                                 };
                                 if let Err(err) = err {
+                                    tracing::error!(
+                                        integration_test_log_marker = %IntegrationTestLogMarker::Error,
+                                        message = %err,
+                                        "Client kicked by coordinator"
+                                    );
                                     client.shutdown();
                                     let _ = client.finished().await;
                                     return Err(err);

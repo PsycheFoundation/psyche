@@ -9,7 +9,8 @@ services:
     env_file:
       - '../../config/client/.env.local'
     volumes:
-      - ../../config/solana-test/test-config.toml:/usr/local/config.toml
+      - ${CONFIG_PATH:-../../config/solana-test/nano-one-min-clients.toml}:/usr/local/config.toml
+      - ./keypairs:/usr/local/keypairs:ro
     entrypoint: ['/bin/sh', '-c', '/bin/run_owner_entrypoint.sh']
     networks:
       - psyche-test-network
@@ -25,6 +26,8 @@ services:
       - 'host.docker.internal:host-gateway'
     env_file:
       - '../../config/client/.env.local'
+    volumes:
+      - ./keypairs:/usr/local/keypairs:ro
     networks:
       - psyche-test-network
 
