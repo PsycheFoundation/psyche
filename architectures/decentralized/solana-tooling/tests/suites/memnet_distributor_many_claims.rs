@@ -7,11 +7,11 @@ use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
-use psyche_solana_tooling::distributor_instruction::process_airdrop_create;
-use psyche_solana_tooling::distributor_instruction::process_claim_create;
-use psyche_solana_tooling::distributor_instruction::process_claim_redeem;
-use psyche_solana_tooling::distributor_state::AirdropMerkleTree;
-use psyche_solana_tooling::distributor_state::find_pda_airdrop;
+use psyche_solana_tooling::distributor::find_pda_airdrop;
+use psyche_solana_tooling::distributor::process_airdrop_create;
+use psyche_solana_tooling::distributor::process_claim_create;
+use psyche_solana_tooling::distributor::process_claim_redeem;
+use psyche_solana_tooling::distributor::AirdropMerkleTree;
 
 #[tokio::test]
 pub async fn run() {
