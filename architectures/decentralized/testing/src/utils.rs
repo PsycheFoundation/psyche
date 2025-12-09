@@ -210,6 +210,7 @@ impl ConfigBuilder {
         }
         #[cfg(feature = "python")]
         self.set_value("config.warmup_time", 500);
+        #[cfg(feature = "python")]
         self.set_value("config.max_round_train_time", 100);
 
         let config_content = toml::to_string(&self.base_config).unwrap();
