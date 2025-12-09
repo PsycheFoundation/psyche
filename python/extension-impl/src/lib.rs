@@ -1,4 +1,5 @@
 mod extension;
+pub mod vllm;
 
 pub fn init_embedded_python() -> std::io::Result<()> {
     if std::env::var("TRITON_HOME").is_err() {
