@@ -89,10 +89,8 @@ pub async fn run() {
         RunState::Uninitialized
     );
 
-    let mut data_locations: FixedVec<
-        LLMTrainingDataLocation,
-        MAX_DATA_LOCATIONS,
-    > = FixedVec::default();
+    let mut data_locations: FixedVec<LLMTrainingDataLocation, MAX_DATA_LOCATIONS> =
+        FixedVec::default();
     data_locations
         .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
         .unwrap();
@@ -306,12 +304,11 @@ pub async fn run() {
     .unwrap();
 
     // Coordinator in train mode
-    let coordinator =
-        get_coordinator_account_state(&mut endpoint, &coordinator_account)
-            .await
-            .unwrap()
-            .unwrap()
-            .coordinator;
+    let coordinator = get_coordinator_account_state(&mut endpoint, &coordinator_account)
+        .await
+        .unwrap()
+        .unwrap()
+        .coordinator;
     assert_eq!(coordinator.run_state, RunState::RoundTrain);
     assert_eq!(coordinator.current_round().unwrap().height, 0);
     assert_eq!(coordinator.progress.step, 1);

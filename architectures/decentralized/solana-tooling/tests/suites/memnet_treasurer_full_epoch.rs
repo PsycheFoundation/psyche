@@ -1,3 +1,5 @@
+use std::vec;
+
 use psyche_coordinator::CommitteeSelection;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
@@ -37,7 +39,6 @@ use psyche_solana_treasurer::logic::RunCreateParams;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
-use std::vec;
 
 #[tokio::test]
 pub async fn run() {
@@ -72,12 +73,7 @@ pub async fn run() {
     // Prepare the collateral mint
     let collateral_mint_authority = Keypair::new();
     let collateral_mint = endpoint
-        .process_spl_token_mint_new(
-            &payer,
-            &collateral_mint_authority.pubkey(),
-            None,
-            6,
-        )
+        .process_spl_token_mint_new(&payer, &collateral_mint_authority.pubkey(), None, 6)
         .await
         .unwrap();
 
@@ -110,11 +106,7 @@ pub async fn run() {
 
     // Get the run's collateral vault
     let run_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(
-            &payer,
-            &run,
-            &collateral_mint,
-        )
+        .process_spl_associated_token_account_get_or_init(&payer, &run, &collateral_mint)
         .await
         .unwrap();
 
@@ -167,14 +159,9 @@ pub async fn run() {
 
     // Create the participations accounts
     for client in &clients {
-        process_treasurer_participant_create(
-            &mut endpoint,
-            &payer,
-            client,
-            &run,
-        )
-        .await
-        .unwrap();
+        process_treasurer_participant_create(&mut endpoint, &payer, client, &run)
+            .await
+            .unwrap();
     }
 
     // Try claiming nothing, it should work, but we earned nothing
@@ -205,10 +192,8 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    let mut data_locations: FixedVec<
-        LLMTrainingDataLocation,
-        MAX_DATA_LOCATIONS,
-    > = FixedVec::default();
+    let mut data_locations: FixedVec<LLMTrainingDataLocation, MAX_DATA_LOCATIONS> =
+        FixedVec::default();
     data_locations
         .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
         .unwrap();
@@ -245,9 +230,7 @@ pub async fn run() {
                 max_seq_len: 4096,
                 data_type: LLMTrainingDataType::Pretraining,
                 data_locations,
-                lr_schedule: LearningRateSchedule::Constant(
-                    ConstantLR::default(),
-                ),
+                lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
                 optimizer: OptimizerDefinition::Distro {
                     clip_grad_norm: None,
                     compression_decay: 1.0,
@@ -259,9 +242,7 @@ pub async fn run() {
                 cold_start_warmup_steps: 0,
             })),
             progress: None,
-            epoch_earning_rate_total_shared: Some(
-                earned_point_per_epoch_total_shared,
-            ),
+            epoch_earning_rate_total_shared: Some(earned_point_per_epoch_total_shared),
             epoch_slashing_rate_per_client: None,
             paused: Some(false),
             client_version: None,
@@ -359,20 +340,18 @@ pub async fn run() {
                 .unwrap();
         // Process clients round witness
         for client in &clients {
-            let witness_proof = CommitteeSelection::from_coordinator(
-                &coordinator_account_state.coordinator,
-                0,
-            )
-            .unwrap()
-            .get_witness(
-                coordinator_account_state
-                    .coordinator
-                    .epoch_state
-                    .clients
-                    .iter()
-                    .position(|c| c.id.signer.eq(&client.pubkey()))
-                    .unwrap() as u64,
-            );
+            let witness_proof =
+                CommitteeSelection::from_coordinator(&coordinator_account_state.coordinator, 0)
+                    .unwrap()
+                    .get_witness(
+                        coordinator_account_state
+                            .coordinator
+                            .epoch_state
+                            .clients
+                            .iter()
+                            .position(|c| c.id.signer.eq(&client.pubkey()))
+                            .unwrap() as u64,
+                    );
             if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
                 continue;
             }
@@ -515,7 +494,6 @@ pub async fn run() {
             .unwrap()
             .unwrap()
             .amount,
-        1 + top_up_collateral_amount
-            - earned_point_per_epoch_per_client * clients.len() as u64,
+        1 + top_up_collateral_amount - earned_point_per_epoch_per_client * clients.len() as u64,
     );
 }

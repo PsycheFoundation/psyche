@@ -1,12 +1,11 @@
 use psyche_solana_mining_pool::state::PoolMetadata;
-use solana_sdk::signature::Keypair;
-use solana_sdk::signer::Signer;
-
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::mining_pool::process_lender_create;
 use psyche_solana_tooling::mining_pool::process_lender_deposit;
 use psyche_solana_tooling::mining_pool::process_pool_create;
 use psyche_solana_tooling::mining_pool::process_pool_update;
+use solana_sdk::signature::Keypair;
+use solana_sdk::signer::Signer;
 
 #[tokio::test]
 pub async fn run() {
