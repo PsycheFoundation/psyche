@@ -300,6 +300,8 @@ pub struct CoordinatorProgress {
 pub struct Coordinator<T> {
     pub run_id: FixedString<{ SOLANA_RUN_ID_MAX_LEN }>,
 
+    pub version: u16,
+
     pub run_state: RunState,
 
     pub model: Model,

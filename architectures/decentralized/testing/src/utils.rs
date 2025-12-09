@@ -42,7 +42,7 @@ impl SolanaTestClient {
         }
     }
 
-    async fn get_coordinator_account(&self) -> psyche_solana_coordinator::CoordinatorAccount {
+    pub async fn get_coordinator_account(&self) -> psyche_solana_coordinator::CoordinatorAccount {
         let data = self
             .program
             .rpc()

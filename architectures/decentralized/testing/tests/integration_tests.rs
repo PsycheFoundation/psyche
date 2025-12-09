@@ -953,6 +953,42 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
     }
 }
 
+/// Test that the coordinator version field is accessible and has the expected value
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_coordinator_version_field() {
+    // set test variables
+    let run_id = "test".to_string();
+
+    // Initialize DockerWatcher
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+
+    // Initialize a Solana run with 1 client
+    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
+
+    // Initialize solana client to query the coordinator state
+    let solana_client = SolanaTestClient::new(run_id).await;
+
+    // Wait a bit for the coordinator to be initialized
+    tokio::time::sleep(Duration::from_secs(15)).await;
+
+    // Get the coordinator account and access the version field
+    let coordinator = solana_client.get_coordinator_account().await;
+    let version = coordinator.state.coordinator.version;
+
+    // Assert that the version field exists and has the expected default value
+    assert_eq!(
+        version, 0,
+        "Expected coordinator version to be 0, but got {}",
+        version
+    );
+
+    println!(
+        "Successfully accessed coordinator version field: {}",
+        version
+    );
+}
+
 /// spawn 2 clients and run for 3 epochs but the first defined data provider fails
 /// this tests checks that the logic for retrying the failing data provider and switching to the new is working
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
