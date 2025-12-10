@@ -302,8 +302,6 @@ pub struct Coordinator<T> {
 
     pub version: u16,
 
-    pub ci_different_field: u32,
-
     pub run_state: RunState,
 
     pub model: Model,
