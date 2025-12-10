@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use clap::Parser;
 use clap::ValueEnum;
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
