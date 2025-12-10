@@ -60,10 +60,16 @@ impl CoordinatorClient {
             instance.run_id, instance.coordinator_account, client_version
         );
 
-        let docker_tag = if local_docker {
-            format!("psyche-solana-client:{}", client_version)
+        let client_version = if client_version.starts_with("sha256:") {
+            format!("@{}", client_version)
         } else {
-            format!("nousresearch/psyche-client:{}", client_version)
+            format!(":{}", client_version)
+        };
+
+        let docker_tag = if local_docker {
+            format!("psyche-solana-client{}", client_version)
+        } else {
+            format!("nousresearch/psyche-client{}", client_version)
         };
         Ok(docker_tag)
     }
