@@ -7,13 +7,13 @@
 
 ## Overview
 
-Psyche provides a Python integration that allows you to write modeling code in Python using libraries like [Hugging Face Transformers](https://github.com/huggingface/transformers) while leveraging Psyche's Rust core for training orchestration. This integration is designed for research where you want the flexibility of Python modeling with Psyche's training infrastructure, and production-scale training where you want to take advanted of highly optimized training frameworks already built in Python.
+Psyche provides a Python integration that allows you to write modeling code in Python using libraries like [Hugging Face Transformers](https://github.com/huggingface/transformers) while leveraging Psyche's Rust core for training orchestration. This integration is designed for research where you want the flexibility of Python modeling with Psyche's training infrastructure, and production-scale training where you want to take advantage of highly optimized training frameworks already built in Python.
 
 The Python integration works through a "sidecar" process that Psyche spawns and communicates with during training.
 
 ## Development Setup
 
-To develop with the Python integration, we have a Python development shell available.
+To develop with the Python integration, we have a Nix development shell with Python available.
 
 This shell provides:
 
@@ -24,7 +24,7 @@ This shell provides:
 
 ### Development Workflow
 
-You can use `uv pip` to install arbitrary packages. Dependencies are tracked via `uv.lock`, so if you don't have `direnv` set up, you must exit and re-enter the development shell with `nix develop`.
+You can use `uv pip` to install arbitrary packages. Dependencies are tracked via `uv.lock`, so if you don't have `direnv` set up, you must exit and re-enter the development shell with `nix develop .#dev-python`.
 
 When you enter the dev shell, it compiles the Rust extension that provides the `psyche` Python module. **If you modify any Rust code in the Python extension or its dependencies, you must exit and re-enter the dev shell** to recompile the extension.
 

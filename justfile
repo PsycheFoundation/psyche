@@ -128,6 +128,7 @@ generate_cli_docs:
     cargo run -p psyche-centralized-server print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-server.md
     cargo run -p psyche-centralized-local-testnet print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-local-testnet.md
     cargo run -p psyche-sidecar print-all-help --markdown > psyche-book/generated/cli/psyche-sidecar.md
+    cargo run -p psyche-solana-client print-all-help --markdown > psyche-book/generated/cli/psyche-solana-client.md
 
 run_docker_client *ARGS:
     just nix build_docker_solana_client

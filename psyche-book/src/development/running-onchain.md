@@ -86,6 +86,17 @@ just start-training-devnet-light-client
 
 Remember to set the `WALLET_FILE` environment variable to the path of your Solana keypair file, since this will be the one with the devnet funds.
 
+## Psyche decentralized client reference
+
+All the commands above will use the same package `psyche-solana-client` with specific parameters to be able to do a quick train on the local validator but it actually has a _lot_ of different configs to be able to test and run different scenarios.
+
+Here's a summary of all the available commands and options that can be used:
+
+<details>
+    <summary>Command-line options</summary>
+    {{#include ../../generated/cli/psyche-solana-client.md}}
+</details>
+
 ## Changing contracts
 
 Psyche uses two main accounts that are deployed to Solana, the coordinator and the authorizer.
