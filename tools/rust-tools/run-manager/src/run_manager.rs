@@ -137,11 +137,12 @@ impl RunManager {
             .arg("--gpus=all")
             .arg("--device=/dev/infiniband:/dev/infiniband")
             .arg("--env")
-            .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key));
-
-        cmd.arg(format! {"-e CLIENT_VERSION={client_version}"});
-        cmd.arg("--env-file").arg(&self.env_file);
-        cmd.arg(image_name);
+            .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key))
+            .arg("--env")
+            .arg(format!("CLIENT_VERSION={}", client_version))
+            .arg("--env-file")
+            .arg(&self.env_file)
+            .arg(image_name);
 
         let output = cmd.output().context("Failed to run docker container")?;
         if !output.status.success() {
