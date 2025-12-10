@@ -22,7 +22,7 @@ data_type = "Pretraining"
 max_seq_len = 512
 checkpoint = "Dummy"
 optimizer = "Dummy"
-data_locations = [{ Dummy = "Working" }]
+data_location = "Dummy"
 cold_start_warmup_steps = 0
 
 
