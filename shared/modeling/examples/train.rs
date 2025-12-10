@@ -1,11 +1,13 @@
 use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::ValueEnum;
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
+    TokenSize,
 };
 use psyche_data_provider::{
     DataProvider, LengthKnownDataProvider, LocalDataProvider, PreprocessedDataProvider, Split,
     TokenizedDataProvider, download_model_repo_sync,
+    http::{FileURLs, HttpDataProvider},
 };
 use psyche_modeling::{
     AttentionImplementation, Batch, BatchData, BatchDataCPU, CausalLM, CommunicatorId,
@@ -35,6 +37,12 @@ impl From<AttnImpl> for AttentionImplementation {
             AttnImpl::FlashAttention2 => AttentionImplementation::FlashAttention2,
         }
     }
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum DataProviderType {
+    Local,
+    Http,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default, Copy)]
@@ -78,8 +86,15 @@ struct Args {
     #[arg(long, default_value = "emozilla/llama2-215m-init")]
     model: String,
 
-    #[arg(long, default_value = "data")]
-    data_path: String,
+    #[arg(long, required_if_eq("data_provider", "local"))]
+    data_path: Option<String>,
+
+    /// HuggingFace repository ID for HTTP data provider
+    #[arg(long, required_if_eq("data_provider", "http"))]
+    data_url: Option<String>,
+
+    #[arg(long, default_value = "local")]
+    data_provider: DataProviderType,
 
     #[arg(long, default_value_t = 2048)]
     sequence_length: usize,
@@ -200,38 +215,55 @@ async fn main() -> Result<()> {
         None => Shuffle::DontShuffle,
     };
 
-    let mut dataset: DataProvider<DummyNodeIdentity> = match LocalDataProvider::new_from_directory(
-        &args.data_path,
-        args.token_size.try_into()?,
-        args.sequence_length,
-        shuffle,
-    )
-    .with_context(|| "Failed to load data with local data provider.")
-    {
-        Ok(dataset) => {
-            info!(
-                "Loaded local dataset with {} samples",
-                dataset.num_sequences()
-            );
-            DataProvider::Local(dataset)
-        }
-        Err(err) => {
-            println!(
-                "Failed to load with local data provider. {err:?} Trying preprocessed data provider instead"
-            );
-            let dataset = PreprocessedDataProvider::new_from_directory(
-                &args.data_path,
+    let token_size: TokenSize = args.token_size.try_into()?;
+
+    let mut dataset: DataProvider<DummyNodeIdentity> = match args.data_provider {
+        DataProviderType::Local => {
+            match LocalDataProvider::new_from_directory(
+                &args.data_path.clone().unwrap(),
+                token_size,
                 args.sequence_length,
                 shuffle,
-                Some(Split::Train),
-                None,
             )
-            .with_context(|| "Failed to load preprocessed data")?;
+            .with_context(|| "Failed to load data with local data provider.")
+            {
+                Ok(dataset) => {
+                    info!(
+                        "Loaded local dataset with {} samples",
+                        dataset.num_sequences()
+                    );
+                    DataProvider::Local(dataset)
+                }
+                Err(err) => {
+                    println!(
+                        "Failed to load with local data provider. {err:?} Trying preprocessed data provider instead"
+                    );
+                    let dataset = PreprocessedDataProvider::new_from_directory(
+                        &args.data_path.unwrap(),
+                        args.sequence_length,
+                        shuffle,
+                        Some(Split::Train),
+                        None,
+                    )
+                    .with_context(|| "Failed to load preprocessed data")?;
+                    info!(
+                        "Loaded preprocessed dataset with {} samples",
+                        dataset.num_sequences()
+                    );
+                    DataProvider::Preprocessed(dataset)
+                }
+            }
+        }
+        DataProviderType::Http => {
+            let repo_id = args.data_url.unwrap();
+            let file_urls = FileURLs::from_huggingface_repo(&repo_id, None).await?;
+            let provider =
+                HttpDataProvider::new(file_urls, token_size, args.sequence_length as u32, shuffle)?;
             info!(
-                "Loaded preprocessed dataset with {} samples",
-                dataset.num_sequences()
+                "Loaded HTTP dataset with {} samples from HuggingFace",
+                provider.num_sequences()
             );
-            DataProvider::Preprocessed(dataset)
+            DataProvider::Http(provider)
         }
     };
 

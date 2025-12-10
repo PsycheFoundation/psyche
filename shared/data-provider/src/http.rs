@@ -9,6 +9,7 @@ use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
 use reqwest::IntoUrl;
+use serde::Deserialize;
 use tokio::task::JoinHandle;
 use tracing::{info, trace};
 
@@ -38,6 +39,13 @@ impl LengthKnownDataProvider for HttpDataProvider {
     fn num_sequences(&self) -> usize {
         self.sequences.len()
     }
+}
+
+#[derive(Deserialize, Debug)]
+struct FileInfo {
+    #[serde(alias = "path")]
+    filename: String,
+    size: Option<u64>,
 }
 
 /// A Vec of (url, file size)
@@ -129,6 +137,67 @@ impl FileURLs {
         data_files_matching_directory.sort_by(|a, b| a.0.cmp(&b.0));
 
         Ok(Self(data_files_matching_directory))
+    }
+
+    pub async fn from_huggingface_repo(repo_id: &str, revision: Option<&str>) -> Result<Self> {
+        let revision = revision.unwrap_or("main");
+
+        // Use HuggingFace API to list files in the tree
+        let api_url = format!(
+            "https://huggingface.co/api/datasets/{}/tree/{}",
+            repo_id, revision
+        );
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&api_url)
+            .send()
+            .await
+            .context("Failed to send request to HuggingFace API")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "Failed to fetch HuggingFace repo info: {} - {}",
+                status,
+                body
+            );
+        }
+
+        let files: Vec<FileInfo> = response
+            .json()
+            .await
+            .context("Failed to parse HuggingFace API response")?;
+        let mut data_files: Vec<(reqwest::Url, u64)> = Vec::new();
+
+        for file in files {
+            let file_ext = file.filename.split('.').last().unwrap_or("");
+            if !DATA_FILE_EXTENSIONS.contains(&file_ext) {
+                continue;
+            }
+
+            let url = format!(
+                "https://huggingface.co/datasets/{}/resolve/{}/{}",
+                repo_id, revision, file.filename
+            );
+
+            let parsed_url = url.parse::<reqwest::Url>().map_err(anyhow::Error::from)?;
+
+            data_files.push((parsed_url, file.size.unwrap_or_default()));
+        }
+
+        if data_files.is_empty() {
+            anyhow::bail!("No data files found in HuggingFace repository {}", repo_id);
+        }
+
+        info!(
+            "Found {} data files in HuggingFace datasets repository {}",
+            data_files.len(),
+            repo_id
+        );
+
+        Ok(Self(data_files))
     }
 
     pub async fn from_location(location: &HttpTrainingDataLocation) -> Result<Self> {
