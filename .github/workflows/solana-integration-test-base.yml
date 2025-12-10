@@ -75,6 +75,12 @@ jobs:
       - name: Wait for Garnix checks
         uses: ./.github/actions/wait-for-garnix
 
+      # Additional wait for Garnix to upload artifact to cache after check completes
+      - name: Wait for cache upload
+        run: |
+          echo "Waiting 120 seconds for Garnix to upload artifact to cache..."
+          sleep 120
+
       - name: Download Solana Test Client No Python Image
         run: |
           echo "Disk space before client build"
