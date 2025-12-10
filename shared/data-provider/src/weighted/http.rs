@@ -86,7 +86,7 @@ mod tests {
     use tokio::time::timeout;
     use tracing::{debug, info};
 
-    use crate::{http::HttpDataProvider, TokenizedDataProvider, WeightedDataProvider};
+    use crate::{TokenizedDataProvider, WeightedDataProvider, http::HttpDataProvider};
 
     use super::WeightedHttpProvidersConfig;
 

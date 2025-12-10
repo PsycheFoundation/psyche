@@ -1,8 +1,8 @@
 use crate::{Client, Coordinator, CoordinatorError, SOLANA_MAX_NUM_WITNESSES};
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::Zeroable;
-use psyche_core::{compute_shuffled_index, sha256, sha256v, NodeIdentity, SmallBoolean};
+use psyche_core::{NodeIdentity, SmallBoolean, compute_shuffled_index, sha256, sha256v};
 use serde::{Deserialize, Serialize};
 
 pub const COMMITTEE_SALT: &str = "committee";

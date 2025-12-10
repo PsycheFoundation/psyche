@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 use anchor_lang::{
-    prelude::{borsh, thiserror},
     AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, thiserror},
 };
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};

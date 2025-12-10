@@ -6,10 +6,10 @@ use psyche_core::SizedIterator;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::client::Client;
-use crate::program_error::ProgramError;
 use crate::ClientId;
 use crate::SOLANA_MAX_NUM_PENDING_CLIENTS;
+use crate::client::Client;
+use crate::program_error::ProgramError;
 
 #[derive(
     Debug,

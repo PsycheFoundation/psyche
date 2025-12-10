@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
@@ -36,11 +36,7 @@ impl SmallBoolean {
     pub const FALSE: SmallBoolean = SmallBoolean(0);
 
     pub fn new(value: bool) -> Self {
-        if value {
-            Self::TRUE
-        } else {
-            Self::FALSE
-        }
+        if value { Self::TRUE } else { Self::FALSE }
     }
 
     pub fn is_false(&self) -> bool {
