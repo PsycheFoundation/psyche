@@ -302,7 +302,7 @@ pub struct Coordinator<T> {
 
     pub version: u16,
 
-    pub ci_test_field: u16, // Test field to verify CI cache invalidation works
+    pub ci_different_field: u32,
 
     pub run_state: RunState,
 
