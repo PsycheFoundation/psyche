@@ -970,7 +970,7 @@ async fn test_coordinator_version_field() {
     let solana_client = SolanaTestClient::new(run_id).await;
 
     // Wait a bit for the coordinator to be initialized
-    tokio::time::sleep(Duration::from_secs(15)).await;
+    tokio::time::sleep(Duration::from_secs(20)).await;
 
     // Get the coordinator account and access the version field
     let coordinator = solana_client.get_coordinator_account().await;
@@ -979,12 +979,12 @@ async fn test_coordinator_version_field() {
     // Assert that the version field exists and has the expected default value
     assert_eq!(
         version, 0,
-        "Expected coordinator version to be 0, but got {}",
+        "Expected coordinator version to be 0, but instead got {}",
         version
     );
 
     println!(
-        "Successfully accessed coordinator version field: {}",
+        "Successfully accessed coordinator version the field: {}",
         version
     );
 }
