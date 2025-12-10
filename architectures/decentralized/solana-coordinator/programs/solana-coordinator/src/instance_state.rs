@@ -17,7 +17,6 @@ use psyche_core::SmallBoolean;
 use psyche_core::sha256v;
 use serde::Deserialize;
 use serde::Serialize;
-use ts_rs::TS;
 
 use crate::ClientId;
 use crate::ProgramError;
@@ -33,7 +32,6 @@ use crate::clients_state::ClientsState;
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    TS,
     Default,
     PartialEq,
 )]
@@ -58,7 +56,6 @@ impl RunMetadata {}
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    TS,
 )]
 #[repr(C)]
 pub struct CoordinatorInstanceState {

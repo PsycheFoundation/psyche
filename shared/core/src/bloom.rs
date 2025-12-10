@@ -11,7 +11,6 @@ use bytemuck::Zeroable;
 use fnv::FnvHasher;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{collections::BTreeMap, fmt, hash::Hasher};
-use ts_rs::TS;
 
 // Modified from https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/bloom/src/bloom.rs
 
@@ -21,16 +20,16 @@ pub trait BloomHashIndex {
     fn hash_at_index(&self, hash_index: u64) -> u64;
 }
 
-#[derive(Clone, PartialEq, Eq, Copy, Zeroable, TS)]
+#[derive(Clone, PartialEq, Eq, Copy, Zeroable)]
 #[repr(C)]
 pub struct Bloom<const U: usize, const K: usize> {
     pub keys: [u64; K],
     pub bits: BitArrayWrapper<U>,
 }
 
-#[derive(Clone, PartialEq, Eq, Copy, Default, Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Eq, Copy, Default, Serialize, Deserialize)]
 #[repr(transparent)]
-pub struct BitArrayWrapper<const U: usize>(#[ts(type = "number[]")] pub BitArray<[u64; U]>);
+pub struct BitArrayWrapper<const U: usize>(pub BitArray<[u64; U]>);
 
 impl<const U: usize> AnchorSerialize for BitArrayWrapper<U> {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {

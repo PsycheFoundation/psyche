@@ -25,7 +25,6 @@ use psyche_coordinator::model::{HubRepo, Model};
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
-use ts_rs::TS;
 
 pub use crate::instance_state::RunMetadata;
 
@@ -125,7 +124,7 @@ pub fn coordinator_account_from_bytes_mut(
 
 #[account(zero_copy)]
 #[repr(C)]
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize)]
 pub struct CoordinatorAccount {
     pub version: u64,
     pub state: CoordinatorInstanceState,

@@ -149,7 +149,6 @@ mod tests {
         Default,
         Copy,
         bytemuck::Zeroable,
-        ts_rs::TS,
     )]
     struct TestNode(u64);
 

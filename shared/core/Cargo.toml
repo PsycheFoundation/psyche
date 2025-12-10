@@ -11,17 +11,16 @@ bytemuck.workspace = true
 fast-math.workspace = true
 rand = { workspace = true, optional = true }
 serde.workspace = true
-postcard.workspace = true
 fnv = "1.0.7"
 serde_arrays = "0.1.0"
 bitvec = { git = "https://github.com/arilotter/bitvec", rev = "d33a2437f810ee4229457dfd1137d807914671f8", features = [
   "serde",
   "std",
 ] }
-ts-rs.workspace = true
 data-encoding = "2.8.0"
 
 [target.'cfg(not(target_os = "solana"))'.dependencies]
+postcard.workspace = true
 sha2.workspace = true
 
 [features]

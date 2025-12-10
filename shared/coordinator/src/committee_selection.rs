@@ -4,7 +4,6 @@ use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh}
 use bytemuck::Zeroable;
 use psyche_core::{NodeIdentity, SmallBoolean, compute_shuffled_index, sha256, sha256v};
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 pub const COMMITTEE_SALT: &str = "committee";
 pub const WITNESS_SALT: &str = "witness";
@@ -69,7 +68,6 @@ pub struct CommitteeProof {
     Serialize,
     Deserialize,
     InitSpace,
-    TS,
 )]
 #[repr(C)]
 pub struct WitnessProof {

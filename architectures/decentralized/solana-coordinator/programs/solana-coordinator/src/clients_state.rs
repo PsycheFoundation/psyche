@@ -5,7 +5,6 @@ use psyche_core::FixedVec;
 use psyche_core::SizedIterator;
 use serde::Deserialize;
 use serde::Serialize;
-use ts_rs::TS;
 
 use crate::ClientId;
 use crate::SOLANA_MAX_NUM_PENDING_CLIENTS;
@@ -21,7 +20,6 @@ use crate::program_error::ProgramError;
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    TS,
 )]
 #[repr(C)]
 pub struct ClientsState {
@@ -40,7 +38,6 @@ pub struct ClientsState {
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    TS,
 )]
 #[repr(C)]
 pub struct ClientsEpochRates {

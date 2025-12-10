@@ -6,7 +6,6 @@ use crate::http::{FileURLs, HttpDataProvider};
 use super::{Providers, WeightedDataProvider};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 impl WeightedDataProvider<HttpDataProvider> {
     pub async fn from_config(
@@ -56,14 +55,13 @@ impl WeightedDataProvider<HttpDataProvider> {
     }
 }
 
-#[derive(Serialize, Deserialize, TS, Debug)]
-#[ts(export)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct WeightedHttpProvidersConfig {
     shuffle: Shuffle,
     providers: HttpProviderConfigs,
 }
 
-#[derive(Serialize, Deserialize, TS, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum HttpProviderConfigs {
     /// Weights will be normalized to their sum. e.g. weights 1.0, 1.0, 2.0 will normalize to 0.25, 0.25, 0.5

@@ -8,7 +8,6 @@ use psyche_network::{
 use psyche_watcher::OpportunisticData;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use ts_rs::TS;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToServerMessage {
@@ -23,8 +22,7 @@ pub enum ServerToClientMessage {
     Coordinator(Box<Coordinator<ClientId>>),
 }
 
-#[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy, TS)]
-#[ts(type = "string")]
+#[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy)]
 pub struct ClientId(EndpointId);
 
 impl Default for ClientId {

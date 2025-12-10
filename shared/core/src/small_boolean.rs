@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 #[derive(
     Copy,
@@ -18,7 +17,6 @@ use ts_rs::TS;
     Serialize,
     Deserialize,
     InitSpace,
-    TS,
 )]
 #[repr(transparent)]
 pub struct SmallBoolean(pub u8);
