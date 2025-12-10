@@ -13,4 +13,3 @@ anchor-lang.workspace = true
 bytemuck.workspace = true
 anyhow.workspace = true
 serde.workspace = true
-ts-rs.workspace = true

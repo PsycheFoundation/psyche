@@ -6908,7 +6908,6 @@ dependencies = [
  "psyche-network",
  "psyche-watcher",
  "serde",
- "ts-rs",
 ]
 
 [[package]]
@@ -6983,7 +6982,6 @@ dependencies = [
  "psyche-core",
  "serde",
  "serde_with",
- "ts-rs",
 ]
 
 [[package]]
@@ -7041,7 +7039,6 @@ dependencies = [
  "tokio",
  "tokio-util 0.7.16",
  "tracing",
- "ts-rs",
 ]
 
 [[package]]
@@ -7075,7 +7072,6 @@ dependencies = [
  "psyche-solana-coordinator",
  "serde",
  "serde-wasm-bindgen",
- "ts-rs",
  "wasm-bindgen",
 ]
 
@@ -12410,30 +12406,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "ts-rs"
-version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
-dependencies = [
- "anchor-lang",
- "bytemuck",
- "lazy_static",
- "serde",
- "thiserror 2.0.17",
- "ts-rs-macros",
-]
-
-[[package]]
-name = "ts-rs-macros"
-version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.106",
- "termcolor",
-]
 
 [[package]]
 name = "ttf-parser"
