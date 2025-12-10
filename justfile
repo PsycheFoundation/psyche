@@ -18,8 +18,13 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
+# Train model without Python support
 train-model *args='':
     cargo run --example train -- {{ args }}
+
+# Train model with Python support
+train-model-python *args='':
+    cargo run --features python --example train -- {{ args }}
 
 # Determine whether to use Python support based on environment variable
 
