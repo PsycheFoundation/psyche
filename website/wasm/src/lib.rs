@@ -1,7 +1,6 @@
 use psyche_core::LearningRateSchedule;
-use psyche_solana_coordinator::{ClientId, CoordinatorAccount, coordinator_account_from_bytes};
+use psyche_solana_coordinator::{coordinator_account_from_bytes, ClientId, CoordinatorAccount};
 use serde::ser::Serialize;
-use ts_rs::TS;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -30,11 +29,9 @@ pub fn lr_at_step(
 }
 
 #[allow(dead_code)]
-#[derive(TS)]
 #[ts(export)]
 pub struct DummyCoordinatorAccount(CoordinatorAccount);
 
 #[allow(dead_code)]
-#[derive(TS)]
 #[ts(export)]
 pub struct DummyClientId(ClientId);

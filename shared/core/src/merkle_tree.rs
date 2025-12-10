@@ -4,10 +4,9 @@ use std::fmt::Debug;
 
 use crate::sha256::sha256v;
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 // from https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/merkle-tree/src/merkle_tree.rs
 
@@ -44,7 +43,6 @@ macro_rules! hash_intermediate {
     Default,
     Zeroable,
     Copy,
-    TS,
 )]
 pub struct HashWrapper {
     pub inner: [u8; 32],
@@ -166,7 +164,11 @@ impl OwnedProof {
             let rsib = pe.left_sibling.unwrap_or(candidate);
             let hash = HashWrapper::new(hash_intermediate!(lsib, rsib));
 
-            if hash == pe.target { Some(hash) } else { None }
+            if hash == pe.target {
+                Some(hash)
+            } else {
+                None
+            }
         });
         result.is_some()
     }
@@ -192,7 +194,11 @@ impl<'a> Proof<'a> {
             let rsib = pe.2.unwrap_or(&candidate);
             let hash = HashWrapper::new(hash_intermediate!(lsib, rsib));
 
-            if hash == *pe.0 { Some(hash) } else { None }
+            if hash == *pe.0 {
+                Some(hash)
+            } else {
+                None
+            }
         });
         result.is_some()
     }

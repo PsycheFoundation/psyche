@@ -1,8 +1,7 @@
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
-use ts_rs::TS;
 
 pub trait LearningRateScheduler: Send + Sync {
     // lr calculation (especially cosine) is sensitive to fp accuracy
@@ -20,7 +19,6 @@ pub trait LearningRateScheduler: Send + Sync {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub struct ConstantLR {
@@ -69,7 +67,6 @@ impl LearningRateScheduler for ConstantLR {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub struct LinearLR {
@@ -133,7 +130,6 @@ impl LearningRateScheduler for LinearLR {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub struct CosineLR {
@@ -194,7 +190,6 @@ impl LearningRateScheduler for CosineLR {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub struct WarmupStableDecayLR {
@@ -282,7 +277,6 @@ impl LearningRateScheduler for WarmupStableDecayLR {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub enum LearningRateSchedule {
@@ -349,7 +343,6 @@ impl From<ConstantLR> for LearningRateSchedule {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub enum OptimizerDefinition {

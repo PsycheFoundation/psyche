@@ -1,12 +1,11 @@
 use std::fmt::Display;
 
 use anchor_lang::{
-    AnchorDeserialize, AnchorSerialize, InitSpace,
     prelude::{borsh, thiserror},
+    AnchorDeserialize, AnchorSerialize, InitSpace,
 };
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 use crate::serde_utils::{serde_deserialize_string, serde_serialize_string};
 
@@ -19,7 +18,6 @@ pub struct FixedStringError((usize, usize));
     Deserialize,
     Clone,
     Copy,
-    TS,
     AnchorSerialize,
     AnchorDeserialize,
     PartialEq,
@@ -33,7 +31,6 @@ pub struct FixedString<const L: usize>(
         serialize_with = "serde_serialize_string",
         deserialize_with = "serde_deserialize_string"
     )]
-    #[ts(as = "String")]
     [u8; L],
 );
 

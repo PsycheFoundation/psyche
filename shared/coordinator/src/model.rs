@@ -1,8 +1,8 @@
-use crate::{SOLANA_MAX_STRING_LEN, coordinator::SOLANA_MAX_URL_STRING_LEN};
+use crate::{coordinator::SOLANA_MAX_URL_STRING_LEN, SOLANA_MAX_STRING_LEN};
 
 use anchor_lang::{
-    AnchorDeserialize, AnchorSerialize, InitSpace,
     prelude::{borsh, msg},
+    AnchorDeserialize, AnchorSerialize, InitSpace,
 };
 use bytemuck::{Zeroable, ZeroableInOption};
 use psyche_core::{
@@ -10,10 +10,9 @@ use psyche_core::{
     TokenSize,
 };
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 #[derive(
-    Clone, Debug, Copy, Zeroable, AnchorDeserialize, AnchorSerialize, Serialize, Deserialize, TS,
+    Clone, Debug, Copy, Zeroable, AnchorDeserialize, AnchorSerialize, Serialize, Deserialize,
 )]
 #[repr(C)]
 pub enum Model {
@@ -32,7 +31,6 @@ unsafe impl ZeroableInOption for Model {}
     Serialize,
     Deserialize,
     InitSpace,
-    TS,
     PartialEq,
 )]
 #[repr(C)]
@@ -52,7 +50,6 @@ pub enum LLMArchitecture {
     Serialize,
     Deserialize,
     InitSpace,
-    TS,
 )]
 #[repr(C)]
 pub enum LLMTrainingDataType {
@@ -70,7 +67,6 @@ pub enum LLMTrainingDataType {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 #[allow(clippy::large_enum_variant)]
@@ -100,7 +96,6 @@ impl Default for LLMTrainingDataLocation {
     Debug,
     Zeroable,
     Copy,
-    TS,
     PartialEq,
     Eq,
 )]
@@ -120,7 +115,6 @@ pub enum DummyType {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 #[allow(clippy::large_enum_variant)]
@@ -174,7 +168,6 @@ impl LLMTrainingDataLocationAndWeight {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 #[allow(clippy::large_enum_variant)]
@@ -197,7 +190,7 @@ pub enum HttpTrainingDataLocation {
 pub const MAX_DATA_LOCATIONS: usize = 4;
 
 #[derive(
-    AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
+    AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy,
 )]
 #[repr(C)]
 pub struct LLM {
@@ -241,7 +234,6 @@ impl LLM {
     Serialize,
     Deserialize,
     PartialEq,
-    TS,
 )]
 pub struct HubRepo {
     pub repo_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
@@ -267,7 +259,6 @@ impl HubRepo {
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub enum Checkpoint {

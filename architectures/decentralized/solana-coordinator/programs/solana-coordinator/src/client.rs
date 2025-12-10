@@ -6,7 +6,6 @@ use bytemuck::Zeroable;
 use psyche_core::NodeIdentity;
 use serde::Deserialize;
 use serde::Serialize;
-use ts_rs::TS;
 
 #[derive(
     Clone,
@@ -19,10 +18,8 @@ use ts_rs::TS;
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    TS,
 )]
 #[repr(C)]
-#[ts(rename = "SolanaClient")]
 pub struct Client {
     pub id: ClientId,
     pub _unused: [u8; 8],
@@ -53,7 +50,6 @@ impl Debug for Client {
     Default,
     Zeroable,
     Pod,
-    TS,
 )]
 #[repr(C)]
 pub struct ClientId {

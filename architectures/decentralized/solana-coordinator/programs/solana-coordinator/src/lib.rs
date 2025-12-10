@@ -11,21 +11,20 @@ pub use client::ClientId;
 pub use instance_state::CoordinatorInstanceState;
 use logic::*;
 pub use program_error::ProgramError;
+use psyche_coordinator::model::{HubRepo, Model};
 use psyche_coordinator::Committee;
 use psyche_coordinator::CommitteeProof;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::model::{HubRepo, Model};
+use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
-use ts_rs::TS;
 
 pub use crate::instance_state::RunMetadata;
 
@@ -125,7 +124,7 @@ pub fn coordinator_account_from_bytes_mut(
 
 #[account(zero_copy)]
 #[repr(C)]
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize)]
 pub struct CoordinatorAccount {
     pub version: u64,
     pub state: CoordinatorInstanceState,

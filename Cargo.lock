@@ -7004,7 +7004,6 @@ dependencies = [
  "serde",
  "serde_arrays",
  "sha2 0.10.9",
- "ts-rs",
 ]
 
 [[package]]
@@ -7284,7 +7283,6 @@ dependencies = [
  "psyche-core",
  "psyche-solana-authorizer",
  "serde",
- "ts-rs",
 ]
 
 [[package]]

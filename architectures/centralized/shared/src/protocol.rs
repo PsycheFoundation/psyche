@@ -1,6 +1,6 @@
 use anchor_lang::{AnchorDeserialize, AnchorSerialize};
 use bytemuck::Zeroable;
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::{model, Coordinator, HealthChecks};
 use psyche_core::NodeIdentity;
 use psyche_network::{
     AuthenticatableIdentity, EndpointId, FromSignedBytesError, PublicKey, SecretKey, SignedMessage,
@@ -8,7 +8,6 @@ use psyche_network::{
 use psyche_watcher::OpportunisticData;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use ts_rs::TS;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToServerMessage {
@@ -23,7 +22,7 @@ pub enum ServerToClientMessage {
     Coordinator(Box<Coordinator<ClientId>>),
 }
 
-#[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy, TS)]
+#[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy)]
 #[ts(type = "string")]
 pub struct ClientId(EndpointId);
 

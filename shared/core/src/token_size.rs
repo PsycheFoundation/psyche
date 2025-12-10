@@ -1,8 +1,7 @@
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
 use anyhow::anyhow;
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 #[derive(
     AnchorSerialize,
@@ -14,7 +13,6 @@ use ts_rs::TS;
     Debug,
     Zeroable,
     Copy,
-    TS,
 )]
 #[repr(C)]
 pub enum TokenSize {

@@ -1,6 +1,6 @@
 use crate::{Committee, CommitteeSelection, Coordinator, Round};
 
-use psyche_core::{BatchId, ClosedInterval, NodeIdentity, deterministic_shuffle};
+use psyche_core::{deterministic_shuffle, BatchId, ClosedInterval, NodeIdentity};
 use std::{collections::BTreeMap, fmt};
 
 /// Assigns data batches to nodes based on committee roles.  
@@ -149,7 +149,6 @@ mod tests {
         Default,
         Copy,
         bytemuck::Zeroable,
-        ts_rs::TS,
     )]
     struct TestNode(u64);
 

@@ -1,12 +1,10 @@
 use crate as psyche_core;
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, prelude::borsh};
+use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize};
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut, Range, RangeFrom, RangeFull, RangeTo};
-use ts_rs::TS;
 
-#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, TS)]
-#[ts(type = "Array<T>", bound = "T: TS")]
+#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize)]
 #[repr(C)]
 pub struct FixedVec<T, const N: usize> {
     data: [T; N],

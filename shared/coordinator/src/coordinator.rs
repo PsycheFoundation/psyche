@@ -1,14 +1,13 @@
 use crate::{
-    Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
     model::{Checkpoint, HubRepo, Model},
+    Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
 };
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{prelude::borsh, AnchorDeserialize, AnchorSerialize, InitSpace};
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
+use psyche_core::{sha256, Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
-use ts_rs::TS;
 
 pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
@@ -38,7 +37,6 @@ pub type WitnessBloom = Bloom<16, 8>;
     Serialize,
     Deserialize,
     InitSpace,
-    TS,
 )]
 #[repr(u8)]
 pub enum RunState {
@@ -65,7 +63,6 @@ pub enum RunState {
     Serialize,
     Deserialize,
     InitSpace,
-    TS,
 )]
 #[repr(u8)]
 pub enum ClientState {
@@ -86,7 +83,6 @@ pub enum ClientState {
     Deserialize,
     AnchorDeserialize,
     AnchorSerialize,
-    TS,
 )]
 #[serde(bound = "I: NodeIdentity")]
 #[repr(C)]
@@ -123,7 +119,6 @@ impl<I: NodeIdentity> Hash for Client<I> {
     Deserialize,
     AnchorSerialize,
     AnchorDeserialize,
-    TS,
 )]
 #[repr(C)]
 pub struct Round {
@@ -147,7 +142,6 @@ pub struct Round {
     Serialize,
     Deserialize,
     PartialEq,
-    TS,
 )]
 #[repr(C)]
 pub struct Witness {
@@ -165,7 +159,6 @@ pub struct Witness {
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    TS,
     Default,
     Debug,
 )]
@@ -189,7 +182,6 @@ pub struct WitnessMetadata {
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    TS,
     Default,
     Debug,
 )]
@@ -234,7 +226,7 @@ pub type HealthChecks<T> = Vec<(T, CommitteeProof)>;
 pub const NUM_STORED_ROUNDS: usize = 4;
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorDeserialize, AnchorSerialize, TS,
+    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorDeserialize, AnchorSerialize,
 )]
 #[repr(C)]
 pub struct CoordinatorConfig {
@@ -260,7 +252,7 @@ pub struct CoordinatorConfig {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize,
 )]
 #[repr(C)]
 #[serde(bound = "T: NodeIdentity")]
@@ -283,7 +275,7 @@ pub struct CoordinatorEpochState<T> {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize,
 )]
 #[repr(C)]
 pub struct CoordinatorProgress {
@@ -293,7 +285,7 @@ pub struct CoordinatorProgress {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize,
 )]
 #[serde(bound = "T: NodeIdentity")]
 #[repr(C)]
