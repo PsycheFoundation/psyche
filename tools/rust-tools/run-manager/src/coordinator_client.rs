@@ -1,4 +1,4 @@
-use anchor_client::solana_sdk::pubkey::Pubkey;
+use anchor_client::solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use anchor_lang::AccountDeserialize;
 use anyhow::{Context, Result};
 use psyche_solana_coordinator::{
@@ -16,7 +16,8 @@ pub struct CoordinatorClient {
 
 impl CoordinatorClient {
     pub fn new(rpc_endpoint: String, program_id: Pubkey) -> Self {
-        let rpc_client = RpcClient::new(rpc_endpoint);
+        let rpc_client =
+            RpcClient::new_with_commitment(rpc_endpoint, CommitmentConfig::confirmed());
         Self {
             rpc_client,
             program_id,
