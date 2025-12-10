@@ -29,9 +29,7 @@ pub fn lr_at_step(
 }
 
 #[allow(dead_code)]
-#[ts(export)]
 pub struct DummyCoordinatorAccount(CoordinatorAccount);
 
 #[allow(dead_code)]
-#[ts(export)]
 pub struct DummyClientId(ClientId);

@@ -23,7 +23,6 @@ pub enum ServerToClientMessage {
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy)]
-#[ts(type = "string")]
 pub struct ClientId(EndpointId);
 
 impl Default for ClientId {

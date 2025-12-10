@@ -56,7 +56,6 @@ impl WeightedDataProvider<HttpDataProvider> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[ts(export)]
 pub struct WeightedHttpProvidersConfig {
     shuffle: Shuffle,
     providers: HttpProviderConfigs,
