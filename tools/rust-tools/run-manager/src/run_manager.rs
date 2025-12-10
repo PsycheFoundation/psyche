@@ -114,11 +114,23 @@ impl RunManager {
     fn run_container(&self, image_name: &str) -> Result<String> {
         info!("Creating container from image: {}", image_name);
 
-        let image_digest = self.get_image_digest(image_name)?;
+        let client_version = if image_name.contains("sha256:") {
+            image_name
+                .split('@')
+                .nth(1)
+                .context("Could not split image name")?
+                .to_string()
+        } else {
+            image_name
+                .split(':')
+                .nth(1)
+                .context("Could not split image name")?
+                .to_string()
+        };
 
         let mut cmd = Command::new("docker");
         cmd.arg("run")
-            .arg("-d") // detached mode
+            .arg("-d")
             .arg("--network=host")
             .arg("--shm-size=1g")
             .arg("--privileged")
@@ -127,7 +139,7 @@ impl RunManager {
             .arg("--env")
             .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key));
 
-        cmd.arg(format! {"-e CLIENT_VERSION={image_digest}"});
+        cmd.arg(format! {"-e CLIENT_VERSION={client_version}"});
         cmd.arg("--env-file").arg(&self.env_file);
         cmd.arg(image_name);
 
