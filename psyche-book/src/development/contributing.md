@@ -37,7 +37,7 @@ It's not a deal-breaker, but rebase makes us happy \<3
 ### Clean Linear History
 
 Rebasing creates a linear commit history without merges going back and forth, making it much easier to identify the place a change was made.
-Fixups in merge commits that introduce bugs are no longer associated with the original code, wheras with with rebase you'd find the bug as part of its original commit.
+Fix-ups in merge commits that introduce bugs are no longer associated with the original code, whereas with with rebase you'd find the bug as part of its original commit.
 
 Merge commits add extra noise to the history without adding meaningful content about what changed.
 
@@ -62,4 +62,4 @@ While we advocate for rebase, **we do not advocate for squashing all commits**. 
 
 - **Don't squash meaningful commits together** - this buries important changes in large diffs and loses the step-by-step narrative
 - **Don't use merge commits** within feature branches
-- **Don't include "fix up" or "oops" commits** in your final PR - these are fine to have during development, but before opening your PR, use `git commit --amend` or interactive rebase to clean these up. A typical rebase workflow is explained [in this blog post](https://simondosda.github.io/posts/2022-01-03-git-rebase-workflow.html). [git absorb](https://andrewlock.net/super-charging-git-rebase-with-git-absorb/) is also very useful for small fixups.
+- **Don't include "fix up" or "oops" commits** in your final PR - these are fine to have during development, but before opening your PR, use `git commit --amend` or interactive rebase to clean these up. A typical rebase workflow is explained [in this blog post](https://simondosda.github.io/posts/2022-01-03-git-rebase-workflow.html). [git absorb](https://andrewlock.net/super-charging-git-rebase-with-git-absorb/) is also very useful for small fix-ups.
