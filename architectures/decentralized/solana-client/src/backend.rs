@@ -17,7 +17,6 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
     },
 };
-use anchor_spl::token;
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
@@ -400,11 +399,22 @@ impl SolanaBackend {
             .map_err(|error| anyhow!("Unable to decode treasurer participant data: {error}"))
     }
 
-    pub async fn get_token_amount(&self, token_account: &Pubkey) -> Result<u64> {
+    pub async fn get_token_account(
+        &self,
+        token_account: &Pubkey,
+    ) -> Result<anchor_spl::token::spl_token::state::Account> {
         let data = self.get_data(token_account).await?;
-        Ok(token::spl_token::state::Account::unpack(&data)
-            .map_err(|error| anyhow!("Unable to decode token account data: {error}"))?
-            .amount)
+        Ok(anchor_spl::token::spl_token::state::Account::unpack(&data)
+            .map_err(|error| anyhow!("Unable to decode token account data: {error}"))?)
+    }
+
+    pub async fn get_token_mint(
+        &self,
+        mint: &Pubkey,
+    ) -> Result<anchor_spl::token::spl_token::state::Mint> {
+        let data = self.get_data(mint).await?;
+        Ok(anchor_spl::token::spl_token::state::Mint::unpack(&data)
+            .map_err(|error| anyhow!("Unable to decode mint account data: {error}"))?)
     }
 
     pub fn compute_deterministic_treasurer_index(

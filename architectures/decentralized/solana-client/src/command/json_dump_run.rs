@@ -149,8 +149,9 @@ pub async fn command_json_dump_run_execute(
             &treasurer_run_state.collateral_mint,
         );
         let treasurer_run_collateral_amount = backend
-            .get_token_amount(&treasurer_run_collateral_address)
-            .await?;
+            .get_token_account(&treasurer_run_collateral_address)
+            .await?
+            .amount;
 
         let total_claimed_earned_points = treasurer_run_state.total_claimed_earned_points;
         let total_claimable_earned_points = coordinator_account_clients_sum_earned;

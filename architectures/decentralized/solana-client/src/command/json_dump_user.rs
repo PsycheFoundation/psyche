@@ -97,9 +97,10 @@ pub async fn command_json_dump_user_execute(
             &treasurer_run_state.collateral_mint,
         );
         let user_collateral_amount = backend
-            .get_token_amount(&user_collateral_address)
+            .get_token_account(&user_collateral_address)
             .await
-            .ok();
+            .ok()
+            .amount;
 
         let treasurer_participant_address =
             psyche_solana_treasurer::find_participant(&treasurer_run_address, &address);

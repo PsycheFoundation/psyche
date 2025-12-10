@@ -44,8 +44,9 @@ pub async fn command_treasurer_claim_rewards_execute(
     let treasurer_run_collateral_address =
         associated_token::get_associated_token_address(&treasurer_run_address, &collateral_mint);
     let treasurer_run_collateral_amount = backend
-        .get_token_amount(&treasurer_run_collateral_address)
-        .await?;
+        .get_token_account(&treasurer_run_collateral_address)
+        .await?
+        .amount;
     println!("Treasurer collateral amount: {treasurer_run_collateral_amount}");
 
     let user = backend.get_payer();
@@ -66,7 +67,10 @@ pub async fn command_treasurer_claim_rewards_execute(
         println!("Created associated token account for user during transaction: {signature}");
     }
 
-    let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
+    let user_collateral_amount = backend
+        .get_token_account(&user_collateral_address)
+        .await?
+        .amount;
     println!("User collateral amount: {user_collateral_amount}");
 
     let treasurer_participant_address =

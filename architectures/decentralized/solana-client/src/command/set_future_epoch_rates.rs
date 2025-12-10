@@ -1,3 +1,4 @@
+use anchor_spl::mint;
 use anyhow::Result;
 use clap::Args;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -12,9 +13,11 @@ pub struct CommandSetFutureEpochRatesParams {
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
-    earning_rate_total_shared: Option<u64>,
+    earning_rate_total_shared: Option<f64>,
     #[clap(long, env)]
-    slashing_rate_per_client: Option<u64>,
+    slashing_rate_per_client: Option<f64>,
+    #[clap(long, env)]
+    mint_decimals: Option<u8>,
 }
 
 pub async fn command_set_future_epoch_rates_execute(
@@ -26,6 +29,7 @@ pub async fn command_set_future_epoch_rates_execute(
         treasurer_index,
         earning_rate_total_shared,
         slashing_rate_per_client,
+        mint_decimals,
     } = params;
 
     let main_authority = backend.get_payer();
@@ -40,6 +44,17 @@ pub async fn command_set_future_epoch_rates_execute(
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
+        let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
+        let treasurer_run_content = backend.get_treasurer_run(treasurer_run_address).await?;
+        if mint_decimals.is_some() {
+            anyhow::bail!(
+                "Cannot specify mint_decimals when run has a treasurer (it must be fetched automatically)"
+            );
+        }
+        let mint_decimals = backend
+            .get_mint(&treasurer_run_content.collateral_mint)
+            .await?
+            .decimals;
         instructions::treasurer_run_update(
             &run_id,
             treasurer_index,
@@ -50,19 +65,27 @@ pub async fn command_set_future_epoch_rates_execute(
                 config: None,
                 model: None,
                 progress: None,
-                epoch_earning_rate_total_shared: earning_rate_total_shared,
-                epoch_slashing_rate_per_client: slashing_rate_per_client,
+                epoch_earning_rate_total_shared: ui_amount_to_native_amount(
+                    earning_rate_total_shared,
+                    mint_decimals,
+                ),
+                epoch_slashing_rate_per_client: ui_amount_to_native_amount(
+                    slashing_rate_per_client,
+                    mint_decimals,
+                ),
                 paused: None,
                 client_version: None,
             },
         )
     } else {
+        let mint_decimals =
+            mint_decimals.expect("manual mint_decimals is required if run has no treasurer");
         instructions::coordinator_set_future_epoch_rates(
             &run_id,
             &coordinator_account,
             &main_authority,
-            earning_rate_total_shared,
-            slashing_rate_per_client,
+            ui_amount_to_native_amount(earning_rate_total_shared, mint_decimals),
+            ui_amount_to_native_amount(slashing_rate_per_client, mint_decimals),
         )
     };
 
@@ -79,4 +102,9 @@ pub async fn command_set_future_epoch_rates_execute(
     }
 
     Ok(())
+}
+
+fn ui_amount_to_native_amount(ui_amount: f64, decimals: u8) -> u64 {
+    let factor = 10u64.pow(decimals as u32) as f64;
+    (ui_amount * factor).round() as u64
 }

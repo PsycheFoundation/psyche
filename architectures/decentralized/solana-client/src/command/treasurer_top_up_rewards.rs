@@ -43,8 +43,9 @@ pub async fn command_treasurer_top_up_rewards_execute(
         &treasurer_run_state.collateral_mint,
     );
     let treasurer_run_collateral_amount = backend
-        .get_token_amount(&treasurer_run_collateral_address)
-        .await?;
+        .get_token_account(&treasurer_run_collateral_address)
+        .await?
+        .amount;
     println!("Treasurer collateral amount: {treasurer_run_collateral_amount}");
 
     let user = backend.get_payer();
@@ -52,7 +53,10 @@ pub async fn command_treasurer_top_up_rewards_execute(
 
     let user_collateral_address =
         associated_token::get_associated_token_address(&user, &treasurer_run_state.collateral_mint);
-    let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
+    let user_collateral_amount = backend
+        .get_token_account(&user_collateral_address)
+        .await?
+        .amount;
     println!("User collateral amount: {user_collateral_amount}");
 
     let instruction = token::spl_token::instruction::transfer(
