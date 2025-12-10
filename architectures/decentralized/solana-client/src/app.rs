@@ -268,8 +268,6 @@ impl App {
             self.metrics,
         );
 
-        println!("hello world!");
-
         let id = psyche_solana_coordinator::ClientId {
             signer,
             p2p_identity: *p2p_identity.as_bytes(),

@@ -115,17 +115,19 @@ impl RunManager {
         info!("Creating container from image: {}", image_name);
 
         let client_version = if image_name.contains("sha256:") {
-            image_name
-                .split('@')
-                .nth(1)
-                .context("Could not split image name")?
-                .to_string()
+            if self.local_docker {
+                image_name
+            } else {
+                image_name
+                    .split('@')
+                    .nth(1)
+                    .context("Could not split image name")?
+            }
         } else {
             image_name
                 .split(':')
                 .nth(1)
                 .context("Could not split image name")?
-                .to_string()
         };
 
         let mut cmd = Command::new("docker");
@@ -141,8 +143,17 @@ impl RunManager {
             .arg("--env")
             .arg(format!("CLIENT_VERSION={}", client_version))
             .arg("--env-file")
-            .arg(&self.env_file)
-            .arg(image_name);
+            .arg(&self.env_file);
+
+        if image_name.contains("sha256:") {
+            if self.local_docker {
+                cmd.arg(client_version);
+            } else {
+                cmd.arg(image_name);
+            }
+        } else {
+            cmd.arg(image_name);
+        }
 
         let output = cmd.output().context("Failed to run docker container")?;
         if !output.status.success() {
