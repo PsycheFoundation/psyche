@@ -18,3 +18,4 @@ tracing.workspace = true
 
 [features]
 parallelism = ["psyche-modeling/parallelism"]
+vllm-tests = []

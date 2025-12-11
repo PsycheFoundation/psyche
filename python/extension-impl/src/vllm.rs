@@ -19,7 +19,7 @@
 //! - `shutdown_engine()` - Shutdown and cleanup an engine
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyString};
+use pyo3::types::PyDict;
 use std::collections::HashMap;
 
 /// Create a new vLLM engine
@@ -32,9 +32,9 @@ pub fn create_engine(
     max_model_len: Option<i32>,
     gpu_memory_utilization: Option<f64>,
 ) -> PyResult<HashMap<String, PyObject>> {
-    let rust_bridge = py.import_bound("psyche.vllm.rust_bridge")?;
+    let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
-    let kwargs = PyDict::new_bound(py);
+    let kwargs = PyDict::new(py);
     kwargs.set_item("engine_id", engine_id)?;
     kwargs.set_item("model_name", model_name)?;
 
@@ -62,7 +62,7 @@ pub fn create_engine(
 
     for (key, value) in dict.iter() {
         let key_str: String = key.extract()?;
-        map.insert(key_str, value.to_object(py));
+        map.insert(key_str, value.unbind());
     }
 
     Ok(map)
@@ -77,9 +77,9 @@ pub fn run_inference(
     top_p: Option<f64>,
     max_tokens: Option<i32>,
 ) -> PyResult<HashMap<String, PyObject>> {
-    let rust_bridge = py.import_bound("psyche.vllm.rust_bridge")?;
+    let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
-    let kwargs = PyDict::new_bound(py);
+    let kwargs = PyDict::new(py);
     kwargs.set_item("engine_id", engine_id)?;
     kwargs.set_item("prompt", prompt)?;
 
@@ -102,7 +102,7 @@ pub fn run_inference(
 
     for (key, value) in dict.iter() {
         let key_str: String = key.extract()?;
-        map.insert(key_str, value.to_object(py));
+        map.insert(key_str, value.unbind());
     }
 
     Ok(map)
@@ -110,7 +110,7 @@ pub fn run_inference(
 
 /// Shutdown an engine
 pub fn shutdown_engine(py: Python, engine_id: &str) -> PyResult<HashMap<String, PyObject>> {
-    let rust_bridge = py.import_bound("psyche.vllm.rust_bridge")?;
+    let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let result = rust_bridge.call_method1("shutdown_engine", (engine_id,))?;
 
@@ -120,7 +120,7 @@ pub fn shutdown_engine(py: Python, engine_id: &str) -> PyResult<HashMap<String, 
 
     for (key, value) in dict.iter() {
         let key_str: String = key.extract()?;
-        map.insert(key_str, value.to_object(py));
+        map.insert(key_str, value.unbind());
     }
 
     Ok(map)
@@ -128,7 +128,7 @@ pub fn shutdown_engine(py: Python, engine_id: &str) -> PyResult<HashMap<String, 
 
 /// Get stats about an engine
 pub fn get_engine_stats(py: Python, engine_id: &str) -> PyResult<HashMap<String, PyObject>> {
-    let rust_bridge = py.import_bound("psyche.vllm.rust_bridge")?;
+    let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let result = rust_bridge.call_method1("get_engine_stats", (engine_id,))?;
 
@@ -138,7 +138,7 @@ pub fn get_engine_stats(py: Python, engine_id: &str) -> PyResult<HashMap<String,
 
     for (key, value) in dict.iter() {
         let key_str: String = key.extract()?;
-        map.insert(key_str, value.to_object(py));
+        map.insert(key_str, value.unbind());
     }
 
     Ok(map)
@@ -146,7 +146,7 @@ pub fn get_engine_stats(py: Python, engine_id: &str) -> PyResult<HashMap<String,
 
 /// List all registered engines
 pub fn list_engines(py: Python) -> PyResult<HashMap<String, PyObject>> {
-    let rust_bridge = py.import_bound("psyche.vllm.rust_bridge")?;
+    let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let result = rust_bridge.call_method0("list_engines")?;
 
@@ -156,7 +156,7 @@ pub fn list_engines(py: Python) -> PyResult<HashMap<String, PyObject>> {
 
     for (key, value) in dict.iter() {
         let key_str: String = key.extract()?;
-        map.insert(key_str, value.to_object(py));
+        map.insert(key_str, value.unbind());
     }
 
     Ok(map)
@@ -169,6 +169,7 @@ mod tests {
 
     #[test]
     fn test_list_engines() {
+        pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let result = list_engines(py);
             assert!(result.is_ok());

@@ -17,25 +17,7 @@ in
       (final: prev: {
         python312Packages = prev.python312Packages.override {
           overrides = pyfinal: pyprev: {
-            torch =
-              (if pyprev ? torch-bin_2_9 then pyprev.torch-bin_2_9 else pyprev.torch-bin).overrideAttrs
-                (old: {
-                  passthru = (old.passthru or { }) // {
-                    cudaSupport = cudaSupported;
-                    rocmSupport = false;
-                    cudaPackages = final.cudaPackages;
-                    cudaCapabilities =
-                      if cudaSupported then
-                        final.cudaPackages.cudaFlags.cudaCapabilities or [
-                          "8.9"
-                          "9.0"
-                          "10.0"
-                        ]
-                      else
-                        [ ];
-                    cxxdev = pyprev.torch.cxxdev or null;
-                  };
-                });
+            torch = pyfinal.torch-bin;
             flash-attn = pyfinal.callPackage ../python/flash-attn.nix { };
             liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
             torchtitan = pyfinal.callPackage ../python/torchtitan.nix { };

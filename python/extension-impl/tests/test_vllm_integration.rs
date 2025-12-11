@@ -1,9 +1,12 @@
 // Integration test for vLLM Rust bindings
 
+#[cfg(feature = "vllm-tests")]
 use psyche_python_extension_impl::vllm;
+#[cfg(feature = "vllm-tests")]
 use pyo3::Python;
 
 #[test]
+#[cfg(feature = "vllm-tests")]
 fn test_create_and_shutdown_engine() {
     // Initialize Python
     pyo3::prepare_freethreaded_python();
@@ -43,6 +46,7 @@ fn test_create_and_shutdown_engine() {
 }
 
 #[test]
+#[cfg(feature = "vllm-tests")]
 fn test_list_engines() {
     pyo3::prepare_freethreaded_python();
 
