@@ -1,5 +1,5 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -19,6 +19,7 @@ pub struct RunManager {
     run_id: String,
     local_docker: bool,
     coordinator_client: CoordinatorClient,
+    scratch_dir: Option<String>,
 }
 
 impl RunManager {
@@ -53,6 +54,9 @@ impl RunManager {
 
         let run_id = get_env_var("RUN_ID")?;
         let rpc = get_env_var("RPC")?;
+
+        let scratch_dir = std::env::var("SCRATCH_DIR").ok();
+
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
 
         Ok(Self {
@@ -61,6 +65,7 @@ impl RunManager {
             coordinator_client,
             env_file,
             local_docker,
+            scratch_dir,
         })
     }
 
@@ -144,6 +149,11 @@ impl RunManager {
             .arg(format!("CLIENT_VERSION={}", client_version))
             .arg("--env-file")
             .arg(&self.env_file);
+
+        if let Some(dir) = &self.scratch_dir {
+            cmd.arg("--mount")
+                .arg(format!("type=bind,src={dir},dst=/scratch"));
+        }
 
         if image_name.contains("sha256:") && self.local_docker {
             // This is a special case for the local version - for ease of use we just
