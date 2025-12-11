@@ -1,7 +1,8 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Args;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 
+use crate::utils::ui_amount_to_native_amount;
 use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
@@ -12,9 +13,9 @@ pub struct CommandSetFutureEpochRatesParams {
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
-    earning_rate_total_shared: Option<u64>,
+    earning_rate_total_shared: Option<f64>,
     #[clap(long, env)]
-    slashing_rate_per_client: Option<u64>,
+    slashing_rate_per_client: Option<f64>,
 }
 
 pub async fn command_set_future_epoch_rates_execute(
@@ -28,6 +29,12 @@ pub async fn command_set_future_epoch_rates_execute(
         slashing_rate_per_client,
     } = params;
 
+    if earning_rate_total_shared.is_none() && slashing_rate_per_client.is_none() {
+        bail!(
+            "At least one of earning rate or slashing rate must be provided: --earning-rate-total-shared or --slashing-rate-per-client"
+        );
+    }
+
     let main_authority = backend.get_payer();
 
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
@@ -36,42 +43,49 @@ pub async fn command_set_future_epoch_rates_execute(
         .await?;
     let coordinator_account = coordinator_instance_state.coordinator_account;
 
-    let instruction = if let Some(treasurer_index) = backend
+    let treasurer_index = backend
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
-    {
-        instructions::treasurer_run_update(
-            &run_id,
-            treasurer_index,
-            &coordinator_account,
-            &main_authority,
-            RunUpdateParams {
-                metadata: None,
-                config: None,
-                model: None,
-                progress: None,
-                epoch_earning_rate_total_shared: earning_rate_total_shared,
-                epoch_slashing_rate_per_client: slashing_rate_per_client,
-                paused: None,
-                client_version: None,
-            },
-        )
-    } else {
-        instructions::coordinator_set_future_epoch_rates(
-            &run_id,
-            &coordinator_account,
-            &main_authority,
-            earning_rate_total_shared,
-            slashing_rate_per_client,
-        )
-    };
+        .expect("Setting future epoch rates requires a treasurer.");
+
+    let treasurer_run_content = backend
+        .get_treasurer_run(&psyche_solana_treasurer::find_run(treasurer_index))
+        .await?;
+    let mint_decimals = backend
+        .get_token_mint(&treasurer_run_content.collateral_mint)
+        .await?
+        .decimals;
+
+    let instruction = instructions::treasurer_run_update(
+        &run_id,
+        treasurer_index,
+        &coordinator_account,
+        &main_authority,
+        RunUpdateParams {
+            metadata: None,
+            config: None,
+            model: None,
+            progress: None,
+            epoch_earning_rate_total_shared: earning_rate_total_shared
+                .map(|amount| ui_amount_to_native_amount(amount, mint_decimals)),
+            epoch_slashing_rate_per_client: slashing_rate_per_client
+                .map(|amount| ui_amount_to_native_amount(amount, mint_decimals)),
+            paused: None,
+            client_version: None,
+        },
+    );
+
+    if let Some(earning_rate_total_shared) = earning_rate_total_shared {
+        println!(" - Set earning rate to {earning_rate_total_shared} (divided between clients)");
+    }
+    if let Some(slashing_rate_per_client) = slashing_rate_per_client {
+        println!(" - Set slashing rate to {slashing_rate_per_client} (per failing client)");
+    }
 
     let signature = backend
         .send_and_retry("Set future epoch rates", &[instruction], &[])
         .await?;
     println!("On run {run_id} with transaction {signature}:");
-    println!(" - Set earning rate to {earning_rate_total_shared:?} (divided between clients)");
-    println!(" - Set slashing rate to {slashing_rate_per_client:?} (per failing client)");
 
     println!("\n===== Logs =====");
     for log in backend.get_logs(&signature).await? {
