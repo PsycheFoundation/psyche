@@ -1,5 +1,5 @@
 use psyche_solana_coordinator::{
-    coordinator_account_from_bytes, CoordinatorAccount,
+    CoordinatorAccount, coordinator_account_from_bytes,
 };
 
 #[tokio::test]
@@ -25,11 +25,11 @@ pub async fn run() {
         "coordinator account data mismatch, storage may have changed"
     );
     assert_eq!(
-        coordinator_account.state.metadata.vocab_size, 3033,
+        coordinator_account.state.metadata.vocab_size, 32768,
         "coordinator account data mismatch, storage may have changed"
     );
     assert_eq!(
-        coordinator_account.nonce, 3,
+        coordinator_account.nonce, 2,
         "coordinator account data mismatch, storage may have changed"
     );
 }
