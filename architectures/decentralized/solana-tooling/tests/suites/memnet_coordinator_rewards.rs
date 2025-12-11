@@ -103,7 +103,8 @@ pub async fn run() {
             verification_percent: 0,
             witness_nodes: 0,
             epoch_time,
-            waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS as u8,
+            waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
+                as u8,
             total_steps: 100,
         }),
         Some(Model::LLM(LLM {
@@ -229,18 +230,20 @@ pub async fn run() {
                 .unwrap();
         // Process clients round witness
         for client in &clients {
-            let witness_proof =
-                CommitteeSelection::from_coordinator(&coordinator_account_state.coordinator, 0)
-                    .unwrap()
-                    .get_witness(
-                        coordinator_account_state
-                            .coordinator
-                            .epoch_state
-                            .clients
-                            .iter()
-                            .position(|c| c.id.signer.eq(&client.pubkey()))
-                            .unwrap() as u64,
-                    );
+            let witness_proof = CommitteeSelection::from_coordinator(
+                &coordinator_account_state.coordinator,
+                0,
+            )
+            .unwrap()
+            .get_witness(
+                coordinator_account_state
+                    .coordinator
+                    .epoch_state
+                    .clients
+                    .iter()
+                    .position(|c| c.id.signer.eq(&client.pubkey()))
+                    .unwrap() as u64,
+            );
             if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
                 continue;
             }

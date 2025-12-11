@@ -43,7 +43,11 @@ pub async fn run() {
 
     // Give the user some collateral
     let user_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(&payer, &user.pubkey(), &collateral_mint)
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &user.pubkey(),
+            &collateral_mint,
+        )
         .await
         .unwrap();
     endpoint

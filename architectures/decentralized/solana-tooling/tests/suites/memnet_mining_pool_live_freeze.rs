@@ -51,7 +51,11 @@ pub async fn run() {
 
     // Create collateral ATAs
     let user_collateral = endpoint
-        .process_spl_associated_token_account_get_or_init(&payer, &user.pubkey(), &collateral_mint)
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &user.pubkey(),
+            &collateral_mint,
+        )
         .await
         .unwrap();
     let pool_authority_collateral = endpoint
@@ -88,7 +92,11 @@ pub async fn run() {
 
     // Create redeemable ATAs
     let user_redeemable = endpoint
-        .process_spl_associated_token_account_get_or_init(&payer, &user.pubkey(), &redeemable_mint)
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &user.pubkey(),
+            &redeemable_mint,
+        )
         .await
         .unwrap();
     let pool_authority_redeemable = endpoint
@@ -154,7 +162,11 @@ pub async fn run() {
     // Find the pool's ATA
     let pool = find_pool(pool_index);
     let pool_redeemable = endpoint
-        .process_spl_associated_token_account_get_or_init(&payer, &pool, &redeemable_mint)
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &pool,
+            &redeemable_mint,
+        )
         .await
         .unwrap();
 

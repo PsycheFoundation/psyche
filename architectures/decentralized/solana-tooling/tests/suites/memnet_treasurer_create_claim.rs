@@ -89,11 +89,19 @@ pub async fn run() {
 
     // Get the run's collateral vaults
     let run1_collateral1 = endpoint
-        .process_spl_associated_token_account_get_or_init(&payer, &run1, &collateral1_mint)
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &run1,
+            &collateral1_mint,
+        )
         .await
         .unwrap();
     let run2_collateral2 = endpoint
-        .process_spl_associated_token_account_get_or_init(&payer, &run1, &collateral2_mint)
+        .process_spl_associated_token_account_get_or_init(
+            &payer,
+            &run1,
+            &collateral2_mint,
+        )
         .await
         .unwrap();
 
@@ -154,18 +162,38 @@ pub async fn run() {
         .unwrap();
 
     // Create the participation accounts
-    process_treasurer_participant_create(&mut endpoint, &payer, &client1, &run1)
-        .await
-        .unwrap();
-    process_treasurer_participant_create(&mut endpoint, &payer, &client1, &run2)
-        .await
-        .unwrap();
-    process_treasurer_participant_create(&mut endpoint, &payer, &client2, &run1)
-        .await
-        .unwrap();
-    process_treasurer_participant_create(&mut endpoint, &payer, &client2, &run2)
-        .await
-        .unwrap();
+    process_treasurer_participant_create(
+        &mut endpoint,
+        &payer,
+        &client1,
+        &run1,
+    )
+    .await
+    .unwrap();
+    process_treasurer_participant_create(
+        &mut endpoint,
+        &payer,
+        &client1,
+        &run2,
+    )
+    .await
+    .unwrap();
+    process_treasurer_participant_create(
+        &mut endpoint,
+        &payer,
+        &client2,
+        &run1,
+    )
+    .await
+    .unwrap();
+    process_treasurer_participant_create(
+        &mut endpoint,
+        &payer,
+        &client2,
+        &run2,
+    )
+    .await
+    .unwrap();
 
     // Try claiming nothing with proper inputs, it should work but do nothing
     process_treasurer_participant_claim(
@@ -324,7 +352,11 @@ pub async fn run() {
     assert_amount(&mut endpoint, &run2_collateral2, 1_000_000_000_000).await;
 }
 
-async fn assert_amount(endpoint: &mut ToolboxEndpoint, account: &Pubkey, expected_amount: u64) {
+async fn assert_amount(
+    endpoint: &mut ToolboxEndpoint,
+    account: &Pubkey,
+    expected_amount: u64,
+) {
     assert_eq!(
         endpoint
             .get_spl_token_account(account)

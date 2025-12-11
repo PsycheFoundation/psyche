@@ -43,7 +43,8 @@ pub async fn process_pool_create(
     collateral_mint: &Pubkey,
 ) -> Result<()> {
     let pool = find_pool(pool_index);
-    let pool_collateral = associated_token::get_associated_token_address(&pool, collateral_mint);
+    let pool_collateral =
+        associated_token::get_associated_token_address(&pool, collateral_mint);
     let accounts = PoolCreateAccounts {
         payer: payer.pubkey(),
         authority: pool_authority.pubkey(),
@@ -90,7 +91,8 @@ pub async fn process_pool_update(
         accounts: accounts.to_account_metas(None),
         data: PoolUpdate {
             params: PoolUpdateParams {
-                max_deposit_collateral_amount: pool_max_deposit_collateral_amount,
+                max_deposit_collateral_amount:
+                    pool_max_deposit_collateral_amount,
                 freeze: pool_freeze,
                 metadata: pool_metadata,
             },
@@ -113,7 +115,8 @@ pub async fn process_pool_extract(
     collateral_amount: u64,
 ) -> Result<()> {
     let pool = find_pool(pool_index);
-    let pool_collateral = associated_token::get_associated_token_address(&pool, collateral_mint);
+    let pool_collateral =
+        associated_token::get_associated_token_address(&pool, collateral_mint);
     let accounts = PoolExtractAccounts {
         authority: pool_authority.pubkey(),
         authority_collateral: *pool_authority_collateral,
@@ -201,7 +204,8 @@ pub async fn process_lender_deposit(
     collateral_amount: u64,
 ) -> Result<()> {
     let pool = find_pool(pool_index);
-    let pool_collateral = associated_token::get_associated_token_address(&pool, collateral_mint);
+    let pool_collateral =
+        associated_token::get_associated_token_address(&pool, collateral_mint);
     let lender = find_lender(&pool, &user.pubkey());
     let accounts = LenderDepositAccounts {
         user: user.pubkey(),
@@ -235,7 +239,8 @@ pub async fn process_lender_claim(
     redeemable_amount: u64,
 ) -> Result<()> {
     let pool = find_pool(pool_index);
-    let pool_redeemable = associated_token::get_associated_token_address(&pool, redeemable_mint);
+    let pool_redeemable =
+        associated_token::get_associated_token_address(&pool, redeemable_mint);
     let lender = find_lender(&pool, &user.pubkey());
     let accounts = LenderClaimAccounts {
         user: user.pubkey(),

@@ -47,13 +47,19 @@ pub fn find_coordinator_instance(run_id: &str) -> Pubkey {
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeserializeCoordinatorFromBytes {
-    #[error("Coordinator has an incorrect size. Expected {expected}, got {actual}.")]
+    #[error(
+        "Coordinator has an incorrect size. Expected {expected}, got {actual}."
+    )]
     IncorrectSize { expected: usize, actual: usize },
 
-    #[error("Coordinator has an invalid discriminator. Expected {expected:?}, got {actual:?}.")]
+    #[error(
+        "Coordinator has an invalid discriminator. Expected {expected:?}, got {actual:?}."
+    )]
     InvalidDiscriminator { expected: Vec<u8>, actual: Vec<u8> },
 
-    #[error("Coordinator has an invalid version. Expected {expected:?}, got {actual:?}.")]
+    #[error(
+        "Coordinator has an invalid version. Expected {expected:?}, got {actual:?}."
+    )]
     InvalidVersion { expected: u64, actual: u64 },
 
     #[error("Failed to cast bytes into CoordinatorAccount: {0}")]
@@ -69,7 +75,9 @@ fn validate_coordinator_account_bytes(
             actual: bytes.len(),
         });
     }
-    if &bytes[..CoordinatorAccount::DISCRIMINATOR.len()] != CoordinatorAccount::DISCRIMINATOR {
+    if &bytes[..CoordinatorAccount::DISCRIMINATOR.len()]
+        != CoordinatorAccount::DISCRIMINATOR
+    {
         return Err(DeserializeCoordinatorFromBytes::InvalidDiscriminator {
             expected: CoordinatorAccount::DISCRIMINATOR.to_vec(),
             actual: bytes[..CoordinatorAccount::DISCRIMINATOR.len()].to_vec(),
@@ -104,7 +112,8 @@ pub fn coordinator_account_from_bytes(
 
 pub fn coordinator_account_from_bytes_mut(
     bytes: &mut [u8],
-) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes> {
+) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes>
+{
     validate_coordinator_account_bytes(bytes)?;
     let coordinator_account = bytemuck::try_from_bytes_mut(
         &mut bytes[CoordinatorAccount::DISCRIMINATOR.len()
@@ -127,7 +136,8 @@ impl CoordinatorAccount {
     pub const VERSION: u64 = 1;
 
     pub fn space_with_discriminator() -> usize {
-        CoordinatorAccount::DISCRIMINATOR.len() + std::mem::size_of::<CoordinatorAccount>()
+        CoordinatorAccount::DISCRIMINATOR.len()
+            + std::mem::size_of::<CoordinatorAccount>()
     }
 
     pub fn increment_nonce(&mut self) {
@@ -195,7 +205,8 @@ pub mod psyche_solana_coordinator {
             return err!(ProgramError::UpdateConfigNotHalted);
         }
 
-        account.state.client_version = FixedString::<96>::try_from(new_version.as_str()).unwrap();
+        account.state.client_version =
+            FixedString::<96>::try_from(new_version.as_str()).unwrap();
         msg!("new version: {}", account.state.client_version);
         Ok(())
     }
@@ -213,11 +224,17 @@ pub mod psyche_solana_coordinator {
         )
     }
 
-    pub fn join_run(context: Context<JoinRunAccounts>, params: JoinRunParams) -> Result<()> {
+    pub fn join_run(
+        context: Context<JoinRunAccounts>,
+        params: JoinRunParams,
+    ) -> Result<()> {
         join_run_processor(context, params)
     }
 
-    pub fn set_paused(ctx: Context<OwnerCoordinatorAccounts>, paused: bool) -> Result<()> {
+    pub fn set_paused(
+        ctx: Context<OwnerCoordinatorAccounts>,
+        paused: bool,
+    ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
         account.state.set_paused(paused)

@@ -17,8 +17,9 @@ pub async fn get_authorization(
         .get_account_data(authorization)
         .await?
         .map(|data| {
-            Authorization::try_deserialize(&mut data.as_slice())
-                .map_err(|err| anyhow!("Unable to decode authorization data: {:?}", err))
+            Authorization::try_deserialize(&mut data.as_slice()).map_err(
+                |err| anyhow!("Unable to decode authorization data: {:?}", err),
+            )
         })
         .transpose()
 }
@@ -32,13 +33,21 @@ pub async fn get_coordinator_account_state(
         .await?
         .map(|data| {
             coordinator_account_from_bytes(&data)
-                .map_err(|err| anyhow!("Unable to decode coordinator_account data: {:?}", err))
+                .map_err(|err| {
+                    anyhow!(
+                        "Unable to decode coordinator_account data: {:?}",
+                        err
+                    )
+                })
                 .map(|coordinator_account| coordinator_account.state)
         })
         .transpose()
 }
 
-pub async fn get_run(endpoint: &mut ToolboxEndpoint, run: &Pubkey) -> Result<Option<Run>> {
+pub async fn get_run(
+    endpoint: &mut ToolboxEndpoint,
+    run: &Pubkey,
+) -> Result<Option<Run>> {
     endpoint
         .get_account_data(run)
         .await?
@@ -57,8 +66,9 @@ pub async fn get_participant(
         .get_account_data(participant)
         .await?
         .map(|data| {
-            Participant::try_deserialize(&mut data.as_slice())
-                .map_err(|err| anyhow!("Unable to decode participant data: {:?}", err))
+            Participant::try_deserialize(&mut data.as_slice()).map_err(|err| {
+                anyhow!("Unable to decode participant data: {:?}", err)
+            })
         })
         .transpose()
 }

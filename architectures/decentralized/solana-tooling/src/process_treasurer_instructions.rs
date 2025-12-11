@@ -33,7 +33,10 @@ pub async fn process_treasurer_run_create(
     params: RunCreateParams,
 ) -> Result<(Pubkey, Pubkey)> {
     let run = find_run(params.index);
-    let run_collateral = ToolboxEndpoint::find_spl_associated_token_account(&run, collateral_mint);
+    let run_collateral = ToolboxEndpoint::find_spl_associated_token_account(
+        &run,
+        collateral_mint,
+    );
     let coordinator_instance = find_coordinator_instance(&params.run_id);
     let accounts = RunCreateAccounts {
         payer: payer.pubkey(),
@@ -122,7 +125,10 @@ pub async fn process_treasurer_participant_claim(
     coordinator_account: &Pubkey,
     claim_earned_points: u64,
 ) -> Result<()> {
-    let run_collateral = ToolboxEndpoint::find_spl_associated_token_account(run, collateral_mint);
+    let run_collateral = ToolboxEndpoint::find_spl_associated_token_account(
+        run,
+        collateral_mint,
+    );
     let participant = find_participant(run, &user.pubkey());
     let accounts = ParticipantClaimAccounts {
         user: user.pubkey(),

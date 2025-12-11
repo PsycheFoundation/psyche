@@ -101,9 +101,18 @@ pub fn run_create_processor(
             context.accounts.coordinator_program.to_account_info(),
             InitCoordinatorAccounts {
                 payer: context.accounts.payer.to_account_info(),
-                coordinator_instance: context.accounts.coordinator_instance.to_account_info(),
-                coordinator_account: context.accounts.coordinator_account.to_account_info(),
-                system_program: context.accounts.system_program.to_account_info(),
+                coordinator_instance: context
+                    .accounts
+                    .coordinator_instance
+                    .to_account_info(),
+                coordinator_account: context
+                    .accounts
+                    .coordinator_account
+                    .to_account_info(),
+                system_program: context
+                    .accounts
+                    .system_program
+                    .to_account_info(),
             },
         )
         .with_signer(run_signer_seeds),
