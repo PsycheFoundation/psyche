@@ -13,3 +13,4 @@ uuid = { version = "1.10", features = ["v4"] }
 
 [dev-dependencies]
 # For integration tests
+serial_test = "3.2"

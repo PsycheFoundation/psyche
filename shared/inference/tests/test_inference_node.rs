@@ -2,8 +2,10 @@
 
 use psyche_inference::node::InferenceNode;
 use psyche_inference::protocol::InferenceRequest;
+use serial_test::serial;
 
 #[test]
+#[serial]
 fn test_inference_node_local() {
     // This test requires vLLM to be installed
     // Skip if not available
@@ -65,6 +67,7 @@ fn test_inference_node_local() {
 }
 
 #[test]
+#[serial]
 fn test_inference_node_multiple_requests() {
     // Test multiple sequential requests on same engine
     pyo3::prepare_freethreaded_python();

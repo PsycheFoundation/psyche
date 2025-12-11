@@ -2,8 +2,10 @@
 
 use psyche_inference::vllm;
 use pyo3::Python;
+use serial_test::serial;
 
 #[test]
+#[serial]
 fn test_create_and_shutdown_engine() {
     // Initialize Python
     pyo3::prepare_freethreaded_python();
@@ -43,6 +45,7 @@ fn test_create_and_shutdown_engine() {
 }
 
 #[test]
+#[serial]
 fn test_list_engines() {
     pyo3::prepare_freethreaded_python();
 
@@ -59,6 +62,7 @@ fn test_list_engines() {
 }
 
 #[test]
+#[serial]
 fn test_run_inference() {
     // This test requires vLLM to be installed
     // Skip if not available

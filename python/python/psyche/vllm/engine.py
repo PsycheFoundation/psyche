@@ -95,9 +95,9 @@ class UpdatableLLMEngine:
         except Exception as e:
             logger.warning(f"Failed to shutdown Ray: {e}")
 
-        # Give time to clean up
+        # Give time to clean up GPU memory
         import time
 
-        time.sleep(1)
+        time.sleep(2)
 
         logger.info("vLLM engine shutdown complete")
