@@ -58,6 +58,7 @@ mod command;
 mod instructions;
 mod network_identity;
 mod retry;
+mod utils;
 
 #[derive(Parser, Debug)]
 struct CliArgs {

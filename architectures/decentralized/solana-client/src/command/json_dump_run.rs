@@ -6,6 +6,7 @@ use serde_json::json;
 use serde_json::to_string_pretty;
 
 use crate::SolanaBackend;
+use crate::utils::native_amount_to_ui_amount;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -103,6 +104,7 @@ pub async fn command_json_dump_run_execute(
         "address": coordinator_account_address.to_string(),
         "run_id": coordinator_account_state.state.coordinator.run_id,
         "setup": {
+            "client_version": coordinator_account_state.state.client_version,
             "metadata": coordinator_account_state.state.metadata,
             "model": coordinator_account_state.state.coordinator.model,
             "config": coordinator_account_state.state.coordinator.config,
@@ -149,35 +151,37 @@ pub async fn command_json_dump_run_execute(
             &treasurer_run_state.collateral_mint,
         );
         let treasurer_run_collateral_amount = backend
-            .get_token_amount(&treasurer_run_collateral_address)
-            .await?;
+            .get_token_account(&treasurer_run_collateral_address)
+            .await?
+            .amount;
+
+        let collateral_mint_decimals = backend
+            .get_token_mint(&treasurer_run_state.collateral_mint)
+            .await?
+            .decimals;
 
         let total_claimed_earned_points = treasurer_run_state.total_claimed_earned_points;
         let total_claimable_earned_points = coordinator_account_clients_sum_earned;
         let total_unclaimed_earned_points =
             total_claimable_earned_points.saturating_sub(total_claimed_earned_points);
 
-        let total_funded_unearned_points =
-            i128::from(treasurer_run_collateral_amount) - i128::from(total_unclaimed_earned_points);
+        // 1:1 mapping between earned points and collateral amount
+        let total_unclaimed_collateral_amount = total_unclaimed_earned_points;
+        let burn_collateral_amount_per_epoch = coordinator_account_state
+            .state
+            .clients_state
+            .current_epoch_rates
+            .earning_rate_total_shared;
 
-        let estimated_earned_points_per_epoch = u64::try_from(
-            coordinator_account_state
-                .state
-                .coordinator
-                .epoch_state
-                .clients
-                .len(),
-        )
-        .unwrap()
-            * coordinator_account_state
-                .state
-                .clients_state
-                .current_epoch_rates
-                .earning_rate_total_shared;
-        let estimated_funded_epochs_count = if estimated_earned_points_per_epoch == 0 {
+        let total_missing_collateral_amount =
+            total_unclaimed_collateral_amount.saturating_sub(treasurer_run_collateral_amount);
+        let total_surplus_collateral_amount =
+            treasurer_run_collateral_amount.saturating_sub(total_unclaimed_collateral_amount);
+
+        let estimated_funded_epochs_count = if burn_collateral_amount_per_epoch == 0 {
             json!(f64::INFINITY)
         } else {
-            json!(total_funded_unearned_points / i128::from(estimated_earned_points_per_epoch))
+            json!(total_surplus_collateral_amount as f64 / burn_collateral_amount_per_epoch as f64)
         };
 
         Some(json!({
@@ -185,13 +189,26 @@ pub async fn command_json_dump_run_execute(
             "index": treasurer_run_state.index,
             "main_authority": treasurer_run_state.main_authority.to_string(),
             "join_authority": treasurer_run_state.join_authority.to_string(),
-            "collateral_mint": treasurer_run_state.collateral_mint.to_string(),
-            "funded_collateral_amount": treasurer_run_collateral_amount,
             "total_claimed_earned_points": total_claimed_earned_points,
             "total_claimable_earned_points": total_claimable_earned_points,
             "total_unclaimed_earned_points": total_unclaimed_earned_points,
-            "total_funded_unearned_points": total_funded_unearned_points,
-            "estimated_earned_points_per_epoch": estimated_earned_points_per_epoch,
+            "collateral_mint": treasurer_run_state.collateral_mint.to_string(),
+            "funded_collateral_amount": native_amount_to_ui_amount(
+                treasurer_run_collateral_amount,
+                collateral_mint_decimals
+            ),
+            "total_missing_collateral_amount": native_amount_to_ui_amount(
+                total_missing_collateral_amount,
+                collateral_mint_decimals
+            ),
+            "total_surplus_collateral_amount": native_amount_to_ui_amount(
+                total_surplus_collateral_amount,
+                collateral_mint_decimals
+            ),
+            "burn_collateral_amount_per_epoch": native_amount_to_ui_amount(
+                burn_collateral_amount_per_epoch,
+                collateral_mint_decimals
+            ),
             "estimated_funded_epochs_count": estimated_funded_epochs_count,
         }))
     } else {
