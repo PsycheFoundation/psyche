@@ -2,28 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Inference request sent to an inference node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceRequest {
-    /// Unique request ID for tracking
     pub request_id: String,
-
-    /// Input prompt
     pub prompt: String,
-
-    /// Maximum tokens to generate
     #[serde(default = "default_max_tokens")]
     pub max_tokens: usize,
-
-    /// Sampling temperature (0.0 = deterministic, higher = more random)
     #[serde(default = "default_temperature")]
     pub temperature: f64,
-
-    /// Nucleus sampling probability
     #[serde(default = "default_top_p")]
     pub top_p: f64,
-
-    /// Whether to stream response token by token
     #[serde(default)]
     pub stream: bool,
 }
@@ -40,36 +28,11 @@ fn default_top_p() -> f64 {
     1.0
 }
 
-/// Inference response from an inference node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceResponse {
-    /// Request ID this response is for
     pub request_id: String,
-
-    /// Generated text
     pub generated_text: String,
-
-    /// Full text (prompt + generated)
     pub full_text: String,
-
-    /// Reason for completion ("stop", "length", etc.)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<String>,
-}
-
-/// Streaming chunk for incremental responses
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InferenceChunk {
-    /// Request ID this chunk is for
-    pub request_id: String,
-
-    /// New tokens since last chunk
-    pub delta: String,
-
-    /// Whether this is the final chunk
-    pub is_final: bool,
-
-    /// Finish reason if final
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<String>,
 }

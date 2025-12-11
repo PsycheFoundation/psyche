@@ -1,6 +1,4 @@
 //! Inference Node implementation
-//!
-//! An inference node loads a model via vLLM and serves inference requests.
 
 use crate::protocol::{InferenceRequest, InferenceResponse};
 use crate::vllm;
@@ -9,25 +7,13 @@ use pyo3::prelude::*;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-/// Inference node that serves a model via vLLM
 pub struct InferenceNode {
-    /// Unique engine ID
     engine_id: String,
-
-    /// Model name/path
     model_name: String,
-
-    /// Whether the engine is initialized
     initialized: bool,
 }
 
 impl InferenceNode {
-    /// Create a new inference node
-    ///
-    /// # Arguments
-    /// * `model_name` - Model name or path (e.g., "gpt2", "/path/to/model")
-    /// * `tensor_parallel_size` - Number of GPUs for tensor parallelism
-    /// * `gpu_memory_utilization` - Fraction of GPU memory to use (0.0-1.0)
     pub fn new(
         model_name: String,
         tensor_parallel_size: Option<usize>,
@@ -43,8 +29,6 @@ impl InferenceNode {
     }
 
     /// Initialize the vLLM engine
-    ///
-    /// This must be called before running inference.
     pub fn initialize(
         &mut self,
         tensor_parallel_size: Option<usize>,

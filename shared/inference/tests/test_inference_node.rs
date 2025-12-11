@@ -7,26 +7,21 @@ use serial_test::serial;
 #[test]
 #[serial]
 fn test_inference_node_local() {
-    // This test requires vLLM to be installed
-    // Skip if not available
     pyo3::prepare_freethreaded_python();
 
     pyo3::Python::with_gil(|py| {
-        // Check if vLLM is available
         let check = py.import("psyche.vllm.rust_bridge");
         if check.is_err() {
             println!("Skipping test: vLLM not available");
             return;
         }
 
-        // Create inference node
         let mut node = InferenceNode::new(
             "gpt2".to_string(),
             Some(1),   // tensor_parallel_size
-            Some(0.3), // gpu_memory_utilization (low for testing)
+            Some(0.3), // gpu_memory_utilization - low for testing
         );
 
-        // Initialize
         let init_result = node.initialize(Some(1), Some(0.3));
         if init_result.is_err() {
             println!("Skipping test: Failed to initialize vLLM engine");
@@ -34,7 +29,6 @@ fn test_inference_node_local() {
             return;
         }
 
-        // Create inference request
         let request = InferenceRequest {
             request_id: "test-request-1".to_string(),
             prompt: "Once upon a time".to_string(),
@@ -69,7 +63,6 @@ fn test_inference_node_local() {
 #[test]
 #[serial]
 fn test_inference_node_multiple_requests() {
-    // Test multiple sequential requests on same engine
     pyo3::prepare_freethreaded_python();
 
     pyo3::Python::with_gil(|py| {
@@ -112,7 +105,6 @@ fn test_inference_node_multiple_requests() {
         let resp2 = node.inference(&req2);
         assert!(resp2.is_ok());
 
-        // Verify different responses
         let r1 = resp1.unwrap();
         let r2 = resp2.unwrap();
         assert_ne!(r1.generated_text, r2.generated_text);
