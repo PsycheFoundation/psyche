@@ -49,7 +49,7 @@ impl Authorization {
 
 The smart contract then exposes a set of instruction to manipulate those `Authorization` PDAs:
 
-- `authoziation_create`, create a new PDA
+- `authorization_create`, create a new PDA
 - `authorization_grantor_update`, allow the grantor to activate/deactivate the authorization
 - `authorization_grantee_update`, allow the grantee to add/remove delegates
 - `authorization_close` allow the grantor to remove the PDA
