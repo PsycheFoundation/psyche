@@ -540,7 +540,8 @@ impl SolanaBackend {
         signers: &[Arc<Keypair>],
     ) -> Result<Signature> {
         // TODO (vbrunet) - can we improve the retry mechanism here
-        for _ in 0..SEND_RETRIES {
+        let mut retries = 0;
+        loop {
             for program_coordinator in program_coordinators {
                 let mut request = program_coordinator.request();
                 for instruction in instructions {
@@ -556,14 +557,17 @@ impl SolanaBackend {
                         return Ok(signature);
                     }
                     Err(error) => {
+                        retries += 1;
+                        if retries >= SEND_RETRIES {
+                            return Err(anyhow!(
+                                "Could not send transaction: {name}, after {retries} retries: {error}"
+                            ));
+                        }
                         warn!("Error sending transaction: {name}: {error}, retrying");
                     }
                 }
             }
         }
-        Err(anyhow!(
-            "Could not send transaction: {name}, all attempts failed"
-        ))
     }
 }
 

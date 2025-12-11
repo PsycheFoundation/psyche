@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Args;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 
@@ -28,6 +28,12 @@ pub async fn command_set_future_epoch_rates_execute(
         earning_rate_total_shared,
         slashing_rate_per_client,
     } = params;
+
+    if earning_rate_total_shared.is_none() && slashing_rate_per_client.is_none() {
+        bail!(
+            "At least one of earning rate or slashing rate must be provided: --earning-rate-total-shared or --slashing-rate-per-client"
+        );
+    }
 
     let main_authority = backend.get_payer();
 
@@ -69,12 +75,17 @@ pub async fn command_set_future_epoch_rates_execute(
         },
     );
 
+    if let Some(earning_rate_total_shared) = earning_rate_total_shared {
+        println!(" - Set earning rate to {earning_rate_total_shared} (divided between clients)");
+    }
+    if let Some(slashing_rate_per_client) = slashing_rate_per_client {
+        println!(" - Set slashing rate to {slashing_rate_per_client} (per failing client)");
+    }
+
     let signature = backend
         .send_and_retry("Set future epoch rates", &[instruction], &[])
         .await?;
     println!("On run {run_id} with transaction {signature}:");
-    println!(" - Set earning rate to {earning_rate_total_shared:?} (divided between clients)");
-    println!(" - Set slashing rate to {slashing_rate_per_client:?} (per failing client)");
 
     println!("\n===== Logs =====");
     for log in backend.get_logs(&signature).await? {
