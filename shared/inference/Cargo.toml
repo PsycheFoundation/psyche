@@ -1,0 +1,14 @@
+[package]
+name = "psyche-inference"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+pyo3.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# For integration tests
