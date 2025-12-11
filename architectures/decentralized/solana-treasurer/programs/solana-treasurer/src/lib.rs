@@ -30,17 +30,11 @@ pub fn find_participant(run: &Pubkey, user: &Pubkey) -> Pubkey {
 pub mod psyche_solana_treasurer {
     use super::*;
 
-    pub fn run_create(
-        context: Context<RunCreateAccounts>,
-        params: RunCreateParams,
-    ) -> Result<()> {
+    pub fn run_create(context: Context<RunCreateAccounts>, params: RunCreateParams) -> Result<()> {
         run_create_processor(context, params)
     }
 
-    pub fn run_update(
-        context: Context<RunUpdateAccounts>,
-        params: RunUpdateParams,
-    ) -> Result<()> {
+    pub fn run_update(context: Context<RunUpdateAccounts>, params: RunUpdateParams) -> Result<()> {
         run_update_processor(context, params)
     }
 

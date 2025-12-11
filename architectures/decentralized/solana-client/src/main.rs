@@ -231,14 +231,14 @@ impl TryInto<Keypair> for WalletArgs {
                 } else {
                     Keypair::from_base58_string(&raw_wallet_private_key)
                 }
-            },
+            }
             None => match self.wallet_private_key_path {
                 Some(wallet_private_key_path) => {
                     match Keypair::read_from_file(wallet_private_key_path) {
                         Ok(wallet_keypair) => wallet_keypair,
                         Err(err) => bail!("{}", err),
                     }
-                },
+                }
                 None => bail!(
                     "No wallet private key! Must pass --wallet-private-key-path or set RAW_WALLET_PRIVATE_KEY"
                 ),
@@ -262,7 +262,7 @@ async fn async_main() -> Result<()> {
             print_identity_keys(Some(&save_path))?;
             println!("Wrote secret key to {}", save_path.display());
             Ok(())
-        },
+        }
         Commands::CreateRun {
             cluster,
             wallet,
@@ -277,7 +277,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_create_run_execute(backend, params).await
-        },
+        }
         Commands::CloseRun {
             cluster,
             wallet,
@@ -292,7 +292,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_close_run_execute(backend, params).await
-        },
+        }
         Commands::UpdateConfig {
             cluster,
             wallet,
@@ -307,7 +307,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_update_config_execute(backend, params).await
-        },
+        }
         Commands::SetPaused {
             cluster,
             wallet,
@@ -322,7 +322,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_set_paused_execute(backend, params).await
-        },
+        }
         Commands::Tick {
             cluster,
             wallet,
@@ -337,7 +337,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_tick_execute(backend, params).await
-        },
+        }
         Commands::SetFutureEpochRates {
             cluster,
             wallet,
@@ -352,7 +352,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_set_future_epoch_rates_execute(backend, params).await
-        },
+        }
         Commands::TreasurerClaimRewards {
             cluster,
             wallet,
@@ -367,7 +367,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_treasurer_claim_rewards_execute(backend, params).await
-        },
+        }
         Commands::TreasurerTopUpRewards {
             cluster,
             wallet,
@@ -382,7 +382,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_treasurer_top_up_rewards_execute(backend, params).await
-        },
+        }
         Commands::Checkpoint {
             cluster,
             wallet,
@@ -397,7 +397,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_checkpoint_execute(backend, params).await
-        },
+        }
         Commands::Train {
             cluster,
             wallet,
@@ -485,7 +485,7 @@ async fn async_main() -> Result<()> {
             logger.shutdown()?;
 
             Ok(())
-        },
+        }
         Commands::CanJoin { cluster, params } => {
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -495,7 +495,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_can_join_execute(backend, params).await
-        },
+        }
         Commands::JsonDumpRun { cluster, params } => {
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -505,7 +505,7 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_json_dump_run_execute(backend, params).await
-        },
+        }
         Commands::JsonDumpUser { cluster, params } => {
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -515,13 +515,13 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_json_dump_user_execute(backend, params).await
-        },
+        }
         Commands::PrintAllHelp { markdown } => {
             // This is a required argument for the time being.
             assert!(markdown);
             let () = clap_markdown::print_help_markdown::<CliArgs>();
             Ok(())
-        },
+        }
     }
 }
 

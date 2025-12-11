@@ -50,15 +50,7 @@ pub struct RunMetadata {
 impl RunMetadata {}
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
+    Debug, Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, TS,
 )]
 #[repr(C)]
 pub struct CoordinatorInstanceState {
@@ -91,14 +83,10 @@ impl CoordinatorInstanceState {
                 self.is_warmup_first_tick = SmallBoolean::from(true);
                 self.is_training_first_tick = SmallBoolean::from(true);
 
-                let active_clients_ids =
-                    self.clients_state.get_active_clients_ids();
-                msg!(
-                    "Pending active clients ids: {}",
-                    active_clients_ids.len()
-                );
+                let active_clients_ids = self.clients_state.get_active_clients_ids();
+                msg!("Pending active clients ids: {}", active_clients_ids.len());
                 Some(active_clients_ids)
-            },
+            }
             _ => None,
         };
 
@@ -111,12 +99,10 @@ impl CoordinatorInstanceState {
             Self::get_random_seed(&clock),
         ) {
             Ok(TickResult::Ticked) => {
-                if self.coordinator.is_warmup_just_starting()
-                    && self.is_warmup_first_tick.is_true()
+                if self.coordinator.is_warmup_just_starting() && self.is_warmup_first_tick.is_true()
                 {
                     msg!("New epoch just starting, save epoch rewards rate");
-                    self.clients_state.current_epoch_rates =
-                        self.clients_state.future_epoch_rates;
+                    self.clients_state.current_epoch_rates = self.clients_state.future_epoch_rates;
                     self.is_warmup_first_tick = SmallBoolean::from(false);
                 } else if self.coordinator.is_training_just_starting()
                     && self.is_training_first_tick.is_true()
@@ -125,25 +111,21 @@ impl CoordinatorInstanceState {
                     self.clients_state.next_active += 1;
                     self.is_training_first_tick = SmallBoolean::from(false);
                 }
-            },
+            }
             Ok(TickResult::EpochEnd(success)) => {
                 msg!("Epoch end, sucecsss: {}", success);
 
                 let finished_clients = &self.coordinator.epoch_state.clients;
-                let exited_clients =
-                    &self.coordinator.epoch_state.exited_clients;
+                let exited_clients = &self.coordinator.epoch_state.exited_clients;
 
                 let mut finished_client_index = 0;
                 let mut exited_client_index = 0;
 
                 for client in self.clients_state.clients.iter_mut() {
                     if finished_client_index < finished_clients.len()
-                        && client.id.signer
-                            == finished_clients[finished_client_index].id.signer
+                        && client.id.signer == finished_clients[finished_client_index].id.signer
                     {
-                        if finished_clients[finished_client_index].state
-                            == ClientState::Healthy
-                        {
+                        if finished_clients[finished_client_index].state == ClientState::Healthy {
                             client.earned += self
                                 .clients_state
                                 .current_epoch_rates
@@ -153,12 +135,9 @@ impl CoordinatorInstanceState {
                         finished_client_index += 1;
                     }
                     if exited_client_index < exited_clients.len()
-                        && client.id.signer
-                            == exited_clients[exited_client_index].id.signer
+                        && client.id.signer == exited_clients[exited_client_index].id.signer
                     {
-                        if exited_clients[exited_client_index].state
-                            == ClientState::Ejected
-                        {
+                        if exited_clients[exited_client_index].state == ClientState::Ejected {
                             client.slashed += self
                                 .clients_state
                                 .current_epoch_rates
@@ -167,7 +146,7 @@ impl CoordinatorInstanceState {
                         exited_client_index += 1;
                     }
                 }
-            },
+            }
             Err(err) => return err!(ProgramError::from(err)),
         };
 
@@ -207,7 +186,7 @@ impl CoordinatorInstanceState {
                 }
 
                 self.coordinator.resume(unix_timestamp)
-            },
+            }
         } {
             return err!(ProgramError::from(err));
         }
@@ -233,11 +212,7 @@ impl CoordinatorInstanceState {
         self.tick()
     }
 
-    pub fn warmup_witness(
-        &mut self,
-        payer: &Pubkey,
-        witness: Witness,
-    ) -> Result<()> {
+    pub fn warmup_witness(&mut self, payer: &Pubkey, witness: Witness) -> Result<()> {
         let id = self.clients_state.find_signer(payer)?;
 
         let clock: Clock = Clock::get()?;
@@ -258,16 +233,12 @@ impl CoordinatorInstanceState {
         epoch_earning_rate_total_shared: Option<u64>,
         epoch_slashing_rate_per_client: Option<u64>,
     ) -> Result<()> {
-        if let Some(epoch_earning_rate_total_shared) =
-            epoch_earning_rate_total_shared
-        {
+        if let Some(epoch_earning_rate_total_shared) = epoch_earning_rate_total_shared {
             self.clients_state
                 .future_epoch_rates
                 .earning_rate_total_shared = epoch_earning_rate_total_shared;
         }
-        if let Some(epoch_slashing_rate_per_client) =
-            epoch_slashing_rate_per_client
-        {
+        if let Some(epoch_slashing_rate_per_client) = epoch_slashing_rate_per_client {
             self.clients_state
                 .future_epoch_rates
                 .slashing_rate_per_client = epoch_slashing_rate_per_client;
@@ -338,15 +309,13 @@ impl CoordinatorInstanceState {
                 client.active = self.clients_state.next_active;
                 msg!("Existing client {} re-joined", id.signer);
                 true
-            },
+            }
             None => false,
         };
 
         if !existing {
             let total_num_clients = self.clients_state.clients.len() as u16;
-            if self.coordinator.config.global_batch_size_end
-                == total_num_clients
-            {
+            if self.coordinator.config.global_batch_size_end == total_num_clients {
                 return err!(ProgramError::MoreClientsThanBatches);
             }
 
@@ -375,11 +344,7 @@ impl CoordinatorInstanceState {
         }
     }
 
-    pub fn health_check(
-        &mut self,
-        payer: &Pubkey,
-        checks: HealthChecks<ClientId>,
-    ) -> Result<()> {
+    pub fn health_check(&mut self, payer: &Pubkey, checks: HealthChecks<ClientId>) -> Result<()> {
         // O(n) on clients, reconsider
         let id = self.clients_state.find_signer(payer)?;
 
