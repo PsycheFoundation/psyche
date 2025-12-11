@@ -404,8 +404,8 @@ impl SolanaBackend {
         token_account: &Pubkey,
     ) -> Result<anchor_spl::token::spl_token::state::Account> {
         let data = self.get_data(token_account).await?;
-        Ok(anchor_spl::token::spl_token::state::Account::unpack(&data)
-            .map_err(|error| anyhow!("Unable to decode token account data: {error}"))?)
+        anchor_spl::token::spl_token::state::Account::unpack(&data)
+            .map_err(|error| anyhow!("Unable to decode token account data: {error}"))
     }
 
     pub async fn get_token_mint(
@@ -413,8 +413,8 @@ impl SolanaBackend {
         mint: &Pubkey,
     ) -> Result<anchor_spl::token::spl_token::state::Mint> {
         let data = self.get_data(mint).await?;
-        Ok(anchor_spl::token::spl_token::state::Mint::unpack(&data)
-            .map_err(|error| anyhow!("Unable to decode mint account data: {error}"))?)
+        anchor_spl::token::spl_token::state::Mint::unpack(&data)
+            .map_err(|error| anyhow!("Unable to decode mint account data: {error}"))
     }
 
     pub fn compute_deterministic_treasurer_index(

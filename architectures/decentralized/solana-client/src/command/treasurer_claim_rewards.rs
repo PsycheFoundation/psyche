@@ -1,5 +1,3 @@
-use std::u64;
-
 use anchor_spl::{associated_token, token};
 use anyhow::{Context, Result};
 use clap::Args;
