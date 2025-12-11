@@ -90,7 +90,7 @@ Once a witness quorum is reached, the coordinator advances to the _Training_ pha
 
 Here's a high-level overview of the process.
 
-There's additional implementation details, but this captures the overall flow of a single Round in an Epoch:
+There are additional implementation details, but this captures the overall flow of a single Round in an Epoch:
 
 ```mermaid
 sequenceDiagram
