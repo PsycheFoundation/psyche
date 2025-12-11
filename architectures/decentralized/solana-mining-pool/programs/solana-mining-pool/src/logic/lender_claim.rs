@@ -76,8 +76,8 @@ pub fn lender_claim_processor(
         return err!(ProgramError::PoolTotalDepositedCollateralAmountIsZero);
     }
 
-    let total_repayed_redeemable_amount = pool.total_claimed_redeemable_amount
-        + context.accounts.pool_redeemable.amount;
+    let total_repayed_redeemable_amount =
+        pool.total_claimed_redeemable_amount + context.accounts.pool_redeemable.amount;
     let claimable_redeemable_amount = u64::try_from(
         u128::from(total_repayed_redeemable_amount)
             * u128::from(lender.deposited_collateral_amount)
@@ -85,9 +85,7 @@ pub fn lender_claim_processor(
     )
     .unwrap();
 
-    if lender.claimed_redeemable_amount + params.redeemable_amount
-        > claimable_redeemable_amount
-    {
+    if lender.claimed_redeemable_amount + params.redeemable_amount > claimable_redeemable_amount {
         return err!(ProgramError::ParamsRedeemableAmountIsTooLarge);
     }
 

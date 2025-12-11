@@ -30,9 +30,7 @@ pub fn pool_update_processor(
 ) -> Result<()> {
     let pool = &mut context.accounts.pool;
 
-    if let Some(max_deposit_collateral_amount) =
-        params.max_deposit_collateral_amount
-    {
+    if let Some(max_deposit_collateral_amount) = params.max_deposit_collateral_amount {
         msg!(
             "max_deposit_collateral_amount: {}",
             max_deposit_collateral_amount
