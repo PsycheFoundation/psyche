@@ -29,8 +29,6 @@ pub enum Response {
     SolanaSubscription(String, String),
     WitnessElected(String),
     Error(ObservedErrorKind, String),
-    DataProviderFetchSuccess(u64),
-    DataProviderFetchError(u64),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -191,7 +189,7 @@ impl DockerWatcher {
                                 println!("Probably the test ended so we drop the log sender");
                             }
                         }
-                    },
+                    }
                     IntegrationTestLogMarker::Loss => {
                         let loss = parsed_log.get("loss").and_then(|v| v.as_f64());
                         let client_id = parsed_log
@@ -205,7 +203,7 @@ impl DockerWatcher {
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }
-                    },
+                    }
                     IntegrationTestLogMarker::HealthCheck => {
                         let client_id = parsed_log
                             .get("client_id")
@@ -221,7 +219,7 @@ impl DockerWatcher {
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }
-                    },
+                    }
                     IntegrationTestLogMarker::LoadedModel => {
                         let checkpoint = parsed_log.get("checkpoint").unwrap();
                         let checkpoint = serde_json::from_value(checkpoint.clone()).unwrap();
@@ -229,7 +227,7 @@ impl DockerWatcher {
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }
-                    },
+                    }
                     IntegrationTestLogMarker::UntrainedBatches => {
                         if parsed_log.get("target")
                             != Some(&Value::String("untrained_batch".to_string()))
@@ -261,7 +259,7 @@ impl DockerWatcher {
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }
-                    },
+                    }
                     IntegrationTestLogMarker::SolanaSubscription => {
                         let url = parsed_log.get("url").unwrap();
 
@@ -283,7 +281,7 @@ impl DockerWatcher {
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }
-                    },
+                    }
                     IntegrationTestLogMarker::WitnessElected => {
                         let is_witness = parsed_log
                             .get("witness")
@@ -297,7 +295,7 @@ impl DockerWatcher {
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }
-                    },
+                    }
                     IntegrationTestLogMarker::Error => {
                         let Some(message) = parsed_log.get("message") else {
                             continue;
@@ -311,27 +309,7 @@ impl DockerWatcher {
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }
-                    },
-                    IntegrationTestLogMarker::DataProviderFetchSuccess => {
-                        let provider_idx = parsed_log
-                            .get("provider_idx")
-                            .and_then(|v| v.as_u64())
-                            .unwrap();
-                        let response = Response::DataProviderFetchSuccess(provider_idx);
-                        if log_sender.send(response).await.is_err() {
-                            println!("Probably the test ended so we drop the log sender");
-                        }
-                    },
-                    IntegrationTestLogMarker::DataProviderFetchError => {
-                        let provider_idx = parsed_log
-                            .get("provider_idx")
-                            .and_then(|v| v.as_u64())
-                            .unwrap();
-                        let response = Response::DataProviderFetchError(provider_idx);
-                        if log_sender.send(response).await.is_err() {
-                            println!("Probably the test ended so we drop the log sender");
-                        }
-                    },
+                    }
                 }
             }
             Ok(())

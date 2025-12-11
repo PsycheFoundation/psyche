@@ -10,7 +10,6 @@ use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
-use psyche_core::FixedVec;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
@@ -112,7 +111,7 @@ pub async fn run() {
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_locations: FixedVec::try_from_iter([LLMTrainingDataLocation::default()]).unwrap(),
+            data_location: LLMTrainingDataLocation::default(),
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,

@@ -36,6 +36,7 @@ pub struct CommandUpdateConfigParams {
     #[clap(long)]
     vocab_size: Option<u64>,
     // end metadata
+    #[clap(long, env)]
     client_version: Option<String>,
 }
 
@@ -90,7 +91,7 @@ pub async fn command_update_config_execute(
             .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
             (Some(state.config), Some(state.model))
-        },
+        }
         None => (None, None),
     };
 
@@ -100,8 +101,8 @@ pub async fn command_update_config_execute(
         match llm.checkpoint {
             Checkpoint::P2P(hub_repo) | Checkpoint::Dummy(hub_repo) => {
                 llm.checkpoint = Checkpoint::Hub(hub_repo)
-            },
-            _ => {},
+            }
+            _ => {}
         }
         Some(Model::LLM(llm))
     } else {
