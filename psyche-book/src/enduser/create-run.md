@@ -18,22 +18,26 @@ Also, for all the commands you will need to provide the path to you Solana priva
 Before we can get started we need to decide who will be able to join the run.
 You can read more about [authorization here](./authentication.md).
 
-We'll need a private key that manages join permissions, we'll call it: `join_authority.json`
+We'll need a key-pair file that manages join permissions, it can be the default created by Solana when you do `solana-keygen new` located in `~/.config/solana/id.json`
 
 #### Join Authority for Public Runs
 
 If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone.
 
+Running:
+
 ```sh
-sh scripts/join-authorization-create.sh [RPC] join_authority.json 11111111111111111111111111111111
+just run_authorizer rpc=<RPC> grantor=<GRANTOR> grantee=<GRANTOR>
 ```
+
+By default the `just run_authorizer` command will use the values needed to create an authorizer in a solana local validator using the default Solana key-pair mentioned above and with permissionless access. Basically everyone can join the run without restrictions.
 
 #### Join Authority for Private Runs
 
-If we'll only allow some users to join the run we'll need to create one authorization per user (each user can then set multiple delegate keys later)
+If we'll only allow some users to join the run we'll need to create one authorization per user (each user can then set multiple delegate keys later) For example to use it locally we can do
 
 ```sh
-sh scripts/join-authorization-create.sh [RPC] join_authority.json [MY_USER_PUBKEY]
+just run_authorizer rpc=<RPC> grantee=<GRANTOR>
 ```
 
 ### Creating a run without token rewards
