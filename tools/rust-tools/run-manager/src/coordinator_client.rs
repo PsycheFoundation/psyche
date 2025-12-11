@@ -66,18 +66,18 @@ impl CoordinatorClient {
         //      <image_name>@sha256:<repo_id>
         // if not using the RepoId hash, we just want
         //      <image_name>:<version>
+        // Also, if using the --local flag (only relevant for testing) the image name is
+        // just the local ImageId of the docker image
         let image_name = if client_version.starts_with("sha256:") {
             if local_docker {
                 client_version
             } else {
                 format!("nousresearch/psyche-client@{}", client_version)
             }
+        } else if local_docker {
+            format!("psyche-solana-client:{}", client_version)
         } else {
-            if local_docker {
-                format!("psyche-solana-client:{}", client_version)
-            } else {
-                format!("nousresearch/psyche-client:{}", client_version)
-            }
+            format!("nousresearch/psyche-client:{}", client_version)
         };
 
         Ok(image_name)
