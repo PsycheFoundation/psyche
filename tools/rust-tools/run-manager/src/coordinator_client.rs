@@ -61,6 +61,11 @@ impl CoordinatorClient {
             instance.run_id, instance.coordinator_account, client_version
         );
 
+        // Depending on how the version is specified in the Coordinator, we should format
+        // it accordingly. When specifing a RepoId SHA256, we use
+        //      <image_name>@sha256:<repo_id>
+        // if not using the RepoId hash, we just want
+        //      <image_name>:<version>
         let image_name = if client_version.starts_with("sha256:") {
             if local_docker {
                 client_version

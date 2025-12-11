@@ -67,7 +67,7 @@ cargo run --release --bin psyche-solana-client -- \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
-    --client-version "sha256:30b1bf3eb2f623cee3f383277e51cb2e6d58c302e0d38003d34e36be817830a4" \
+    --client-version "test" \
     --run-id ${RUN_ID} "$@"
 
 echo -e "\n[+] Update training run config..."
