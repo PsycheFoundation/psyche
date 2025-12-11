@@ -1,4 +1,4 @@
-use anchor_client::solana_sdk::pubkey::Pubkey;
+use anchor_client::solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use anchor_lang::AccountDeserialize;
 use anyhow::{Context, Result};
 use psyche_solana_coordinator::{
@@ -16,7 +16,8 @@ pub struct CoordinatorClient {
 
 impl CoordinatorClient {
     pub fn new(rpc_endpoint: String, program_id: Pubkey) -> Self {
-        let rpc_client = RpcClient::new(rpc_endpoint);
+        let rpc_client =
+            RpcClient::new_with_commitment(rpc_endpoint, CommitmentConfig::confirmed());
         Self {
             rpc_client,
             program_id,
@@ -60,17 +61,25 @@ impl CoordinatorClient {
             instance.run_id, instance.coordinator_account, client_version
         );
 
-        let client_version = if client_version.starts_with("sha256:") {
-            format!("@{}", client_version)
+        // Depending on how the version is specified in the Coordinator, we should format
+        // it accordingly. When specifing a RepoId SHA256, we use
+        //      <image_name>@sha256:<repo_id>
+        // if not using the RepoId hash, we just want
+        //      <image_name>:<version>
+        // Also, if using the --local flag (only relevant for testing) the image name is
+        // just the local ImageId of the docker image
+        let image_name = if client_version.starts_with("sha256:") {
+            if local_docker {
+                client_version
+            } else {
+                format!("nousresearch/psyche-client@{}", client_version)
+            }
+        } else if local_docker {
+            format!("psyche-solana-client:{}", client_version)
         } else {
-            format!(":{}", client_version)
+            format!("nousresearch/psyche-client:{}", client_version)
         };
 
-        let docker_tag = if local_docker {
-            format!("psyche-solana-client{}", client_version)
-        } else {
-            format!("nousresearch/psyche-client{}", client_version)
-        };
-        Ok(docker_tag)
+        Ok(image_name)
     }
 }
