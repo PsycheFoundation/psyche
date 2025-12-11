@@ -1,8 +1,13 @@
+use std::any;
+
 use anchor_spl::mint;
 use anyhow::Result;
 use clap::Args;
+use futures_util::future::err;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 
+use crate::utils::native_amount_to_ui_amount;
+use crate::utils::ui_amount_to_native_amount;
 use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
@@ -16,8 +21,6 @@ pub struct CommandSetFutureEpochRatesParams {
     earning_rate_total_shared: Option<f64>,
     #[clap(long, env)]
     slashing_rate_per_client: Option<f64>,
-    #[clap(long, env)]
-    mint_decimals: Option<u8>,
 }
 
 pub async fn command_set_future_epoch_rates_execute(
@@ -29,7 +32,6 @@ pub async fn command_set_future_epoch_rates_execute(
         treasurer_index,
         earning_rate_total_shared,
         slashing_rate_per_client,
-        mint_decimals,
     } = params;
 
     let main_authority = backend.get_payer();
@@ -44,13 +46,9 @@ pub async fn command_set_future_epoch_rates_execute(
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
-        let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
-        let treasurer_run_content = backend.get_treasurer_run(treasurer_run_address).await?;
-        if mint_decimals.is_some() {
-            anyhow::bail!(
-                "Cannot specify mint_decimals when run has a treasurer (it must be fetched automatically)"
-            );
-        }
+        let treasurer_run_content = backend
+            .get_treasurer_run(psyche_solana_treasurer::find_run(treasurer_index))
+            .await?;
         let mint_decimals = backend
             .get_mint(&treasurer_run_content.collateral_mint)
             .await?
@@ -78,15 +76,7 @@ pub async fn command_set_future_epoch_rates_execute(
             },
         )
     } else {
-        let mint_decimals =
-            mint_decimals.expect("manual mint_decimals is required if run has no treasurer");
-        instructions::coordinator_set_future_epoch_rates(
-            &run_id,
-            &coordinator_account,
-            &main_authority,
-            ui_amount_to_native_amount(earning_rate_total_shared, mint_decimals),
-            ui_amount_to_native_amount(slashing_rate_per_client, mint_decimals),
-        )
+        bail!("Setting earning rate only make sense with a treasurer.");
     };
 
     let signature = backend
@@ -102,9 +92,4 @@ pub async fn command_set_future_epoch_rates_execute(
     }
 
     Ok(())
-}
-
-fn ui_amount_to_native_amount(ui_amount: f64, decimals: u8) -> u64 {
-    let factor = 10u64.pow(decimals as u32) as f64;
-    (ui_amount * factor).round() as u64
 }

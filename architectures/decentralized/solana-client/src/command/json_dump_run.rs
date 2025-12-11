@@ -6,6 +6,8 @@ use serde_json::json;
 use serde_json::to_string_pretty;
 
 use crate::SolanaBackend;
+use crate::utils::native_amount_to_ui_amount;
+use crate::utils::ui_amount_to_native_amount;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -152,6 +154,11 @@ pub async fn command_json_dump_run_execute(
             .get_token_account(&treasurer_run_collateral_address)
             .await?
             .amount;
+
+        let collateral_mint_decimals = backend
+            .get_mint(&treasurer_run_state.collateral_mint)
+            .await?
+            .decimals;
 
         let total_claimed_earned_points = treasurer_run_state.total_claimed_earned_points;
         let total_claimable_earned_points = coordinator_account_clients_sum_earned;
