@@ -1,9 +1,15 @@
 // Integration test for vLLM Rust bindings
 
+#[cfg(feature = "vllm-tests")]
 use psyche_inference::vllm;
+#[cfg(feature = "vllm-tests")]
 use pyo3::Python;
+#[cfg(feature = "vllm-tests")]
+use serial_test::serial;
 
 #[test]
+#[serial]
+#[cfg(feature = "vllm-tests")]
 fn test_create_and_shutdown_engine() {
     // Initialize Python
     pyo3::prepare_freethreaded_python();
@@ -27,10 +33,12 @@ fn test_create_and_shutdown_engine() {
         );
 
         let response = result.unwrap();
-        assert!(response.contains_key("status"));
-
-        let status: String = response.get("status").unwrap().extract(py).unwrap();
-        assert_eq!(status, "success");
+        assert!(
+            response.success,
+            "Engine creation failed: {:?}",
+            response.error
+        );
+        assert_eq!(response.engine_id.as_deref(), Some("test_engine"));
 
         // Shutdown engine
         let result = vllm::shutdown_engine(py, "test_engine");
@@ -43,6 +51,8 @@ fn test_create_and_shutdown_engine() {
 }
 
 #[test]
+#[serial]
+#[cfg(feature = "vllm-tests")]
 fn test_list_engines() {
     pyo3::prepare_freethreaded_python();
 
@@ -51,14 +61,17 @@ fn test_list_engines() {
         assert!(result.is_ok(), "Failed to list engines: {:?}", result.err());
 
         let response = result.unwrap();
-        assert!(response.contains_key("status"));
-
-        let status: String = response.get("status").unwrap().extract(py).unwrap();
-        assert_eq!(status, "success");
+        assert!(
+            response.success,
+            "List engines failed: {:?}",
+            response.error
+        );
     });
 }
 
 #[test]
+#[serial]
+#[cfg(feature = "vllm-tests")]
 fn test_run_inference() {
     // This test requires vLLM to be installed
     // Skip if not available
@@ -101,12 +114,11 @@ fn test_run_inference() {
         assert!(result.is_ok(), "Inference failed: {:?}", result.err());
 
         let response = result.unwrap();
-        assert!(response.contains_key("status"));
-
-        let status: String = response.get("status").unwrap().extract(py).unwrap();
-        assert_eq!(status, "success");
-
-        assert!(response.contains_key("generated_text"));
+        assert!(response.success, "Inference failed: {:?}", response.error);
+        assert!(
+            response.generated_text.is_some(),
+            "No generated text returned"
+        );
 
         // Cleanup
         let _ = vllm::shutdown_engine(py, "inference_test");
