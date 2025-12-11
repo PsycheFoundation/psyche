@@ -7,7 +7,6 @@ use serde_json::to_string_pretty;
 
 use crate::SolanaBackend;
 use crate::utils::native_amount_to_ui_amount;
-use crate::utils::ui_amount_to_native_amount;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -95,7 +94,7 @@ pub async fn command_json_dump_user_execute(
         let treasurer_run_state = backend.get_treasurer_run(&treasurer_run_address).await?;
 
         let collateral_mint_decimals = backend
-            .get_mint(&treasurer_run_state.collateral_mint)
+            .get_token_mint(&treasurer_run_state.collateral_mint)
             .await?
             .decimals;
 
@@ -106,8 +105,8 @@ pub async fn command_json_dump_user_execute(
         let user_collateral_amount = backend
             .get_token_account(&user_collateral_address)
             .await
-            .ok()
-            .amount;
+            .map(|account| account.amount)
+            .unwrap_or(0);
 
         let treasurer_participant_address =
             psyche_solana_treasurer::find_participant(&treasurer_run_address, &address);
@@ -122,9 +121,15 @@ pub async fn command_json_dump_user_execute(
                 user_collateral_amount,
                 collateral_mint_decimals
             ),
-            "claimed_earned_points": treasurer_participant_state.as_ref().map(|state| state.claimed_earned_points),
-            "claimed_collateral_amount": treasurer_participant_state.as_ref()
-                .map(|state| native_amount_to_ui_amount(state.claimed_collateral_amount, collateral_mint_decimals)),
+            "claimed_earned_points": treasurer_participant_state
+                .as_ref()
+                .map(|state| state.claimed_earned_points),
+            "claimed_collateral_amount": treasurer_participant_state
+                .as_ref()
+                .map(|state| native_amount_to_ui_amount(
+                    state.claimed_collateral_amount,
+                    collateral_mint_decimals
+                )),
         }))
     } else {
         None

@@ -41,7 +41,7 @@ pub async fn command_treasurer_top_up_rewards_execute(
     );
 
     let collateral_mint_decimals = backend
-        .get_mint(&treasurer_run_state.collateral_mint)
+        .get_token_mint(&treasurer_run_state.collateral_mint)
         .await?
         .decimals;
     let collateral_amount = ui_amount_to_native_amount(collateral_amount, collateral_mint_decimals);
