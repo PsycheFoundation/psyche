@@ -1,5 +1,6 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -36,13 +37,18 @@ impl RunManager {
 
         load_and_apply_env_file(&env_file)?;
 
-        let wallet_path = std::env::var("WALLET_PATH").context(
-            "WALLET_PATH env variable was not set. Make sure to set it in your env file",
-        )?;
-
-        info!("Using keypair at: {}", wallet_path);
-        let wallet_key = std::fs::read_to_string(&wallet_path)
-            .context(format!("Failed to read wallet file from: {}", wallet_path))?
+        let wallet_key =
+            if let Ok(raw_wallet_private_key) = std::env::var("RAW_WALLET_PRIVATE_KEY") {
+                info!("Using RAW_WALLET_PRIVATE_KEY from command line");
+                raw_wallet_private_key
+            } else if let Ok(wallet_path) = std::env::var("WALLET_PRIVATE_KEY_PATH") {
+                info!("Using WALLET_PRIVATE_KEY_PATH: {wallet_path}");
+                fs::read_to_string(wallet_path)?
+            } else {
+                bail!(
+                    "No wallet private key! Must set RAW_WALLET_PRIVATE_KEY or WALLET_PRIVATE_KEY_PATH"
+                )
+            }
             .trim()
             .to_string();
 
