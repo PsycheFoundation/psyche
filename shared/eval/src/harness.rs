@@ -102,6 +102,7 @@ struct TokenizedLLHDocument {
     answer: usize,
     choices_token_len: Vec<usize>,
     requests: Vec<Vec<i64>>,
+    acc_uncond_tokens_len: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -121,6 +122,8 @@ impl TokenizedLLHDocument {
         let mut choices_str = Vec::new();
         let mut choices_token_len = Vec::new();
         let mut choices: Vec<Vec<i64>> = Vec::new();
+        // let mut acc_uncond_tokens_all: Vec<Vec<i64>> = Vec::new();
+        let mut acc_uncond_tokens_len = Vec::new();
 
         // Tokenize fewshot prefix once
         let fewshot_tokens: Vec<i64> = tokenizer
@@ -164,13 +167,43 @@ impl TokenizedLLHDocument {
                     break;
                 }
             }
+
+            let acc_uncond_fmt = format!("Answer: {choice}");
+
+            // let acc_uncond_fmt_tokens: Vec<u32> = tokenizer
+            //     .encode(acc_uncond_fmt, false)
+            //     .unwrap()
+            //     .get_ids()
+            //     .iter()
+            //     .map(|x| *x as u32)
+            //     .collect();
+
+            for idx in 1..text_choice_tokens.len() {
+                let acc_uncond_tokens = &text_choice_tokens[text_choice_tokens.len() - idx..]
+                    .iter()
+                    .map(|x| *x as u32)
+                    .collect::<Vec<_>>();
+                let acc_uncond_str = tokenizer.decode(&acc_uncond_tokens, false).unwrap();
+                if acc_uncond_str.contains(&acc_uncond_fmt) {
+                    let acc_uncond_tokens = acc_uncond_tokens
+                        .iter()
+                        .map(|x| *x as i64)
+                        .collect::<Vec<_>>();
+                    // acc_uncond_tokens.push(acc_uncond_tokens.clone());
+                    acc_uncond_tokens_len.push(acc_uncond_tokens.len());
+                    break;
+                }
+            }
         }
 
+        println!("choices_token_len: {:?}", choices_token_len);
+        println!("acc_uncond_tokens_len: {:?}", acc_uncond_tokens_len);
         Self {
             choices_str,
             answer: doc.answer,
             requests,
             choices_token_len,
+            acc_uncond_tokens_len,
         }
     }
 }
