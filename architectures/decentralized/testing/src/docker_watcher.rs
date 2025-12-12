@@ -325,12 +325,32 @@ impl DockerWatcher {
             .map_err(|err| DockerWatcherError::LogsError { inner: err })
     }
 
-    pub async fn monitor_clients_health(&self, num_clients: u8) -> Result<(), DockerWatcherError> {
-        for i in 1..=num_clients {
-            let container_name = format!("{CLIENT_CONTAINER_PREFIX}-{i}");
-            self.monitor_client_health_by_id(container_name.as_str())
-                .await?;
+    /// Monitors the health of all currently running client containers.
+    pub async fn monitor_clients_health(&self) -> Result<(), DockerWatcherError> {
+        use bollard::container::ListContainersOptions;
+
+        // Get list of containers that are currently running
+        let all_containers = self
+            .client
+            .list_containers::<String>(Some(ListContainersOptions {
+                all: false, // Only running containers
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+
+        // Check health of running containers only
+        for container in all_containers {
+            if let Some(names) = &container.names {
+                if let Some(name) = names.first() {
+                    let trimmed_name = name.trim_start_matches('/');
+                    if trimmed_name.starts_with(CLIENT_CONTAINER_PREFIX) {
+                        self.monitor_client_health_by_id(trimmed_name).await?;
+                    }
+                }
+            }
         }
+
         Ok(())
     }
 

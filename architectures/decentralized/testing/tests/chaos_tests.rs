@@ -77,7 +77,7 @@ async fn test_pause_solana_validator(
     loop {
         tokio::select! {
            _ = liveness_check_interval.tick() => {
-               if let Err(e) = watcher.monitor_clients_health(n_clients).await {
+               if let Err(e) = watcher.monitor_clients_health().await {
                    panic!("{}", e);
               }
            }
@@ -165,7 +165,7 @@ async fn test_delay_solana_test_validator(
     loop {
         tokio::select! {
            _ = liveness_check_interval.tick() => {
-                   if let Err(e) = watcher.monitor_clients_health(n_clients).await {
+                   if let Err(e) = watcher.monitor_clients_health().await {
                        panic!("{}", e);
                }
            }
@@ -250,7 +250,7 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
     loop {
         tokio::select! {
            _ = liveness_check_interval.tick() => {
-               if let Err(e) = watcher.monitor_clients_health(n_clients).await {
+               if let Err(e) = watcher.monitor_clients_health().await {
                    panic!("{}", e);
               }
            }

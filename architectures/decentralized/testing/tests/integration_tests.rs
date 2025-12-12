@@ -62,7 +62,7 @@ async fn test_one_clients_three_epochs_run() {
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(1).await {
+                if let Err(e) = watcher.monitor_clients_health().await {
                     panic!("{}", e);
                 }
             }
@@ -150,7 +150,7 @@ async fn test_two_clients_three_epochs_run() {
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(2).await {
+                if let Err(e) = watcher.monitor_clients_health().await {
                     panic!("{}", e);
                 }
             }
@@ -218,7 +218,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
         tokio::select! {
            _ = liveness_check_interval.tick() => {
                println!("Waiting for epoch to end");
-                if let Err(e) = watcher.monitor_clients_health(n_new_clients + 1).await {
+                if let Err(e) = watcher.monitor_clients_health().await {
                     panic!("{}", e);
                }
            }
@@ -283,7 +283,7 @@ async fn test_rejoining_client_delay() {
         tokio::select! {
            _ = interval.tick() => {
                println!("Waiting for first epoch to finish");
-               if let Err(e) = watcher.monitor_clients_health(2).await {
+               if let Err(e) = watcher.monitor_clients_health().await {
                    panic!("{}", e);
                }
                let current_epoch = solana_client.get_current_epoch().await;
@@ -687,7 +687,7 @@ async fn test_solana_subscriptions() {
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(2).await {
+                if let Err(e) = watcher.monitor_clients_health().await {
                     panic!("{}", e);
                 }
             }
@@ -839,7 +839,7 @@ async fn test_everybody_leaves_in_warmup() {
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(2).await {
+                if let Err(e) = watcher.monitor_clients_health().await {
                     panic!("{}", e);
                 }
             }
