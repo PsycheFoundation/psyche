@@ -226,6 +226,11 @@ pub async fn spawn_new_client_with_monitoring(
                 IntegrationTestLogMarker::LoadedModel,
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::HealthCheck,
+                IntegrationTestLogMarker::UntrainedBatches,
+                IntegrationTestLogMarker::SolanaSubscription,
+                IntegrationTestLogMarker::WitnessElected,
+                IntegrationTestLogMarker::Error,
             ],
         )
         .unwrap();
