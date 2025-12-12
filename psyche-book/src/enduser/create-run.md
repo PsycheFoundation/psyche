@@ -102,8 +102,8 @@ You can configure how many points does each client earns and loses for each epoc
 psyche-solana-client set-future-epoch-rates \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --earning-rate [EARNING_RATE] \
-    --slashing-rate [SLASHING_RATE] \
+    --earning-rate-total-shared [EARNING_RATE] \
+    --slashing-rate-per-client [SLASHING_RATE] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
