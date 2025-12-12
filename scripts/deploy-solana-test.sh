@@ -67,6 +67,7 @@ cargo run --release --bin psyche-solana-client -- \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
+    --client-version "test" \
     --run-id ${RUN_ID} "$@"
 
 echo -e "\n[+] Update training run config..."
@@ -76,7 +77,9 @@ cargo run --release --bin psyche-solana-client -- \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} \
-    --config-path ${CONFIG_FILE}
+    --config-path ${CONFIG_FILE} \
+    --num-parameters 1100000000 \
+    --vocab-size 32768
 
 echo -e "\n[+] Unpause the training run..."
 cargo run --release --bin psyche-solana-client -- \

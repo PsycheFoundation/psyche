@@ -1,5 +1,5 @@
 use anyhow::Result;
-use iroh::NodeId;
+use iroh::EndpointId;
 use iroh::protocol::AcceptError;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::api::Tag;
@@ -30,17 +30,17 @@ pub struct PeerManagerHandle {
 /// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
 enum PeerCommand {
     SetPeers {
-        peers: Vec<NodeId>,
+        peers: Vec<EndpointId>,
     },
     GetPeer {
-        reply: oneshot::Sender<Option<NodeId>>,
+        reply: oneshot::Sender<Option<EndpointId>>,
     },
     ReportSuccess {
-        peer_id: NodeId,
+        peer_id: EndpointId,
     },
     ReportModelDownloadError {
         blob_ticket: Option<BlobTicket>,
-        peer_id: NodeId,
+        peer_id: EndpointId,
     },
 }
 
@@ -59,13 +59,13 @@ impl PeerManagerHandle {
     }
 
     /// Set the list of peers that the manager will use to download the model parameters
-    pub fn set_peers(&self, peers: Vec<NodeId>) {
+    pub fn set_peers(&self, peers: Vec<EndpointId>) {
         let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
     }
 
     /// Get the next peer to download the model parameters from
     /// We'll get a None if no peers are available, a peer might be available later when it finishes sharing a parameter
-    pub async fn get_next_peer(&self) -> Option<NodeId> {
+    pub async fn get_next_peer(&self) -> Option<EndpointId> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         if self
@@ -80,14 +80,14 @@ impl PeerManagerHandle {
     }
 
     /// Report that a peer has successfully shared the hash of a blob ticket for a parameter
-    pub fn report_success(&self, peer_id: NodeId) {
+    pub fn report_success(&self, peer_id: EndpointId) {
         let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
     }
 
     /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
     pub fn report_blob_ticket_request_error(
         &self,
-        peer_id: NodeId,
+        peer_id: EndpointId,
         blob_ticket: Option<BlobTicket>,
     ) {
         if self
@@ -105,9 +105,9 @@ impl PeerManagerHandle {
 
 struct PeerManagerActor {
     /// Peers that are available to request the model to
-    available_peers: VecDeque<NodeId>,
+    available_peers: VecDeque<EndpointId>,
     /// A map for the peer's blob ticket to their errors
-    errors_per_peers: HashMap<NodeId, u8>,
+    errors_per_peers: HashMap<EndpointId, u8>,
     /// Max errors we tolerate for a peer to share a parameter blob ticket
     max_errors_per_peer: u8,
 }

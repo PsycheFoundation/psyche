@@ -245,7 +245,7 @@ pub struct CoordinatorConfig {
     pub round_witness_time: u64,
     pub global_batch_size_warmup_tokens: u64,
 
-    pub rounds_per_epoch: u32,
+    pub epoch_time: u64,
     pub total_steps: u32,
 
     pub init_min_clients: u16,
@@ -256,6 +256,7 @@ pub struct CoordinatorConfig {
     pub global_batch_size_end: u16,
 
     pub verification_percent: u8,
+    pub waiting_for_members_extra_time: u8,
 }
 
 #[derive(
@@ -275,6 +276,8 @@ pub struct CoordinatorEpochState<T> {
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub rounds_head: u32,
     pub start_step: u32,
+    pub last_step: u32,
+    pub start_timestamp: u64,
     pub first_round: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
 }
@@ -410,6 +413,8 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             exited_clients: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
+            last_step: Default::default(),
+            start_timestamp: Default::default(),
         }
     }
 }
@@ -879,7 +884,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         };
 
         if pending_clients.len() as u16 >= self.config.init_min_clients
-            && self.check_timeout(unix_timestamp, WAITING_FOR_MEMBERS_EXTRA_SECONDS)
+            && self.check_timeout(
+                unix_timestamp,
+                self.config.waiting_for_members_extra_time as u64,
+            )
         // This extra time allows for more clients to join even if the minimum number of clients is reached
         {
             // Make sure that all unhealthy clients are kicked at this point
@@ -914,6 +922,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.epoch_state.first_round = true.into();
             self.epoch_state.cold_start_epoch = cold_start_epoch;
             self.epoch_state.start_step = self.progress.step;
+            self.epoch_state.start_timestamp = unix_timestamp;
             self.epoch_state
                 .clients
                 .extend(
@@ -967,7 +976,6 @@ impl<T: NodeIdentity> Coordinator<T> {
             // TODO: Punish idle witnesses
             self.epoch_state.first_round = false.into();
             self.progress.step += 1;
-
             let current_round = self.current_round_unchecked();
             let height = current_round.height;
             let num_witnesses = current_round.witnesses.len() as u16;
@@ -983,10 +991,27 @@ impl<T: NodeIdentity> Coordinator<T> {
                 return Ok(TickResult::Ticked);
             }
 
-            // If we reach the end of an epoch or if we don't reach the min number of
-            // clients or registered witnesses for the current round, we change to Cooldown
-            if height == self.config.rounds_per_epoch - 1
-                || self.epoch_state.clients.len() < self.config.min_clients as usize
+            // Once the timeout for the whole epoch is reached, we set the last step as the current
+            // step plus two.
+            if self.check_epoch_timeout(unix_timestamp) && !self.epoch_state.last_step_set() {
+                let last_step: u32 = self.progress.step + 2;
+                // Just a sanity check to be sure the epoch doesn't end too early since we need
+                // at least 4 rounds per epoch for overlapped pipeling
+                if last_step >= 4 {
+                    self.epoch_state.last_step = last_step;
+                }
+            }
+
+            // We reached the last step of the epoch, we transition to Cooldown
+            if self.epoch_state.last_step_set() && self.progress.step == self.epoch_state.last_step
+            {
+                self.start_cooldown(unix_timestamp);
+                return Ok(TickResult::Ticked);
+            }
+
+            // If we don't reach the min number of clients or registered witnesses for the current round,
+            // we change to Cooldown
+            if self.epoch_state.clients.len() < self.config.min_clients as usize
                 || num_witnesses < self.witness_quorum(num_witnesses)
                 || self.progress.step >= self.config.total_steps
                 || self.pending_pause.is_true()
@@ -1042,6 +1067,11 @@ impl<T: NodeIdentity> Coordinator<T> {
     fn check_timeout(&self, unix_timestamp: u64, duration: u64) -> bool {
         self.run_state_start_unix_timestamp != unix_timestamp
             && unix_timestamp >= duration + self.run_state_start_unix_timestamp
+    }
+
+    fn check_epoch_timeout(&self, unix_timestamp: u64) -> bool {
+        self.epoch_state.start_timestamp != unix_timestamp
+            && unix_timestamp >= self.epoch_state.start_timestamp + self.config.epoch_time
     }
 
     fn start_cooldown(&mut self, unix_timestamp: u64) {
@@ -1124,6 +1154,15 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 }
 
+impl<T> CoordinatorEpochState<T> {
+    // When an epoch reaches its timeout, the last step is set as the
+    // current step + 2. When last_step is set to 0, we assume it has not
+    // been set.
+    pub fn last_step_set(&self) -> bool {
+        self.last_step != 0
+    }
+}
+
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
         self.max_round_train_time != 0
@@ -1134,11 +1173,11 @@ impl CoordinatorConfig {
             && self.global_batch_size_start != 0
             && self.global_batch_size_end != 0
             && self.global_batch_size_end >= self.global_batch_size_start
-            && self.rounds_per_epoch >= 4 // need at least 4 rounds per epoch for overlapped pipeling
             && self.total_steps != 0
             && self.witness_nodes <= self.min_clients
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0
+            && self.waiting_for_members_extra_time > 0
     }
 
     pub fn get_batch_size(&self, total_tokens_processed: u64) -> u16 {

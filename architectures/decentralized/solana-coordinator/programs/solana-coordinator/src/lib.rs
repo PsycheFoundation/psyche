@@ -29,7 +29,7 @@ use ts_rs::TS;
 
 pub use crate::instance_state::RunMetadata;
 
-declare_id!("HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y");
+declare_id!("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7");
 
 pub const SOLANA_MAX_NUM_PENDING_CLIENTS: usize = SOLANA_MAX_NUM_CLIENTS;
 
@@ -57,6 +57,11 @@ pub enum DeserializeCoordinatorFromBytes {
     )]
     InvalidDiscriminator { expected: Vec<u8>, actual: Vec<u8> },
 
+    #[error(
+        "Coordinator has an invalid version. Expected {expected:?}, got {actual:?}."
+    )]
+    InvalidVersion { expected: u64, actual: u64 },
+
     #[error("Failed to cast bytes into CoordinatorAccount: {0}")]
     CastError(#[from] bytemuck::PodCastError),
 }
@@ -81,15 +86,28 @@ fn validate_coordinator_account_bytes(
     Ok(())
 }
 
+fn validate_coordinator_account_version(
+    coordinator_account: &CoordinatorAccount,
+) -> std::result::Result<(), DeserializeCoordinatorFromBytes> {
+    if coordinator_account.version != CoordinatorAccount::VERSION {
+        return Err(DeserializeCoordinatorFromBytes::InvalidVersion {
+            expected: CoordinatorAccount::VERSION,
+            actual: coordinator_account.version,
+        });
+    }
+    Ok(())
+}
+
 pub fn coordinator_account_from_bytes(
     bytes: &[u8],
 ) -> std::result::Result<&CoordinatorAccount, DeserializeCoordinatorFromBytes> {
     validate_coordinator_account_bytes(bytes)?;
-
-    Ok(bytemuck::try_from_bytes(
+    let coordinator_account: &CoordinatorAccount = bytemuck::try_from_bytes(
         &bytes[CoordinatorAccount::DISCRIMINATOR.len()
             ..CoordinatorAccount::space_with_discriminator()],
-    )?)
+    )?;
+    validate_coordinator_account_version(coordinator_account)?;
+    Ok(coordinator_account)
 }
 
 pub fn coordinator_account_from_bytes_mut(
@@ -97,22 +115,26 @@ pub fn coordinator_account_from_bytes_mut(
 ) -> std::result::Result<&mut CoordinatorAccount, DeserializeCoordinatorFromBytes>
 {
     validate_coordinator_account_bytes(bytes)?;
-
-    Ok(bytemuck::try_from_bytes_mut(
+    let coordinator_account = bytemuck::try_from_bytes_mut(
         &mut bytes[CoordinatorAccount::DISCRIMINATOR.len()
             ..CoordinatorAccount::space_with_discriminator()],
-    )?)
+    )?;
+    validate_coordinator_account_version(coordinator_account)?;
+    Ok(coordinator_account)
 }
 
 #[account(zero_copy)]
 #[repr(C)]
 #[derive(Serialize, Deserialize, TS)]
 pub struct CoordinatorAccount {
+    pub version: u64,
     pub state: CoordinatorInstanceState,
     pub nonce: u64,
 }
 
 impl CoordinatorAccount {
+    pub const VERSION: u64 = 1;
+
     pub fn space_with_discriminator() -> usize {
         CoordinatorAccount::DISCRIMINATOR.len()
             + std::mem::size_of::<CoordinatorAccount>()
@@ -143,6 +165,7 @@ impl CoordinatorInstance {
 pub mod psyche_solana_coordinator {
 
     use super::*;
+    use psyche_core::FixedString;
 
     pub fn init_coordinator(
         context: Context<InitCoordinatorAccounts>,
@@ -168,6 +191,24 @@ pub mod psyche_solana_coordinator {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
         account.state.update(metadata, config, model, progress)
+    }
+
+    pub fn update_client_version(
+        ctx: Context<OwnerCoordinatorAccounts>,
+        new_version: String,
+    ) -> Result<()> {
+        let mut account = ctx.accounts.coordinator_account.load_mut()?;
+
+        // Only allow pausing when the coordinator is halted (uninitialized/paused/finished)
+        // We should not really reach here since we pre-check in the client
+        if !account.state.coordinator.halted() {
+            return err!(ProgramError::UpdateConfigNotHalted);
+        }
+
+        account.state.client_version =
+            FixedString::<96>::try_from(new_version.as_str()).unwrap();
+        msg!("new version: {}", account.state.client_version);
+        Ok(())
     }
 
     pub fn set_future_epoch_rates(
@@ -297,7 +338,8 @@ pub struct OwnerCoordinatorAccounts<'info> {
 
     #[account(
         mut,
-        constraint = coordinator_instance.coordinator_account == coordinator_account.key()
+        constraint = coordinator_instance.coordinator_account == coordinator_account.key(),
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
     )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 }
@@ -318,7 +360,8 @@ pub struct PermissionlessCoordinatorAccounts<'info> {
 
     #[account(
         mut,
-        constraint = coordinator_instance.coordinator_account == coordinator_account.key()
+        constraint = coordinator_instance.coordinator_account == coordinator_account.key(),
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
     )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 }
