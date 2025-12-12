@@ -104,7 +104,12 @@ export function startWatchChainLoop<D>(): <
 						if (cancelled.cancelled) {
 							return
 						}
-						const instr = tx.transaction.message.instructions
+						const instr = [
+							...tx.transaction.message.instructions,
+							...(data[1].meta?.innerInstructions?.flatMap(
+								(i) => i.instructions
+							) ?? []),
+						]
 						for (const i of instr) {
 							// instructions without a payload aren't useful to us.
 							if (!('data' in i)) {
