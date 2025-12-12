@@ -5,7 +5,7 @@ use psyche_client::IntegrationTestLogMarker;
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, VALIDATOR_CONTAINER_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
-    docker_setup::e2e_testing_setup,
+    docker_setup::{e2e_testing_setup, monitor_client},
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
 };
@@ -46,12 +46,8 @@ async fn test_pause_solana_validator(
 
     // Monitor clients
     for i in 1..=n_clients {
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
-                vec![IntegrationTestLogMarker::Loss],
-            )
-            .unwrap();
+        let _monitor_client =
+            monitor_client(&watcher, &format!("{CLIENT_CONTAINER_PREFIX}-{i}")).unwrap();
     }
 
     // Sleep to let the coordinator to be deployed and run to be configured
@@ -134,12 +130,8 @@ async fn test_delay_solana_test_validator(
 
     // Monitor clients
     for i in 1..=n_clients {
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
-                vec![IntegrationTestLogMarker::Loss],
-            )
-            .unwrap();
+        let _monitor_client =
+            monitor_client(&watcher, &format!("{CLIENT_CONTAINER_PREFIX}-{i}")).unwrap();
     }
 
     // Sleep to let the coordinator to be deployed and run to be configured
@@ -218,12 +210,8 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
 
     // Monitor clients
     for i in 1..=n_clients {
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
-                vec![IntegrationTestLogMarker::Loss],
-            )
-            .unwrap();
+        let _monitor_client =
+            monitor_client(&watcher, &format!("{CLIENT_CONTAINER_PREFIX}-{i}")).unwrap();
     }
 
     // Sleep to let the coordinator to be deployed and run to be configured

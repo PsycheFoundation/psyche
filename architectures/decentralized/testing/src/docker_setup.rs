@@ -214,25 +214,35 @@ pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Ve
     (all_container_names, running_containers)
 }
 
+/// Helper to get all integration test log markers for comprehensive monitoring
+fn all_integration_test_markers() -> Vec<IntegrationTestLogMarker> {
+    vec![
+        IntegrationTestLogMarker::LoadedModel,
+        IntegrationTestLogMarker::StateChange,
+        IntegrationTestLogMarker::Loss,
+        IntegrationTestLogMarker::HealthCheck,
+        IntegrationTestLogMarker::UntrainedBatches,
+        IntegrationTestLogMarker::SolanaSubscription,
+        IntegrationTestLogMarker::WitnessElected,
+        IntegrationTestLogMarker::Error,
+    ]
+}
+
+/// Monitors an existing client container with all integration test markers
+pub fn monitor_client(
+    watcher: &DockerWatcher,
+    container_name: &str,
+) -> Result<tokio::task::JoinHandle<Result<(), DockerWatcherError>>, DockerWatcherError> {
+    watcher.monitor_container(container_name, all_integration_test_markers())
+}
+
 pub async fn spawn_new_client_with_monitoring(
     docker: Arc<Docker>,
     watcher: &DockerWatcher,
 ) -> Result<String, DockerWatcherError> {
     let container_id = spawn_new_client(docker.clone()).await.unwrap();
     let _monitor_client_2 = watcher
-        .monitor_container(
-            &container_id,
-            vec![
-                IntegrationTestLogMarker::LoadedModel,
-                IntegrationTestLogMarker::StateChange,
-                IntegrationTestLogMarker::Loss,
-                IntegrationTestLogMarker::HealthCheck,
-                IntegrationTestLogMarker::UntrainedBatches,
-                IntegrationTestLogMarker::SolanaSubscription,
-                IntegrationTestLogMarker::WitnessElected,
-                IntegrationTestLogMarker::Error,
-            ],
-        )
+        .monitor_container(&container_id, all_integration_test_markers())
         .unwrap();
     println!("Spawned client {container_id}");
     Ok(container_id)
