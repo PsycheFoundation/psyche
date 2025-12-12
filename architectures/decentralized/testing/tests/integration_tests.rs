@@ -15,9 +15,7 @@ use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
-    docker_setup::{
-        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
-    },
+    docker_setup::{e2e_testing_setup, kill_all_clients, spawn_new_client_with_monitoring},
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
 };
@@ -207,16 +205,9 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     tokio::time::sleep(Duration::from_secs(30)).await;
 
     println!("Adding new clients");
-    for i in 1..=n_new_clients {
-        spawn_new_client(docker.clone()).await.unwrap();
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
-                vec![
-                    IntegrationTestLogMarker::LoadedModel,
-                    IntegrationTestLogMarker::Loss,
-                ],
-            )
+    for _i in 1..=n_new_clients {
+        spawn_new_client_with_monitoring(docker.clone(), &watcher)
+            .await
             .unwrap();
     }
 
@@ -270,13 +261,8 @@ async fn test_rejoining_client_delay() {
     tokio::time::sleep(Duration::from_secs(30)).await;
 
     // Spawn client
-    spawn_new_client(docker.clone()).await.unwrap();
-
-    let _monitor_client = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-{}", 2),
-            vec![IntegrationTestLogMarker::LoadedModel],
-        )
+    spawn_new_client_with_monitoring(docker.clone(), &watcher)
+        .await
         .unwrap();
 
     let scheduler = ChaosScheduler::new(docker.clone(), solana_client.clone());
@@ -551,7 +537,9 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     // Test reconnection
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client_with_monitoring(docker.clone(), &watcher)
+        .await
+        .unwrap();
 
     // Wait for state to change back to Warmup
     assert!(
@@ -841,23 +829,31 @@ async fn test_everybody_leaves_in_warmup() {
     }
 
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client_with_monitoring(docker.clone(), &watcher)
+        .await
+        .unwrap();
     println!("New client started");
 
-    let client_2_name = format!("{CLIENT_CONTAINER_PREFIX}-2");
-    watcher
-        .monitor_container(&client_2_name, vec![IntegrationTestLogMarker::StateChange])
-        .unwrap();
+    let mut live_interval = time::interval(Duration::from_secs(10));
 
-    while let Some(response) = watcher.log_rx.recv().await {
-        if let Response::StateChange(_timestamp, _client_id, old_state, new_state, ..) = response {
-            println!("Changing from {old_state} to {new_state}");
+    loop {
+        tokio::select! {
+            _ = live_interval.tick() => {
+                if let Err(e) = watcher.monitor_clients_health(2).await {
+                    panic!("{}", e);
+                }
+            }
+            response = watcher.log_rx.recv() => {
+                if let Some(Response::StateChange(_timestamp, _client_id, old_state, new_state, ..)) = response {
+                    println!("Changing from {old_state} to {new_state}");
 
-            if old_state == RunState::RoundWitness.to_string()
-                && new_state == RunState::Cooldown.to_string()
-            {
-                println!("Epoch restarted correctly, finishing test");
-                break;
+                    if old_state == RunState::RoundWitness.to_string()
+                        && new_state == RunState::Cooldown.to_string()
+                    {
+                        println!("Epoch restarted correctly, finishing test");
+                        break;
+                    }
+                }
             }
         }
     }
@@ -908,17 +904,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 
                         if new_state == RunState::RoundTrain.to_string() && !spawned_second_client {
                             println!("Joining a second client to the run");
-                            let second_client_id = spawn_new_client(docker.clone()).await.unwrap();
-                            let _monitor_client_2 = watcher
-                            .monitor_container(
-                                &second_client_id,
-                                vec![
-                                    IntegrationTestLogMarker::StateChange,
-                                    IntegrationTestLogMarker::LoadedModel,
-                                    IntegrationTestLogMarker::Loss,
-                                ],
-                            )
-                            .unwrap();
+                            let _second_client_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
                             spawned_second_client = true;
                         }
 

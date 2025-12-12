@@ -110,6 +110,7 @@ pub async fn e2e_testing_setup_subscription(
     DockerTestCleanup {}
 }
 
+/// Spawns a new client container without monitoring.
 pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
     // Set the container name based on the ones that are already running.
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
