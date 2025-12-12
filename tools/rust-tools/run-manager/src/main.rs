@@ -26,6 +26,9 @@ struct Args {
     coordinator_program_id: String,
 
     /// Use a local Docker image instead of pulling from registry.
+    /// This is only meant for testing purposes, since it is easier to
+    /// check a version update when the two docker images are local. Do not
+    /// use in production
     #[arg(long, global = true)]
     local: bool,
 }
