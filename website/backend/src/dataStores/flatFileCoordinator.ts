@@ -38,6 +38,7 @@ const ALLOWLISTED_RUN_IDS =
 				'hermes-4-8b',
 				'hermes-4-8b-2',
 				'dm-fwedu-baseline',
+				'dm-fwedu-baseline-2',
 				'dm-dclm-baseline',
 				'dm-fwedu-dclm',
 				'dm-fwedu-dclm-fpdf',
