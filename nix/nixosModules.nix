@@ -220,7 +220,10 @@
       };
       nixosConfigurations."psyche-http-mainnet" = persistentPsycheWebsite {
         configName = "psyche-http-mainnet";
-        hostnames = [ "mainnet-preview.psyche.network" ];
+        hostnames = [
+          "mainnet-preview.psyche.network"
+          "psyche.network"
+        ];
         backendSecret = ../secrets/mainnet/backend.age;
         miningPoolRpc = mainnetFrontendRpc;
         coordinatorCluster = "devnet";
