@@ -125,6 +125,9 @@ export function startWatchChainLoop<D>(): <
 								)
 							}
 							if (!rawDecoded) {
+								console.warn(
+									`No data for instruction with data${i.data}. Skipping.`
+								)
 								continue
 							}
 							try {
@@ -159,7 +162,8 @@ export function startWatchChainLoop<D>(): <
 				}
 			} catch (err) {
 				console.error(
-					`[${name}] chain loop encountered an error, restarting: ${err}`
+					`[${name}] chain loop encountered an error, restarting,`,
+					err
 				)
 				onError(err)
 			} finally {
