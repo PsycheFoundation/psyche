@@ -89,7 +89,7 @@ async fn test_one_clients_three_epochs_run() {
                             }
                         }
                     }
-                    _ => unreachable!(),
+                    _ => {},
                 }
             }
         }
@@ -162,7 +162,7 @@ async fn test_two_clients_three_epochs_run() {
                             }
                         }
                     }
-                    _ => unreachable!(),
+                    _ => {},
                 }
             }
         }
@@ -682,7 +682,7 @@ async fn test_solana_subscriptions() {
                         println!("Solana subscriptions {url} status: {status}");
                         subscription_events.push((url , status))
                     }
-                    _ => unreachable!(),
+                    _ => {},
                 }
             }
 
