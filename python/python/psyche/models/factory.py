@@ -32,4 +32,18 @@ def make_causal_lm(
             reduce_dtype=reduce_dtype,
             fsdp_modules=fsdp_modules,
         )
+    elif architecture == "torchtitan":
+        from .ttitan import TorchtitanAuto
+
+        return TorchtitanAuto.from_pretrained(
+            source=source,
+            device=device,
+            attn_implementation=attn_implementation,
+            dp=dp,
+            tp=tp,
+            override_max_position_embeddings=override_max_position_embeddings,
+            param_dtype=param_dtype,
+            reduce_dtype=reduce_dtype,
+            fsdp_modules=fsdp_modules,
+        )
     raise ValueError(f"Unknown architecture {architecture}")
