@@ -2,6 +2,14 @@ version = 1
 revision = 3
 requires-python = "==3.12.*"
 
+[manifest]
+overrides = [
+    { name = "flash-attn", marker = "sys_platform == 'never'" },
+    { name = "liger-kernel", marker = "sys_platform == 'never'" },
+    { name = "torch", marker = "sys_platform == 'never'" },
+    { name = "torchtitan", marker = "sys_platform == 'never'" },
+]
+
 [[package]]
 name = "certifi"
 version = "2025.10.5"
