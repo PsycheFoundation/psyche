@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::{Error, Result};
 use psyche_centralized_client::app::App as ClientApp;
-use psyche_centralized_client::app::AppBuilder as ClientAppBuilder;
+use psyche_centralized_client::app::build_app as build_client_app;
 use psyche_centralized_shared::ClientId;
 use psyche_client::NC;
 use psyche_client::RunInitConfig;
@@ -11,7 +11,6 @@ use tokio::select;
 use tokio::task::JoinHandle;
 use tracing::debug;
 
-use crate::test_utils::dummy_client_app_params_default;
 use crate::test_utils::dummy_client_app_params_with_training_delay;
 
 struct Client {
@@ -28,11 +27,15 @@ impl Client {
         NC,
         RunInitConfig<ClientId, ClientId>,
     ) {
-        let client_app_params = dummy_client_app_params_default(server_port, run_id);
-        let (client_app, allowlist, p2p, state_options) = ClientAppBuilder::new(client_app_params)
-            .build()
-            .await
-            .unwrap();
+        let client_app_params = dummy_client_app_params_with_training_delay(server_port, run_id, 5);
+        let (client_app, allowlist, p2p, state_options) = build_client_app(
+            client_app_params.cancel,
+            client_app_params.server_addr,
+            None,
+            client_app_params.train_args,
+        )
+        .await
+        .unwrap();
 
         (Self { inner: client_app }, allowlist, p2p, state_options)
     }
@@ -49,10 +52,14 @@ impl Client {
     ) {
         let client_app_params =
             dummy_client_app_params_with_training_delay(server_port, run_id, training_delay_secs);
-        let (client_app, allowlist, p2p, state_options) = ClientAppBuilder::new(client_app_params)
-            .build()
-            .await
-            .unwrap();
+        let (client_app, allowlist, p2p, state_options) = build_client_app(
+            client_app_params.cancel,
+            client_app_params.server_addr,
+            None,
+            client_app_params.train_args,
+        )
+        .await
+        .unwrap();
 
         (Self { inner: client_app }, allowlist, p2p, state_options)
     }
@@ -63,7 +70,7 @@ impl Client {
         p2p: NC,
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
-        debug!("spawned new client: {:?}", p2p.node_addr().await);
+        debug!("spawned new client: {:?}", p2p.endpoint_addr().await);
         let client_run = self.inner.run(allowlist, p2p, state_options);
         tokio::pin!(client_run);
         loop {

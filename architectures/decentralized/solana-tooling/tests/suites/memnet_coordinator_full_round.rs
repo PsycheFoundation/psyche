@@ -69,6 +69,7 @@ pub async fn run() {
             run_id: "This is a random run id!".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "test".to_string(),
         },
     )
     .await
@@ -105,8 +106,9 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 1,
-            rounds_per_epoch: 10,
+            epoch_time: 30,
             total_steps: 100,
+            waiting_for_members_extra_time: 3,
         }),
         Some(Model::LLM(LLM {
             architecture: LLMArchitecture::HfLlama,

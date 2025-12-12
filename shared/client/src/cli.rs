@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
-use psyche_network::SecretKey;
+use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
 
@@ -39,8 +39,12 @@ pub fn print_identity_keys(key: Option<&PathBuf>) -> Result<()> {
         anyhow!("Use --identity-secret-key-path or use `RAW_IDENTITY_SECRET_KEY` env variable")
     })?;
     println!("Public key: {}", key.public());
-    println!("Secret key: {}", hex::encode(key.secret().as_bytes()));
+    println!("Secret key: {}", hex::encode(key.to_bytes()));
     Ok(())
+}
+
+fn parse_trim_quotes(s: &str) -> Result<String, String> {
+    Ok(s.trim_matches('"').to_string())
 }
 
 #[derive(Args, Debug)]
@@ -56,6 +60,14 @@ pub struct TrainArgs {
     /// Sets the network interface for the client's P2P network participation. If not provided, will bind to all interfaces.
     #[clap(long, env)]
     pub bind_p2p_interface: Option<String>,
+
+    /// What relays to use - public n0 or the private Psyche ones
+    #[clap(long, env, default_value = "psyche")]
+    pub iroh_relay: RelayKind,
+
+    /// What discovery to use - public n0 or local
+    #[clap(long, env, default_value = "n0")]
+    pub iroh_discovery: DiscoveryMode,
 
     /// Sets clients logs interface
     /// tui: Enables a terminal-based graphical interface for monitoring analytics.
@@ -97,7 +109,7 @@ pub struct TrainArgs {
     pub metrics_local_port: Option<u16>,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
-    #[clap(long, env)]
+    #[clap(long, env, value_parser = parse_trim_quotes)]
     pub run_id: String,
 
     #[clap(long, default_value_t = 1, env)]
@@ -220,6 +232,9 @@ impl TrainArgs {
             self.keep_steps,
         ) {
             (Some(token), Some(repo), Some(dir), delete_old_steps, keep_steps) => {
+                if keep_steps == 0 {
+                    bail!("keep_steps must be >= 1 for hub repository uploads (got {keep_steps})")
+                }
                 Some(CheckpointConfig {
                     checkpoint_dir: dir,
                     hub_upload: Some(HubUploadInfo {

@@ -17,7 +17,6 @@ use anchor_client::{
         signature::{Keypair, Signature, Signer},
     },
 };
-use anchor_spl::token;
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
@@ -400,11 +399,22 @@ impl SolanaBackend {
             .map_err(|error| anyhow!("Unable to decode treasurer participant data: {error}"))
     }
 
-    pub async fn get_token_amount(&self, token_account: &Pubkey) -> Result<u64> {
+    pub async fn get_token_account(
+        &self,
+        token_account: &Pubkey,
+    ) -> Result<anchor_spl::token::spl_token::state::Account> {
         let data = self.get_data(token_account).await?;
-        Ok(token::spl_token::state::Account::unpack(&data)
-            .map_err(|error| anyhow!("Unable to decode token account data: {error}"))?
-            .amount)
+        anchor_spl::token::spl_token::state::Account::unpack(&data)
+            .map_err(|error| anyhow!("Unable to decode token account data: {error}"))
+    }
+
+    pub async fn get_token_mint(
+        &self,
+        mint: &Pubkey,
+    ) -> Result<anchor_spl::token::spl_token::state::Mint> {
+        let data = self.get_data(mint).await?;
+        anchor_spl::token::spl_token::state::Mint::unpack(&data)
+            .map_err(|error| anyhow!("Unable to decode mint account data: {error}"))
     }
 
     pub fn compute_deterministic_treasurer_index(
@@ -511,9 +521,15 @@ impl SolanaBackend {
         let instructions = instructions.to_vec();
         let signers = signers.to_vec();
         tokio::task::spawn(async move {
-            Self::send_and_retry_with(&program_coordinators, &name, &instructions, &signers)
-                .await
-                .unwrap();
+            if let Err(err) =
+                Self::send_and_retry_with(&program_coordinators, &name, &instructions, &signers)
+                    .await
+            {
+                error!(
+                    "Failed to send {} transaction after all retries: {}",
+                    name, err
+                );
+            }
         });
     }
 
@@ -524,7 +540,8 @@ impl SolanaBackend {
         signers: &[Arc<Keypair>],
     ) -> Result<Signature> {
         // TODO (vbrunet) - can we improve the retry mechanism here
-        for _ in 0..SEND_RETRIES {
+        let mut retries = 0;
+        loop {
             for program_coordinator in program_coordinators {
                 let mut request = program_coordinator.request();
                 for instruction in instructions {
@@ -540,14 +557,17 @@ impl SolanaBackend {
                         return Ok(signature);
                     }
                     Err(error) => {
+                        retries += 1;
+                        if retries >= SEND_RETRIES {
+                            return Err(anyhow!(
+                                "Could not send transaction: {name}, after {retries} retries: {error}"
+                            ));
+                        }
                         warn!("Error sending transaction: {name}: {error}, retrying");
                     }
                 }
             }
         }
-        Err(anyhow!(
-            "Could not send transaction: {name}, all attempts failed"
-        ))
     }
 }
 

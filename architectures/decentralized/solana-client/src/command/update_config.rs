@@ -36,6 +36,8 @@ pub struct CommandUpdateConfigParams {
     #[clap(long)]
     vocab_size: Option<u64>,
     // end metadata
+    #[clap(long, env)]
+    client_version: Option<String>,
 }
 
 pub async fn command_update_config_execute(
@@ -52,6 +54,7 @@ pub async fn command_update_config_execute(
         description,
         num_parameters,
         vocab_size,
+        client_version,
     } = params;
 
     let main_authority = backend.get_payer();
@@ -130,15 +133,17 @@ pub async fn command_update_config_execute(
         (metadata != coordinator_account_state.state.metadata).then_some(metadata)
     };
 
-    if metadata.is_none() && config.is_none() && model.is_none() && progress.is_none() {
+    let coordinator_update =
+        metadata.is_some() || config.is_some() || model.is_some() || progress.is_some();
+    if !coordinator_update && client_version.is_none() {
         bail!("this invocation would not update anything, bailing.")
     }
 
-    let instruction = if let Some(treasurer_index) = backend
+    let instructions = if let Some(treasurer_index) = backend
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
-        instructions::treasurer_run_update(
+        vec![instructions::treasurer_run_update(
             &run_id,
             treasurer_index,
             &coordinator_account,
@@ -151,21 +156,37 @@ pub async fn command_update_config_execute(
                 epoch_earning_rate_total_shared: None,
                 epoch_slashing_rate_per_client: None,
                 paused: None,
+                client_version: client_version.clone(),
             },
-        )
+        )]
     } else {
-        instructions::coordinator_update(
-            &run_id,
-            &coordinator_account,
-            &main_authority,
-            metadata,
-            config,
-            model,
-            progress,
-        )
+        let mut instructions = Vec::new();
+
+        if coordinator_update {
+            instructions.push(instructions::coordinator_update(
+                &run_id,
+                &coordinator_account,
+                &main_authority,
+                metadata,
+                config,
+                model,
+                progress,
+            ));
+        }
+
+        if let Some(client_version) = client_version.clone() {
+            instructions.push(instructions::coordinator_update_client_version(
+                &run_id,
+                &coordinator_account,
+                &main_authority,
+                &client_version,
+            ));
+        }
+
+        instructions
     };
     let signature = backend
-        .send_and_retry("Update config", &[instruction], &[])
+        .send_and_retry("Update config", &instructions, &[])
         .await?;
     println!("Updated config of {run_id} with transaction {signature}");
 
@@ -173,6 +194,7 @@ pub async fn command_update_config_execute(
     println!(" - Config: {config:#?}");
     println!(" - Model: {model:#?}");
     println!(" - Progress: {progress:#?}");
+    println!(" - Client version: {client_version:#?}");
 
     println!("\n===== Logs =====");
     for log in backend.get_logs(&signature).await? {
