@@ -1,6 +1,5 @@
-use psyche_solana_coordinator::{
-    CoordinatorAccount, coordinator_account_from_bytes,
-};
+use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::coordinator_account_from_bytes;
 
 #[tokio::test]
 pub async fn run() {
