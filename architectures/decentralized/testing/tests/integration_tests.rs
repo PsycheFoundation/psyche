@@ -609,10 +609,19 @@ async fn test_solana_subscriptions() {
     let _cleanup = e2e_testing_setup_subscription(docker.clone(), 2).await;
 
     // Monitor the client containers
-    let _monitor_client_1 =
-        monitor_client(&watcher, &format!("{CLIENT_CONTAINER_PREFIX}-1")).unwrap();
-    let _monitor_client_2 =
-        monitor_client(&watcher, &format!("{CLIENT_CONTAINER_PREFIX}-2")).unwrap();
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![IntegrationTestLogMarker::StateChange],
+        )
+        .unwrap();
+
+    let _monitor_client_2 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            vec![IntegrationTestLogMarker::SolanaSubscription],
+        )
+        .unwrap();
 
     let mut live_interval = time::interval(Duration::from_secs(10));
     let mut subscription_events: Vec<(String, String)> = Vec::new();
