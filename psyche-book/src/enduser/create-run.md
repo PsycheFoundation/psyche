@@ -77,7 +77,7 @@ psyche-solana-client create-run \
     --run-id [RUN_ID] \
     --description "A description of your run" \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
-    --treasurer-collateral-mint [COLLATERAL_MINT_PUBKEY] \
+    --treasurer-collateral-mint [TOKEN_PUBKEY] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 

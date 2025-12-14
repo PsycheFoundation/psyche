@@ -8,8 +8,8 @@ if [[ -n "${devnet__keypair__wallet_PATH}" && -f "${devnet__keypair__wallet_PATH
 elif [[ -z "${WALLET_FILE:-}" ]]; then
     echo "No wallet file specified, generating ephemeral keypair..."
     # Create a named pipe for the keypair data
-    mkdir -p ~/solana-keys
-    WALLET_FILE=$(mktemp ~/solana-keys/solana-wallet-XXXXXXXXX)
+    mkdir -p ~/.config/solana/solana-keys
+    WALLET_FILE=$(mktemp ~/.config/solana/solana-keys/solana-wallet-XXXXXXXXX)
 
     # Generate keypair and write to the generated file
     solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
