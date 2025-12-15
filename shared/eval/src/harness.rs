@@ -35,7 +35,12 @@ const TASKS_WITH_ACC_NORM: [&str; 6] = [
     PIQA::name(),
 ];
 
-const TASKS_WITH_ACC_UNCOND: [&str; 1] = [ArcChallenge::name()];
+const TASKS_WITH_ACC_UNCOND: [&str; 4] = [
+    ArcChallenge::name(),
+    ArcEasy::name(),
+    MMLUCF::name(),
+    PIQA::name(),
+];
 
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
@@ -246,7 +251,7 @@ impl Task {
                             fewshot_examples
                                 .into_iter()
                                 .take(self.num_fewshot)
-                                .map(|x| format!("{}{}", x.text, x.choices[x.answer]))
+                                .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
                                 .collect::<Vec<_>>()
                                 .join("\n\n")
                                 + "\n\n"
