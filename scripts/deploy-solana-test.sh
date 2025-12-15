@@ -44,21 +44,29 @@ echo -e "[+] IS_DEVNET = $IS_DEVNET"
 echo -e "[+] DEPLOY_TREASURER = $DEPLOY_TREASURER"
 echo -e "[+] -----------------------------------------------------------"
 
+if [[ "$IS_DEVNET" == "true" ]]; then
+    echo -e "\n[+] - generating new keypairs for devnet..."
+    solana-keygen new -o architectures/decentralized/solana-coordinator/target/deploy/psyche_solana_coordinator-keypair.json -f --no-bip39-passphrase
+    solana-keygen new -o architectures/decentralized/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json -f --no-bip39-passphrase
+    if [[ "$DEPLOY_TREASURER" == "true" ]]; then
+        solana-keygen new -o architectures/decentralized/solana-treasurer/target/deploy/psyche_solana_treasurer-keypair.json -f --no-bip39-passphrase
+    fi
+    cd architectures/decentralized/solana-coordinator && anchor keys sync && cd -
+    cd architectures/decentralized/solana-authorizer && anchor keys sync && cd -
+    if [[ "$DEPLOY_TREASURER" == "true" ]]; then
+        cd architectures/decentralized/solana-treasurer && anchor keys sync && cd -
+    fi
+fi
+
 # Deploy Coordinator
 echo -e "\n[+] Starting coordinator deploy"
-pushd $(pwd)/architectures/decentralized/solana-coordinator
-
-if [[ "$IS_DEVNET" == "true" ]]; then
-    echo -e "\n[+] - generating new keypair for devnet..."
-    solana-keygen new -o ./target/deploy/psyche_solana_coordinator-keypair.json -f --no-bip39-passphrase
-    anchor keys sync
-fi
+pushd architectures/decentralized/solana-coordinator
 
 echo -e "\n[+] - building..."
 anchor build --no-idl
 
 echo -e "\n[+] - deploying..."
-anchor deploy --provider.cluster devnet --provider.wallet ${WALLET_FILE} -- --max-len 500000
+anchor deploy --provider.cluster ${RPC} --provider.wallet ${WALLET_FILE} -- --max-len 500000
 sleep 1
 
 echo -e "\n[+] Coordinator program deployed successfully!"
@@ -67,12 +75,6 @@ popd
 # Deploy Authorizer
 echo -e "\n[+] Starting authorizer deploy"
 pushd architectures/decentralized/solana-authorizer
-
-if [[ "$IS_DEVNET" == "true" ]]; then
-    echo -e "\n[+] - generating new keypair for devnet..."
-    solana-keygen new -o ./target/deploy/psyche_solana_authorizer-keypair.json -f --no-bip39-passphrase
-    anchor keys sync
-fi
 
 echo -e "\n[+] - building..."
 anchor build
@@ -97,12 +99,6 @@ TREASURER_ARGS=""
 if [[ "$DEPLOY_TREASURER" == "true" ]]; then
     echo -e "\n[+] Starting treasurer deploy"
     pushd architectures/decentralized/solana-treasurer
-
-    if [[ "$IS_DEVNET" == "true" ]]; then
-        echo -e "\n[+] - generating new keypair for devnet..."
-        solana-keygen new -o ./target/deploy/psyche_solana_treasurer-keypair.json -f --no-bip39-passphrase
-        anchor keys sync
-    fi
 
     echo -e "\n[+] - building..."
     anchor build
@@ -138,14 +134,21 @@ cargo run --release --bin psyche-solana-client -- \
     ${TREASURER_ARGS} \
     "${EXTRA_ARGS[@]}"
 
-echo -e "\n[+] Setting training run earning rate..."
-cargo run --release --bin psyche-solana-client -- \
-    set-future-epoch-rates \
-    --wallet-private-key-path ${WALLET_FILE} \
-    --rpc ${RPC} \
-    --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID} \
-    --earning-rate-total-shared 100.0
+if [[ "$DEPLOY_TREASURER" == "true" ]]; then
+    echo -e "\n[+] Setting treasurer collateral requirements..."
+    cargo run --release --bin psyche-solana-client treasurer-top-up-rewards \
+        --run-id ${RUN_ID} \
+        --collateral-amount 10 \
+        --wallet-private-key-path ${WALLET_FILE} \
+        --rpc ${RPC}
+
+    cargo run --release --bin psyche-solana-client -- set-future-epoch-rates \
+        --rpc ${RPC} \
+        --run-id ${RUN_ID} \
+        --wallet-private-key-path ${WALLET_FILE} \
+        --earning-rate-total-shared 10 \
+        --slashing-rate-per-client 10
+fi
 
 echo -e "\n[+] Update training run config..."
 cargo run --release --bin psyche-solana-client -- \

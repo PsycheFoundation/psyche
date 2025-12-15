@@ -84,7 +84,7 @@ just dev setup-solana-devnet-light-test-run
 just dev start-training-devnet-light-client
 ```
 
-Remember to set the `WALLET_FILE` environment variable to the path of your Solana keypair file, since this will be the one with the devnet funds.
+Remember to set the `WALLET_FILE` environment variable to the path of your Solana keypair file when running the training commands, since this will be the one with the devnet funds.
 
 These commands work almost the same as the ones using localnet, but they use the public Solana Devnet RPC endpoint (`https://api.devnet.solana.com`). Also, for all the programs (Coordinator, Authorizer, and Treasurer), we need to generate new program IDs, basically the “addresses” where the contracts will be deployed, since the current IDs are the ones used by the Psyche team for development and can’t be overridden. More details on how we update the program ids in the [changing contracts section](#changing-contracts).
 
@@ -104,7 +104,17 @@ just dev setup-solana-devnet-test-run-treasurer
 just dev setup-solana-devnet-light-test-run-treasurer
 ```
 
-These commands will deploy the Treasurer along the other contracts and also create a new test token with the [SPL Token tool](https://solana.com/docs/tokens/basics) in the used network to be able to use it as collateral of in the run.
+These commands will deploy the Treasurer along the other contracts, create a new test token with the [SPL Token tool](https://solana.com/docs/tokens/basics) in the used network to be able to use it as collateral of in the run and also top up the run with the rewards and some collateral distribution for all the clients that train for more than one epoch.
+
+### Recovering dev tokens
+
+The majority of the tokens used in devnet are needed to deploy the different contracts, you can re-claim those tokens once you finished your testing. This is very useful since the devnet faucet for Solana is limited. You can run:
+
+```bash
+just dev close-dev-programs
+```
+
+This will close all the deployed accounts in devnet giving the tokens back to the wallet used on the deployment. Be aware that this is an irreversable change, once you closed your program you cannot reuse that same program ID and have to generate a new one.
 
 ## Psyche decentralized client reference
 

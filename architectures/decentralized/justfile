@@ -2,21 +2,25 @@
 
 set working-directory := '../../'
 
+# In case a recipe is not found here, it will fallback to the root justfile.
+
+set fallback := true
+
 default:
     just --list
 
-# LOCALNET
+# Localnet
 setup-solana-localnet-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/deploy-solana-test.sh {{ args }}
+    RUN_ID={{ run_id }} ./scripts/setup-and-deploy-solana-test.sh {{ args }}
 
 setup-solana-localnet-light-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh {{ args }}
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/setup-and-deploy-solana-test.sh {{ args }}
 
 setup-solana-localnet-test-run-treasurer run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+    RUN_ID={{ run_id }} ./scripts/setup-and-deploy-solana-test.sh --treasurer {{ args }}
 
 setup-solana-localnet-light-test-run-treasurer run_id="test" *args='':
-    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/setup-and-deploy-solana-test.sh --treasurer {{ args }}
 
 start-training-localnet-client run_id="test" *args='':
     RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
@@ -33,6 +37,7 @@ start-training-localnet-light-client-telemetry run_id="test" *args='':
 DEVNET_RPC := "https://api.devnet.solana.com"
 DEVNET_WS_RPC := "wss://api.devnet.solana.com"
 
+# Devnet
 setup-solana-devnet-test-run run_id="test" *args='':
     RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/deploy-solana-test.sh {{ args }}
 
@@ -50,3 +55,6 @@ start-training-devnet-client run_id="test" *args='':
 
 start-training-devnet-light-client run_id="test" *args='':
     RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+close-dev-programs:
+    ./scripts/close-programs.sh
