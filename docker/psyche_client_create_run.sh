@@ -56,7 +56,8 @@ docker run --rm -v "$WALLET_FILE":/keys/id.json \
     --wallet-private-key-path "/keys/id.json" \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID}
+    --run-id ${RUN_ID} \
+    --client-version "latest"
 
 echo -e "\n[+] Training run created successfully!"
 echo -e "\n[+] Uploading model config..."

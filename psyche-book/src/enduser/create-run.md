@@ -66,7 +66,8 @@ psyche-solana-client create-run \
     --run-id [RUN_ID] \
     --description "A description of your run" \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
+    --client-version "latest"
 ```
 
 For a run that distributes tokens as reward to the training participants, we need to specify the pubkey of the created token in the Solana Blockchain, this will be used as the mint of the collateral token to be distributed:
@@ -78,7 +79,8 @@ psyche-solana-client create-run \
     --description "A description of your run" \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
     --treasurer-collateral-mint [TOKEN_PUBKEY] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
+    --client-version "latest"
 ```
 
 At that point we successfully created our run.
@@ -120,8 +122,8 @@ If you created a run with rewards, you can configure how many points does each c
 psyche-solana-client set-future-epoch-rates \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --earning-rate [EARNING_RATE] \
-    --slashing-rate [SLASHING_RATE] \
+    --earning-rate-total-shared [EARNING_RATE] \
+    --slashing-rate-per-client [SLASHING_RATE] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 

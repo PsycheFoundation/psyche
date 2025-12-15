@@ -138,6 +138,15 @@ cargo run --release --bin psyche-solana-client -- \
     ${TREASURER_ARGS} \
     "${EXTRA_ARGS[@]}"
 
+echo -e "\n[+] Setting training run earning rate..."
+cargo run --release --bin psyche-solana-client -- \
+    set-future-epoch-rates \
+    --wallet-private-key-path ${WALLET_FILE} \
+    --rpc ${RPC} \
+    --ws-rpc ${WS_RPC} \
+    --run-id ${RUN_ID} \
+    --earning-rate-total-shared 100.0
+
 echo -e "\n[+] Update training run config..."
 cargo run --release --bin psyche-solana-client -- \
     update-config \
@@ -145,7 +154,9 @@ cargo run --release --bin psyche-solana-client -- \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} \
-    --config-path ${CONFIG_FILE}
+    --config-path ${CONFIG_FILE} \
+    --num-parameters 1100000000 \
+    --vocab-size 32768
 
 echo -e "\n[+] Unpause the training run..."
 cargo run --release --bin psyche-solana-client -- \

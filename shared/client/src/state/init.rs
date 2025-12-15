@@ -185,6 +185,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         tch::manual_seed(1337);
 
+        // Check device availability early
+        if !init_config.device.is_probably_available() {
+            return Err(InitRunError::ModelLoad(
+                psyche_modeling::ModelLoadError::UnavailbleDevice(init_config.device),
+            ));
+        }
+
         let model::Model::LLM(llm) = state.model;
 
         let hub_read_token = init_config.hub_read_token.clone();
@@ -628,7 +635,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     state.config.global_batch_size_warmup_tokens,
                                 ),
                                 ("total_steps", state.config.total_steps),
-                                ("rounds_per_epoch", state.config.rounds_per_epoch),
                                 ("run_id", run_id),
                             ));
                         if let Some(entity) = wandb_info.entity {

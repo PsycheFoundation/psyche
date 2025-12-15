@@ -91,14 +91,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                     retry_count += 1;
                                     let delay_ms = BASE_DELAY_MS * (retry_count as u64 - 1);
                                     warn!(
-                                        "Data fetch error (attempt {}/{}): \"{}\". Retrying in {}ms",
-                                        retry_count, MAX_RETRIES, err, delay_ms
+                                        "Data fetch error for batch_id={} (attempt {}/{}): \"{:#}\". Retrying in {}ms",
+                                        batch_id, retry_count, MAX_RETRIES, err, delay_ms
                                     );
                                     sleep(Duration::from_millis(delay_ms)).await;
                                     continue;
                                 }
                                 Err(err) => {
-                                    error!("Data fetch error: {err:#}");
+                                    error!("Data fetch failed for batch_id={} after {} attempts: {err:#}", batch_id, MAX_RETRIES);
                                     return;
                                 }
                             }

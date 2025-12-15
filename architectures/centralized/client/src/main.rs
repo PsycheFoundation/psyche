@@ -1,9 +1,9 @@
-use crate::app::{AppBuilder, AppParams, TAB_NAMES, Tabs};
+use crate::app::{TAB_NAMES, Tabs, build_app};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
-use psyche_network::{DiscoveryMode, SecretKey};
+use psyche_network::SecretKey;
 use psyche_tui::{
     LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
@@ -57,16 +57,12 @@ async fn async_main() -> Result<()> {
         Commands::Train { args, server_addr } => {
             psyche_client::prepare_environment();
 
-            let hub_read_token = std::env::var("HF_TOKEN").ok();
-            let checkpoint_upload_info = args.checkpoint_config()?;
-            let eval_tasks = args.eval_tasks()?;
-
             info!(
                 "============ Client Startup at {} ============",
                 OffsetDateTime::now_utc()
             );
 
-            let identity_secret_key: SecretKey =
+            let identity_secret_key =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
                     .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
 
@@ -104,47 +100,14 @@ async fn async_main() -> Result<()> {
                 })
                 .init()?;
 
-            let wandb_info = args.wandb_info(format!(
-                "{}-{}",
-                args.run_id.clone(),
-                identity_secret_key.public().fmt_short()
-            ))?;
-
             let (cancel, tx_tui_state) = maybe_start_render_loop(
                 (args.logs == LogOutput::TUI).then(|| Tabs::new(Default::default(), &TAB_NAMES)),
             )?;
 
-            let (mut app, allowlist, p2p, state_options) = AppBuilder::new(AppParams {
-                cancel,
-                identity_secret_key,
-                server_addr,
-                tx_tui_state,
-                run_id: args.run_id,
-                p2p_port: args.bind_p2p_port,
-                p2p_interface: args.bind_p2p_interface,
-                data_parallelism: args.data_parallelism,
-                tensor_parallelism: args.tensor_parallelism,
-                micro_batch_size: args.micro_batch_size,
-                write_gradients_dir: args.write_gradients_dir,
-                eval_task_max_docs: args.eval_task_max_docs,
-                eval_tasks,
-                prompt_task: args.prompt_task,
-                checkpoint_upload_info,
-                hub_read_token,
-                hub_max_concurrent_downloads: args.hub_max_concurrent_downloads,
-                wandb_info,
-                optim_stats: args.optim_stats_steps,
-                grad_accum_in_fp32: args.grad_accum_in_fp32,
-                dummy_training_delay_secs: args.dummy_training_delay_secs,
-                discovery_mode: DiscoveryMode::N0,
-                max_concurrent_parameter_requests: args.max_concurrent_parameter_requests,
-                metrics_local_port: args.metrics_local_port,
-                device: args.device,
-                sidecar_port: args.sidecar_port,
-            })
-            .build()
-            .await
-            .unwrap();
+            let (mut app, allowlist, p2p, state_options) =
+                build_app(cancel, server_addr, tx_tui_state, args)
+                    .await
+                    .unwrap();
 
             app.run(allowlist, p2p, state_options).await?;
             logger.shutdown()?;
