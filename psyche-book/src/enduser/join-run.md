@@ -44,29 +44,22 @@ To install the NVIDIA Container Toolkit, follow the [NVIDIA Container Toolkit in
 
 You need a Solana keypair (wallet) to participate in training. This keypair identifies your client on the blockchain.
 
-By default, run-manager looks for a keypair at `~/.config/solana/id.json` (the standard Solana CLI location). If you have a keypair elsewhere, you can specify it in your configuration.
-
-If you need to create a new keypair, you can use the Solana CLI:
+If you need to create a new keypair, you can use the Solana CLI, specifying where you want to create it
 
 ```bash
-solana-keygen new --outfile ~/.config/solana/id.json
+solana-keygen new --outfile <path/to/keypair/file.json>
 ```
 
 ## Quick Start
 
-You should have a run-manager binary that has been distributed to you. The run manager will handle downloading the correct Docker image, starting your client, and keeping it updated automatically:
-
-```bash
-./run-manager --env-file /path/to/your/.env
-```
-
-After the initial setup, you'll see the Psyche client logs streaming in real-time. These logs show training progress, network status, and other important information.
-
-To stop the client, press `Ctrl+C` in the terminal.
+The recommended way to run a Psyche client is through the `run-manager`, which should have been distributed to you. The run manager will handle downloading the correct Docker image, starting your client, and keeping it updated automatically.
+Before running it, you should create an environment file with some needed variables.
 
 The `.env` file should have at least this defined:
 
 ```bash
+WALLET_PATH=/path/to/your/keypair.json
+
 # Required: Solana RPC Endpoints
 RPC=https://your-primary-rpc-provider.com
 WS_RPC=wss://your-primary-rpc-provider.com
@@ -77,12 +70,17 @@ RUN_ID=your_run_id_here
 # Recommended: Fallback RPC Endpoints (for reliability)
 RPC_2=https://your-backup-rpc-provider.com
 WS_RPC_2=wss://your-backup-rpc-provider.com
-
-# Optional: Custom Wallet Location, otherwise it will use the default Solana one
-# WALLET_PATH=/path/to/your/keypair.json
 ```
 
-If `WALLET_PATH` is defined it will use the specified keypair instead of the default `$HOME/.config/solana/id.json`
+Then, you can start training through the run manager running:
+
+```bash
+./run-manager --env-file /path/to/your/.env
+```
+
+After the initial setup, you'll see the Psyche client logs streaming in real-time. These logs show training progress, network status, and other important information.
+
+To stop the client, press `Ctrl+C` in the terminal.
 
 ## RPC Hosts
 
