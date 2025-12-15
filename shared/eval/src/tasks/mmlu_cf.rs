@@ -72,6 +72,7 @@ impl MMLUCF {
             answer,
             category: Some(subject),
             cot_content: None,
+            eval_name: MMLUCF::name().to_string(),
         }
     }
 }
