@@ -341,13 +341,17 @@ impl DockerWatcher {
 
         // Check health of running containers only
         for container in all_containers {
-            if let Some(names) = &container.names {
-                if let Some(name) = names.first() {
-                    let trimmed_name = name.trim_start_matches('/');
-                    if trimmed_name.starts_with(CLIENT_CONTAINER_PREFIX) {
-                        self.monitor_client_health_by_id(trimmed_name).await?;
-                    }
-                }
+            // Get the first container name, if it exists
+            let Some(name) = container.names.as_ref().and_then(|names| names.first()) else {
+                continue;
+            };
+
+            // Remove the / from the name ("/psyche-client-1" -> "psyche-client-1")
+            let trimmed_name = name.trim_start_matches('/');
+
+            // Only monitor containers that match our client prefix (e.g., "psyche-client-")
+            if trimmed_name.starts_with(CLIENT_CONTAINER_PREFIX) {
+                self.monitor_client_health_by_id(trimmed_name).await?;
             }
         }
 

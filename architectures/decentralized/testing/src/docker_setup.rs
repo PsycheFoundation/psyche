@@ -214,7 +214,6 @@ pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Ve
     (all_container_names, running_containers)
 }
 
-/// Helper to get all integration test log markers for comprehensive monitoring
 fn all_integration_test_markers() -> Vec<IntegrationTestLogMarker> {
     vec![
         IntegrationTestLogMarker::LoadedModel,
