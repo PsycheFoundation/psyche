@@ -25,8 +25,6 @@ fi
 WALLET_FILE=${KEY_FILE:-"$DEFAULT_WALLET"}
 RPC=${RPC:-"http://127.0.0.1:8899"}
 WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
-RUN_ID=${RUN_ID:-"test"}
-CONFIG_FILE=${CONFIG_FILE:-"./config/solana-test/config.toml"}
 
 # Detect if we're deploying to devnet
 IS_DEVNET=false
@@ -44,21 +42,29 @@ echo -e "[+] IS_DEVNET = $IS_DEVNET"
 echo -e "[+] DEPLOY_TREASURER = $DEPLOY_TREASURER"
 echo -e "[+] -----------------------------------------------------------"
 
+if [[ "$IS_DEVNET" == "true" ]]; then
+    echo -e "\n[+] - generating new keypairs for devnet..."
+    solana-keygen new -o architectures/decentralized/solana-coordinator/target/deploy/psyche_solana_coordinator-keypair.json -f --no-bip39-passphrase
+    solana-keygen new -o architectures/decentralized/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json -f --no-bip39-passphrase
+    if [[ "$DEPLOY_TREASURER" == "true" ]]; then
+        solana-keygen new -o architectures/decentralized/solana-treasurer/target/deploy/psyche_solana_treasurer-keypair.json -f --no-bip39-passphrase
+    fi
+    cd architectures/decentralized/solana-coordinator && anchor keys sync && cd -
+    cd architectures/decentralized/solana-authorizer && anchor keys sync && cd -
+    if [[ "$DEPLOY_TREASURER" == "true" ]]; then
+        cd architectures/decentralized/solana-treasurer && anchor keys sync && cd -
+    fi
+fi
+
 # Deploy Coordinator
 echo -e "\n[+] Starting coordinator deploy"
-pushd $(pwd)/architectures/decentralized/solana-coordinator
-
-if [[ "$IS_DEVNET" == "true" ]]; then
-    echo -e "\n[+] - generating new keypair for devnet..."
-    solana-keygen new -o ./target/deploy/psyche_solana_coordinator-keypair.json -f --no-bip39-passphrase
-    anchor keys sync
-fi
+pushd architectures/decentralized/solana-coordinator
 
 echo -e "\n[+] - building..."
 anchor build --no-idl
 
 echo -e "\n[+] - deploying..."
-anchor deploy --provider.cluster devnet --provider.wallet ${WALLET_FILE} -- --max-len 500000
+anchor deploy --provider.cluster ${RPC} --provider.wallet ${WALLET_FILE} -- --max-len 500000
 sleep 1
 
 echo -e "\n[+] Coordinator program deployed successfully!"
@@ -67,12 +73,6 @@ popd
 # Deploy Authorizer
 echo -e "\n[+] Starting authorizer deploy"
 pushd architectures/decentralized/solana-authorizer
-
-if [[ "$IS_DEVNET" == "true" ]]; then
-    echo -e "\n[+] - generating new keypair for devnet..."
-    solana-keygen new -o ./target/deploy/psyche_solana_authorizer-keypair.json -f --no-bip39-passphrase
-    anchor keys sync
-fi
 
 echo -e "\n[+] - building..."
 anchor build
@@ -98,12 +98,6 @@ if [[ "$DEPLOY_TREASURER" == "true" ]]; then
     echo -e "\n[+] Starting treasurer deploy"
     pushd architectures/decentralized/solana-treasurer
 
-    if [[ "$IS_DEVNET" == "true" ]]; then
-        echo -e "\n[+] - generating new keypair for devnet..."
-        solana-keygen new -o ./target/deploy/psyche_solana_treasurer-keypair.json -f --no-bip39-passphrase
-        anchor keys sync
-    fi
-
     echo -e "\n[+] - building..."
     anchor build
 
@@ -122,47 +116,3 @@ if [[ "$DEPLOY_TREASURER" == "true" ]]; then
 
     TREASURER_ARGS="--treasurer-collateral-mint ${TOKEN_ADDRESS}"
 fi
-
-# Create permisionless authorization
-echo -e "\n[+] Creating authorization for everyone to join the run"
-bash ./scripts/join-authorization-create.sh ${RPC} ${WALLET_FILE} 11111111111111111111111111111111
-
-echo -e "\n[+] Creating training run..."
-cargo run --release --bin psyche-solana-client -- \
-    create-run \
-    --wallet-private-key-path ${WALLET_FILE} \
-    --rpc ${RPC} \
-    --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID} \
-    --client-version test \
-    ${TREASURER_ARGS} \
-    "${EXTRA_ARGS[@]}"
-
-echo -e "\n[+] Setting training run earning rate..."
-cargo run --release --bin psyche-solana-client -- \
-    set-future-epoch-rates \
-    --wallet-private-key-path ${WALLET_FILE} \
-    --rpc ${RPC} \
-    --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID} \
-    --earning-rate-total-shared 100.0
-
-echo -e "\n[+] Update training run config..."
-cargo run --release --bin psyche-solana-client -- \
-    update-config \
-    --wallet-private-key-path ${WALLET_FILE} \
-    --rpc ${RPC} \
-    --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID} \
-    --config-path ${CONFIG_FILE} \
-    --num-parameters 1100000000 \
-    --vocab-size 32768
-
-echo -e "\n[+] Unpause the training run..."
-cargo run --release --bin psyche-solana-client -- \
-    set-paused \
-    --wallet-private-key-path ${WALLET_FILE} \
-    --rpc ${RPC} \
-    --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID} \
-    --resume

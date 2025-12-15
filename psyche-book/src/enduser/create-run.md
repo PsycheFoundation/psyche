@@ -1,42 +1,44 @@
 # Creating a run
 
-To create a new training run and make it available for nodes to join, you'll need to create it, configure it, and unpause it. By default every new run stays in the pause state until being unpaused by the owner and can be paused anytime.
+To create a new training run and make it available for nodes to join, you’ll need to create it, configure it, and unpause it. By default, every new run starts in a paused state until it is explicitly unpaused by the owner, and it can be paused again at any time.
 
 ## Setting up the Run
 
 First, create the run on-chain.
-You'll need to provide:
+You’ll need to provide:
 
-- The RPC & websocket RPC urls so the client can communicate with an RPC node.
-- a unique run ID - just a few characters to uniquely identify your run.
-- a name & description for your run
+- The RPC and WebSocket RPC URLs so the client can communicate with an RPC node.
+- A unique run ID — just a few characters to uniquely identify your run.
 
-Also, for all the commands you will need to provide the path to you Solana private key.
+For all commands, you will also need to provide the path to your Solana private key.
 
 ### Setting up Join Authorizations
 
-Before we can get started we need to decide who will be able to join the run.
-You can read more about [authorization here](./authentication.md).
+Before getting started, we need to decide who will be able to join the run.
+You can read more about this in the [authorization](./authentication.md) section.
 
-We'll need a key-pair file that manages join permissions, it can be the default created by Solana when you do `solana-keygen new` located in `~/.config/solana/id.json`
+We’ll need a keypair file that manages join permissions. This can be the default one created by Solana when running `solana-keygen new`, located at `~/.config/solana/id.json`.
 
 #### Join Authority for Public Runs
 
-If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone.
+If you want to make a permissionless run (anyone can join), you’ll need to create an authorization that is valid for everyone.
 
-Running:
+Run:
 
 ```sh
-just run_authorizer
+just rpc=https://api.devnet.solana.com run_authorizer
 ```
 
-By default the command will use the values needed to create an authorizer in a Solana localnet using the default Solana key-pair mentioned above and with permissionless access. Basically everyone can join the run without restrictions.
+By default, this command uses the values needed to create an authorizer on a Solana localnet using the default Solana keypair mentioned above, with permissionless access. In other words, everyone can join the run without restrictions. In this example, we are using Solana devnet for the authorization.
 
-There's three variables that this command can receive:
+This command accepts three variables:
 
-- `rpc`: The RPC URL to use for the Solana network. By default: `http://127.0.0.1:8899`
-- `grantor`: The path to the file with a Solana Keypair, will be used to create the authorization and grant access to the run. By default: `~/.config/solana/id.json`
-- `grantee`: The public key of the user that will be granted access to the run. By default: `11111111111111111111111111111111` that means is permissionless.
+- `rpc`: The RPC URL to use for the Solana network.
+  Default: `http://127.0.0.1:8899`
+- `grantor`: The path to the Solana keypair file used to create the authorization and grant access to the run.
+  Default: `~/.config/solana/id.json`
+- `grantee`: The public key of the user being granted access to the run.
+  Default: `11111111111111111111111111111111`, which indicates permissionless access.
 
 You can override any of these values like this:
 
@@ -46,51 +48,67 @@ just rpc=<value> grantor=<value> grantee=<value> run_authorizer
 
 #### Join Authority for Private Runs
 
-If we'll only allow some users to join the run we'll need to create one authorization per user (each user can then set multiple delegate keys later) For example to use it locally we can do
+If you only want certain users to join a run, you’ll need to create one authorization per user (each user can later set multiple delegate keys).
+
+For example, imagine you have a keypair for the run creator at `~/.config/solana/owner.json`, which is also the account that grants authorization, and another keypair at `~/.config/solana/joiner.json` for the client that is being authorized by the owner and wants to join and train in the run.
+
+First, create the authorization with the following parameters:
 
 ```sh
-just run_authorizer rpc=<RPC> grantee=<GRANTOR>
+just rpc=https://api.devnet.solana.com \
+  grantee=$(solana-keygen pubkey ~/.config/solana/joiner.json) \
+  grantor=~/.config/solana/owner.json \
+  run_authorizer
 ```
+
+This command uses the public key of the user you want to allow to join and the keypair of the run owner to create the appropriate authorization.
+
+Now all that’s left is for the joiner to use their public key—now associated with the newly created authorization—when joining the run using the `--authorization` flag in the `train` command. More details can be found in the [joining a run](./join-run.md) section.
+
+---
 
 ### Creating the run
 
-> For all the following commands you can use the psyche client with the docker image or directly cloning the Psyche repo and running the package there using `cargo run --bin psyche-solana-client -- ...`.
+> For all of the following commands, you can either use the Psyche client Docker image or clone the Psyche repository and run the package directly using
+> `cargo run --bin psyche-solana-client -- ...`.
 
-The run creation will accept a variety of different parameters we'll go through the fundamentals and then we'll go through the rest of the options. Primarily a run needs the RPC of Solana depending on the validator we want to use, a unique identifier known as the `run id`, a join authority that will be the public key that will manage the access to the run (by default will be the one that creates the run) and the private key of the wallet that will be used to create the run.
+Run creation accepts a variety of parameters. We’ll start with the fundamentals and then cover the remaining options. At a minimum, a run needs:
 
-For a standard run without token incentive distribution layer (see [rewards](../explain/rewards.md) for more details)
+- The Solana RPC endpoint corresponding to the validator you want to use.
+- A unique identifier, known as the **run ID**.
+- A join authority, which is the public key that manages access to the run (by default, this is the key that creates the run).
+- The private key of the wallet used to create the run.
+
+For a standard run without a token incentive distribution layer (see [rewards](../explain/rewards.md) for more details):
 
 ```bash
 psyche-solana-client create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --description "A description of your run" \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
     --client-version "latest"
 ```
 
-For a run that distributes tokens as reward to the training participants, we need to specify the pubkey of the created token in the Solana Blockchain, this will be used as the mint of the collateral token to be distributed:
+For a run that distributes tokens as rewards to training participants, you must specify the public key of the token created on the Solana blockchain. This will be used as the mint for the collateral token to be distributed:
 
 ```bash
 psyche-solana-client create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --description "A description of your run" \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
     --treasurer-collateral-mint [TOKEN_PUBKEY] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
     --client-version "latest"
 ```
 
-At that point we successfully created our run.
+At this point, your run has been successfully created.
 
 ### Initializing configuration
 
-At first the run will not hold any configuration on its behavior and will be paused so no client can join yet.
+Initially, the run will not have any configuration defined and will remain paused, so no clients can join yet.
 
-To set the run's config.
-You'll need to provide mostly the same parameters as when creating the run and also the path to a `config.toml` file, that follows the [run config schema](./run-config.md).
+To set the run configuration, you’ll need to provide mostly the same parameters as when creating the run, along with the path to a `config.toml` file that follows the [run config schema](./run-config.md).
 
 ```bash
 psyche-solana-client update-config \
@@ -102,7 +120,7 @@ psyche-solana-client update-config \
 
 ### Unpausing the run
 
-At this point, your run is ready to go! You can now set its state to "unpaused", and let clients join & begin training your model.
+At this point, your run is ready to go. You can now set its state to **unpaused**, allowing clients to join and begin training your model.
 
 ```bash
 psyche-solana-client set-paused \
@@ -112,11 +130,11 @@ psyche-solana-client set-paused \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
-Congratulations! As soon as your first client joins, your model will start being trained.
+Congratulations! As soon as your first client joins, your model will start training.
 
 ## Configuring training rewards
 
-If you created a run with rewards, you can configure how many points does each client earns and loses for each epoch of training.
+If you created a run with rewards enabled, you can configure how many points each client earns or loses per training epoch.
 
 ```bash
 psyche-solana-client set-future-epoch-rates \
@@ -127,7 +145,7 @@ psyche-solana-client set-future-epoch-rates \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 
-To distribute collateral to users, we need to periodically top-up the run's treasury so that points earned by users during compute can then be claimed against the treasury.
+To distribute collateral to users, you must periodically top up the run’s treasury so that points earned during computation can be claimed.
 
 ```sh
 psyche-solana-client treasurer-top-up-rewards \
@@ -139,7 +157,7 @@ psyche-solana-client treasurer-top-up-rewards \
 
 ## Getting information about a run
 
-Optionally you can get detailed technical information about a run that was previously created for troubleshooting purposes.
+Optionally, you can retrieve detailed technical information about a previously created run for troubleshooting purposes.
 
 ```bash
 psyche-solana-client json-dump-run \
@@ -147,7 +165,7 @@ psyche-solana-client json-dump-run \
     --run-id [RUN_ID]
 ```
 
-For more info about a specific user inside of a run, you can also use:
+For more information about a specific user within a run, you can also use:
 
 ```bash
 psyche-solana-client json-dump-user \
