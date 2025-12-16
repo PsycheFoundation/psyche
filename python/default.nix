@@ -36,6 +36,9 @@ let
   ++ lib.optionals stdenvNoCC.hostPlatform.isLinux [
     "flash-attn"
     "liger-kernel"
+    # i'm really not a fan of providing torchtitan like this. i'd much rather have it be built as a git dep via uv2nix.
+    # i think there's room to figure out how to provide setuptools for it.
+    "torchtitan"
   ];
 
   nixProvidedPythonPkgs = getAllTransitiveDeps topLevelNixPkgs;
@@ -106,7 +109,7 @@ let
     }).overrideScope
       (
         lib.composeManyExtensions [
-          pyproject-build-systems.overlays.wheel
+          pyproject-build-systems.overlays.default
           overlay
           (
             final: _prev:

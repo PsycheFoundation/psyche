@@ -6,6 +6,7 @@ use serde_json::json;
 use serde_json::to_string_pretty;
 
 use crate::SolanaBackend;
+use crate::utils::native_amount_to_ui_amount;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -92,14 +93,20 @@ pub async fn command_json_dump_user_execute(
         let treasurer_run_address = psyche_solana_treasurer::find_run(treasurer_index);
         let treasurer_run_state = backend.get_treasurer_run(&treasurer_run_address).await?;
 
+        let collateral_mint_decimals = backend
+            .get_token_mint(&treasurer_run_state.collateral_mint)
+            .await?
+            .decimals;
+
         let user_collateral_address = associated_token::get_associated_token_address(
             &address,
             &treasurer_run_state.collateral_mint,
         );
         let user_collateral_amount = backend
-            .get_token_amount(&user_collateral_address)
+            .get_token_account(&user_collateral_address)
             .await
-            .ok();
+            .map(|account| account.amount)
+            .unwrap_or(0);
 
         let treasurer_participant_address =
             psyche_solana_treasurer::find_participant(&treasurer_run_address, &address);
@@ -110,9 +117,19 @@ pub async fn command_json_dump_user_execute(
 
         Some(json!({
             "collateral_mint": treasurer_run_state.collateral_mint.to_string(),
-            "collateral_amount": user_collateral_amount,
-            "claimed_earned_points": treasurer_participant_state.as_ref().map(|state| state.claimed_earned_points),
-            "claimed_collateral_amount": treasurer_participant_state.as_ref().map(|state| state.claimed_collateral_amount),
+            "collateral_amount": native_amount_to_ui_amount(
+                user_collateral_amount,
+                collateral_mint_decimals
+            ),
+            "claimed_earned_points": treasurer_participant_state
+                .as_ref()
+                .map(|state| state.claimed_earned_points),
+            "claimed_collateral_amount": treasurer_participant_state
+                .as_ref()
+                .map(|state| native_amount_to_ui_amount(
+                    state.claimed_collateral_amount,
+                    collateral_mint_decimals
+                )),
         }))
     } else {
         None

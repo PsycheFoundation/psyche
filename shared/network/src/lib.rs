@@ -127,6 +127,8 @@ impl FromStr for DiscoveryMode {
 /// What relays should we connect to?
 #[derive(Debug, Clone, Copy)]
 pub enum RelayKind {
+    /// No relays (for local tests)
+    Disabled,
     /// Psyche-specific relays
     Psyche,
     /// N0 default relays
@@ -138,6 +140,7 @@ impl FromStr for RelayKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
+            "disabled" => Ok(RelayKind::Disabled),
             "psyche" => Ok(RelayKind::Psyche),
             "n0" => Ok(RelayKind::N0),
             _ => Err(format!(
@@ -271,6 +274,7 @@ where
                 .keep_alive_interval(Some(Duration::from_secs(1)));
 
             let relay_mode = match relay_kind {
+                RelayKind::Disabled => RelayMode::Disabled,
                 RelayKind::N0 => RelayMode::Default,
                 RelayKind::Psyche => RelayMode::Custom(psyche_relay_map()),
             };
@@ -280,7 +284,8 @@ where
                 .secret_key(secret_key)
                 .relay_mode(relay_mode)
                 .transport_config(transport_config)
-                .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)));
+                .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)))
+                .clear_discovery();
 
             let endpoint = match discovery_mode {
                 DiscoveryMode::Local => {

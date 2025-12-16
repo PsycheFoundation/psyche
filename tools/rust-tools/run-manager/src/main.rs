@@ -21,11 +21,14 @@ struct Args {
     #[arg(
         long,
         global = true,
-        default_value = "HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y"
+        default_value = "4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7"
     )]
     coordinator_program_id: String,
 
     /// Use a local Docker image instead of pulling from registry.
+    /// This is only meant for testing purposes, since it is easier to
+    /// check a version update when the two docker images are local. Do not
+    /// use in production
     #[arg(long, global = true)]
     local: bool,
 }

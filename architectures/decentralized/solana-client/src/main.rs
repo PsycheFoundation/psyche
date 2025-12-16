@@ -21,8 +21,6 @@ use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
 use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
 use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
 use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
-use crate::command::update_client_version::CommandUpdateClientVersionParams;
-use crate::command::update_client_version::command_update_client_version_execute;
 use crate::command::update_config::CommandUpdateConfigParams;
 use crate::command::update_config::command_update_config_execute;
 use crate::{
@@ -60,6 +58,7 @@ mod command;
 mod instructions;
 mod network_identity;
 mod retry;
+mod utils;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -122,14 +121,6 @@ enum Commands {
         wallet: WalletArgs,
         #[clap(flatten)]
         params: CommandUpdateConfigParams,
-    },
-    UpdateClientVersion {
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        params: CommandUpdateClientVersionParams,
     },
     Tick {
         #[clap(flatten)]
@@ -278,6 +269,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -293,6 +287,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -308,6 +305,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -323,6 +323,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -338,6 +341,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -353,6 +359,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -368,6 +377,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -378,26 +390,14 @@ async fn async_main() -> Result<()> {
             .unwrap();
             command_treasurer_claim_rewards_execute(backend, params).await
         }
-        Commands::UpdateClientVersion {
-            cluster,
-            wallet,
-            params,
-        } => {
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_update_client_version_execute(backend, params).await
-        }
         Commands::TreasurerTopUpRewards {
             cluster,
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -413,6 +413,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -512,6 +515,9 @@ async fn async_main() -> Result<()> {
             Ok(())
         }
         Commands::CanJoin { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -522,6 +528,9 @@ async fn async_main() -> Result<()> {
             command_can_join_execute(backend, params).await
         }
         Commands::JsonDumpRun { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -532,6 +541,9 @@ async fn async_main() -> Result<()> {
             command_json_dump_run_execute(backend, params).await
         }
         Commands::JsonDumpUser { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],

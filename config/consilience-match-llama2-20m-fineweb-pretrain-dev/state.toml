@@ -1,4 +1,4 @@
-run_id = "consilience-match-llama2-20m-fineweb"
+run_id = "consilience-match-llama2-20m-fin"
 run_state = "WaitingForMembers"
 [config]
 warmup_time = 30
@@ -15,6 +15,7 @@ global_batch_size_warmup_tokens = 0
 verification_percent = 0
 witness_nodes = 1
 total_steps = 25000
+waiting_for_members_extra_time = 3
 
 [model.LLM]
 architecture = "HfLlama"
