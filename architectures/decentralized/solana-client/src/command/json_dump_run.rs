@@ -105,6 +105,7 @@ pub async fn command_json_dump_run_execute(
         "setup": {
             "metadata": coordinator_account_state.state.metadata,
             "model": coordinator_account_state.state.coordinator.model,
+            "data_locations": coordinator_account_state.state.coordinator.data_locations,
             "config": coordinator_account_state.state.coordinator.config,
         },
         "status": {

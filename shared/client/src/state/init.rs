@@ -193,14 +193,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         let model::Model::LLM(llm) = state.model;
+        let data_locations = state.data_locations;
 
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
         let data_future = async {
-            debug!("Setting up data providers from {:?}", llm.data_locations);
+            debug!("Setting up data providers from {:?}", data_locations);
             let mut data_providers = Vec::new();
 
-            for data_location in llm.data_locations.iter() {
+            for data_location in data_locations.iter() {
                 let provider = match data_location {
                     LLMTrainingDataLocation::Server(data_server) => {
                         let client = match DataProviderTcpClient::connect(

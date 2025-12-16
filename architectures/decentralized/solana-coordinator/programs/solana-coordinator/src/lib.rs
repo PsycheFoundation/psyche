@@ -29,7 +29,7 @@ use ts_rs::TS;
 
 pub use crate::instance_state::RunMetadata;
 
-declare_id!("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7");
+declare_id!("6DvXZnaJd2RHmmMVFZE8P4GpCdZXGYpvVda7LDVBUK7v");
 
 pub const SOLANA_MAX_NUM_PENDING_CLIENTS: usize = SOLANA_MAX_NUM_CLIENTS;
 
@@ -165,6 +165,7 @@ impl CoordinatorInstance {
 pub mod psyche_solana_coordinator {
 
     use super::*;
+    use psyche_coordinator::model::LLMDataLocations;
     use psyche_core::FixedString;
 
     pub fn init_coordinator(
@@ -179,6 +180,15 @@ pub mod psyche_solana_coordinator {
         params: FreeCoordinatorParams,
     ) -> Result<()> {
         free_coordinator_processor(context, params)
+    }
+
+    pub fn update_data_locations(
+        ctx: Context<OwnerCoordinatorAccounts>,
+        data_locations: Option<psyche_coordinator::model::LLMDataLocations>,
+    ) -> Result<()> {
+        let mut account = ctx.accounts.coordinator_account.load_mut()?;
+        account.increment_nonce();
+        account.state.update_data_locations(data_locations)
     }
 
     pub fn update(

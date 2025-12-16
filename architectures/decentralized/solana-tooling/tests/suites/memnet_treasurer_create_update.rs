@@ -57,10 +57,10 @@ pub async fn run() {
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_locations: FixedVec::try_from_iter([
-                LLMTrainingDataLocation::default(),
-            ])
-            .unwrap(),
+            // data_locations: FixedVec::try_from_iter([
+            //     LLMTrainingDataLocation::default(),
+            // ])
+            // .unwrap(),
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,

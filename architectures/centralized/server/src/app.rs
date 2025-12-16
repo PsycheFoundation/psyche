@@ -177,10 +177,10 @@ impl App {
 
             let training_data_server = match &coordinator.model {
                 Model::LLM(LLM {
-                    data_locations,
                     checkpoint,
                     ..
                 }) => {
+                    let data_locations = &coordinator.data_locations;
                     let data_location_server_urls:Vec<_> = data_locations.iter().filter_map(|l| match l {LLMTrainingDataLocation::Server(url) => Some(url.to_string()), _=> None}).collect();
 
                     if data_location_server_urls.is_empty() {

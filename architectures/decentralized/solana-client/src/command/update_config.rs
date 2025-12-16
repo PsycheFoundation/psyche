@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
+use anchor_client::anchor_lang::prelude::borsh;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
-    model::{Checkpoint, Model},
+    model::{Checkpoint, LLMDataLocations, LLMTrainingDataLocation, Model},
 };
+use psyche_core::FixedVec;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
 
@@ -76,22 +78,60 @@ pub async fn command_update_config_execute(
         ),
     });
 
-    let (config, mut model) = match config_path {
+    let (config, mut model, data_locations) = match config_path {
         Some(config_path) => {
+            #[derive(Serialize, Deserialize)]
+            struct ModelWrapper {
+                #[serde(flatten)]
+                pub model: Model, // This will deserialize the enum variant (LLM, etc.)
+            }
+
             #[derive(Serialize, Deserialize)]
             struct State {
                 pub config: CoordinatorConfig,
-                pub model: Model,
+                pub model: ModelWrapper,
             }
+
+            // First, parse without data_locations to get the Model enum
             let state: State = toml::from_str(std::str::from_utf8(
                 &std::fs::read(&config_path)
                     .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
             )?)
             .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
-            (Some(state.config), Some(state.model))
+            // Then parse just the data_locations separately
+            #[derive(Serialize, Deserialize)]
+            struct DataLocationsWrapper {
+                pub data_locations: Vec<LLMTrainingDataLocation>,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            struct LLMSection {
+                #[serde(rename = "LLM")]
+                pub llm: DataLocationsWrapper,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            struct ModelSection {
+                pub model: LLMSection,
+            }
+
+            let data_section: ModelSection = toml::from_str(std::str::from_utf8(
+                &std::fs::read(&config_path)
+                    .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
+            )?)?;
+
+            let data_locs = LLMDataLocations {
+                data_locations: FixedVec::from_iter(
+                    data_section.model.llm.data_locations.into_iter(),
+                ),
+            };
+
+            println!("DATA LOCS: {data_locs:#?}");
+
+            (Some(state.config), Some(state.model.model), Some(data_locs))
         }
-        None => (None, None),
+        None => (None, None, None),
     };
 
     model = if switch_to_hub {
@@ -132,12 +172,17 @@ pub async fn command_update_config_execute(
         (metadata != coordinator_account_state.state.metadata).then_some(metadata)
     };
 
-    let coordinator_update =
-        metadata.is_some() || config.is_some() || model.is_some() || progress.is_some();
+    let coordinator_update = metadata.is_some()
+        || config.is_some()
+        || model.is_some()
+        || progress.is_some()
+        || data_locations.is_some();
     if !coordinator_update && client_version.is_none() {
         bail!("this invocation would not update anything, bailing.")
     }
 
+    let serialized = borsh::to_vec(&data_locations)?;
+    println!("Serialized data_locations size: {} bytes", serialized.len());
     let instructions = if let Some(treasurer_index) = backend
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
@@ -171,6 +216,12 @@ pub async fn command_update_config_execute(
                 model,
                 progress,
             ));
+            instructions.push(instructions::coordinator_update_data_locations(
+                &run_id,
+                &coordinator_account,
+                &main_authority,
+                data_locations.as_ref(),
+            ));
         }
 
         if let Some(client_version) = client_version.clone() {
@@ -184,6 +235,7 @@ pub async fn command_update_config_execute(
 
         instructions
     };
+    println!("SENDING INSTRUCTIONS: {instructions:#?}");
     let signature = backend
         .send_and_retry("Update config", &instructions, &[])
         .await?;
@@ -192,6 +244,7 @@ pub async fn command_update_config_execute(
     println!(" - Metadata: {metadata:#?}");
     println!(" - Config: {config:#?}");
     println!(" - Model: {model:#?}");
+    println!(" - Data locations: {data_locations:#?}");
     println!(" - Progress: {progress:#?}");
     println!(" - Client version: {client_version:#?}");
 
