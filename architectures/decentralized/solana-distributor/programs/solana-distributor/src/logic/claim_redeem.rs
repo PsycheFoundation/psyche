@@ -89,9 +89,9 @@ pub fn claim_redeem_processor(
     let claim = &mut context.accounts.claim;
     let claimable_collateral_amount = params
         .vesting
-        .compute_vested_collateral_amount(Clock::get()?.unix_timestamp)?
-        .saturating_sub(i128::from(claim.claimed_collateral_amount));
-    if claimable_collateral_amount < i128::from(params.collateral_amount) {
+        .compute_vested_collateral_amount(Clock::get()?.unix_timestamp)
+        - claim.claimed_collateral_amount;
+    if claimable_collateral_amount < params.collateral_amount {
         return err!(ProgramError::ParamsCollateralAmountIsTooLarge);
     }
     claim.claimed_collateral_amount += params.collateral_amount;

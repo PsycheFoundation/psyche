@@ -54,6 +54,4 @@ pub enum ProgramError {
     ParamsMerkleProofIsInvalid,
     #[msg("params.collateral_amount is too large")]
     ParamsCollateralAmountIsTooLarge,
-    #[msg("math overflow")]
-    MathOverflow,
 }

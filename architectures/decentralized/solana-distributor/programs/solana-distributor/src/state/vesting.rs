@@ -1,7 +1,5 @@
 use anchor_lang::prelude::*;
 
-use crate::ProgramError;
-
 #[derive(Debug, InitSpace, AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub struct Vesting {
     pub start_unix_timestamp: i64,
@@ -13,20 +11,26 @@ impl Vesting {
     pub fn compute_vested_collateral_amount(
         &self,
         now_unix_timestamp: i64,
-    ) -> Result<i128> {
-        let elapsed_seconds = now_unix_timestamp
-            .checked_sub(self.start_unix_timestamp)
-            .ok_or(ProgramError::MathOverflow)?;
-        if elapsed_seconds < 0 {
-            return Ok(0);
+    ) -> u64 {
+        if now_unix_timestamp < self.start_unix_timestamp {
+            return 0;
         }
-        if elapsed_seconds >= i64::from(self.duration_seconds) {
-            return Ok(i128::from(self.end_collateral_amount));
+        if self.duration_seconds == 0 {
+            return self.end_collateral_amount;
         }
-        Ok(i128::from(self.end_collateral_amount)
-            .checked_mul(i128::from(elapsed_seconds))
-            .ok_or(ProgramError::MathOverflow)?
-            .checked_div(i128::from(self.duration_seconds))
-            .ok_or(ProgramError::MathOverflow)?)
+
+        let elapsed_seconds =
+            u128::try_from(now_unix_timestamp - self.start_unix_timestamp)
+                .unwrap();
+        let duration_seconds = u128::from(self.duration_seconds);
+        let end_collateral_amount = u128::from(self.end_collateral_amount);
+
+        let vested_collateral_amount =
+            end_collateral_amount * elapsed_seconds / duration_seconds;
+        if vested_collateral_amount > end_collateral_amount {
+            return self.end_collateral_amount;
+        }
+
+        u64::try_from(vested_collateral_amount).unwrap()
     }
 }

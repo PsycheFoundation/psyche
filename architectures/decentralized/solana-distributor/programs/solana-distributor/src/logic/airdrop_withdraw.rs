@@ -57,6 +57,7 @@ pub fn airdrop_withdraw_processor(
     params: AirdropWithdrawParams,
 ) -> Result<()> {
     let airdrop = &mut context.accounts.airdrop;
+
     let airdrop_signer_seeds: &[&[&[u8]]] = &[&[
         Airdrop::SEEDS_PREFIX,
         &airdrop.id.to_le_bytes(),
