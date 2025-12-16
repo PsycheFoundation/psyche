@@ -129,7 +129,6 @@ impl TokenizedLLHDocument {
         let mut choices_str = Vec::new();
         let mut choices_token_len = Vec::new();
         let mut choices: Vec<Vec<i64>> = Vec::new();
-        // let mut acc_uncond_tokens_all: Vec<Vec<i64>> = Vec::new();
         let mut acc_uncond_tokens_len = Vec::new();
 
         // Tokenize fewshot prefix once
@@ -175,30 +174,22 @@ impl TokenizedLLHDocument {
                 }
             }
 
-            let acc_uncond_fmt = format!("Answer: {choice}");
-
-            // let acc_uncond_fmt_tokens: Vec<u32> = tokenizer
-            //     .encode(acc_uncond_fmt, false)
-            //     .unwrap()
-            //     .get_ids()
-            //     .iter()
-            //     .map(|x| *x as u32)
-            //     .collect();
-
-            for idx in 1..text_choice_tokens.len() {
-                let acc_uncond_tokens = &text_choice_tokens[text_choice_tokens.len() - idx..]
-                    .iter()
-                    .map(|x| *x as u32)
-                    .collect::<Vec<_>>();
-                let acc_uncond_str = tokenizer.decode(&acc_uncond_tokens, false).unwrap();
-                if acc_uncond_str.contains(&acc_uncond_fmt) {
-                    let acc_uncond_tokens = acc_uncond_tokens
+            if TASKS_WITH_ACC_UNCOND.contains(&doc.eval_name.as_str()) {
+                let acc_uncond_fmt = format!("Answer: {choice}");
+                for idx in *choices_token_len.last().unwrap()..text_choice_tokens.len() {
+                    let acc_uncond_tokens = &text_choice_tokens[text_choice_tokens.len() - idx..]
                         .iter()
-                        .map(|x| *x as i64)
+                        .map(|x| *x as u32)
                         .collect::<Vec<_>>();
-                    // acc_uncond_tokens.push(acc_uncond_tokens.clone());
-                    acc_uncond_tokens_len.push(acc_uncond_tokens.len());
-                    break;
+                    let acc_uncond_str = tokenizer.decode(&acc_uncond_tokens, false).unwrap();
+                    if acc_uncond_str.contains(&acc_uncond_fmt) {
+                        let acc_uncond_tokens = acc_uncond_tokens
+                            .iter()
+                            .map(|x| *x as i64)
+                            .collect::<Vec<_>>();
+                        acc_uncond_tokens_len.push(acc_uncond_tokens.len());
+                        break;
+                    }
                 }
             }
         }
