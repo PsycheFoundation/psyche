@@ -269,6 +269,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -284,6 +287,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -299,6 +305,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -314,6 +323,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -329,6 +341,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -344,6 +359,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -359,6 +377,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -374,6 +395,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -389,6 +413,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -488,6 +515,9 @@ async fn async_main() -> Result<()> {
             Ok(())
         }
         Commands::CanJoin { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -498,6 +528,9 @@ async fn async_main() -> Result<()> {
             command_can_join_execute(backend, params).await
         }
         Commands::JsonDumpRun { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -508,6 +541,9 @@ async fn async_main() -> Result<()> {
             command_json_dump_run_execute(backend, params).await
         }
         Commands::JsonDumpUser { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
