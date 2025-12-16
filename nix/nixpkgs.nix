@@ -22,6 +22,16 @@ in
             liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
             torchtitan = pyfinal.callPackage ../python/torchtitan.nix { };
             torchdata = pyfinal.callPackage ../python/torchdata.nix { };
+            tyro = pyprev.tyro.overridePythonAttrs (old: {
+              propagatedBuildInputs = builtins.filter (
+                dep:
+                !builtins.elem (dep.pname or "") [
+                  "jax"
+                  "jaxlib"
+                ]
+              ) (old.propagatedBuildInputs or [ ]);
+              doCheck = false;
+            });
           };
         };
       })

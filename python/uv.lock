@@ -5,6 +5,8 @@ requires-python = "==3.12.*"
 [manifest]
 overrides = [
     { name = "flash-attn", marker = "sys_platform == 'never'" },
+    { name = "jax", marker = "sys_platform == 'never'" },
+    { name = "jaxlib", marker = "sys_platform == 'never'" },
     { name = "liger-kernel", marker = "sys_platform == 'never'" },
     { name = "torch", marker = "sys_platform == 'never'" },
     { name = "torchtitan", marker = "sys_platform == 'never'" },

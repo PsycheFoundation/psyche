@@ -11,6 +11,8 @@ override-dependencies = [
   "torchtitan; sys_platform == 'never'",
   "flash-attn; sys_platform == 'never'",
   "liger-kernel; sys_platform == 'never'",
+  "jax; sys_platform == 'never'",
+  "jaxlib; sys_platform == 'never'",
 ]
 
 [project.optional-dependencies]
