@@ -1,4 +1,5 @@
 import os
+import json
 import sys
 from pathlib import Path
 import multiprocessing
@@ -11,12 +12,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 def run_inference(model_name: str, prompt: str) -> str:
-    import contextlib
-
     from psyche.vllm.engine import UpdatableLLMEngine
 
     original_stdout = sys.stdout
     original_stderr = sys.stderr
+
+    generated_text = ""
 
     with open(os.devnull, "w") as devnull:
         sys.stdout = devnull
@@ -40,12 +41,12 @@ def run_inference(model_name: str, prompt: str) -> str:
             while engine.has_unfinished_requests():
                 outputs.extend(engine.step())
 
-            generated_text = outputs[0].outputs[0].text
-
-            engine.shutdown()
+            if outputs[0] and outputs[0].outputs[0]:
+                generated_text = outputs[0].outputs[0].text
         finally:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
+            engine.shutdown()
 
     return generated_text
 
@@ -63,8 +64,6 @@ if __name__ == "__main__":
 
     try:
         generated = run_inference(model_name, prompt)
-        import json
-
         result = {"generated_text": generated}
         print(json.dumps(result))
     except Exception as e:

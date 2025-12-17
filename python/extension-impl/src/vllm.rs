@@ -22,6 +22,77 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
 
+/// Response from engine creation
+#[derive(Debug, Clone)]
+pub struct EngineCreationResult {
+    pub success: bool,
+    pub engine_id: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Response from inference request
+#[derive(Debug, Clone)]
+pub struct InferenceResult {
+    pub success: bool,
+    pub request_id: Option<String>,
+    pub generated_text: Option<String>,
+    pub full_text: Option<String>,
+    pub prompt: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Response from engine shutdown
+#[derive(Debug, Clone)]
+pub struct ShutdownResult {
+    pub success: bool,
+    pub engine_id: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Response from engine stats request
+#[derive(Debug, Clone)]
+pub struct EngineStats {
+    pub success: bool,
+    pub engine_id: Option<String>,
+    pub model_name: Option<String>,
+    pub tensor_parallel_size: Option<i64>,
+    pub has_unfinished_requests: Option<bool>,
+    pub error: Option<String>,
+}
+
+/// Response from list engines request
+#[derive(Debug, Clone)]
+pub struct EngineList {
+    pub success: bool,
+    pub engine_ids: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// Helper function to convert Python dict to Rust HashMap
+fn py_dict_to_hashmap(dict: &Bound<'_, PyDict>) -> PyResult<HashMap<String, PyObject>> {
+    let mut map = HashMap::new();
+    for (key, value) in dict.iter() {
+        let key_str: String = key.extract()?;
+        map.insert(key_str, value.unbind());
+    }
+    Ok(map)
+}
+
+/// Helper to extract optional string from HashMap
+fn get_optional_string(map: &HashMap<String, PyObject>, key: &str, py: Python) -> Option<String> {
+    map.get(key).and_then(|v| v.extract(py).ok())
+}
+
+/// Helper to extract optional i64 from HashMap
+fn get_optional_i64(map: &HashMap<String, PyObject>, key: &str, py: Python) -> Option<i64> {
+    map.get(key).and_then(|v| v.extract(py).ok())
+}
+
+/// Helper to extract optional bool from HashMap
+fn get_optional_bool(map: &HashMap<String, PyObject>, key: &str, py: Python) -> Option<bool> {
+    map.get(key).and_then(|v| v.extract(py).ok())
+}
+
 /// Create a new vLLM engine
 pub fn create_engine(
     py: Python,
@@ -31,7 +102,7 @@ pub fn create_engine(
     dtype: Option<&str>,
     max_model_len: Option<i32>,
     gpu_memory_utilization: Option<f64>,
-) -> PyResult<HashMap<String, PyObject>> {
+) -> PyResult<EngineCreationResult> {
     let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let kwargs = PyDict::new(py);
@@ -55,17 +126,17 @@ pub fn create_engine(
     }
 
     let result = rust_bridge.call_method("create_engine", (), Some(&kwargs))?;
-
-    // Convert Python dict to Rust HashMap
     let dict = result.downcast::<PyDict>()?;
-    let mut map = HashMap::new();
+    let map = py_dict_to_hashmap(dict)?;
 
-    for (key, value) in dict.iter() {
-        let key_str: String = key.extract()?;
-        map.insert(key_str, value.unbind());
-    }
+    let status = get_optional_string(&map, "status", py).unwrap_or_default();
+    let success = status == "success";
 
-    Ok(map)
+    Ok(EngineCreationResult {
+        success,
+        engine_id: get_optional_string(&map, "engine_id", py),
+        error: get_optional_string(&map, "error", py),
+    })
 }
 
 /// Run inference on an engine
@@ -76,7 +147,7 @@ pub fn run_inference(
     temperature: Option<f64>,
     top_p: Option<f64>,
     max_tokens: Option<i32>,
-) -> PyResult<HashMap<String, PyObject>> {
+) -> PyResult<InferenceResult> {
     let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let kwargs = PyDict::new(py);
@@ -96,70 +167,82 @@ pub fn run_inference(
     }
 
     let result = rust_bridge.call_method("run_inference", (), Some(&kwargs))?;
-
     let dict = result.downcast::<PyDict>()?;
-    let mut map = HashMap::new();
+    let map = py_dict_to_hashmap(dict)?;
 
-    for (key, value) in dict.iter() {
-        let key_str: String = key.extract()?;
-        map.insert(key_str, value.unbind());
-    }
+    let status = get_optional_string(&map, "status", py).unwrap_or_default();
+    let success = status == "success";
 
-    Ok(map)
+    Ok(InferenceResult {
+        success,
+        request_id: get_optional_string(&map, "request_id", py),
+        generated_text: get_optional_string(&map, "generated_text", py),
+        full_text: get_optional_string(&map, "full_text", py),
+        prompt: get_optional_string(&map, "prompt", py),
+        error: get_optional_string(&map, "error", py),
+    })
 }
 
 /// Shutdown an engine
-pub fn shutdown_engine(py: Python, engine_id: &str) -> PyResult<HashMap<String, PyObject>> {
+pub fn shutdown_engine(py: Python, engine_id: &str) -> PyResult<ShutdownResult> {
     let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let result = rust_bridge.call_method1("shutdown_engine", (engine_id,))?;
-
-    // Convert Python dict to Rust HashMap
     let dict = result.downcast::<PyDict>()?;
-    let mut map = HashMap::new();
+    let map = py_dict_to_hashmap(dict)?;
 
-    for (key, value) in dict.iter() {
-        let key_str: String = key.extract()?;
-        map.insert(key_str, value.unbind());
-    }
+    let status = get_optional_string(&map, "status", py).unwrap_or_default();
+    let success = status == "success";
 
-    Ok(map)
+    Ok(ShutdownResult {
+        success,
+        engine_id: get_optional_string(&map, "engine_id", py),
+        error: get_optional_string(&map, "error", py),
+    })
 }
 
 /// Get stats about an engine
-pub fn get_engine_stats(py: Python, engine_id: &str) -> PyResult<HashMap<String, PyObject>> {
+pub fn get_engine_stats(py: Python, engine_id: &str) -> PyResult<EngineStats> {
     let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let result = rust_bridge.call_method1("get_engine_stats", (engine_id,))?;
-
-    // Convert Python dict to Rust HashMap
     let dict = result.downcast::<PyDict>()?;
-    let mut map = HashMap::new();
+    let map = py_dict_to_hashmap(dict)?;
 
-    for (key, value) in dict.iter() {
-        let key_str: String = key.extract()?;
-        map.insert(key_str, value.unbind());
-    }
+    let status = get_optional_string(&map, "status", py).unwrap_or_default();
+    let success = status == "success";
 
-    Ok(map)
+    Ok(EngineStats {
+        success,
+        engine_id: get_optional_string(&map, "engine_id", py),
+        model_name: get_optional_string(&map, "model_name", py),
+        tensor_parallel_size: get_optional_i64(&map, "tensor_parallel_size", py),
+        has_unfinished_requests: get_optional_bool(&map, "has_unfinished_requests", py),
+        error: get_optional_string(&map, "error", py),
+    })
 }
 
 /// List all registered engines
-pub fn list_engines(py: Python) -> PyResult<HashMap<String, PyObject>> {
+pub fn list_engines(py: Python) -> PyResult<EngineList> {
     let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let result = rust_bridge.call_method0("list_engines")?;
-
-    // Convert Python dict to Rust HashMap
     let dict = result.downcast::<PyDict>()?;
-    let mut map = HashMap::new();
+    let map = py_dict_to_hashmap(dict)?;
 
-    for (key, value) in dict.iter() {
-        let key_str: String = key.extract()?;
-        map.insert(key_str, value.unbind());
-    }
+    let status = get_optional_string(&map, "status", py).unwrap_or_default();
+    let success = status == "success";
 
-    Ok(map)
+    let engine_ids = map
+        .get("engine_ids")
+        .and_then(|v| v.extract::<Vec<String>>(py).ok())
+        .unwrap_or_default();
+
+    Ok(EngineList {
+        success,
+        engine_ids,
+        error: get_optional_string(&map, "error", py),
+    })
 }
 
 #[cfg(test)]

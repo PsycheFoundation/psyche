@@ -1,6 +1,5 @@
 import logging
 from typing import Dict, Any, Optional
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -74,17 +73,22 @@ def run_inference(
             output = outputs[0].outputs[0]
             return {
                 "status": "success",
+                "request_id": request_id,
                 "generated_text": output.text,
                 "prompt": prompt,
                 "full_text": prompt + output.text,
             }
         else:
-            return {"status": "error", "error": "No output generated"}
+            return {
+                "status": "error",
+                "request_id": request_id,
+                "error": "No output generated",
+            }
 
     except Exception as e:
         error_msg = f"Inference failed for engine '{engine_id}': {e}"
         logger.error(error_msg)
-        return {"status": "error", "error": error_msg}
+        return {"status": "error", "request_id": request_id, "error": error_msg}
 
 
 def shutdown_engine(engine_id: str) -> Dict[str, Any]:

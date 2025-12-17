@@ -1,4 +1,5 @@
 import logging
+import time
 from itertools import count
 from typing import List, Optional, Dict, Any
 
@@ -95,8 +96,5 @@ class UpdatableLLMEngine:
             logger.warning(f"Failed to shutdown Ray: {e}")
 
         # Give time to clean up
-        import time
-
         time.sleep(1)
-
         logger.info("vLLM engine shutdown complete")

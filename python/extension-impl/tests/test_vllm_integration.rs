@@ -30,10 +30,8 @@ fn test_create_and_shutdown_engine() {
         );
 
         let response = result.unwrap();
-        assert!(response.contains_key("status"));
-
-        let status: String = response.get("status").unwrap().extract(py).unwrap();
-        assert_eq!(status, "success");
+        assert!(response.success, "Engine creation failed");
+        assert_eq!(response.engine_id.as_deref(), Some("test_engine"));
 
         // Shutdown engine
         let result = vllm::shutdown_engine(py, "test_engine");
@@ -42,6 +40,9 @@ fn test_create_and_shutdown_engine() {
             "Failed to shutdown engine: {:?}",
             result.err()
         );
+
+        let shutdown_response = result.unwrap();
+        assert!(shutdown_response.success, "Engine shutdown failed");
     });
 }
 
@@ -55,9 +56,6 @@ fn test_list_engines() {
         assert!(result.is_ok(), "Failed to list engines: {:?}", result.err());
 
         let response = result.unwrap();
-        assert!(response.contains_key("status"));
-
-        let status: String = response.get("status").unwrap().extract(py).unwrap();
-        assert_eq!(status, "success");
+        assert!(response.success, "List engines failed");
     });
 }
