@@ -521,19 +521,13 @@ impl PreparedTask {
                     let uncond_request_full =
                         &doc.requests[idx][doc.requests[idx].len() - uncond_len..];
 
-                    // Remove last token (same as conditional)
+                    // Remove the last token since we dont want to pass it to the model
                     let uncond_request = &uncond_request_full[..uncond_request_full.len() - 1];
 
-                    // Pass unconditional request to model
+                    // Pass request to model
                     let uncond_tensor = Tensor::from_slice(uncond_request)
                         .to(options.model.device())
                         .unsqueeze(0);
-
-                    println!(
-                        "uncond_request (len={}): {:?}",
-                        uncond_request.len(),
-                        uncond_request
-                    );
 
                     let (logits_uncond, _) = {
                         let _no_grad = tch::no_grad_guard();
@@ -544,20 +538,10 @@ impl PreparedTask {
 
                     let logits_uncond = logits_uncond.unwrap().squeeze_dim(0);
 
-                    // Slice to get only the choice part (skip "Answer:" prefix)
-                    // The choice tokens are the same as in conditional
-                    let uncond_input_length = uncond_request.len();
-                    let logits_uncond = logits_uncond.slice(
-                        0,
-                        uncond_input_length as i64 - choice.len() as i64,
-                        uncond_input_length as i64,
-                        1,
-                    );
-
-                    // Calculate log probabilities for choice tokens
+                    let uncond_tokens_to_predict = &uncond_request_full[1..];
                     let choice_log_prob_uncond = logits_uncond.log_softmax(-1, None).gather(
                         -1,
-                        &Tensor::from_slice(choice)
+                        &Tensor::from_slice(uncond_tokens_to_predict)
                             .to(logits_uncond.device())
                             .unsqueeze(-1),
                         false,
@@ -567,8 +551,6 @@ impl PreparedTask {
                         choice_log_prob_uncond.sum(Kind::Float).try_into().unwrap();
                     scores_uncond.push(loglikelihood_uncond);
                 }
-
-                // ### ACC_UNCOND END
             }
 
             let selected: i64 = Tensor::from_slice(&scores.iter().map(|x| x.0).collect::<Vec<_>>())
