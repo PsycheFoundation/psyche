@@ -181,7 +181,7 @@ impl TokenizedLLHDocument {
                         .iter()
                         .map(|x| *x as u32)
                         .collect::<Vec<_>>();
-                    let acc_uncond_str = tokenizer.decode(&acc_uncond_tokens, false).unwrap();
+                    let acc_uncond_str = tokenizer.decode(acc_uncond_tokens, false).unwrap();
                     if acc_uncond_str.contains(&acc_uncond_fmt) {
                         let acc_uncond_tokens = acc_uncond_tokens
                             .iter()
