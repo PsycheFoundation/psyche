@@ -513,42 +513,12 @@ impl PreparedTask {
 
                 let loglikelihood: f32 = choice_log_prob.sum(Kind::Float).try_into().unwrap();
                 scores.push((loglikelihood, exact_match));
+            }
 
-                // ### ACC_UNCOND
-                if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
-                    // Extract the unconditional part: "Answer: {choice}" from the end of the request
-                    let uncond_len = doc.acc_uncond_tokens_len[idx];
-                    let uncond_request_full =
-                        &doc.requests[idx][doc.requests[idx].len() - uncond_len..];
-
-                    // Remove the last token since we dont want to pass it to the model
-                    let uncond_request = &uncond_request_full[..uncond_request_full.len() - 1];
-
-                    // Pass request to model
-                    let uncond_tensor = Tensor::from_slice(uncond_request)
-                        .to(options.model.device())
-                        .unsqueeze(0);
-
-                    let (logits_uncond, _) = {
-                        let _no_grad = tch::no_grad_guard();
-                        options
-                            .model
-                            .forward(&uncond_tensor, None, None, None, None, None)
-                    };
-
-                    let logits_uncond = logits_uncond.unwrap().squeeze_dim(0);
-
-                    let uncond_tokens_to_predict = &uncond_request_full[1..];
-                    let choice_log_prob_uncond = logits_uncond.log_softmax(-1, None).gather(
-                        -1,
-                        &Tensor::from_slice(uncond_tokens_to_predict)
-                            .to(logits_uncond.device())
-                            .unsqueeze(-1),
-                        false,
-                    );
-
-                    let loglikelihood_uncond: f32 =
-                        choice_log_prob_uncond.sum(Kind::Float).try_into().unwrap();
+            if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
+                for idx in 0..doc.requests.len() {
+                    let loglikelihood_uncond =
+                        calculate_unconditional_loglikelihood(doc, idx, options.model);
                     scores_uncond.push(loglikelihood_uncond);
                 }
             }
@@ -849,6 +819,43 @@ impl PreparedTask {
             "acc"
         }
     }
+}
+
+fn calculate_unconditional_loglikelihood(
+    doc: &TokenizedLLHDocument,
+    idx: usize,
+    model: &mut dyn CausalLM,
+) -> f32 {
+    // Extract the unconditional part: "Answer: {choice}" from the end of the request
+    let uncond_len = doc.acc_uncond_tokens_len[idx];
+    let uncond_request_full = &doc.requests[idx][doc.requests[idx].len() - uncond_len..];
+
+    // Remove the last token since we dont want to pass it to the model
+    let uncond_request = &uncond_request_full[..uncond_request_full.len() - 1];
+
+    // Pass request to model
+    let uncond_tensor = Tensor::from_slice(uncond_request)
+        .to(model.device())
+        .unsqueeze(0);
+
+    let (logits_uncond, _) = {
+        let _no_grad = tch::no_grad_guard();
+        model.forward(&uncond_tensor, None, None, None, None, None)
+    };
+
+    let logits_uncond = logits_uncond.unwrap().squeeze_dim(0);
+
+    let uncond_tokens_to_predict = &uncond_request_full[1..];
+    let choice_log_prob_uncond = logits_uncond.log_softmax(-1, None).gather(
+        -1,
+        &Tensor::from_slice(uncond_tokens_to_predict)
+            .to(logits_uncond.device())
+            .unsqueeze(-1),
+        false,
+    );
+
+    let loglikelihood_uncond: f32 = choice_log_prob_uncond.sum(Kind::Float).try_into().unwrap();
+    loglikelihood_uncond
 }
 
 fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
