@@ -194,8 +194,6 @@ impl TokenizedLLHDocument {
             }
         }
 
-        println!("choices_token_len: {:?}", choices_token_len);
-        println!("acc_uncond_tokens_len: {:?}", acc_uncond_tokens_len);
         Self {
             choices_str,
             answer: doc.answer,
@@ -242,7 +240,7 @@ impl Task {
                             fewshot_examples
                                 .into_iter()
                                 .take(self.num_fewshot)
-                                .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
+                                .map(|x| format!("{}{}", x.text, x.choices[x.answer]))
                                 .collect::<Vec<_>>()
                                 .join("\n\n")
                                 + "\n\n"
@@ -556,7 +554,6 @@ impl PreparedTask {
                 );
             }
 
-            // ACC_UNCOND metric
             if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
                 let selected_uncond: i64 = Tensor::from_slice(
                     &scores
