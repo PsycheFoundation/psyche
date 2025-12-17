@@ -2,9 +2,9 @@ name: Build run-manager
 
 on:
   push:
-    branches:
-      - main
-      - dy/run-manager-portable # TODO remove once this merges in main
+    paths:
+      - 'tools/rust-tools/run-manager/**'
+      - '.github/workflows/build-run-manager.yml'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
