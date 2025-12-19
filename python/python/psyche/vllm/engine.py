@@ -1,4 +1,5 @@
 import logging
+import time
 from itertools import count
 from typing import List, Optional, Dict, Any
 
@@ -81,5 +82,19 @@ class UpdatableLLMEngine:
     def shutdown(self):
         logger.info("Shutting down vLLM engine")
         # vLLM handles cleanup automatically when the engine is destroyed
-        del self.engine
+        if self.engine is not None:
+            del self.engine
+
+        try:
+            import ray
+
+            if ray.is_initialized():
+                logger.info("Shutting down Ray...")
+                ray.shutdown()
+                logger.info("Ray shutdown complete")
+        except Exception as e:
+            logger.warning(f"Failed to shutdown Ray: {e}")
+
+        # Give time to clean up
+        time.sleep(1)
         logger.info("vLLM engine shutdown complete")
