@@ -111,27 +111,6 @@ pub fn run_update_processor(
         )?;
     }
 
-    if let Some(paused) = params.paused {
-        set_paused(
-            CpiContext::new(
-                context.accounts.coordinator_program.to_account_info(),
-                OwnerCoordinatorAccounts {
-                    authority: context.accounts.run.to_account_info(),
-                    coordinator_instance: context
-                        .accounts
-                        .coordinator_instance
-                        .to_account_info(),
-                    coordinator_account: context
-                        .accounts
-                        .coordinator_account
-                        .to_account_info(),
-                },
-            )
-            .with_signer(run_signer_seeds),
-            paused,
-        )?;
-    }
-
     if let Some(data_location) = params.data_location {
         psyche_solana_coordinator::cpi::update_data_locations(
             CpiContext::new(
@@ -150,6 +129,27 @@ pub fn run_update_processor(
             )
             .with_signer(run_signer_seeds),
             Some(data_location),
+        )?;
+    }
+
+    if let Some(paused) = params.paused {
+        set_paused(
+            CpiContext::new(
+                context.accounts.coordinator_program.to_account_info(),
+                OwnerCoordinatorAccounts {
+                    authority: context.accounts.run.to_account_info(),
+                    coordinator_instance: context
+                        .accounts
+                        .coordinator_instance
+                        .to_account_info(),
+                    coordinator_account: context
+                        .accounts
+                        .coordinator_account
+                        .to_account_info(),
+                },
+            )
+            .with_signer(run_signer_seeds),
+            paused,
         )?;
     }
 
