@@ -75,7 +75,7 @@ pub async fn command_update_config_execute(
             #[derive(Serialize, Deserialize)]
             struct ModelWrapper {
                 #[serde(flatten)]
-                pub model: Model, // This will deserialize the enum variant (LLM, etc.)
+                pub model: Model, // This will deserialize the enum variant (LLM)
             }
 
             #[derive(Serialize, Deserialize)]
@@ -173,8 +173,8 @@ pub async fn command_update_config_execute(
         coordinator_account_state.state.coordinator.model = model;
     }
 
-    if let Some(data_locations) = &data_locations {
-        coordinator_account_state.state.coordinator.data_locations = data_locations.clone();
+    if let Some(data_locations) = data_locations {
+        coordinator_account_state.state.coordinator.data_locations = data_locations;
     }
 
     let progress = restart_from_step.map(|step| CoordinatorProgress {

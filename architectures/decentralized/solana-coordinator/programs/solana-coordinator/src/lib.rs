@@ -29,7 +29,7 @@ use ts_rs::TS;
 
 pub use crate::instance_state::RunMetadata;
 
-declare_id!("6DvXZnaJd2RHmmMVFZE8P4GpCdZXGYpvVda7LDVBUK7v");
+declare_id!("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7");
 
 pub const SOLANA_MAX_NUM_PENDING_CLIENTS: usize = SOLANA_MAX_NUM_CLIENTS;
 

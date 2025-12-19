@@ -23,8 +23,6 @@ use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams
 use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
 use crate::command::update_config::CommandUpdateConfigParams;
 use crate::command::update_config::command_update_config_execute;
-// use crate::command::update_model::CommandUpdateModelParams;
-// use crate::command::update_model::command_update_model_execute;
 use crate::{
     app::{AppParams, TAB_NAMES, Tabs},
     backend::SolanaBackend,
@@ -124,14 +122,6 @@ enum Commands {
         #[clap(flatten)]
         params: CommandUpdateConfigParams,
     },
-    // UpdateModel {
-    //     #[clap(flatten)]
-    //     cluster: ClusterArgs,
-    //     #[clap(flatten)]
-    //     wallet: WalletArgs,
-    //     #[clap(flatten)]
-    //     params: CommandUpdateModelParams,
-    // },
     Tick {
         #[clap(flatten)]
         cluster: ClusterArgs,
@@ -328,17 +318,6 @@ async fn async_main() -> Result<()> {
             .unwrap();
             command_update_config_execute(backend, params).await
         }
-        // Commands::UpdateModel { cluster, wallet, params } => {
-        //     let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-        //     let backend = SolanaBackend::new(
-        //         cluster.into(),
-        //         vec![],
-        //         key_pair.clone(),
-        //         CommitmentConfig::confirmed(),
-        //     )
-        //     .unwrap();
-        //     command_update_model_execute(backend, params).await
-        // }
         Commands::SetPaused {
             cluster,
             wallet,

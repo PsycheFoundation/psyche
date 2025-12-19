@@ -314,34 +314,6 @@ impl Model {
                     return false;
                 }
 
-                // for data_location in llm.data_locations.iter() {
-                //     let bad_data_location = match data_location {
-                //         LLMTrainingDataLocation::Dummy(_) => false,
-                //         LLMTrainingDataLocation::Server(url) => url.is_empty(),
-                //         LLMTrainingDataLocation::Local(_) => false,
-                //         LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
-                //             location,
-                //             ..
-                //         }) => match location {
-                //             HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
-                //             HttpTrainingDataLocation::NumberedFiles {
-                //                 url_template,
-                //                 num_files,
-                //                 ..
-                //             } => url_template.is_empty() || *num_files == 0,
-                //             HttpTrainingDataLocation::Gcp { bucket_name, .. } => {
-                //                 bucket_name.is_empty()
-                //             }
-                //         },
-                //         LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
-                //         LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
-                //     };
-                //     if bad_data_location {
-                //         msg!("model check failed: bad LLM training data location.");
-                //         return false;
-                //     }
-                // }
-
                 let bad_checkpoint = match llm.checkpoint {
                     Checkpoint::Dummy(_hub_repo) => false,
                     Checkpoint::Ephemeral => true,
