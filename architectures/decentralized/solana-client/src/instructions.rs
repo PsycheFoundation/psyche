@@ -53,11 +53,10 @@ pub fn coordinator_close_run(
     )
 }
 
-pub fn coordinator_update_data_locations(
+pub fn clear_data_locations(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
-    data_locations: Option<&psyche_coordinator::model::LLMDataLocations>,
 ) -> Instruction {
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     anchor_instruction(
@@ -67,9 +66,25 @@ pub fn coordinator_update_data_locations(
             coordinator_instance,
             coordinator_account: *coordinator_account,
         },
-        psyche_solana_coordinator::instruction::UpdateDataLocations {
-            data_locations: data_locations.cloned(),
+        psyche_solana_coordinator::instruction::ClearDataLocations {},
+    )
+}
+
+pub fn coordinator_update_data_locations(
+    run_id: &str,
+    coordinator_account: &Pubkey,
+    main_authority: &Pubkey,
+    data_location: Option<psyche_coordinator::model::LLMTrainingDataLocation>,
+) -> Instruction {
+    let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
+    anchor_instruction(
+        psyche_solana_coordinator::ID,
+        psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
+            authority: *main_authority,
+            coordinator_instance,
+            coordinator_account: *coordinator_account,
         },
+        psyche_solana_coordinator::instruction::UpdateDataLocations { data_location },
     )
 }
 

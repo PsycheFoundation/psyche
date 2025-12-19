@@ -1,5 +1,3 @@
-use std::path::Iter;
-
 use crate::{SOLANA_MAX_STRING_LEN, coordinator::SOLANA_MAX_URL_STRING_LEN};
 
 use anchor_lang::{
@@ -179,7 +177,6 @@ impl LLMTrainingDataLocationAndWeight {
     TS,
 )]
 #[repr(C)]
-#[allow(clippy::large_enum_variant)]
 pub enum HttpTrainingDataLocation {
     SingleUrl(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     NumberedFiles {
@@ -196,7 +193,7 @@ pub enum HttpTrainingDataLocation {
     },
 }
 
-pub const MAX_DATA_LOCATIONS: usize = 4;
+pub const MAX_DATA_LOCATIONS: usize = 3;
 
 #[derive(
     AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,

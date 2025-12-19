@@ -187,7 +187,7 @@ pub async fn command_update_config_execute(
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
-        vec![instructions::treasurer_run_update(
+        let mut instructions = vec![instructions::treasurer_run_update(
             &run_id,
             treasurer_index,
             &coordinator_account,
@@ -201,10 +201,34 @@ pub async fn command_update_config_execute(
                 epoch_slashing_rate_per_client: None,
                 paused: None,
                 client_version: client_version.clone(),
+                data_location: None,
             },
-        )]
+        )];
+        if let Some(data_locations) = data_locations {
+            for dl in data_locations.data_locations.iter() {
+                instructions.push(instructions::treasurer_run_update(
+                    &run_id,
+                    treasurer_index,
+                    &coordinator_account,
+                    &main_authority,
+                    RunUpdateParams {
+                        metadata: None,
+                        config: None,
+                        model: None,
+                        progress: None,
+                        epoch_earning_rate_total_shared: None,
+                        epoch_slashing_rate_per_client: None,
+                        paused: None,
+                        client_version: None,
+                        data_location: Some(*dl),
+                    },
+                ));
+            }
+        }
+        instructions
     } else {
         let mut instructions = Vec::new();
+        let data_locations_iter = data_locations.unwrap().iter().cloned().collect::<Vec<_>>();
 
         if coordinator_update {
             instructions.push(instructions::coordinator_update(
@@ -216,12 +240,19 @@ pub async fn command_update_config_execute(
                 model,
                 progress,
             ));
-            instructions.push(instructions::coordinator_update_data_locations(
+            instructions.push(instructions::clear_data_locations(
                 &run_id,
                 &coordinator_account,
                 &main_authority,
-                data_locations.as_ref(),
             ));
+            for dl in data_locations_iter.iter() {
+                instructions.push(instructions::coordinator_update_data_locations(
+                    &run_id,
+                    &coordinator_account,
+                    &main_authority,
+                    Some(*dl),
+                ));
+            }
         }
 
         if let Some(client_version) = client_version.clone() {

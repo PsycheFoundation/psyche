@@ -16,6 +16,7 @@ use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::Model;
 use psyche_core::FixedString;
+use psyche_core::FixedVec;
 use psyche_core::SmallBoolean;
 use psyche_core::sha256v;
 use serde::Deserialize;
@@ -316,23 +317,38 @@ impl CoordinatorInstanceState {
 
     pub fn update_data_locations(
         &mut self,
-        data_locations: Option<psyche_coordinator::model::LLMDataLocations>,
+        data_location: Option<
+            psyche_coordinator::model::LLMTrainingDataLocation,
+        >,
     ) -> Result<()> {
         if self.coordinator.run_state == RunState::Finished {
             return err!(ProgramError::UpdateConfigFinished);
-        } else if !self.coordinator.halted() && data_locations.is_some() {
+        } else if !self.coordinator.halted() && data_location.is_some() {
             return err!(ProgramError::UpdateConfigNotHalted);
         }
 
-        if let Some(data_locations) = data_locations {
-            // if !data_locations.check() {
-            //     return err!(ProgramError::ModelSanityCheckFailed);
-            // }
+        let mut data_locations = self.coordinator.data_locations;
+        if let Some(dl) = data_location {
+            let _ = data_locations.data_locations.push(dl);
             let _ = std::mem::replace(
                 &mut self.coordinator.data_locations,
                 data_locations,
             );
         }
+
+        Ok(())
+    }
+
+    pub fn clear_data_locations(&mut self) -> Result<()> {
+        if self.coordinator.run_state == RunState::Finished {
+            return err!(ProgramError::UpdateConfigFinished);
+        } else if !self.coordinator.halted() {
+            return err!(ProgramError::UpdateConfigNotHalted);
+        }
+        let _ = std::mem::replace(
+            &mut self.coordinator.data_locations.data_locations,
+            FixedVec::new(),
+        );
 
         Ok(())
     }

@@ -243,7 +243,6 @@ pub async fn run() {
                 checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
                 max_seq_len: 4096,
                 data_type: LLMTrainingDataType::Pretraining,
-                // data_locations,
                 lr_schedule: LearningRateSchedule::Constant(
                     ConstantLR::default(),
                 ),
@@ -264,6 +263,7 @@ pub async fn run() {
             epoch_slashing_rate_per_client: None,
             paused: Some(false),
             client_version: None,
+            data_location: Some(data_locations[0].clone()),
         },
     )
     .await

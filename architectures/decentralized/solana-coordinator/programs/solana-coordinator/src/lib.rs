@@ -164,9 +164,9 @@ impl CoordinatorInstance {
 #[program]
 pub mod psyche_solana_coordinator {
 
-    use super::*;
-    use psyche_coordinator::model::LLMDataLocations;
     use psyche_core::FixedString;
+
+    use super::*;
 
     pub fn init_coordinator(
         context: Context<InitCoordinatorAccounts>,
@@ -184,11 +184,21 @@ pub mod psyche_solana_coordinator {
 
     pub fn update_data_locations(
         ctx: Context<OwnerCoordinatorAccounts>,
-        data_locations: Option<psyche_coordinator::model::LLMDataLocations>,
+        data_location: Option<
+            psyche_coordinator::model::LLMTrainingDataLocation,
+        >,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
-        account.state.update_data_locations(data_locations)
+        account.state.update_data_locations(data_location)
+    }
+
+    pub fn clear_data_locations(
+        ctx: Context<OwnerCoordinatorAccounts>,
+    ) -> Result<()> {
+        let mut account = ctx.accounts.coordinator_account.load_mut()?;
+        account.increment_nonce();
+        account.state.clear_data_locations()
     }
 
     pub fn update(

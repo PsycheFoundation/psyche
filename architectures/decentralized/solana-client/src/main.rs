@@ -261,9 +261,6 @@ impl TryInto<Keypair> for WalletArgs {
 
 async fn async_main() -> Result<()> {
     let args = CliArgs::parse();
-    let logger = psyche_tui::logging()
-        .with_output(LogOutput::Console)
-        .init()?;
 
     match args.command {
         Commands::ShowStaticP2PIdentity {
