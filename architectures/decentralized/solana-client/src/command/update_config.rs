@@ -38,6 +38,7 @@ pub struct CommandUpdateConfigParams {
     #[clap(long)]
     vocab_size: Option<u64>,
     // end metadata
+    #[clap(long, env)]
     client_version: Option<String>,
 }
 
@@ -65,18 +66,9 @@ pub async fn command_update_config_execute(
         .get_coordinator_instance(&coordinator_instance)
         .await?;
     let coordinator_account = coordinator_instance_state.coordinator_account;
-    let coordinator_account_state = backend
+    let mut coordinator_account_state = backend
         .get_coordinator_account(&coordinator_account)
         .await?;
-
-    let progress = restart_from_step.map(|step| CoordinatorProgress {
-        epoch: coordinator_account_state.state.coordinator.progress.epoch,
-        step,
-        epoch_start_data_index: get_data_index_for_step(
-            &coordinator_account_state.state.coordinator,
-            step,
-        ),
-    });
 
     let (config, mut model, data_locations) = match config_path {
         Some(config_path) => {
@@ -172,11 +164,30 @@ pub async fn command_update_config_execute(
         (metadata != coordinator_account_state.state.metadata).then_some(metadata)
     };
 
-    let coordinator_update = metadata.is_some()
-        || config.is_some()
-        || model.is_some()
-        || progress.is_some()
-        || data_locations.is_some();
+    // update locally to ensure that logic operating on it (e.g. get_data_index_for_step) can read from the new data, not the existing one
+    if let Some(config) = config {
+        coordinator_account_state.state.coordinator.config = config;
+    }
+
+    if let Some(model) = model {
+        coordinator_account_state.state.coordinator.model = model;
+    }
+
+    if let Some(data_locations) = &data_locations {
+        coordinator_account_state.state.coordinator.data_locations = data_locations.clone();
+    }
+
+    let progress = restart_from_step.map(|step| CoordinatorProgress {
+        epoch: coordinator_account_state.state.coordinator.progress.epoch,
+        step,
+        epoch_start_data_index: get_data_index_for_step(
+            &coordinator_account_state.state.coordinator,
+            step,
+        ),
+    });
+
+    let coordinator_update =
+        metadata.is_some() || config.is_some() || model.is_some() || progress.is_some();
     if !coordinator_update && client_version.is_none() {
         bail!("this invocation would not update anything, bailing.")
     }

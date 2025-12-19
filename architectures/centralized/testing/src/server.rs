@@ -79,6 +79,7 @@ impl CoordinatorServer {
             verification_percent: 0,
             witness_nodes,
             total_steps: 100,
+            waiting_for_members_extra_time: 2,
             epoch_time: 30,
         };
 

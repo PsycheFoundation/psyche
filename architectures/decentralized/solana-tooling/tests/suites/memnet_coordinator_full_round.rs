@@ -119,6 +119,7 @@ pub async fn run() {
             witness_nodes: 1,
             epoch_time: 30,
             total_steps: 100,
+            waiting_for_members_extra_time: 3,
         }),
         Some(Model::LLM(LLM {
             architecture: LLMArchitecture::HfLlama,

@@ -71,7 +71,7 @@ pub struct CoordinatorInstanceState {
     pub clients_state: ClientsState,
     pub is_warmup_first_tick: SmallBoolean,
     pub is_training_first_tick: SmallBoolean,
-    pub client_version: FixedString<32>,
+    pub client_version: FixedString<96>,
 }
 
 unsafe impl Pod for CoordinatorInstanceState {}

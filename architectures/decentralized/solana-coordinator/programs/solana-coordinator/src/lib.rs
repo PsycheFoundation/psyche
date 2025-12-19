@@ -226,7 +226,7 @@ pub mod psyche_solana_coordinator {
         }
 
         account.state.client_version =
-            FixedString::<32>::try_from(new_version.as_str()).unwrap();
+            FixedString::<96>::try_from(new_version.as_str()).unwrap();
         msg!("new version: {}", account.state.client_version);
         Ok(())
     }

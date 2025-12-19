@@ -1,5 +1,6 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -19,6 +20,7 @@ pub struct RunManager {
     run_id: String,
     local_docker: bool,
     coordinator_client: CoordinatorClient,
+    scratch_dir: Option<String>,
 }
 
 impl RunManager {
@@ -35,13 +37,18 @@ impl RunManager {
 
         load_and_apply_env_file(&env_file)?;
 
-        let wallet_path = std::env::var("WALLET_PATH").context(
-            "WALLET_PATH env variable was not set. Make sure to set it in your env file",
-        )?;
-
-        info!("Using keypair at: {}", wallet_path);
-        let wallet_key = std::fs::read_to_string(&wallet_path)
-            .context(format!("Failed to read wallet file from: {}", wallet_path))?
+        let wallet_key =
+            if let Ok(raw_wallet_private_key) = std::env::var("RAW_WALLET_PRIVATE_KEY") {
+                info!("Using RAW_WALLET_PRIVATE_KEY from command line");
+                raw_wallet_private_key
+            } else if let Ok(wallet_path) = std::env::var("WALLET_PRIVATE_KEY_PATH") {
+                info!("Using WALLET_PRIVATE_KEY_PATH: {wallet_path}");
+                fs::read_to_string(wallet_path)?
+            } else {
+                bail!(
+                    "No wallet private key! Must set RAW_WALLET_PRIVATE_KEY or WALLET_PRIVATE_KEY_PATH"
+                )
+            }
             .trim()
             .to_string();
 
@@ -53,6 +60,9 @@ impl RunManager {
 
         let run_id = get_env_var("RUN_ID")?;
         let rpc = get_env_var("RPC")?;
+
+        let scratch_dir = std::env::var("SCRATCH_DIR").ok();
+
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
 
         Ok(Self {
@@ -61,6 +71,7 @@ impl RunManager {
             coordinator_client,
             env_file,
             local_docker,
+            scratch_dir,
         })
     }
 
@@ -114,18 +125,49 @@ impl RunManager {
     fn run_container(&self, image_name: &str) -> Result<String> {
         info!("Creating container from image: {}", image_name);
 
+        let client_version = if image_name.contains("sha256:") {
+            if self.local_docker {
+                image_name
+            } else {
+                image_name
+                    .split('@')
+                    .nth(1)
+                    .context("Could not split image name")?
+            }
+        } else {
+            image_name
+                .split(':')
+                .nth(1)
+                .context("Could not split image name")?
+        };
+
         let mut cmd = Command::new("docker");
         cmd.arg("run")
-            .arg("-d") // detached mode
+            .arg("-d")
             .arg("--network=host")
             .arg("--shm-size=1g")
             .arg("--privileged")
             .arg("--gpus=all")
             .arg("--device=/dev/infiniband:/dev/infiniband")
             .arg("--env")
-            .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key));
-        cmd.arg("--env-file").arg(&self.env_file);
-        cmd.arg(image_name);
+            .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key))
+            .arg("--env")
+            .arg(format!("CLIENT_VERSION={}", client_version))
+            .arg("--env-file")
+            .arg(&self.env_file);
+
+        if let Some(dir) = &self.scratch_dir {
+            cmd.arg("--mount")
+                .arg(format!("type=bind,src={dir},dst=/scratch"));
+        }
+
+        if image_name.contains("sha256:") && self.local_docker {
+            // This is a special case for the local version - for ease of use we just
+            // run the container using the ImageId SHA256 instead of a full name
+            cmd.arg(client_version);
+        } else {
+            cmd.arg(image_name);
+        }
 
         let output = cmd.output().context("Failed to run docker container")?;
         if !output.status.success() {
