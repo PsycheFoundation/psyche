@@ -227,13 +227,19 @@ impl LLMDataLocations {
     }
 }
 
-impl LLM {
+impl LLMDataLocations {
     pub fn dummy() -> Self {
         let mut data_locations: FixedVec<LLMTrainingDataLocation, { MAX_DATA_LOCATIONS }> =
             FixedVec::new();
         data_locations
             .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
             .unwrap();
+        Self { data_locations }
+    }
+}
+
+impl LLM {
+    pub fn dummy() -> Self {
         Self {
             architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),

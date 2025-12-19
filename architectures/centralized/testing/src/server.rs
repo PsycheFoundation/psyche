@@ -3,6 +3,7 @@ use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 use bytemuck::Zeroable;
 use psyche_centralized_server::app::App as ServerApp;
 use psyche_centralized_shared::ClientId;
+use psyche_coordinator::model::LLMDataLocations;
 use psyche_coordinator::{Client, Round};
 use psyche_coordinator::{
     Coordinator, CoordinatorConfig, CoordinatorEpochState, RunState, SOLANA_MAX_NUM_CLIENTS,
@@ -94,6 +95,7 @@ impl CoordinatorServer {
             model: Model::LLM(LLM::dummy()),
             config: coordinator_config,
             epoch_state,
+            data_locations: LLMDataLocations::dummy(),
             ..Coordinator::<ClientId>::zeroed()
         };
 
