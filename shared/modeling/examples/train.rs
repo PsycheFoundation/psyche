@@ -10,7 +10,7 @@ use psyche_data_provider::{
 use psyche_modeling::{
     AttentionImplementation, Batch, BatchData, BatchDataCPU, CausalLM, CommunicatorId,
     DataParallel, Devices, LocalTrainer, ModelLoadError, ParallelModels, Trainer,
-    auto_model_for_causal_lm_from_pretrained,
+    auto_model_for_causal_lm_from_pretrained, save_tensors_into_safetensors,
 };
 use psyche_network::AuthenticatableIdentity;
 use psyche_tui::{logging, setup_ctrl_c};
@@ -162,11 +162,14 @@ struct Args {
     python: bool,
 
     #[cfg(feature = "python")]
-    #[clap(long, default_value = "hf-auto")]
+    #[clap(long, default_value = "HfAuto")]
     python_arch: String,
 
     #[arg(long)]
     seed: Option<u32>,
+
+    #[arg(long)]
+    save_path: Option<String>,
 }
 
 #[tokio::main]
@@ -556,6 +559,18 @@ async fn main() -> Result<()> {
             break;
         }
     }
+
+    if let Some(save_path) = args.save_path {
+        let extracted = trainers[0].extract()?;
+        println!("Extracted {} tensors", extracted.len());
+
+        let _ = save_tensors_into_safetensors(
+            trainers[0].convert(Some(extracted)),
+            save_path.clone().into(),
+        )?;
+        println!("Saved checkpoint to {}", save_path)
+    }
+
     for trainer in trainers {
         trainer.shutdown();
     }

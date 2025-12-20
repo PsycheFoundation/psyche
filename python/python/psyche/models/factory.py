@@ -18,7 +18,7 @@ def make_causal_lm(
 ) -> CausalLM:
     if not isinstance(device, torch.device):
         device = torch.device(device if isinstance(device, str) else f"cuda:{device}")
-    if architecture == "hf-auto":
+    if architecture == "HfAuto":
         from .hf_transformers import HfTransformersAuto
 
         return HfTransformersAuto.from_pretrained(
@@ -32,7 +32,7 @@ def make_causal_lm(
             reduce_dtype=reduce_dtype,
             fsdp_modules=fsdp_modules,
         )
-    elif architecture == "torchtitan":
+    elif architecture == "Torchtitan":
         from .ttitan import TorchtitanAuto
 
         return TorchtitanAuto.from_pretrained(

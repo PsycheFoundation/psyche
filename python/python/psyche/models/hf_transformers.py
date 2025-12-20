@@ -348,3 +348,8 @@ class HfTransformersAuto(CausalLM):
 
     def get_config(self):
         return self.config.to_dict()
+
+    def convert(
+        self, state_dict: Optional[dict[str, torch.Tensor]]
+    ) -> dict[str, torch.Tensor]:
+        return state_dict if state_dict is not None else self.model.state_dict()
