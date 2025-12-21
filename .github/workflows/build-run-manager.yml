@@ -2,38 +2,28 @@ name: Build run-manager
 
 on:
   push:
-    branches:
-      - main
-      - dy/tool-run-manager # TODO remove once merged to main
-  workflow_dispatch: # Allow manual triggering of the workflow
+    paths:
+      - 'tools/rust-tools/run-manager/**'
+      - '.github/workflows/build-run-manager.yml'
+  workflow_dispatch: # Allow manual triggering
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # If we use ubuntu-latest it will link against a newer version of glibc making
+    # the binary non-portable to our 22.04 servers, so use this for compatibility.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: false
-          swap-storage: false
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev perl
 
-      - name: Install Nix
-        uses: nixbuild/nix-quick-install-action@v31
-        with:
-          nix_conf: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-            substituters = https://cache.nixos.org https://cache.garnix.io https://nix-community.cachix.org
-            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo build artifacts
         uses: actions/cache@v4
@@ -49,10 +39,11 @@ jobs:
             ${{ runner.os }}-cargo-run-manager-
             ${{ runner.os }}-cargo-
 
-      - name: Build run-manager with Cargo in Nix shell
+      - name: Build run-manager binary
         run: |
-          nix develop --command cargo build --release -p run-manager
+          cargo build --release --package run-manager
           ls -lh target/release/run-manager
+          ldd target/release/run-manager
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
