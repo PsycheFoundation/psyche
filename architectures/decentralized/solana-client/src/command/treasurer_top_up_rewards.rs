@@ -3,6 +3,8 @@ use anyhow::{Context, Result};
 use clap::Args;
 
 use crate::SolanaBackend;
+use crate::utils::native_amount_to_ui_amount;
+use crate::utils::ui_amount_to_native_amount;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -12,7 +14,7 @@ pub struct CommandTreasurerTopUpRewardsParams {
     #[clap(long, env)]
     treasurer_index: Option<u64>,
     #[clap(long, env)]
-    collateral_amount: u64,
+    collateral_amount: f64,
 }
 
 pub async fn command_treasurer_top_up_rewards_execute(
@@ -38,22 +40,38 @@ pub async fn command_treasurer_top_up_rewards_execute(
         treasurer_run_state.collateral_mint
     );
 
+    let collateral_mint_decimals = backend
+        .get_token_mint(&treasurer_run_state.collateral_mint)
+        .await?
+        .decimals;
+    let collateral_amount = ui_amount_to_native_amount(collateral_amount, collateral_mint_decimals);
+
     let treasurer_run_collateral_address = associated_token::get_associated_token_address(
         &treasurer_run_address,
         &treasurer_run_state.collateral_mint,
     );
     let treasurer_run_collateral_amount = backend
-        .get_token_amount(&treasurer_run_collateral_address)
-        .await?;
-    println!("Treasurer collateral amount: {treasurer_run_collateral_amount}");
+        .get_token_account(&treasurer_run_collateral_address)
+        .await?
+        .amount;
+    println!(
+        "Treasurer collateral amount: {}",
+        native_amount_to_ui_amount(treasurer_run_collateral_amount, collateral_mint_decimals)
+    );
 
     let user = backend.get_payer();
     println!("User: {user}");
 
     let user_collateral_address =
         associated_token::get_associated_token_address(&user, &treasurer_run_state.collateral_mint);
-    let user_collateral_amount = backend.get_token_amount(&user_collateral_address).await?;
-    println!("User collateral amount: {user_collateral_amount}");
+    let user_collateral_amount = backend
+        .get_token_account(&user_collateral_address)
+        .await?
+        .amount;
+    println!(
+        "User collateral amount: {}",
+        native_amount_to_ui_amount(user_collateral_amount, collateral_mint_decimals)
+    );
 
     let instruction = token::spl_token::instruction::transfer(
         &token::ID,
@@ -66,7 +84,11 @@ pub async fn command_treasurer_top_up_rewards_execute(
     let signature = backend
         .send_and_retry("Top-up rewards", &[instruction], &[])
         .await?;
-    println!("Transfered {collateral_amount} collateral to treasurer in transaction: {signature}");
+    println!(
+        "Transfered {} collateral to treasurer in transaction: {}",
+        native_amount_to_ui_amount(collateral_amount, collateral_mint_decimals),
+        signature
+    );
 
     Ok(())
 }

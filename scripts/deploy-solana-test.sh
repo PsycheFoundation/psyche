@@ -58,6 +58,19 @@ sleep 1 # wait for the program to be deployed and ready in the validator
 echo -e "\n[+] Coordinator program deployed successfully!"
 popd
 
+echo -e "\n[+] Starting treasurer deploy"
+pushd architectures/decentralized/solana-treasurer
+
+echo -e "\n[+] - building..."
+anchor build --no-idl
+
+echo -e "\n[+] - deploying..."
+anchor deploy --provider.cluster ${RPC} --provider.wallet ${WALLET_FILE} -- --max-len 500000
+sleep 1 # wait for the program to be deployed and ready in the validator
+
+echo -e "\n[+] Treasurer program deployed successfully!"
+popd
+
 echo -e "\n[+] Creating authorization for everyone to join the run"
 bash ./scripts/join-authorization-create.sh ${RPC} ${WALLET_FILE} 11111111111111111111111111111111
 
@@ -67,7 +80,18 @@ cargo run --release --bin psyche-solana-client -- \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
+    --treasurer-collateral-mint So11111111111111111111111111111111111111112 \
+    --client-version "test" \
     --run-id ${RUN_ID} "$@"
+
+echo -e "\n[+] Setting training run earning rate..."
+cargo run --release --bin psyche-solana-client -- \
+    set-future-epoch-rates \
+    --wallet-private-key-path ${WALLET_FILE} \
+    --rpc ${RPC} \
+    --ws-rpc ${WS_RPC} \
+    --run-id ${RUN_ID} \
+    --earning-rate-total-shared 100.0
 
 echo -e "\n[+] Update training run config..."
 cargo run --release --bin psyche-solana-client -- \
@@ -76,7 +100,9 @@ cargo run --release --bin psyche-solana-client -- \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} \
-    --config-path ${CONFIG_FILE}
+    --config-path ${CONFIG_FILE} \
+    --num-parameters 1100000000 \
+    --vocab-size 32768
 
 echo -e "\n[+] Unpause the training run..."
 cargo run --release --bin psyche-solana-client -- \

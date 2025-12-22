@@ -9,6 +9,7 @@ use psyche_solana_coordinator::cpi::accounts::OwnerCoordinatorAccounts;
 use psyche_solana_coordinator::cpi::set_future_epoch_rates;
 use psyche_solana_coordinator::cpi::set_paused;
 use psyche_solana_coordinator::cpi::update;
+use psyche_solana_coordinator::cpi::update_client_version;
 use psyche_solana_coordinator::program::PsycheSolanaCoordinator;
 
 use crate::state::Run;
@@ -45,6 +46,7 @@ pub struct RunUpdateParams {
     pub epoch_earning_rate_total_shared: Option<u64>,
     pub epoch_slashing_rate_per_client: Option<u64>,
     pub paused: Option<bool>,
+    pub client_version: Option<String>,
 }
 
 pub fn run_update_processor(
@@ -125,6 +127,27 @@ pub fn run_update_processor(
             )
             .with_signer(run_signer_seeds),
             paused,
+        )?;
+    }
+
+    if let Some(client_version) = params.client_version {
+        update_client_version(
+            CpiContext::new(
+                context.accounts.coordinator_program.to_account_info(),
+                OwnerCoordinatorAccounts {
+                    authority: context.accounts.run.to_account_info(),
+                    coordinator_instance: context
+                        .accounts
+                        .coordinator_instance
+                        .to_account_info(),
+                    coordinator_account: context
+                        .accounts
+                        .coordinator_account
+                        .to_account_info(),
+                },
+            )
+            .with_signer(run_signer_seeds),
+            client_version,
         )?;
     }
 

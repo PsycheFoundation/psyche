@@ -1,0 +1,53 @@
+name: Build run-manager
+
+on:
+  push:
+    paths:
+      - 'tools/rust-tools/run-manager/**'
+      - '.github/workflows/build-run-manager.yml'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  build:
+    # If we use ubuntu-latest it will link against a newer version of glibc making
+    # the binary non-portable to our 22.04 servers, so use this for compatibility.
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev perl
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-run-manager-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-run-manager-
+            ${{ runner.os }}-cargo-
+
+      - name: Build run-manager binary
+        run: |
+          cargo build --release --package run-manager
+          ls -lh target/release/run-manager
+          ldd target/release/run-manager
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-manager-linux-x64
+          path: target/release/run-manager
+          retention-days: 30

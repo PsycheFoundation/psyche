@@ -45,7 +45,8 @@ psyche-solana-client create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
+    --client-version "latest"
 ```
 
 ### Creating a run with token rewards
@@ -58,7 +59,8 @@ psyche-solana-client create-run \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
     --treasurer-collateral-mint [COLLATERAL_MINT_PUBKEY] \
-    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
+    --wallet-private-key-path [JSON_PRIVATE_KEY_PATH] \
+    --client-version "latest"
 ```
 
 ## Initializing configuration
@@ -100,8 +102,8 @@ You can configure how many points does each client earns and loses for each epoc
 psyche-solana-client set-future-epoch-rates \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --earning-rate [EARNING_RATE] \
-    --slashing-rate [SLASHING_RATE] \
+    --earning-rate-total-shared [EARNING_RATE] \
+    --slashing-rate-per-client [SLASHING_RATE] \
     --wallet-private-key-path [JSON_PRIVATE_KEY_PATH]
 ```
 

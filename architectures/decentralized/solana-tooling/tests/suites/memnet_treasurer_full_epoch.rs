@@ -59,10 +59,10 @@ pub async fn run() {
     let ticker = Keypair::new();
     let minted_collateral_amount = 1_000_000_000_000_000;
     let top_up_collateral_amount = 0_999_999_999_999_999;
-    let warmup_time = 77;
-    let round_witness_time = 33;
+    let warmup_time = 10;
+    let round_witness_time = 10;
     let cooldown_time = 42;
-    let rounds_per_epoch = 4;
+    let epoch_time = 30;
     let earned_point_per_epoch_total_shared = 888_888_888_888_888;
     let earned_point_per_epoch_per_client =
         earned_point_per_epoch_total_shared / clients.len() as u64;
@@ -100,6 +100,7 @@ pub async fn run() {
             run_id: "This is my run's dummy run_id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "latest".to_string(),
         },
     )
     .await
@@ -224,8 +225,9 @@ pub async fn run() {
                 global_batch_size_warmup_tokens: 0,
                 verification_percent: 0,
                 witness_nodes: 0,
-                rounds_per_epoch,
+                epoch_time,
                 total_steps: 100,
+                waiting_for_members_extra_time: 3,
             }),
             model: Some(Model::LLM(LLM {
                 architecture: LLMArchitecture::HfLlama,
@@ -252,6 +254,7 @@ pub async fn run() {
             ),
             epoch_slashing_rate_per_client: None,
             paused: Some(false),
+            client_version: None,
         },
     )
     .await
@@ -337,7 +340,7 @@ pub async fn run() {
     .unwrap();
 
     // Go through an epoch's rounds
-    for _ in 0..rounds_per_epoch {
+    for _ in 0..4 {
         // Fetch the state at the start of the round
         let coordinator_account_state =
             get_coordinator_account_state(&mut endpoint, &coordinator_account)
