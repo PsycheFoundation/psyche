@@ -22,3 +22,7 @@ This documentation provides a comprehensive guide to understanding, using, and d
 At its core, Psyche is a protocol that coordinates multiple independent clients to train a single machine learning model together. Rather than running on a centralized server farm with high-speed interconnects between every accelerator (GPUs, usually), Psyche distributes the training workload across many independent computers, each contributing a small piece to the overall training process.
 
 Psyche is built to maintain training integrity without requiring participants to trust each other. Through a combination of consensus mechanisms, game theory, and careful protocol design, Psyche will ensure that the trained model remains coherent and consistent despite being trained across disparate machines.
+
+## Client Quickstart
+
+If you are a client wanting to join an exiting training round you can refer to the [join a run documentation](./enduser/join-run.md)

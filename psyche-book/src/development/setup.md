@@ -11,7 +11,7 @@ If you can't / don't want to use Nix, it's also possible to manually install all
 
 #### Installing Nix
 
-To install Nix, simply run the `./setup.sh` script. This will install Nix and configure it appropriately.
+To install Nix, simply run the `./setup-nix.sh` script. This will install Nix and configure it appropriately.
 
 ##### Binary cache
 
