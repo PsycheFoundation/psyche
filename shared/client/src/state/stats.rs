@@ -175,7 +175,7 @@ impl StatsLogger {
         let bandwidth_total: f64 = self.endpoint_info.iter().map(|v| v.bandwidth).sum();
 
         let evals = {
-            let mut evals: FixedVec<WitnessEvalResult, 8> = Default::default();
+            let mut evals: FixedVec<WitnessEvalResult, 10> = Default::default();
             for (key, val) in self.current_eval_results() {
                 let value = WitnessEvalResult::new_trunc_name(&key, no_nan(val as f32, 0.0));
                 if evals.push(value).is_err() {

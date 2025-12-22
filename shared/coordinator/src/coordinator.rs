@@ -175,7 +175,7 @@ pub struct WitnessMetadata {
     pub tokens_per_sec: f32,
     pub bandwidth_per_sec: f32,
     pub loss: f32,
-    pub evals: FixedVec<WitnessEvalResult, 8>,
+    pub evals: FixedVec<WitnessEvalResult, 10>,
     pub prompt_results: FixedVec<i32, { MAX_TOKENS_TO_SEND }>,
     pub prompt_index: u8,
     pub efficency: f32,
