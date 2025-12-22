@@ -11,7 +11,7 @@ You'll need to provide:
 - a unique run ID - just a few characters to uniquely identify your run.
 - a name & description for your run
 
-Also, for all the commands you will need to provide the path to you Solana private key.
+Also, for all the commands you will need to provide the path to your Solana private key.
 
 ### Setup Joining Authorizations
 
