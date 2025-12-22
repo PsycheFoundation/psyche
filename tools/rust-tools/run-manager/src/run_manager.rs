@@ -23,6 +23,12 @@ pub struct RunManager {
     scratch_dir: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct Entrypoint {
+    pub entrypoint: String,
+    pub args: Vec<String>,
+}
+
 impl RunManager {
     pub fn new(
         coordinator_program_id: String,
@@ -122,7 +128,7 @@ impl RunManager {
         Ok(())
     }
 
-    fn run_container(&self, image_name: &str) -> Result<String> {
+    fn run_container(&self, image_name: &str, entrypoint: &Option<Entrypoint>) -> Result<String> {
         info!("Creating container from image: {}", image_name);
 
         let client_version = if image_name.contains("sha256:") {
@@ -161,12 +167,20 @@ impl RunManager {
                 .arg(format!("type=bind,src={dir},dst=/scratch"));
         }
 
+        if let Some(Entrypoint { entrypoint, .. }) = entrypoint {
+            cmd.arg("--entrypoint").arg(entrypoint);
+        }
+
         if image_name.contains("sha256:") && self.local_docker {
             // This is a special case for the local version - for ease of use we just
             // run the container using the ImageId SHA256 instead of a full name
             cmd.arg(client_version);
         } else {
             cmd.arg(image_name);
+        }
+
+        if let Some(Entrypoint { args, .. }) = entrypoint {
+            cmd.args(args);
         }
 
         let output = cmd.output().context("Failed to run docker container")?;
@@ -262,13 +276,13 @@ impl RunManager {
         Ok(())
     }
 
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&self, entrypoint: Option<Entrypoint>) -> Result<()> {
         loop {
             let docker_tag = self.prepare_image().await?;
             info!("Starting container...");
 
             let start_time = tokio::time::Instant::now();
-            let container_id = self.run_container(&docker_tag)?;
+            let container_id = self.run_container(&docker_tag, &entrypoint)?;
 
             // Race between container completion and Ctrl+C
             let exit_code = tokio::select! {

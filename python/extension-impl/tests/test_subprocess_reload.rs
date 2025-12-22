@@ -55,10 +55,7 @@ fn spawn_and_run_inference(model_path: &str, prompt: &str) -> std::io::Result<St
         .output()?;
 
     if !output.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Subprocess failed",
-        ));
+        return Err(std::io::Error::other("Subprocess failed"));
     }
 
     // Parse JSON output
@@ -73,8 +70,5 @@ fn spawn_and_run_inference(model_path: &str, prompt: &str) -> std::io::Result<St
         }
     }
 
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Failed to parse JSON output",
-    ))
+    Err(std::io::Error::other("Failed to parse JSON output"))
 }
