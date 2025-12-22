@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
-    model::{Checkpoint, LLMDataLocations, LLMTrainingDataLocation, Model},
+    model::{Checkpoint, LLM, LLMDataLocations, LLMTrainingDataLocation, Model},
 };
 use psyche_core::FixedVec;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -73,55 +73,36 @@ pub async fn command_update_config_execute(
     let (config, mut model, data_locations) = match config_path {
         Some(config_path) => {
             #[derive(Serialize, Deserialize)]
-            struct ModelWrapper {
+            struct ConfigFile {
+                config: CoordinatorConfig,
+                model: ModelWithData,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            #[serde(tag = "LLM")] // This handles the enum variant name
+            struct ModelWithData {
+                // LLM struct fields
                 #[serde(flatten)]
-                pub model: Model, // This will deserialize the enum variant (LLM)
+                llm: LLM,
+                // Additional field not in the Copy struct
+                data_locations: Vec<LLMTrainingDataLocation>,
             }
 
-            #[derive(Serialize, Deserialize)]
-            struct State {
-                pub config: CoordinatorConfig,
-                pub model: ModelWrapper,
-            }
+            let content = std::fs::read(&config_path)
+                .with_context(|| format!("failed to read config toml file {config_path:?}"))?;
 
-            // First, parse without data_locations to get the Model enum
-            let state: State = toml::from_str(std::str::from_utf8(
-                &std::fs::read(&config_path)
-                    .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
-            )?)
-            .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
-
-            // Then parse just the data_locations separately
-            #[derive(Serialize, Deserialize)]
-            struct DataLocationsWrapper {
-                pub data_locations: Vec<LLMTrainingDataLocation>,
-            }
-
-            #[derive(Serialize, Deserialize)]
-            struct LLMSection {
-                #[serde(rename = "LLM")]
-                pub llm: DataLocationsWrapper,
-            }
-
-            #[derive(Serialize, Deserialize)]
-            struct ModelSection {
-                pub model: LLMSection,
-            }
-
-            let data_section: ModelSection = toml::from_str(std::str::from_utf8(
-                &std::fs::read(&config_path)
-                    .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
-            )?)?;
+            let config_file: ConfigFile = toml::from_str(std::str::from_utf8(&content)?)
+                .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
             let data_locs = LLMDataLocations {
-                data_locations: FixedVec::from_iter(
-                    data_section.model.llm.data_locations.into_iter(),
-                ),
+                data_locations: FixedVec::from_iter(config_file.model.data_locations.into_iter()),
             };
 
-            println!("DATA LOCS: {data_locs:#?}");
-
-            (Some(state.config), Some(state.model.model), Some(data_locs))
+            (
+                Some(config_file.config),
+                Some(Model::LLM(config_file.model.llm)),
+                Some(data_locs),
+            )
         }
         None => (None, None, None),
     };
@@ -277,7 +258,6 @@ pub async fn command_update_config_execute(
 
         instructions
     };
-    println!("SENDING INSTRUCTIONS: {instructions:#?}");
     let signature = backend
         .send_and_retry("Update config", &instructions, &[])
         .await?;

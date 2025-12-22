@@ -205,14 +205,6 @@ pub async fn run() {
     .await
     .unwrap_err();
 
-    let mut data_locations: FixedVec<
-        LLMTrainingDataLocation,
-        MAX_DATA_LOCATIONS,
-    > = FixedVec::default();
-    data_locations
-        .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
-        .unwrap();
-
     // Prepare the coordinator's config
     process_treasurer_run_update(
         &mut endpoint,
@@ -264,7 +256,7 @@ pub async fn run() {
             epoch_slashing_rate_per_client: None,
             paused: Some(false),
             client_version: None,
-            data_location: Some(data_locations[0].clone()),
+            data_location: Some(LLMTrainingDataLocation::default()),
         },
     )
     .await
