@@ -206,7 +206,7 @@ fn run_data_parallel(
                     psyche_python_extension_impl::init_embedded_python()?;
 
                     Box::new(psyche_modeling::PythonDistributedCausalLM::new(
-                        model::LLMArchitecture::HfAuto.to_string(),
+                        "HfAuto".to_string(),
                         psyche_modeling::PretrainedSource::RepoFiles(repo),
                         device,
                         psyche_modeling::AttentionImplementation::default(),
