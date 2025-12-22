@@ -190,7 +190,8 @@ impl Task {
         match self.task_type {
             TaskType::LogLikelihood(llh) => {
                 let mut docs = llh.get_documents();
-                docs.shuffle(&mut self.rand);
+                // I believe to match lm_eval we should not shuffle. But leaving this here just in case we want to try again shuffling
+                // docs.shuffle(&mut self.rand);
                 if let Some(limit) = limit {
                     docs.truncate(limit);
                 }
@@ -243,7 +244,8 @@ impl Task {
             }
             TaskType::GenerateUntil(gu_docs) => {
                 let mut docs = gu_docs.get_documents();
-                docs.shuffle(&mut self.rand);
+                // I believe to match lm_eval we should not shuffle. But leaving this here just in case we want to try again shuffling
+                // docs.shuffle(&mut self.rand);
                 if let Some(limit) = limit {
                     docs.truncate(limit);
                 }
