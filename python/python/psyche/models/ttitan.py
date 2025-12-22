@@ -1,9 +1,10 @@
 import torch
 import json
 import os
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 import torch.distributed.checkpoint as dcp
+import torch.nn.functional as F
 
 from .causal_lm import CausalLM, PretrainedSourceRepoFiles, PretrainedSourceStateDict
 from typing import Tuple, Union, Iterable, Optional
@@ -20,8 +21,17 @@ from torchtitan.config import JobConfig
 from torchtitan.components.loss import build_cross_entropy_loss
 from torchtitan.distributed import ParallelDims
 from torchtitan.distributed.utils import maybe_enable_amp
+from torchtitan.experiments.gpt_oss import get_train_spec as get_gpt_oss_train_spec
+from torchtitan.experiments.gpt_oss.model.args import GptOssModelArgs
+from torchtitan.experiments.qwen3_next import (
+    get_train_spec as get_qwen3_next_train_spec,
+)
+from torchtitan.experiments.qwen3_next.model.args import Qwen3NextModelArgs
+from torchtitan.models.deepseek_v3 import get_train_spec as get_deepseek_v3_train_spec
+from torchtitan.models.deepseek_v3.model.args import DeepSeekV3ModelArgs
 from torchtitan.models.llama3 import get_train_spec as get_llama3_train_spec
 from torchtitan.models.llama3.model.args import TransformerModelArgs, RoPEScalingArgs
+from torchtitan.models.moe import MoEArgs
 from torchtitan.models.qwen3 import get_train_spec as get_qwen3_train_spec
 from torchtitan.models.qwen3.model.args import Qwen3ModelArgs
 from torchtitan.tools.utils import get_device_info, set_default_dtype
@@ -30,6 +40,10 @@ TRAIN_SPEC_FN = {
     "llama": get_llama3_train_spec,
     "qwen2": get_llama3_train_spec,
     "seed_oss": get_llama3_train_spec,
+    "qwen3_moe": get_qwen3_train_spec,
+    "deepseek_v3": get_deepseek_v3_train_spec,
+    "gpt_oss": get_gpt_oss_train_spec,
+    "qwen3_next": get_qwen3_next_train_spec,
 }
 
 
@@ -54,15 +68,15 @@ class TorchtitanAuto(CausalLM):
             or getattr(config, "max_position_embeddings", None)
             or getattr(config, "max_sequence_length", None)
         )
+        if seq_len is None:
+            raise ValueError(
+                "Could not determine an appropriate max sequence length for Torchtitan model"
+            )
         if (
             config.model_type == "llama"
             or config.model_type == "qwen2"
             or config.model_type == "seed_oss"
         ):
-            if seq_len is None:
-                raise ValueError(
-                    "Could not determine an appropriate max sequence length for Torchtitan model"
-                )
             config_tt = TransformerModelArgs(
                 dim=config.hidden_size,
                 n_layers=config.num_hidden_layers,
@@ -73,10 +87,12 @@ class TorchtitanAuto(CausalLM):
                 rope_theta=config.rope_theta,
                 rope_scaling_args=(
                     RoPEScalingArgs(
-                        scaling_factor=config.rope_scaling.factor,
-                        low_freq_factor=config.rope_scaling.low_freq_factor,
-                        high_freq_factor=config.rope_scaling.high_freq_factor,
-                        original_max_position_embeddings=config.rope_scaling.original_max_position_embeddings,
+                        scaling_factor=config.rope_scaling["factor"],
+                        low_freq_factor=config.rope_scaling["low_freq_factor"],
+                        high_freq_factor=config.rope_scaling["high_freq_factor"],
+                        original_max_position_embeddings=config.rope_scaling[
+                            "original_max_position_embeddings"
+                        ],
                     )
                     if config.rope_scaling is not None
                     else RoPEScalingArgs()
@@ -86,6 +102,127 @@ class TorchtitanAuto(CausalLM):
                 use_qkv_bias=config.model_type == "qwen2"
                 or (config.model_type == "seed_oss" and config.attention_bias),
                 max_seq_len=seq_len,
+            )
+        elif config.model_type == "qwen3_moe":
+            config_tt = Qwen3ModelArgs(
+                dim=config.hidden_size,
+                n_layers=config.num_hidden_layers,
+                n_heads=config.num_attention_heads,
+                n_kv_heads=config.num_key_value_heads,
+                vocab_size=config.vocab_size,
+                head_dim=config.head_dim,
+                hidden_dim=config.intermediate_size,
+                norm_eps=config.rms_norm_eps,
+                rope_theta=config.rope_theta,
+                max_seq_len=seq_len,
+                moe_enabled=True,
+                moe_inter_dim=config.moe_intermediate_size,
+                moe_args=MoEArgs(
+                    num_experts=config.num_experts,
+                    num_shared_experts=0,  # qwen3 has no shared experts
+                    top_k=config.num_experts_per_tok,
+                    score_func="softmax",
+                    route_norm=True,
+                    score_before_experts=False,
+                    load_balance_coeff=config.router_aux_loss_coef,
+                ),
+            )
+        elif config.model_type == "deepseek_v3":
+            config_tt = DeepSeekV3ModelArgs(
+                max_seq_len=seq_len,
+                vocab_size=config.vocab_size,
+                dim=config.hidden_size,
+                inter_dim=config.intermediate_size,
+                n_layers=config.num_hidden_layers,
+                n_dense_layers=config.first_k_dense_replace,
+                n_heads=config.num_attention_heads,
+                norm_eps=config.rms_norm_eps,
+                n_expert_groups=config.n_group,
+                n_limited_groups=config.topk_group,
+                q_lora_rank=config.q_lora_rank,
+                kv_lora_rank=config.kv_lora_rank,
+                qk_nope_head_dim=config.qk_nope_head_dim,
+                qk_rope_head_dim=config.qk_rope_head_dim,
+                v_head_dim=config.v_head_dim,
+                original_seq_len=config.rope_scaling[
+                    "original_max_position_embeddings"
+                ],
+                rope_theta=config.rope_theta,
+                rope_factor=config.rope_scaling["factor"],
+                beta_fast=config.rope_scaling["beta_fast"],
+                beta_slow=config.rope_scaling["beta_slow"],
+                mscale=config.rope_scaling["mscale"],
+                moe_args=MoEArgs(
+                    num_experts=config.n_routed_experts,
+                    num_shared_experts=config.n_shared_experts,
+                    top_k=config.num_experts_per_tok,
+                    score_func=config.scoring_func,
+                    route_scale=config.routed_scaling_factor,
+                    score_before_experts=False,
+                ),
+            )
+        elif config.model_type == "gpt_oss":
+            config_tt = GptOssModelArgs(
+                max_seq_len=seq_len,
+                vocab_size=config.vocab_size,
+                dim=config.hidden_size,
+                moe_inter_dim=config.intermediate_size,
+                n_layers=config.num_hidden_layers,
+                norm_eps=config.rms_norm_eps,
+                swiglu_limit=config.swiglu_limit,
+                head_dim=config.head_dim,
+                n_heads=config.num_attention_heads,
+                n_kv_heads=config.num_key_value_heads,
+                sliding_window_size=config.sliding_window,
+                original_seq_len=config.rope_scaling[
+                    "original_max_position_embeddings"
+                ],
+                rope_theta=config.rope_theta,
+                rope_factor=config.rope_scaling["factor"],
+                beta_fast=config.rope_scaling["beta_fast"],
+                beta_slow=config.rope_scaling["beta_slow"],
+                moe_args=MoEArgs(
+                    num_experts=config.num_local_experts,
+                    num_shared_experts=0,
+                    score_func="softmax",
+                    score_before_experts=False,
+                    top_k=config.num_experts_per_tok,
+                    load_balance_coeff=config.router_aux_loss_coef,
+                ),
+            )
+        elif config.model_type == "qwen3_next":
+            config_tt = Qwen3NextModelArgs(
+                dim=config.hidden_size,
+                n_layers=config.num_hidden_layers,
+                n_heads=config.num_attention_heads,
+                n_kv_heads=config.num_key_value_heads,
+                vocab_size=config.vocab_size,
+                head_dim=config.head_dim,
+                hidden_dim=config.intermediate_size,
+                hidden_act=config.hidden_act,
+                norm_eps=config.rms_norm_eps,
+                rope_theta=config.rope_theta,
+                partial_rotary_factor=config.partial_rotary_factor,
+                max_seq_len=seq_len,
+                moe_enabled=True,
+                moe_inter_dim=config.moe_intermediate_size,
+                decoder_sparse_step=config.decoder_sparse_step,
+                full_attention_interval=config.full_attention_interval,
+                linear_num_key_heads=config.linear_num_key_heads,
+                linear_num_value_heads=config.linear_num_value_heads,
+                linear_key_head_dim=config.linear_key_head_dim,
+                linear_value_head_dim=config.linear_value_head_dim,
+                linear_conv_kernel_dim=config.linear_conv_kernel_dim,
+                moe_args=MoEArgs(
+                    num_experts=config.num_experts,
+                    num_shared_experts=1,  # constant?
+                    top_k=config.num_experts_per_tok,
+                    score_func="softmax",
+                    route_norm=True,
+                    score_before_experts=False,
+                    shared_gate=True,
+                    load_balance_coeff=config.router_aux_loss_coef,
+                ),
             )
         if config_tt is None:
             raise ValueError(f"Unsupported model_type `{config.model_type}`")
@@ -111,12 +248,10 @@ class TorchtitanAuto(CausalLM):
         reduce_dtype: torch.dtype = torch.float32,
         fsdp_modules: Optional[Iterable[str]] = None,
     ):
-        if device.type == "cuda":
-            torch.cuda.set_device(device)
-
         config_json = None
         if isinstance(source, PretrainedSourceStateDict):
-            raise RuntimeError("Unimplemented")
+            state_dict = source.state_dict
+            config_json = source.config_json
         else:
             for file in source.files:
                 basename = os.path.basename(file).lower()
@@ -137,6 +272,7 @@ class TorchtitanAuto(CausalLM):
         model = None
         with torch.device("meta"), set_default_dtype(torch.float32):
             model = train_spec.model_cls(config_tt)
+        torch.cuda.set_device(device)
 
         model_param_count, _ = config_tt.get_nparams_and_flops(
             model, config_tt.max_seq_len
@@ -201,7 +337,9 @@ class TorchtitanAuto(CausalLM):
             dcp.load(hf_state_dict, storage_reader=hf_storage_reader)
 
             state_dict = sd_adapter.from_hf(hf_state_dict)
-            model.load_state_dict(state_dict)
+
+        # strict=False because TT has ephemeral tensors like expert_bias
+        model.load_state_dict(state_dict, strict=False)
 
         loss_fn = build_cross_entropy_loss(job_config)
 
@@ -299,31 +437,30 @@ class TorchtitanAuto(CausalLM):
                     target_seq_len, int(torch.max(position_ids).item()) + 1
                 )
             self._maybe_extend_rope_cache(target_seq_len)
-            with self._temporarily_truncate_rope_cache(target_seq_len):
-                with self.amp:
-                    pred = self.model(
-                        tokens=input_ids.contiguous(),
-                        position_ids=(
-                            position_ids.contiguous()
-                            if position_ids is not None
-                            else None
-                        ),
-                    )
-                    if num_logits_to_keep:
-                        pred = pred[:, -num_logits_to_keep, :]
-                    loss = None
-                    if labels is not None:
-                        if labels.shape != pred.shape[:2]:
-                            raise ValueError(
-                                f"Labels shape {labels.shape} does not match logits shape {pred.shape[:2]}"
-                            )
-                        if pred.shape[1] < 2:
-                            raise ValueError(
-                                "Sequence length must be >= 2 for causal shift"
-                            )
-                        shift_logits = pred[:, :-1, :].contiguous()
-                        shift_labels = labels[:, 1:].contiguous()
-                        loss = self.loss_fn(shift_logits, shift_labels)
+            with self._temporarily_truncate_rope_cache(
+                target_seq_len
+            ), self.amp, torch.cuda.device(input_ids.device.index):
+                pred = self.model(
+                    tokens=input_ids.contiguous(),
+                    position_ids=(
+                        position_ids.contiguous() if position_ids is not None else None
+                    ),
+                )
+                if num_logits_to_keep:
+                    pred = pred[:, -num_logits_to_keep, :]
+                loss = None
+                if labels is not None:
+                    if labels.shape != pred.shape[:2]:
+                        raise ValueError(
+                            f"Labels shape {labels.shape} does not match logits shape {pred.shape[:2]}"
+                        )
+                    if pred.shape[1] < 2:
+                        raise ValueError(
+                            "Sequence length must be >= 2 for causal shift"
+                        )
+                    shift_logits = pred[:, :-1, :].contiguous()
+                    shift_labels = labels[:, 1:].contiguous()
+                    loss = self.loss_fn(shift_logits, shift_labels)
         except Exception as e:
             import traceback
 

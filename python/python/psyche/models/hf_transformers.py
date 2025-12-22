@@ -149,8 +149,7 @@ class HfTransformersAuto(CausalLM):
                 config,
                 attn_implementation=attn_implementation,
             )
-        if device.type == "cuda":
-            torch.cuda.set_device(device)
+        torch.cuda.set_device(device)
 
         world_mesh = None
         if tp != 1 or dp != 1:
