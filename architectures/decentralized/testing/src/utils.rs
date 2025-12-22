@@ -130,6 +130,7 @@ pub struct ConfigBuilder {
     num_clients: usize,
     batch_size: u32,
     architecture: String,
+    model: String,
 }
 
 impl Default for ConfigBuilder {
@@ -157,6 +158,7 @@ impl ConfigBuilder {
             num_clients: 1,
             batch_size: 4,
             architecture: String::from("HfLlama"),
+            model: String::from("pefontana/Nano-Llama"),
         }
     }
 
@@ -170,12 +172,17 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_model(mut self, model: &str) -> Self {
+        self.model = model.to_string();
+        self
+    }
+
     pub fn with_batch_size(mut self, batch_size: u32) -> Self {
         self.batch_size = batch_size;
         self
     }
 
-    pub fn build(mut self) -> PathBuf {
+    pub fn build(mut self) {
         // Apply runtime overrides
         self.set_value("config.min_clients", self.num_clients as u32);
         self.set_value("config.init_min_clients", self.num_clients as u32);
@@ -186,15 +193,16 @@ impl ConfigBuilder {
         self.set_value("model.LLM.architecture", self.architecture.clone());
         self.set_value("config.global_batch_size_start", self.batch_size);
         self.set_value("config.global_batch_size_end", self.batch_size);
+        self.set_value("model.LLM.checkpoint.Hub.repo_id", self.model.clone());
 
         #[cfg(feature = "python")]
-        self.set_value("config.warmup_time", 100);
+        self.set_value("config.warmup_time", 500);
+        #[cfg(feature = "python")]
+        self.set_value("config.max_round_train_time", 100);
 
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
         fs::write(&config_file_path, config_content).unwrap();
-
-        config_file_path
     }
 
     fn set_value(&mut self, path: &str, value: impl Into<toml::Value>) {
