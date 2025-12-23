@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
+use psyche_inference::{InferenceGossipMessage, InferenceMessage, InferenceNode, InferenceRequest};
 
 #[derive(Parser, Debug)]
 #[command(name = "psyche-inference-node")]
