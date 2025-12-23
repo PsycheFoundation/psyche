@@ -11,6 +11,7 @@ path = "src/main.rs"
 psyche-inference.workspace = true
 psyche-network.workspace = true
 psyche-core.workspace = true
+psyche-metrics.workspace = true
 
 tokio.workspace = true
 tokio-util.workspace = true
