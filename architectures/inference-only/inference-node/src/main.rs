@@ -10,11 +10,13 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use psyche_inference::{InferenceGossipMessage, InferenceNode};
-use psyche_network::{DiscoveryMode, RelayKind};
+use psyche_inference::{InferenceGossipMessage, InferenceMessage, InferenceNode, InferenceRequest};
+use psyche_metrics::ClientMetrics;
+use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Parser, Debug)]
 #[command(name = "psyche-inference-node")]
@@ -99,29 +101,97 @@ async fn main() -> Result<()> {
 
     info!("vLLM engine initialized successfully");
 
-    // TODO: initialize P2P network
-    info!("Initialize P2P network with iroh");
+    info!("Initializing P2P network...");
 
-    // TODO: announce availability via gossip
+    let metrics = Arc::new(ClientMetrics::default());
+    let run_id = "inference";
+
+    type P2PNetwork = NetworkConnection<InferenceGossipMessage, ()>;
+
+    let mut network = P2PNetwork::init(
+        run_id,
+        None, // port (let OS choose)
+        None, // interface
+        discovery_mode,
+        relay_kind,
+        vec![],              // bootstrap peers (will discover via gossip)
+        None,                // secret key (generate new)
+        allowlist::AllowAll, // No allowlist for inference network
+        metrics.clone(),
+        Some(cancel.clone()),
+    )
+    .await
+    .context("Failed to initialize P2P network")?;
+
+    info!("✓ P2P network initialized");
+    info!("  Endpoint ID: {}", network.endpoint_id());
+
+    // Announce availability via gossip
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: args.model_name.clone(),
-        checkpoint_id: None, // TODO: Track actual checkpoint - is this needed?
+        checkpoint_id: None, // TODO: Track actual checkpoint when reloading - do we need this?
         capabilities: capabilities.clone(),
     };
-    info!("Broadcast availability: {:?}", availability_msg);
 
-    // TODO: main event loop
-    info!("Enter main event loop to handle inference requests");
+    network
+        .broadcast(&availability_msg)
+        .context("Failed to broadcast availability")?;
 
-    // for now, just wait for Ctrl+C
-    info!("Inference node ready! Press Ctrl+C to shutdown.");
+    info!("Broadcasted availability to network");
+    info!("Inference node ready! Listening for requests...");
 
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            info!("Received shutdown signal");
-        }
-        _ = cancel.cancelled() => {
-            info!("Cancellation requested");
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received shutdown signal");
+                break;
+            }
+
+            _ = cancel.cancelled() => {
+                info!("Cancellation requested");
+                break;
+            }
+
+            event = network.poll_next() => {
+                match event {
+                    Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
+                        debug!("Received gossip message from {}: {:?}", peer_id.fmt_short(), msg);
+
+                        match msg {
+                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
+                                info!("Peer {} is available: model={}, checkpoint={:?}, caps={:?}",
+                                      peer_id.fmt_short(), model_name, checkpoint_id, capabilities);
+                            }
+                            InferenceGossipMessage::NodeUnavailable => {
+                                info!("Peer {} is no longer available", peer_id.fmt_short());
+                            }
+                            InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
+                                info!("Received checkpoint reload request: {} from {}",
+                                      checkpoint_id, checkpoint_source);
+                                // TODO: Implement checkpoint reloading - used for changing mdoels? need to figure this out
+                                warn!("Checkpoint reloading not yet implemented");
+                            }
+                        }
+                    }
+                    Ok(Some(NetworkEvent::DownloadComplete(_))) => {
+                        // not used for now
+                        debug!("Download complete event");
+                    }
+                    Ok(Some(NetworkEvent::DownloadFailed(_))) => {
+                        warn!("Download failed event");
+                    }
+                    Ok(Some(NetworkEvent::ParameterRequest(..))) |
+                    Ok(Some(NetworkEvent::ModelConfigRequest(..))) => {
+                        // not used for inference nodes
+                        debug!("Parameter/config request (ignored)");
+                    }
+                    Ok(None) => {
+                    }
+                    Err(e) => {
+                        error!("Network error: {:#}", e);
+                    }
+                }
+            }
         }
     }
 
