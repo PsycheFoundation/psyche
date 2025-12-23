@@ -307,6 +307,12 @@ impl SolanaBackend {
                 &user,
                 witness,
             ),
+            OpportunisticData::CooldownStep(witness) => instructions::coordinator_cooldown_witness(
+                &coordinator_instance,
+                &coordinator_account,
+                &user,
+                witness,
+            ),
         };
         self.spawn_scheduled_send("Witness", &[instruction], &[]);
     }

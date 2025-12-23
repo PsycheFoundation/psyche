@@ -167,17 +167,10 @@ impl CooldownStepMetadata {
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                let Some(CheckpointConfig {
-                    hub_upload,
-                    checkpoint_dir,
-                    delete_old_steps,
-                    keep_steps,
-                }) = checkpoint_info
-                else {
-                    // If there was no HF checkpointing configuration, return immediately
+                if state.epoch_state.checkpointer != T {
+                    info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
                     return Ok((evals, None));
-                };
-
+                }
                 // Start the upload process of the updated model parameters in a separate task
                 let upload_handle = tokio::task::spawn(async move {
                     let path = checkpoint_dir.join(format!("{run_id}-step{step}"));

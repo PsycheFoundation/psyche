@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum OpportunisticData {
     WitnessStep(Witness, WitnessMetadata),
     WarmupStep(Witness),
+    CooldownStep(Witness),
 }
 
 impl OpportunisticData {
@@ -15,6 +16,7 @@ impl OpportunisticData {
         match self {
             OpportunisticData::WitnessStep(..) => "witness",
             OpportunisticData::WarmupStep(..) => "warmup",
+            OpportunisticData::CooldownStep(..) => "cooldown",
         }
     }
 }

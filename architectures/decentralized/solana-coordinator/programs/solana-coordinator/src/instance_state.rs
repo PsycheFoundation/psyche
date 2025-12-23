@@ -233,6 +233,21 @@ impl CoordinatorInstanceState {
         self.tick()
     }
 
+    pub fn cooldown_witness(
+        &mut self,
+        payer: &Pubkey,
+        witness: Witness,
+    ) -> Result<()> {
+        let id = self.clients_state.find_signer(payer)?;
+
+        let clock: Clock = Clock::get()?;
+        self.coordinator
+            .cooldown_witness(id, witness, clock.unix_timestamp as u64)
+            .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
+
+        self.tick()
+    }
+
     pub fn warmup_witness(
         &mut self,
         payer: &Pubkey,
