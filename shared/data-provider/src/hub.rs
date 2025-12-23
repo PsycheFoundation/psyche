@@ -262,3 +262,12 @@ pub async fn upload_model_repo_async(
     };
     Ok(commit_info.oid)
 }
+
+pub fn download_model_from_gcs_sync(
+    bucket_name: &str,
+    prefix: &str,
+    cache_dir: Option<PathBuf>,
+    progress_bar: bool,
+) -> Vec<PathBuf> {
+    todo!();
+}
