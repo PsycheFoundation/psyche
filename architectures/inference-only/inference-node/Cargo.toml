@@ -1,0 +1,27 @@
+[package]
+name = "psyche-inference-node"
+version.workspace = true
+edition = "2021"
+
+[[bin]]
+name = "psyche-inference-node"
+path = "src/main.rs"
+
+[dependencies]
+psyche-inference.workspace = true
+psyche-network.workspace = true
+psyche-core.workspace = true
+
+tokio.workspace = true
+tokio-util.workspace = true
+
+anyhow.workspace = true
+
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+clap = { version = "4", features = ["derive"] }
+
+iroh.workspace = true
+iroh-blobs.workspace = true
+iroh-gossip.workspace = true

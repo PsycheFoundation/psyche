@@ -4,6 +4,7 @@ members = [
   "architectures/decentralized/solana-client",
   "architectures/decentralized/testing",
   "architectures/decentralized/solana-tooling",
+  "architectures/inference-only/*",
   "python/",
   "python/extension-impl/",
   "shared/*",
