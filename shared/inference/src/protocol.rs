@@ -3,6 +3,28 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InferenceGossipMessage {
+    NodeAvailable {
+        model_name: String,
+        checkpoint_id: Option<String>,
+        capabilities: Vec<String>,
+    },
+    NodeUnavailable,
+    ReloadCheckpoint {
+        checkpoint_id: String,
+        checkpoint_source: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InferenceMessage {
+    Request(InferenceRequest),
+    Response(InferenceResponse),
+    StreamChunk { request_id: String, text: String },
+    Cancel { request_id: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceRequest {
     pub request_id: String,
     pub prompt: String,
@@ -123,5 +145,54 @@ mod tests {
         assert_eq!(req.temperature, 0.5);
         assert_eq!(req.top_p, 0.95);
         assert_eq!(req.stream, true);
+    }
+
+    #[test]
+    fn test_inference_message_serialization() {
+        let req = InferenceRequest {
+            request_id: "test-1".to_string(),
+            prompt: "Hello".to_string(),
+            max_tokens: 10,
+            temperature: 0.7,
+            top_p: 0.9,
+            stream: false,
+        };
+
+        let msg = InferenceMessage::Request(req);
+        let bytes = postcard::to_stdvec(&msg).unwrap();
+        let parsed: InferenceMessage = postcard::from_bytes(&bytes).unwrap();
+
+        match parsed {
+            InferenceMessage::Request(r) => {
+                assert_eq!(r.request_id, "test-1");
+                assert_eq!(r.prompt, "Hello");
+            }
+            _ => panic!("Expected Request variant"),
+        }
+    }
+
+    #[test]
+    fn test_gossip_message_serialization() {
+        let msg = InferenceGossipMessage::NodeAvailable {
+            model_name: "gpt2".to_string(),
+            checkpoint_id: Some("checkpoint-123".to_string()),
+            capabilities: vec!["streaming".to_string()],
+        };
+
+        let bytes = postcard::to_stdvec(&msg).unwrap();
+        let parsed: InferenceGossipMessage = postcard::from_bytes(&bytes).unwrap();
+
+        match parsed {
+            InferenceGossipMessage::NodeAvailable {
+                model_name,
+                checkpoint_id,
+                capabilities,
+            } => {
+                assert_eq!(model_name, "gpt2");
+                assert_eq!(checkpoint_id, Some("checkpoint-123".to_string()));
+                assert_eq!(capabilities, vec!["streaming"]);
+            }
+            _ => panic!("Expected NodeAvailable variant"),
+        }
     }
 }
