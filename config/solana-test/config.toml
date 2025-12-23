@@ -19,17 +19,10 @@ architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 2048
 cold_start_warmup_steps = 0
-
-[model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-1.1b-gqa-init"
-
-[model.LLM.data_location.Http]
-token_size_in_bytes = "TwoBytes"
-shuffle = "DontShuffle"
-
-[model.LLM.data_location.Http.location.Gcp]
-bucket_name = "nous-pretraining-public-us"
-filter_directory = "fineweb-edu-tokenized-llama2"
+checkpoint = { Hub = { repo_id = "emozilla/llama2-1.1b-gqa-init" } }
+data_locations = [
+  { Http = { location = { Gcp = { bucket_name = "nous-pretraining-public-us", filter_directory = "fineweb-edu-tokenized-llama2" } }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } },
+]
 
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4

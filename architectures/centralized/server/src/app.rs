@@ -177,11 +177,22 @@ impl App {
 
             let training_data_server = match &coordinator.model {
                 Model::LLM(LLM {
-                    data_location,
                     checkpoint,
                     ..
                 }) => {
-                    if let LLMTrainingDataLocation::Server(url) = data_location {
+                    let data_locations = &coordinator.data_locations;
+                    let data_location_server_urls:Vec<_> = data_locations.iter().filter_map(|l| match l {LLMTrainingDataLocation::Server(url) => Some(url.to_string()), _=> None}).collect();
+
+                    if data_location_server_urls.is_empty() {
+                        None
+                    } else {
+                    if data_location_server_urls.len() > 1 {
+                        bail!("More than one LLMTrainingDataLocation::Server configured, but we only support hosting a single one.");
+                    }
+
+                    // we know there's a single url, and it's the one that includes the port we want to host on.
+                    let url = data_location_server_urls.first().unwrap();
+
                         match checkpoint {
                             Checkpoint::Hub(hub_repo) => {
                                 let repo_id = String::from(&hub_repo.repo_id);
@@ -206,7 +217,7 @@ impl App {
                             }
                         }
 
-                        let server_addr: SocketAddr = String::from(url).parse().map_err(|e| {
+                        let server_addr: SocketAddr = url.parse().map_err(|e| {
                             anyhow!("Failed to parse training data server URL {:?}: {}", url, e)
                         })?;
                         let data_server_port = server_addr.port();
@@ -231,8 +242,6 @@ impl App {
                             DataProviderTcpServer::start(local_data_provider, backend, data_server_port)
                                 .await?;
                         Some((tx, data_server))
-                    } else {
-                        None
                     }
                 }
             };
