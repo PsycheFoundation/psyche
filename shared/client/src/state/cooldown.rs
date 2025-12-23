@@ -167,7 +167,7 @@ impl CooldownStepMetadata {
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                if state.epoch_state.checkpointer != T {
+                if state.epoch_state.checkpointer != trainer {
                     info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
                     return Ok((evals, None));
                 }

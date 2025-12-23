@@ -274,7 +274,7 @@ pub struct CoordinatorEpochState<T> {
     /// `get_historical_clients` is what you actually want.
     pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
-    pub checkpointer: T,
+    pub checkpointer: Client<T>,
     pub rounds_head: u32,
     pub start_step: u32,
     pub last_step: u32,
@@ -599,6 +599,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         from: &T,
         index: u64,
         hub_repo: HubRepo,
+        unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
         let index = index as usize;
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
@@ -950,7 +951,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 )
                 .unwrap();
 
-            self.epoch_state.checkpointer = self.epoch_state.clients.random().unwrap().id.clone();
+            self.epoch_state.checkpointer = self.epoch_state.clients[0].id.clone();
             self.start_warmup(unix_timestamp);
         }
 

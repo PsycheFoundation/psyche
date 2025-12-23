@@ -233,20 +233,20 @@ impl CoordinatorInstanceState {
         self.tick()
     }
 
-    pub fn cooldown_witness(
-        &mut self,
-        payer: &Pubkey,
-        witness: Witness,
-    ) -> Result<()> {
-        let id = self.clients_state.find_signer(payer)?;
+    // pub fn cooldown_witness(
+    //     &mut self,
+    //     payer: &Pubkey,
+    //     witness: Witness,
+    // ) -> Result<()> {
+    //     let id = self.clients_state.find_signer(payer)?;
 
-        let clock: Clock = Clock::get()?;
-        self.coordinator
-            .cooldown_witness(id, witness, clock.unix_timestamp as u64)
-            .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
+    //     let clock: Clock = Clock::get()?;
+    //     self.coordinator
+    //         .cooldown_witness(id, witness, clock.unix_timestamp as u64)
+    //         .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
-        self.tick()
-    }
+    //     self.tick()
+    // }
 
     pub fn warmup_witness(
         &mut self,
@@ -414,9 +414,10 @@ impl CoordinatorInstanceState {
             .iter()
             .position(|x| x.id == *id)
             .ok_or(ProgramError::SignerNotAClient)?;
+        let clock = Clock::get()?;
 
         self.coordinator
-            .checkpoint(id, index as u64, repo)
+            .checkpoint(id, index as u64, repo, clock.unix_timestamp as u64)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         // Only tick if not halted (Paused/Uninitialized/Finished)
