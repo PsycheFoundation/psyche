@@ -67,7 +67,7 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub write_gradients_dir: Option<PathBuf>,
 
     // checkpointing
-    pub checkpoint_config: Option<CheckpointConfig>,
+    pub checkpoint_config: CheckpointConfig,
 
     // configurable dummy training time (in seconds) for this client - relevant just for testing
     pub dummy_training_delay_secs: Option<u64>,

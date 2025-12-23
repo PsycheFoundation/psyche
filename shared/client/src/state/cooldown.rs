@@ -43,7 +43,7 @@ pub enum CooldownError {
 pub struct CooldownStepMetadata {
     tx_checkpoint: mpsc::UnboundedSender<model::HubRepo>,
     tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
-    checkpoint_info: Option<CheckpointConfig>,
+    checkpoint_info: CheckpointConfig,
     checkpoint_extra_files: Vec<PathBuf>,
 
     model_task_runner: ModelTaskRunner,
@@ -60,7 +60,7 @@ impl CooldownStepMetadata {
     pub fn new(
         tx_checkpoint: mpsc::UnboundedSender<model::HubRepo>,
         tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
-        checkpoint_info: Option<CheckpointConfig>,
+        checkpoint_info: CheckpointConfig,
         checkpoint_extra_files: Vec<PathBuf>,
         model_task_runner: ModelTaskRunner,
     ) -> Self {
@@ -129,6 +129,7 @@ impl CooldownStepMetadata {
         &self,
         mut trainers: Vec<Trainer>,
         state: &Coordinator<T>,
+        from: T,
     ) -> Result<CooldownStep, CooldownError> {
         let Some(mut trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);
@@ -142,6 +143,7 @@ impl CooldownStepMetadata {
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
+        let checkpointer: T = state.epoch_state.checkpointer;
 
         let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
@@ -167,52 +169,40 @@ impl CooldownStepMetadata {
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                let Some(CheckpointConfig {
+                if checkpointer != from {
+                    info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
+                    return Ok((evals, None));
+                }
+                let CheckpointConfig {
                     hub_upload,
                     checkpoint_dir,
                     delete_old_steps,
                     keep_steps,
-                }) = checkpoint_info
-                else {
-                    // If there was no HF checkpointing configuration, return immediately
-                    return Ok((evals, None));
-                };
+                } = checkpoint_info;
 
                 // Start the upload process of the updated model parameters in a separate task
                 let upload_handle = tokio::task::spawn(async move {
-                    let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
-                    info!("Saving to {}", path.display());
-                    let mut local = tokio::task::spawn_blocking({
-                        let path = path.clone();
-                        move || save_tensors_into_safetensors(variables, path)
-                    })
-                    .await
-                    .map_err(|_| CheckpointError::WriteThreadCrashed)??;
+                        let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
+                        info!("Saving to {}", path.display());
+                        let mut local = tokio::task::spawn_blocking({
+                            let path = path.clone();
+                            move || save_tensors_into_safetensors(variables, path)
+                        })
+                        .await
+                        .map_err(|_| CheckpointError::WriteThreadCrashed)??;
 
-                    for extra in checkpoint_extra_files {
-                        let to = path.join(extra.file_name().unwrap());
-                        tokio::fs::copy(extra.clone(), to.clone())
-                            .await
-                            .map_err(CheckpointError::WriteExtraFile)?;
-                        local.push(to);
-                    }
+                        for extra in checkpoint_extra_files {
+                            let to = path.join(extra.file_name().unwrap());
+                            tokio::fs::copy(extra.clone(), to.clone())
+                                .await
+                                .map_err(CheckpointError::WriteExtraFile)?;
+                            local.push(to);
+                        }
 
-                    let Some(HubUploadInfo {
+                    let HubUploadInfo {
                         hub_repo,
                         hub_token,
-                    }) = hub_upload
-                    else {
-                        cleanup_dirs(
-                            delete_queue,
-                            keep_steps,
-                            run_id,
-                            delete_old_steps,
-                            step,
-                            checkpoint_dir,
-                        )
-                        .await;
-                        return Ok::<(), CheckpointError>(());
-                    };
+                    } = hub_upload;
 
                     info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
                     let revision = match upload_model_repo_async(
