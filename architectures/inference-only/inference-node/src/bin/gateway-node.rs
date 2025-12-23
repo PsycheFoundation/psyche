@@ -99,6 +99,24 @@ fn default_temperature() -> Option<f64> {
 fn default_top_p() -> Option<f64> {
     Some(1.0)
 }
+#[derive(serde::Deserialize)]
+struct LoadModelRequest {
+    model_name: String,
+    #[serde(default = "default_model_source_type")]
+    source_type: String, // "huggingface" or "local"
+    #[serde(default)]
+    source_path: Option<String>,
+}
+
+fn default_model_source_type() -> String {
+    "huggingface".to_string()
+}
+
+#[derive(serde::Serialize)]
+struct LoadModelResponse {
+    success: bool,
+    message: String,
+}
 
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(tag = "source_type", rename_all = "lowercase")]
@@ -163,7 +181,7 @@ async fn handle_inference(
     info!(
         "Routing request to node: {} (model: {})",
         target_peer_id.fmt_short(),
-        node_model_name
+        node.model_name.as_ref().unwrap_or(&"unknown".to_string())
     );
     drop(nodes);
 
@@ -525,6 +543,15 @@ async fn run_gateway() -> Result<()> {
                     }
 
                     Some(_) = task_set.join_next(), if !task_set.is_empty() => {
+                    }
+
+                    Some(gossip_msg) = gossip_rx.recv() => {
+                        info!("Broadcasting gossip message: {:?}", gossip_msg);
+                        if let Err(e) = network.broadcast(&gossip_msg) {
+                            error!("Failed to broadcast gossip message: {:#}", e);
+                        } else {
+                            info!("Successfully broadcasted gossip message");
+                        }
                     }
 
                     Some(gossip_msg) = gossip_rx.recv() => {
