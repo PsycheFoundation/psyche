@@ -9,7 +9,7 @@ You can read more about agenix and how secrets are used in our deployment [HERE]
 ## What secrets do we store?
 
 ```nix
-{{#include ../../generated/secrets.nix}}
+{{#include ../../../secrets.nix}}
 ```
 
 ## Editing a secret

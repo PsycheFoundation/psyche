@@ -19,8 +19,8 @@ warmup_time = 30
 # time, in seconds, to let nodes bring the model from the GPU to disk, and to opt to join the next round.
 cooldown_time = 30
 
-# how many training rounds in one "epoch", from warmup to cooldown.
-rounds_per_epoch = 20
+# time, in seconds, that an epoch will last.
+epoch_time = 60
 
 # maximum time, in seconds, to allow nodes to train in one round.
 # this will limit the types of GPUs your model can be trained on,
@@ -38,13 +38,14 @@ round_witness_time = 1
 min_clients = 1
 
 # minumum number of clients required before we transition from WaitingForMembers to Warmup.
-# must be equal to or greater than min_clients
+# must be equal to or greater than min_clients.
 init_min_clients = 1
 
 # what percent of nodes are dedicated to verifying correctness. always set to 0 for now.
 verification_percent = 0
 
 # how many nodes are selected each round to publish witness proofs
+# Can be set to 0 to select all nodes as witnesses.
 witness_nodes = 1
 
 # the total number of training data batches per-step. this also determines your maximum number of clients.
@@ -63,17 +64,23 @@ total_steps = 25000
 ```toml
 # so far only LLMs are supported.
 [model.LLM]
+# Architecture of the model to train on can be HfLlama or HfDeepseek for now.
+# If running with Python sidecars this must be set to HfAuto.
 architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 2048
 
 [model.LLM.checkpoint.Hub]
+# Repo where the model is located in HugggingFace, will be used to download the model at the beginning of training.
 repo_id = "emozilla/llama2-20m-init"
 
 [model.LLM.data_location.Http]
+# Token size in bytes, can be "TwoBytes" or "FourBytes"
 token_size_in_bytes = "TwoBytes"
+# Shuffle or not tokens for training, can be "Seeded" with a seed value or "DontShuffle"
 shuffle = "DontShuffle"
 
+# Data location to train on
 [model.LLM.data_location.Http.location.Gcp]
 bucket_name = "nous-pretraining-public-us"
 filter_directory = "fineweb-edu-tokenized-llama2"
