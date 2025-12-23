@@ -226,6 +226,7 @@ async fn main() -> Result<()> {
         ModelLoadState::Loaded(name) => Some(name.clone()),
         _ => None,
     };
+
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: model_name_for_broadcast.clone(),
         checkpoint_id: None,

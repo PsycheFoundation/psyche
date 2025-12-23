@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 pub enum ModelSource {
     HuggingFace(String),
     Local(String),
-    // See test case below for additional future source types
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
