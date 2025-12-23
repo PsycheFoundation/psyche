@@ -10,7 +10,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use psyche_inference::{InferenceGossipMessage, InferenceMessage, InferenceNode, InferenceRequest};
+use psyche_inference::{InferenceGossipMessage, InferenceNode};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
 use std::path::PathBuf;
@@ -66,9 +66,12 @@ async fn main() -> Result<()> {
     let discovery_mode: DiscoveryMode = args
         .discovery_mode
         .parse()
-        .context("Invalid discovery mode")?;
+        .map_err(|e| anyhow::anyhow!("Invalid discovery mode: {}", e))?;
 
-    let relay_kind: RelayKind = args.relay_kind.parse().context("Invalid relay kind")?;
+    let relay_kind: RelayKind = args
+        .relay_kind
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
 
     let capabilities: Vec<String> = if args.capabilities.is_empty() {
         vec![]
