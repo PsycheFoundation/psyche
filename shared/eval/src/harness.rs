@@ -121,7 +121,6 @@ impl TokenizedLLHDocument {
         let mut requests: Vec<Vec<i64>> = Vec::new();
         let mut choices_str = Vec::new();
         let mut choices_token_len = Vec::new();
-        let mut choices: Vec<Vec<i64>> = Vec::new();
 
         // Build full context string: fewshot_prefix + doc.text
         let context_string = if fewshot_prefix.is_empty() {
