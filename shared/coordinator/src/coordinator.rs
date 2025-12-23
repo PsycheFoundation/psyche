@@ -281,6 +281,7 @@ pub struct CoordinatorEpochState<T> {
     pub start_timestamp: u64,
     pub first_round: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
+    pub checkpointed: bool,
 }
 
 #[derive(
@@ -417,6 +418,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             start_step: Default::default(),
             last_step: Default::default(),
             start_timestamp: Default::default(),
+            checkpointed: false,
         }
     }
 }
@@ -627,7 +629,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         if self.epoch_state.checkpointer != *from {
             return Err(CoordinatorError::InvalidWitness);
         } else {
-            self.start_waiting_for_members(unix_timestamp);
+            self.epoch_state.checkpointed = true;
         }
 
         Ok(())
@@ -1048,7 +1050,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         &mut self,
         unix_timestamp: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        if self.check_timeout(unix_timestamp, self.config.cooldown_time) {
+        if self.check_timeout(unix_timestamp, self.config.cooldown_time)
+            || self.epoch_state.checkpointed
+        {
             let last_round_batch_size = self.get_target_global_batch_size(self.current_round());
             self.progress.epoch_start_data_index =
                 self.current_round_unchecked().data_index + last_round_batch_size as u64;
