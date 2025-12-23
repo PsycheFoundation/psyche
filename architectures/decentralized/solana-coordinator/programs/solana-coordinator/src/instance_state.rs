@@ -414,10 +414,9 @@ impl CoordinatorInstanceState {
             .iter()
             .position(|x| x.id == *id)
             .ok_or(ProgramError::SignerNotAClient)?;
-        let clock = Clock::get()?;
 
         self.coordinator
-            .checkpoint(id, index as u64, repo, clock.unix_timestamp as u64)
+            .checkpoint(id, index as u64, repo)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         // Only tick if not halted (Paused/Uninitialized/Finished)

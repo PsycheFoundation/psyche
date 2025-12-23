@@ -139,12 +139,12 @@ pub struct TrainArgs {
     pub prompt_task: bool,
 
     /// If provided, every model parameters update will be save in this directory after each epoch.
-    #[clap(long, env)]
-    pub checkpoint_dir: Option<PathBuf>,
+    #[clap(long, env, default_value = "~/.cache/psyche/checkpoints")]
+    pub checkpoint_dir: PathBuf,
 
     /// Path to the Hugging Face repository containing model data and configuration.
     #[clap(long, env)]
-    pub hub_repo: Option<String>,
+    pub hub_repo: String,
 
     #[clap(long, env, default_value_t = 3)]
     pub hub_max_concurrent_downloads: usize,
@@ -222,7 +222,7 @@ impl TrainArgs {
         Ok(wandb_info)
     }
 
-    pub fn checkpoint_config(&self) -> Result<Option<CheckpointConfig>> {
+    pub fn checkpoint_config(&self) -> Result<CheckpointConfig> {
         let hub_read_token = std::env::var("HF_TOKEN").ok();
         let checkpoint_upload_info = match (
             &hub_read_token,
@@ -231,33 +231,21 @@ impl TrainArgs {
             self.delete_old_steps,
             self.keep_steps,
         ) {
-            (Some(token), Some(repo), Some(dir), delete_old_steps, keep_steps) => {
-                if keep_steps == 0 {
-                    bail!("keep_steps must be >= 1 for hub repository uploads (got {keep_steps})")
-                }
-                Some(CheckpointConfig {
-                    checkpoint_dir: dir,
-                    hub_upload: Some(HubUploadInfo {
-                        hub_repo: repo,
-                        hub_token: token.to_string(),
-                    }),
-                    delete_old_steps,
-                    keep_steps,
-                })
+            (_, _, _, _, keep_steps) if keep_steps == 0 => {
+                bail!("keep_steps must be > 0 for hub repository uploads (got {keep_steps})")
             }
-            (None, Some(_), Some(_), _, _) => {
-                bail!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
+            (None, _, _, _, _) => {
+                bail!("No HF_TOKEN env variable.")
             }
-            (_, Some(_), None, _, _) => {
-                bail!("--hub-repo was set, but no --checkpoint-dir was passed!")
-            }
-            (_, None, Some(dir), delete_old_steps, keep_steps) => Some(CheckpointConfig {
+            (Some(token), repo, dir, delete_old_steps, keep_steps) => CheckpointConfig {
                 checkpoint_dir: dir,
-                hub_upload: None,
+                hub_upload: HubUploadInfo {
+                    hub_repo: repo,
+                    hub_token: token.to_string(),
+                },
                 delete_old_steps,
                 keep_steps,
-            }),
-            (_, None, _, _, _) => None,
+            },
         };
 
         Ok(checkpoint_upload_info)

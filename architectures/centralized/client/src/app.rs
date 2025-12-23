@@ -172,22 +172,20 @@ impl App {
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
         // sanity checks
-        if let Some(checkpoint_config) = &state_options.checkpoint_config {
-            if let Some(hub_upload) = &checkpoint_config.hub_upload {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_upload.hub_token.clone()))
-                    .build()?;
-                let repo_api = api.repo(Repo::new(
-                    hub_upload.hub_repo.clone(),
-                    hf_hub::RepoType::Model,
-                ));
-                if !repo_api.is_writable().await {
-                    anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_upload.hub_repo
-                    )
-                }
-            }
+        let api = hf_hub::api::tokio::ApiBuilder::new()
+            .with_token(Some(
+                state_options.checkpoint_config.hub_upload.hub_token.clone(),
+            ))
+            .build()?;
+        let repo_api = api.repo(Repo::new(
+            state_options.checkpoint_config.hub_upload.hub_repo.clone(),
+            hf_hub::RepoType::Model,
+        ));
+        if !repo_api.is_writable().await {
+            anyhow::bail!(
+                "Checkpoint upload repo {} is not writable with the passed API key.",
+                state_options.checkpoint_config.hub_upload.hub_repo
+            )
         }
 
         self.server_conn

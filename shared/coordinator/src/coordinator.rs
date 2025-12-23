@@ -601,7 +601,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         from: &T,
         index: u64,
         hub_repo: HubRepo,
-        unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
         let index = index as usize;
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
@@ -953,7 +952,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 )
                 .unwrap();
 
-            self.epoch_state.checkpointer = self.epoch_state.clients[0].id.clone();
+            self.epoch_state.checkpointer = self.epoch_state.clients[0].id;
             self.start_warmup(unix_timestamp);
         }
 
