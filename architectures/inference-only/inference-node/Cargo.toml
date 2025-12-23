@@ -7,6 +7,10 @@ edition = "2021"
 name = "psyche-inference-node"
 path = "src/main.rs"
 
+[[bin]]
+name = "test-network"
+path = "src/bin/test-network.rs"
+
 [dependencies]
 psyche-inference.workspace = true
 psyche-network.workspace = true
