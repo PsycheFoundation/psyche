@@ -1,15 +1,13 @@
-use std::path::PathBuf;
-
-use anchor_client::anchor_lang::prelude::borsh;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
-    model::{Checkpoint, LLM, LLMDataLocations, LLMTrainingDataLocation, Model},
+    model::{Checkpoint, LLMDataLocations, LLMTrainingDataLocation, Model},
 };
 use psyche_core::FixedVec;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::{SolanaBackend, instructions};
 
@@ -73,36 +71,53 @@ pub async fn command_update_config_execute(
     let (config, mut model, data_locations) = match config_path {
         Some(config_path) => {
             #[derive(Serialize, Deserialize)]
-            struct ConfigFile {
-                config: CoordinatorConfig,
-                model: ModelWithData,
+            struct ModelWrapper {
+                #[serde(flatten)]
+                pub model: Model,
             }
 
             #[derive(Serialize, Deserialize)]
-            #[serde(tag = "LLM")] // This handles the enum variant name
-            struct ModelWithData {
-                // LLM struct fields
-                #[serde(flatten)]
-                llm: LLM,
-                // Additional field not in the Copy struct
-                data_locations: Vec<LLMTrainingDataLocation>,
+            struct State {
+                pub config: CoordinatorConfig,
+                pub model: ModelWrapper,
             }
 
-            let content = std::fs::read(&config_path)
-                .with_context(|| format!("failed to read config toml file {config_path:?}"))?;
+            // First, parse without data_locations to get the Model enum
+            let state: State = toml::from_str(std::str::from_utf8(
+                &std::fs::read(&config_path)
+                    .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
+            )?)
+            .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
-            let config_file: ConfigFile = toml::from_str(std::str::from_utf8(&content)?)
-                .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
+            // Then parse just the data_locations separately
+            #[derive(Serialize, Deserialize)]
+            struct DataLocationsWrapper {
+                pub data_locations: Vec<LLMTrainingDataLocation>,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            struct LLMSection {
+                #[serde(rename = "LLM")]
+                pub llm: DataLocationsWrapper,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            struct ModelSection {
+                pub model: LLMSection,
+            }
+
+            let data_section: ModelSection = toml::from_str(std::str::from_utf8(
+                &std::fs::read(&config_path)
+                    .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
+            )?)?;
 
             let data_locs = LLMDataLocations {
-                data_locations: FixedVec::from_iter(config_file.model.data_locations.into_iter()),
+                data_locations: FixedVec::from_iter(
+                    data_section.model.llm.data_locations.into_iter(),
+                ),
             };
 
-            (
-                Some(config_file.config),
-                Some(Model::LLM(config_file.model.llm)),
-                Some(data_locs),
-            )
+            (Some(state.config), Some(state.model.model), Some(data_locs))
         }
         None => (None, None, None),
     };
@@ -173,13 +188,14 @@ pub async fn command_update_config_execute(
         bail!("this invocation would not update anything, bailing.")
     }
 
-    let serialized = borsh::to_vec(&data_locations)?;
-    println!("Serialized data_locations size: {} bytes", serialized.len());
-    let instructions = if let Some(treasurer_index) = backend
+    let (instructions, data_location_instr) = if let Some(treasurer_index) = backend
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
-        let mut instructions = vec![instructions::treasurer_run_update(
+        let mut instructions = Vec::new();
+        let mut data_location_instr = Vec::new();
+
+        instructions.push(instructions::treasurer_run_update(
             &run_id,
             treasurer_index,
             &coordinator_account,
@@ -195,10 +211,10 @@ pub async fn command_update_config_execute(
                 client_version: client_version.clone(),
                 data_location: None,
             },
-        )];
+        ));
         if let Some(data_locations) = data_locations {
             for dl in data_locations.data_locations.iter() {
-                instructions.push(instructions::treasurer_run_update(
+                data_location_instr.push(instructions::treasurer_run_update(
                     &run_id,
                     treasurer_index,
                     &coordinator_account,
@@ -217,9 +233,10 @@ pub async fn command_update_config_execute(
                 ));
             }
         }
-        instructions
+        (instructions, data_location_instr)
     } else {
         let mut instructions = Vec::new();
+        let mut data_location_instr = Vec::new();
         let data_locations_iter = data_locations.unwrap().iter().cloned().collect::<Vec<_>>();
 
         if coordinator_update {
@@ -232,13 +249,13 @@ pub async fn command_update_config_execute(
                 model,
                 progress,
             ));
-            instructions.push(instructions::clear_data_locations(
+            data_location_instr.push(instructions::clear_data_locations(
                 &run_id,
                 &coordinator_account,
                 &main_authority,
             ));
             for dl in data_locations_iter.iter() {
-                instructions.push(instructions::coordinator_update_data_locations(
+                data_location_instr.push(instructions::coordinator_update_data_locations(
                     &run_id,
                     &coordinator_account,
                     &main_authority,
@@ -256,12 +273,16 @@ pub async fn command_update_config_execute(
             ));
         }
 
-        instructions
+        (instructions, data_location_instr)
     };
     let signature = backend
         .send_and_retry("Update config", &instructions, &[])
         .await?;
     println!("Updated config of {run_id} with transaction {signature}");
+
+    let signature = backend
+        .send_and_retry("Update data locations", &data_location_instr, &[])
+        .await?;
 
     println!(" - Metadata: {metadata:#?}");
     println!(" - Config: {config:#?}");
