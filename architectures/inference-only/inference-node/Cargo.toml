@@ -30,3 +30,5 @@ clap = { version = "4", features = ["derive"] }
 iroh.workspace = true
 iroh-blobs.workspace = true
 iroh-gossip.workspace = true
+
+serde_json.workspace = true

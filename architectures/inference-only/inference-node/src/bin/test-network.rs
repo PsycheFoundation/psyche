@@ -8,12 +8,14 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use iroh::EndpointAddr;
 use psyche_inference::InferenceGossipMessage;
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
-use std::sync::Arc;
+use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -25,6 +27,14 @@ struct Args {
 
     #[arg(long, default_value = "disabled")]
     relay_kind: String,
+
+    /// Path to file containing bootstrap peer endpoint (for node2+)
+    #[arg(long)]
+    bootstrap_peer_file: Option<PathBuf>,
+
+    /// Path to write this node's endpoint (for node1)
+    #[arg(long)]
+    write_endpoint_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -43,11 +53,33 @@ async fn main() -> Result<()> {
     let discovery_mode: DiscoveryMode = args
         .discovery_mode
         .parse()
-        .context("Invalid discovery mode")?;
+        .map_err(|e| anyhow::anyhow!("Invalid discovery mode: {}", e))?;
 
-    let relay_kind: RelayKind = args.relay_kind.parse().context("Invalid relay kind")?;
+    let relay_kind: RelayKind = args
+        .relay_kind
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
 
     let cancel = CancellationToken::new();
+
+    // Read bootstrap peer if provided
+    let bootstrap_peers = if let Some(ref peer_file) = args.bootstrap_peer_file {
+        if peer_file.exists() {
+            info!("Reading bootstrap peer from {:?}", peer_file);
+            let content =
+                fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
+            let endpoint_addr: EndpointAddr = serde_json::from_str(&content)
+                .context("Failed to parse bootstrap peer endpoint")?;
+            info!("Bootstrap peer: {}", endpoint_addr.id.fmt_short());
+            vec![endpoint_addr]
+        } else {
+            info!("Bootstrap peer file not found yet, starting without peers");
+            vec![]
+        }
+    } else {
+        info!("No bootstrap peer file specified");
+        vec![]
+    };
 
     info!("Initializing P2P network...");
 
@@ -62,8 +94,8 @@ async fn main() -> Result<()> {
         None, // interface
         discovery_mode,
         relay_kind,
-        vec![], // bootstrap peers
-        None,   // secret key (generate new)
+        bootstrap_peers,
+        None, // secret key (generate new)
         allowlist::AllowAll,
         metrics.clone(),
         Some(cancel.clone()),
@@ -73,6 +105,19 @@ async fn main() -> Result<()> {
 
     info!("P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
+
+    // Write endpoint to file if requested
+    if let Some(ref endpoint_file) = args.write_endpoint_file {
+        let endpoint_addr = network.router().endpoint().addr();
+        let content = serde_json::to_string(&endpoint_addr)
+            .context("Failed to serialize endpoint address")?;
+        fs::write(endpoint_file, content).context("Failed to write endpoint file")?;
+        info!("Wrote endpoint to {:?}", endpoint_file);
+    }
+
+    // Give gossip network time to establish connections
+    info!("Waiting for gossip mesh to stabilize...");
+    sleep(Duration::from_secs(2)).await;
 
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: format!("test-model-{}", args.node_id),

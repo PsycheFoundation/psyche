@@ -8,6 +8,7 @@ SESSION_NAME="inference-test"
 # Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}Building test-network binary...${NC}"
@@ -15,19 +16,48 @@ cargo build --bin test-network
 
 echo -e "${GREEN}✓ Build complete${NC}"
 
+# Setup endpoint coordination
+ENDPOINT_FILE="/tmp/psyche-test-node1-endpoint.json"
+rm -f "$ENDPOINT_FILE"
+
+# Check if we're already in a tmux session
+if [ -n "${TMUX:-}" ]; then
+    echo -e "${YELLOW}⚠ Already in tmux session. Using nested session.${NC}"
+    # For nested tmux, we need to use a different approach
+    NESTED=true
+else
+    NESTED=false
+fi
+
 # Kill existing session if it exists
 tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
 
 echo -e "${BLUE}Starting tmux session: $SESSION_NAME${NC}"
 
 # Create new session with first node
-tmux new-session -d -s "$SESSION_NAME" -n "node1"
-tmux send-keys -t "$SESSION_NAME:node1" "cargo run --bin test-network -- --node-id node1" C-m
+if [ "$NESTED" = true ]; then
+    # When nested, create detached session
+    tmux -u new-session -d -s "$SESSION_NAME" -n "node1"
+else
+    tmux new-session -d -s "$SESSION_NAME" -n "node1"
+fi
 
-# Create second window for second node
+tmux send-keys -t "$SESSION_NAME:node1" "RUST_LOG=info,psyche_network=debug cargo run --bin test-network -- --node-id node1 --write-endpoint-file $ENDPOINT_FILE" C-m
+
+# Wait for first node to write its endpoint
+echo -e "${BLUE}Waiting for node1 to initialize...${NC}"
+for i in {1..10}; do
+    if [ -f "$ENDPOINT_FILE" ]; then
+        echo -e "${GREEN}✓ Node1 endpoint ready${NC}"
+        break
+    fi
+    sleep 1
+done
+
+# Create second window for second node with bootstrap peer
 sleep 1
 tmux new-window -t "$SESSION_NAME" -n "node2"
-tmux send-keys -t "$SESSION_NAME:node2" "cargo run --bin test-network -- --node-id node2" C-m
+tmux send-keys -t "$SESSION_NAME:node2" "RUST_LOG=info,psyche_network=debug cargo run --bin test-network -- --node-id node2 --bootstrap-peer-file $ENDPOINT_FILE" C-m
 
 # Create third window for logs/instructions
 tmux new-window -t "$SESSION_NAME" -n "info"
@@ -41,8 +71,11 @@ Windows:
   info   - This window (instructions)
 
 What to look for:
+  - Node1 writes endpoint to file
+  - Node2 reads endpoint and uses as bootstrap peer
   - Both nodes should print their Endpoint IDs
-  - Each node should see \"PEER DISCOVERED!\" message
+  - Node2 should see \"PEER DISCOVERED!\" message for node1
+  - Node1 should see \"PEER DISCOVERED!\" message for node2
   - Peer details should show test-model-node1 and test-model-node2
 
 Commands:
@@ -59,12 +92,35 @@ EOF
 " C-m
 
 echo -e "${GREEN}✓ Test started!${NC}"
-echo -e "${BLUE}Attaching to tmux session...${NC}"
-echo ""
-echo "Use 'Ctrl+B, d' to detach from tmux"
-echo "Use 'tmux attach -t $SESSION_NAME' to reattach"
-echo "Use 'tmux kill-session -t $SESSION_NAME' to stop all nodes"
-echo ""
 
-# Attach to the session
-tmux attach -t "$SESSION_NAME"
+if [ "$NESTED" = true ]; then
+    echo -e "${YELLOW}Nested tmux detected!${NC}"
+    echo ""
+    echo "To view the test session:"
+    echo "  tmux switch-client -t $SESSION_NAME"
+    echo ""
+    echo "To switch back to your current session:"
+    echo "  Ctrl+B, s  (then select your session)"
+    echo ""
+    echo "Or manually switch:"
+    echo "  tmux switch-client -t <your-session-name>"
+    echo ""
+    echo "To stop all test nodes:"
+    echo "  tmux kill-session -t $SESSION_NAME"
+    echo ""
+
+    # In nested mode, try to switch. If no client, just show instructions
+    tmux switch-client -t "$SESSION_NAME" 2>/dev/null || {
+        echo -e "${YELLOW}Run manually: tmux attach -t $SESSION_NAME${NC}"
+    }
+else
+    echo -e "${BLUE}Attaching to tmux session...${NC}"
+    echo ""
+    echo "Use 'Ctrl+B, d' to detach from tmux"
+    echo "Use 'tmux attach -t $SESSION_NAME' to reattach"
+    echo "Use 'tmux kill-session -t $SESSION_NAME' to stop all nodes"
+    echo ""
+
+    # Attach to the session
+    tmux attach -t "$SESSION_NAME"
+fi
