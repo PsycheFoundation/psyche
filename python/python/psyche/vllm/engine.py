@@ -1,4 +1,5 @@
 import logging
+import ray
 import time
 from itertools import count
 from typing import List, Optional, Dict, Any
@@ -86,8 +87,6 @@ class UpdatableLLMEngine:
             del self.engine
 
         try:
-            import ray
-
             if ray.is_initialized():
                 logger.info("Shutting down Ray...")
                 ray.shutdown()

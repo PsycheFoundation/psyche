@@ -24,6 +24,7 @@ psyche-core = { path = "./shared/core" }
 psyche-client = { path = "./shared/client" }
 psyche-data-provider = { path = "./shared/data-provider" }
 psyche-eval = { path = "./shared/eval" }
+psyche-inference = { path = "./shared/inference" }
 psyche-network = { path = "./shared/network" }
 psyche-modeling = { path = "./shared/modeling" }
 psyche-python-extension = { path = "./python" }
