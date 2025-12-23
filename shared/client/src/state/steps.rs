@@ -338,39 +338,39 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 self.sent_warmup_witness = true;
             }
-        } else if self.coordinator_state.run_state == RunState::Cooldown {
-            if self.coordinator_state.epoch_state.checkpointer != self.identity {
-                return Ok(());
-            }
+            // } else if self.coordinator_state.run_state == RunState::Cooldown {
+            //     if self.coordinator_state.epoch_state.checkpointer != self.identity {
+            //         return Ok(());
+            //     }
 
-            let merkle = MerkleTree::new(&self.current_round.broadcasts)
-                .get_root()
-                .cloned()
-                .unwrap_or(MerkleRoot::default());
+            //     let merkle = MerkleTree::new(&self.current_round.broadcasts)
+            //         .get_root()
+            //         .cloned()
+            //         .unwrap_or(MerkleRoot::default());
 
-            if let Some(index) = self
-                .coordinator_state
-                .epoch_state
-                .clients
-                .iter()
-                .position(|x| x.id == self.identity)
-            {
-                // coordinator needs to check the index for duplicate detection
-                let index = index as u64;
-                let witness = Witness {
-                    proof: WitnessProof {
-                        position: index,
-                        index,
-                        witness: Default::default(),
-                    },
-                    participant_bloom: Default::default(),
-                    broadcast_bloom: Default::default(),
-                    broadcast_merkle: merkle,
-                };
-                self.tx_opportunistic_data
-                    .send(OpportunisticData::CooldownStep(witness))
-                    .map_err(|_| OpportunisticWitnessError::Send)?;
-            };
+            //     if let Some(index) = self
+            //         .coordinator_state
+            //         .epoch_state
+            //         .clients
+            //         .iter()
+            //         .position(|x| x.id == self.identity)
+            //     {
+            //         // coordinator needs to check the index for duplicate detection
+            //         let index = index as u64;
+            //         let witness = Witness {
+            //             proof: WitnessProof {
+            //                 position: index,
+            //                 index,
+            //                 witness: Default::default(),
+            //             },
+            //             participant_bloom: Default::default(),
+            //             broadcast_bloom: Default::default(),
+            //             broadcast_merkle: merkle,
+            //         };
+            //         self.tx_opportunistic_data
+            //             .send(OpportunisticData::CooldownStep(witness))
+            //             .map_err(|_| OpportunisticWitnessError::Send)?;
+            //     };
         }
         Ok(())
     }
@@ -872,7 +872,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 // check here
                 self.cleanup_completed_uploads();
 
-                ActiveStep::Cooldown(self.cooldown.start(trainers, &state)?)
+                ActiveStep::Cooldown(self.cooldown.start(trainers, &state, self.identity)?)
             }
             // cooldown is done, we consider waiting for members and warmup to be basically the same
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)

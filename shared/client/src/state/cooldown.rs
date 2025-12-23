@@ -129,6 +129,7 @@ impl CooldownStepMetadata {
         &self,
         mut trainers: Vec<Trainer>,
         state: &Coordinator<T>,
+        from: T,
     ) -> Result<CooldownStep, CooldownError> {
         let Some(mut trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);
@@ -142,6 +143,7 @@ impl CooldownStepMetadata {
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
+        let checkpointer: T = state.epoch_state.checkpointer.clone();
 
         let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
@@ -167,10 +169,20 @@ impl CooldownStepMetadata {
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                if state.epoch_state.checkpointer != trainer {
+                if checkpointer != from {
                     info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
                     return Ok((evals, None));
                 }
+                let Some(CheckpointConfig {
+                    hub_upload,
+                    checkpoint_dir,
+                    delete_old_steps,
+                    keep_steps,
+                }) = checkpoint_info
+                else {
+                    // If there was no HF checkpointing configuration, return immediately
+                    return Ok((evals, None));
+                };
                 // Start the upload process of the updated model parameters in a separate task
                 let upload_handle = tokio::task::spawn(async move {
                     let path = checkpoint_dir.join(format!("{run_id}-step{step}"));

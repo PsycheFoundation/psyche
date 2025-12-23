@@ -274,7 +274,7 @@ pub struct CoordinatorEpochState<T> {
     /// `get_historical_clients` is what you actually want.
     pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
-    pub checkpointer: Client<T>,
+    pub checkpointer: T,
     pub rounds_head: u32,
     pub start_step: u32,
     pub last_step: u32,

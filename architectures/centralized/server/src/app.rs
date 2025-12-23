@@ -422,9 +422,12 @@ impl App {
                     .position(|x| x.id == from);
                 match position {
                     Some(index) => {
-                        if let Err(error) =
-                            self.coordinator.checkpoint(&from, index as u64, checkpoint)
-                        {
+                        if let Err(error) = self.coordinator.checkpoint(
+                            &from,
+                            index as u64,
+                            checkpoint,
+                            Self::get_timestamp(),
+                        ) {
                             warn!("Error when processing checkpoint: {error}");
                         }
                     }
