@@ -28,11 +28,9 @@ struct Args {
     #[arg(long, default_value = "disabled")]
     relay_kind: String,
 
-    /// Path to file containing bootstrap peer endpoint (for node2+)
     #[arg(long)]
     bootstrap_peer_file: Option<PathBuf>,
 
-    /// Path to write this node's endpoint (for node1)
     #[arg(long)]
     write_endpoint_file: Option<PathBuf>,
 }
@@ -115,9 +113,9 @@ async fn main() -> Result<()> {
         info!("Wrote endpoint to {:?}", endpoint_file);
     }
 
-    // Give gossip network time to establish connections
+    // both nodes wait to ensure full mesh connectivity
     info!("Waiting for gossip mesh to stabilize...");
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(3)).await;
 
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: format!("test-model-{}", args.node_id),
@@ -129,11 +127,13 @@ async fn main() -> Result<()> {
         .broadcast(&availability_msg)
         .context("Failed to broadcast availability")?;
 
-    info!("✓ Broadcasted availability to network");
+    info!("Broadcasted initial availability to network");
     info!("Node {} ready! Press Ctrl+C to shutdown.", args.node_id);
     info!("Watching for other nodes...");
 
     let mut peer_count = 0;
+    let mut rebroadcast_interval = tokio::time::interval(Duration::from_secs(5));
+    rebroadcast_interval.tick().await;
 
     loop {
         tokio::select! {
@@ -145,6 +145,13 @@ async fn main() -> Result<()> {
             _ = cancel.cancelled() => {
                 info!("Cancellation requested");
                 break;
+            }
+
+            _ = rebroadcast_interval.tick() => {
+                debug!("Rebroadcasting availability...");
+                if let Err(e) = network.broadcast(&availability_msg) {
+                    error!("Failed to rebroadcast availability: {:#}", e);
+                }
             }
 
             event = network.poll_next() => {
