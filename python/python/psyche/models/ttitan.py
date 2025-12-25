@@ -46,6 +46,8 @@ TRAIN_SPEC_FN = {
     "qwen3_next": get_qwen3_next_train_spec,
 }
 
+COMPILE_PREFIX = "_orig_mod."
+
 
 class TorchtitanAuto(CausalLM):
     def __init__(
@@ -232,9 +234,33 @@ class TorchtitanAuto(CausalLM):
         self, state_dict: Optional[dict[str, torch.Tensor]]
     ) -> dict[str, torch.Tensor]:
         state_dict = self.model.state_dict() if state_dict is None else state_dict
+        # Strip wrapper prefixes before converting to HF format
+        state_dict = {
+            k.replace(_CHECKPOINT_PREFIX, "").replace(COMPILE_PREFIX, ""): v
+            for k, v in state_dict.items()
+        }
         train_spec = TRAIN_SPEC_FN[self.config.model_type]()
         sd_adapter = train_spec.state_dict_adapter(self.config_tt, hf_assets_path=None)
-        return sd_adapter.to_hf(state_dict)
+        state_dict = sd_adapter.to_hf(state_dict)
+        return {k: v.to(torch.bfloat16) for k, v in state_dict.items()}
+
+    @staticmethod
+    def _load_into_model(model, state_dict):
+        model_sd = (
+            model.state_dict()
+        )  # mapping from clean keys to the actual model keys
+        clean_to_actual = {
+            k.replace(_CHECKPOINT_PREFIX, "").replace(COMPILE_PREFIX, ""): k
+            for k in model_sd.keys()
+        }
+
+        remapped = {}
+        for k, v in state_dict.items():
+            actual_key = clean_to_actual.get(k)
+            if actual_key is not None:
+                remapped[actual_key] = v
+        # strict=False because TT has ephemeral tensors like expert_bias
+        model.load_state_dict(remapped, strict=False)
 
     @staticmethod
     def from_pretrained(
@@ -265,23 +291,11 @@ class TorchtitanAuto(CausalLM):
             config, override_max_position_embeddings
         )
 
-        if config.model_type not in TRAIN_SPEC_FN:
-            raise ValueError(f"Unsupported model_type `{config.model_type}`")
-        train_spec = TRAIN_SPEC_FN[config.model_type]()
-
-        model = None
-        with torch.device("meta"), set_default_dtype(torch.float32):
-            model = train_spec.model_cls(config_tt)
-        torch.cuda.set_device(device)
-
-        model_param_count, _ = config_tt.get_nparams_and_flops(
-            model, config_tt.max_seq_len
-        )
-
         job_config = JobConfig()
         job_config.training.seq_len = config_tt.max_seq_len
-        job_config.compile.enamble = True
-        job_config.compile.components = ["loss", "model"]
+        job_config.compile.enable = True
+        job_config.compile.components = ["model", "loss"]
+        job_config.compile.fullgraph = False
         job_config.activation_checkpoint.mode = "full"
         job_config.parallelism.data_parallel_shard_degree = dp
         job_config.parallelism.tensor_parallel_degree = tp
@@ -295,6 +309,21 @@ class TorchtitanAuto(CausalLM):
             ep=1,
             etp=1,
             world_size=dp * tp,  # fake, but only used for validation
+        )
+
+        config_tt.update_from_config(job_config)
+
+        if config.model_type not in TRAIN_SPEC_FN:
+            raise ValueError(f"Unsupported model_type `{config.model_type}`")
+        train_spec = TRAIN_SPEC_FN[config.model_type]()
+
+        model = None
+        with torch.device("meta"), set_default_dtype(torch.float32):
+            model = train_spec.model_cls(config_tt)
+        torch.cuda.set_device(device)
+
+        model_param_count, _ = config_tt.get_nparams_and_flops(
+            model, config_tt.max_seq_len
         )
 
         if dp != 1 or tp != 1:
@@ -321,8 +350,11 @@ class TorchtitanAuto(CausalLM):
         if isinstance(source, PretrainedSourceRepoFiles):
             sd_adapter = train_spec.state_dict_adapter(config_tt, hf_assets_path=None)
 
-            state_dict = model.state_dict()
-            hf_state_dict = sd_adapter.to_hf(state_dict)
+            model_sd_clean = {
+                k.replace(_CHECKPOINT_PREFIX, "").replace(COMPILE_PREFIX, ""): v
+                for k, v in model.state_dict().items()
+            }
+            hf_state_dict = sd_adapter.to_hf(model_sd_clean)
 
             path = None
             for x in source.files:
@@ -337,9 +369,10 @@ class TorchtitanAuto(CausalLM):
             dcp.load(hf_state_dict, storage_reader=hf_storage_reader)
 
             state_dict = sd_adapter.from_hf(hf_state_dict)
-
-        # strict=False because TT has ephemeral tensors like expert_bias
-        model.load_state_dict(state_dict, strict=False)
+            TorchtitanAuto._load_into_model(model, state_dict)
+        else:
+            # state_dict already in TT format
+            TorchtitanAuto._load_into_model(model, state_dict)
 
         loss_fn = build_cross_entropy_loss(job_config)
 
@@ -349,62 +382,17 @@ class TorchtitanAuto(CausalLM):
 
     def named_parameters(self) -> dict[str, torch.Tensor]:
         params = dict(self.model.named_parameters())
-        # undo activation checkpoint wrapping
-        return {k.replace(_CHECKPOINT_PREFIX, ""): v for k, v in params.items()}
+        # undo activation checkpoint and torch.compile wrapping
+        return {
+            k.replace(_CHECKPOINT_PREFIX, "").replace(COMPILE_PREFIX, ""): v
+            for k, v in params.items()
+        }
 
     def train(self):
         self.model.train()
 
     def get_config(self):
         return self.config.to_dict()
-
-    def _get_rope_cache_handles(self):
-        if not hasattr(self, "model"):
-            return None, None, None
-        for cache_attr, precompute_attr in (
-            ("freqs_cis", "_precompute_freqs_cis"),
-            ("rope_cache", "_precompute_rope_cache"),
-        ):
-            if hasattr(self.model, cache_attr):
-                cache_tensor = getattr(self.model, cache_attr)
-                precompute_fn = getattr(self.model, precompute_attr, None)
-                return cache_attr, cache_tensor, precompute_fn
-        return None, None, None
-
-    def _maybe_extend_rope_cache(self, target_seq_len: int) -> None:
-        if target_seq_len <= 0:
-            return
-
-        cache_attr, cache_tensor, precompute_fn = self._get_rope_cache_handles()
-        if cache_attr is None or cache_tensor is None or precompute_fn is None:
-            return
-
-        current_len = cache_tensor.shape[0]
-        if target_seq_len <= current_len:
-            return
-
-        if hasattr(self.model, "model_args"):
-            self.model.model_args.max_seq_len = target_seq_len
-
-        cache_device = cache_tensor.device
-        with torch.device(cache_device):
-            new_cache = precompute_fn()
-        setattr(self.model, cache_attr, new_cache)
-
-    @contextmanager
-    def _temporarily_truncate_rope_cache(self, target_seq_len: int):
-        cache_attr, cache_tensor, _ = self._get_rope_cache_handles()
-        if cache_attr is None or cache_tensor is None:
-            yield
-            return
-
-        original_cache = cache_tensor
-        truncated_cache = cache_tensor[:target_seq_len]
-        setattr(self.model, cache_attr, truncated_cache)
-        try:
-            yield
-        finally:
-            setattr(self.model, cache_attr, original_cache)
 
     def forward(
         self,
@@ -431,15 +419,7 @@ class TorchtitanAuto(CausalLM):
                     if position_ids is not None:
                         position_ids = position_ids.narrow(0, start_row, shard_size)
         try:
-            target_seq_len = input_ids.shape[-1]
-            if position_ids is not None:
-                target_seq_len = max(
-                    target_seq_len, int(torch.max(position_ids).item()) + 1
-                )
-            self._maybe_extend_rope_cache(target_seq_len)
-            with self._temporarily_truncate_rope_cache(
-                target_seq_len
-            ), self.amp, torch.cuda.device(input_ids.device.index):
+            with self.amp, torch.cuda.device(input_ids.device.index):
                 pred = self.model(
                     tokens=input_ids.contiguous(),
                     position_ids=(

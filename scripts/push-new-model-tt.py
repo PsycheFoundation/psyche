@@ -2,6 +2,7 @@ from torch import nn
 from torch.distributed.checkpoint import HuggingFaceStorageWriter
 from transformers import AutoConfig, AutoTokenizer
 from huggingface_hub import HfApi
+from torchtitan.config import JobConfig
 from psyche.models.hf_transformers import auto_config_from_dict
 from psyche.models.ttitan import TorchtitanAuto, TRAIN_SPEC_FN
 
@@ -22,11 +23,15 @@ def main(args):
     config = auto_config_from_dict(json.load(open(args.config)))
     config_tt = TorchtitanAuto.convert_config(config)
 
+    job_config = JobConfig()
+    job_config.training.seq_len = config_tt.max_seq_len
+    config_tt.update_from_config(job_config)
+
     if config.model_type not in TRAIN_SPEC_FN:
         raise ValueError(f"Unsupported model_type `{config.model_type}`")
     train_spec = TRAIN_SPEC_FN[config.model_type]()
 
-    torch.set_default_dtype(args.dtype)
+    torch.set_default_dtype(torch.float32)
     if args.device:
         torch.set_default_device(args.device)
 
@@ -46,7 +51,9 @@ def main(args):
         state_dict = model.state_dict()
         del model
 
-        hf_state_dict = sd_adapter.to_hf(state_dict)
+        hf_state_dict = {
+            k: v.to(args.dtype) for k, v in sd_adapter.to_hf(state_dict).items()
+        }
         storage_writer = HuggingFaceStorageWriter(path=args.save)
         dcp.save(hf_state_dict, storage_writer=storage_writer, checkpoint_id=args.save)
 
@@ -72,8 +79,8 @@ args.add_argument(
 )
 args.add_argument("--repo", type=str, help="destination repo")
 args.add_argument("--save", type=str, help="save to local")
+args.add_argument("--dtype", type=int, default=torch.bfloat16, help="torch dtype")
 args.add_argument("--private", action="store_true", help="push as a private repo")
-args.add_argument("--dtype", type=int, default=torch.float32, help="torch dtype")
 args.add_argument("--device", type=str, help="device to init on")
 args.add_argument("--tokenizer", type=str, help="tokenizer")
 

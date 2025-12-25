@@ -87,18 +87,7 @@ def auto_config_from_dict(config: dict):
     except KeyError:
         raise ValueError(f"Unknown model_type {model_type}")
 
-    config = config_class.from_dict(config)
-
-    # If n_routed_experts is None disable all MoE related features
-    if hasattr(config, "n_routed_experts") and config.n_routed_experts is None:
-        config.n_shared_experts = None
-        config.moe_layer_freq = None
-        config.num_experts_per_tok = None
-        config.moe_intermediate_size = None
-        # Set first_k_dense_replace to a very large number to force all layers to be dense
-        config.first_k_dense_replace = 999999
-
-    return config
+    return config_class.from_dict(config)
 
 
 class HfTransformersAuto(CausalLM):
