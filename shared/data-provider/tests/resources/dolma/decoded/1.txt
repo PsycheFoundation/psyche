@@ -74,4 +74,4 @@ $D$ be a complete multidigraph whose arcs are the disjoint union of $k$ quasi or
 Proving a conjecture of Erdős, and of Sands, Sauer and Woodrow \cite{sandssauer}, Bousquet, Lochet and Thomassé recently showed the following. 
 
 \begin{theorem}[Bousquet, Lochet, Thomassé~\cite{esswproof}]\label{thm:multi_essw_old}
-For every $k$, there exists an integer $f(k)$ such that if $D$ is a complete multidigraph whose ar
+For every $k$, there exists an integer $f(k)$ such that if $D$ is a complete multidigraph whose

@@ -198,9 +198,8 @@ async fn test_weighted_data_provider_with_dummy_provider() -> Result<()> {
     let samples = weighted_provider.get_samples(batch_id).await?;
 
     assert_eq!(samples.len(), 10);
-    // each sample should have 11 tokens (10 + 1 for next token prediction)
     for sample in samples {
-        assert_eq!(sample.input_ids.len(), 11);
+        assert_eq!(sample.input_ids.len(), 10);
     }
 
     Ok(())

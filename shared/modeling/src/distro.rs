@@ -249,21 +249,30 @@ impl TransformDCT {
 
     pub fn encode(&mut self, x: &Tensor) -> Tensor {
         let _no_grad = tch::no_grad_guard();
-        if x.size().len() > 1 {
-            // 2D weights
-            let n1 = *self.shape_dict.get(&x.size()[0]).unwrap();
-            let n2 = *self.shape_dict.get(&x.size()[1]).unwrap();
+        let shape = x.size();
+        let ndim = shape.len();
+
+        if ndim > 1 {
+            // 2D+ weights - get chunk sizes for last two dimensions
+            let n1 = *self.shape_dict.get(&shape[ndim - 2]).unwrap();
+            let n2 = *self.shape_dict.get(&shape[ndim - 1]).unwrap();
             let n1w = self.f_dict.get(&n1).unwrap().to_device(x.device());
             let n2w = self.f_dict.get(&n2).unwrap().to_device(x.device());
             self.f_dict.insert(n1, n1w.copy());
             self.f_dict.insert(n2, n2w.copy());
 
-            // Equivalent to rearrange(x, "(y h) (x w) -> y h x w", h=n1, w=n2)
-            let x = x.view([x.size()[0] / n1, n1, x.size()[1] / n2, n2]);
+            // Equivalent to rearrange(x, "... (y h) (x w) -> ... y h x w", h=n1, w=n2)
+            let mut new_shape: Vec<i64> = shape[..ndim - 2].to_vec();
+            new_shape.push(shape[ndim - 2] / n1); // y
+            new_shape.push(n1); // h
+            new_shape.push(shape[ndim - 1] / n2); // x
+            new_shape.push(n2); // w
+
+            let x = x.view(new_shape.as_slice());
             Self::einsum_2d(&x, &n1w, Some(&n2w))
         } else {
             // 1D weights
-            let n1 = *self.shape_dict.get(&x.size()[0]).unwrap();
+            let n1 = *self.shape_dict.get(&shape[0]).unwrap();
             let n1w = self.f_dict.get(&n1).unwrap().to_device(x.device());
             self.f_dict.insert(n1, n1w.copy());
 
@@ -276,11 +285,12 @@ impl TransformDCT {
     pub fn decode(&mut self, x: &Tensor) -> Tensor {
         let _no_grad = tch::no_grad_guard();
         let x_shape = x.size();
+        let ndim = x_shape.len();
 
-        if x_shape.len() > 2 {
-            // 2D weights
-            let n1 = x_shape[2];
-            let n2 = x_shape[3];
+        if ndim > 2 {
+            // 2D+ weights - n1 and n2 are at positions -2 and -1 of the encoded tensor
+            let n1 = x_shape[ndim - 2];
+            let n2 = x_shape[ndim - 1];
             let device = x.device();
 
             let n1w = self.b_dict.get(&n1).unwrap().to_device(device);
@@ -291,10 +301,14 @@ impl TransformDCT {
 
             let x = Self::einsum_2d_t(x, &n1w, Some(&n2w));
             let x_shape = x.size();
+            let x_ndim = x_shape.len();
 
-            // Equivalent to rearrange(x, "y h x w -> (y h) (x w)")
-            let (y, h, x_, w) = (x_shape[0], x_shape[1], x_shape[2], x_shape[3]);
-            x.reshape([y * h, x_ * w])
+            // Equivalent to rearrange(x, "... y h x w -> ... (y h) (x w)")
+            let mut new_shape: Vec<i64> = x_shape[..x_ndim - 4].to_vec();
+            new_shape.push(x_shape[x_ndim - 4] * x_shape[x_ndim - 3]); // y * h
+            new_shape.push(x_shape[x_ndim - 2] * x_shape[x_ndim - 1]); // x * w
+
+            x.reshape(new_shape.as_slice())
         } else {
             // 1D weights
             let n1 = x_shape[1];
@@ -331,13 +345,13 @@ impl CompressDCT {
     pub fn compress(x: &Tensor, topk: i64) -> (Tensor, Tensor, Vec<i64>, i64) {
         let _no_grad = tch::no_grad_guard();
         let xshape = x.size();
-        let x = if xshape.len() > 2 {
-            // Equivalent to rearrange(x, "y x h w -> y x (h w)")
-            let y = xshape[0];
-            let x_dim = xshape[1];
-            let h = xshape[2];
-            let w = xshape[3];
-            x.view([y, x_dim, h * w])
+        let ndim = xshape.len();
+
+        let x = if ndim > 2 {
+            // Equivalent to rearrange(x, "... y x h w -> ... y x (h w)")
+            let mut new_shape: Vec<i64> = xshape[..ndim - 2].to_vec();
+            new_shape.push(xshape[ndim - 2] * xshape[ndim - 1]);
+            x.view(new_shape.as_slice())
         } else {
             x.shallow_clone()
         };
@@ -353,7 +367,6 @@ impl CompressDCT {
         (idx, val, xshape, totalk)
     }
 
-    #[allow(unused)]
     pub fn decompress(
         idx: &Tensor,
         val: &Tensor,
@@ -363,38 +376,22 @@ impl CompressDCT {
         device: Device,
     ) -> Tensor {
         let totalk = totalk.abs();
-
         let idx = decompress_idx(totalk, idx);
-
         let val = val.to_kind(kind);
+        let ndim = xshape.len();
 
         let mut x: Tensor = Tensor::zeros(xshape, (kind, device));
 
-        if xshape.len() > 2 {
-            // 2D weights
-            // Equivalent to rearrange(x, "y x h w -> y x (h w)")
-            let y = xshape[0];
-            let x_dim = xshape[1];
-            let h = xshape[2];
-            let w = xshape[3];
-            x = x.view([y, x_dim, h * w]);
+        if ndim > 2 {
+            // Equivalent to rearrange(x, "... y x h w -> ... y x (h w)")
+            let mut new_shape: Vec<i64> = xshape[..ndim - 2].to_vec();
+            new_shape.push(xshape[ndim - 2] * xshape[ndim - 1]);
+            x = x.view(new_shape.as_slice());
         }
 
-        x.internal_scatter_reduce_(-1, &idx, &val, "mean", false);
+        let _ = x.internal_scatter_reduce_(-1, &idx, &val, "mean", false);
 
-        x = x.reshape(xshape);
-
-        if x.size().len() > 2 {
-            // 2D weights
-            // Equivalent to rearrange(x, "y x (h w) -> y x h w", h=xshape[2])
-            let y = xshape[0];
-            let x_dim = xshape[1];
-            let h = xshape[2];
-            let w = xshape[3];
-            x = x.view([y, x_dim, h, w]);
-        }
-
-        x
+        x.reshape(xshape)
     }
 
     pub fn batch_decompress(

@@ -10,6 +10,7 @@ use pyo3::{
     types::{IntoPyDict, PyDict, PyList, PyString, PyTuple},
 };
 use pyo3_tch::PyTensor;
+use std::collections::HashMap;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
@@ -341,6 +342,38 @@ impl CausalLM for PythonCausalLM {
     fn max_context_length(&self) -> usize {
         self.max_context_length
     }
+
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        let result: PyResult<HashMap<String, Tensor>> = Python::with_gil(|py| {
+            let causal_lm = self.causal_lm.bind(py);
+            let convert = causal_lm.getattr("convert")?;
+            let state_dict = match state_dict {
+                Some(map) => {
+                    let py_dict = PyDict::new(py);
+                    for (k, v) in map {
+                        py_dict.set_item(k, PyTensor(v.shallow_clone()))?;
+                    }
+                    Some(py_dict)
+                }
+                None => None,
+            };
+            let result: Bound<PyDict> = convert.call1((state_dict,))?.downcast_into()?;
+            result
+                .iter()
+                .map(|(k, v)| {
+                    let name = k.downcast_into::<PyString>()?.to_str()?.to_owned();
+                    let tensor: PyTensor = v.extract()?;
+                    Ok((name, tensor.0))
+                })
+                .collect()
+        });
+        match result {
+            Ok(result) => result,
+            Err(err) => {
+                panic!("Error in python convert: {err}");
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -633,6 +666,10 @@ impl CausalLM for WrappedPythonCausalLM {
 
     fn clip_grad_norm(&self, max_grad_norm: f64) {
         self.local.clip_grad_norm(max_grad_norm);
+    }
+
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        self.local.convert(state_dict)
     }
 }
 

@@ -109,4 +109,8 @@ impl CausalLM for DummyModel {
     fn prepare_for_training(&self) {}
 
     fn clip_grad_norm(&self, _max_grad_norm: f64) {}
+
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        state_dict.unwrap_or_default()
+    }
 }
