@@ -2,6 +2,7 @@ mod data_provider;
 mod dataset;
 mod dummy;
 mod file_extensions;
+mod gcs;
 pub mod http;
 mod hub;
 mod local;
@@ -14,6 +15,7 @@ pub use data_provider::DataProvider;
 pub use dataset::{Dataset, Field, Row, Split};
 pub use dummy::DummyDataProvider;
 pub use file_extensions::{DATA_FILE_EXTENSIONS, PARQUET_EXTENSION};
+pub use gcs::download_model_from_gcs_sync;
 pub use hub::{
     UploadModelError, download_dataset_repo_async, download_dataset_repo_sync,
     download_model_repo_async, download_model_repo_sync, upload_model_repo_async,

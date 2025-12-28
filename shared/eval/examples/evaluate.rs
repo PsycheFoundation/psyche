@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
-use psyche_data_provider::download_model_repo_sync;
+use psyche_data_provider::{download_model_from_gcs_sync, download_model_repo_sync};
 use psyche_eval::{
     ALL_TASK_NAMES, EvalTaskOptions, Task, progress_bar_template_with_task, tasktype_from_name,
 };
@@ -24,6 +24,14 @@ struct Args {
 
     #[arg(long)]
     hf_token: Option<String>,
+
+    /// GCS bucket name (use instead of HuggingFace model)
+    #[arg(long)]
+    gcs_bucket: Option<String>,
+
+    /// GCS prefix/directory within the bucket
+    #[arg(long)]
+    gcs_prefix: Option<String>,
 
     #[arg(long, default_value_t = ALL_TASK_NAMES.join(","))]
     tasks: String,
@@ -75,9 +83,14 @@ fn main() -> Result<()> {
         } else {
             "".to_string()
         };
+        let model_source = if let Some(ref bucket) = args.gcs_bucket {
+            format!("gs://{}/{}", bucket, args.gcs_prefix.as_deref().unwrap_or(""))
+        } else {
+            args.model.clone()
+        };
         println!(
             "Running tasks with model {}, seed: {}, DP={}{}",
-            args.model, args.seed, args.data_parallelism, limit_str
+            model_source, args.seed, args.data_parallelism, limit_str
         );
         for task in &tasks {
             println!("  - {}: {} few-shot examples", task, task.num_fewshot);
@@ -107,7 +120,11 @@ fn main() -> Result<()> {
         }
     }
 
-    let repo = download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?;
+    let repo = if let Some(ref bucket) = args.gcs_bucket {
+        download_model_from_gcs_sync(bucket, args.gcs_prefix.as_deref(), None, true)
+    } else {
+        download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?
+    };
     let tokenizer = auto_tokenizer(&repo)?;
 
     let (python, python_arch) = {
