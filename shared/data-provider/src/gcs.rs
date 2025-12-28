@@ -1,4 +1,7 @@
-use google_cloud_storage::http::objects::{download::Range, get::GetObjectRequest, list::ListObjectsRequest};
+use google_cloud_storage::client::{Client, ClientConfig};
+use google_cloud_storage::http::objects::{
+    download::Range, get::GetObjectRequest, list::ListObjectsRequest,
+};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 use tracing::info;
@@ -33,8 +36,19 @@ async fn download_model_from_gcs_async(
     cache_dir: Option<PathBuf>,
     progress_bar: bool,
 ) -> Vec<PathBuf> {
-    let config = google_cloud_storage::client::ClientConfig::default().anonymous();
-    let client = google_cloud_storage::client::Client::new(config);
+    // Use authenticated client if GOOGLE_APPLICATION_CREDENTIALS is set, otherwise anonymous
+    let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
+        if progress_bar {
+            info!("Using authenticated GCS client");
+        }
+        ClientConfig::default().with_auth().await.unwrap()
+    } else {
+        if progress_bar {
+            info!("Using anonymous GCS client");
+        }
+        ClientConfig::default().anonymous()
+    };
+    let client = Client::new(config);
 
     // List all objects in the bucket with optional prefix
     let mut all_objects = vec![];
@@ -61,7 +75,12 @@ async fn download_model_from_gcs_async(
     }
 
     if progress_bar {
-        info!("Found {} model files in gs://{}/{}", all_objects.len(), bucket, prefix.unwrap_or(""));
+        info!(
+            "Found {} model files in gs://{}/{}",
+            all_objects.len(),
+            bucket,
+            prefix.unwrap_or("")
+        );
     }
 
     // Determine cache directory
@@ -72,10 +91,7 @@ async fn download_model_from_gcs_async(
 
     for object_name in all_objects {
         // Get just the filename (strip prefix if present)
-        let filename = object_name
-            .rsplit('/')
-            .next()
-            .unwrap_or(&object_name);
+        let filename = object_name.rsplit('/').next().unwrap_or(&object_name);
 
         let local_path = cache_dir.join(filename);
 
@@ -125,5 +141,10 @@ pub fn download_model_from_gcs_sync(
     progress_bar: bool,
 ) -> Vec<PathBuf> {
     let rt = Runtime::new().unwrap();
-    rt.block_on(download_model_from_gcs_async(bucket, prefix, cache_dir, progress_bar))
+    rt.block_on(download_model_from_gcs_async(
+        bucket,
+        prefix,
+        cache_dir,
+        progress_bar,
+    ))
 }

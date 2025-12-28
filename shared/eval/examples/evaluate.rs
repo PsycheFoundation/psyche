@@ -84,7 +84,11 @@ fn main() -> Result<()> {
             "".to_string()
         };
         let model_source = if let Some(ref bucket) = args.gcs_bucket {
-            format!("gs://{}/{}", bucket, args.gcs_prefix.as_deref().unwrap_or(""))
+            format!(
+                "gs://{}/{}",
+                bucket,
+                args.gcs_prefix.as_deref().unwrap_or("")
+            )
         } else {
             args.model.clone()
         };
