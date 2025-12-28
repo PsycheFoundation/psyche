@@ -124,6 +124,10 @@ struct Args {
     #[clap(long)]
     python: bool,
 
+    #[cfg(feature = "python")]
+    #[clap(long, default_value = "HfAuto")]
+    python_arch: String,
+
     prompt: Option<String>,
 }
 
@@ -164,7 +168,7 @@ fn inference(
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             if tp == 1 {
                 Box::new(psyche_modeling::PythonCausalLM::new(
-                    "hf-auto",
+                    &args.python_arch,
                     &source,
                     device,
                     attn_implementation,
@@ -174,7 +178,7 @@ fn inference(
             } else {
                 tracing::info!("Faking TP with FSDP");
                 Box::new(psyche_modeling::PythonDistributedCausalLM::new(
-                    "hf-auto".to_string(),
+                    args.python_arch,
                     source,
                     device,
                     attn_implementation,
