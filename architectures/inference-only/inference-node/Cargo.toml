@@ -37,6 +37,7 @@ iroh-gossip.workspace = true
 
 serde_json.workspace = true
 uuid = { version = "1", features = ["v4"] }
+postcard.workspace = true
 
 axum = { version = "0.7", optional = true }
 tower = { version = "0.4", optional = true }

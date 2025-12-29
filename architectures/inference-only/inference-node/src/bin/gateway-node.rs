@@ -8,21 +8,18 @@
 //!
 //!   cargo run --bin gateway-node --features gateway -- --discovery-mode local
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::Parser;
-use iroh::EndpointAddr;
+use iroh::{EndpointAddr, protocol::Router};
 use psyche_inference::{
-    InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
+    INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
     DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, RelayKind, allowlist,
 };
-use std::{collections::HashMap, fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
-use tokio::{
-    sync::{RwLock, mpsc},
-    time::sleep,
-};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
+use tokio::{sync::RwLock, time::sleep};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -60,8 +57,7 @@ struct InferenceNodeInfo {
 
 struct GatewayState {
     available_nodes: RwLock<HashMap<EndpointId, InferenceNodeInfo>>,
-    pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
-    network_tx: mpsc::Sender<InferenceMessage>,
+    router: Arc<Router>,
 }
 
 #[cfg(feature = "gateway")]
@@ -105,13 +101,14 @@ async fn handle_inference(
         return Err(AppError::NoNodesAvailable);
     }
 
-    let node = nodes.values().next().unwrap();
+    let node = nodes.values().next().unwrap().clone();
+    drop(nodes);
+
     info!(
         "Routing request to node: {} (model: {})",
         node.peer_id.fmt_short(),
         node.model_name
     );
-    drop(nodes);
 
     let request_id = uuid::Uuid::new_v4().to_string();
     let inference_req = InferenceRequest {
@@ -123,29 +120,12 @@ async fn handle_inference(
         stream: false,
     };
 
-    let (tx, mut rx) = mpsc::channel(1);
-
-    state
-        .pending_requests
-        .write()
+    let response = send_inference_request(state.router.clone(), node.peer_id, inference_req)
         .await
-        .insert(request_id.clone(), tx);
-
-    let msg = InferenceMessage::Request(inference_req);
-    if let Err(e) = state.network_tx.send(msg).await {
-        error!("Failed to send inference request: {:#}", e);
-        state.pending_requests.write().await.remove(&request_id);
-        return Err(AppError::InternalError);
-    }
-
-    info!("Sent inference request {} to network", request_id);
-
-    let response = tokio::time::timeout(Duration::from_secs(30), rx.recv())
-        .await
-        .map_err(|_| AppError::Timeout)?
-        .ok_or(AppError::InternalError)?;
-
-    state.pending_requests.write().await.remove(&request_id);
+        .map_err(|e| {
+            error!("Inference request failed: {:#}", e);
+            AppError::InternalError
+        })?;
 
     Ok(Json(InferenceResponseBody {
         request_id: response.request_id,
@@ -153,6 +133,50 @@ async fn handle_inference(
         full_text: response.full_text,
         finish_reason: response.finish_reason,
     }))
+}
+
+#[cfg(feature = "gateway")]
+async fn send_inference_request(
+    router: Arc<Router>,
+    peer_id: EndpointId,
+    request: InferenceRequest,
+) -> Result<InferenceResponse> {
+    info!("Connecting to inference node {}", peer_id.fmt_short());
+
+    let conn = router
+        .endpoint()
+        .connect(peer_id, INFERENCE_ALPN)
+        .await
+        .context("Failed to connect to inference node")?;
+
+    let (mut send, mut recv) = conn.open_bi().await.context("Failed to open stream")?;
+
+    let request_msg = InferenceMessage::Request(request);
+    let request_bytes =
+        postcard::to_allocvec(&request_msg).context("Failed to serialize request")?;
+
+    send.write_all(&request_bytes)
+        .await
+        .context("Failed to send request")?;
+    send.finish().context("Failed to finish send")?;
+
+    info!("Request sent, waiting for response...");
+
+    let response_bytes = recv
+        .read_to_end(1024 * 1024)
+        .await
+        .context("Failed to read response")?; // 1MB max
+
+    let response_msg: InferenceMessage =
+        postcard::from_bytes(&response_bytes).context("Failed to deserialize response")?;
+
+    match response_msg {
+        InferenceMessage::Response(response) => {
+            info!("Received response for request {}", response.request_id);
+            Ok(response)
+        }
+        _ => Err(anyhow::anyhow!("Unexpected response message type")),
+    }
 }
 
 #[cfg(feature = "gateway")]
@@ -261,16 +285,15 @@ async fn run_gateway() -> Result<()> {
     info!("Waiting for gossip mesh to stabilize...");
     sleep(Duration::from_secs(2)).await;
 
-    let (network_tx, mut network_rx) = mpsc::channel::<InferenceMessage>(100);
     let state = Arc::new(GatewayState {
         available_nodes: RwLock::new(HashMap::new()),
-        pending_requests: RwLock::new(HashMap::new()),
-        network_tx,
+        router: network.router(),
     });
 
     info!("Gateway ready! Listening on http://{}", args.listen_addr);
     info!("Discovering inference nodes...");
 
+    // P2P network events
     let network_handle = {
         let state = state.clone();
         let cancel = cancel.clone();
@@ -280,17 +303,6 @@ async fn run_gateway() -> Result<()> {
                     _ = cancel.cancelled() => {
                         info!("Network task shutting down");
                         break;
-                    }
-
-                    Some(msg) = network_rx.recv() => {
-                        debug!("Broadcasting inference message");
-                        let gossip_msg = match msg {
-                            InferenceMessage::Request(req) => {
-                                warn!("Direct P2P not yet implemented, using gossip broadcast");
-                                continue;
-                            }
-                            _ => continue,
-                        };
                     }
 
                     event = network.poll_next() => {
