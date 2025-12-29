@@ -25,7 +25,7 @@ jobs:
 
       - name: Download image from Garnix cache
         run: |
-          nix .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
+          nix build .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
