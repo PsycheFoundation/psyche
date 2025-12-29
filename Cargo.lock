@@ -7104,6 +7104,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-inference"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "pyo3",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "psyche-metrics"
 version = "0.1.0"
 dependencies = [
