@@ -104,6 +104,10 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
 ] }
 rayon = "1.10.0"
 
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors"] }
+
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }
 pretty_assertions = "1.4.1"

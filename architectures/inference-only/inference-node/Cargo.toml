@@ -39,9 +39,9 @@ serde_json.workspace = true
 uuid = { version = "1", features = ["v4"] }
 postcard.workspace = true
 
-axum = { version = "0.7", optional = true }
-tower = { version = "0.4", optional = true }
-tower-http = { version = "0.5", features = ["cors"], optional = true }
+axum = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
 
 [features]
 gateway = ["axum", "tower", "tower-http"]
