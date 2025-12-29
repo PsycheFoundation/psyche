@@ -19,7 +19,6 @@ use std::{fs, time::Duration};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-use psyche_inference::{InferenceGossipMessage, InferenceMessage, InferenceNode, InferenceRequest};
 
 #[derive(Parser, Debug)]
 #[command(name = "psyche-inference-node")]
@@ -196,6 +195,15 @@ async fn main() -> Result<()> {
     }
 
     tokio::time::sleep(Duration::from_secs(2)).await;
+
+    info!("Registering inference protocol handler...");
+    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
+    network
+        .router()
+        .endpoint()
+        .add_protocol(INFERENCE_ALPN, inference_protocol.into())
+        .await?;
+    info!("Protocol handler registered");
 
     // announce availability via gossip
     let availability_msg = InferenceGossipMessage::NodeAvailable {

@@ -24,7 +24,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_network::{
     DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, RelayKind, allowlist,
 };
-use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     sync::{RwLock, mpsc},
     time::sleep,
