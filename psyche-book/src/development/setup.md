@@ -20,7 +20,7 @@ To speed up your builds & your local dev shell, we recommend enabling the binary
 
 In order to use the cache that garnix provides, change your `nix.conf`, adding `https://cache.garnix.io` to substituters, and `cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=` to `trusted-public-keys`.
 
-If you've just installed Nix via the Determinite Systems installer above, you can do this by adding these lines to `/etc/nix/nix.conf`:
+If you've just installed Nix via the Determinate Systems installer above, you can do this by adding these lines to `/etc/nix/nix.conf`:
 
 ```conf
 extra-substituters = https://cache.garnix.io
