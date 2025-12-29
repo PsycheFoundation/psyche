@@ -73,6 +73,9 @@ iroh = { version = "0.96.0", features = ["metrics"] }
 iroh-relay = { version = "0.96.0", features = ["metrics"] }
 iroh-blobs = { version = "0.98", features = ["metrics"] }
 iroh-gossip = { version = "0.96.0" }
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
 flume = "0.11.1"
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"

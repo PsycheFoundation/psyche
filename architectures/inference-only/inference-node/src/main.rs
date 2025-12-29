@@ -10,14 +10,14 @@
 
 use anyhow::{Context, Result};
 use clap::{Args as ClapArgs, Parser, Subcommand};
-use psyche_inference::{InferenceGossipMessage, InferenceNode};
+use psyche_inference::{INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-use psyche_inference::{InferenceGossipMessage, InferenceMessage, InferenceNode, InferenceRequest};
 
 #[derive(Parser, Debug)]
 #[command(name = "psyche-inference-node")]
@@ -144,6 +144,9 @@ async fn main() -> Result<()> {
 
     info!("vLLM engine initialized successfully");
 
+    // Wrap inference node in Arc<RwLock> for sharing with protocol handler
+    let inference_node_shared = Arc::new(RwLock::new(Some(inference_node)));
+
     info!("Initializing P2P network...");
 
     let metrics = Arc::new(ClientMetrics::default());
@@ -168,6 +171,15 @@ async fn main() -> Result<()> {
 
     info!("✓ P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
+
+    info!("Registering inference protocol handler...");
+    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
+    network
+        .router()
+        .endpoint()
+        .add_protocol(INFERENCE_ALPN, inference_protocol.into())
+        .await?;
+    info!("Protocol handler registered");
 
     // Announce availability via gossip
     let availability_msg = InferenceGossipMessage::NodeAvailable {
@@ -239,7 +251,9 @@ async fn main() -> Result<()> {
     }
 
     info!("Shutting down inference node...");
-    inference_node.shutdown()?;
+    if let Some(node) = inference_node_shared.write().await.take() {
+        node.shutdown()?;
+    }
     info!("Shutdown complete");
 
     Ok(())
