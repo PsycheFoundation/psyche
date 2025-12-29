@@ -15,6 +15,10 @@ tracing.workspace = true
 uuid = { version = "1.10", features = ["v4"] }
 postcard.workspace = true
 
+# For protocol handler
+iroh.workspace = true
+tokio.workspace = true
+
 [dev-dependencies]
 # For integration tests
 serial_test = "3.2"
