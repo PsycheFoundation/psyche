@@ -29,6 +29,8 @@ sequenceDiagram
     end
 ```
 
+In this case the backend is just the layer of the Clients that communicates with the Coordinator, depending on the run nature it will communicate with Solana blockchain or just via TCP to the coordinator.
+
 ### Beginning an Epoch (state: WaitingForMembers)
 
 The Coordinator begins in the `WaitingForMembers` phase, with no clients connected.
@@ -45,44 +47,37 @@ sequenceDiagram
     Note over Coordinator: Entering Warmup
     Client1->>Client2: Connect
     Client2->>Client1: Connect
-    Note over Coordinator: The Warmup countdown elapses
-    Note over Coordinator: Entering Training
 ```
 
 ### Model Loading (state: Warmup)
 
 This phase is designed to let all clients download the model & load it onto their GPUs.
 
-If a client has dropped whilst waiting for the warmup time, the Backend then removes the client from the Coordinator's clients list.
+If a client has dropped whilst waiting for the warmup time to elapse, the Backend then removes the client from the Coordinator's clients list and in case the number of clients falls below `min_clients`, the Coordinator goes back to the `WaitingForMembers` phase and wait for more clients to join.
 
-If the number of clients falls below min_clients, the Coordinator goes back to the `WaitingForMembers` phase.
+There's two different ways the coordinator will transition to the `RoundTrain` phase:
 
-Once the `Warmup` time passes, the Coordinator loads all the information for the next training round and change its phase to `RoundTrain`. The Server will broadcast this `Training` Coordinator state to all clients.
+- If all the participant clients have finished loading the model and are ready to start training they send a specific message to the Coordinator and if the Coordinator receives this message from all clients, it transitions to the `RoundTrain` phase earlier.
+- If the `Warmup` max time passes the Coordinator will transition to the `RoundTrain` phase even if not all clients have finished loading the model. This max time is configurable and can be set in the configuration file.
+
+The Backend will watch for the state transition and all clients will be notified of this new `Training` Coordinator state.
 
 ### Training (state: RoundTrain)
 
-In this phase, the Coordinator provides a random seed.
-
-Each client can use this seed, alongside the current round index and epoch index to determine which indices of the training data to use.
-
-Each client then proceeds to run the training on the selected training data.
-
-This state will end when clients later exchanges `Witness` messages.
-
-#### Witnessing training results
+In this phase, the Coordinator provides a random seed, each client can use this seed, alongside the current round index and epoch index to determine which indices of the whole training batch they will train on. Basically every client will train on a different subset of the training data.
 
 As clients complete their training, they send their results to all other clients, including the Witnesses. The witnesses will each send a **witness proof** to the Coordinator, building towards a **witness quorum**.
 
 A witness proof contains a bloom filter describing which pieces of data the witness received training results for, and which clients did that work. Elected witnesses are responsible for creating these witness proofs and and sending them to the Coordinator.
 
-The witnesses for each round are chosen randomly from all the clients, using the same random seed as for data assignments. A witness will attempt to send an **opportunistic witness** message once it's seen a received a training result for every single batch in the current round.
-
-#### Witness Quorum
+The witnesses for each round are chosen randomly from all the clients, using the same random seed as for data assignments. A witness will attempt to send an **opportunistic witness** message once it's seen a received a training result for every single batch in the current round. That message lets the Coordinator know that it can transition to the _Witness_ phase without waiting all the training time.
 
 The Coordinator advances the run from the _Training_ phase to the _Witness_ phase in one of two ways:
 
 - If enough witnesses observe all results and reach a **witness quorum** for the round, they notify the Coordinator that it is safe to advance. This process, named **opportunistic witnessing**, accelerates the transition to the _Witness_ phase, rather than having to wait a fixed time for training results.
 - If witnesses do not receive all required results from other clients before the maximum time specified for the _Training_ phase, the Coordinator will nonetheless transition to the _Witness_ phase after the maximum _Training_ time elapses.
+
+The Backend will watch for the state transition and all clients will be notified of this new `Witness` Coordinator state.
 
 ### Witness phase (state: RoundWitness)
 
@@ -90,25 +85,60 @@ This phase exists to give the witnesses an opportunity to send their proofs to t
 
 There is also brief slack period for non-witness nodes to catch up by downloading any remaining results they might have not received.
 
-When the _Witness_ phase finishes via timeout, the Coordinator transitions from _Witness_ to the _Cooldown_ phase in three cases:
+When the _Witness_ phase finishes only reaching the maximum witness time, the Coordinator transitions from _Witness_ to the _Training_ phase again in most of the cases, it only transitions to a new state known as _Cooldown_ in the following three cases:
 
 - If we are in the last round of the epoch.
 - If the clients have dropped to less than the minimum required by the config.
 - If the number of witnesses for the round is less than the quorum specified by the config.
 
-Any clients that have failed health checks will also be removed from the current epoch.
+Any clients that have failed [health checks](#health-checks) will also be removed from the current epoch.
 
 ### Cooldown phase (state: Cooldown)
 
-The _Cooldown_ phase is the last phase of an epoch, during which the Coordinator waits for either the _Cooldown_ period to elapse, or a checkpoint to have happened.
+The _Cooldown_ phase is the last phase of an epoch, during which the Coordinator waits the _Cooldown_ period to elapse. At this point the clients will begin to do a new checkpoint of the model, this is saving the state of the model at that time to a external storage, such as a Hugging Face.
 
-When the _Cooldown_ phase begins, the Coordinator resets the current model checkpoint state to `Checkpoint::P2P`, signifying that new joiners should download the latest copy of the model from the other participants.
+When the _Cooldown_ phase begins, the Coordinator also resets the current model checkpoint state to `Checkpoint::P2P`, indicating that new joiners should download the latest copy of the model from the other participants and not from the usual checkpoint.
 
-Upon exiting the _Cooldown_ phase, the Coordinator transitions to the next epoch, saving the previous epoch state, and moving back to the _WaitingForMembers_ phase.
+Upon exiting the _Cooldown_ phase, the Coordinator transitions to the next epoch, saving the previous epoch state, and moving back to the _WaitingForMembers_ phase. All the clients that were participating in the previous epoch automatically join to the new epoch unless they exit manually.
 
 ### It all comes together
 
-Here is an overview of the whole process from a high level perspective:
+Here's is an overview of how the state of the run can change depending on the situation:
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'35px'}}}%%
+flowchart LR
+    WFM((Waiting For Members))
+    W((Warmup))
+    T((Training))
+    WI((Witness))
+    CD((Cooldown))
+    a{Are enough clients to start}
+    b{All clients loaded the model}
+    c{Max warmup time passed}
+    d{Witness quorum reached}
+    e{Max training time passed}
+    f{End of the epoch reached}
+
+    WFM --> a
+    a -->|Yes| W
+    a -->|No| WFM
+    b -->|Yes| T
+    b -->|No| c
+    W --> b
+    c -->|Yes| T
+    c -->|No| W
+    T --> d
+    d -->|Yes| WI
+    d -->|No| e
+    e -->|Yes| WI
+    WI --> f
+    f -->|Yes| CD
+    f -->|No| T
+    CD --> WFM
+```
+
+And this is how it fits with real the real clients and how they interact in each of the stages. The committee in this case is the structure that contains all the witness data for the round.
 
 ```mermaid
 sequenceDiagram
@@ -127,14 +157,14 @@ sequenceDiagram
     Note over Client1: Train
     Note over Client2: Train
     Note over Client2: Fill bloom filters
-    Client2->>Backend: try send opportunistic witness
+    Client2->>Backend: send opportunistic witness
     Backend->>Coordinator: Witness message
     Note over Coordinator: Enough witnesses for round
     Coordinator->>Coordinator: Update state to RoundWitness
     Note over Coordinator: Timeout round witness time
     alt step > total steps
-        Coordinator->>Coordinator: Update state to Waitingformembers
-    else height == rounds per epoch
+        Coordinator->>Coordinator: Update state to Finished
+    else current_epoch_time == max_time_per_epoch
         Coordinator->>Coordinator: Update state to Cooldown
     else
         Coordinator->>Coordinator: Update state to RoundTrain with step + 1
@@ -151,17 +181,14 @@ A client also sends a list of other clients it considers unhealthy to the server
 
 In this Backend, the Coordinator is owned and ticked forwards by a Server that communicates via clients over TCP.
 
-The Server's Coordinator is initially configured in `main.rs`.
-It's loaded using the configuration file `state.toml`.
+The Server's Coordinator is initially configured in the main file of the server.
+It's loaded using the configuration a specific configuration file `state.toml`
 
 ```mermaid
 flowchart LR
     S[Server] --run--> A[App]
     S --new--> C[Coordinator]
-    C --run_id
-        init warmup
-        min clients
-        model--> A
+    C --Run config--> A
 ```
 
 The Server uses some parts of the Coordinator configuration, like the data server configuration, if enabled, to boot up all the functionality it needs.
@@ -191,6 +218,8 @@ flowchart LR
 ```
 
 ### Decentralized training flow
+
+Here's a more detailed diagram including mostly every component involved in the Psyche training flow with a little more implementation details:
 
 ```mermaid
 flowchart TD

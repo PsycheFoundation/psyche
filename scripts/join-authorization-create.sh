@@ -31,7 +31,7 @@ GRANTOR_PUBKEY=$(solana-keygen pubkey $GRANTOR_KEYPAIR_FILE)
 GRANTEE_PUBKEY="$1"
 shift
 
-PSYCHE_AUTHORIZER_ID="PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw"
+PSYCHE_AUTHORIZER_ID=$(solana-keygen pubkey architectures/decentralized/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json)
 PSYCHE_AUTH_SCOPE="utf8:CoordinatorJoinRun"
 
 # Make sure all is good to go
@@ -54,7 +54,7 @@ AUTHORIZATION_CREATE_JSON=$( \
         --args=params.scope:$PSYCHE_AUTH_SCOPE \
         --execute
 )
-echo $AUTHORIZATION_CREATE_JSON | jq -r .outcome.explorer
+echo $AUTHORIZATION_CREATE_JSON | jq -r .outcome.explorer_url
 echo "----"
 
 # Extract the authorization PDA from the JSON response
@@ -72,5 +72,5 @@ AUTHORIZATION_ACTIVATE_JSON=$( \
         authorization:$AUTHORIZATION_PUBKEY \
         --execute
 )
-echo $AUTHORIZATION_ACTIVATE_JSON | jq -r .outcome.explorer
+echo $AUTHORIZATION_ACTIVATE_JSON | jq -r .outcome.explorer_url
 echo "----"

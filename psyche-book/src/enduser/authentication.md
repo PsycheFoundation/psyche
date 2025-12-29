@@ -28,35 +28,11 @@ This is done through the following steps:
 2. The `authorizer` (the grantee) sets a list of `delegate` keys that can join the run on its behalf
 3. The `delegate` key then can join a run
 
-## Keys Authorizations
+## Permissionless Runs
 
-Make sure to install the scripting dependencies:
+Permissionless runs are open to anyone without any `authorization` required. The owner of the run can set this for a run when creating it.
 
-```bash
-sudo apt-get install jq
-cargo install solana_toolbox_cli
-```
-
-For the `join_authority` (the grantor) to issues new `authorization` a script is provided:
-
-```sh
-# We assume that "grantor.json" contains the Private Key of the "join_authority"
-# The "grantor.json" can be created using: $ solana-keygen new -o grantee.json
-# We assume that $GRANTEE_PUBKEY is set to the public key of the "authorizer" (or grantee)
-# The $GRANTEE_PUBKEY can be retrieved by using: $ solana-keygen pubkey grantee.json
-sh scripts/join-authorization-create.sh devnet grantor.json $GRANTEE_PUBKEY
-```
-
-For the `authorizer` (the grantee) to set a list of delegate, the following script is provided:
-
-```sh
-# We assume that $GRANTOR_PUBKEY is set to the public key of the "join_authority" of the run
-# The $GRANTOR_PUBKEY can be retrieved by using: $ solana-keygen pubkey grantor.json
-# We assume that "grantee.json" contains the Private Key of the "authorizer"
-# The "grantee.json" can be created using: $ solana-keygen new -o grantee.json
-# We assume that a set of keypairs exist at path: delegate1.json, delegate2.json, etc
-sh scripts/join-authorization-set-delegates.sh devnet $GRANTOR_PUBKEY grantee.json delegate*.json
-```
+To see how to create an authorization for a permissioned or permissionless run, see the [Authorization section](./create-run.md#Setting-up-Join-Authorizations) in the create run guide.
 
 ## Further information
 

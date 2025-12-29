@@ -55,7 +55,7 @@ validator, build and deploy the Coordinator program and create a training run.
 For creating a lightweight run, you can use
 
 ```bash
-just setup-solana-localnet-light-test-run
+just dev setup-solana-localnet-light-test-run
 ```
 
 When the Solana setup finishes, you will see a log saying

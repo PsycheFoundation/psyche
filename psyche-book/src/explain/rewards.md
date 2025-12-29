@@ -2,7 +2,7 @@
 
 When clients participate in a training run, the `Coordinator` keeps track of the compute contributions.
 
-Each client is rewarded at the end of an epoch if the client sucessfully completed the whole epoch. A pool of reward "points" is shared equally among all the finishing clients of a given epoch. The reward is accounted through a counter of `earned` "points" for each client. The points can then be used as proof of contribution in rewards mechanisms such as the `Treasurer` (see below)
+Each client is rewarded at the end of an epoch if the client successfully completed the whole epoch. A pool of reward "points" is shared equally among all the finishing clients of a given epoch. The reward is accounted through a counter of `earned` "points" for each client. The points can then be used as proof of contribution in rewards mechanisms such as the `Treasurer` (see below)
 
 ## Run Treasurer, Compute Incentives
 
