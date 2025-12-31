@@ -19,17 +19,13 @@ architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 64
 cold_start_warmup_steps = 0
+data_locations = [
+  { Http = { location = { SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds" }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } },
+]
 
 [model.LLM.checkpoint.Hub]
 repo_id = "pefontana/Nano-Llama"
 revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
-
-[model.LLM.data_location.Http]
-token_size_in_bytes = "TwoBytes"
-shuffle = "DontShuffle"
-
-[model.LLM.data_location.Http.location]
-SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds"
 
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4

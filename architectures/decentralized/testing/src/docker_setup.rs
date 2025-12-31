@@ -8,6 +8,7 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_client::IntegrationTestLogMarker;
+use psyche_coordinator::model::LLMTrainingDataLocation;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,14 +56,21 @@ impl Drop for DockerTestCleanup {
     }
 }
 
-/// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
 ) -> DockerTestCleanup {
+    e2e_testing_setup_with_datasource(docker_client, init_num_clients, None).await
+}
+
+pub async fn e2e_testing_setup_with_datasource(
+    docker_client: Arc<Docker>,
+    init_num_clients: usize,
+    data_source: Option<Vec<LLMTrainingDataLocation>>,
+) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
 
-    spawn_psyche_network(init_num_clients).unwrap();
+    spawn_psyche_network(init_num_clients, data_source).unwrap();
 
     spawn_ctrl_c_task();
 
@@ -72,15 +80,18 @@ pub async fn e2e_testing_setup(
 pub async fn e2e_testing_setup_subscription(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
+    data_source: Option<Vec<LLMTrainingDataLocation>>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
     #[cfg(not(feature = "python"))]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .build();
     #[cfg(feature = "python")]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .with_architecture("HfAuto")
         .with_batch_size(8 * init_num_clients as u32)
         .build();
@@ -233,14 +244,19 @@ pub async fn spawn_new_client_with_monitoring(
 }
 
 // Updated spawn function
-pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
+pub fn spawn_psyche_network(
+    init_num_clients: usize,
+    data_source: Option<Vec<LLMTrainingDataLocation>>,
+) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .build();
     #[cfg(feature = "python")]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_data_source(data_source)
         .with_architecture("HfAuto")
         .with_batch_size(8 * init_num_clients as u32)
         .build();

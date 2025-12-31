@@ -31,7 +31,7 @@ GRANTOR_PUBKEY=$(solana-keygen pubkey $GRANTOR_KEYPAIR_FILE)
 GRANTEE_PUBKEY="$1"
 shift
 
-PSYCHE_AUTHORIZER_ID="PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw"
+PSYCHE_AUTHORIZER_ID=$(solana-keygen pubkey ./architectures/decentralized/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json)
 PSYCHE_AUTH_SCOPE="utf8:CoordinatorJoinRun"
 
 # Make sure all is good to go
