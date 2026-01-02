@@ -35,7 +35,6 @@ pub async fn command_join_authorization_read_execute(
     println!("Authorization Address: {}", authorization_address);
 
     let authorization_content = backend.get_authorization(&authorization_address).await?;
-
     println!("Authorization Active: {}", authorization_content.active);
     println!(
         "Authorization Delegate Count: {}",

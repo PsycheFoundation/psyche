@@ -33,6 +33,7 @@ pub async fn command_join_authorization_delegate_execute(
 
     println!("Authorization Grantor: {}", grantor);
     println!("Authorization Grantee: {}", grantee);
+
     println!(
         "Authorization Address: {}",
         psyche_solana_authorizer::find_authorization(&grantor, &grantee, scope)
@@ -44,21 +45,22 @@ pub async fn command_join_authorization_delegate_execute(
         println!("- Delegate added: {}", delegate_added);
     }
 
-    let instruction = instructions::authorizer_authorization_grantee_update(
-        &payer,
-        &grantor,
-        &grantee,
-        scope,
-        delegates_clear,
-        delegates_added,
-    );
-
-    let signature = backend
-        .send_and_retry("Authorization set delegates", &[instruction], &[])
-        .await?;
     println!(
         "Updated authorization delegates in transaction: {}",
-        signature
+        backend
+            .send_and_retry(
+                "Authorization set delegates",
+                &[instructions::authorizer_authorization_grantee_update(
+                    &payer,
+                    &grantor,
+                    &grantee,
+                    scope,
+                    delegates_clear,
+                    delegates_added,
+                )],
+                &[]
+            )
+            .await?
     );
 
     Ok(())

@@ -4,6 +4,7 @@ pub mod close_run;
 pub mod create_run;
 pub mod join_authorization_create;
 pub mod join_authorization_delegate;
+pub mod join_authorization_delete;
 pub mod join_authorization_read;
 pub mod json_dump_run;
 pub mod json_dump_user;

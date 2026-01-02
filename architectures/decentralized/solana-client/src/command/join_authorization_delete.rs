@@ -1,4 +1,6 @@
+use anchor_client::solana_sdk::clock::Clock;
 use anchor_client::solana_sdk::pubkey::Pubkey;
+use anchor_client::solana_sdk::sysvar::Sysvar;
 use anyhow::Result;
 use clap::Args;
 
@@ -7,18 +9,17 @@ use crate::instructions;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
-pub struct CommandJoinAuthorizationCreateParams {
+pub struct CommandJoinAuthorizationDeleteParams {
     #[clap(long, env)]
     authorizer: Pubkey,
 }
 
-pub async fn command_join_authorization_create_execute(
+pub async fn command_join_authorization_delete_execute(
     backend: SolanaBackend,
-    params: CommandJoinAuthorizationCreateParams,
+    params: CommandJoinAuthorizationDeleteParams,
 ) -> Result<()> {
-    let CommandJoinAuthorizationCreateParams { authorizer } = params;
+    let CommandJoinAuthorizationDeleteParams { authorizer } = params;
 
-    let payer = backend.get_payer();
     let grantor = backend.get_payer();
     let grantee = authorizer;
     let scope = psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
@@ -29,35 +30,18 @@ pub async fn command_join_authorization_create_execute(
     let authorization_address =
         psyche_solana_authorizer::find_authorization(&grantor, &grantee, scope);
     println!("Authorization Address: {}", authorization_address);
-    let authorization_lamports = backend.get_balance(&authorization_address).await?;
-    println!("Authorization Lamports: {}", authorization_lamports);
-
-    if authorization_lamports == 0 {
-        println!(
-            "Created authorization in transaction: {}",
-            backend
-                .send_and_retry(
-                    "Authorization create",
-                    &[instructions::authorizer_authorization_create(
-                        &payer, &grantor, &grantee, scope,
-                    )],
-                    &[],
-                )
-                .await?
-        );
-    }
 
     let authorization_content = backend.get_authorization(&authorization_address).await?;
     println!("Authorization Active: {}", authorization_content.active);
 
-    if !authorization_content.active {
+    if authorization_content.active {
         println!(
-            "Activated authorization in transaction: {}",
+            "Deactivated authorization in transaction: {}",
             backend
                 .send_and_retry(
-                    "Authorization activate",
+                    "Authorization deactivate",
                     &[instructions::authorizer_authorization_grantor_update(
-                        &grantor, &grantee, scope, true
+                        &grantor, &grantee, scope, false,
                     )],
                     &[],
                 )

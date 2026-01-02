@@ -11,6 +11,8 @@ use crate::command::join_authorization_create::CommandJoinAuthorizationCreatePar
 use crate::command::join_authorization_create::command_join_authorization_create_execute;
 use crate::command::join_authorization_delegate::CommandJoinAuthorizationDelegateParams;
 use crate::command::join_authorization_delegate::command_join_authorization_delegate_execute;
+use crate::command::join_authorization_delete::CommandJoinAuthorizationDeleteParams;
+use crate::command::join_authorization_delete::command_join_authorization_delete_execute;
 use crate::command::join_authorization_read::CommandJoinAuthorizationReadParams;
 use crate::command::join_authorization_read::command_join_authorization_read_execute;
 use crate::command::json_dump_run::CommandJsonDumpRunParams;
@@ -222,6 +224,14 @@ enum Commands {
         wallet: WalletArgs,
         #[clap(flatten)]
         params: CommandJoinAuthorizationDelegateParams,
+    },
+    JoinAuthorizationDelete {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationDeleteParams,
     },
     JoinAuthorizationRead {
         #[clap(flatten)]
@@ -608,6 +618,20 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_join_authorization_delegate_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationDelete {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Arc::new(wallet.try_into()?),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_delete_execute(backend, params).await
         }
         Commands::JoinAuthorizationRead { cluster, params } => {
             let backend = SolanaBackend::new(

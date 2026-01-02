@@ -63,6 +63,15 @@ psyche-solana-client join-authorization-delegate \
     --delegates-added [USER_DELEGATES_PUBKEYS] # Multiple pubkeys can be added
 ```
 
+Removing the authorization is also possible through CLI:
+
+```sh
+psyche-solana-client join-authorization-delete \
+    --rpc [RPC] \
+    --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
+    --authorizer [USER_MASTER_PUBKEY]
+```
+
 ## Further information
 
 The source code for the `authorizer` smart contract used by the Psyche's coordinator can be found here with its readme: <https://github.com/PsycheFoundation/psyche/tree/main/architectures/decentralized/solana-authorizer>
