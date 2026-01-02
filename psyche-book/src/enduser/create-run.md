@@ -22,12 +22,13 @@ We'll need a private key that manages join permissions, we'll call it: `join_aut
 
 #### Join Authority for Public Runs
 
-If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone.
+If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone. In this case, if we set the authorizer to 11111111111111111111111111111111 it will be valid for everyone.
 
 ```sh
 psyche-solana-client join-authorization-create \
     --rpc [RPC] \
-    --wallet-private-key-path join_authority.json
+    --wallet-private-key-path join_authority.json \
+    --authorizer 11111111111111111111111111111111
 ```
 
 #### Join Authority for Private Runs

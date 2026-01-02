@@ -1,5 +1,4 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anchor_client::solana_sdk::system_program;
 use anyhow::Result;
 use clap::Args;
 
@@ -10,7 +9,7 @@ use crate::instructions;
 #[command()]
 pub struct CommandJoinAuthorizationCreateParams {
     #[clap(long, env)]
-    authorizer: Option<Pubkey>,
+    authorizer: Pubkey,
 }
 
 pub async fn command_join_authorization_create_execute(
@@ -21,7 +20,7 @@ pub async fn command_join_authorization_create_execute(
 
     let payer = backend.get_payer();
     let grantor = backend.get_payer();
-    let grantee = authorizer.unwrap_or(system_program::ID);
+    let grantee = authorizer;
     let scope = psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 
     println!("Authorization Grantor: {}", grantor);

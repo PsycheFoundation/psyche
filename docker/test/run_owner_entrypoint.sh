@@ -10,7 +10,8 @@ solana airdrop 10 "$(solana-keygen pubkey)"
 
 psyche-solana-client join-authorization-create \
     --wallet-private-key-path ${WALLET_FILE} \
-    --rpc "${RPC}"
+    --rpc "${RPC}" \
+    --authorizer 11111111111111111111111111111111
 
 psyche-solana-client create-run \
     --wallet-private-key-path ${WALLET_FILE} \

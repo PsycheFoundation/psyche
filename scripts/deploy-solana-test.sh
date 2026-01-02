@@ -75,7 +75,8 @@ echo -e "\n[+] Creating authorization for everyone to join the run"
 cargo run --release --bin psyche-solana-client -- \
     join-authorization-create \
     --wallet-private-key-path ${WALLET_FILE} \
-    --rpc ${RPC}
+    --rpc ${RPC} \
+    --authorizer 11111111111111111111111111111111
 
 echo -e "\n[+] Creating training run..."
 cargo run --release --bin psyche-solana-client -- \
