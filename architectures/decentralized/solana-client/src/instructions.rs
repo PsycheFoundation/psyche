@@ -353,6 +353,75 @@ pub fn treasurer_participant_claim(
     )
 }
 
+pub fn authorizer_authorization_create(
+    payer: &Pubkey,
+    grantor: &Pubkey,
+    grantee: &Pubkey,
+    scope: &[u8],
+) -> Instruction {
+    let authorization = psyche_solana_authorizer::find_authorization(grantor, grantee, scope);
+    anchor_instruction(
+        psyche_solana_authorizer::ID,
+        psyche_solana_authorizer::accounts::AuthorizationCreateAccounts {
+            payer: *payer,
+            grantor: *grantor,
+            authorization,
+            system_program: system_program::ID,
+        },
+        psyche_solana_authorizer::instruction::AuthorizationCreate {
+            params: psyche_solana_authorizer::logic::AuthorizationCreateParams {
+                grantee: *grantee,
+                scope: scope.to_vec(),
+            },
+        },
+    )
+}
+
+pub fn authorizer_authorization_grantor_update(
+    grantor: &Pubkey,
+    grantee: &Pubkey,
+    scope: &[u8],
+    active: bool,
+) -> Instruction {
+    let authorization = psyche_solana_authorizer::find_authorization(grantor, grantee, scope);
+    anchor_instruction(
+        psyche_solana_authorizer::ID,
+        psyche_solana_authorizer::accounts::AuthorizationGrantorUpdateAccounts {
+            grantor: *grantor,
+            authorization,
+        },
+        psyche_solana_authorizer::instruction::AuthorizationGrantorUpdate {
+            params: psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams { active },
+        },
+    )
+}
+
+pub fn authorizer_authorization_grantee_update(
+    payer: &Pubkey,
+    grantor: &Pubkey,
+    grantee: &Pubkey,
+    scope: &[u8],
+    delegates_clear: bool,
+    delegates_added: Vec<Pubkey>,
+) -> Instruction {
+    let authorization = psyche_solana_authorizer::find_authorization(grantor, grantee, scope);
+    anchor_instruction(
+        psyche_solana_authorizer::ID,
+        psyche_solana_authorizer::accounts::AuthorizationGranteeUpdateAccounts {
+            payer: *payer,
+            grantee: *grantee,
+            authorization,
+            system_program: system_program::ID,
+        },
+        psyche_solana_authorizer::instruction::AuthorizationGranteeUpdate {
+            params: psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams {
+                delegates_clear,
+                delegates_added,
+            },
+        },
+    )
+}
+
 fn anchor_instruction<Accounts: ToAccountMetas, Args: InstructionData>(
     program_id: Pubkey,
     accounts: Accounts,
