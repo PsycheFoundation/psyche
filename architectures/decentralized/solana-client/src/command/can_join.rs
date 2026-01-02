@@ -49,7 +49,10 @@ pub async fn command_can_join_execute(
         authorizer,
     );
     if backend.get_balance(&authorization).await? == 0 {
-        bail!("Authorization does not exist for authorizer: {authorizer:?} and user: {address}");
+        bail!(
+            "Authorization does not exist for authorizer: {authorizer:?} (authorization address: {authorization:?}, join authority: {0:?}). Authorizer must be set to grantee pubkey for permissioned runs",
+            coordinator_instance_state.join_authority
+        );
     }
     if !backend
         .get_authorization(&authorization)
