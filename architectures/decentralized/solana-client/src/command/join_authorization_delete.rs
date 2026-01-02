@@ -1,6 +1,4 @@
-use anchor_client::solana_sdk::clock::Clock;
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anchor_client::solana_sdk::sysvar::Sysvar;
 use anyhow::Result;
 use clap::Args;
 
