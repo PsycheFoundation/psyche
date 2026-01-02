@@ -201,6 +201,22 @@ enum Commands {
         #[clap(flatten)]
         params: CommandJsonDumpUserParams,
     },
+    JoinAuthorizationCreate {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationCreateParams,
+    },
+    JoinAuthorizationDelegate {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationDelegateParams,
+    },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
     PrintAllHelp {
@@ -552,6 +568,34 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_json_dump_user_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationCreate {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_create_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationDelegate {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_delegate_execute(backend, params).await
         }
         Commands::PrintAllHelp { markdown } => {
             // This is a required argument for the time being.
