@@ -30,32 +30,24 @@ This is done through the following steps:
 
 ## Keys Authorizations
 
-Make sure to install the scripting dependencies:
-
-```bash
-sudo apt-get install jq
-cargo install solana_toolbox_cli
-```
-
-For the `join_authority` (the grantor) to issues new `authorization` a script is provided:
+For the `join_authority` (the grantor) to issues new `authorization` a CLI is provided:
 
 ```sh
-# We assume that "grantor.json" contains the Private Key of the "join_authority"
-# The "grantor.json" can be created using: $ solana-keygen new -o grantee.json
-# We assume that $GRANTEE_PUBKEY is set to the public key of the "authorizer" (or grantee)
-# The $GRANTEE_PUBKEY can be retrieved by using: $ solana-keygen pubkey grantee.json
-sh scripts/join-authorization-create.sh devnet grantor.json $GRANTEE_PUBKEY
+psyche-solana-client join-authorization-create \
+    --rpc [RPC] \
+    --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
+    --authorizer [USER_MASTER_PUBKEY]
 ```
 
-For the `authorizer` (the grantee) to set a list of delegate, the following script is provided:
+For the `authorizer` (the grantee) to set a list of delegate, the following CLI is provided:
 
 ```sh
-# We assume that $GRANTOR_PUBKEY is set to the public key of the "join_authority" of the run
-# The $GRANTOR_PUBKEY can be retrieved by using: $ solana-keygen pubkey grantor.json
-# We assume that "grantee.json" contains the Private Key of the "authorizer"
-# The "grantee.json" can be created using: $ solana-keygen new -o grantee.json
-# We assume that a set of keypairs exist at path: delegate1.json, delegate2.json, etc
-sh scripts/join-authorization-set-delegates.sh devnet $GRANTOR_PUBKEY grantee.json delegate*.json
+psyche-solana-client join-authorization-delegate \
+    --rpc [RPC] \
+    --wallet-private-key-path [USER_MASTER_KEYPAIR_FILE] \
+    --join-authority [JOIN_AUTHORITY_PUBKEY]
+    --delegates-clear [true/false]
+    --delegates-added [DELEGATE_PUBKEY]+
 ```
 
 ## Further information

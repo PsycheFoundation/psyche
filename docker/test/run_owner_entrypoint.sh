@@ -8,7 +8,10 @@ WALLET_FILE="/root/.config/solana/id.json"
 
 solana airdrop 10 "$(solana-keygen pubkey)"
 
-bash /bin/join-authorization-create.sh ${RPC} ${WALLET_FILE} 11111111111111111111111111111111
+psyche-solana-client join-authorization-create \
+    --wallet-private-key-path ${WALLET_FILE} \
+    --rpc "${RPC}"
+
 psyche-solana-client create-run \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \

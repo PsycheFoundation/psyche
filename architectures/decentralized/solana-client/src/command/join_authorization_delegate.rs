@@ -12,7 +12,7 @@ pub struct CommandJoinAuthorizationDelegateParams {
     join_authority: Pubkey,
     #[clap(long, env, default_value_t = false)]
     delegates_clear: bool,
-    #[clap(long, env, alias = "delegate-added", value_name = "PUBKEY(S)")]
+    #[clap(long, env, alias = "delegate-added", num_args = 0.., value_name = "PUBKEY(S)")]
     delegates_added: Vec<Pubkey>,
 }
 

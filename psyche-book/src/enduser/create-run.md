@@ -25,7 +25,9 @@ We'll need a private key that manages join permissions, we'll call it: `join_aut
 If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone.
 
 ```sh
-sh scripts/join-authorization-create.sh [RPC] join_authority.json 11111111111111111111111111111111
+psyche-solana-client join-authorization-create \
+    --rpc [RPC] \
+    --wallet-private-key-path join_authority.json
 ```
 
 #### Join Authority for Private Runs
@@ -33,7 +35,10 @@ sh scripts/join-authorization-create.sh [RPC] join_authority.json 11111111111111
 If we'll only allow some users to join the run we'll need to create one authorization per user (each user can then set multiple delegate keys later)
 
 ```sh
-sh scripts/join-authorization-create.sh [RPC] join_authority.json [MY_USER_PUBKEY]
+psyche-solana-client join-authorization-create \
+    --rpc [RPC] \
+    --wallet-private-key-path join_authority.json \
+    --authorizer [MY_USER_PUBKEY]
 ```
 
 ### Creating a run without token rewards

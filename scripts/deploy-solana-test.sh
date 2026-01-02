@@ -72,7 +72,10 @@ echo -e "\n[+] Treasurer program deployed successfully!"
 popd
 
 echo -e "\n[+] Creating authorization for everyone to join the run"
-bash ./scripts/join-authorization-create.sh ${RPC} ${WALLET_FILE} 11111111111111111111111111111111
+cargo run --release --bin psyche-solana-client -- \
+    join-authorization-create \
+    --wallet-private-key-path ${WALLET_FILE} \
+    --rpc ${RPC}
 
 echo -e "\n[+] Creating training run..."
 cargo run --release --bin psyche-solana-client -- \
