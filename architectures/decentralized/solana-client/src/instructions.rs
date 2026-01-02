@@ -388,7 +388,7 @@ pub fn authorizer_authorization_grantor_update(
         psyche_solana_authorizer::ID,
         psyche_solana_authorizer::accounts::AuthorizationGrantorUpdateAccounts {
             grantor: *grantor,
-            authorization: *authorization,
+            authorization,
         },
         psyche_solana_authorizer::instruction::AuthorizationGrantorUpdate {
             params: psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams { active },
@@ -410,7 +410,7 @@ pub fn authorizer_authorization_grantee_update(
         psyche_solana_authorizer::accounts::AuthorizationGranteeUpdateAccounts {
             payer: *payer,
             grantee: *grantee,
-            authorization: *authorization,
+            authorization,
             system_program: system_program::ID,
         },
         psyche_solana_authorizer::instruction::AuthorizationGranteeUpdate {

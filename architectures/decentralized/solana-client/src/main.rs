@@ -7,6 +7,12 @@ use crate::command::close_run::CommandCloseRunParams;
 use crate::command::close_run::command_close_run_execute;
 use crate::command::create_run::CommandCreateRunParams;
 use crate::command::create_run::command_create_run_execute;
+use crate::command::join_authorization_create::CommandJoinAuthorizationCreateParams;
+use crate::command::join_authorization_create::command_join_authorization_create_execute;
+use crate::command::join_authorization_delegate::CommandJoinAuthorizationDelegateParams;
+use crate::command::join_authorization_delegate::command_join_authorization_delegate_execute;
+use crate::command::join_authorization_read::CommandJoinAuthorizationReadParams;
+use crate::command::join_authorization_read::command_join_authorization_read_execute;
 use crate::command::json_dump_run::CommandJsonDumpRunParams;
 use crate::command::json_dump_run::command_json_dump_run_execute;
 use crate::command::json_dump_user::CommandJsonDumpUserParams;
@@ -216,6 +222,12 @@ enum Commands {
         wallet: WalletArgs,
         #[clap(flatten)]
         params: CommandJoinAuthorizationDelegateParams,
+    },
+    JoinAuthorizationRead {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationReadParams,
     },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
@@ -577,7 +589,7 @@ async fn async_main() -> Result<()> {
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
-                Keypair::new().into(),
+                Arc::new(wallet.try_into()?),
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
@@ -591,11 +603,21 @@ async fn async_main() -> Result<()> {
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
-                Keypair::new().into(),
+                Arc::new(wallet.try_into()?),
                 CommitmentConfig::confirmed(),
             )
             .unwrap();
             command_join_authorization_delegate_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationRead { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_read_execute(backend, params).await
         }
         Commands::PrintAllHelp { markdown } => {
             // This is a required argument for the time being.

@@ -1,9 +1,10 @@
-pub mod authorization_create;
-pub mod authorization_delegate;
 pub mod can_join;
 pub mod checkpoint;
 pub mod close_run;
 pub mod create_run;
+pub mod join_authorization_create;
+pub mod join_authorization_delegate;
+pub mod join_authorization_read;
 pub mod json_dump_run;
 pub mod json_dump_user;
 pub mod set_future_epoch_rates;

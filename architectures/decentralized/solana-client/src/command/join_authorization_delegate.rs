@@ -1,22 +1,18 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anchor_spl::associated_token;
 use anyhow::Result;
 use clap::Args;
-use serde_json::json;
-use serde_json::to_string_pretty;
 
 use crate::SolanaBackend;
 use crate::instructions;
-use crate::utils::native_amount_to_ui_amount;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
 pub struct CommandJoinAuthorizationDelegateParams {
-    #[clap(long, env, value_name = "PUBKEY")]
-    join_authority: Pubkey,
     #[clap(long, env)]
+    join_authority: Pubkey,
+    #[clap(long, env, default_value_t = false)]
     delegates_clear: bool,
-    #[clap(long, env, value_name = "PUBKEYS", alias = "delegate_added")]
+    #[clap(long, env, alias = "delegate-added", value_name = "PUBKEY(S)")]
     delegates_added: Vec<Pubkey>,
 }
 
@@ -39,8 +35,14 @@ pub async fn command_join_authorization_delegate_execute(
     println!("Authorization Grantee: {}", grantee);
     println!(
         "Authorization Address: {}",
-        psyche_solana_authorizer::find_authorization(grantor, grantee, scope)
+        psyche_solana_authorizer::find_authorization(&grantor, &grantee, scope)
     );
+
+    println!("Delegates cleared: {}", delegates_clear);
+    println!("Delegates added count: {}", delegates_added.len());
+    for delegate_added in &delegates_added {
+        println!("- Delegate added: {}", delegate_added);
+    }
 
     let instruction = instructions::authorizer_authorization_grantee_update(
         &payer,
@@ -52,11 +54,7 @@ pub async fn command_join_authorization_delegate_execute(
     );
 
     let signature = backend
-        .send_and_retry(
-            "Authorization create",
-            &[instruction_create, instruction_activate],
-            &[],
-        )
+        .send_and_retry("Authorization set delegates", &[instruction], &[])
         .await?;
     println!(
         "Updated authorization delegates in transaction: {}",

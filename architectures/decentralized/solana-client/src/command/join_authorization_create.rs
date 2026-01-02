@@ -1,19 +1,15 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anchor_spl::associated_token;
+use anchor_client::solana_sdk::system_program;
 use anyhow::Result;
 use clap::Args;
-use psyche_solana_authorizer::find_authorization;
-use serde_json::json;
-use serde_json::to_string_pretty;
 
 use crate::SolanaBackend;
 use crate::instructions;
-use crate::utils::native_amount_to_ui_amount;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
 pub struct CommandJoinAuthorizationCreateParams {
-    #[clap(long, env, value_name = "PUBKEY")]
+    #[clap(long, env)]
     authorizer: Option<Pubkey>,
 }
 
@@ -32,7 +28,7 @@ pub async fn command_join_authorization_create_execute(
     println!("Authorization Grantee: {}", grantee);
     println!(
         "Authorization Address: {}",
-        psyche_solana_authorizer::find_authorization(grantor, grantee, scope)
+        psyche_solana_authorizer::find_authorization(&grantor, &grantee, scope)
     );
 
     let instruction_create =
