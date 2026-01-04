@@ -6888,6 +6888,7 @@ dependencies = [
  "rand 0.9.2",
  "serde",
  "sha2 0.10.9",
+ "tikv-jemallocator",
  "tokio",
  "tokio-stream",
  "tokio-util 0.7.16",

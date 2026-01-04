@@ -7,14 +7,18 @@ use clap::{ArgAction, Parser};
 use psyche_centralized_shared::ClientId;
 use psyche_coordinator::Coordinator;
 use psyche_tui::{
-    LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
+    LogOutput, ServiceInfo,
 };
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
 use tracing::{error, info};
+
+#[cfg(target_family = "unix")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[derive(Parser, Debug)]
 struct Args {
