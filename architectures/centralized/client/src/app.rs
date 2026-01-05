@@ -171,7 +171,6 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
-        // sanity checks
         let api = hf_hub::api::tokio::ApiBuilder::new()
             .with_token(Some(
                 state_options.checkpoint_config.hub_upload.hub_token.clone(),

@@ -274,7 +274,7 @@ pub struct CoordinatorEpochState<T> {
     /// `get_historical_clients` is what you actually want.
     pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
-    pub checkpointer: T,
+    pub checkpointer: Client<T>,
     pub rounds_head: u32,
     pub start_step: u32,
     pub last_step: u32,
@@ -413,7 +413,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             first_round: true.into(),
             clients: Default::default(),
             exited_clients: Default::default(),
-            checkpointer: T::default(),
+            checkpointer: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
             last_step: Default::default(),
@@ -625,7 +625,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidRunState);
         }
 
-        if self.epoch_state.checkpointer != *from {
+        if self.epoch_state.checkpointer.id != *from {
             return Err(CoordinatorError::InvalidWitness);
         } else {
             self.epoch_state.checkpointed = true;
@@ -951,8 +951,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                         .map(|x| Client::new(*x)),
                 )
                 .unwrap();
-
-            self.epoch_state.checkpointer = self.epoch_state.clients[0].id;
+            self.epoch_state.checkpointer = self.epoch_state.clients.random().unwrap();
             self.start_warmup(unix_timestamp);
         }
 

@@ -1,5 +1,6 @@
 use crate::HubUploadInfo;
 
+use psyche_coordinator::Client;
 use psyche_coordinator::{
     Coordinator,
     model::{self, HubRepo},
@@ -143,7 +144,7 @@ impl CooldownStepMetadata {
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
-        let checkpointer: T = state.epoch_state.checkpointer;
+        let checkpointer: Client<T> = state.epoch_state.checkpointer;
 
         let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
@@ -169,7 +170,7 @@ impl CooldownStepMetadata {
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                if checkpointer != from {
+                if checkpointer.id != from {
                     info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
                     return Ok((evals, None));
                 }
