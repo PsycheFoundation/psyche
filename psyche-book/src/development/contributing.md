@@ -37,7 +37,7 @@ It's not a deal-breaker, but rebase makes us happy \<3
 ### Clean Linear History
 
 Rebasing creates a linear commit history without merges going back and forth, making it much easier to identify the place a change was made.
-Fixups in merge commits that introduce bugs are no longer associated with the original code, wheras with with rebase you'd find the bug as part of its original commit.
+Fixups in merge commits that introduce bugs are no longer associated with the original code, wheras with rebase you'd find the bug as part of its original commit.
 
 Merge commits add extra noise to the history without adding meaningful content about what changed.
 
