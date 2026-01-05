@@ -44,7 +44,7 @@ impl Arc {
         Ok(TaskType::LogLikelihood(Box::new(ret)))
     }
 
-    fn row_to_document(dataset: &Dataset, row: Row) -> Document {
+    fn row_to_document(dataset: &Dataset, row: Row, name: &str) -> Document {
         let text = row
             .get_string(dataset.get_column_id("question").unwrap())
             .unwrap()
@@ -74,6 +74,7 @@ impl Arc {
             answer,
             category: None,
             cot_content: None,
+            eval_name: name.to_string(),
         }
     }
 }
@@ -82,7 +83,7 @@ impl LogLikelihoodTask for Arc {
     fn get_documents(&self) -> Vec<Document> {
         self.test_split
             .iter()
-            .map(|row| Arc::row_to_document(&self.test_split, row))
+            .map(|row| Arc::row_to_document(&self.test_split, row, &self.name))
             .collect()
     }
 
@@ -91,7 +92,7 @@ impl LogLikelihoodTask for Arc {
         let docs: Vec<Document> = self
             .train_dataset
             .iter()
-            .map(|row| Arc::row_to_document(&self.train_dataset, row))
+            .map(|row| Arc::row_to_document(&self.train_dataset, row, &self.name))
             .collect();
         fewshot_documents.insert("default".to_string(), docs);
         fewshot_documents

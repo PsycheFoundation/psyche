@@ -66,6 +66,7 @@ impl MMLU {
             answer,
             category: Some(subject),
             cot_content: None,
+            eval_name: MMLU::name().to_string(),
         }
     }
 }

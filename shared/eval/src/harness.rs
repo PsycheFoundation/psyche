@@ -35,6 +35,13 @@ const TASKS_WITH_ACC_NORM: [&str; 6] = [
     PIQA::name(),
 ];
 
+const TASKS_WITH_ACC_UNCOND: [&str; 4] = [
+    ArcChallenge::name(),
+    ArcEasy::name(),
+    MMLUCF::name(),
+    PIQA::name(),
+];
+
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
     GenerateUntil(Box<dyn GenerateUntilTask>),
@@ -102,6 +109,7 @@ struct TokenizedLLHDocument {
     answer: usize,
     choices_token_len: Vec<usize>,
     requests: Vec<Vec<i64>>,
+    acc_uncond_tokens_len: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -121,6 +129,7 @@ impl TokenizedLLHDocument {
         let mut requests: Vec<Vec<i64>> = Vec::new();
         let mut choices_str = Vec::new();
         let mut choices_token_len = Vec::new();
+        let mut acc_uncond_tokens_len = Vec::new();
 
         // Build full context string: fewshot_prefix + doc.text
         let context_string = if fewshot_prefix.is_empty() {
@@ -171,6 +180,25 @@ impl TokenizedLLHDocument {
             }
 
             choices_token_len.push(choice_tokens.len());
+
+            if TASKS_WITH_ACC_UNCOND.contains(&doc.eval_name.as_str()) {
+                let acc_uncond_fmt = format!("Answer: {choice}");
+                for idx in *choices_token_len.last().unwrap()..choice_tokens.len() {
+                    let acc_uncond_tokens = &choice_tokens[choice_tokens.len() - idx..]
+                        .iter()
+                        .map(|x| *x as u32)
+                        .collect::<Vec<_>>();
+                    let acc_uncond_str = tokenizer.decode(acc_uncond_tokens, false).unwrap();
+                    if acc_uncond_str.contains(&acc_uncond_fmt) {
+                        let acc_uncond_tokens = acc_uncond_tokens
+                            .iter()
+                            .map(|x| *x as i64)
+                            .collect::<Vec<_>>();
+                        acc_uncond_tokens_len.push(acc_uncond_tokens.len());
+                        break;
+                    }
+                }
+            }
         }
 
         Self {
@@ -178,6 +206,7 @@ impl TokenizedLLHDocument {
             answer: doc.answer,
             requests,
             choices_token_len,
+            acc_uncond_tokens_len,
         }
     }
 }
@@ -414,6 +443,9 @@ impl PreparedTask {
         if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
             results.add_entry_if_needed("acc_norm", docs.len(), min_samples);
         }
+        if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
+            results.add_entry_if_needed("acc_uncond", docs.len(), min_samples);
+        }
         let mut next_index = skip;
 
         let fast_forward = (skip / docs.len()) * docs.len();
@@ -444,6 +476,7 @@ impl PreparedTask {
                 }
             }
             let mut scores: Vec<(f32, bool)> = Vec::new();
+            let mut scores_uncond: Vec<f32> = Vec::new();
             for idx in 0..doc.requests.len() {
                 // e.g:
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
@@ -494,6 +527,14 @@ impl PreparedTask {
                 scores.push((loglikelihood, exact_match));
             }
 
+            if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
+                for idx in 0..doc.requests.len() {
+                    let loglikelihood_uncond =
+                        calculate_unconditional_loglikelihood(doc, idx, options.model);
+                    scores_uncond.push(loglikelihood_uncond);
+                }
+            }
+
             let selected: i64 = Tensor::from_slice(&scores.iter().map(|x| x.0).collect::<Vec<_>>())
                 .argmax(-1, false)
                 .try_into()
@@ -521,6 +562,27 @@ impl PreparedTask {
                 results.push(
                     "acc_norm",
                     match selected_norm as usize == doc.answer {
+                        true => 1.,
+                        false => 0.,
+                    },
+                );
+            }
+
+            if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
+                let selected_uncond: i64 = Tensor::from_slice(
+                    &scores
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, score)| score.0 - scores_uncond[idx])
+                        .collect::<Vec<_>>(),
+                )
+                .argmax(-1, false)
+                .try_into()
+                .unwrap();
+
+                results.push(
+                    "acc_uncond",
+                    match selected_uncond as usize == doc.answer {
                         true => 1.,
                         false => 0.,
                     },
@@ -768,6 +830,43 @@ impl PreparedTask {
             "acc"
         }
     }
+}
+
+fn calculate_unconditional_loglikelihood(
+    doc: &TokenizedLLHDocument,
+    idx: usize,
+    model: &mut dyn CausalLM,
+) -> f32 {
+    // Extract the unconditional part: "Answer: {choice}" from the end of the request
+    let uncond_len = doc.acc_uncond_tokens_len[idx];
+    let uncond_request_full = &doc.requests[idx][doc.requests[idx].len() - uncond_len..];
+
+    // Remove the last token since we dont want to pass it to the model
+    let uncond_request = &uncond_request_full[..uncond_request_full.len() - 1];
+
+    // Pass request to model
+    let uncond_tensor = Tensor::from_slice(uncond_request)
+        .to(model.device())
+        .unsqueeze(0);
+
+    let (logits_uncond, _) = {
+        let _no_grad = tch::no_grad_guard();
+        model.forward(&uncond_tensor, None, None, None, None, None)
+    };
+
+    let logits_uncond = logits_uncond.unwrap().squeeze_dim(0);
+
+    let uncond_tokens_to_predict = &uncond_request_full[1..];
+    let choice_log_prob_uncond = logits_uncond.log_softmax(-1, None).gather(
+        -1,
+        &Tensor::from_slice(uncond_tokens_to_predict)
+            .to(logits_uncond.device())
+            .unsqueeze(-1),
+        false,
+    );
+
+    let loglikelihood_uncond: f32 = choice_log_prob_uncond.sum(Kind::Float).try_into().unwrap();
+    loglikelihood_uncond
 }
 
 fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
