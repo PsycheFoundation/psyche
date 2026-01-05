@@ -183,8 +183,8 @@ impl TokenizedLLHDocument {
 
             if TASKS_WITH_ACC_UNCOND.contains(&doc.eval_name.as_str()) {
                 let acc_uncond_fmt = format!("Answer: {choice}");
-                for idx in *choices_token_len.last().unwrap()..choice_tokens.len() {
-                    let acc_uncond_tokens = &choice_tokens[choice_tokens.len() - idx..]
+                for idx in *choices_token_len.last().unwrap()..full_tokens.len() {
+                    let acc_uncond_tokens = &full_tokens[full_tokens.len() - idx..]
                         .iter()
                         .map(|x| *x as u32)
                         .collect::<Vec<_>>();
