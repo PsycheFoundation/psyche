@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{SOLANA_MAX_STRING_LEN, coordinator::SOLANA_MAX_URL_STRING_LEN};
 
 use anchor_lang::{
@@ -223,6 +225,17 @@ impl HubRepo {
             repo_id: FixedString::new(),
             revision: None,
         }
+    }
+}
+
+impl FromStr for HubRepo {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(HubRepo {
+            repo_id: FixedString::from_str_truncated(s),
+            revision: None,
+        })
     }
 }
 

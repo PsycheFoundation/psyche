@@ -511,6 +511,38 @@ impl<T: NodeIdentity> Coordinator<T> {
         Ok(())
     }
 
+    pub fn cooldown_witness(
+        &mut self,
+        from: &T,
+        witness: Witness,
+        unix_timestamp: u64,
+        hub_repo: HubRepo,
+    ) -> std::result::Result<(), CoordinatorError> {
+        match &mut self.model {
+            Model::LLM(llm) => match llm.checkpoint {
+                Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
+                Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                _ => {}
+            },
+        }
+
+        if self.halted() {
+            return Err(CoordinatorError::Halted);
+        }
+
+        if !matches!(self.run_state, RunState::Cooldown) {
+            return Err(CoordinatorError::InvalidRunState);
+        }
+
+        if self.epoch_state.checkpointer.id != *from {
+            return Err(CoordinatorError::InvalidWitness);
+        } else {
+            self.start_waiting_for_members(unix_timestamp);
+        }
+
+        Ok(())
+    }
+
     pub fn witness(
         &mut self,
         from: &T,
@@ -606,9 +638,6 @@ impl<T: NodeIdentity> Coordinator<T> {
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
-        // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
-        // with the last checkpointed one. We could instead have a vector of hub repos to have
-        // more download options.
         match &mut self.model {
             Model::LLM(llm) => match llm.checkpoint {
                 Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
@@ -951,7 +980,13 @@ impl<T: NodeIdentity> Coordinator<T> {
                         .map(|x| Client::new(*x)),
                 )
                 .unwrap();
-            self.epoch_state.checkpointer = self.epoch_state.clients.random().unwrap();
+            // self.epoch_state.checkpointer = self.epoch_state.clients.random().unwrap();
+            self.epoch_state.checkpointer = self
+                .epoch_state
+                .clients
+                .get(0)
+                .cloned()
+                .expect("at least one client");
             self.start_warmup(unix_timestamp);
         }
 

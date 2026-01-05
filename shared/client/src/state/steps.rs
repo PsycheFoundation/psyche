@@ -338,39 +338,47 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 self.sent_warmup_witness = true;
             }
-            // } else if self.coordinator_state.run_state == RunState::Cooldown {
-            //     if self.coordinator_state.epoch_state.checkpointer != self.identity {
-            //         return Ok(());
-            //     }
+        } else if self.coordinator_state.run_state == RunState::Cooldown {
+            if let ActiveStep::Cooldown(active_step) = &self.active_step {
+                if !active_step.is_finished() {
+                    return Ok(());
+                }
+            }
+            if self.coordinator_state.epoch_state.checkpointer.id != self.identity {
+                return Ok(());
+            }
 
-            //     let merkle = MerkleTree::new(&self.current_round.broadcasts)
-            //         .get_root()
-            //         .cloned()
-            //         .unwrap_or(MerkleRoot::default());
+            let merkle = MerkleTree::new(&self.current_round.broadcasts)
+                .get_root()
+                .cloned()
+                .unwrap_or(MerkleRoot::default());
 
-            //     if let Some(index) = self
-            //         .coordinator_state
-            //         .epoch_state
-            //         .clients
-            //         .iter()
-            //         .position(|x| x.id == self.identity)
-            //     {
-            //         // coordinator needs to check the index for duplicate detection
-            //         let index = index as u64;
-            //         let witness = Witness {
-            //             proof: WitnessProof {
-            //                 position: index,
-            //                 index,
-            //                 witness: Default::default(),
-            //             },
-            //             participant_bloom: Default::default(),
-            //             broadcast_bloom: Default::default(),
-            //             broadcast_merkle: merkle,
-            //         };
-            //         self.tx_opportunistic_data
-            //             .send(OpportunisticData::CooldownStep(witness))
-            //             .map_err(|_| OpportunisticWitnessError::Send)?;
-            //     };
+            if let Some(index) = self
+                .coordinator_state
+                .epoch_state
+                .clients
+                .iter()
+                .position(|x| x.id == self.identity)
+            {
+                // coordinator needs to check the index for duplicate detection
+                let index = index as u64;
+                let witness = Witness {
+                    proof: WitnessProof {
+                        position: index,
+                        index,
+                        witness: Default::default(),
+                    },
+                    participant_bloom: Default::default(),
+                    broadcast_bloom: Default::default(),
+                    broadcast_merkle: merkle,
+                };
+                self.tx_opportunistic_data
+                    .send(OpportunisticData::CooldownStep(
+                        witness,
+                        self.cooldown.get_repo().unwrap(),
+                    ))
+                    .map_err(|_| OpportunisticWitnessError::Send)?;
+            };
         }
         Ok(())
     }

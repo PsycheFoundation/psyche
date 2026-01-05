@@ -80,9 +80,9 @@ impl psyche_watcher::Backend<ClientId> for ChannelCoordinatorBackend {
         bail!("Server does not send health checks");
     }
 
-    async fn send_checkpoint(&mut self, _checkpoint: model::HubRepo) -> Result<()> {
-        bail!("Server does not send checkpoints");
-    }
+    // async fn send_checkpoint(&mut self, _checkpoint: model::HubRepo) -> Result<()> {
+    //     bail!("Server does not send checkpoints");
+    // }
 }
 
 type DataServer =
@@ -395,6 +395,9 @@ impl App {
                         Self::get_timestamp(),
                         rand::rng().next_u64(),
                     ),
+                    OpportunisticData::CooldownStep(witness, hub_repo) => self
+                        .coordinator
+                        .cooldown_witness(&from, witness, Self::get_timestamp(), hub_repo),
                 } {
                     warn!("Error when processing witness: {error}");
                 };

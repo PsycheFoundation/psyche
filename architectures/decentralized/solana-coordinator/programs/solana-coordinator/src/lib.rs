@@ -289,6 +289,29 @@ pub mod psyche_solana_coordinator {
         )
     }
 
+    #[allow(unused_variables)] // for the metadata field. adding a _ prefix results in anchor's IDL not matching the actual types. lol.
+    pub fn cooldown_witness(
+        ctx: Context<PermissionlessCoordinatorAccounts>,
+        proof: WitnessProof,
+        participant_bloom: WitnessBloom,
+        broadcast_bloom: WitnessBloom,
+        broadcast_merkle: MerkleRoot,
+        hub_repo: HubRepo,
+    ) -> Result<()> {
+        let mut account = ctx.accounts.coordinator_account.load_mut()?;
+        account.increment_nonce();
+        account.state.cooldown_witness(
+            ctx.accounts.user.key,
+            Witness {
+                proof,
+                participant_bloom,
+                broadcast_bloom,
+                broadcast_merkle,
+            },
+            hub_repo,
+        )
+    }
+
     pub fn health_check(
         ctx: Context<PermissionlessCoordinatorAccounts>,
         id: ClientId,

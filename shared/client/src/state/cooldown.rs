@@ -10,6 +10,7 @@ use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
     SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
+use std::str::FromStr;
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
@@ -264,6 +265,11 @@ impl CooldownStepMetadata {
             checkpointing_and_evals,
         })
     }
+
+    pub fn get_repo(&self) -> Option<model::HubRepo> {
+        let repo = HubRepo::from_str(&self.checkpoint_info.hub_upload.hub_repo).ok()?;
+        Some(repo)
+    }
 }
 
 type CheckpointAndEvalsHandle = JoinHandle<
@@ -297,5 +303,9 @@ impl CooldownStep {
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
         Ok((running_evals, upload_handle))
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.checkpointing_and_evals.is_finished()
     }
 }
