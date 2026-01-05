@@ -1,13 +1,13 @@
-use std::path::PathBuf;
-
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
-    model::{Checkpoint, Model},
+    model::{Checkpoint, LLMDataLocations, LLMTrainingDataLocation, Model},
 };
+use psyche_core::FixedVec;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::{SolanaBackend, instructions};
 
@@ -68,22 +68,58 @@ pub async fn command_update_config_execute(
         .get_coordinator_account(&coordinator_account)
         .await?;
 
-    let (config, mut model) = match config_path {
+    let (config, mut model, data_locations) = match config_path {
         Some(config_path) => {
+            #[derive(Serialize, Deserialize)]
+            struct ModelWrapper {
+                #[serde(flatten)]
+                pub model: Model,
+            }
+
             #[derive(Serialize, Deserialize)]
             struct State {
                 pub config: CoordinatorConfig,
-                pub model: Model,
+                pub model: ModelWrapper,
             }
+
+            // First, parse without data_locations to get the Model enum
             let state: State = toml::from_str(std::str::from_utf8(
                 &std::fs::read(&config_path)
                     .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
             )?)
             .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
-            (Some(state.config), Some(state.model))
+            // Then parse just the data_locations separately
+            #[derive(Serialize, Deserialize)]
+            struct DataLocationsWrapper {
+                pub data_locations: Vec<LLMTrainingDataLocation>,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            struct LLMSection {
+                #[serde(rename = "LLM")]
+                pub llm: DataLocationsWrapper,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            struct ModelSection {
+                pub model: LLMSection,
+            }
+
+            let data_section: ModelSection = toml::from_str(std::str::from_utf8(
+                &std::fs::read(&config_path)
+                    .with_context(|| format!("failed to read config toml file {config_path:?}"))?,
+            )?)?;
+
+            let data_locs = LLMDataLocations {
+                data_locations: FixedVec::from_iter(
+                    data_section.model.llm.data_locations.into_iter(),
+                ),
+            };
+
+            (Some(state.config), Some(state.model.model), Some(data_locs))
         }
-        None => (None, None),
+        None => (None, None, None),
     };
 
     model = if switch_to_hub {
@@ -133,6 +169,10 @@ pub async fn command_update_config_execute(
         coordinator_account_state.state.coordinator.model = model;
     }
 
+    if let Some(data_locations) = data_locations {
+        coordinator_account_state.state.coordinator.data_locations = data_locations;
+    }
+
     let progress = restart_from_step.map(|step| CoordinatorProgress {
         epoch: coordinator_account_state.state.coordinator.progress.epoch,
         step,
@@ -148,11 +188,14 @@ pub async fn command_update_config_execute(
         bail!("this invocation would not update anything, bailing.")
     }
 
-    let instructions = if let Some(treasurer_index) = backend
+    let (instructions, data_location_instr) = if let Some(treasurer_index) = backend
         .resolve_treasurer_index(&run_id, treasurer_index)
         .await?
     {
-        vec![instructions::treasurer_run_update(
+        let mut instructions = Vec::new();
+        let mut data_location_instr = Vec::new();
+
+        instructions.push(instructions::treasurer_run_update(
             &run_id,
             treasurer_index,
             &coordinator_account,
@@ -166,10 +209,35 @@ pub async fn command_update_config_execute(
                 epoch_slashing_rate_per_client: None,
                 paused: None,
                 client_version: client_version.clone(),
+                data_location: None,
             },
-        )]
+        ));
+        if let Some(data_locations) = data_locations {
+            for dl in data_locations.data_locations.iter() {
+                data_location_instr.push(instructions::treasurer_run_update(
+                    &run_id,
+                    treasurer_index,
+                    &coordinator_account,
+                    &main_authority,
+                    RunUpdateParams {
+                        metadata: None,
+                        config: None,
+                        model: None,
+                        progress: None,
+                        epoch_earning_rate_total_shared: None,
+                        epoch_slashing_rate_per_client: None,
+                        paused: None,
+                        client_version: None,
+                        data_location: Some(*dl),
+                    },
+                ));
+            }
+        }
+        (instructions, data_location_instr)
     } else {
         let mut instructions = Vec::new();
+        let mut data_location_instr = Vec::new();
+        let data_locations_iter = data_locations.unwrap().iter().cloned().collect::<Vec<_>>();
 
         if coordinator_update {
             instructions.push(instructions::coordinator_update(
@@ -181,6 +249,19 @@ pub async fn command_update_config_execute(
                 model,
                 progress,
             ));
+            data_location_instr.push(instructions::clear_data_locations(
+                &run_id,
+                &coordinator_account,
+                &main_authority,
+            ));
+            for dl in data_locations_iter.iter() {
+                data_location_instr.push(instructions::coordinator_update_data_locations(
+                    &run_id,
+                    &coordinator_account,
+                    &main_authority,
+                    Some(*dl),
+                ));
+            }
         }
 
         if let Some(client_version) = client_version.clone() {
@@ -192,16 +273,21 @@ pub async fn command_update_config_execute(
             ));
         }
 
-        instructions
+        (instructions, data_location_instr)
     };
     let signature = backend
         .send_and_retry("Update config", &instructions, &[])
         .await?;
     println!("Updated config of {run_id} with transaction {signature}");
 
+    let signature = backend
+        .send_and_retry("Update data locations", &data_location_instr, &[])
+        .await?;
+
     println!(" - Metadata: {metadata:#?}");
     println!(" - Config: {config:#?}");
     println!(" - Model: {model:#?}");
+    println!(" - Data locations: {data_locations:#?}");
     println!(" - Progress: {progress:#?}");
     println!(" - Client version: {client_version:#?}");
 

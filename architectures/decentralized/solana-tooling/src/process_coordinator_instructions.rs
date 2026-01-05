@@ -3,6 +3,7 @@ use anchor_lang::ToAccountMetas;
 use anyhow::Result;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::RunMetadata;
@@ -19,6 +20,7 @@ use psyche_solana_coordinator::instruction::SetFutureEpochRates;
 use psyche_solana_coordinator::instruction::SetPaused;
 use psyche_solana_coordinator::instruction::Tick;
 use psyche_solana_coordinator::instruction::Update;
+use psyche_solana_coordinator::instruction::UpdateDataLocations;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::FreeCoordinatorParams;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
@@ -106,6 +108,30 @@ pub async fn process_update(
             progress,
         }
         .data(),
+        program_id: psyche_solana_coordinator::ID,
+    };
+    endpoint
+        .process_instruction_with_signers(payer, instruction, &[authority])
+        .await?;
+    Ok(())
+}
+
+pub async fn process_data_locations_update(
+    endpoint: &mut ToolboxEndpoint,
+    payer: &Keypair,
+    authority: &Keypair,
+    coordinator_instance: &Pubkey,
+    coordinator_account: &Pubkey,
+    data_location: Option<LLMTrainingDataLocation>,
+) -> Result<()> {
+    let accounts = OwnerCoordinatorAccounts {
+        authority: authority.pubkey(),
+        coordinator_instance: *coordinator_instance,
+        coordinator_account: *coordinator_account,
+    };
+    let instruction = Instruction {
+        accounts: accounts.to_account_metas(None),
+        data: UpdateDataLocations { data_location }.data(),
         program_id: psyche_solana_coordinator::ID,
     };
     endpoint

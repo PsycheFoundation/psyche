@@ -10,9 +10,13 @@ use psyche_coordinator::RunState;
 use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
+use psyche_coordinator::model::HttpLLMTrainingDataLocation;
+use psyche_coordinator::model::HttpTrainingDataLocation;
 use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::Model;
 use psyche_core::FixedString;
+use psyche_core::FixedVec;
 use psyche_core::SmallBoolean;
 use psyche_core::sha256v;
 use serde::Deserialize;
@@ -192,6 +196,42 @@ impl CoordinatorInstanceState {
                     return err!(ProgramError::ModelSanityCheckFailed);
                 }
 
+                for data_location in self.coordinator.data_locations.iter() {
+                    let bad_data_location = match data_location {
+                        LLMTrainingDataLocation::Dummy(_) => false,
+                        LLMTrainingDataLocation::Server(url) => url.is_empty(),
+                        LLMTrainingDataLocation::Local(_) => false,
+                        LLMTrainingDataLocation::Http(
+                            HttpLLMTrainingDataLocation { location, .. },
+                        ) => match location {
+                            HttpTrainingDataLocation::SingleUrl(url) => {
+                                url.is_empty()
+                            },
+                            HttpTrainingDataLocation::NumberedFiles {
+                                url_template,
+                                num_files,
+                                ..
+                            } => url_template.is_empty() || *num_files == 0,
+                            HttpTrainingDataLocation::Gcp {
+                                bucket_name,
+                                ..
+                            } => bucket_name.is_empty(),
+                        },
+                        LLMTrainingDataLocation::WeightedHttp(url) => {
+                            url.is_empty()
+                        },
+                        LLMTrainingDataLocation::Preprocessed(url) => {
+                            url.is_empty()
+                        },
+                    };
+                    if bad_data_location {
+                        msg!(
+                            "model check failed: bad LLM training data location."
+                        );
+                        return err!(ProgramError::ModelSanityCheckFailed);
+                    }
+                }
+
                 if self.coordinator.run_state == RunState::Uninitialized {
                     // this is the only way to get out of RunState::Uninitialized
                     // by doing this we force the sanity checks on the config and model
@@ -272,6 +312,44 @@ impl CoordinatorInstanceState {
                 .future_epoch_rates
                 .slashing_rate_per_client = epoch_slashing_rate_per_client;
         }
+        Ok(())
+    }
+
+    pub fn update_data_locations(
+        &mut self,
+        data_location: Option<
+            psyche_coordinator::model::LLMTrainingDataLocation,
+        >,
+    ) -> Result<()> {
+        if self.coordinator.run_state == RunState::Finished {
+            return err!(ProgramError::UpdateConfigFinished);
+        } else if !self.coordinator.halted() && data_location.is_some() {
+            return err!(ProgramError::UpdateConfigNotHalted);
+        }
+
+        let mut data_locations = self.coordinator.data_locations;
+        if let Some(dl) = data_location {
+            let _ = data_locations.data_locations.push(dl);
+            let _ = std::mem::replace(
+                &mut self.coordinator.data_locations,
+                data_locations,
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn clear_data_locations(&mut self) -> Result<()> {
+        if self.coordinator.run_state == RunState::Finished {
+            return err!(ProgramError::UpdateConfigFinished);
+        } else if !self.coordinator.halted() {
+            return err!(ProgramError::UpdateConfigNotHalted);
+        }
+        let _ = std::mem::replace(
+            &mut self.coordinator.data_locations.data_locations,
+            FixedVec::new(),
+        );
+
         Ok(())
     }
 
