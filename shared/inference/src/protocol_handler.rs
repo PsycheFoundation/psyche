@@ -47,14 +47,27 @@ impl InferenceProtocol {
 
                 let response = self.process_request(request).await?;
 
+                info!("Serializing response for {}", peer_id.fmt_short());
                 let response_msg = InferenceMessage::Response(response);
                 let response_bytes =
                     postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
 
+                info!(
+                    "Writing {} bytes to {}",
+                    response_bytes.len(),
+                    peer_id.fmt_short()
+                );
                 send.write_all(&response_bytes).await?;
+
+                info!("Finishing send stream to {}", peer_id.fmt_short());
                 send.finish()?;
 
-                debug!("Sent inference response to {}", peer_id.fmt_short());
+                info!(
+                    "Successfully sent inference response to {}",
+                    peer_id.fmt_short()
+                );
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
             _ => {
                 error!("Unexpected message type from {}", peer_id.fmt_short());
