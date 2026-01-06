@@ -985,14 +985,13 @@ impl<T: NodeIdentity> Coordinator<T> {
                 )
                 .unwrap();
 
-            let index = rand::rng().random_range(0..self.epoch_state.clients.len());
-            self.epoch_state.checkpointer = self
-                .epoch_state
-                .clients
-                .get(index)
-                .cloned()
-                .expect("at least one client");
-            self.start_warmup(unix_timestamp);
+            // self.epoch_state.checkpointer = self
+            //     .epoch_state
+            //     .clients
+            //     .get(0)
+            //     .cloned()
+            //     .expect("at least one client");
+            // self.start_warmup(unix_timestamp);
         }
 
         Ok(TickResult::Ticked)

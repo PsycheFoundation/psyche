@@ -1,5 +1,5 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker,
+    Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker, client,
     state::{train::FinishedTrainers, types::DeserializeError},
 };
 
@@ -887,7 +887,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 // check here
                 self.cleanup_completed_uploads();
 
-                ActiveStep::Cooldown(self.cooldown.start(trainers, &state, self.identity)?)
+                ActiveStep::Cooldown(self.cooldown.start(
+                    trainers,
+                    &state,
+                    self.identity,
+                    client_index,
+                )?)
             }
             // cooldown is done, we consider waiting for members and warmup to be basically the same
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)

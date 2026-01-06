@@ -132,12 +132,14 @@ impl CooldownStepMetadata {
         mut trainers: Vec<Trainer>,
         state: &Coordinator<T>,
         from: T,
+        client_index: u64,
     ) -> Result<CooldownStep, CooldownError> {
         let Some(mut trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);
         };
 
         let step = state.progress.step - 1;
+        let current_round = state.current_round().ok_or(CooldownError::NoTrainers)?;
         let run_id = String::from(&state.run_id);
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
@@ -145,7 +147,20 @@ impl CooldownStepMetadata {
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
-        let checkpointer: Client<T> = state.epoch_state.checkpointer;
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&sha256v(&[
+            &sha256(&seed.to_le_bytes()),
+            "COOLDOWN".as_bytes(),
+        ]));
+        let random_index =
+            compute_shuffled_index(client_index, state.epoch_state.clients.len() as u64, &seed)
+                as usize;
+        let checkpointer = state
+            .epoch_state
+            .clients
+            .get(random_index)
+            .cloned()
+            .ok_or(CooldownError::NoTrainers)?;
 
         let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {

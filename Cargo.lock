@@ -6982,7 +6982,6 @@ dependencies = [
  "bytemuck",
  "cfg_eval",
  "psyche-core",
- "rand 0.9.2",
  "serde",
  "serde_with",
  "ts-rs",
