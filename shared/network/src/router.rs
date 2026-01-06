@@ -23,11 +23,14 @@ impl SupportedProtocols {
     }
 }
 
-pub(crate) fn spawn_router_with_allowlist<A: Allowlist + 'static + Send + std::marker::Sync>(
+pub(crate) fn spawn_router_with_allowlist<
+    A: Allowlist + 'static + Send + std::marker::Sync,
+    P: ProtocolHandler + Clone,
+>(
     allowlist: A,
     endpoint: Endpoint,
     protocols: SupportedProtocols,
-    additional_protocols: Vec<(&'static [u8], Arc<dyn ProtocolHandler>)>,
+    additional_protocol: Option<(&'static [u8], P)>,
 ) -> Result<Arc<Router>> {
     let allowlist_clone = allowlist.clone();
     let allowlisted_blobs = AccessLimit::new(protocols.1, move |endpoint_id| {
@@ -47,8 +50,8 @@ pub(crate) fn spawn_router_with_allowlist<A: Allowlist + 'static + Send + std::m
         .accept(iroh_gossip::ALPN, allowlisted_gossip)
         .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing);
 
-    // add any additional custom protocols
-    for (alpn, handler) in additional_protocols {
+    // add optional additional custom protocol
+    if let Some((alpn, handler)) = additional_protocol {
         let allowlist_clone = allowlist.clone();
         let allowlisted_handler = AccessLimit::new(handler, move |endpoint_id| {
             allowlist_clone.allowed(endpoint_id)
@@ -95,7 +98,7 @@ mod tests {
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, p2p_model_sharing),
-            vec![],
+            None::<(&[u8], ())>,
         )?;
 
         assert!(!router.is_shutdown());

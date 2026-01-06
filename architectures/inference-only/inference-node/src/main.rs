@@ -117,10 +117,6 @@ async fn main() -> Result<()> {
 
     info!("Registering inference protocol handler...");
     let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
-    let additional_protocols = vec![(
-        INFERENCE_ALPN,
-        Arc::new(inference_protocol) as Arc<dyn psyche_network::ProtocolHandler>,
-    )];
 
     let mut network = P2PNetwork::init(
         run_id,
@@ -133,7 +129,7 @@ async fn main() -> Result<()> {
         allowlist::AllowAll, // No allowlist for inference network
         metrics.clone(),
         Some(cancel.clone()),
-        additional_protocols,
+        Some((INFERENCE_ALPN, inference_protocol)),
     )
     .await
     .context("Failed to initialize P2P network")?;
@@ -212,7 +208,7 @@ async fn main() -> Result<()> {
     }
 
     info!("Shutting down inference node...");
-    if let Some(node) = inference_node_shared.write().await.take() {
+    if let Some(mut node) = inference_node_shared.write().await.take() {
         node.shutdown()?;
     }
     info!("Shutdown complete");

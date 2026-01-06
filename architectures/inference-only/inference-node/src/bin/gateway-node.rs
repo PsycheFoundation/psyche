@@ -251,7 +251,7 @@ async fn run_gateway() -> Result<()> {
         allowlist::AllowAll,
         metrics.clone(),
         Some(cancel.clone()),
-        vec![],
+        None::<(&[u8], ())>,
     )
     .await
     .context("Failed to initialize P2P network")?;

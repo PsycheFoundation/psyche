@@ -4,10 +4,7 @@ use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{EndpointAddr, RelayConfig, Watcher};
-use iroh::{
-    endpoint::TransportConfig,
-    protocol::{ProtocolHandler, Router},
-};
+use iroh::{endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::api::Tag;
 use iroh_blobs::store::GcConfig;
 use iroh_blobs::{
@@ -223,7 +220,10 @@ where
     Download: Networkable,
 {
     #[allow(clippy::too_many_arguments)]
-    pub async fn init<A: Allowlist + 'static + Send + std::marker::Sync>(
+    pub async fn init<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
         run_id: &str,
         port: Option<u16>,
         interface: Option<String>,
@@ -234,7 +234,7 @@ where
         allowlist: A,
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
-        additional_protocols: Vec<(&'static [u8], Arc<dyn ProtocolHandler>)>,
+        additional_protocol: Option<(&'static [u8], P)>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
@@ -372,7 +372,7 @@ where
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
-            additional_protocols,
+            additional_protocol,
         )?;
         trace!("router created!");
 
