@@ -11,8 +11,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use iroh::EndpointAddr;
+use postcard;
 use psyche_inference::{
-    InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
+    INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
@@ -25,7 +26,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 // dummy protocol handler for when we don't need any custom protocol
 #[derive(Clone, Debug)]
@@ -62,15 +63,18 @@ struct Args {
 
     #[arg(long)]
     bootstrap_peer_file: Option<PathBuf>,
+
+    #[arg(long)]
+    write_endpoint_file: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
 struct InferenceNodeInfo {
     peer_id: EndpointId,
     model_name: String,
-    #[allow(dead_code)] // Will be used for checkpoint-specific routing
+    #[allow(dead_code)]
     checkpoint_id: Option<String>,
-    #[allow(dead_code)] // Will be used for capability-based routing
+    #[allow(dead_code)]
     capabilities: Vec<String>,
 }
 
@@ -209,6 +213,61 @@ async fn main() -> Result<()> {
 }
 
 #[cfg(feature = "gateway")]
+async fn send_inference_request(
+    endpoint: iroh::Endpoint,
+    peer_id: EndpointId,
+    request: InferenceRequest,
+) -> Result<InferenceResponse> {
+    info!(
+        "Connecting to peer {} with ALPN {:?}",
+        peer_id.fmt_short(),
+        std::str::from_utf8(INFERENCE_ALPN)
+    );
+
+    // connect to peer and open bidirectional stream
+    let connection = endpoint
+        .connect(peer_id, INFERENCE_ALPN)
+        .await
+        .context("Failed to connect to peer")?;
+
+    info!("Connected, opening bidirectional stream");
+    let (mut send, mut recv) = connection
+        .open_bi()
+        .await
+        .context("Failed to open bidirectional stream")?;
+
+    let message = InferenceMessage::Request(request);
+    let request_bytes =
+        postcard::to_allocvec(&message).context("Failed to serialize inference request")?;
+
+    info!("Sending {} bytes", request_bytes.len());
+    send.write_all(&request_bytes)
+        .await
+        .context("Failed to write request")?;
+
+    info!("Finishing send stream");
+    send.finish()?;
+
+    info!("Reading response...");
+    let response_bytes = recv
+        .read_to_end(10 * 1024 * 1024)
+        .await
+        .context("Failed to read response")?; // 10MB max
+
+    info!("Received {} bytes, deserializing", response_bytes.len());
+    let response_message: InferenceMessage = postcard::from_bytes(&response_bytes)
+        .context("Failed to deserialize inference response")?;
+
+    match response_message {
+        InferenceMessage::Response(response) => {
+            info!("Successfully received inference response");
+            Ok(response)
+        }
+        _ => anyhow::bail!("Unexpected message type from inference node"),
+    }
+}
+
+#[cfg(feature = "gateway")]
 async fn run_gateway() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -232,23 +291,60 @@ async fn run_gateway() -> Result<()> {
         .parse()
         .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
 
-    let bootstrap_peers = if let Some(ref peer_file) = args.bootstrap_peer_file {
-        if peer_file.exists() {
-            info!("Reading bootstrap peer from {:?}", peer_file);
-            let content =
-                fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
-            let endpoint_addr: EndpointAddr = serde_json::from_str(&content)
-                .context("Failed to parse bootstrap peer endpoint")?;
-            info!("Bootstrap peer: {}", endpoint_addr.id.fmt_short());
-            vec![endpoint_addr]
+    // read bootstrap peers from multiple sources in priority order
+    let bootstrap_peers: Vec<EndpointAddr> =
+        if let Ok(endpoints_json) = std::env::var("PSYCHE_GATEWAY_ENDPOINTS") {
+            // JSON array of other gateway endpoints
+            info!("Reading gateway endpoints from PSYCHE_GATEWAY_ENDPOINTS env var");
+            let peers: Vec<EndpointAddr> = serde_json::from_str(&endpoints_json)
+                .context("Failed to parse PSYCHE_GATEWAY_ENDPOINTS as JSON array")?;
+            info!("Loaded {} gateway endpoint(s) from env var", peers.len());
+            for peer in &peers {
+                info!("  Gateway: {}", peer.id.fmt_short());
+            }
+            peers
+        } else if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_BOOTSTRAP_FILE") {
+            // env var pointing to file
+            let peer_file = PathBuf::from(file_path);
+            if peer_file.exists() {
+                info!(
+                    "Reading bootstrap peers from PSYCHE_GATEWAY_BOOTSTRAP_FILE: {:?}",
+                    peer_file
+                );
+                let content = fs::read_to_string(&peer_file)
+                    .context("Failed to read gateway bootstrap file")?;
+                let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                    .context("Failed to parse gateway bootstrap file as JSON array")?;
+                info!("Loaded {} gateway endpoint(s) from file", peers.len());
+                peers
+            } else {
+                info!("Gateway bootstrap file not found, starting without peers");
+                vec![]
+            }
+        } else if let Some(ref peer_file) = args.bootstrap_peer_file {
+            // local testing: CLI argument
+            if peer_file.exists() {
+                info!("Reading bootstrap peer from {:?}", peer_file);
+                let content =
+                    fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
+                // support both single endpoint and array
+                if let Ok(peer) = serde_json::from_str::<EndpointAddr>(&content) {
+                    info!("Bootstrap peer: {}", peer.id.fmt_short());
+                    vec![peer]
+                } else {
+                    let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                        .context("Failed to parse bootstrap peer file")?;
+                    info!("Loaded {} bootstrap peer(s)", peers.len());
+                    peers
+                }
+            } else {
+                info!("Bootstrap peer file not found, starting without peers");
+                vec![]
+            }
         } else {
-            info!("Bootstrap peer file not found, starting without peers");
+            info!("No bootstrap peers configured (gateway will be a bootstrap node)");
             vec![]
-        }
-    } else {
-        info!("No bootstrap peer file specified");
-        vec![]
-    };
+        };
 
     let cancel = CancellationToken::new();
 
@@ -277,8 +373,29 @@ async fn run_gateway() -> Result<()> {
     info!("P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
 
+    // write endpoint to file if requested
+    let endpoint_file = if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_ENDPOINT_FILE") {
+        info!("Found PSYCHE_GATEWAY_ENDPOINT_FILE env var: {}", file_path);
+        Some(PathBuf::from(file_path))
+    } else {
+        info!("No PSYCHE_GATEWAY_ENDPOINT_FILE env var, checking CLI args");
+        args.write_endpoint_file.clone()
+    };
+
+    if let Some(ref endpoint_file) = endpoint_file {
+        let endpoint_addr = network.router().endpoint().addr();
+        let endpoints = vec![endpoint_addr];
+        let content =
+            serde_json::to_string(&endpoints).context("Failed to serialize endpoint address")?;
+        fs::write(endpoint_file, content).context("Failed to write endpoint file")?;
+        info!("Wrote gateway endpoint to {:?}", endpoint_file);
+        info!("Other nodes can bootstrap using this file");
+    }
+
     info!("Waiting for gossip mesh to stabilize...");
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(5)).await;
+
+    info!("Gossip mesh should be ready");
 
     let (network_tx, mut network_rx) = mpsc::channel::<InferenceMessage>(100);
     let state = Arc::new(GatewayState {
@@ -302,11 +419,40 @@ async fn run_gateway() -> Result<()> {
                     }
 
                     Some(msg) = network_rx.recv() => {
-                        debug!("Broadcasting inference message");
                         match msg {
-                            InferenceMessage::Request(_req) => {
-                                warn!("Direct P2P not yet implemented, using gossip broadcast");
-                                continue;
+                            InferenceMessage::Request(req) => {
+                                // Send request via direct P2P connection
+                                let request_id = req.request_id.clone();
+                                info!("Sending inference request {} via direct P2P", request_id);
+
+                                // Get target node
+                                let nodes = state.available_nodes.read().await;
+                                let target_node = match nodes.values().next() {
+                                    Some(node) => node.peer_id,
+                                    None => {
+                                        error!("No inference nodes available");
+                                        continue;
+                                    }
+                                };
+                                drop(nodes);
+
+                                // Spawn task to handle P2P connection
+                                let endpoint = network.router().endpoint().clone();
+                                let state_clone = state.clone();
+                                tokio::spawn(async move {
+                                    match send_inference_request(endpoint, target_node, req).await {
+                                        Ok(response) => {
+                                            info!("Received inference response for {}", request_id);
+                                            // Forward response to pending request
+                                            if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
+                                                let _ = tx.send(response).await;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to send inference request: {:#}", e);
+                                        }
+                                    }
+                                });
                             }
                             _ => continue,
                         };
@@ -315,6 +461,7 @@ async fn run_gateway() -> Result<()> {
                     event = network.poll_next() => {
                         match event {
                             Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
+                                info!("Received gossip message from {}", peer_id.fmt_short());
                                 match msg {
                                     InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
                                         info!("Discovered inference node!");
