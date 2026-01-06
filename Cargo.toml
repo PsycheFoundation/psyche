@@ -67,6 +67,9 @@ futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }
 fast-math = "0.1"
 async-trait = "0.1.82"
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
 iroh = { version = "0.95.1", features = ["metrics"] }
 iroh-relay = { version = "0.95.1", features = ["metrics"] }
 iroh-blobs = { version = "0.97", features = ["metrics"] }

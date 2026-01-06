@@ -18,7 +18,6 @@ postcard.workspace = true
 # For protocol handler
 iroh.workspace = true
 tokio.workspace = true
-postcard.workspace = true
 
 [dev-dependencies]
 # For integration tests

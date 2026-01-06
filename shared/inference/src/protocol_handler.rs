@@ -13,7 +13,7 @@ use tracing::{debug, error, info};
 
 pub const INFERENCE_ALPN: &[u8] = b"/psyche/inference/1";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InferenceProtocol {
     inference_node: Arc<RwLock<Option<InferenceNode>>>,
 }
@@ -24,7 +24,7 @@ impl InferenceProtocol {
     }
 
     async fn handle_connection(&self, connection: Connection) -> Result<()> {
-        let peer_id = connection.remote_endpoint_id();
+        let peer_id = connection.remote_id();
         debug!(
             "Accepting inference connection from {}",
             peer_id.fmt_short()
