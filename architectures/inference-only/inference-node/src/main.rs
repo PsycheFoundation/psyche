@@ -10,11 +10,13 @@
 
 use anyhow::{Context, Result};
 use clap::{Args as ClapArgs, Parser, Subcommand};
+use iroh::EndpointAddr;
 use psyche_inference::{INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{fs, time::Duration};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
@@ -68,6 +70,14 @@ struct RunArgs {
     /// node capabilities (comma-separated, e.g. "streaming,tool_use")
     #[arg(long, default_value = "")]
     capabilities: String,
+
+    /// bootstrap peer file (JSON file with gateway endpoint address)
+    #[arg(long)]
+    bootstrap_peer_file: Option<PathBuf>,
+
+    /// write endpoint address to file for other nodes to bootstrap from
+    #[arg(long)]
+    write_endpoint_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -126,6 +136,61 @@ async fn main() -> Result<()> {
     info!("Relay kind: {:?}", relay_kind);
     info!("Capabilities: {:?}", capabilities);
 
+    // read bootstrap peers from multiple sources in priority order
+    let bootstrap_peers: Vec<EndpointAddr> =
+        if let Ok(endpoints_json) = std::env::var("PSYCHE_GATEWAY_ENDPOINTS") {
+            // production: JSON array of gateway endpoints
+            info!("Reading gateway endpoints from PSYCHE_GATEWAY_ENDPOINTS env var");
+            let peers: Vec<EndpointAddr> = serde_json::from_str(&endpoints_json)
+                .context("Failed to parse PSYCHE_GATEWAY_ENDPOINTS as JSON array")?;
+            info!("Loaded {} gateway endpoint(s) from env var", peers.len());
+            for peer in &peers {
+                info!("  Gateway: {}", peer.id.fmt_short());
+            }
+            peers
+        } else if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_BOOTSTRAP_FILE") {
+            // alternative: env var pointing to file
+            let peer_file = PathBuf::from(file_path);
+            if peer_file.exists() {
+                info!(
+                    "Reading bootstrap peers from PSYCHE_GATEWAY_BOOTSTRAP_FILE: {:?}",
+                    peer_file
+                );
+                let content = fs::read_to_string(&peer_file)
+                    .context("Failed to read gateway bootstrap file")?;
+                let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                    .context("Failed to parse gateway bootstrap file as JSON array")?;
+                info!("Loaded {} gateway endpoint(s) from file", peers.len());
+                peers
+            } else {
+                info!("Gateway bootstrap file not found, starting without peers");
+                vec![]
+            }
+        } else if let Some(ref peer_file) = args.bootstrap_peer_file {
+            // local testing: CLI argument
+            if peer_file.exists() {
+                info!("Reading bootstrap peer from {:?}", peer_file);
+                let content =
+                    fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
+                // Support both single endpoint and array
+                if let Ok(peer) = serde_json::from_str::<EndpointAddr>(&content) {
+                    info!("Bootstrap peer: {}", peer.id.fmt_short());
+                    vec![peer]
+                } else {
+                    let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                        .context("Failed to parse bootstrap peer file")?;
+                    info!("Loaded {} bootstrap peer(s)", peers.len());
+                    peers
+                }
+            } else {
+                info!("Bootstrap peer file not found, starting without peers");
+                vec![]
+            }
+        } else {
+            info!("No bootstrap peers configured (no env vars or CLI args)");
+            vec![]
+        };
+
     let cancel = CancellationToken::new();
 
     info!("Initializing Python interpreter...");
@@ -148,7 +213,6 @@ async fn main() -> Result<()> {
 
     info!("vLLM engine initialized successfully");
 
-    // Wrap inference node in Arc<RwLock> for sharing with protocol handler
     let inference_node_shared = Arc::new(RwLock::new(Some(inference_node)));
 
     info!("Initializing P2P network...");
@@ -167,7 +231,7 @@ async fn main() -> Result<()> {
         None, // interface
         discovery_mode,
         relay_kind,
-        vec![],              // bootstrap peers (will discover via gossip)
+        bootstrap_peers,
         None,                // secret key (generate new)
         allowlist::AllowAll, // No allowlist for inference network
         metrics.clone(),
@@ -180,6 +244,16 @@ async fn main() -> Result<()> {
     info!("✓ P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
     info!("Protocol handler registered");
+
+    if let Some(ref endpoint_file) = args.write_endpoint_file {
+        let endpoint_addr = network.router().endpoint().addr();
+        let content = serde_json::to_string(&endpoint_addr)
+            .context("Failed to serialize endpoint address")?;
+        fs::write(endpoint_file, content).context("Failed to write endpoint file")?;
+        info!("Wrote endpoint to {:?}", endpoint_file);
+    }
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Announce availability via gossip
     let availability_msg = InferenceGossipMessage::NodeAvailable {
@@ -212,7 +286,7 @@ async fn main() -> Result<()> {
             }
 
             _ = heartbeat_interval.tick() => {
-                debug!("Re-broadcasting availability");
+                info!("Re-broadcasting availability");
                 let availability_msg = InferenceGossipMessage::NodeAvailable {
                     model_name: args.model_name.clone(),
                     checkpoint_id: None,
@@ -220,6 +294,8 @@ async fn main() -> Result<()> {
                 };
                 if let Err(e) = network.broadcast(&availability_msg) {
                     warn!("Failed to broadcast: {:#}", e);
+                } else {
+                    info!("Broadcast successful");
                 }
             }
 

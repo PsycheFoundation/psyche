@@ -196,14 +196,16 @@ stop_test_infra:
 
 # Run inference node with a local model (requires Python venv with vLLM)
 inference-node model="gpt2":
-    LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info cargo run --bin psyche-inference-node -- \
+    LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info,psyche_network=debug cargo run --bin psyche-inference-node -- \
         --model-name {{ model }} \
-        --discovery-mode local
+        --discovery-mode n0 \
+        --relay-kind n0
 
 # Run gateway node (HTTP API for inference requests)
 gateway-node:
-    RUST_LOG=info cargo run --bin gateway-node --features gateway -- \
-        --discovery-mode local
+    RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node --features gateway -- \
+        --discovery-mode n0 \
+        --relay-kind n0
 
 # Run full inference stack (gateway + inference node in tmux)
 inference-stack model="gpt2":
@@ -217,23 +219,49 @@ inference-stack model="gpt2":
     fi
 
     SESSION="psyche-inference"
+    GATEWAY_PEER_FILE="/tmp/psyche-gateway-peer.json"
+
+    # Clean up old peer file
+    rm -f "$GATEWAY_PEER_FILE"
 
     # Kill existing session if it exists
     tmux kill-session -t $SESSION 2>/dev/null || true
 
-    # Create new session with inference node
-    tmux new-session -d -s $SESSION -n inference
-    tmux send-keys -t $SESSION:inference "LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info cargo run --bin psyche-inference-node -- --model-name {{ model }} --discovery-mode local" C-m
+    echo "Starting gateway node (bootstrap node)..."
+
+    # Create new session with gateway (starts first to be bootstrap node)
+    tmux new-session -d -s $SESSION -n gateway
+    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node --features gateway -- --discovery-mode n0 --relay-kind n0" C-m
+
+    # Wait for gateway to start and write peer file
+    echo "Waiting for gateway to initialize and write endpoint..."
+    for i in $(seq 1 30); do
+        if [ -f "$GATEWAY_PEER_FILE" ]; then
+            echo "Gateway peer file created"
+            break
+        fi
+        sleep 1
+    done
+
+    if [ ! -f "$GATEWAY_PEER_FILE" ]; then
+        echo "Error: Gateway failed to create peer file"
+        exit 1
+    fi
+
+    # Wait a bit more for gateway HTTP server
+    sleep 2
+    echo "Gateway ready"
+    echo ""
+    echo "Starting inference node..."
+
+    # Create window for inference node (bootstraps from gateway)
+    tmux new-window -t $SESSION -n inference
+    tmux send-keys -t $SESSION:inference "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info,psyche_network=debug cargo run --bin psyche-inference-node -- --model-name {{ model }} --discovery-mode n0 --relay-kind n0" C-m
 
     # Wait for inference node to start
     sleep 3
-
-    # Create window for gateway
-    tmux new-window -t $SESSION -n gateway
-    tmux send-keys -t $SESSION:gateway "RUST_LOG=info cargo run --bin gateway-node --features gateway -- --discovery-mode local" C-m
-
-    # Wait for gateway to start
-    sleep 2
+    echo "Inference node started"
+    echo ""
 
     # Create window for testing
     tmux new-window -t $SESSION -n test

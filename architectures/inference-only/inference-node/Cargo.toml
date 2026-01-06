@@ -40,6 +40,7 @@ serde_json.workspace = true
 serde.workspace = true
 uuid = { version = "1", features = ["v4"] }
 pyo3.workspace = true
+postcard.workspace = true
 
 axum = { version = "0.7", features = ["macros"], optional = true }
 tower = { version = "0.4", optional = true }
