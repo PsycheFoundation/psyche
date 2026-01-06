@@ -130,6 +130,7 @@ pub async fn build_app(
         allowlist.clone(),
         metrics.clone(),
         Some(cancel.clone()),
+        None::<(&[u8], ())>,
     )
     .await?;
 

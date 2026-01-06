@@ -8,7 +8,7 @@
 //!
 //!   cargo run --bin gateway-node --features gateway -- --discovery-mode local
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::Parser;
 use iroh::EndpointAddr;
 use psyche_inference::{
@@ -16,15 +16,29 @@ use psyche_inference::{
 };
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, RelayKind, allowlist,
+    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, ProtocolHandler, RelayKind,
+    allowlist,
 };
-use std::{collections::HashMap, fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     sync::{RwLock, mpsc},
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
+
+// dummy protocol handler for when we don't need any custom protocol
+#[derive(Clone, Debug)]
+struct NoProtocol;
+
+impl ProtocolHandler for NoProtocol {
+    async fn accept(
+        &self,
+        _connection: iroh::endpoint::Connection,
+    ) -> Result<(), iroh::protocol::AcceptError> {
+        Ok(())
+    }
+}
 
 #[cfg(feature = "gateway")]
 use axum::{
@@ -54,7 +68,9 @@ struct Args {
 struct InferenceNodeInfo {
     peer_id: EndpointId,
     model_name: String,
+    #[allow(dead_code)] // Will be used for checkpoint-specific routing
     checkpoint_id: Option<String>,
+    #[allow(dead_code)] // Will be used for capability-based routing
     capabilities: Vec<String>,
 }
 
@@ -96,6 +112,7 @@ struct InferenceResponseBody {
 }
 
 #[cfg(feature = "gateway")]
+#[axum::debug_handler]
 async fn handle_inference(
     State(state): State<Arc<GatewayState>>,
     Json(req): Json<InferenceRequestBody>,
@@ -156,6 +173,7 @@ async fn handle_inference(
 }
 
 #[cfg(feature = "gateway")]
+#[derive(Debug)]
 enum AppError {
     NoNodesAvailable,
     Timeout,
@@ -251,6 +269,7 @@ async fn run_gateway() -> Result<()> {
         allowlist::AllowAll,
         metrics.clone(),
         Some(cancel.clone()),
+        None::<(&[u8], NoProtocol)>,
     )
     .await
     .context("Failed to initialize P2P network")?;
@@ -284,8 +303,8 @@ async fn run_gateway() -> Result<()> {
 
                     Some(msg) = network_rx.recv() => {
                         debug!("Broadcasting inference message");
-                        let gossip_msg = match msg {
-                            InferenceMessage::Request(req) => {
+                        match msg {
+                            InferenceMessage::Request(_req) => {
                                 warn!("Direct P2P not yet implemented, using gossip broadcast");
                                 continue;
                             }
