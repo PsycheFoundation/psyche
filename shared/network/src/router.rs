@@ -6,7 +6,7 @@ use iroh_gossip::net::Gossip;
 
 use iroh::{
     Endpoint,
-    protocol::{AccessLimit, Router},
+    protocol::{AccessLimit, ProtocolHandler, Router},
 };
 
 use crate::{Allowlist, ModelSharing, p2p_model_sharing};
@@ -27,6 +27,7 @@ pub(crate) fn spawn_router_with_allowlist<A: Allowlist + 'static + Send + std::m
     allowlist: A,
     endpoint: Endpoint,
     protocols: SupportedProtocols,
+    additional_protocols: Vec<(&'static [u8], Arc<dyn ProtocolHandler>)>,
 ) -> Result<Arc<Router>> {
     let allowlist_clone = allowlist.clone();
     let allowlisted_blobs = AccessLimit::new(protocols.1, move |endpoint_id| {
@@ -40,13 +41,22 @@ pub(crate) fn spawn_router_with_allowlist<A: Allowlist + 'static + Send + std::m
     let allowlisted_model_sharing = AccessLimit::new(protocols.2.clone(), move |endpoint_id| {
         allowlist_clone_3.allowed(endpoint_id)
     });
-    let router = Arc::new(
-        Router::builder(endpoint.clone())
-            .accept(iroh_blobs::ALPN, allowlisted_blobs)
-            .accept(iroh_gossip::ALPN, allowlisted_gossip)
-            .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing)
-            .spawn(),
-    );
+
+    let mut builder = Router::builder(endpoint.clone())
+        .accept(iroh_blobs::ALPN, allowlisted_blobs)
+        .accept(iroh_gossip::ALPN, allowlisted_gossip)
+        .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing);
+
+    // add any additional custom protocols
+    for (alpn, handler) in additional_protocols {
+        let allowlist_clone = allowlist.clone();
+        let allowlisted_handler = AccessLimit::new(handler, move |endpoint_id| {
+            allowlist_clone.allowed(endpoint_id)
+        });
+        builder = builder.accept(alpn, allowlisted_handler);
+    }
+
+    let router = Arc::new(builder.spawn());
 
     Ok(router)
 }
@@ -85,6 +95,7 @@ mod tests {
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, p2p_model_sharing),
+            vec![],
         )?;
 
         assert!(!router.is_shutdown());

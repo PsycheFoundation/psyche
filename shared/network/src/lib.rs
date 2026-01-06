@@ -4,7 +4,10 @@ use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{EndpointAddr, RelayConfig, Watcher};
-use iroh::{endpoint::TransportConfig, protocol::Router};
+use iroh::{
+    endpoint::TransportConfig,
+    protocol::{ProtocolHandler, Router},
+};
 use iroh_blobs::api::Tag;
 use iroh_blobs::store::GcConfig;
 use iroh_blobs::{
@@ -77,6 +80,7 @@ pub use download_manager::{
     DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
     RetriedDownloadsHandle, TransmittableDownload,
 };
+pub use iroh::protocol::ProtocolHandler;
 pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
@@ -230,6 +234,7 @@ where
         allowlist: A,
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
+        additional_protocols: Vec<(&'static [u8], Arc<dyn ProtocolHandler>)>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
@@ -367,6 +372,7 @@ where
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
+            additional_protocols,
         )?;
         trace!("router created!");
 

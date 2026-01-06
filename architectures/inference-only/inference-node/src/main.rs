@@ -115,6 +115,13 @@ async fn main() -> Result<()> {
 
     type P2PNetwork = NetworkConnection<InferenceGossipMessage, ()>;
 
+    info!("Registering inference protocol handler...");
+    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
+    let additional_protocols = vec![(
+        INFERENCE_ALPN,
+        Arc::new(inference_protocol) as Arc<dyn psyche_network::ProtocolHandler>,
+    )];
+
     let mut network = P2PNetwork::init(
         run_id,
         None, // port (let OS choose)
@@ -126,20 +133,13 @@ async fn main() -> Result<()> {
         allowlist::AllowAll, // No allowlist for inference network
         metrics.clone(),
         Some(cancel.clone()),
+        additional_protocols,
     )
     .await
     .context("Failed to initialize P2P network")?;
 
     info!("✓ P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
-
-    info!("Registering inference protocol handler...");
-    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
-    network
-        .router()
-        .endpoint()
-        .add_protocol(INFERENCE_ALPN, inference_protocol.into())
-        .await?;
     info!("Protocol handler registered");
 
     // Announce availability via gossip
