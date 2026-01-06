@@ -219,7 +219,10 @@ where
     Download: Networkable,
 {
     #[allow(clippy::too_many_arguments)]
-    pub async fn init<A: Allowlist + 'static + Send + std::marker::Sync>(
+    pub async fn init<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
         run_id: &str,
         port: Option<u16>,
         interface: Option<String>,
@@ -230,6 +233,7 @@ where
         allowlist: A,
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
+        additional_protocol: Option<(&'static [u8], P)>,
     ) -> Result<Self> {
         Self::init_internal::<A, iroh_gossip::net::Gossip>(
             run_id,

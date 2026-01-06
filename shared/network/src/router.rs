@@ -50,7 +50,11 @@ pub(crate) fn spawn_router_with_allowlist<
         .accept(iroh_gossip::ALPN, allowlisted_gossip)
         .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing);
 
+<<<<<<< HEAD
     // add optional custom protocol if provided
+=======
+    // add optional additional custom protocol
+>>>>>>> 3cbb6439 (Adding additional protocols vec to P2PNetwork init, updating protocol param type to be optional, single protocol, and generic, adding justfile commands and test script to test inference)
     if let Some((alpn, handler)) = additional_protocol {
         let allowlist_clone = allowlist.clone();
         let allowlisted_handler = AccessLimit::new(handler, move |endpoint_id| {

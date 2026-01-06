@@ -22,9 +22,10 @@ use psyche_inference::{
 };
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
-    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, RelayKind, allowlist,
+    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, ProtocolHandler, RelayKind,
+    allowlist,
 };
-use std::{collections::HashMap, fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     sync::{RwLock, mpsc},
     time::sleep,
@@ -315,6 +316,7 @@ async fn run_gateway() -> Result<()> {
         allowlist::AllowAll,
         metrics.clone(),
         Some(cancel.clone()),
+        None::<(&[u8], NoProtocol)>,
     )
     .await
     .context("Failed to initialize P2P network")?;
