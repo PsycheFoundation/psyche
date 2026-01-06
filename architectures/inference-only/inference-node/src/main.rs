@@ -156,6 +156,10 @@ async fn main() -> Result<()> {
     info!("Broadcasted availability to network");
     info!("Inference node ready! Listening for requests...");
 
+    // heartbeat for re-announcing availability
+    let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -166,6 +170,18 @@ async fn main() -> Result<()> {
             _ = cancel.cancelled() => {
                 info!("Cancellation requested");
                 break;
+            }
+
+            _ = heartbeat_interval.tick() => {
+                debug!("Re-broadcasting availability");
+                let availability_msg = InferenceGossipMessage::NodeAvailable {
+                    model_name: args.model_name.clone(),
+                    checkpoint_id: None,
+                    capabilities: capabilities.clone(),
+                };
+                if let Err(e) = network.broadcast(&availability_msg) {
+                    warn!("Failed to broadcast: {:#}", e);
+                }
             }
 
             event = network.poll_next() => {
