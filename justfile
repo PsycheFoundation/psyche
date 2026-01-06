@@ -193,3 +193,67 @@ run_test_infra_with_proxies_validator num_clients="1":
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
+
+# Run inference node with a local model (requires Python venv with vLLM)
+inference-node model="gpt2":
+    LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info cargo run --bin psyche-inference-node -- \
+        --model-name {{ model }} \
+        --discovery-mode local
+
+# Run gateway node (HTTP API for inference requests)
+gateway-node:
+    RUST_LOG=info cargo run --bin gateway-node --features gateway -- \
+        --discovery-mode local
+
+# Run full inference stack (gateway + inference node in tmux)
+inference-stack model="gpt2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if tmux is available
+    if ! command -v tmux &> /dev/null; then
+        echo "Error: tmux is required but not installed"
+        exit 1
+    fi
+
+    SESSION="psyche-inference"
+
+    # Kill existing session if it exists
+    tmux kill-session -t $SESSION 2>/dev/null || true
+
+    # Create new session with inference node
+    tmux new-session -d -s $SESSION -n inference
+    tmux send-keys -t $SESSION:inference "LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info cargo run --bin psyche-inference-node -- --model-name {{ model }} --discovery-mode local" C-m
+
+    # Wait for inference node to start
+    sleep 3
+
+    # Create window for gateway
+    tmux new-window -t $SESSION -n gateway
+    tmux send-keys -t $SESSION:gateway "RUST_LOG=info cargo run --bin gateway-node --features gateway -- --discovery-mode local" C-m
+
+    # Wait for gateway to start
+    sleep 2
+
+    # Create window for testing
+    tmux new-window -t $SESSION -n test
+    tmux send-keys -t $SESSION:test "echo 'Test inference with:'; echo 'curl -X POST http://127.0.0.1:8000/v1/inference -H \"Content-Type: application/json\" -d '\"'\"'{\"prompt\": \"Hello, world!\", \"max_tokens\": 50}'\"'\"''" C-m
+
+    # Attach to session
+    echo "Starting inference stack in tmux session '$SESSION'"
+    echo "Windows: inference (node), gateway (HTTP API), test (for curl commands)"
+    echo ""
+    echo "To attach: tmux attach -t $SESSION"
+    echo "To kill: tmux kill-session -t $SESSION"
+    echo ""
+    tmux attach -t $SESSION
+
+# Test inference via HTTP (requires inference stack to be running)
+test-inference prompt="Hello, world!" max_tokens="50":
+    curl -X POST http://127.0.0.1:8000/v1/inference \
+        -H "Content-Type: application/json" \
+        -d '{"prompt": "{{ prompt }}", "max_tokens": {{ max_tokens }}}'
+
+# Run end-to-end test: start nodes, send request, verify response
+test-inference-e2e model="gpt2" prompt="Hello, world!":
+    ./scripts/test-inference-e2e.sh "{{ model }}" "{{ prompt }}"
