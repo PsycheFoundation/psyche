@@ -62,15 +62,18 @@ struct Args {
 
     #[arg(long)]
     bootstrap_peer_file: Option<PathBuf>,
+
+    #[arg(long)]
+    write_endpoint_file: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
 struct InferenceNodeInfo {
     peer_id: EndpointId,
     model_name: String,
-    #[allow(dead_code)] // Will be used for checkpoint-specific routing
+    #[allow(dead_code)]
     checkpoint_id: Option<String>,
-    #[allow(dead_code)] // Will be used for capability-based routing
+    #[allow(dead_code)]
     capabilities: Vec<String>,
 }
 
@@ -232,23 +235,60 @@ async fn run_gateway() -> Result<()> {
         .parse()
         .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
 
-    let bootstrap_peers = if let Some(ref peer_file) = args.bootstrap_peer_file {
-        if peer_file.exists() {
-            info!("Reading bootstrap peer from {:?}", peer_file);
-            let content =
-                fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
-            let endpoint_addr: EndpointAddr = serde_json::from_str(&content)
-                .context("Failed to parse bootstrap peer endpoint")?;
-            info!("Bootstrap peer: {}", endpoint_addr.id.fmt_short());
-            vec![endpoint_addr]
+    // read bootstrap peers from multiple sources in priority order
+    let bootstrap_peers: Vec<EndpointAddr> =
+        if let Ok(endpoints_json) = std::env::var("PSYCHE_GATEWAY_ENDPOINTS") {
+            // JSON array of other gateway endpoints
+            info!("Reading gateway endpoints from PSYCHE_GATEWAY_ENDPOINTS env var");
+            let peers: Vec<EndpointAddr> = serde_json::from_str(&endpoints_json)
+                .context("Failed to parse PSYCHE_GATEWAY_ENDPOINTS as JSON array")?;
+            info!("Loaded {} gateway endpoint(s) from env var", peers.len());
+            for peer in &peers {
+                info!("  Gateway: {}", peer.id.fmt_short());
+            }
+            peers
+        } else if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_BOOTSTRAP_FILE") {
+            // env var pointing to file
+            let peer_file = PathBuf::from(file_path);
+            if peer_file.exists() {
+                info!(
+                    "Reading bootstrap peers from PSYCHE_GATEWAY_BOOTSTRAP_FILE: {:?}",
+                    peer_file
+                );
+                let content = fs::read_to_string(&peer_file)
+                    .context("Failed to read gateway bootstrap file")?;
+                let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                    .context("Failed to parse gateway bootstrap file as JSON array")?;
+                info!("Loaded {} gateway endpoint(s) from file", peers.len());
+                peers
+            } else {
+                info!("Gateway bootstrap file not found, starting without peers");
+                vec![]
+            }
+        } else if let Some(ref peer_file) = args.bootstrap_peer_file {
+            // local testing: CLI argument
+            if peer_file.exists() {
+                info!("Reading bootstrap peer from {:?}", peer_file);
+                let content =
+                    fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
+                // support both single endpoint and array
+                if let Ok(peer) = serde_json::from_str::<EndpointAddr>(&content) {
+                    info!("Bootstrap peer: {}", peer.id.fmt_short());
+                    vec![peer]
+                } else {
+                    let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                        .context("Failed to parse bootstrap peer file")?;
+                    info!("Loaded {} bootstrap peer(s)", peers.len());
+                    peers
+                }
+            } else {
+                info!("Bootstrap peer file not found, starting without peers");
+                vec![]
+            }
         } else {
-            info!("Bootstrap peer file not found, starting without peers");
+            info!("No bootstrap peers configured (gateway will be a bootstrap node)");
             vec![]
-        }
-    } else {
-        info!("No bootstrap peer file specified");
-        vec![]
-    };
+        };
 
     let cancel = CancellationToken::new();
 
@@ -277,8 +317,29 @@ async fn run_gateway() -> Result<()> {
     info!("P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
 
+    // write endpoint to file if requested
+    let endpoint_file = if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_ENDPOINT_FILE") {
+        info!("Found PSYCHE_GATEWAY_ENDPOINT_FILE env var: {}", file_path);
+        Some(PathBuf::from(file_path))
+    } else {
+        info!("No PSYCHE_GATEWAY_ENDPOINT_FILE env var, checking CLI args");
+        args.write_endpoint_file.clone()
+    };
+
+    if let Some(ref endpoint_file) = endpoint_file {
+        let endpoint_addr = network.router().endpoint().addr();
+        let endpoints = vec![endpoint_addr];
+        let content =
+            serde_json::to_string(&endpoints).context("Failed to serialize endpoint address")?;
+        fs::write(endpoint_file, content).context("Failed to write endpoint file")?;
+        info!("Wrote gateway endpoint to {:?}", endpoint_file);
+        info!("Other nodes can bootstrap using this file");
+    }
+
     info!("Waiting for gossip mesh to stabilize...");
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(5)).await;
+
+    info!("Gossip mesh should be ready");
 
     let (network_tx, mut network_rx) = mpsc::channel::<InferenceMessage>(100);
     let state = Arc::new(GatewayState {
@@ -315,6 +376,7 @@ async fn run_gateway() -> Result<()> {
                     event = network.poll_next() => {
                         match event {
                             Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
+                                info!("Received gossip message from {}", peer_id.fmt_short());
                                 match msg {
                                     InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
                                         info!("Discovered inference node!");
