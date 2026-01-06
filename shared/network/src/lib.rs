@@ -80,6 +80,7 @@ pub use download_manager::{
     DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
     RetriedDownloadsHandle, TransmittableDownload,
 };
+pub use iroh::protocol::ProtocolHandler;
 pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
@@ -219,7 +220,10 @@ where
     Download: Networkable,
 {
     #[allow(clippy::too_many_arguments)]
-    pub async fn init<A: Allowlist + 'static + Send + std::marker::Sync>(
+    pub async fn init<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
         run_id: &str,
         port: Option<u16>,
         interface: Option<String>,
@@ -230,6 +234,7 @@ where
         allowlist: A,
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
+        additional_protocol: Option<(&'static [u8], P)>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
@@ -399,6 +404,7 @@ where
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
+            additional_protocol,
         )?;
         trace!("router created!");
 

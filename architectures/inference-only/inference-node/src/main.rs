@@ -128,6 +128,10 @@ async fn main() -> Result<()> {
 
     let cancel = CancellationToken::new();
 
+    info!("Initializing Python interpreter...");
+    pyo3::prepare_freethreaded_python();
+    info!("Python interpreter initialized");
+
     info!("Initializing vLLM engine...");
     let mut inference_node = InferenceNode::new(
         model_name.clone(),
@@ -154,6 +158,9 @@ async fn main() -> Result<()> {
 
     type P2PNetwork = NetworkConnection<InferenceGossipMessage, ()>;
 
+    info!("Registering inference protocol handler...");
+    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
+
     let mut network = P2PNetwork::init(
         run_id,
         None, // port (let OS choose)
@@ -165,20 +172,13 @@ async fn main() -> Result<()> {
         allowlist::AllowAll, // No allowlist for inference network
         metrics.clone(),
         Some(cancel.clone()),
+        Some((INFERENCE_ALPN, inference_protocol)),
     )
     .await
     .context("Failed to initialize P2P network")?;
 
     info!("✓ P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
-
-    info!("Registering inference protocol handler...");
-    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
-    network
-        .router()
-        .endpoint()
-        .add_protocol(INFERENCE_ALPN, inference_protocol.into())
-        .await?;
     info!("Protocol handler registered");
 
     // Announce availability via gossip
@@ -195,6 +195,10 @@ async fn main() -> Result<()> {
     info!("Broadcasted availability to network");
     info!("Inference node ready! Listening for requests...");
 
+    // heartbeat for re-announcing availability
+    let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -205,6 +209,18 @@ async fn main() -> Result<()> {
             _ = cancel.cancelled() => {
                 info!("Cancellation requested");
                 break;
+            }
+
+            _ = heartbeat_interval.tick() => {
+                debug!("Re-broadcasting availability");
+                let availability_msg = InferenceGossipMessage::NodeAvailable {
+                    model_name: args.model_name.clone(),
+                    checkpoint_id: None,
+                    capabilities: capabilities.clone(),
+                };
+                if let Err(e) = network.broadcast(&availability_msg) {
+                    warn!("Failed to broadcast: {:#}", e);
+                }
             }
 
             event = network.poll_next() => {
@@ -251,7 +267,7 @@ async fn main() -> Result<()> {
     }
 
     info!("Shutting down inference node...");
-    if let Some(node) = inference_node_shared.write().await.take() {
+    if let Some(mut node) = inference_node_shared.write().await.take() {
         node.shutdown()?;
     }
     info!("Shutdown complete");

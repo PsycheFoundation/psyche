@@ -37,9 +37,11 @@ iroh-blobs.workspace = true
 iroh-gossip.workspace = true
 
 serde_json.workspace = true
+serde.workspace = true
 uuid = { version = "1", features = ["v4"] }
+pyo3.workspace = true
 
-axum = { version = "0.7", optional = true }
+axum = { version = "0.7", features = ["macros"], optional = true }
 tower = { version = "0.4", optional = true }
 tower-http = { version = "0.5", features = ["cors"], optional = true }
 
