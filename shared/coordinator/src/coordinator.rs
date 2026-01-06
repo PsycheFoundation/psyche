@@ -5,7 +5,11 @@ use crate::{
 
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
+use psyche_core::{
+    Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, compute_shuffled_index,
+    sha256, sha256v,
+};
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
@@ -980,11 +984,12 @@ impl<T: NodeIdentity> Coordinator<T> {
                         .map(|x| Client::new(*x)),
                 )
                 .unwrap();
-            // self.epoch_state.checkpointer = self.epoch_state.clients.random().unwrap();
+
+            let index = rand::rng().random_range(0..self.epoch_state.clients.len());
             self.epoch_state.checkpointer = self
                 .epoch_state
                 .clients
-                .get(0)
+                .get(index)
                 .cloned()
                 .expect("at least one client");
             self.start_warmup(unix_timestamp);
