@@ -9,7 +9,12 @@
 //! - Supports dynamic checkpoint reloading
 
 use anyhow::{Context, Result};
+<<<<<<< HEAD
 use clap::{Args as ClapArgs, Parser, Subcommand};
+=======
+use clap::Parser;
+use iroh::EndpointAddr;
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 use psyche_inference::{INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
@@ -127,10 +132,67 @@ async fn main() -> Result<()> {
     info!("Relay kind: {:?}", run_args.relay_kind);
     info!("Capabilities: {:?}", capabilities);
 
+<<<<<<< HEAD
     let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
         run_args.bootstrap_peer_file.as_ref(),
         "No bootstrap peers configured (no env vars or CLI args)",
     )?;
+=======
+    // read bootstrap peers from multiple sources in priority order
+    let bootstrap_peers: Vec<EndpointAddr> =
+        if let Ok(endpoints_json) = std::env::var("PSYCHE_GATEWAY_ENDPOINTS") {
+            // production: JSON array of gateway endpoints
+            info!("Reading gateway endpoints from PSYCHE_GATEWAY_ENDPOINTS env var");
+            let peers: Vec<EndpointAddr> = serde_json::from_str(&endpoints_json)
+                .context("Failed to parse PSYCHE_GATEWAY_ENDPOINTS as JSON array")?;
+            info!("Loaded {} gateway endpoint(s) from env var", peers.len());
+            for peer in &peers {
+                info!("  Gateway: {}", peer.id.fmt_short());
+            }
+            peers
+        } else if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_BOOTSTRAP_FILE") {
+            // alternative: env var pointing to file
+            let peer_file = PathBuf::from(file_path);
+            if peer_file.exists() {
+                info!(
+                    "Reading bootstrap peers from PSYCHE_GATEWAY_BOOTSTRAP_FILE: {:?}",
+                    peer_file
+                );
+                let content = fs::read_to_string(&peer_file)
+                    .context("Failed to read gateway bootstrap file")?;
+                let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                    .context("Failed to parse gateway bootstrap file as JSON array")?;
+                info!("Loaded {} gateway endpoint(s) from file", peers.len());
+                peers
+            } else {
+                info!("Gateway bootstrap file not found, starting without peers");
+                vec![]
+            }
+        } else if let Some(ref peer_file) = args.bootstrap_peer_file {
+            // local testing: CLI argument
+            if peer_file.exists() {
+                info!("Reading bootstrap peer from {:?}", peer_file);
+                let content =
+                    fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
+                // Support both single endpoint and array
+                if let Ok(peer) = serde_json::from_str::<EndpointAddr>(&content) {
+                    info!("Bootstrap peer: {}", peer.id.fmt_short());
+                    vec![peer]
+                } else {
+                    let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                        .context("Failed to parse bootstrap peer file")?;
+                    info!("Loaded {} bootstrap peer(s)", peers.len());
+                    peers
+                }
+            } else {
+                info!("Bootstrap peer file not found, starting without peers");
+                vec![]
+            }
+        } else {
+            info!("No bootstrap peers configured (no env vars or CLI args)");
+            vec![]
+        };
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 
     let cancel = CancellationToken::new();
 
@@ -170,8 +232,13 @@ async fn main() -> Result<()> {
         run_id,
         None, // port (let OS choose)
         None, // interface
+<<<<<<< HEAD
         run_args.discovery_mode,
         run_args.relay_kind,
+=======
+        discovery_mode,
+        relay_kind,
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
         bootstrap_peers,
         None,                // secret key (generate new)
         allowlist::AllowAll, // No allowlist for inference network
@@ -186,7 +253,11 @@ async fn main() -> Result<()> {
     info!("  Endpoint ID: {}", network.endpoint_id());
     info!("Protocol handler registered");
 
+<<<<<<< HEAD
     if let Some(ref endpoint_file) = run_args.write_endpoint_file {
+=======
+    if let Some(ref endpoint_file) = args.write_endpoint_file {
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
         let endpoint_addr = network.router().endpoint().addr();
         let content = serde_json::to_string(&endpoint_addr)
             .context("Failed to serialize endpoint address")?;
@@ -196,6 +267,7 @@ async fn main() -> Result<()> {
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
+<<<<<<< HEAD
     info!("Registering inference protocol handler...");
     let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
     network
@@ -206,6 +278,9 @@ async fn main() -> Result<()> {
     info!("Protocol handler registered");
 
     // announce availability via gossip
+=======
+    // Announce availability via gossip
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: model_name.clone(),
         checkpoint_id: None, // TODO: Track actual checkpoint when reloading - do we need this?

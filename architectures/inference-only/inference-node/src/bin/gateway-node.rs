@@ -17,6 +17,11 @@ use axum::{
     routing::post,
 };
 use clap::Parser;
+<<<<<<< HEAD
+=======
+use iroh::EndpointAddr;
+use postcard;
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 use psyche_inference::{
     INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
@@ -32,6 +37,31 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
+<<<<<<< HEAD
+=======
+
+// dummy protocol handler for when we don't need any custom protocol
+#[derive(Clone, Debug)]
+struct NoProtocol;
+
+impl ProtocolHandler for NoProtocol {
+    async fn accept(
+        &self,
+        _connection: iroh::endpoint::Connection,
+    ) -> Result<(), iroh::protocol::AcceptError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "gateway")]
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::post,
+};
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -223,6 +253,10 @@ async fn main() -> Result<()> {
     run_gateway().await
 }
 
+<<<<<<< HEAD
+=======
+#[cfg(feature = "gateway")]
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 async fn send_inference_request(
     endpoint: iroh::Endpoint,
     peer_id: EndpointId,
@@ -277,6 +311,10 @@ async fn send_inference_request(
     }
 }
 
+<<<<<<< HEAD
+=======
+#[cfg(feature = "gateway")]
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 async fn run_gateway() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -292,10 +330,77 @@ async fn run_gateway() -> Result<()> {
     info!("  Discovery mode: {:?}", args.discovery_mode);
     info!("  Relay kind: {:?}", args.relay_kind);
 
+<<<<<<< HEAD
     let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
         args.bootstrap_peer_file.as_ref(),
         "No bootstrap peers configured (gateway will be a bootstrap node)",
     )?;
+=======
+    let discovery_mode: DiscoveryMode = args
+        .discovery_mode
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid discovery mode: {}", e))?;
+
+    let relay_kind: RelayKind = args
+        .relay_kind
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
+
+    // read bootstrap peers from multiple sources in priority order
+    let bootstrap_peers: Vec<EndpointAddr> =
+        if let Ok(endpoints_json) = std::env::var("PSYCHE_GATEWAY_ENDPOINTS") {
+            // JSON array of other gateway endpoints
+            info!("Reading gateway endpoints from PSYCHE_GATEWAY_ENDPOINTS env var");
+            let peers: Vec<EndpointAddr> = serde_json::from_str(&endpoints_json)
+                .context("Failed to parse PSYCHE_GATEWAY_ENDPOINTS as JSON array")?;
+            info!("Loaded {} gateway endpoint(s) from env var", peers.len());
+            for peer in &peers {
+                info!("  Gateway: {}", peer.id.fmt_short());
+            }
+            peers
+        } else if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_BOOTSTRAP_FILE") {
+            // env var pointing to file
+            let peer_file = PathBuf::from(file_path);
+            if peer_file.exists() {
+                info!(
+                    "Reading bootstrap peers from PSYCHE_GATEWAY_BOOTSTRAP_FILE: {:?}",
+                    peer_file
+                );
+                let content = fs::read_to_string(&peer_file)
+                    .context("Failed to read gateway bootstrap file")?;
+                let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                    .context("Failed to parse gateway bootstrap file as JSON array")?;
+                info!("Loaded {} gateway endpoint(s) from file", peers.len());
+                peers
+            } else {
+                info!("Gateway bootstrap file not found, starting without peers");
+                vec![]
+            }
+        } else if let Some(ref peer_file) = args.bootstrap_peer_file {
+            // local testing: CLI argument
+            if peer_file.exists() {
+                info!("Reading bootstrap peer from {:?}", peer_file);
+                let content =
+                    fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
+                // support both single endpoint and array
+                if let Ok(peer) = serde_json::from_str::<EndpointAddr>(&content) {
+                    info!("Bootstrap peer: {}", peer.id.fmt_short());
+                    vec![peer]
+                } else {
+                    let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
+                        .context("Failed to parse bootstrap peer file")?;
+                    info!("Loaded {} bootstrap peer(s)", peers.len());
+                    peers
+                }
+            } else {
+                info!("Bootstrap peer file not found, starting without peers");
+                vec![]
+            }
+        } else {
+            info!("No bootstrap peers configured (gateway will be a bootstrap node)");
+            vec![]
+        };
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 
     let cancel = CancellationToken::new();
 
@@ -345,6 +450,11 @@ async fn run_gateway() -> Result<()> {
 
     info!("Waiting for gossip mesh to stabilize...");
     sleep(Duration::from_secs(5)).await;
+<<<<<<< HEAD
+=======
+
+    info!("Gossip mesh should be ready");
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
 
     info!("Gossip mesh should be ready");
 
@@ -373,6 +483,7 @@ async fn run_gateway() -> Result<()> {
                         break;
                     }
 
+<<<<<<< HEAD
                     Some((target_peer_id, msg)) = network_rx.recv() => {
                         match msg {
                             InferenceMessage::Request(req) => {
@@ -392,10 +503,39 @@ async fn run_gateway() -> Result<()> {
                                     match result {
                                         Ok(Ok(response)) => {
                                             info!("Received inference response for {}", request_id);
+=======
+                    Some(msg) = network_rx.recv() => {
+                        match msg {
+                            InferenceMessage::Request(req) => {
+                                // Send request via direct P2P connection
+                                let request_id = req.request_id.clone();
+                                info!("Sending inference request {} via direct P2P", request_id);
+
+                                // Get target node
+                                let nodes = state.available_nodes.read().await;
+                                let target_node = match nodes.values().next() {
+                                    Some(node) => node.peer_id,
+                                    None => {
+                                        error!("No inference nodes available");
+                                        continue;
+                                    }
+                                };
+                                drop(nodes);
+
+                                // Spawn task to handle P2P connection
+                                let endpoint = network.router().endpoint().clone();
+                                let state_clone = state.clone();
+                                tokio::spawn(async move {
+                                    match send_inference_request(endpoint, target_node, req).await {
+                                        Ok(response) => {
+                                            info!("Received inference response for {}", request_id);
+                                            // Forward response to pending request
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
                                             if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
                                                 let _ = tx.send(response).await;
                                             }
                                         }
+<<<<<<< HEAD
                                         Ok(Err(e)) => {
                                             error!("Failed to send inference request: {:#}", e);
                                             state_clone.pending_requests.write().await.remove(&request_id);
@@ -403,6 +543,10 @@ async fn run_gateway() -> Result<()> {
                                         Err(_) => {
                                             error!("Inference request {} timed out after 35s", request_id);
                                             state_clone.pending_requests.write().await.remove(&request_id);
+=======
+                                        Err(e) => {
+                                            error!("Failed to send inference request: {:#}", e);
+>>>>>>> 06e849bc (Bootstrapping from file and env variable, adding direct connection P2P response handling)
                                         }
                                     }
                                 });

@@ -879,6 +879,73 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper 1.0.2",
  "tokio",
+ "tower 0.5.2",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "axum-core"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09f2bd6146b97ae3359fa0cc6d6b376d9539582c7b4220f041a33ec24c226199"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "futures-util",
+ "http 1.4.0",
+ "http-body 1.0.1",
+ "http-body-util",
+ "mime",
+ "pin-project-lite",
+ "rustversion",
+ "sync_wrapper 1.0.2",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "axum-macros"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57d123550fa8d071b7255cb0cc04dc302baa6c8c4a79f55701552684d8399bce"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.113",
+]
+
+[[package]]
+name = "axum"
+version = "0.7.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edca88bc138befd0323b20752846e6587272d3b03b0343c8ea28a6f819e6e71f"
+dependencies = [
+ "async-trait",
+ "axum-core",
+ "axum-macros",
+ "bytes",
+ "futures-util",
+ "http 1.4.0",
+ "http-body 1.0.1",
+ "http-body-util",
+ "hyper 1.8.1",
+ "hyper-util",
+ "itoa",
+ "matchit",
+ "memchr",
+ "mime",
+ "percent-encoding",
+ "pin-project-lite",
+ "rustversion",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_urlencoded",
+ "sync_wrapper 1.0.2",
+ "tokio",
  "tower 0.5.3",
  "tower-layer",
  "tower-service",
@@ -2740,7 +2807,7 @@ dependencies = [
 
 [[package]]
 name = "expand-distro"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -6905,7 +6972,7 @@ dependencies = [
 
 [[package]]
 name = "preview-lr"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7024,7 +7091,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-client"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7052,7 +7119,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-local-testnet"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7066,7 +7133,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-server"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7099,7 +7166,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-shared"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anyhow",
@@ -7115,7 +7182,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-testing"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7138,7 +7205,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-client"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7176,7 +7243,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-coordinator"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "async-trait",
@@ -7190,7 +7257,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-core"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-lang-idl",
@@ -7211,7 +7278,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-data-provider"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anyhow",
@@ -7249,7 +7316,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-decentralized-testing"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-client",
  "bollard",
@@ -7273,7 +7340,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-deserialize-zerocopy-wasm"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "psyche-core",
  "psyche-solana-coordinator",
@@ -7285,7 +7352,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-eval"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7308,7 +7375,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-inference"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "iroh",
@@ -7324,7 +7391,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-inference-node"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -7352,7 +7419,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-metrics"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "iroh-metrics 0.35.0",
@@ -7368,12 +7435,11 @@ dependencies = [
 
 [[package]]
 name = "psyche-modeling"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "byteorder",
  "clap",
- "clap-markdown",
  "flume",
  "itertools 0.14.0",
  "memmap2 0.9.9",
@@ -7399,13 +7465,12 @@ dependencies = [
 
 [[package]]
 name = "psyche-network"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",
  "chrono",
  "clap",
- "clap-markdown",
  "data-encoding",
  "ed25519-dalek 3.0.0-pre.1",
  "futures-util",
@@ -7439,14 +7504,14 @@ dependencies = [
 
 [[package]]
 name = "psyche-python-extension"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "psyche-python-extension-impl",
 ]
 
 [[package]]
 name = "psyche-python-extension-impl"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "psyche-core",
  "psyche-modeling",
@@ -7463,7 +7528,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-sidecar"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7477,7 +7542,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-authorizer"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -7485,13 +7550,18 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-client"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-client",
+ "anchor-spl",
  "anyhow",
  "async-trait",
+ "backon",
+ "bytemuck",
  "clap",
  "clap-markdown",
+ "futures-util",
+ "home",
  "psyche-client",
  "psyche-coordinator",
  "psyche-core",
@@ -7501,14 +7571,17 @@ dependencies = [
  "psyche-modeling",
  "psyche-network",
  "psyche-python-extension-impl",
+ "psyche-solana-authorizer",
  "psyche-solana-coordinator",
- "psyche-solana-rpc",
+ "psyche-solana-treasurer",
  "psyche-tui",
  "psyche-watcher",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
  "serde",
  "serde_json",
+ "solana-account-decoder-client-types",
+ "solana-transaction-status-client-types",
  "time",
  "tokio",
  "tokio-util 0.7.18",
@@ -7517,7 +7590,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-coordinator"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
@@ -7529,38 +7602,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "psyche-solana-mining-pool"
-version = "0.2.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
-]
-
-[[package]]
-name = "psyche-solana-rpc"
-version = "0.2.0"
-dependencies = [
- "anchor-client",
- "anchor-spl",
- "anyhow",
- "async-trait",
- "backon",
- "futures-util",
- "psyche-coordinator",
- "psyche-core",
- "psyche-solana-authorizer",
- "psyche-solana-coordinator",
- "psyche-solana-treasurer",
- "psyche-watcher",
- "solana-account-decoder-client-types",
- "solana-transaction-status-client-types",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "psyche-solana-tooling"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -7570,7 +7613,6 @@ dependencies = [
  "psyche-core",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
- "psyche-solana-mining-pool",
  "psyche-solana-treasurer",
  "solana-sdk",
  "solana_toolbox_endpoint",
@@ -7579,7 +7621,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-treasurer"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -7593,7 +7635,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-tui"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7618,12 +7660,13 @@ dependencies = [
 
 [[package]]
 name = "psyche-watcher"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "psyche-coordinator",
  "psyche-core",
+ "psyche-network",
  "psyche-tui",
  "serde",
 ]
@@ -8342,31 +8385,17 @@ dependencies = [
 
 [[package]]
 name = "run-manager"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anchor-client",
  "anchor-lang",
- "anchor-spl",
  "anyhow",
- "async-trait",
- "chrono",
  "clap",
  "clap-markdown",
  "psyche-coordinator",
- "psyche-core",
- "psyche-solana-authorizer",
  "psyche-solana-coordinator",
- "psyche-solana-rpc",
- "psyche-solana-treasurer",
- "rand 0.9.2",
- "rand_chacha 0.9.0",
- "serde",
- "serde_json",
- "serial_test",
  "solana-client",
- "time",
  "tokio",
- "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
 ]
