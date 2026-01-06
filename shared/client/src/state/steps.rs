@@ -252,7 +252,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                             .stats_logger
                             .lock()
                             .map_err(|_| OpportunisticWitnessError::StatsLoggerMutex)?
-                            .get_witness_metadata(&self.coordinator_state);
+                            .get_witness_metadata(&self.coordinator_state, &self.identity);
                         self.tx_opportunistic_data
                             .send(OpportunisticData::WitnessStep(witness, metadata))
                             .map_err(|_| OpportunisticWitnessError::Send)?;
@@ -811,7 +811,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     .stats_logger
                     .lock()
                     .map_err(|_| StepError::StatsLoggerMutex)?
-                    .get_witness_metadata(&state);
+                    .get_witness_metadata(&state, &self.identity);
                 ActiveStep::Witness(self.witness.start(
                     client_index,
                     &state,
