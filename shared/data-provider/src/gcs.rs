@@ -30,7 +30,7 @@ fn get_cache_dir(bucket: &str, prefix: Option<&str>) -> PathBuf {
     }
 }
 
-async fn download_model_from_gcs_async(
+pub async fn download_model_from_gcs_async(
     bucket: &str,
     prefix: Option<&str>,
     cache_dir: Option<PathBuf>,

@@ -204,6 +204,7 @@ impl App {
                             Checkpoint::P2P(_) => {
                                 bail!("Can't start up a run with a P2P checkpoint.")
                             }
+                            Checkpoint::Gcs(gcs_repo) => todo!(),
                         }
 
                         let server_addr: SocketAddr = String::from(url).parse().map_err(|e| {

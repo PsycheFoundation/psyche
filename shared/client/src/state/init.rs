@@ -6,7 +6,8 @@ use psyche_coordinator::{
 use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
-    WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
+    WeightedDataProvider, download_dataset_repo_async, download_model_from_gcs_async,
+    download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
@@ -310,7 +311,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     tx_config.send((config.to_string(), tokenizer)).unwrap();
                     Ok(model)
                 }),
-                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => {
+                model::Checkpoint::Hub(_)
+                | model::Checkpoint::P2P(_)
+                | model::Checkpoint::Gcs(_) => {
                     let checkpoint = llm.checkpoint;
                     tokio::spawn(async move {
                         let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
@@ -425,6 +428,43 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     ),
                                     Arc::new(tokenizer),
                                     vec![],
+                                )
+                            }
+                            model::Checkpoint::Gcs(gcs_repo) => {
+                                let bucket: String = (&gcs_repo.bucket).into();
+                                let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
+
+                                info!(
+                                    "Downloading model from gs://{}/{}",
+                                    bucket,
+                                    prefix.as_deref().unwrap_or("")
+                                );
+
+                                let repo_files = download_model_from_gcs_async(
+                                    &bucket,
+                                    prefix.as_deref(),
+                                    None,
+                                    true,
+                                )
+                                .await;
+
+                                let checkpoint_extra_files = repo_files
+                                    .iter()
+                                    .filter(|file| {
+                                        file.ends_with("config.json")
+                                            || file.ends_with("tokenizer.json")
+                                            || file.ends_with("tokenizer_config.json")
+                                            || file.ends_with("special_tokens_map.json")
+                                            || file.ends_with("generation_config.json")
+                                            || file.ends_with(".py")
+                                    })
+                                    .cloned()
+                                    .collect();
+                                let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
+                                (
+                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                    tokenizer,
+                                    checkpoint_extra_files,
                                 )
                             }
                             _ => unreachable!(),
