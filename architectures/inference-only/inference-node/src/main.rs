@@ -89,6 +89,10 @@ async fn main() -> Result<()> {
 
     let cancel = CancellationToken::new();
 
+    info!("Initializing Python interpreter...");
+    pyo3::prepare_freethreaded_python();
+    info!("Python interpreter initialized");
+
     info!("Initializing vLLM engine...");
     let mut inference_node = InferenceNode::new(
         args.model_name.clone(),
