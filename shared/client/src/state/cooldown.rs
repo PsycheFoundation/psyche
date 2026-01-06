@@ -230,12 +230,12 @@ impl CooldownStepMetadata {
                         }
                     };
 
-                    tx_checkpoint
-                        .send(HubRepo {
-                            repo_id: FixedString::from_str_truncated(&hub_repo),
-                            revision: Some(FixedString::from_str_truncated(&revision)),
-                        })
-                        .map_err(|_| CheckpointError::SendCheckpoint)?;
+                    // tx_checkpoint
+                    //     .send(HubRepo {
+                    //         repo_id: FixedString::from_str_truncated(&hub_repo),
+                    //         revision: Some(FixedString::from_str_truncated(&revision)),
+                    //     })
+                    //     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
                     // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
                     // we'll just delete the dir after we've uploaded it

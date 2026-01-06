@@ -1,8 +1,6 @@
 use crate as psyche_core;
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, prelude::borsh};
 use bytemuck::Zeroable;
-#[cfg(feature = "rand")]
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut, Range, RangeFrom, RangeFull, RangeTo};
 use ts_rs::TS;
@@ -145,15 +143,6 @@ impl<T: Default + Copy, const N: usize> FixedVec<T, N> {
         self.len += 1;
         Ok(())
     }
-
-    // pub fn random(&self) -> Option<T> {
-    //     if self.len == 0 {
-    //         return None;
-    //     }
-    //     let mut rng = rand::rng();
-    //     let random_index = rng.random_range(0..self.len) as u16;
-    //     Some(self.data[random_index as usize])
-    // }
 
     pub fn retain<F>(&mut self, mut f: F)
     where

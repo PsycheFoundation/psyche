@@ -171,8 +171,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     }
 
     pub fn try_send_opportunistic_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
-        if let Some(committee_info) = &self.current_round.committee_info {
+        println!("CURRENT STATE = {:?}", self.coordinator_state.run_state);
+        if self.current_round.committee_info.is_some()
+            && !matches!(
+                self.coordinator_state.run_state,
+                RunState::Warmup | RunState::Cooldown
+            )
+        {
             // trace!("Checking for opprotunistic witness with committee info");
+            let committee_info = self.current_round.committee_info.as_ref().unwrap();
             if let ActiveStep::Training(step) = &self.active_step {
                 let all_prev_round_batches_are_trained = self
                     .previous_round
