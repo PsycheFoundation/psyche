@@ -1,0 +1,13 @@
+{
+	"version": "0.4.9.2",
+	"model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+	"limit": 5,
+	"seed": 42,
+	"evals": [
+		{
+			"name": "arc_easy",
+			"acc": 0.4,
+			"acc_norm": 0.6
+		}
+	]
+}
