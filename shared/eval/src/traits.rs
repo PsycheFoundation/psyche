@@ -7,6 +7,7 @@ pub struct Document {
     pub answer: usize,
     pub category: Option<String>,
     pub cot_content: Option<String>,
+    pub eval_name: String,
 }
 
 pub trait LogLikelihoodTask: Send + Display {

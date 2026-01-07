@@ -7,7 +7,8 @@ use psyche_coordinator::{
 use psyche_core::{FixedString, NodeIdentity};
 use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
-    SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
+    CausalLM, SaveSafetensorsError, Trainer, TrainerThreadCommunicationError,
+    save_tensors_into_safetensors,
 };
 use std::{
     cmp::Reverse,
@@ -160,12 +161,21 @@ impl CooldownStepMetadata {
                     .map(|(name, var)| (name.clone(), var.shallow_clone()))
                     .collect();
 
-                trainers.push(trainer);
-                let evals = model_task_runner.start(trainers);
-
                 tx_model
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
+
+                let (variables, trainer) = if checkpoint_info.is_some() {
+                    // convert from internal shape to serialized shape (e.g. torchtitan to hf)
+                    tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
+                        .await
+                        .map_err(|_| CheckpointError::ExtractThreadCrashed)?
+                } else {
+                    (variables, trainer)
+                };
+
+                trainers.push(trainer);
+                let evals = model_task_runner.start(trainers);
 
                 let Some(CheckpointConfig {
                     hub_upload,
