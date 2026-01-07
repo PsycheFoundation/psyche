@@ -59,14 +59,14 @@ pub async fn download_model_from_gcs_async(
 
     // List all objects in the bucket with optional prefix
     let mut all_objects = vec![];
-    let mut next_page_token: Option<Option<String>> = Some(None);
+    let mut page_token: Option<String> = None;
 
-    while let Some(maybe_next_page_token) = next_page_token {
+    loop {
         let results = client
             .list_objects(&ListObjectsRequest {
                 bucket: bucket.to_owned(),
                 prefix: prefix.map(|s| s.to_owned()),
-                page_token: maybe_next_page_token,
+                page_token: page_token.clone(),
                 ..Default::default()
             })
             .await?;
@@ -77,7 +77,10 @@ pub async fn download_model_from_gcs_async(
             }
         }
 
-        next_page_token = results.next_page_token.map(Some);
+        match results.next_page_token {
+            Some(token) => page_token = Some(token),
+            None => break,
+        }
     }
 
     info!(
