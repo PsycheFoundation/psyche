@@ -47,18 +47,13 @@ pub async fn download_model_from_gcs_async(
     bucket: &str,
     prefix: Option<&str>,
     cache_dir: Option<PathBuf>,
-    progress_bar: bool,
 ) -> Result<Vec<PathBuf>, GcsError> {
     // Use authenticated client if GOOGLE_APPLICATION_CREDENTIALS is set, otherwise anonymous
     let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
-        if progress_bar {
-            info!("Using authenticated GCS client");
-        }
+        info!("Using authenticated GCS client");
         ClientConfig::default().with_auth().await?
     } else {
-        if progress_bar {
-            info!("Using anonymous GCS client");
-        }
+        info!("Using anonymous GCS client");
         ClientConfig::default().anonymous()
     };
     let client = Client::new(config);
@@ -86,14 +81,12 @@ pub async fn download_model_from_gcs_async(
         next_page_token = results.next_page_token.map(Some);
     }
 
-    if progress_bar {
-        info!(
-            "Found {} model files in gs://{}/{}",
-            all_objects.len(),
-            bucket,
-            prefix.unwrap_or("")
-        );
-    }
+    info!(
+        "Found {} model files in gs://{}/{}",
+        all_objects.len(),
+        bucket,
+        prefix.unwrap_or("")
+    );
 
     // Determine cache directory
     let cache_dir = cache_dir.unwrap_or_else(|| get_cache_dir(bucket, prefix));
@@ -109,16 +102,12 @@ pub async fn download_model_from_gcs_async(
 
         // Skip if already cached
         if local_path.exists() {
-            if progress_bar {
-                info!("Using cached: {}", filename);
-            }
+            info!("Using cached: {}", filename);
             downloaded_files.push(local_path);
             continue;
         }
 
-        if progress_bar {
-            info!("Downloading: {}", object_name);
-        }
+        info!("Downloading: {}", object_name);
 
         // Download the object
         let data = client
@@ -135,9 +124,7 @@ pub async fn download_model_from_gcs_async(
         // Write to cache
         std::fs::write(&local_path, &data)?;
 
-        if progress_bar {
-            info!("Downloaded: {} ({} bytes)", filename, data.len());
-        }
+        info!("Downloaded: {} ({} bytes)", filename, data.len());
 
         downloaded_files.push(local_path);
     }
@@ -152,10 +139,5 @@ pub fn download_model_from_gcs_sync(
     progress_bar: bool,
 ) -> Result<Vec<PathBuf>, GcsError> {
     let rt = Runtime::new().map_err(GcsError::Io)?;
-    rt.block_on(download_model_from_gcs_async(
-        bucket,
-        prefix,
-        cache_dir,
-        progress_bar,
-    ))
+    rt.block_on(download_model_from_gcs_async(bucket, prefix, cache_dir))
 }

@@ -213,7 +213,6 @@ impl App {
                                     &bucket,
                                     prefix.as_deref(),
                                     None,
-                                    true,
                                 )
                                 .await?;
                             }
