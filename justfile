@@ -179,23 +179,36 @@ setup_python_test_infra:
 run_test_infra num_clients="1":
     #!/usr/bin/env bash
     cd docker/test
+    COMPOSE_FILES="-f docker-compose.yml"
+
     if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
         echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --force-recreate
-    else
-        echo "Running without GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+        COMPOSE_FILES="${COMPOSE_FILES} -f docker-compose.gpu.yml"
     fi
+
+    if [ "${PYTHON_ENABLED}" = "true" ]; then
+        echo "Python enabled, adding Python-specific configuration"
+        COMPOSE_FILES="${COMPOSE_FILES} -f docker-compose.python.yml"
+    fi
+
+    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d --force-recreate
 
 run_test_infra_with_proxies_validator num_clients="1":
     #!/usr/bin/env bash
+    cd docker/test/subscriptions_test
+    COMPOSE_FILES="-f ../docker-compose.yml -f docker-compose.yml"
+
     if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
         echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
-        cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml -f ../docker-compose.gpu.yml up -d --force-recreate
-    else
-        echo "Running without GPU support"
-        cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
+        COMPOSE_FILES="${COMPOSE_FILES} -f ../docker-compose.gpu.yml"
     fi
+
+    if [ "${PYTHON_ENABLED}" = "true" ]; then
+        echo "Python enabled, adding Python-specific configuration"
+        COMPOSE_FILES="${COMPOSE_FILES} -f ../docker-compose.python.yml"
+    fi
+
+    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d --force-recreate
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
