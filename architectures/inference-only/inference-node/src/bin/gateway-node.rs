@@ -11,8 +11,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use iroh::EndpointAddr;
+use postcard;
 use psyche_inference::{
-    InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
+    INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
@@ -25,7 +26,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 // dummy protocol handler for when we don't need any custom protocol
 #[derive(Clone, Debug)]
@@ -212,6 +213,64 @@ async fn main() -> Result<()> {
 }
 
 #[cfg(feature = "gateway")]
+async fn send_inference_request(
+    endpoint: iroh::Endpoint,
+    peer_id: EndpointId,
+    request: InferenceRequest,
+) -> Result<InferenceResponse> {
+    info!(
+        "Connecting to peer {} with ALPN {:?}",
+        peer_id.fmt_short(),
+        std::str::from_utf8(INFERENCE_ALPN)
+    );
+
+    // Connect to peer and open bidirectional stream
+    let connection = endpoint
+        .connect(peer_id, INFERENCE_ALPN)
+        .await
+        .context("Failed to connect to peer")?;
+
+    info!("Connected, opening bidirectional stream");
+    let (mut send, mut recv) = connection
+        .open_bi()
+        .await
+        .context("Failed to open bidirectional stream")?;
+
+    // Serialize and send request
+    let message = InferenceMessage::Request(request);
+    let request_bytes =
+        postcard::to_allocvec(&message).context("Failed to serialize inference request")?;
+
+    info!("Sending {} bytes", request_bytes.len());
+    send.write_all(&request_bytes)
+        .await
+        .context("Failed to write request")?;
+
+    // Finish the send side to signal we're done writing
+    info!("Finishing send stream");
+    send.finish()?;
+
+    // Read response
+    info!("Reading response...");
+    let response_bytes = recv
+        .read_to_end(10 * 1024 * 1024)
+        .await
+        .context("Failed to read response")?; // 10MB max
+
+    info!("Received {} bytes, deserializing", response_bytes.len());
+    let response_message: InferenceMessage = postcard::from_bytes(&response_bytes)
+        .context("Failed to deserialize inference response")?;
+
+    match response_message {
+        InferenceMessage::Response(response) => {
+            info!("Successfully received inference response");
+            Ok(response)
+        }
+        _ => anyhow::bail!("Unexpected message type from inference node"),
+    }
+}
+
+#[cfg(feature = "gateway")]
 async fn run_gateway() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -363,11 +422,40 @@ async fn run_gateway() -> Result<()> {
                     }
 
                     Some(msg) = network_rx.recv() => {
-                        debug!("Broadcasting inference message");
                         match msg {
-                            InferenceMessage::Request(_req) => {
-                                warn!("Direct P2P not yet implemented, using gossip broadcast");
-                                continue;
+                            InferenceMessage::Request(req) => {
+                                // Send request via direct P2P connection
+                                let request_id = req.request_id.clone();
+                                info!("Sending inference request {} via direct P2P", request_id);
+
+                                // Get target node
+                                let nodes = state.available_nodes.read().await;
+                                let target_node = match nodes.values().next() {
+                                    Some(node) => node.peer_id,
+                                    None => {
+                                        error!("No inference nodes available");
+                                        continue;
+                                    }
+                                };
+                                drop(nodes);
+
+                                // Spawn task to handle P2P connection
+                                let endpoint = network.router().endpoint().clone();
+                                let state_clone = state.clone();
+                                tokio::spawn(async move {
+                                    match send_inference_request(endpoint, target_node, req).await {
+                                        Ok(response) => {
+                                            info!("Received inference response for {}", request_id);
+                                            // Forward response to pending request
+                                            if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
+                                                let _ = tx.send(response).await;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to send inference request: {:#}", e);
+                                        }
+                                    }
+                                });
                             }
                             _ => continue,
                         };

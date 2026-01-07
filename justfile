@@ -247,7 +247,7 @@ inference-stack model="gpt2":
     echo "Waiting for gateway to initialize and write endpoint..."
     for i in $(seq 1 30); do
         if [ -f "$GATEWAY_PEER_FILE" ]; then
-            echo "✓ Gateway peer file created"
+            echo "Gateway peer file created"
             break
         fi
         sleep 1
@@ -260,7 +260,7 @@ inference-stack model="gpt2":
 
     # Wait a bit more for gateway HTTP server
     sleep 2
-    echo "✓ Gateway ready"
+    echo "Gateway ready"
     echo ""
     echo "Starting inference node..."
 
