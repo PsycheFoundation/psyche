@@ -125,7 +125,7 @@ fn main() -> Result<()> {
     }
 
     let repo = if let Some(ref bucket) = args.gcs_bucket {
-        download_model_from_gcs_sync(bucket, args.gcs_prefix.as_deref(), None, true)?
+        download_model_from_gcs_sync(bucket, args.gcs_prefix.as_deref())?
     } else {
         download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?
     };

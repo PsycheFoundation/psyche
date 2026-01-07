@@ -443,13 +443,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     prefix.as_deref().unwrap_or("")
                                 );
 
-                                let repo_files = download_model_from_gcs_async(
-                                    &bucket,
-                                    prefix.as_deref(),
-                                    None,
-                                    true,
-                                )
-                                .await?;
+                                let repo_files =
+                                    download_model_from_gcs_async(&bucket, prefix.as_deref())
+                                        .await?;
 
                                 let checkpoint_extra_files = repo_files
                                     .iter()

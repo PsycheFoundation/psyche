@@ -46,7 +46,6 @@ fn get_cache_dir(bucket: &str, prefix: Option<&str>) -> PathBuf {
 pub async fn download_model_from_gcs_async(
     bucket: &str,
     prefix: Option<&str>,
-    cache_dir: Option<PathBuf>,
 ) -> Result<Vec<PathBuf>, GcsError> {
     // Use authenticated client if GOOGLE_APPLICATION_CREDENTIALS is set, otherwise anonymous
     let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
@@ -88,8 +87,7 @@ pub async fn download_model_from_gcs_async(
         prefix.unwrap_or("")
     );
 
-    // Determine cache directory
-    let cache_dir = cache_dir.unwrap_or_else(|| get_cache_dir(bucket, prefix));
+    let cache_dir = get_cache_dir(bucket, prefix);
     std::fs::create_dir_all(&cache_dir)?;
 
     let mut downloaded_files = Vec::new();
@@ -135,9 +133,7 @@ pub async fn download_model_from_gcs_async(
 pub fn download_model_from_gcs_sync(
     bucket: &str,
     prefix: Option<&str>,
-    cache_dir: Option<PathBuf>,
-    progress_bar: bool,
 ) -> Result<Vec<PathBuf>, GcsError> {
     let rt = Runtime::new().map_err(GcsError::Io)?;
-    rt.block_on(download_model_from_gcs_async(bucket, prefix, cache_dir))
+    rt.block_on(download_model_from_gcs_async(bucket, prefix))
 }

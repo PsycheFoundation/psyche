@@ -209,12 +209,7 @@ impl App {
                                 let bucket: String = (&gcs_repo.bucket).into();
                                 let prefix: Option<String> =
                                     gcs_repo.prefix.map(|p| (&p).into());
-                                download_model_from_gcs_async(
-                                    &bucket,
-                                    prefix.as_deref(),
-                                    None,
-                                )
-                                .await?;
+                                download_model_from_gcs_async(&bucket, prefix.as_deref()).await?;
                             }
                         }
 

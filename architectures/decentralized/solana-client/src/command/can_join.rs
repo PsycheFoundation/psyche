@@ -144,13 +144,8 @@ pub async fn command_can_join_execute(
                     prefix.as_deref().unwrap_or("")
                 );
 
-                psyche_data_provider::download_model_from_gcs_async(
-                    &bucket,
-                    prefix.as_deref(),
-                    None,
-                    true,
-                )
-                .await?;
+                psyche_data_provider::download_model_from_gcs_async(&bucket, prefix.as_deref())
+                    .await?;
             }
         };
         println!("Model predownloaded successfully.")
