@@ -4,6 +4,7 @@ use crate::{
 };
 
 use iroh_blobs::api::Tag;
+use psyche_coordinator::CheckpointerSelection;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
@@ -351,7 +352,29 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     return Ok(());
                 }
             }
-            if self.coordinator_state.epoch_state.checkpointer.id != self.identity {
+            let client_index = self
+                .coordinator_state
+                .epoch_state
+                .clients
+                .iter()
+                .position(|x| x.id == self.identity)
+                .unwrap();
+
+            let checkpointer_selection =
+                CheckpointerSelection::from_coordinator(&self.coordinator_state, 0)
+                    .map_err(|e| OpportunisticWitnessError::Send)?;
+            let is_checkpointer = checkpointer_selection.get_checkpointer(
+                client_index as u64,
+                self.coordinator_state.epoch_state.clients.len() as u64,
+            );
+            let checkpointer = self
+                .coordinator_state
+                .epoch_state
+                .clients
+                .get(client_index as usize)
+                .cloned()
+                .unwrap();
+            if !is_checkpointer {
                 return Ok(());
             }
 

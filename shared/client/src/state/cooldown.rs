@@ -1,10 +1,14 @@
 use crate::HubUploadInfo;
 
+use psyche_coordinator::CheckpointerSelection;
 use psyche_coordinator::Client;
 use psyche_coordinator::{
     Coordinator,
     model::{self, HubRepo},
 };
+use psyche_core::compute_shuffled_index;
+use psyche_core::sha256;
+use psyche_core::sha256v;
 use psyche_core::{FixedString, NodeIdentity};
 use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
@@ -147,18 +151,16 @@ impl CooldownStepMetadata {
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
-        let mut seed = [0u8; 32];
-        seed.copy_from_slice(&sha256v(&[
-            &sha256(&seed.to_le_bytes()),
-            "COOLDOWN".as_bytes(),
-        ]));
-        let random_index =
-            compute_shuffled_index(client_index, state.epoch_state.clients.len() as u64, &seed)
-                as usize;
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(state, 0)
+            .map_err(|e| CooldownError::NoTrainers)?;
+        let is_checkpointer = checkpointer_selection
+            .get_checkpointer(client_index, state.epoch_state.clients.len() as u64);
+        println!("CHECKPOINTER INDEX: {}", is_checkpointer);
+        println!("CLIENT INDEX: {}", client_index);
         let checkpointer = state
             .epoch_state
             .clients
-            .get(random_index)
+            .get(client_index as usize)
             .cloned()
             .ok_or(CooldownError::NoTrainers)?;
 
@@ -186,7 +188,7 @@ impl CooldownStepMetadata {
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                if checkpointer.id != from {
+                if !is_checkpointer {
                     info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
                     return Ok((evals, None));
                 }

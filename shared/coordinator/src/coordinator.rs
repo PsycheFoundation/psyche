@@ -1,5 +1,5 @@
 use crate::{
-    Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
+    CheckpointerSelection, Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
     model::{Checkpoint, HubRepo, Model},
 };
 
@@ -9,7 +9,6 @@ use psyche_core::{
     Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, compute_shuffled_index,
     sha256, sha256v,
 };
-use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
@@ -255,6 +254,7 @@ pub struct CoordinatorConfig {
     pub init_min_clients: u16,
     pub min_clients: u16,
     pub witness_nodes: u16,
+    pub checkpointer_nodes: u16,
 
     pub global_batch_size_start: u16,
     pub global_batch_size_end: u16,
@@ -519,17 +519,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         &mut self,
         from: &T,
         witness: Witness,
-        unix_timestamp: u64,
+        _unix_timestamp: u64,
         hub_repo: HubRepo,
     ) -> std::result::Result<(), CoordinatorError> {
-        match &mut self.model {
-            Model::LLM(llm) => match llm.checkpoint {
-                Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
-                Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                _ => {}
-            },
-        }
-
         if self.halted() {
             return Err(CoordinatorError::Halted);
         }
@@ -538,10 +530,27 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidRunState);
         }
 
-        if self.epoch_state.checkpointer.id != *from {
+        let client_index = self
+            .epoch_state
+            .clients
+            .iter()
+            .position(|x| x.id == *from)
+            .unwrap();
+
+        let current_round = self.current_round().unwrap();
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
+        let is_checkpointer = checkpointer_selection
+            .get_checkpointer(client_index as u64, self.epoch_state.clients.len() as u64);
+        let checkpointer = self
+            .epoch_state
+            .clients
+            .get(client_index as usize)
+            .cloned()
+            .unwrap();
+        if !is_checkpointer {
             return Err(CoordinatorError::InvalidWitness);
         } else {
-            self.start_waiting_for_members(unix_timestamp);
+            self.epoch_state.checkpointed = true;
         }
 
         Ok(())
@@ -991,7 +1000,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             //     .get(0)
             //     .cloned()
             //     .expect("at least one client");
-            // self.start_warmup(unix_timestamp);
+            self.start_warmup(unix_timestamp);
         }
 
         Ok(TickResult::Ticked)
@@ -1235,6 +1244,7 @@ impl CoordinatorConfig {
             && self.global_batch_size_end >= self.global_batch_size_start
             && self.total_steps != 0
             && self.witness_nodes <= self.min_clients
+            && self.checkpointer_nodes <= self.min_clients
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0
             && self.waiting_for_members_extra_time > 0
