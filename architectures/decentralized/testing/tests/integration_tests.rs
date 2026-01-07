@@ -976,7 +976,15 @@ async fn test_big_model_with_sidecars() {
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::EvalResult,
             ],
+        )
+        .unwrap();
+
+    let _monitor_client_2 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            vec![IntegrationTestLogMarker::EvalResult],
         )
         .unwrap();
 
@@ -987,6 +995,7 @@ async fn test_big_model_with_sidecars() {
     let solana_client = SolanaTestClient::new(run_id).await;
     let mut live_interval = time::interval(Duration::from_secs(10));
     let mut clients_with_model = 0;
+    let mut eval_results_received: Vec<f64> = Vec::new();
 
     println!("Adding new clients");
     for i in 1..=n_new_clients {
@@ -1022,8 +1031,31 @@ async fn test_big_model_with_sidecars() {
                             "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
                         );
                         if epoch == num_of_epochs_to_run {
+                            // Verify we've received eval result values and that they are somewhat reasonable
+                            assert!(
+                                !eval_results_received.is_empty(),
+                                "Expected to receive eval results but got none"
+                            );
+                            for &result in &eval_results_received {
+                                assert!(
+                                    result >= 0.0 && result <= 1.0,
+                                    "Eval metric should be between 0.0 and 1.0, got {result}"
+                                );
+                            }
+                            println!(
+                                "Successfully verified eval results: {} ARC-Easy measurements, avg = {:.4}",
+                                eval_results_received.len(),
+                                eval_results_received.iter().sum::<f64>() / eval_results_received.len() as f64
+                            );
                             break;
                         }
+                    }
+                    Some(Response::EvalResult(client_id, task_name, metric_value, step, epoch)) => {
+                        println!(
+                            "client: {client_id}, epoch: {epoch}, step: {step}, Eval: {task_name} = {metric_value:.4}"
+                        );
+                        assert_eq!(task_name, "ARC-Easy", "Expected ARC-Easy eval results");
+                        eval_results_received.push(metric_value);
                     }
                     Some(Response::LoadedModel(checkpoint)) => {
                         // assert client and coordinator state synchronization

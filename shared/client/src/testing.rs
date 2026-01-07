@@ -9,6 +9,7 @@ pub enum IntegrationTestLogMarker {
     UntrainedBatches,
     SolanaSubscription,
     WitnessElected,
+    EvalResult,
     Error,
 }
 
@@ -25,6 +26,7 @@ impl std::fmt::Display for IntegrationTestLogMarker {
                 Self::UntrainedBatches => "untrained_batches",
                 Self::SolanaSubscription => "solana_subscription",
                 Self::WitnessElected => "witness_elected",
+                Self::EvalResult => "eval_result",
                 Self::Error => "error",
             }
         )
@@ -43,6 +45,7 @@ impl FromStr for IntegrationTestLogMarker {
             "untrained_batches" => Self::UntrainedBatches,
             "solana_subscription" => Self::SolanaSubscription,
             "witness_elected" => Self::WitnessElected,
+            "eval_result" => Self::EvalResult,
             "error" => Self::Error,
             _ => return Err(()),
         })

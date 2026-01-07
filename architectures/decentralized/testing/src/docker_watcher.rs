@@ -28,6 +28,7 @@ pub enum Response {
     UntrainedBatches(Vec<u64>),
     SolanaSubscription(String, String),
     WitnessElected(String),
+    EvalResult(String, String, f64, u64, u64),
     Error(ObservedErrorKind, String),
 }
 
@@ -292,6 +293,30 @@ impl DockerWatcher {
                             continue;
                         }
                         let response = Response::WitnessElected(name.clone());
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
+                    IntegrationTestLogMarker::EvalResult => {
+                        let task_name = parsed_log
+                            .get("task_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap()
+                            .to_string();
+                        let metric_value = parsed_log
+                            .get("metric_value")
+                            .and_then(|v| v.as_f64())
+                            .unwrap();
+                        let step = parsed_log.get("step").and_then(|v| v.as_u64()).unwrap();
+                        let epoch = parsed_log.get("epoch").and_then(|v| v.as_u64()).unwrap();
+                        let client_id = parsed_log
+                            .get("client_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap()
+                            .to_string();
+
+                        let response =
+                            Response::EvalResult(client_id, task_name, metric_value, step, epoch);
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }

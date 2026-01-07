@@ -171,7 +171,11 @@ impl StatsLogger {
         }
     }
 
-    pub fn get_witness_metadata<T: NodeIdentity>(&self, state: &Coordinator<T>) -> WitnessMetadata {
+    pub fn get_witness_metadata<T: NodeIdentity>(
+        &self,
+        state: &Coordinator<T>,
+        identity: &T,
+    ) -> WitnessMetadata {
         let bandwidth_total: f64 = self.endpoint_info.iter().map(|v| v.bandwidth).sum();
 
         let evals = {
@@ -185,6 +189,19 @@ impl StatsLogger {
             }
             evals
         };
+
+        // These logs are used in the tests to assert the evals are being run
+        for (key, val) in self.current_eval_results() {
+            tracing::info!(
+                integration_test_log_marker = "eval_result",
+                client_id = %identity,
+                task_name = key,
+                metric_value = val,
+                step = state.progress.step,
+                epoch = state.progress.epoch,
+                "Evaluation result for witness"
+            );
+        }
 
         let prompt_results = self.get_prompt_results();
         let prompt_index = self.get_prompt_index();
