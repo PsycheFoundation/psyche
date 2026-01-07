@@ -5,7 +5,7 @@ use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientM
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
     AuthenticatableIdentity, EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient,
@@ -29,7 +29,6 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
     HealthCheck(HealthChecks<ClientId>),
-    Checkpoint(model::HubRepo),
 }
 
 struct Backend {
@@ -227,7 +226,6 @@ impl App {
                     match to_send {
                         ToSend::Witness(witness) => self.server_conn.send(ClientToServerMessage::Witness(witness)).await?,
                         ToSend::HealthCheck(health_checks) => self.server_conn.send(ClientToServerMessage::HealthCheck(health_checks)).await?,
-                        ToSend::Checkpoint(checkpoint) => self.server_conn.send(ClientToServerMessage::Checkpoint(checkpoint)).await?,
                     };
                 }
             }

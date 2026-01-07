@@ -237,18 +237,10 @@ impl CoordinatorInstanceState {
         &mut self,
         payer: &Pubkey,
         witness: Witness,
-        hub_repo: HubRepo,
     ) -> Result<()> {
         let id = self.clients_state.find_signer(payer)?;
-
-        let clock: Clock = Clock::get()?;
         self.coordinator
-            .cooldown_witness(
-                id,
-                witness,
-                clock.unix_timestamp as u64,
-                hub_repo,
-            )
+            .cooldown_witness(id, witness)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         self.tick()

@@ -150,7 +150,6 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
 
     pub tx_health_check: UnboundedSender<HealthChecks<T>>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
-    pub tx_checkpoint: UnboundedSender<model::HubRepo>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
@@ -172,7 +171,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             init_config,
             tx_witness,
             tx_health_check,
-            tx_checkpoint,
             tx_model,
             tx_config,
             tx_parameters_req,
@@ -817,7 +815,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         };
 
         let cooldown = CooldownStepMetadata::new(
-            tx_checkpoint,
             tx_model,
             init_config.checkpoint_config,
             checkpoint_extra_files,

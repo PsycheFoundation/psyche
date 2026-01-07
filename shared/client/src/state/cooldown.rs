@@ -1,20 +1,12 @@
 use crate::HubUploadInfo;
 
 use psyche_coordinator::CheckpointerSelection;
-use psyche_coordinator::Client;
-use psyche_coordinator::{
-    Coordinator,
-    model::{self, HubRepo},
-};
-use psyche_core::compute_shuffled_index;
-use psyche_core::sha256;
-use psyche_core::sha256v;
-use psyche_core::{FixedString, NodeIdentity};
+use psyche_coordinator::Coordinator;
+use psyche_core::NodeIdentity;
 use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
     SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
-use std::str::FromStr;
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
@@ -47,7 +39,6 @@ pub enum CooldownError {
 }
 
 pub struct CooldownStepMetadata {
-    tx_checkpoint: mpsc::UnboundedSender<model::HubRepo>,
     tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
     checkpoint_info: CheckpointConfig,
     checkpoint_extra_files: Vec<PathBuf>,
@@ -64,14 +55,12 @@ pub struct CooldownStepMetadata {
 
 impl CooldownStepMetadata {
     pub fn new(
-        tx_checkpoint: mpsc::UnboundedSender<model::HubRepo>,
         tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
         checkpoint_info: CheckpointConfig,
         checkpoint_extra_files: Vec<PathBuf>,
         model_task_runner: ModelTaskRunner,
     ) -> Self {
         Self {
-            tx_checkpoint,
             tx_model,
             checkpoint_info,
             checkpoint_extra_files,
@@ -135,7 +124,6 @@ impl CooldownStepMetadata {
         &self,
         mut trainers: Vec<Trainer>,
         state: &Coordinator<T>,
-        from: T,
         client_index: u64,
     ) -> Result<CooldownStep, CooldownError> {
         let Some(mut trainer) = trainers.pop() else {
@@ -143,26 +131,16 @@ impl CooldownStepMetadata {
         };
 
         let step = state.progress.step - 1;
-        let current_round = state.current_round().ok_or(CooldownError::NoTrainers)?;
         let run_id = String::from(&state.run_id);
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
-        let tx_checkpoint = self.tx_checkpoint.clone();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
         let checkpointer_selection = CheckpointerSelection::from_coordinator(state, 0)
-            .map_err(|e| CooldownError::NoTrainers)?;
+            .map_err(|_| CooldownError::NoTrainers)?;
         let is_checkpointer = checkpointer_selection
             .get_checkpointer(client_index, state.epoch_state.clients.len() as u64);
-        println!("CHECKPOINTER INDEX: {}", is_checkpointer);
-        println!("CLIENT INDEX: {}", client_index);
-        let checkpointer = state
-            .epoch_state
-            .clients
-            .get(client_index as usize)
-            .cloned()
-            .ok_or(CooldownError::NoTrainers)?;
 
         let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
@@ -224,7 +202,7 @@ impl CooldownStepMetadata {
                     } = hub_upload;
 
                     info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
-                    let revision = match upload_model_repo_async(
+                    match upload_model_repo_async(
                         hub_repo.clone(),
                         local,
                         hub_token.clone(),
@@ -239,20 +217,12 @@ impl CooldownStepMetadata {
                                 revision = revision,
                                 "Upload to HuggingFace complete"
                             );
-                            revision
                         }
                         Err(err) => {
                             error!(repo = hub_repo, "Error uploading to HuggingFace: {err:#}");
                             return Err(err.into());
                         }
                     };
-
-                    // tx_checkpoint
-                    //     .send(HubRepo {
-                    //         repo_id: FixedString::from_str_truncated(&hub_repo),
-                    //         revision: Some(FixedString::from_str_truncated(&revision)),
-                    //     })
-                    //     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
                     // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
                     // we'll just delete the dir after we've uploaded it
@@ -281,11 +251,6 @@ impl CooldownStepMetadata {
         Ok(CooldownStep {
             checkpointing_and_evals,
         })
-    }
-
-    pub fn get_repo(&self) -> Option<model::HubRepo> {
-        let repo = HubRepo::from_str(&self.checkpoint_info.hub_upload.hub_repo).ok()?;
-        Some(repo)
     }
 }
 

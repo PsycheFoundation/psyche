@@ -89,7 +89,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 // From Run
                 let (tx_witness, mut rx_witness) = mpsc::unbounded_channel();
                 let (tx_health_check, mut rx_health_check) = mpsc::unbounded_channel();
-                let (tx_checkpoint, mut rx_checkpoint) = mpsc::unbounded_channel();
                 let (tx_model, mut rx_model) = mpsc::unbounded_channel();
                 let (tx_distro_result, mut rx_distro_result) = mpsc::unbounded_channel();
                 let (tx_request_download, mut rx_request_download) = mpsc::unbounded_channel();
@@ -112,7 +111,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     metrics: metrics.clone(),
                     tx_witness,
                     tx_health_check,
-                    tx_checkpoint,
                     tx_model,
                     tx_parameters_req,
                     tx_config,
@@ -135,7 +133,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut retry_check_interval = interval(DOWNLOAD_RETRY_CHECK_INTERVAL);
                 let mut opportunistic_witness_interval = interval(OPPROTUNISTIC_WITNESS_INTERVAL);
                 let mut check_connection_interval = interval(CHECK_CONNECTION_INTERVAL);
-                let mut wait_for_checkpoint = false;
+                let mut _wait_for_checkpoint = false;
                 let mut last_gossip_connection_time = SystemTime::now();
                 debug!("Starting client loop");
 
@@ -144,7 +142,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         _ = cancel.cancelled() => {
                             info!("Got request to cancel main client loop");
                             if run.doing_checkpoint() {
-                                wait_for_checkpoint = true;
+                                _wait_for_checkpoint = true;
                             }
                             break;
                         }
@@ -531,9 +529,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         Some(health_check) = rx_health_check.recv() => {
                             watcher.backend_mut().send_health_check(health_check).await?;
                         }
-                        // Some(checkpoint) = rx_checkpoint.recv() => {
-                        //     watcher.backend_mut().send_checkpoint(checkpoint).await?;
-                        // }
                         Some(model) = rx_model.recv() => {
                             sharable_model.update_parameters(model)?;
                         },

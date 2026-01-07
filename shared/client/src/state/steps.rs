@@ -1,5 +1,5 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker, client,
+    Broadcast, BroadcastType, ClientTUIState, IntegrationTestLogMarker,
     state::{train::FinishedTrainers, types::DeserializeError},
 };
 
@@ -362,18 +362,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
             let checkpointer_selection =
                 CheckpointerSelection::from_coordinator(&self.coordinator_state, 0)
-                    .map_err(|e| OpportunisticWitnessError::Send)?;
+                    .map_err(|_| OpportunisticWitnessError::Send)?;
             let is_checkpointer = checkpointer_selection.get_checkpointer(
                 client_index as u64,
                 self.coordinator_state.epoch_state.clients.len() as u64,
             );
-            let checkpointer = self
-                .coordinator_state
-                .epoch_state
-                .clients
-                .get(client_index as usize)
-                .cloned()
-                .unwrap();
             if !is_checkpointer {
                 return Ok(());
             }
@@ -402,11 +395,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     broadcast_bloom: Default::default(),
                     broadcast_merkle: merkle,
                 };
+                info!("SENOING OPPORTUNISTIC DATA");
                 self.tx_opportunistic_data
-                    .send(OpportunisticData::CooldownStep(
-                        witness,
-                        self.cooldown.get_repo().unwrap(),
-                    ))
+                    .send(OpportunisticData::CooldownStep(witness))
                     .map_err(|_| OpportunisticWitnessError::Send)?;
             };
         }
@@ -910,12 +901,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 // check here
                 self.cleanup_completed_uploads();
 
-                ActiveStep::Cooldown(self.cooldown.start(
-                    trainers,
-                    &state,
-                    self.identity,
-                    client_index,
-                )?)
+                ActiveStep::Cooldown(self.cooldown.start(trainers, &state, client_index)?)
             }
             // cooldown is done, we consider waiting for members and warmup to be basically the same
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)

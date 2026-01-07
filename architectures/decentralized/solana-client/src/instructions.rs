@@ -184,7 +184,6 @@ pub fn coordinator_cooldown_witness(
     coordinator_account: &Pubkey,
     user: &Pubkey,
     witness: psyche_coordinator::Witness,
-    hub_repo: psyche_coordinator::model::HubRepo,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -198,7 +197,6 @@ pub fn coordinator_cooldown_witness(
             participant_bloom: witness.participant_bloom,
             broadcast_bloom: witness.broadcast_bloom,
             broadcast_merkle: witness.broadcast_merkle,
-            hub_repo,
         },
     )
 }

@@ -296,7 +296,6 @@ pub mod psyche_solana_coordinator {
         participant_bloom: WitnessBloom,
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
-        hub_repo: HubRepo,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
@@ -308,7 +307,6 @@ pub mod psyche_solana_coordinator {
                 broadcast_bloom,
                 broadcast_merkle,
             },
-            hub_repo,
         )
     }
 

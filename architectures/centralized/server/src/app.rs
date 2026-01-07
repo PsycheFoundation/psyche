@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{self, Checkpoint, LLM, LLMTrainingDataLocation, Model};
+use psyche_coordinator::model::{Checkpoint, LLM, LLMTrainingDataLocation, Model};
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
@@ -395,9 +395,9 @@ impl App {
                         Self::get_timestamp(),
                         rand::rng().next_u64(),
                     ),
-                    OpportunisticData::CooldownStep(witness, hub_repo) => self
-                        .coordinator
-                        .cooldown_witness(&from, witness, Self::get_timestamp(), hub_repo),
+                    OpportunisticData::CooldownStep(witness) => {
+                        self.coordinator.cooldown_witness(&from, witness)
+                    }
                 } {
                     warn!("Error when processing witness: {error}");
                 };

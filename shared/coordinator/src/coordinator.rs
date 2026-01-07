@@ -5,10 +5,7 @@ use crate::{
 
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{
-    Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, compute_shuffled_index,
-    sha256, sha256v,
-};
+use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash};
 use ts_rs::TS;
@@ -518,9 +515,7 @@ impl<T: NodeIdentity> Coordinator<T> {
     pub fn cooldown_witness(
         &mut self,
         from: &T,
-        witness: Witness,
-        _unix_timestamp: u64,
-        hub_repo: HubRepo,
+        _witness: Witness,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
             return Err(CoordinatorError::Halted);
@@ -537,16 +532,9 @@ impl<T: NodeIdentity> Coordinator<T> {
             .position(|x| x.id == *from)
             .unwrap();
 
-        let current_round = self.current_round().unwrap();
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
         let is_checkpointer = checkpointer_selection
             .get_checkpointer(client_index as u64, self.epoch_state.clients.len() as u64);
-        let checkpointer = self
-            .epoch_state
-            .clients
-            .get(client_index as usize)
-            .cloned()
-            .unwrap();
         if !is_checkpointer {
             return Err(CoordinatorError::InvalidWitness);
         } else {

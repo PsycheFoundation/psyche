@@ -1,8 +1,5 @@
 use anyhow::Result;
-use psyche_coordinator::{
-    Coordinator, HealthChecks, Witness, WitnessMetadata,
-    model::{self, HubRepo},
-};
+use psyche_coordinator::{Coordinator, HealthChecks, Witness, WitnessMetadata};
 use psyche_core::NodeIdentity;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum OpportunisticData {
     WitnessStep(Witness, WitnessMetadata),
     WarmupStep(Witness),
-    CooldownStep(Witness, HubRepo),
+    CooldownStep(Witness),
 }
 
 impl OpportunisticData {
@@ -32,5 +29,4 @@ pub trait Backend<T: NodeIdentity>: Send + Sync {
     async fn wait_for_new_state(&mut self) -> Result<Coordinator<T>>;
     async fn send_witness(&mut self, opportunistic_data: OpportunisticData) -> Result<()>;
     async fn send_health_check(&mut self, health_check: HealthChecks<T>) -> Result<()>;
-    // async fn send_checkpoint(&mut self, checkpoint: model::HubRepo) -> Result<()>;
 }
