@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use run_manager::run_manager::RunManager;
+use run_manager::run_manager::{Entrypoint, RunManager};
 use std::path::PathBuf;
 use tracing::error;
 
@@ -14,23 +14,23 @@ struct Args {
     command: Option<Commands>,
 
     /// Path to .env file with environment variables
-    #[arg(long, global = true)]
+    #[arg(long)]
     env_file: PathBuf,
 
     /// Coordinator program ID
-    #[arg(
-        long,
-        global = true,
-        default_value = "4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7"
-    )]
+    #[arg(long, default_value = "4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7")]
     coordinator_program_id: String,
 
     /// Use a local Docker image instead of pulling from registry.
     /// This is only meant for testing purposes, since it is easier to
     /// check a version update when the two docker images are local. Do not
     /// use in production
-    #[arg(long, global = true)]
+    #[arg(long)]
     local: bool,
+
+    /// Optional entrypoint with optional trailing arguments
+    #[arg(long, num_args = 1..)]
+    entrypoint: Option<Vec<String>>,
 }
 
 #[derive(Parser, Debug)]
@@ -61,8 +61,14 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    let entrypoint = args.entrypoint.map(|mut vals| Entrypoint {
+        entrypoint: vals.remove(0),
+        args: vals,
+    });
+
     let run_mgr = RunManager::new(args.coordinator_program_id, args.env_file, args.local)?;
-    let result = run_mgr.run().await;
+
+    let result = run_mgr.run(entrypoint).await;
     if let Err(e) = &result {
         error!("Error: {}", e);
         std::process::exit(1);
