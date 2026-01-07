@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
-use psyche_data_provider::{download_model_from_gcs_async, download_model_repo_sync};
+use psyche_data_provider::{download_model_from_gcs_sync, download_model_repo_sync};
 use psyche_eval::{
     ALL_TASK_NAMES, EvalTaskOptions, Task, progress_bar_template_with_task, tasktype_from_name,
 };
@@ -125,15 +125,7 @@ fn main() -> Result<()> {
     }
 
     let repo = if let Some(ref bucket) = args.gcs_bucket {
-        // download model from GCS sync
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(download_model_from_gcs_async(
-                bucket,
-                args.gcs_prefix.as_deref(),
-                None,
-                true,
-            ))
+        download_model_from_gcs_sync(bucket, args.gcs_prefix.as_deref(), None, true)
     } else {
         download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?
     };
