@@ -224,7 +224,7 @@ async fn send_inference_request(
         std::str::from_utf8(INFERENCE_ALPN)
     );
 
-    // Connect to peer and open bidirectional stream
+    // connect to peer and open bidirectional stream
     let connection = endpoint
         .connect(peer_id, INFERENCE_ALPN)
         .await
@@ -236,7 +236,6 @@ async fn send_inference_request(
         .await
         .context("Failed to open bidirectional stream")?;
 
-    // Serialize and send request
     let message = InferenceMessage::Request(request);
     let request_bytes =
         postcard::to_allocvec(&message).context("Failed to serialize inference request")?;
@@ -246,11 +245,9 @@ async fn send_inference_request(
         .await
         .context("Failed to write request")?;
 
-    // Finish the send side to signal we're done writing
     info!("Finishing send stream");
     send.finish()?;
 
-    // Read response
     info!("Reading response...");
     let response_bytes = recv
         .read_to_end(10 * 1024 * 1024)

@@ -49,9 +49,11 @@ struct Args {
     #[arg(long, default_value = "")]
     capabilities: String,
 
+    /// bootstrap peer file (JSON file with gateway endpoint address)
     #[arg(long)]
     bootstrap_peer_file: Option<PathBuf>,
 
+    /// write endpoint address to file for other nodes to bootstrap from
     #[arg(long)]
     write_endpoint_file: Option<PathBuf>,
 }
@@ -98,7 +100,7 @@ async fn main() -> Result<()> {
     // read bootstrap peers from multiple sources in priority order
     let bootstrap_peers: Vec<EndpointAddr> =
         if let Ok(endpoints_json) = std::env::var("PSYCHE_GATEWAY_ENDPOINTS") {
-            // JSON array of gateway endpoints
+            // production: JSON array of gateway endpoints
             info!("Reading gateway endpoints from PSYCHE_GATEWAY_ENDPOINTS env var");
             let peers: Vec<EndpointAddr> = serde_json::from_str(&endpoints_json)
                 .context("Failed to parse PSYCHE_GATEWAY_ENDPOINTS as JSON array")?;
@@ -108,7 +110,7 @@ async fn main() -> Result<()> {
             }
             peers
         } else if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_BOOTSTRAP_FILE") {
-            // env var pointing to file
+            // alternative: env var pointing to file
             let peer_file = PathBuf::from(file_path);
             if peer_file.exists() {
                 info!(
@@ -131,7 +133,7 @@ async fn main() -> Result<()> {
                 info!("Reading bootstrap peer from {:?}", peer_file);
                 let content =
                     fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
-                // support both single endpoint and array
+                // Support both single endpoint and array
                 if let Ok(peer) = serde_json::from_str::<EndpointAddr>(&content) {
                     info!("Bootstrap peer: {}", peer.id.fmt_short());
                     vec![peer]
@@ -172,7 +174,6 @@ async fn main() -> Result<()> {
 
     info!("vLLM engine initialized successfully");
 
-    // Wrap inference node in Arc<RwLock> for sharing with protocol handler
     let inference_node_shared = Arc::new(RwLock::new(Some(inference_node)));
 
     info!("Initializing P2P network...");
