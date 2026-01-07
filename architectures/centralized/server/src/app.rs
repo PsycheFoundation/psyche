@@ -9,7 +9,8 @@ use psyche_coordinator::{
 
 use psyche_core::{FixedVec, Shuffle, SizedIterator, TokenSize};
 use psyche_data_provider::{
-    DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_repo_async,
+    DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_from_gcs_async,
+    download_model_repo_async,
 };
 use psyche_network::{ClientNotification, TcpServer};
 use psyche_tui::{
@@ -204,7 +205,18 @@ impl App {
                             Checkpoint::P2P(_) => {
                                 bail!("Can't start up a run with a P2P checkpoint.")
                             }
-                            Checkpoint::Gcs(gcs_repo) => todo!(),
+                            Checkpoint::Gcs(gcs_repo) => {
+                                let bucket: String = (&gcs_repo.bucket).into();
+                                let prefix: Option<String> =
+                                    gcs_repo.prefix.map(|p| (&p).into());
+                                download_model_from_gcs_async(
+                                    &bucket,
+                                    prefix.as_deref(),
+                                    None,
+                                    true,
+                                )
+                                .await;
+                            }
                         }
 
                         let server_addr: SocketAddr = String::from(url).parse().map_err(|e| {
