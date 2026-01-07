@@ -55,22 +55,61 @@ def run_inference(
 
         engine = _engines[engine_id]
 
+        tokenizer = engine.get_tokenizer()
+
+        # apply chat template if available
+        if hasattr(tokenizer, "chat_template") and tokenizer.chat_template:
+            messages = [{"role": "user", "content": prompt}]
+            formatted_prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+        else:
+            formatted_prompt = prompt
+
+        stop_token_ids = []
+        if hasattr(tokenizer, "eos_token_id") and tokenizer.eos_token_id is not None:
+            stop_token_ids.append(tokenizer.eos_token_id)
+
+        stop_strings = []
+        if hasattr(tokenizer, "eos_token") and tokenizer.eos_token:
+            stop_strings.append(tokenizer.eos_token)
+
         sampling_params = {
             "temperature": temperature,
             "top_p": top_p,
             "max_tokens": max_tokens,
+            "stop_token_ids": stop_token_ids if stop_token_ids else None,
+            "stop": stop_strings if stop_strings else None,
         }
 
+        logger.info(f"Adding request with sampling_params: {sampling_params}")
         request_id = engine.add_request(prompt, sampling_params)
 
         # Process until complete
         outputs = []
+        # step_count = 0
         while engine.has_unfinished_requests():
             batch_outputs = engine.step()
             outputs.extend(batch_outputs)
+        #    step_count += 1
+        #     logger.info(f"Step {step_count}: got {len(batch_outputs)} outputs, total accumulated: {len(outputs)}")
+        #     if batch_outputs:
+        #         for i, out in enumerate(batch_outputs):
+        #             logger.info(f"  Output {i}: {len(out.outputs)} completions")
+        #             if out.outputs:
+        #                 logger.info(f"    Text so far: {repr(out.outputs[0].text)}")
+        #                 logger.info(f"    Finish reason: {out.outputs[0].finish_reason}")
+
+        # logger.info(f"Finished after {step_count} steps with {len(outputs)} total outputs")
 
         if outputs:
-            output = outputs[0].outputs[0]
+            # Use the last output as it contains the final result
+            final_output = outputs[-1]
+            logger.info(f"Final output has {len(final_output.outputs)} completions")
+            output = final_output.outputs[0]
+            logger.info(f"Final generated text: {repr(output.text)}")
+            logger.info(f"Final finish reason: {output.finish_reason}")
+
             return {
                 "status": "success",
                 "request_id": request_id,
