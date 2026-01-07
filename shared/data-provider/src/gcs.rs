@@ -3,7 +3,6 @@ use google_cloud_storage::http::objects::{
     download::Range, get::GetObjectRequest, list::ListObjectsRequest,
 };
 use std::path::PathBuf;
-use tokio::runtime::Runtime;
 use tracing::info;
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
@@ -132,19 +131,4 @@ pub async fn download_model_from_gcs_async(
     }
 
     downloaded_files
-}
-
-pub fn download_model_from_gcs_sync(
-    bucket: &str,
-    prefix: Option<&str>,
-    cache_dir: Option<PathBuf>,
-    progress_bar: bool,
-) -> Vec<PathBuf> {
-    let rt = Runtime::new().unwrap();
-    rt.block_on(download_model_from_gcs_async(
-        bucket,
-        prefix,
-        cache_dir,
-        progress_bar,
-    ))
 }
