@@ -215,7 +215,7 @@ impl App {
                                     None,
                                     true,
                                 )
-                                .await;
+                                .await?;
                             }
                         }
 

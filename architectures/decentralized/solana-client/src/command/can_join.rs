@@ -147,7 +147,7 @@ pub async fn command_can_join_execute(
                     None,
                     true,
                 )
-                .await;
+                .await?;
             }
         };
         println!("Model predownloaded successfully.")

@@ -5,8 +5,8 @@ use psyche_coordinator::{
 };
 use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
 use psyche_data_provider::{
-    DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
-    WeightedDataProvider, download_dataset_repo_async, download_model_from_gcs_async,
+    DataProvider, DataProviderTcpClient, DummyDataProvider, GcsError, PreprocessedDataProvider,
+    Split, WeightedDataProvider, download_dataset_repo_async, download_model_from_gcs_async,
     download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
@@ -89,6 +89,9 @@ pub enum InitRunError {
 
     #[error("failed to read HF model info: {0}")]
     HfModelLoad(#[from] hf_hub::api::tokio::ApiError),
+
+    #[error("failed to download model from GCS: {0}")]
+    GcsModelLoad(#[from] GcsError),
 
     #[error("model loading thread crashed")]
     ModelLoadingThreadCrashed(JoinError),
@@ -446,7 +449,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     None,
                                     true,
                                 )
-                                .await;
+                                .await?;
 
                                 let checkpoint_extra_files = repo_files
                                     .iter()

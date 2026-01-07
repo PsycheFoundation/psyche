@@ -3,8 +3,21 @@ use google_cloud_storage::http::objects::{
     download::Range, get::GetObjectRequest, list::ListObjectsRequest,
 };
 use std::path::PathBuf;
+use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing::info;
+
+#[derive(Debug, Error)]
+pub enum GcsError {
+    #[error("GCS authentication failed: {0}")]
+    Auth(#[from] google_cloud_storage::client::google_cloud_auth::error::Error),
+
+    #[error("GCS operation failed: {0}")]
+    Storage(#[from] google_cloud_storage::http::Error),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+}
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 
@@ -35,13 +48,13 @@ pub async fn download_model_from_gcs_async(
     prefix: Option<&str>,
     cache_dir: Option<PathBuf>,
     progress_bar: bool,
-) -> Vec<PathBuf> {
+) -> Result<Vec<PathBuf>, GcsError> {
     // Use authenticated client if GOOGLE_APPLICATION_CREDENTIALS is set, otherwise anonymous
     let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
         if progress_bar {
             info!("Using authenticated GCS client");
         }
-        ClientConfig::default().with_auth().await.unwrap()
+        ClientConfig::default().with_auth().await?
     } else {
         if progress_bar {
             info!("Using anonymous GCS client");
@@ -62,8 +75,7 @@ pub async fn download_model_from_gcs_async(
                 page_token: maybe_next_page_token,
                 ..Default::default()
             })
-            .await
-            .unwrap();
+            .await?;
 
         for obj in results.items.iter().flatten() {
             if check_model_extension(&obj.name) {
@@ -85,7 +97,7 @@ pub async fn download_model_from_gcs_async(
 
     // Determine cache directory
     let cache_dir = cache_dir.unwrap_or_else(|| get_cache_dir(bucket, prefix));
-    std::fs::create_dir_all(&cache_dir).unwrap();
+    std::fs::create_dir_all(&cache_dir)?;
 
     let mut downloaded_files = Vec::new();
 
@@ -118,11 +130,10 @@ pub async fn download_model_from_gcs_async(
                 },
                 &Range::default(),
             )
-            .await
-            .unwrap();
+            .await?;
 
         // Write to cache
-        std::fs::write(&local_path, &data).unwrap();
+        std::fs::write(&local_path, &data)?;
 
         if progress_bar {
             info!("Downloaded: {} ({} bytes)", filename, data.len());
@@ -131,7 +142,7 @@ pub async fn download_model_from_gcs_async(
         downloaded_files.push(local_path);
     }
 
-    downloaded_files
+    Ok(downloaded_files)
 }
 
 pub fn download_model_from_gcs_sync(
@@ -139,8 +150,8 @@ pub fn download_model_from_gcs_sync(
     prefix: Option<&str>,
     cache_dir: Option<PathBuf>,
     progress_bar: bool,
-) -> Vec<PathBuf> {
-    let rt = Runtime::new().unwrap();
+) -> Result<Vec<PathBuf>, GcsError> {
+    let rt = Runtime::new().map_err(GcsError::Io)?;
     rt.block_on(download_model_from_gcs_async(
         bucket,
         prefix,
