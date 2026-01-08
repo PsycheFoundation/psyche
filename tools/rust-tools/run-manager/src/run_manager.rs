@@ -1,5 +1,5 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -147,13 +147,23 @@ impl RunManager {
                 .context("Could not split image name")?
         };
 
+        // some runtimes use the CDI method of passing nvidia gpus, some use the old nvidia container toolkit style.
+        let container_runtime_uses_cdi_for_gpu =
+            std::fs::exists("/etc/cdi/nvidia-container-toolkit.json").unwrap_or(false)
+                || std::fs::exists("/var/run/cdi/nvidia-container-toolkit.json").unwrap_or(false);
+        let gpu_invocation_style = if container_runtime_uses_cdi_for_gpu {
+            "--device=nvidia.com/gpu=all"
+        } else {
+            "--gpus=all"
+        };
+
         let mut cmd = Command::new("docker");
         cmd.arg("run")
             .arg("-d")
             .arg("--network=host")
             .arg("--shm-size=1g")
             .arg("--privileged")
-            .arg("--gpus=all")
+            .arg("--device=nvidia.com/gpu=all")
             .arg("--device=/dev/infiniband:/dev/infiniband")
             .arg("--env")
             .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key))
