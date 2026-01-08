@@ -83,24 +83,12 @@ def run_inference(
         }
 
         logger.info(f"Adding request with sampling_params: {sampling_params}")
-        request_id = engine.add_request(prompt, sampling_params)
+        request_id = engine.add_request(formatted_prompt, sampling_params)
 
-        # Process until complete
         outputs = []
-        # step_count = 0
         while engine.has_unfinished_requests():
             batch_outputs = engine.step()
             outputs.extend(batch_outputs)
-        #    step_count += 1
-        #     logger.info(f"Step {step_count}: got {len(batch_outputs)} outputs, total accumulated: {len(outputs)}")
-        #     if batch_outputs:
-        #         for i, out in enumerate(batch_outputs):
-        #             logger.info(f"  Output {i}: {len(out.outputs)} completions")
-        #             if out.outputs:
-        #                 logger.info(f"    Text so far: {repr(out.outputs[0].text)}")
-        #                 logger.info(f"    Finish reason: {out.outputs[0].finish_reason}")
-
-        # logger.info(f"Finished after {step_count} steps with {len(outputs)} total outputs")
 
         if outputs:
             # Use the last output as it contains the final result
@@ -115,7 +103,7 @@ def run_inference(
                 "request_id": request_id,
                 "generated_text": output.text,
                 "prompt": prompt,
-                "full_text": prompt + output.text,
+                "full_text": formatted_prompt + output.text,
             }
         else:
             return {
