@@ -112,13 +112,14 @@ depending on your needs.
 You can then create an authorization manually by specifying who grants the authorization (the run owner) and who receives it. Run:
 
 ```sh
-just rpc=https://api.devnet.solana.com \
-  grantee=$(solana-keygen pubkey ~/.config/solana/joiner.json) \
-  grantor=~/.config/solana/owner.json \
-  run_authorizer
+cargo run --release --bin psyche-solana-client -- \
+    join-authorization-create \
+    --rpc [RPC] \
+    --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
+    --authorizer [USER_MASTER_PUBKEY]
 ```
 
-Here, the grantee is the account receiving authorization to join, and the grantor is the account granting it. You can also use any RPC you want; if you omit it, localnet will be used by default.
+Here, the `--wallet-private-key-path` is the path to the Solana KeyPair that will handle authorization to join and the `--authorizer` is the pubkey of the account that will receive the authorization. To get the pubkey of a KeyPair file you can use the `solana-keygen pubkey <FILE>` command.
 
 You can then join any authorized client by running the training commands described above, adding the authorized key as an environment variable, for example:
 
