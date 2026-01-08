@@ -14,6 +14,7 @@ pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
+pub const SOLANA_MAX_NUM_CHECKPOINTERS: usize = 16;
 // run_id must be at most 32 bytes because of PDA constraints
 pub const SOLANA_RUN_ID_MAX_LEN: usize = 32;
 
@@ -275,7 +276,7 @@ pub struct CoordinatorEpochState<T> {
     /// `get_historical_clients` is what you actually want.
     pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
-    pub checkpointers: FixedVec<Witness, { SOLANA_MAX_NUM_CLIENTS }>,
+    pub checkpointers: FixedVec<Witness, { SOLANA_MAX_NUM_CHECKPOINTERS }>,
     pub rounds_head: u32,
     pub start_step: u32,
     pub last_step: u32,
@@ -1235,6 +1236,7 @@ impl CoordinatorConfig {
             && self.total_steps != 0
             && self.witness_nodes <= self.min_clients
             && self.checkpointer_nodes <= self.min_clients
+            && self.checkpointer_nodes as usize <= SOLANA_MAX_NUM_CHECKPOINTERS
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0
             && self.waiting_for_members_extra_time > 0

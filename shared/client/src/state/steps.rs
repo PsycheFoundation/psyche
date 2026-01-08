@@ -397,7 +397,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                     broadcast_bloom: Default::default(),
                     broadcast_merkle: merkle,
                 };
-                info!("SENOING OPPORTUNISTIC DATA");
                 self.tx_opportunistic_data
                     .send(OpportunisticData::CooldownStep(witness))
                     .map_err(|_| OpportunisticWitnessError::Send)?;
