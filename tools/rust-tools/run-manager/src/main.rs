@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Parser;
 use run_manager::run_manager::{Entrypoint, RunManager};
 use std::path::PathBuf;
@@ -28,9 +28,13 @@ struct Args {
     #[arg(long)]
     local: bool,
 
-    /// Optional entrypoint with optional trailing arguments
-    #[arg(long, num_args = 1..)]
-    entrypoint: Option<Vec<String>>,
+    /// Optional entrypoint
+    #[arg(long)]
+    entrypoint: Option<String>,
+
+    /// Arguments to pass to the entrypoint (use after --)
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    entrypoint_args: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -61,10 +65,19 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let entrypoint = args.entrypoint.map(|mut vals| Entrypoint {
-        entrypoint: vals.remove(0),
-        args: vals,
-    });
+    let entrypoint = match args.entrypoint {
+        Some(entrypoint) => Some(Entrypoint {
+            entrypoint,
+            args: args.entrypoint_args,
+        }),
+        None if !args.entrypoint_args.is_empty() => {
+            bail!(
+                "unexpected trailing arguments {:?}. did you mean to pass --entrypoint?",
+                args.entrypoint_args
+            );
+        }
+        None => None,
+    };
 
     let run_mgr = RunManager::new(args.coordinator_program_id, args.env_file, args.local)?;
 
