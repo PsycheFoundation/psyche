@@ -252,7 +252,7 @@ impl HubRepo {
 )]
 pub struct GcsRepo {
     pub bucket: FixedString<{ SOLANA_MAX_STRING_LEN }>,
-    pub prefix: Option<FixedString<{ SOLANA_MAX_URL_STRING_LEN }>>,
+    pub prefix: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
 }
 
 impl GcsRepo {
