@@ -135,7 +135,7 @@ pub async fn command_can_join_execute(
                 )
                 .await?;
             }
-            Checkpoint::Gcs(gcs_repo) => {
+            Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
                 let bucket = gcs_repo.bucket.to_string();
                 let prefix: Option<String> = gcs_repo.prefix.map(|p| p.to_string());
                 println!(

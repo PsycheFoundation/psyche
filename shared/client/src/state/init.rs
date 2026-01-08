@@ -316,6 +316,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 }),
                 model::Checkpoint::Hub(_)
                 | model::Checkpoint::P2P(_)
+                | model::Checkpoint::P2PGcs(_)
                 | model::Checkpoint::Gcs(_) => {
                     let checkpoint = llm.checkpoint;
                     tokio::spawn(async move {
@@ -372,7 +373,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     checkpoint_extra_files,
                                 )
                             }
-                            model::Checkpoint::P2P(_) => {
+                            model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_) => {
                                 let (tx_model_config_response, rx_model_config_response) =
                                     oneshot::channel();
                                 info!("Checkpoint is p2p, requesting model config over network");

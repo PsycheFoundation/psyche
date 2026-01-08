@@ -912,8 +912,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                 .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
-                if let Checkpoint::P2P(hub_repo) = llm.checkpoint {
-                    llm.checkpoint = Checkpoint::Hub(hub_repo);
+                match llm.checkpoint {
+                    Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                    Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
+                    _ => {}
                 }
             }
 
@@ -1045,6 +1047,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 Checkpoint::Hub(hub_repo) | Checkpoint::Dummy(hub_repo) => {
                     llm.checkpoint = Checkpoint::P2P(hub_repo)
                 }
+                Checkpoint::Gcs(gcs_repo) => llm.checkpoint = Checkpoint::P2PGcs(gcs_repo),
                 _ => {}
             }
 
