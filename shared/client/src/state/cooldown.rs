@@ -5,8 +5,7 @@ use psyche_coordinator::Coordinator;
 use psyche_core::NodeIdentity;
 use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
-    CausalLM, SaveSafetensorsError, Trainer, TrainerThreadCommunicationError,
-    save_tensors_into_safetensors,
+    SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
 use std::{
     cmp::Reverse,
@@ -165,9 +164,16 @@ impl CooldownStepMetadata {
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
                 // convert from internal shape to serialized shape (e.g. torchtitan to hf)
-                let (variables, trainer) = tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
-                    .await
-                    .map_err(|_| CheckpointError::ExtractThreadCrashed)?;
+                let (variables, trainer) = match trainer {
+                    #[cfg(feature = "python")]
+                    Trainer::PythonDistributed(_) => {
+                        info!("Converting distributed trainer variables for checkpointing...");
+                        tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
+                        .await
+                        .map_err(|_| CheckpointError::ExtractThreadCrashed)?
+                    }
+                    _ => (variables, trainer),
+                };
 
                 trainers.push(trainer);
                 let evals = model_task_runner.start(trainers);
