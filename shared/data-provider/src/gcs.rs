@@ -26,13 +26,9 @@ fn check_model_extension(filename: &str) -> bool {
 }
 
 fn get_cache_dir(bucket: &str, prefix: Option<&str>) -> PathBuf {
-    let base = std::env::var("PSYCHE_CACHE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::env::var("HOME")
-                .map(|h| PathBuf::from(h).join(".cache"))
-                .unwrap_or_else(|_| PathBuf::from(".cache"))
-        })
+    let base = std::env::var("HOME")
+        .map(|h| PathBuf::from(h).join(".cache"))
+        .unwrap_or_else(|_| PathBuf::from(".cache"))
         .join("psyche")
         .join("gcs")
         .join(bucket);
