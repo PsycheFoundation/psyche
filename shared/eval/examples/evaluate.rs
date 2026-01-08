@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use tch::{Device, Kind};
 use tokenizers::Tokenizer;
+use tracing::Level;
 
 #[derive(Parser, Debug, Clone)]
 struct Args {
@@ -61,6 +62,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
     let args = Args::parse();
     let tasks: Result<Vec<Task>> = args
         .tasks
@@ -93,12 +95,13 @@ fn main() -> Result<()> {
             args.model.clone()
         };
         println!(
-            "Running tasks with model {}, seed: {}, DP={}{}",
+            "\n\n Running tasks with model {}, seed: {}, DP={}{}",
             model_source, args.seed, args.data_parallelism, limit_str
         );
         for task in &tasks {
             println!("  - {}: {} few-shot examples", task, task.num_fewshot);
         }
+        println!("\n\n");
     }
 
     if args.data_parallelism > 1 {
