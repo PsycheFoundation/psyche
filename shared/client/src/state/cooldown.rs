@@ -4,6 +4,8 @@ use psyche_coordinator::CheckpointerSelection;
 use psyche_coordinator::Coordinator;
 use psyche_core::NodeIdentity;
 use psyche_data_provider::{UploadModelError, upload_model_repo_async};
+#[cfg(feature = "python")]
+use psyche_modeling::CausalLM;
 use psyche_modeling::{
     SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
