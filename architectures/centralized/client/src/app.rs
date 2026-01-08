@@ -65,11 +65,6 @@ impl WatcherBackend<ClientId> for Backend {
         self.tx.send(ToSend::HealthCheck(health_checks))?;
         Ok(())
     }
-
-    // async fn send_checkpoint(&mut self, checkpoint: model::HubRepo) -> Result<()> {
-    //     self.tx.send(ToSend::Checkpoint(checkpoint))?;
-    //     Ok(())
-    // }
 }
 
 pub struct App {

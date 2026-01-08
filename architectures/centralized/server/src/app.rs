@@ -79,10 +79,6 @@ impl psyche_watcher::Backend<ClientId> for ChannelCoordinatorBackend {
     async fn send_health_check(&mut self, _health_checks: HealthChecks<ClientId>) -> Result<()> {
         bail!("Server does not send health checks");
     }
-
-    // async fn send_checkpoint(&mut self, _checkpoint: model::HubRepo) -> Result<()> {
-    //     bail!("Server does not send checkpoints");
-    // }
 }
 
 type DataServer =

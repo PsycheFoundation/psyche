@@ -673,30 +673,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                 let p2p_shutdown = p2p.shutdown();
 
-                // if wait_for_checkpoint {
-                //     info!("Waiting for all pending checkpoints to finish");
-
-                //     // Keep waiting for checkpoints while there are uploads pending
-                //     let mut checkpoint_check_interval = interval(Duration::from_secs(10));
-                //     while run.doing_checkpoint() {
-                //         tokio::select! {
-                //             checkpoint = rx_checkpoint.recv() => {
-                //                 if let Some(checkpoint) = checkpoint {
-                //                     info!("Checkpoint upload completed, sending to Solana");
-                //                     watcher.backend_mut().send_checkpoint(checkpoint).await?;
-                //                 } else {
-                //                     // Channel closed, no more checkpoints coming
-                //                     break;
-                //                 }
-                //             }
-                //             _ = checkpoint_check_interval.tick() => {
-                //             }
-                //         }
-                //     }
-
-                //     info!("All checkpoints finished, exiting main client loop");
-                // }
-
                 p2p_shutdown
                     .await
                     .map_err(|e| anyhow!("Error shutting down p2p: {}", e))

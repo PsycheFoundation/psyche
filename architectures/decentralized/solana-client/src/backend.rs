@@ -335,22 +335,6 @@ impl SolanaBackend {
         self.spawn_scheduled_send("Health check", &[instruction], &[]);
     }
 
-    // pub fn send_checkpoint(
-    //     &self,
-    //     coordinator_instance: Pubkey,
-    //     coordinator_account: Pubkey,
-    //     repo: HubRepo,
-    // ) {
-    // let user = self.get_payer();
-    // let instruction = instructions::coordinator_checkpoint(
-    //     &coordinator_instance,
-    //     &coordinator_account,
-    //     &user,
-    //     repo,
-    // );
-    //     self.spawn_scheduled_send("Checkpoint", &[instruction], &[]);
-    // }
-
     pub fn find_join_authorization(join_authority: &Pubkey, authorizer: Option<Pubkey>) -> Pubkey {
         psyche_solana_authorizer::find_authorization(
             join_authority,
@@ -608,12 +592,6 @@ impl WatcherBackend<psyche_solana_coordinator::ClientId> for SolanaBackendRunner
         }
         Ok(())
     }
-
-    // async fn send_checkpoint(&mut self, checkpoint: HubRepo) -> Result<()> {
-    //     self.backend
-    //         .send_checkpoint(self.instance, self.account, checkpoint);
-    //     Ok(())
-    // }
 }
 
 impl SolanaBackendRunner {
