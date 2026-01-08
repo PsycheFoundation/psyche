@@ -164,14 +164,10 @@ impl CooldownStepMetadata {
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                let (variables, trainer) = if checkpoint_info.is_some() {
-                    // convert from internal shape to serialized shape (e.g. torchtitan to hf)
-                    tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
-                        .await
-                        .map_err(|_| CheckpointError::ExtractThreadCrashed)?
-                } else {
-                    (variables, trainer)
-                };
+                // convert from internal shape to serialized shape (e.g. torchtitan to hf)
+                let (variables, trainer) = tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
+                    .await
+                    .map_err(|_| CheckpointError::ExtractThreadCrashed)?;
 
                 trainers.push(trainer);
                 let evals = model_task_runner.start(trainers);
