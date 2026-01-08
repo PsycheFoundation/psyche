@@ -54,6 +54,7 @@ const ALLOWLISTED_RUN_IDS =
 				'hermes-4.1-36b',
 				'hermes-4.3-36b',
 				'hermes-4.3-36b-2',
+				'moe-10b-a1b-8k-wsd-lr3e4-1t',
 			]
 
 type WitnessV2 = Omit<
