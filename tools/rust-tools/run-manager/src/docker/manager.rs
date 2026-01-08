@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use tokio::signal;
 use tracing::{error, info, warn};
 
-use crate::coordinator_client::CoordinatorClient;
+use crate::docker::coordinator_client::CoordinatorClient;
 use crate::get_env_var;
 use crate::load_and_apply_env_file;
 
