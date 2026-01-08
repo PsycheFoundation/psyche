@@ -275,7 +275,7 @@ pub struct CoordinatorEpochState<T> {
     /// `get_historical_clients` is what you actually want.
     pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
-    pub checkpointer: Client<T>,
+    pub checkpointers: FixedVec<Witness, { SOLANA_MAX_NUM_CLIENTS }>,
     pub rounds_head: u32,
     pub start_step: u32,
     pub last_step: u32,
@@ -414,7 +414,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             first_round: true.into(),
             clients: Default::default(),
             exited_clients: Default::default(),
-            checkpointer: Default::default(),
+            checkpointers: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
             last_step: Default::default(),
@@ -514,8 +514,8 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn cooldown_witness(
         &mut self,
-        from: &T,
-        _witness: Witness,
+        _from: &T,
+        witness: Witness,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
             return Err(CoordinatorError::Halted);
@@ -525,19 +525,19 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidRunState);
         }
 
-        let client_index = self
-            .epoch_state
-            .clients
-            .iter()
-            .position(|x| x.id == *from)
-            .unwrap();
-
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
         let is_checkpointer = checkpointer_selection
-            .get_checkpointer(client_index as u64, self.epoch_state.clients.len() as u64);
+            .get_checkpointer(witness.proof.index, self.epoch_state.clients.len() as u64);
         if !is_checkpointer {
             return Err(CoordinatorError::InvalidWitness);
         } else {
+            self.epoch_state
+                .checkpointers
+                .push(witness)
+                .map_err(|_| CoordinatorError::WitnessesFull)?;
+        }
+
+        if self.epoch_state.checkpointers.len() == self.config.checkpointer_nodes as usize {
             self.epoch_state.checkpointed = true;
         }
 
@@ -654,8 +654,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         if !matches!(self.run_state, RunState::Cooldown) {
             return Err(CoordinatorError::InvalidRunState);
         }
-
-        if self.epoch_state.checkpointer.id != *from {
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
+        let is_checkpointer = checkpointer_selection
+            .get_checkpointer(index as u64, self.epoch_state.clients.len() as u64);
+        if !is_checkpointer {
             return Err(CoordinatorError::InvalidWitness);
         } else {
             self.epoch_state.checkpointed = true;

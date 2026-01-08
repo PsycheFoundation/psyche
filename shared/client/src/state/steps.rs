@@ -59,6 +59,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     step_finish_time: Option<Instant>,
     sent_warmup_finished: bool,
     sent_warmup_witness: bool,
+    sent_cooldown_witness: bool,
 
     coordinator_state: Coordinator<T>,
 
@@ -166,6 +167,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             step_finish_time: None,
             sent_warmup_finished: false,
             sent_warmup_witness: false,
+            sent_cooldown_witness: false,
 
             pending_upload_handles: Vec::new(),
         }
@@ -348,7 +350,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             }
         } else if self.coordinator_state.run_state == RunState::Cooldown {
             if let ActiveStep::Cooldown(active_step) = &self.active_step {
-                if !active_step.is_finished() {
+                if !active_step.is_finished() || self.sent_cooldown_witness {
                     return Ok(());
                 }
             }
@@ -399,6 +401,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 self.tx_opportunistic_data
                     .send(OpportunisticData::CooldownStep(witness))
                     .map_err(|_| OpportunisticWitnessError::Send)?;
+                self.sent_cooldown_witness = true;
             };
         }
         Ok(())
