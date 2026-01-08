@@ -113,10 +113,10 @@ though you might need to.
 
 ## Testing Authorization
 
-Before joining a run, you can verify that your client is authorized by using the `psyche-solana-client` command:
+Before joining a run, you can verify that your client is authorized by using the `run-manager` command:
 
 ```bash
-psyche-solana-client can-join --run-id <RUN_ID> --authorizer <AUTHORIZER> --wallet <PUBKEY>
+run-manager can-join --run-id <RUN_ID> --authorizer <AUTHORIZER> --address <PUBKEY>
 ```
 
 Where:
@@ -225,10 +225,10 @@ docker logs CONTAINER_ID
 
 ## Claiming Rewards
 
-After participating in training and accumulating rewards, you can claim them using the `psyche-solana-client` command:
+After participating in training and accumulating rewards, you can claim them using the `run-manager` command:
 
 ```bash
-psyche-solana-client treasurer-claim-rewards \
+run-manager treasurer-claim-rewards \
     --rpc <RPC> \
     --run-id <RUN_ID> \
     --wallet-private-key-path <JSON_PRIVATE_KEY_PATH>

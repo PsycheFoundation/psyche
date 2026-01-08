@@ -1,4 +1,5 @@
-use crate::{backend::SolanaBackend, network_identity::NetworkIdentity};
+use crate::network_identity::NetworkIdentity;
+use psyche_solana_rpc::SolanaBackend;
 
 use anchor_client::{
     Cluster,

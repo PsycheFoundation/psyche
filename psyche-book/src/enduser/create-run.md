@@ -25,7 +25,7 @@ We'll need a private key that manages join permissions, we'll call it: `join_aut
 If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone. In this case, if we set the authorizer to 11111111111111111111111111111111 it will be valid for everyone.
 
 ```sh
-psyche-solana-client join-authorization-create \
+run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path join_authority.json \
     --authorizer 11111111111111111111111111111111
@@ -36,7 +36,7 @@ psyche-solana-client join-authorization-create \
 If we'll only allow some users to join the run we'll need to create one authorization per user (each user can then set multiple delegate keys later)
 
 ```sh
-psyche-solana-client join-authorization-create \
+run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path join_authority.json \
     --authorizer [MY_USER_PUBKEY]
@@ -47,7 +47,7 @@ psyche-solana-client join-authorization-create \
 For a standard run without token incentive distribution layer
 
 ```bash
-psyche-solana-client create-run \
+run-manager create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
@@ -60,7 +60,7 @@ psyche-solana-client create-run \
 For a run that distributes tokens as reward to the training participants, we need to specify the mint of the collateral token to be distributed:
 
 ```bash
-psyche-solana-client create-run \
+run-manager create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
@@ -79,7 +79,7 @@ You'll need to provide:
 - the path to a `config.toml` file, following the [run config schema](./run-config.md)
 
 ```bash
-psyche-solana-client update-config \
+run-manager update-config \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --config-path [CONFIG_FILE_PATH] \
@@ -91,7 +91,7 @@ psyche-solana-client update-config \
 At this point, your run is ready to go! You can now set its state to "unpaused", and let clients join & begin training your model.
 
 ```bash
-psyche-solana-client set-paused \
+run-manager set-paused \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --resume \
@@ -105,7 +105,7 @@ Congratulations! As soon as your first client joins, your model is being trained
 You can configure how many points does each client earns and loses for each epoch of training.
 
 ```bash
-psyche-solana-client set-future-epoch-rates \
+run-manager set-future-epoch-rates \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --earning-rate-total-shared [EARNING_RATE] \
@@ -118,7 +118,7 @@ psyche-solana-client set-future-epoch-rates \
 To distribute collateral to users, we need to periodically top-up the run's treasury so that points earned by users during compute can then be claimed against the treasury.
 
 ```sh
-psyche-solana-client treasurer-top-up-rewards \
+run-manager treasurer-top-up-rewards \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --collateral-amount [COLLATERAL_AMOUNT] \
@@ -130,7 +130,7 @@ psyche-solana-client treasurer-top-up-rewards \
 Optionally you can get detailled technical information about a run that was previously created for troubleshooting purposes.
 
 ```bash
-psyche-solana-client json-dump-run \
+run-manager json-dump-run \
     --rpc [RPC] \
     --run-id [RUN_ID]
 ```
@@ -138,8 +138,8 @@ psyche-solana-client json-dump-run \
 For more info about a specific user inside of a run, you can also use:
 
 ```bash
-psyche-solana-client json-dump-user \
+run-manager json-dump-user \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --wallet [PUBLIC_KEY]
+    --address [PUBLIC_KEY]
 ```

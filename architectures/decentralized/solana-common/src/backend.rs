@@ -33,6 +33,7 @@ use tracing::{error, info, trace, warn};
 
 const SEND_RETRIES: usize = 3;
 
+#[derive(Clone)]
 pub struct SolanaBackend {
     program_coordinators: Vec<Arc<Program<Arc<Keypair>>>>,
     cluster: Cluster,
