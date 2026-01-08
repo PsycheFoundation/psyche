@@ -1,6 +1,5 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
@@ -165,22 +164,6 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
-        let api = hf_hub::api::tokio::ApiBuilder::new()
-            .with_token(Some(
-                state_options.checkpoint_config.hub_upload.hub_token.clone(),
-            ))
-            .build()?;
-        let repo_api = api.repo(Repo::new(
-            state_options.checkpoint_config.hub_upload.hub_repo.clone(),
-            hf_hub::RepoType::Model,
-        ));
-        if !repo_api.is_writable().await {
-            anyhow::bail!(
-                "Checkpoint upload repo {} is not writable with the passed API key.",
-                state_options.checkpoint_config.hub_upload.hub_repo
-            )
-        }
-
         self.server_conn
             .send(ClientToServerMessage::Join {
                 run_id: self.run_id.clone(),
