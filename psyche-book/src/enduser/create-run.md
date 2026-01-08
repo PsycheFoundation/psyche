@@ -10,41 +10,28 @@ You’ll need to provide:
 - The RPC and WebSocket RPC URLs so the client can communicate with an RPC node.
 - A unique run ID — just a few characters to uniquely identify your run.
 
-For all commands, you will also need to provide the path to your Solana private key.
+> For all of the following commands, you can either use the Psyche client Docker image or clone the Psyche repository and run the package directly using
+> `cargo run --bin psyche-solana-client -- ...`.
 
 ### Setting up Join Authorizations
 
 Before getting started, we need to decide who will be able to join the run.
 You can read more about this in the [authorization](./authentication.md) section.
 
-We’ll need a keypair file that manages join permissions. This can be the default one created by Solana when running `solana-keygen new`, located at `~/.config/solana/id.json`.
+We’ll need a keypair file that manages join permissions. This can be the default one created by Solana when running `solana-keygen new`, located at `~/.config/solana/id.json` or whatever key you want to control the join permissions.
 
 #### Join Authority for Public Runs
 
-If you want to make a permissionless run (anyone can join), you’ll need to create an authorization that is valid for everyone.
-
-Run:
+If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone. In this case, if we set the authorizer to be `11111111111111111111111111111111` in the following command it will be valid for everyone so any other client can join the created run without additional restrictions.
 
 ```sh
-just rpc=https://api.devnet.solana.com run_authorizer
+psyche-solana-client join-authorization-create \
+    --rpc [RPC] \
+    --wallet-private-key-path [SOLANA_KEY_FILE] \
+    --authorizer 11111111111111111111111111111111
 ```
 
-By default, this command uses the values needed to create an authorizer on a Solana localnet using the default Solana keypair mentioned above, with permissionless access. In other words, everyone can join the run without restrictions. In this example, we are using Solana devnet for the authorization.
-
-This command accepts three variables:
-
-- `rpc`: The RPC URL to use for the Solana network.
-  Default: `http://127.0.0.1:8899`
-- `grantor`: The path to the Solana keypair file used to create the authorization and grant access to the run.
-  Default: `~/.config/solana/id.json`
-- `grantee`: The public key of the user being granted access to the run.
-  Default: `11111111111111111111111111111111`, which indicates permissionless access.
-
-You can override any of these values like this:
-
-```sh
-just rpc=<value> grantor=<value> grantee=<value> run_authorizer
-```
+In this case the `SOLANA_KEY_FILE` needs to be the path to a Solana keypair that is creating the authorization for this specific run.
 
 #### Join Authority for Private Runs
 
@@ -55,22 +42,17 @@ For example, imagine you have a keypair for the run creator at `~/.config/solana
 First, create the authorization with the following parameters:
 
 ```sh
-just rpc=https://api.devnet.solana.com \
-  grantee=$(solana-keygen pubkey ~/.config/solana/joiner.json) \
-  grantor=~/.config/solana/owner.json \
-  run_authorizer
+psyche-solana-client join-authorization-create \
+    --rpc [RPC] \
+    --wallet-private-key-path ~/.config/solana/owner.json \
+    --authorizer $(solana-keygen pubkey ~/.config/solana/joiner.json)
 ```
 
-This command uses the public key of the user you want to allow to join and the keypair of the run owner to create the appropriate authorization.
+This command uses the public key of the user you want to allow to join and the keypair of the run owner to create the appropriate authorization. The `solana-keygen pubkey` command just gives you the public key derivated from the keypair file.
 
-Now all that’s left is for the joiner to use their public key—now associated with the newly created authorization—when joining the run using the `--authorization` flag in the `train` command. More details can be found in the [joining a run](./join-run.md) section.
-
----
+Now all that’s left is for the joiner to use their public key, now associated with the newly created authorization, when joining the run using the `--authorization` flag in the `train` command. More details can be found in the [joining a run](./join-run.md) section.
 
 ### Creating the run
-
-> For all of the following commands, you can either use the Psyche client Docker image or clone the Psyche repository and run the package directly using
-> `cargo run --bin psyche-solana-client -- ...`.
 
 Run creation accepts a variety of parameters. We’ll start with the fundamentals and then cover the remaining options. At a minimum, a run needs:
 

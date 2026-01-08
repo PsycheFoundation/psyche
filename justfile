@@ -19,13 +19,6 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-rpc := "http://127.0.0.1:8899"
-grantor := "~/.config/solana/id.json"
-grantee := "11111111111111111111111111111111"
-
-run_authorizer:
-    sh scripts/join-authorization-create.sh {{ rpc }} {{ grantor }} {{ grantee }}
-
 # Determine whether to use Python support based on environment variable
 
 use_python := env("USE_PYTHON", "0")
