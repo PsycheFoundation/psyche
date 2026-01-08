@@ -265,7 +265,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         {
             model::LLMArchitecture::HfLlama
             | model::LLMArchitecture::HfDeepseek
-            | model::LLMArchitecture::HfAuto => match &llm.checkpoint {
+            | model::LLMArchitecture::HfAuto
+            | model::LLMArchitecture::Torchtitan => match &llm.checkpoint {
                 model::Checkpoint::Dummy(_) => tokio::spawn(async move {
                     let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
                         WordLevel::builder().build().unwrap(),
@@ -383,7 +384,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     model::LLMArchitecture::HfDeepseek => {
                                         AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
                                     }
-                                    model::LLMArchitecture::HfAuto => {
+                                    model::LLMArchitecture::HfAuto
+                                    | model::LLMArchitecture::Torchtitan => {
                                         #[cfg(feature = "python")]
                                         {
                                             AutoConfig::Auto(serde_json::from_str::<
@@ -396,7 +398,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                         #[cfg(not(feature = "python"))]
                                         {
                                             return Err(InitRunError::UnsupportedArchitecture(
-                                                "HfAuto".to_string(),
+                                                llm.architecture.to_string(),
                                             ));
                                         }
                                     }
@@ -459,8 +461,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 model::LLMTrainingDataType::Pretraining => None,
                             };
 
-                        let raw_loaded_model_type: RawLoadedModelType =
-                            if llm.architecture == model::LLMArchitecture::HfAuto {
+                        let raw_loaded_model_type: RawLoadedModelType = match llm.architecture {
+                            model::LLMArchitecture::HfAuto | model::LLMArchitecture::Torchtitan => {
                                 #[cfg(feature = "python")]
                                 {
                                     let dp = init_config.data_parallelism;
@@ -469,7 +471,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
                                             psyche_modeling::PythonDistributedCausalLM::new(
-                                                "hf-auto".to_string(),
+                                                llm.architecture.to_string(),
                                                 source.try_into()?,
                                                 tch::Device::cuda_if_available(),
                                                 attn_implementation.unwrap_or_default(),
@@ -491,7 +493,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                     )
                                                 })?;
                                             psyche_modeling::PythonCausalLM::new(
-                                                "hf-auto",
+                                                &llm.architecture.to_string(),
                                                 &source.try_into()?,
                                                 device,
                                                 attn_implementation.unwrap_or_default(),
@@ -509,10 +511,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 #[cfg(not(feature = "python"))]
                                 {
                                     return Err(InitRunError::UnsupportedArchitecture(
-                                        "HfAuto".to_string(),
+                                        llm.architecture.to_string(),
                                     ));
                                 }
-                            } else {
+                            }
+                            architecture => {
                                 let mut futures: Vec<
                                     JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>,
                                 > = Vec::with_capacity(
@@ -546,7 +549,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             let device = device.ok_or_else(|| {
                                                 ModelLoadError::NoDeviceForRank(rank, devices)
                                             })?;
-                                            match llm.architecture {
+                                            match architecture {
                                                 model::LLMArchitecture::HfLlama => {
                                                     LlamaForCausalLM::from_pretrained(
                                                         &source.try_into()?,
@@ -569,7 +572,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                     )
                                                     .map(|x| Box::new(x) as Box<dyn CausalLM>)
                                                 }
-                                                model::LLMArchitecture::HfAuto => unreachable!(),
+                                                model::LLMArchitecture::HfAuto
+                                                | model::LLMArchitecture::Torchtitan => {
+                                                    unreachable!()
+                                                }
                                             }
                                         }));
                                     }
@@ -584,7 +590,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 }
 
                                 RawLoadedModelType::ParallelNativeModels(models)
-                            };
+                            }
+                        };
 
                         debug!("Config uploaded: {}", serialized_config);
                         let serialized_tokenizer = tokenizer.to_string(false).unwrap();
