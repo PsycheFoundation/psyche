@@ -1,5 +1,7 @@
 use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
 
+use crate::GcsUploadInfo;
+use crate::UploadInfo;
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use psyche_eval::tasktype_from_name;
@@ -146,6 +148,14 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub hub_repo: Option<String>,
 
+    /// Path to the Hugging Face repository containing model data and configuration.
+    #[clap(long, env)]
+    pub gcs_bucket: Option<String>,
+
+    /// Path to the Hugging Face repository containing model data and configuration.
+    #[clap(long, env)]
+    pub gcs_prefix: Option<String>,
+
     #[clap(long, env, default_value_t = 3)]
     pub hub_max_concurrent_downloads: usize,
 
@@ -227,37 +237,73 @@ impl TrainArgs {
         let checkpoint_upload_info = match (
             &hub_read_token,
             self.hub_repo.clone(),
+            self.gcs_bucket.clone(),
+            self.gcs_prefix.clone(),
             self.checkpoint_dir.clone(),
             self.delete_old_steps,
             self.keep_steps,
         ) {
-            (Some(token), Some(repo), Some(dir), delete_old_steps, keep_steps) => {
+            (_, Some(_), Some(_), _, _, _, _) => {
+                bail!("Use either GCS or HF hub for checkpoint uploads, not both.")
+            }
+            (Some(token), Some(repo), None, _, Some(dir), delete_old_steps, keep_steps) => {
                 if keep_steps == 0 {
                     bail!("keep_steps must be >= 1 for hub repository uploads (got {keep_steps})")
                 }
                 Some(CheckpointConfig {
                     checkpoint_dir: dir,
-                    hub_upload: Some(HubUploadInfo {
+                    hub_upload: Some(UploadInfo::Hub(HubUploadInfo {
                         hub_repo: repo,
                         hub_token: token.to_string(),
-                    }),
+                    })),
                     delete_old_steps,
                     keep_steps,
                 })
             }
-            (None, Some(_), Some(_), _, _) => {
+            (_, _, Some(gcp_bucket), Some(gcs_prefix), Some(dir), delete_old_steps, keep_steps) => {
+                if keep_steps == 0 {
+                    bail!("keep_steps must be >= 1 for GCS uploads (got {keep_steps})")
+                }
+                Some(CheckpointConfig {
+                    checkpoint_dir: dir,
+                    hub_upload: Some(UploadInfo::Gcs(GcsUploadInfo {
+                        gcs_bucket: gcp_bucket,
+                        gcs_prefix: Some(gcs_prefix),
+                    })),
+                    delete_old_steps,
+                    keep_steps,
+                })
+            }
+            (_, _, Some(gcp_bucket), None, Some(dir), delete_old_steps, keep_steps) => {
+                if keep_steps == 0 {
+                    bail!("keep_steps must be >= 1 for GCS uploads (got {keep_steps})")
+                }
+                Some(CheckpointConfig {
+                    checkpoint_dir: dir,
+                    hub_upload: Some(UploadInfo::Gcs(GcsUploadInfo {
+                        gcs_bucket: gcp_bucket,
+                        gcs_prefix: None,
+                    })),
+                    delete_old_steps,
+                    keep_steps,
+                })
+            }
+            (None, Some(_), None, _, _, _, _) => {
                 bail!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
             }
-            (_, Some(_), None, _, _) => {
+            (_, None, Some(_), _, None, _, _) => {
+                bail!("gcs-bucket and checkpoint-dir set, but no GCS_TOKEN env variable.")
+            }
+            (_, Some(_), None, _, None, _, _) => {
                 bail!("--hub-repo was set, but no --checkpoint-dir was passed!")
             }
-            (_, None, Some(dir), delete_old_steps, keep_steps) => Some(CheckpointConfig {
+            (_, None, None, _, Some(dir), delete_old_steps, keep_steps) => Some(CheckpointConfig {
                 checkpoint_dir: dir,
                 hub_upload: None,
                 delete_old_steps,
                 keep_steps,
             }),
-            (_, None, _, _, _) => None,
+            (_, None, None, _, _, _, _) => None,
         };
 
         Ok(checkpoint_upload_info)

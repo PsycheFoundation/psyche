@@ -1,11 +1,12 @@
-use crate::HubUploadInfo;
+use crate::{HubUploadInfo, state::types::GcsUploadInfo};
 
+use crate::UploadInfo;
 use psyche_coordinator::{
     Coordinator,
-    model::{self, HubRepo},
+    model::{self, GcsRepo, HubRepo},
 };
 use psyche_core::{FixedString, NodeIdentity};
-use psyche_data_provider::{UploadModelError, upload_model_repo_async};
+use psyche_data_provider::{UploadModelError, upload_model_repo_async, upload_to_gcs_async};
 use psyche_modeling::{
     CausalLM, SaveSafetensorsError, Trainer, TrainerThreadCommunicationError,
     save_tensors_into_safetensors,
@@ -42,7 +43,7 @@ pub enum CooldownError {
 }
 
 pub struct CooldownStepMetadata {
-    tx_checkpoint: mpsc::UnboundedSender<model::HubRepo>,
+    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
     tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
     checkpoint_info: Option<CheckpointConfig>,
     checkpoint_extra_files: Vec<PathBuf>,
@@ -59,7 +60,7 @@ pub struct CooldownStepMetadata {
 
 impl CooldownStepMetadata {
     pub fn new(
-        tx_checkpoint: mpsc::UnboundedSender<model::HubRepo>,
+        tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
         tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
         checkpoint_info: Option<CheckpointConfig>,
         checkpoint_extra_files: Vec<PathBuf>,
@@ -207,53 +208,90 @@ impl CooldownStepMetadata {
                         local.push(to);
                     }
 
-                    let Some(HubUploadInfo {
-                        hub_repo,
-                        hub_token,
-                    }) = hub_upload
-                    else {
-                        cleanup_dirs(
-                            delete_queue,
-                            keep_steps,
-                            run_id,
-                            delete_old_steps,
-                            step,
-                            checkpoint_dir,
-                        )
-                        .await;
-                        return Ok::<(), CheckpointError>(());
-                    };
-
-                    info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
-                    let revision = match upload_model_repo_async(
-                        hub_repo.clone(),
-                        local,
-                        hub_token.clone(),
-                        Some(format!("step {step}")),
-                        None,
-                    )
-                    .await
-                    {
-                        Ok(revision) => {
-                            info!(
-                                repo = hub_repo,
-                                revision = revision,
-                                "Upload to HuggingFace complete"
-                            );
-                            revision
+                    match hub_upload {
+                        Some(UploadInfo::Gcs(GcsUploadInfo {
+                            gcs_bucket,
+                            gcs_prefix,
+                        })) => {
+                            info!(bucket = gcs_bucket, "Uploading checkpoint to GCS");
+                            match upload_to_gcs_async(gcs_bucket.clone(), local, gcs_prefix.clone())
+                                .await
+                            {
+                                Ok(path) => {
+                                    info!(
+                                        "Upload to GCS complete at gs://{}/{}",
+                                        gcs_bucket,
+                                        gcs_prefix.clone().unwrap_or_default()
+                                    );
+                                    path
+                                }
+                                Err(err) => {
+                                    error!(bucket = gcs_bucket, "Error uploading to GCS: {err:#}");
+                                    return Err(err.into());
+                                }
+                            };
+                            tx_checkpoint
+                                .send(model::Checkpoint::Gcs(GcsRepo {
+                                    bucket: FixedString::from_str_truncated(&format!(
+                                        "gs://{}/{:?}",
+                                        gcs_bucket, gcs_prefix
+                                    )),
+                                    prefix: Some(FixedString::from_str_truncated(&format!(
+                                        "step-{step}"
+                                    ))),
+                                }))
+                                .map_err(|_| CheckpointError::SendCheckpoint)?;
                         }
-                        Err(err) => {
-                            error!(repo = hub_repo, "Error uploading to HuggingFace: {err:#}");
-                            return Err(err.into());
+                        Some(UploadInfo::Hub(HubUploadInfo {
+                            hub_repo,
+                            hub_token,
+                        })) => {
+                            info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
+                            let revision = match upload_model_repo_async(
+                                hub_repo.clone(),
+                                local,
+                                hub_token.clone(),
+                                Some(format!("step {step}")),
+                                None,
+                            )
+                            .await
+                            {
+                                Ok(revision) => {
+                                    info!(
+                                        repo = hub_repo,
+                                        revision = revision,
+                                        "Upload to HuggingFace complete"
+                                    );
+                                    revision
+                                }
+                                Err(err) => {
+                                    error!(
+                                        repo = hub_repo,
+                                        "Error uploading to HuggingFace: {err:#}"
+                                    );
+                                    return Err(err.into());
+                                }
+                            };
+                            tx_checkpoint
+                                .send(model::Checkpoint::Hub(HubRepo {
+                                    repo_id: FixedString::from_str_truncated(&hub_repo),
+                                    revision: Some(FixedString::from_str_truncated(&revision)),
+                                }))
+                                .map_err(|_| CheckpointError::SendCheckpoint)?;
                         }
-                    };
-
-                    tx_checkpoint
-                        .send(HubRepo {
-                            repo_id: FixedString::from_str_truncated(&hub_repo),
-                            revision: Some(FixedString::from_str_truncated(&revision)),
-                        })
-                        .map_err(|_| CheckpointError::SendCheckpoint)?;
+                        None => {
+                            cleanup_dirs(
+                                delete_queue,
+                                keep_steps,
+                                run_id,
+                                delete_old_steps,
+                                step,
+                                checkpoint_dir,
+                            )
+                            .await;
+                            return Ok::<(), CheckpointError>(());
+                        }
+                    }
 
                     // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
                     // we'll just delete the dir after we've uploaded it

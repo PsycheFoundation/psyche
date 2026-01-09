@@ -1,3 +1,5 @@
+use google_cloud_storage::client::{Client, ClientConfig};
+use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use hf_hub::{
     Cache, Repo, RepoType,
     api::{
@@ -261,4 +263,56 @@ pub async fn upload_model_repo_async(
         }
     };
     Ok(commit_info.oid)
+}
+
+pub async fn upload_to_gcs_async(
+    bucket: String,
+    files: Vec<PathBuf>,
+    prefix: Option<String>,
+) -> Result<(), UploadModelError> {
+    let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
+        info!("Using authenticated GCS client");
+        ClientConfig::default().with_auth().await?
+    } else {
+        info!("Using anonymous GCS client");
+        ClientConfig::default().anonymous()
+    };
+    let client = Client::new(config);
+
+    for path in files {
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| UploadModelError::NotAFile(path.clone()))?
+            .to_str()
+            .ok_or_else(|| UploadModelError::InvalidFilename(path.clone()))?;
+
+        let object_name = match &prefix {
+            Some(p) => format!("{}/{}", p, file_name),
+            None => file_name.to_string(),
+        };
+
+        let data = tokio::fs::read(&path).await.unwrap();
+
+        let upload_type = UploadType::Simple(Media::new(object_name.clone()));
+        let uploaded = client
+            .upload_object(
+                &UploadObjectRequest {
+                    bucket: bucket.clone(),
+                    ..Default::default()
+                },
+                data,
+                &upload_type,
+            )
+            .await
+            .unwrap();
+
+        info!(
+            bucket = bucket,
+            object = object_name,
+            size = uploaded.size,
+            "Successfully uploaded file to GCS"
+        );
+    }
+
+    Ok(())
 }

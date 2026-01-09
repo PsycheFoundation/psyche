@@ -16,4 +16,7 @@ mod witness;
 pub use init::{InitRunError, RunInitConfig, RunInitConfigAndIO};
 pub use round_state::RoundState;
 pub use steps::{ApplyMessageOutcome, RunManager};
-pub use types::{CheckpointConfig, DistroBroadcastAndPayload, FinishedBroadcast, HubUploadInfo};
+pub use types::{
+    CheckpointConfig, DistroBroadcastAndPayload, FinishedBroadcast, GcsUploadInfo, HubUploadInfo,
+    UploadInfo,
+};

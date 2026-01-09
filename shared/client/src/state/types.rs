@@ -15,8 +15,20 @@ pub struct HubUploadInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct GcsUploadInfo {
+    pub gcs_bucket: String,
+    pub gcs_prefix: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum UploadInfo {
+    Hub(HubUploadInfo),
+    Gcs(GcsUploadInfo),
+}
+
+#[derive(Debug, Clone)]
 pub struct CheckpointConfig {
-    pub hub_upload: Option<HubUploadInfo>,
+    pub hub_upload: Option<UploadInfo>,
     pub checkpoint_dir: PathBuf,
     pub delete_old_steps: bool,
     pub keep_steps: u32,

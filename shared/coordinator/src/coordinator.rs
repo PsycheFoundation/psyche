@@ -1,6 +1,6 @@
 use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, HubRepo, Model},
+    model::{Checkpoint, GcsRepo, HubRepo, Model},
 };
 
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
@@ -596,7 +596,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         &mut self,
         from: &T,
         index: u64,
-        hub_repo: HubRepo,
+        hub_repo: Checkpoint,
     ) -> std::result::Result<(), CoordinatorError> {
         let index = index as usize;
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
@@ -607,8 +607,15 @@ impl<T: NodeIdentity> Coordinator<T> {
         // more download options.
         match &mut self.model {
             Model::LLM(llm) => match llm.checkpoint {
-                Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
-                Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                Checkpoint::P2P(HubRepo { repo_id, revision }) => {
+                    llm.checkpoint = Checkpoint::P2P(HubRepo { repo_id, revision })
+                }
+                Checkpoint::Hub(HubRepo { repo_id, revision }) => {
+                    llm.checkpoint = Checkpoint::Hub(HubRepo { repo_id, revision })
+                }
+                Checkpoint::Gcs(GcsRepo { bucket, prefix }) => {
+                    llm.checkpoint = Checkpoint::Gcs(GcsRepo { bucket, prefix })
+                }
                 _ => {}
             },
         }
