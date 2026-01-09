@@ -90,7 +90,7 @@ jobs:
         if: always()
         run: |
           echo "=== Model Evaluation Results ==="
-          if [ -f evaluation-results.txt ]; thent
+          if [ -f evaluation-results.txt ]; then
             cat evaluation-results.txt
             echo ""
 
@@ -174,30 +174,8 @@ jobs:
           echo ""
 
           if [ -f results.json ] && [ -f lm_eval_results.json ]; then
-            PSYCHE_ACC=$(jq -r '.metrics.acc' results.json)
-            PSYCHE_ACC_NORM=$(jq -r '.metrics.acc_norm' results.json)
-
-            LM_EVAL_ACC=$(jq -r '.metrics.acc' lm_eval_results.json)
-            LM_EVAL_ACC_NORM=$(jq -r '.metrics.acc_norm' lm_eval_results.json)
-
-            echo "| Metric | Psyche | lm_eval | Match |"
-            echo "|--------|--------|---------|-------|"
-
-            # Compare acc
-            if [ "$PSYCHE_ACC" = "$LM_EVAL_ACC" ]; then
-              MATCH_ACC="✅"
-            else
-              MATCH_ACC="❌"
-            fi
-            echo "| acc    | $PSYCHE_ACC | $LM_EVAL_ACC | $MATCH_ACC |"
-
-            # Compare acc_norm
-            if [ "$PSYCHE_ACC_NORM" = "$LM_EVAL_ACC_NORM" ]; then
-              MATCH_NORM="✅"
-            else
-              MATCH_NORM="❌"
-            fi
-            echo "| acc_norm | $PSYCHE_ACC_NORM | $LM_EVAL_ACC_NORM | $MATCH_NORM |"
+            # This script compares the two evals and reports if they're within 10% of each other
+            python3 .github/scripts/compare_metrics.py results.json lm_eval_results.json
 
           else
             echo "⚠️  Missing results files for comparison"
