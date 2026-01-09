@@ -7101,6 +7101,7 @@ dependencies = [
  "tokio-util 0.7.16",
  "torch-sys",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
