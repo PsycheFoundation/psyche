@@ -174,7 +174,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     }
 
     pub fn try_send_opportunistic_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
-        println!("CURRENT STATE = {:?}", self.coordinator_state.run_state);
         if self.current_round.committee_info.is_some()
             && !matches!(
                 self.coordinator_state.run_state,
@@ -369,6 +368,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 client_index as u64,
                 self.coordinator_state.epoch_state.clients.len() as u64,
             );
+
             if !is_checkpointer {
                 return Ok(());
             }
@@ -909,6 +909,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
             | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
+                self.sent_cooldown_witness = false;
                 let (trainers, upload_handle) = cooldown.finish().await?;
                 if let Some(handle) = upload_handle {
                     self.pending_upload_handles.push(handle);
