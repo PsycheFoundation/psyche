@@ -19,6 +19,7 @@ pub use gcs::{GcsError, download_model_from_gcs_async, download_model_from_gcs_s
 pub use hub::{
     UploadModelError, download_dataset_repo_async, download_dataset_repo_sync,
     download_model_repo_async, download_model_repo_sync, upload_model_repo_async,
+    upload_to_gcs_async,
 };
 pub use local::LocalDataProvider;
 pub use parquet::record::{ListAccessor, MapAccessor, RowAccessor};

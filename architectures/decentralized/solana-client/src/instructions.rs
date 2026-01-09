@@ -206,7 +206,7 @@ pub fn coordinator_checkpoint(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    repo: psyche_coordinator::model::HubRepo,
+    repo: psyche_coordinator::model::Checkpoint,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,

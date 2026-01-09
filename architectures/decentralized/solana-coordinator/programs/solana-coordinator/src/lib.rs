@@ -165,6 +165,7 @@ impl CoordinatorInstance {
 pub mod psyche_solana_coordinator {
 
     use super::*;
+    use psyche_coordinator::model::Checkpoint;
     use psyche_core::FixedString;
 
     pub fn init_coordinator(
@@ -313,7 +314,7 @@ pub mod psyche_solana_coordinator {
 
     pub fn checkpoint(
         ctx: Context<PermissionlessCoordinatorAccounts>,
-        repo: HubRepo,
+        repo: psyche_coordinator::model::Checkpoint,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
