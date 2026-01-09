@@ -11,7 +11,6 @@
 
 1. Open your browser and go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Sign in with your Google account
-3. If this is your first time, accept the Terms of Service
 
 ---
 
