@@ -136,6 +136,80 @@ let
       }
     );
 
+  # builds a rust package
+  # Returns an attrset of packages: { packageName = ...; packageName-nopython = ...; }
+  # Automatically discovers and builds examples from the crate's examples/ directory
+  # Auto-detects if package has a main binary by checking for src/main.rs or src/bin/
+  # needsPython: true = only with Python + ext, false = only without Python + ext, "optional" = both variants
+  buildRustPackage =
+    {
+      needsPython ? false,
+      isExample ? false,
+      cratePath, # path to the crate dir
+    }:
+    let
+      actualPath = if cratePath != null then cratePath else ./.;
+
+      cargoToml = builtins.fromTOML (builtins.readFile (actualPath + "/Cargo.toml"));
+      packageName = cargoToml.package.name;
+
+      # Auto-detect if this crate has a binary
+      hasMainRs = builtins.pathExists (actualPath + "/src/main.rs");
+      hasBinDir = builtins.pathExists (actualPath + "/src/bin");
+      hasBinary = hasMainRs || hasBinDir;
+
+      buildVariants =
+        name: withPython: withoutPython:
+        if needsPython == "optional" then
+          {
+            ${name} = withPython;
+            "${name}-nopython" = withoutPython;
+          }
+        else if lib.isBool needsPython then
+          {
+            ${name} = if needsPython then withPython else withoutPython;
+          }
+        else
+          throw "needsPython must be true, false, or \"optional\", got: ${builtins.toString needsPython}";
+
+      withPython = buildRustPackageWithPsychePythonEnvironment {
+        name = packageName;
+        inherit isExample;
+      };
+
+      withoutPython = buildRustPackageWithoutPython {
+        name = packageName;
+        inherit isExample;
+      };
+
+      mainPackages = if !hasBinary then { } else buildVariants packageName withPython withoutPython;
+
+      examplesDir = actualPath + "/examples";
+
+      examplePackages =
+        let
+          entries = if builtins.pathExists examplesDir then builtins.readDir examplesDir else { };
+          exampleFiles = lib.filterAttrs (n: v: v == "regular" && lib.hasSuffix ".rs" n) entries;
+          exampleNames = lib.mapAttrsToList (name: _: lib.removeSuffix ".rs" name) exampleFiles;
+
+          buildExample =
+            exampleName:
+            let
+              build =
+                builder:
+                useHostGpuDrivers (builder {
+                  name = exampleName;
+                  isExample = true;
+                });
+              withPythonExample = build buildRustPackageWithPsychePythonEnvironment;
+              withoutPythonExample = build buildRustPackageWithoutPython;
+            in
+            buildVariants exampleName withPythonExample withoutPythonExample;
+        in
+        builtins.foldl' (acc: exampleName: acc // (buildExample exampleName)) { } exampleNames;
+    in
+    mainPackages // examplePackages;
+
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
   # like do the buildDepsOnly for not the workspace, but my specific package that *happens* to be in a workspace.
@@ -293,6 +367,7 @@ in
     cargoArtifacts
     buildRustPackageWithPsychePythonEnvironment
     buildRustPackageWithoutPython
+    buildRustPackage
     buildRustWasmTsPackage
     useHostGpuDrivers
     env
