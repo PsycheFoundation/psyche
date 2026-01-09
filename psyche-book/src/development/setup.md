@@ -20,23 +20,30 @@ To speed up your builds & your local dev shell, we recommend enabling the binary
 
 In order to use the cache that garnix provides, change your `nix.conf`, adding `https://cache.garnix.io` to substituters, and `cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=` to `trusted-public-keys`.
 
-If you've just installed Nix via the Determinite Systems installer above, you can do this by adding these lines to `/etc/nix/nix.conf`:
+If you've just installed Nix via the Determinate Systems installer above, you can do this by adding these lines to `/etc/nix/nix.conf`:
 
 ```conf
 extra-substituters = https://cache.garnix.io
 extra-trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=
 ```
 
+#### Setup
+
+Each time you open a new shell in the Psyche directory, run `nix develop` to enter the Psyche development shell with all the necessary dependencies.
+
 #### Setup Using `direnv`
 
 You can optionally use `direnv` to automatically enter a Nix environment when you `cd` into the Psyche folder.
 
-Install `direnv` from your system's package manager.
-After running `direnv allow` in the Psyche directory once, your terminal will automatically enter a development shell when you subsequently `cd` into the Psyche directory.
+1. Install `direnv` from your system's package manager:
 
-#### Setup Without `direnv`
+- `sudo apt install direnv` on Debian-based systems
+- `brew install direnv` on macOS
 
-Each time you open a new shell in the Psyche directory, run `nix develop` to enter a development shell.
+2. Run `nix profile install nixpkgs#nix-direnv` to install the `direnv` plugin in nix.
+3. Run `echo "source ~/.nix-profile/share/nix-direnv/direnvrc" > ~/.direnvrc` to enable the plugin.
+4. Add `eval "$(direnv hook bash)"` line to your shell configuration file (e.g., `~/.bashrc` or `~/.zshrc`).
+5. Run `direnv allow` in the Psyche directory once, your terminal will automatically enter a development shell when you subsequently `cd` into the Psyche directory.
 
 #### Platform Differences
 
@@ -134,41 +141,25 @@ OPENSSL_LIB_DIR = <path_to_openssl>/lib/VC/x64/MT
 OPENSSL_INCLUDE_DIR = <path_to_openssl>/include
 ```
 
-### Docker
-
-> requires Nix!
-
-Create a Docker image with the necessary dependencies to run a Psyche client:
-
-1. Install the necessary NVIDIA and CUDA drivers as explained in the previous sections.
-2. Install the NVIDIA [container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). If using Ubuntu, just run:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-```
-
-3. Create an `.env` file following the `.env.example` in `psyche/config/client` and update the necessary environment variables.
-4. Run `just nix build_docker_solana_client`.
-
 ## Useful commands
 
 Psyche uses [`just`](https://github.com/casey/just) to run some common tasks.
-
-You can run `just` to see the whole list of commands!
+You can run `just` to see the whole list of available commands!
 
 ### Running checks
+
+```bash
+just check-client
+```
+
+Will run the psyche-solana-client package with the `--help` flag. If you see a list of commands, it means that the env compiles and can run the basic commands.
+
+### Formatting
 
 > requires Nix!
 
 ```bash
-just check
+nix fmt
 ```
 
-If it passes, CI will pass.
-
-### Formatting
-
-```bash
-just fmt
-```
+Format all the project files.

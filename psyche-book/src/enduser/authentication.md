@@ -20,7 +20,7 @@ A Training run can be configured to be restricted to only a set of whitelisted k
 
 ## Permissionless Runs
 
-A run can be made permissionless by creating an `authorization` with a special `authorizer` valid for everyone: `11111111111111111111111111111111`
+Permissionless runs are open to anyone without any `authorization` required. The owner of the run can set this for a run when creating it. This type of authorization can be made by creating an `authorization` with a special `authorizer` valid for everyone: `11111111111111111111111111111111`
 
 A CLI is provided for this:
 
@@ -73,5 +73,7 @@ psyche-solana-client join-authorization-delete \
 ```
 
 ## Further information
+
+To see how the authorization creation for a real run fits in the configuration see the [Authorization section](./create-run.md#Setting-up-Join-Authorizations) in the create run guide.
 
 The source code for the `authorizer` smart contract used by the Psyche's coordinator can be found here with its readme: <https://github.com/PsycheFoundation/psyche/tree/main/architectures/decentralized/solana-authorizer>
