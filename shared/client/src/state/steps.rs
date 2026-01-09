@@ -4,6 +4,7 @@ use crate::{
 };
 
 use iroh_blobs::api::Tag;
+use psyche_coordinator::CheckpointerSelection;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
@@ -58,6 +59,7 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     step_finish_time: Option<Instant>,
     sent_warmup_finished: bool,
     sent_warmup_witness: bool,
+    sent_cooldown_witness: bool,
 
     coordinator_state: Coordinator<T>,
 
@@ -165,14 +167,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             step_finish_time: None,
             sent_warmup_finished: false,
             sent_warmup_witness: false,
+            sent_cooldown_witness: false,
 
             pending_upload_handles: Vec::new(),
         }
     }
 
     pub fn try_send_opportunistic_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
-        if let Some(committee_info) = &self.current_round.committee_info {
+        if self.current_round.committee_info.is_some()
+            && !matches!(
+                self.coordinator_state.run_state,
+                RunState::Warmup | RunState::Cooldown
+            )
+        {
             // trace!("Checking for opprotunistic witness with committee info");
+            let committee_info = self.current_round.committee_info.as_ref().unwrap();
             if let ActiveStep::Training(step) = &self.active_step {
                 let all_prev_round_batches_are_trained = self
                     .previous_round
@@ -338,6 +347,61 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
                 self.sent_warmup_witness = true;
             }
+        } else if self.coordinator_state.run_state == RunState::Cooldown {
+            if let ActiveStep::Cooldown(active_step) = &self.active_step {
+                if !active_step.is_finished() || self.sent_cooldown_witness {
+                    return Ok(());
+                }
+            }
+            let client_index = self
+                .coordinator_state
+                .epoch_state
+                .clients
+                .iter()
+                .position(|x| x.id == self.identity)
+                .unwrap();
+
+            let checkpointer_selection =
+                CheckpointerSelection::from_coordinator(&self.coordinator_state, 0)
+                    .map_err(|_| OpportunisticWitnessError::Send)?;
+            let is_checkpointer = checkpointer_selection.get_checkpointer(
+                client_index as u64,
+                self.coordinator_state.epoch_state.clients.len() as u64,
+            );
+
+            if !is_checkpointer {
+                return Ok(());
+            }
+
+            let merkle = MerkleTree::new(&self.current_round.broadcasts)
+                .get_root()
+                .cloned()
+                .unwrap_or(MerkleRoot::default());
+
+            if let Some(index) = self
+                .coordinator_state
+                .epoch_state
+                .clients
+                .iter()
+                .position(|x| x.id == self.identity)
+            {
+                // coordinator needs to check the index for duplicate detection
+                let index = index as u64;
+                let witness = Witness {
+                    proof: WitnessProof {
+                        position: index,
+                        index,
+                        witness: Default::default(),
+                    },
+                    participant_bloom: Default::default(),
+                    broadcast_bloom: Default::default(),
+                    broadcast_merkle: merkle,
+                };
+                self.tx_opportunistic_data
+                    .send(OpportunisticData::CooldownStep(witness))
+                    .map_err(|_| OpportunisticWitnessError::Send)?;
+                self.sent_cooldown_witness = true;
+            };
         }
         Ok(())
     }
@@ -839,12 +903,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 // check here
                 self.cleanup_completed_uploads();
 
-                ActiveStep::Cooldown(self.cooldown.start(trainers, &state)?)
+                ActiveStep::Cooldown(self.cooldown.start(trainers, &state, client_index)?)
             }
             // cooldown is done, we consider waiting for members and warmup to be basically the same
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
             | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
+                self.sent_cooldown_witness = false;
                 let (trainers, upload_handle) = cooldown.finish().await?;
                 if let Some(handle) = upload_handle {
                     self.pending_upload_handles.push(handle);

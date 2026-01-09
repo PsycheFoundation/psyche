@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{self, Checkpoint, LLM, LLMTrainingDataLocation, Model};
+use psyche_coordinator::model::{Checkpoint, LLM, LLMTrainingDataLocation, Model};
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
@@ -78,10 +78,6 @@ impl psyche_watcher::Backend<ClientId> for ChannelCoordinatorBackend {
 
     async fn send_health_check(&mut self, _health_checks: HealthChecks<ClientId>) -> Result<()> {
         bail!("Server does not send health checks");
-    }
-
-    async fn send_checkpoint(&mut self, _checkpoint: model::HubRepo) -> Result<()> {
-        bail!("Server does not send checkpoints");
     }
 }
 
@@ -395,6 +391,9 @@ impl App {
                         Self::get_timestamp(),
                         rand::rng().next_u64(),
                     ),
+                    OpportunisticData::CooldownStep(witness) => {
+                        self.coordinator.cooldown_witness(&from, witness)
+                    }
                 } {
                     warn!("Error when processing witness: {error}");
                 };

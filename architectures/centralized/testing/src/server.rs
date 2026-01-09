@@ -77,6 +77,7 @@ impl CoordinatorServer {
             global_batch_size_end: global_batch_size,
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
+            checkpointer_nodes: 0,
             witness_nodes,
             total_steps: 100,
             waiting_for_members_extra_time: 2,

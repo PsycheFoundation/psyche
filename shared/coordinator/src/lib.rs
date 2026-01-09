@@ -8,7 +8,8 @@ pub mod model;
 
 pub use commitment::Commitment;
 pub use committee_selection::{
-    COMMITTEE_SALT, Committee, CommitteeProof, CommitteeSelection, WITNESS_SALT, WitnessProof,
+    COMMITTEE_SALT, CheckpointerSelection, Committee, CommitteeProof, CommitteeSelection,
+    WITNESS_SALT, WitnessProof,
 };
 pub use coordinator::{
     BLOOM_FALSE_RATE, Client, ClientState, Coordinator, CoordinatorConfig, CoordinatorEpochState,
