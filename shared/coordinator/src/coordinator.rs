@@ -985,12 +985,6 @@ impl<T: NodeIdentity> Coordinator<T> {
                 )
                 .unwrap();
 
-            // self.epoch_state.checkpointer = self
-            //     .epoch_state
-            //     .clients
-            //     .get(0)
-            //     .cloned()
-            //     .expect("at least one client");
             self.start_warmup(unix_timestamp);
         }
 
