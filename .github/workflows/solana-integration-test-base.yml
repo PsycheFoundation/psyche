@@ -41,8 +41,7 @@ jobs:
 
       - name: Install just
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
-          sudo chmod +x /usr/local/bin/just
+          nix profile install nixpkgs#just
 
       # Step 1: Get Validator Image from cache
       - name: Get Validator Image from cache
