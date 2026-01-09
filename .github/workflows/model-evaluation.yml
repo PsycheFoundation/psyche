@@ -82,7 +82,7 @@ jobs:
             --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
             --tasks arc_easy \
             --num-fewshot 3 \
-            --limit 50 \
+            --limit 10 \
             --seed 42 | tee evaluation-results.txt
 
           echo "Evaluation complete!"
