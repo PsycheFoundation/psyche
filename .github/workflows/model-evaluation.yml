@@ -77,11 +77,11 @@ jobs:
       - name: Run model evaluation
         id: eval
         run: |
-          echo "Running evaluation on TinyLlama with ARC-Easy (limit=5)"
+          echo "Running evaluation on TinyLlama with ARC-Easy"
           nix develop --command cargo run --release --example evaluate -p psyche-eval -- \
             --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
             --tasks arc_easy \
-            --limit 5 \
+            --num-fewshot 3 \
             --seed 42 | tee evaluation-results.txt
 
           echo "Evaluation complete!"
@@ -108,7 +108,7 @@ jobs:
                 ACC_UNCOND=$(echo "$JSON_RESULTS" | jq -r '.acc_uncond // "N/A"')
 
                 echo ""
-                echo "📊 Metrics Summary:"
+                echo "Metrics Summary:"
                 echo "  • Accuracy:             $ACC"
                 echo "  • Accuracy (normalized): $ACC_NORM"
                 echo "  • Accuracy (unconditional): $ACC_UNCOND"

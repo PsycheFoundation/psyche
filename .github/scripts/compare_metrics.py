@@ -42,26 +42,19 @@ if __name__ == "__main__":
         psyche_acc_norm = psyche_data["metrics"]["acc_norm"]
         lm_eval_acc_norm = lm_eval_data["metrics"]["acc_norm"]
 
-        print("| Metric | Psyche | lm_eval | Match |")
-        print("|--------|--------|---------|-------|")
-
         # Compare acc
         acc_match, acc_diff = compare_within_margin(psyche_acc, lm_eval_acc)
-        if acc_match:
-            print(f"| acc    | {psyche_acc} | {lm_eval_acc} | ✅ |")
-        else:
-            print(
-                f"| acc    | {psyche_acc} | {lm_eval_acc} | ❌ ({acc_diff:.1f}% diff) |"
-            )
+        status_acc = "✅ PASS" if acc_match else f"❌ FAIL ({acc_diff:.1f}% diff)"
+        print(
+            f"acc:      Psyche={psyche_acc:.4f}  lm_eval={lm_eval_acc:.4f} - {status_acc}"
+        )
 
         # Compare acc_norm
         norm_match, norm_diff = compare_within_margin(psyche_acc_norm, lm_eval_acc_norm)
-        if norm_match:
-            print(f"| acc_norm | {psyche_acc_norm} | {lm_eval_acc_norm} | ✅ |")
-        else:
-            print(
-                f"| acc_norm | {psyche_acc_norm} | {lm_eval_acc_norm} | ❌ ({norm_diff:.1f}% diff) |"
-            )
+        status_norm = "✅ PASS" if norm_match else f"❌ FAIL ({norm_diff:.1f}% diff)"
+        print(
+            f"acc_norm: Psyche={psyche_acc_norm:.4f}  lm_eval={lm_eval_acc_norm:.4f} - {status_norm}"
+        )
 
     except FileNotFoundError as e:
         print(f"Error: Could not find file {e}")
