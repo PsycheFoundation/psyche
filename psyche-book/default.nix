@@ -8,8 +8,14 @@
 
   # custom args
   rustPackages,
-  rustPackageNames,
 }:
+let
+  # Extract binary package names from rustPackages
+  # Strategy: find all packages with -nopython suffix, extract base names
+  allPackageNames = builtins.attrNames rustPackages;
+  noPythonPackages = builtins.filter (name: lib.hasSuffix "-nopython" name) allPackageNames;
+  binaryPackageNames = builtins.map (name: lib.removeSuffix "-nopython" name) noPythonPackages;
+in
 stdenvNoCC.mkDerivation {
   __structuredAttrs = true;
 
@@ -53,7 +59,7 @@ stdenvNoCC.mkDerivation {
       "${rustPackages.${noPythonPackage}}/bin/${name} print-all-help --markdown > generated/cli/${
         lib.replaceStrings [ "-" ] [ "-" ] name
       }.md"
-    ) rustPackageNames}
+    ) binaryPackageNames}
 
     cp ${../secrets.nix} generated/secrets.nix
   '';

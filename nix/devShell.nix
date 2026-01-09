@@ -62,7 +62,7 @@
                 # cargo stuff
                 cargo-watch
 
-                self'.packages.solana_toolbox_cli
+                self'.packages.solana-toolbox-cli
 
                 # for ci emulation
                 inputs'.garnix-cli.packages.default
