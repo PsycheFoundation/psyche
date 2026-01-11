@@ -32,7 +32,6 @@ let
   # packages that we provide to the venv via nix derivations
   topLevelNixPkgs = [
     "torch"
-    "vllm"
   ]
   ++ lib.optionals stdenvNoCC.hostPlatform.isLinux [
     "flash-attn"
