@@ -4,8 +4,18 @@ use run_manager::run_manager::{Entrypoint, RunManager};
 use std::path::PathBuf;
 use tracing::error;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const GIT_HASH: &str = env!("GIT_HASH");
+const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
+
+fn long_version() -> &'static str {
+    Box::leak(
+        format!("{}\ngit: {}\nbuilt: {}", VERSION, GIT_HASH, BUILD_TIMESTAMP).into_boxed_str(),
+    )
+}
+
 #[derive(Parser, Debug)]
-#[command(name = "run-manager")]
+#[command(name = "run-manager", version = VERSION, long_version = long_version())]
 #[command(
     about = "Manager to download Psyche client container based on a version specified in the run"
 )]

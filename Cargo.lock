@@ -8052,6 +8052,7 @@ dependencies = [
  "anchor-client",
  "anchor-lang",
  "anyhow",
+ "chrono",
  "clap",
  "clap-markdown",
  "psyche-coordinator",
