@@ -1,106 +1,95 @@
-import { readFileSync } from 'fs'
-import {
-	ErrorStack,
-	jsonAsArray,
-	jsonAsNumber,
-	jsonAsString,
-	jsonGetAt,
-	JsonValue,
-	Pubkey,
-	pubkeyFromBase58,
-	pubkeyToBase58,
-} from 'solana-kiss'
-import { PrivyClient } from '@privy-io/node'
-import { parseHtmlTable } from './utils/parseHtmlTable'
-import { fetchJson } from './utils/fetchJson'
-import { resolveUserWalletForEmailAddress } from './utils/resolveUserWalletForEmailAddress'
-import { resolveUserWalletForGithubUsername } from './utils/resolveUserWalletForGithubUsername'
+import { PrivyClient } from "@privy-io/node";
+import { Pubkey, pubkeyFromBase58 } from "solana-kiss";
+import { parseHtmlTable } from "./utils/parseHtmlTable";
+import { resolveUserWalletForEmailAddress } from "./utils/resolveUserWalletForEmailAddress";
+import { resolveUserWalletForGithubUsername } from "./utils/resolveUserWalletForGithubUsername";
+import { resolveUserWalletForTwitterUsername } from "./utils/resolveUserWalletForTwitterUsername";
 
-const whitelistFolder = process.argv[2]
+const whitelistFolder = process.argv[2];
 
 const privyClient = new PrivyClient({
-	appId: process.argv[3],
-	appSecret: process.argv[4],
-})
+  appId: process.argv[3],
+  appSecret: process.argv[4],
+});
 
-const tabVipGithubName = 'Github Whitelist'
-const tabPaperGithubName = 'Paper Whitelist (Github)'
-const tabAttroposGithubName = 'Atropos Contributors Whitelist'
+const twitterBearerToken = process.argv[5];
 
-const tabVipTwitterName = 'X Whitelist'
-const tabPaperTwitterName = 'Paper Whitelist (Twitter)'
+const tabVipGithubName = "Github Whitelist";
+const tabPaperGithubName = "Paper Whitelist (Github)";
+const tabAttroposGithubName = "Atropos Contributors Whitelist";
 
-const tabPaperLinkedInName = 'Paper Whitelist (LinkedIn)'
-const tabNousApiEmailName = 'Nous API Whitelist'
-const tabMiningPoolName = 'Mining Pool Contributors Whitelist'
-const tabNousDiscordName = 'Discord Whitelist'
+const tabVipTwitterName = "X Whitelist";
+const tabPaperTwitterName = "Paper Whitelist (Twitter)";
 
-main()
+const tabPaperLinkedInName = "Paper Whitelist (LinkedIn)";
+const tabNousApiEmailName = "Nous API Whitelist";
+const tabMiningPoolName = "Mining Pool Contributors Whitelist";
+const tabNousDiscordName = "Discord Whitelist";
+
+main();
 
 async function main() {
-	//console.log(tabVipGithubName, parseHtmlTable(tabVipGithubName));
-	//console.log(tabPaperGithubName, parseHtmlTable(tabPaperGithubName));
-	//console.log(tabPaperLinkedInName, parseHtmlTable(tabPaperLinkedInName));
-	//console.log(tabPaperTwitterName, parseHtmlTable(tabPaperTwitterName));
-	//console.log(tabVipTwitterName, parseHtmlTable(tabVipTwitterName));
-	//console.log(tabNousApiName, parseHtmlTable(tabNousApiName));
-	//console.log(tabMiningPoolName, parseHtmlTable(tabMiningPoolName));
-	//console.log(tabAttroposName, parseHtmlTable(tabAttroposName));
-	//console.log(tabDiscordName, parseHtmlTable(tabDiscordName));
+  //console.log(tabVipGithubName, parseHtmlTable(tabVipGithubName));
+  //console.log(tabPaperGithubName, parseHtmlTable(tabPaperGithubName));
+  //console.log(tabPaperLinkedInName, parseHtmlTable(tabPaperLinkedInName));
+  //console.log(tabPaperTwitterName, parseHtmlTable(tabPaperTwitterName));
+  //console.log(tabVipTwitterName, parseHtmlTable(tabVipTwitterName));
+  //console.log(tabNousApiName, parseHtmlTable(tabNousApiName));
+  //console.log(tabMiningPoolName, parseHtmlTable(tabMiningPoolName));
+  //console.log(tabAttroposName, parseHtmlTable(tabAttroposName));
+  //console.log(tabDiscordName, parseHtmlTable(tabDiscordName));
 
-	for (const tabMiningPoolRow of parseHtmlTable(
-		whitelistFolder,
-		tabMiningPoolName
-	)) {
-		const solanaAddress = toPubkey(tabMiningPoolRow[0])
-		if (solanaAddress === null) {
-			continue
-		}
-		console.log('>>>> solanaAddress', solanaAddress)
-		//const res = await resolveInfoForSolanaAddress(solanaAddress)
-		//console.log('Solana Address (Mining Pool)', JSON.stringify(res, null, 2))
-		break
-	}
+  for (const tabMiningPoolRow of parseHtmlTable(
+    whitelistFolder,
+    tabMiningPoolName,
+  )) {
+    const solanaAddress = toPubkey(tabMiningPoolRow[0]);
+    if (solanaAddress === null) {
+      continue;
+    }
+    console.log(">>>> solanaAddress", solanaAddress);
+    break;
+  }
 
-	for (const tabNousApiRow of parseHtmlTable(
-		whitelistFolder,
-		tabNousApiEmailName
-	)) {
-		if (tabNousApiRow.length < 2) {
-			continue
-		}
-		const emailAddress = tabNousApiRow[0]
-		if (emailAddress.indexOf('@') === -1) {
-			continue
-		}
-		console.log('emailAddress', emailAddress)
-		const res = await resolveUserWalletForEmailAddress(
-			privyClient,
-			emailAddress
-		)
-		console.log('>>>> EMAIL (Nous API)', JSON.stringify(res, null, 2))
-		break
-	}
+  for (const tabNousApiRow of parseHtmlTable(
+    whitelistFolder,
+    tabNousApiEmailName,
+  )) {
+    if (tabNousApiRow.length < 2) {
+      continue;
+    }
+    const emailAddress = tabNousApiRow[0];
+    if (emailAddress.indexOf("@") === -1) {
+      continue;
+    }
+    console.log("emailAddress", emailAddress);
+    const res = await resolveUserWalletForEmailAddress(
+      privyClient,
+      emailAddress,
+    );
+    console.log(">>>> EMAIL (Nous API)", JSON.stringify(res, null, 2));
+    break;
+  }
 
-	for (const tabAttroposGithubRow of parseHtmlTable(
-		whitelistFolder,
-		tabAttroposGithubName
-	)) {
-		const url = toUrl(tabAttroposGithubRow[0])
-		if (url === null) {
-			continue
-		}
-		const githubUsername = stripPrefix(url.pathname, '/')
-		console.log('githubUsername', githubUsername)
-		const res = await resolveUserWalletForGithubUsername(
-			privyClient,
-			githubUsername
-		)
-		console.log('>>>>> GITHUB', JSON.stringify(res, null, 2))
-		break
-	}
+  for (const tabAttroposGithubRow of parseHtmlTable(
+    whitelistFolder,
+    tabAttroposGithubName,
+  )) {
+    const url = toUrl(tabAttroposGithubRow[0]);
+    if (url === null) {
+      continue;
+    }
+    const githubUsername = stripPrefix(url.pathname, "/");
+    console.log("githubUsername", githubUsername);
+    const res = await resolveUserWalletForGithubUsername(
+      privyClient,
+      githubUsername,
+    );
+    console.log(">>>>> GITHUB", JSON.stringify(res, null, 2));
+    break;
+  }
 
-	/*
+  /*
   for (const tabNousDiscordRow of parseHtmlTable(
     whitelistFolder,
     tabNousDiscordName
@@ -124,19 +113,26 @@ async function main() {
     console.log("linkedInId", linkedInId);
     const res = await resolveInfoForLinkedInId(linkedInId);
   }
-
-  for (const paperTwitter of parseHtmlTable(whitelistFolder,tabPaperTwitterName)) {
-    const url = toUrl(paperTwitter[0])
-    if (url === null) {
-      continue
-    }
-    const twitterUsername = stripPrefix(url.pathname, '/')
-    console.log('twitter', twitterUsername)
-    const res = await resolveInfoForTwitterUsername(twitterUsername)
-    console.log('>>>>> TWITTER', JSON.stringify(res, null, 2))
-    break
-  }
     */
+
+  for (const paperTwitter of parseHtmlTable(
+    whitelistFolder,
+    tabPaperTwitterName,
+  )) {
+    const url = toUrl(paperTwitter[0]);
+    if (url === null) {
+      continue;
+    }
+    const twitterUsername = stripPrefix(url.pathname, "/");
+    console.log("twitter", twitterUsername);
+    const res = await resolveUserWalletForTwitterUsername(
+      privyClient,
+      twitterUsername,
+      twitterBearerToken,
+    );
+    console.log(">>>>> TWITTER", JSON.stringify(res, null, 2));
+    break;
+  }
 }
 
 /*
@@ -205,58 +201,24 @@ async function resolveInfoForLinkedInId(linkedInId: string) {
   )
 }
 
-async function resolveUserInfoForTwitterUsername(twitterUsername: string) {
-  return await resolveUserWalletOrPregenerate(
-    privyClient,
-    twitterUsername,
-    () =>
-      privyClient.users().getByTwitterUsername({ username: twitterUsername }),
-    async (fetchError) => {
-      const twitterUserInfo = await fetchJson(
-        `https://api.x.com/2/users/by/username/${twitterUsername}`,
-        'GET'
-      )
-      const twitterUserId = jsonAsString(jsonGetAt(twitterUserInfo, 'data.id'))
-      const twitterUserKey = jsonAsString(
-        jsonGetAt(twitterUserInfo, 'data.name')
-      )
-      if (!twitterUserId || !twitterUserKey) {
-        throw new ErrorStack(
-          'Failed to fetch GitHub user info: ' + twitterUserInfo,
-          fetchError
-        )
-      }
-      return privyClient.users().create({
-        linked_accounts: [
-          {
-            type: 'twitter_oauth',
-            subject: twitterUserId,
-            name: twitterUserKey,
-            username: twitterUsername,
-          },
-        ],
-      })
-    }
-  )
-}
 */
 
 function toUrl(urlString: string) {
-	try {
-		return new URL(urlString)
-	} catch {
-		return null
-	}
+  try {
+    return new URL(urlString);
+  } catch {
+    return null;
+  }
 }
 
 function toPubkey(value: string): Pubkey | null {
-	try {
-		return pubkeyFromBase58(value)
-	} catch {
-		return null
-	}
+  try {
+    return pubkeyFromBase58(value);
+  } catch {
+    return null;
+  }
 }
 
 function stripPrefix(value: string, prefix: string): string {
-	return value.startsWith(prefix) ? value.slice(prefix.length) : value
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }

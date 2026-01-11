@@ -16,6 +16,11 @@
           includes = [ "*.glsl" ];
         };
 
+        prettier = {
+          # js, ts, etc.
+          enable = true;
+        };
+
         # python stuff
         black.enable = true;
 
