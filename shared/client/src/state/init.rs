@@ -157,6 +157,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub tx_distro_result: UnboundedSender<DistroBroadcastAndPayload>,
     pub tx_request_download: UnboundedSender<(BlobTicket, Tag)>,
     pub tx_request_model_config: UnboundedSender<OneShotModelConfigSender>,
+    pub tx_request_parameter_names: UnboundedSender<oneshot::Sender<Vec<String>>>,
     pub tx_broadcast_finished: UnboundedSender<FinishedBroadcast>,
 
     pub metrics: Arc<ClientMetrics>,
@@ -179,6 +180,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_distro_result,
             tx_request_download,
             tx_request_model_config,
+            tx_request_parameter_names,
             tx_broadcast_finished,
             metrics,
         } = self;
@@ -367,6 +369,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 )
                             }
                             model::Checkpoint::P2P(_) => {
+                                // First, request parameter names
+                                let (tx_param_names_response, rx_param_names_response) =
+                                    oneshot::channel();
+                                info!("Requesting parameter names over network");
+
+                                tx_request_parameter_names
+                                    .send(tx_param_names_response)
+                                    .unwrap();
+
+                                let parameter_names = rx_param_names_response.await.unwrap();
+                                info!("Got {} parameter names via p2p", parameter_names.len());
+
                                 let (tx_model_config_response, rx_model_config_response) =
                                     oneshot::channel();
                                 info!("Checkpoint is p2p, requesting model config over network");
@@ -405,7 +419,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                         }
                                     }
                                 };
-                                let parameter_names = model_config.get_parameter_names();
                                 info!(
                                     "Requesting {} parameters over p2p network",
                                     parameter_names.len()

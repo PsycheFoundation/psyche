@@ -1,6 +1,8 @@
 use crate::{
     ModelRequestType, Networkable,
-    p2p_model_sharing::{TransmittableModelConfig, TransmittableModelParameter},
+    p2p_model_sharing::{
+        TransmittableModelConfig, TransmittableModelParameter, TransmittableParameterNames,
+    },
     serialized_distro::TransmittableDistroResult,
 };
 
@@ -232,6 +234,7 @@ pub enum TransmittableDownload {
     DistroResult(TransmittableDistroResult),
     ModelParameter(TransmittableModelParameter),
     ModelConfig(TransmittableModelConfig),
+    ParameterNames(TransmittableParameterNames),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

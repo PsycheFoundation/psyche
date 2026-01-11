@@ -100,6 +100,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let (tx_request_model_config, mut rx_request_model_config) =
                     mpsc::unbounded_channel();
                 let (tx_broadcast_finished, mut rx_broadcast_finished) = mpsc::unbounded_channel();
+                let (tx_request_parameter_names, mut rx_request_parameter_names) =
+                    mpsc::unbounded_channel();
+                let (tx_parameter_names_download, mut rx_parameter_names_download) =
+                    mpsc::unbounded_channel();
 
                 let max_concurrent_parameter_requests =
                     init_config.max_concurrent_parameter_requests;
@@ -119,6 +123,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     tx_distro_result,
                     tx_request_download: tx_request_download.clone(),
                     tx_request_model_config,
+                    tx_request_parameter_names,
                     tx_broadcast_finished,
                 });
 
@@ -299,6 +304,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 sharable_model.add_config(config)?;
                                                 sharable_model.send_config()?;
                                             },
+                                            TransmittableDownload::ParameterNames(names) => {
+                                                info!("Download complete: parameter names ({} parameters)", names.names.len());
+                                                sharable_model.add_parameter_names(names.clone()).await?;
+                                                sharable_model.send_parameter_names()?;
+                                            }
                                         }
                                     }
                                     NetworkEvent::DownloadFailed(dl) => {
@@ -403,6 +413,23 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             }
                                         }
                                     }
+                                    // Handle incoming parameter names requests from other peers
+                                    NetworkEvent::ParameterNamesRequest(protocol_req_tx) => {
+                                        trace!("NetworkEvent::ParameterNamesRequest");
+                                        match sharable_model.get_transmittable_parameter_names(&mut p2p, "model-parameter-names").await {
+                                            Err(e) => {
+                                                if let Err(e) = protocol_req_tx.send(Err(e)) {
+                                                    warn!("Could not send parameter names blob ticket. Error: {e:?}");
+                                                }
+                                            },
+                                            Ok(ticket) => {
+                                                info!(hash = %ticket.hash(), "Sending requested parameter names blob ticket");
+                                                if let Err(e) = protocol_req_tx.send(Ok(ticket)) {
+                                                    warn!("Could not send parameter names blob ticket. Error: {e:?}");
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -425,6 +452,35 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             // simulate us recving it & apply like anyone else's
                             run.apply_message(identity,  training_result)?;
+                        }
+
+                        // Handle parameter names request from init
+                        Some(tx_response) = rx_request_parameter_names.recv() => {
+                            sharable_model.tx_parameter_names_response = Some(tx_response);
+                            // Request parameter names from a peer
+                            let router = p2p.router().clone();
+                            let tx_parameter_names_download = tx_parameter_names_download.clone();
+                            let peer_manager = peer_manager.clone();
+                            let param_requests_cancel_token = param_requests_cancel_token.clone();
+
+                            tokio::spawn(async move {
+                                if let Ok(names_blob_ticket) = get_blob_ticket_to_download(
+                                    router,
+                                    ModelRequestType::ParameterNames,
+                                    peer_manager,
+                                    param_requests_cancel_token
+                                ).await {
+                                    tx_parameter_names_download.send(names_blob_ticket)
+                                        .expect("Failed to send parameter names blob ticket");
+                                }
+                            });
+                        }
+
+                        // Handle parameter names download
+                        Some(names_blob_ticket) = rx_parameter_names_download.recv() => {
+                            let kind = DownloadType::ModelSharing(ModelRequestType::ParameterNames);
+                            metrics.record_download_started(names_blob_ticket.hash(), kind.kind());
+                            p2p.start_download(names_blob_ticket, Tag::from("model-parameter-names"), kind);
                         }
 
                         Some(DistroBroadcastAndPayload { step, batch_id, commitment_data_hash, proof, distro_result, original_distro_result }) = rx_distro_result.recv() => {
@@ -480,6 +536,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let tx_request_download = tx_request_download.clone();
                             let tx_params_download = tx_params_download.clone();
                             let tx_config_download = tx_config_download.clone();
+                            let tx_parameter_names_download = tx_parameter_names_download.clone();
                             let metrics = metrics.clone();
                             let retried_downloads = retried_downloads.clone();
                             tokio::spawn(async move {
@@ -504,6 +561,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 ModelRequestType::Config => {
                                                     info!("Retrying download for model config, (attempt {})", retries);
                                                     let _ = tx_config_download.send(ticket);
+                                                }
+                                                ModelRequestType::ParameterNames => {
+                                                    info!("Retrying download for parameter names, (attempt {})", retries);
+                                                    let _ = tx_parameter_names_download.send(ticket);
                                                 }
                                             }
                                         }

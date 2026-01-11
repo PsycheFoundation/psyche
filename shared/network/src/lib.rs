@@ -94,7 +94,7 @@ pub use tui::{NetworkTUIState, NetworkTui};
 use url::Url;
 pub use util::fmt_bytes;
 
-use crate::p2p_model_sharing::ModelSharing;
+use crate::p2p_model_sharing::{ModelSharing, ParameterNamesSharingMessage};
 
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
@@ -187,6 +187,7 @@ where
     gossip_rx: GossipReceiver,
     rx_model_parameter_req: UnboundedReceiver<ParameterSharingMessage>,
     rx_model_config_req: UnboundedReceiver<ModelConfigSharingMessage>,
+    rx_parameter_names_req: UnboundedReceiver<ParameterNamesSharingMessage>,
     download_manager: DownloadManager<Download>,
     _broadcast_message: PhantomData<BroadcastMessage>,
     _download: PhantomData<Download>,
@@ -357,8 +358,12 @@ where
         trace!("creating model parameter sharing...");
         let (tx_model_parameter_req, rx_model_parameter_req) = mpsc::unbounded_channel();
         let (tx_model_config_req, rx_model_config_req) = mpsc::unbounded_channel();
-        let model_parameter_sharing =
-            ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
+        let (tx_parameter_names_req, rx_parameter_names_req) = mpsc::unbounded_channel();
+        let model_parameter_sharing = ModelSharing::new(
+            tx_model_parameter_req,
+            tx_model_config_req,
+            tx_parameter_names_req,
+        );
         trace!("model parameter sharing created!");
 
         trace!("creating router...");
@@ -386,6 +391,7 @@ where
             gossip_tx,
             rx_model_parameter_req,
             rx_model_config_req,
+            rx_parameter_names_req,
 
             router,
             metrics,
@@ -776,6 +782,7 @@ where
         oneshot::Sender<Result<BlobTicket, SharableModelError>>,
     ),
     ModelConfigRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
+    ParameterNamesRequest(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
 }
 
 async fn on_update_stats(

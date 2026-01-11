@@ -268,8 +268,10 @@ impl From<serde_json::Error> for SharableModelError {
 pub enum ModelRequestType {
     /// Request for the model and tokenizer configs
     Config,
-    /// Parameter request containing the parameter name
+    /// Parameter tensors request containing the parameter name
     Parameter(String),
+    /// Parameter names request
+    ParameterNames,
 }
 
 pub enum ParameterSharingMessage {
@@ -277,6 +279,10 @@ pub enum ParameterSharingMessage {
         String,
         oneshot::Sender<Result<BlobTicket, SharableModelError>>,
     ),
+}
+
+pub enum ParameterNamesSharingMessage {
+    Get(oneshot::Sender<Result<BlobTicket, SharableModelError>>),
 }
 
 pub enum ModelConfigSharingMessage {
@@ -314,6 +320,17 @@ impl TransmittableModelConfig {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct TransmittableParameterNames {
+    pub names: Vec<String>,
+}
+
+impl TransmittableParameterNames {
+    pub fn new(names: Vec<String>) -> Self {
+        Self { names }
+    }
+}
+
 /// This data structure is the one responsible of storing the model config
 /// and parameters for sharing them to other peers via p2p, as well as
 /// storing them while parameters are downloaded from other peers.
@@ -329,6 +346,7 @@ pub struct SharableModel {
     config_and_tokenizer_ticket: Option<BlobTicket>,
     pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
+    pub tx_parameter_names_response: Option<oneshot::Sender<Vec<String>>>,
 }
 
 // These impls are methods called by both the sharing model peers and the ones
@@ -344,6 +362,7 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
+            tx_parameter_names_response: None,
         }
     }
 }
@@ -398,6 +417,26 @@ impl SharableModel {
         self.serialized_parameters = Some(HashMap::new());
         self.serializing_parameters = Some(serialzing_parameters);
         Ok(())
+    }
+
+    pub async fn get_transmittable_parameter_names<B: Networkable>(
+        &mut self,
+        p2p: &mut NetworkConnection<B, TransmittableDownload>,
+        tag: impl Into<Tag>,
+    ) -> Result<BlobTicket, SharableModelError> {
+        let names = self
+            .parameters
+            .as_ref()
+            .ok_or_else(|| SharableModelError::ModelConfigNotInitialized)?
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let transmittable_names = TransmittableParameterNames::new(names.clone());
+        let transmittable = TransmittableDownload::ParameterNames(transmittable_names);
+        p2p.add_downloadable(transmittable, tag.into())
+            .await
+            .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))
     }
 
     pub fn update_config(
@@ -549,6 +588,18 @@ impl SharableModel {
         }
     }
 
+    pub async fn add_parameter_names(
+        &mut self,
+        param_names: TransmittableParameterNames,
+    ) -> Result<(), SharableModelError> {
+        let mut parameters = HashMap::new();
+        for param_name in param_names.names {
+            parameters.insert(param_name.clone(), None);
+        }
+        self.parameters = Some(parameters);
+        Ok(())
+    }
+
     /// Add the config downloaded from other peer
     pub fn add_config(
         &mut self,
@@ -599,6 +650,28 @@ impl SharableModel {
         Err(SharableModelError::ResponseChannelNotInitialized)
     }
 
+    pub fn send_parameter_names(&mut self) -> Result<(), SharableModelError> {
+        if let Some(tx_params_response) = self.tx_params_response.take() {
+            if let Some(parameters) = self.parameters.as_ref() {
+                let mut parameters_to_send = HashMap::new();
+                for (param_name, parameter) in parameters.iter() {
+                    if parameter.is_some() {
+                        parameters_to_send.insert(param_name.clone(), Tensor::default());
+                    } else {
+                        return Err(SharableModelError::ParameterNotInitialized(
+                            param_name.clone(),
+                        ));
+                    }
+                }
+                tx_params_response
+                    .send(parameters_to_send)
+                    .map_err(|_e| SharableModelError::ResponseChannelNotInitialized)?;
+                return Ok(());
+            }
+        }
+        Err(SharableModelError::ResponseChannelNotInitialized)
+    }
+
     /// Send the model config back to the initial run task for the client to create the model.
     pub fn send_config(&mut self) -> Result<(), SharableModelError> {
         if let Some(tx_model_config_response) = self.tx_model_config_response.take() {
@@ -621,22 +694,26 @@ impl SharableModel {
 pub struct ModelSharing {
     tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
     tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
+    tx_parameter_names_req: UnboundedSender<ParameterNamesSharingMessage>,
 }
 
 impl ModelSharing {
     pub fn new(
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
+        tx_parameter_names_req: UnboundedSender<ParameterNamesSharingMessage>,
     ) -> Self {
         Self {
             tx_model_parameter_req,
             tx_model_config_req,
+            tx_parameter_names_req,
         }
     }
     pub(crate) async fn _accept_connection(
         connection: Connection,
         tx_model_parameter_req: UnboundedSender<ParameterSharingMessage>,
         tx_model_config_req: UnboundedSender<ModelConfigSharingMessage>,
+        tx_parameter_names_req: UnboundedSender<ParameterNamesSharingMessage>,
     ) -> Result<()> {
         let (mut send, mut recv) = connection.accept_bi().await?;
         let model_request_type_bytes = recv.read_to_end(1000).await?;
@@ -661,6 +738,16 @@ impl ModelSharing {
                 // Receive the blob ticket and forward it to the requesting client
                 rx_req.await?
             }
+            ModelRequestType::ParameterNames => {
+                // Create channel for requesting the model parameter names to the client backend
+                // and add a new blob for it
+                let (tx_req, rx_req) = oneshot::channel::<Result<BlobTicket, SharableModelError>>();
+                let request = ParameterNamesSharingMessage::Get(tx_req);
+                tx_parameter_names_req.send(request)?;
+
+                // Receive the blob ticket and forward it to the requesting client
+                rx_req.await?
+            }
         };
 
         let data = postcard::to_stdvec(&blob_ticket)?;
@@ -677,7 +764,14 @@ impl ModelSharing {
     pub async fn accept_connection(&self, connection: Connection) -> Result<()> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
-        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req).await
+        let tx_parameter_names_req = self.tx_parameter_names_req.clone();
+        Self::_accept_connection(
+            connection,
+            tx_model_parameter_req,
+            tx_model_config_req,
+            tx_parameter_names_req,
+        )
+        .await
     }
 }
 
@@ -685,11 +779,17 @@ impl ProtocolHandler for ModelSharing {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let tx_model_parameter_req = self.tx_model_parameter_req.clone();
         let tx_model_config_req = self.tx_model_config_req.clone();
-        Self::_accept_connection(connection, tx_model_parameter_req, tx_model_config_req)
-            .await
-            .map_err(|e| {
-                let io_error = std::io::Error::other(e.to_string());
-                AcceptError::from_err(io_error)
-            })
+        let tx_parameter_names_req = self.tx_parameter_names_req.clone();
+        Self::_accept_connection(
+            connection,
+            tx_model_parameter_req,
+            tx_model_config_req,
+            tx_parameter_names_req,
+        )
+        .await
+        .map_err(|e| {
+            let io_error = std::io::Error::other(e.to_string());
+            AcceptError::from_err(io_error)
+        })
     }
 }
