@@ -16,17 +16,6 @@
           includes = [ "*.glsl" ];
         };
 
-        prettier = {
-          # js, ts, etc.
-          enable = true;
-          settings = {
-            trailingComma = "es5";
-            useTabs = true;
-            semi = false;
-            singleQuote = true;
-          };
-        };
-
         # python stuff
         black.enable = true;
 
