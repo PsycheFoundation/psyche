@@ -5,7 +5,7 @@ use std::{collections::HashMap, fmt::Display};
 
 struct Arc {
     test_split: Dataset,
-    validation_dataset: Dataset,
+    train_dataset: Dataset,
     name: String,
 }
 
@@ -33,10 +33,10 @@ impl Arc {
                 Split::Test,
                 Some(subset.to_string()),
             )?,
-            validation_dataset: load_dataset(
+            train_dataset: load_dataset(
                 "allenai/ai2_arc",
                 None,
-                Split::Validation,
+                Split::Train,
                 Some(subset.to_string()),
             )?,
             name: subset.to_string(),
@@ -90,9 +90,9 @@ impl LogLikelihoodTask for Arc {
     fn get_fewshot_documents(&self) -> HashMap<String, Vec<Document>> {
         let mut fewshot_documents = HashMap::new();
         let docs: Vec<Document> = self
-            .validation_dataset
+            .train_dataset
             .iter()
-            .map(|row| Arc::row_to_document(&self.validation_dataset, row, &self.name))
+            .map(|row| Arc::row_to_document(&self.train_dataset, row, &self.name))
             .collect();
         fewshot_documents.insert("default".to_string(), docs);
         fewshot_documents
