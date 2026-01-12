@@ -1,15 +1,39 @@
 {
   lib,
-  stdenvNoCC,
   mdbook,
+  fetchFromGitHub,
+  rustPlatform,
+  stdenvNoCC,
   mdbook-mermaid,
   mdbook-linkcheck,
-  fetchFromGitHub,
 
   # custom args
   rustPackages,
   rustPackageNames,
 }:
+let
+  mdbook-0-4-47 = mdbook.overrideAttrs (
+    oldAttrs:
+    let
+      version = "0.4.47";
+      src = fetchFromGitHub {
+        owner = "rust-lang";
+        repo = "mdBook";
+        tag = "v${version}";
+        hash = "sha256-XTvC2pGRVat0kOybNb9TziG32wDVexnFx2ahmpUFmaA=";
+      };
+    in
+    {
+      inherit version src;
+      cargoDeps = rustPlatform.fetchCargoVendor {
+        inherit (oldAttrs) pname;
+        inherit version src;
+        allowGitDependencies = false;
+        hash = "sha256-ASPRBAB+elJuyXpPQBm3WI97wD3mjoO1hw0fNHc+KAw=";
+      };
+    }
+  );
+in
 stdenvNoCC.mkDerivation {
   __structuredAttrs = true;
 
@@ -17,26 +41,9 @@ stdenvNoCC.mkDerivation {
   src = ./.;
 
   nativeBuildInputs = [
-    mdbook
+    mdbook-0-4-47
     mdbook-mermaid
-    (mdbook-linkcheck.overrideAttrs (
-      final: prev: {
-        version = "unstable-2025-12-04";
-        src = fetchFromGitHub {
-          owner = "schilkp";
-          repo = "mdbook-linkcheck";
-          rev = "ed981be6ded11562e604fff290ae4c08f1c419c5";
-          sha256 = "sha256-GTVWc/vkqY9Hml2fmm3iCHOzd/HPP1i/8NIIjFqGGbQ=";
-        };
-
-        cargoDeps = prev.cargoDeps.overrideAttrs (previousAttrs: {
-          vendorStaging = previousAttrs.vendorStaging.overrideAttrs {
-            inherit (final) src;
-            outputHash = "sha256-+73aI/jt5mu6dR6PR9Q08hPdOsWukb/z9crIdMMeF7U=";
-          };
-        });
-      }
-    ))
+    mdbook-linkcheck
   ];
 
   postPatch = ''
