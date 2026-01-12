@@ -237,11 +237,10 @@ impl Task {
                                 });
                             // Build fewshots to match how test question is tokenized:
                             // text (ends with "Answer:") + " " + choice
-                            fewshot_examples.shuffle(&mut self.rand);
                             fewshot_examples
                                 .into_iter()
                                 .take(self.num_fewshot)
-                                .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
+                                .map(|x| format!("{} {}", x.text, ASCII_UPPERCASE[x.answer]))
                                 .collect::<Vec<_>>()
                                 .join("\n\n")
                                 + "\n\n"
