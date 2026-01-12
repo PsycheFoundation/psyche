@@ -651,20 +651,11 @@ impl SharableModel {
     }
 
     pub fn send_parameter_names(&mut self) -> Result<(), SharableModelError> {
-        if let Some(tx_params_response) = self.tx_params_response.take() {
+        if let Some(tx_parameter_names_response) = self.tx_parameter_names_response.take() {
             if let Some(parameters) = self.parameters.as_ref() {
-                let mut parameters_to_send = HashMap::new();
-                for (param_name, parameter) in parameters.iter() {
-                    if parameter.is_some() {
-                        parameters_to_send.insert(param_name.clone(), Tensor::default());
-                    } else {
-                        return Err(SharableModelError::ParameterNotInitialized(
-                            param_name.clone(),
-                        ));
-                    }
-                }
-                tx_params_response
-                    .send(parameters_to_send)
+                let parameter_names: Vec<String> = parameters.keys().cloned().collect();
+                tx_parameter_names_response
+                    .send(parameter_names)
                     .map_err(|_e| SharableModelError::ResponseChannelNotInitialized)?;
                 return Ok(());
             }
