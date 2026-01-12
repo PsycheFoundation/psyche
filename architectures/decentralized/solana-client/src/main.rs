@@ -265,7 +265,8 @@ async fn async_main() -> Result<()> {
                 CommitmentConfig::confirmed(),
             )?;
 
-            let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
+            let coordinator_instance =
+                psyche_solana_coordinator::find_coordinator_instance(&run_id);
             let coordinator_instance_state = backend
                 .get_coordinator_instance(&coordinator_instance)
                 .await?;

@@ -87,7 +87,9 @@ impl Command for CommandCanJoin {
 
         println!("✓ Can join run {run_id} with pubkey {address}");
         println!("\nTo predownload model and eval tasks before joining, run:");
-        println!("  psyche-solana-client predownload --run-id {run_id} --model --eval-tasks <TASKS>");
+        println!(
+            "  psyche-solana-client predownload --run-id {run_id} --model --eval-tasks <TASKS>"
+        );
 
         Ok(())
     }
