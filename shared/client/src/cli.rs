@@ -291,9 +291,6 @@ impl TrainArgs {
             (None, Some(_), None, _, _, _, _) => {
                 bail!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
             }
-            (_, None, Some(_), _, None, _, _) => {
-                bail!("gcs-bucket and checkpoint-dir set, but no GCS_TOKEN env variable.")
-            }
             (_, Some(_), None, _, None, _, _) => {
                 bail!("--hub-repo was set, but no --checkpoint-dir was passed!")
             }
@@ -304,6 +301,7 @@ impl TrainArgs {
                 keep_steps,
             }),
             (_, None, None, _, _, _, _) => None,
+            _ => todo!(),
         };
 
         Ok(checkpoint_upload_info)

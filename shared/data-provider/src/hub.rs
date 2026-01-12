@@ -272,7 +272,7 @@ pub async fn upload_to_gcs_async(
 ) -> Result<(), UploadModelError> {
     let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
         info!("Using authenticated GCS client");
-        ClientConfig::default().with_auth().await?
+        ClientConfig::default().with_auth().await.unwrap()
     } else {
         info!("Using anonymous GCS client");
         ClientConfig::default().anonymous()
