@@ -4,10 +4,7 @@ use anyhow::Result;
 use anyhow::bail;
 use async_trait::async_trait;
 use clap::Args;
-use psyche_client::TrainArgs;
 use psyche_coordinator::RunState;
-use psyche_coordinator::model::Checkpoint;
-use psyche_coordinator::model::Model;
 
 use psyche_solana_rpc::SolanaBackend;
 
@@ -18,12 +15,6 @@ pub struct CommandCanJoin {
     pub run_id: String,
     #[clap(long, env)]
     pub authorizer: Option<Pubkey>,
-    #[clap(long, env, action)]
-    pub predownload_model: bool,
-    #[clap(long, env, action)]
-    pub predownload_eval_tasks: Option<String>,
-    #[clap(long, env, default_value_t = 3)]
-    pub hub_max_concurrent_downloads: usize,
     #[clap(long, env, alias = "wallet", alias = "user", value_name = "PUBKEY")]
     pub address: Pubkey,
 }
@@ -34,9 +25,6 @@ impl Command for CommandCanJoin {
         let Self {
             run_id,
             authorizer,
-            predownload_model,
-            predownload_eval_tasks,
-            hub_max_concurrent_downloads,
             address,
         } = self;
 
@@ -97,54 +85,9 @@ impl Command for CommandCanJoin {
             }
         }
 
-        if predownload_model {
-            // it would also be reasonable to download the model if we're in WaitingForClients and the checkpoint is not P2P,
-            // but that could cause you to miss the transition to Warmup, so we won't do that for now.
-            if !is_paused {
-                println!("run is in progress, skipping model predownload.");
-                return Ok(());
-            }
-
-            #[allow(irrefutable_let_patterns)]
-            let Model::LLM(model) = coordinator_account_state.model else {
-                bail!("model is not an LLM, unsure how to predownload.");
-            };
-
-            let checkpoint = match model.checkpoint {
-                Checkpoint::Ephemeral => {
-                    bail!("Can't predownload model with ephemeral checkpoint.")
-                }
-                Checkpoint::Dummy(hub_repo)
-                | Checkpoint::Hub(hub_repo)
-                | Checkpoint::P2P(hub_repo) => hub_repo,
-            };
-            let repo_id = checkpoint.repo_id.to_string();
-            let revision = checkpoint.revision.map(|s| s.to_string());
-            println!(
-                "Predownloading model {repo_id} revision {}",
-                revision.as_ref().unwrap_or(&"main".to_string())
-            );
-            let hub_read_token = std::env::var("HF_TOKEN").ok();
-
-            // If you pass None as a cache folder, it'll use the env var `HF_HOME`.
-            let cache_folder = None;
-
-            psyche_data_provider::download_model_repo_async(
-                &repo_id,
-                revision,
-                cache_folder,
-                hub_read_token,
-                Some(hub_max_concurrent_downloads),
-                true,
-            )
-            .await?;
-            println!("Model predownloaded successfully.")
-        }
-
-        if let Some(predownload_eval_tasks) = predownload_eval_tasks {
-            let _ = TrainArgs::eval_tasks_from_args(&predownload_eval_tasks, 0)?;
-            println!("Eval tasks `{predownload_eval_tasks}` predownloaded successfully.");
-        }
+        println!("✓ Can join run {run_id} with pubkey {address}");
+        println!("\nTo predownload model and eval tasks before joining, run:");
+        println!("  psyche-solana-client predownload --run-id {run_id} --model --eval-tasks <TASKS>");
 
         Ok(())
     }

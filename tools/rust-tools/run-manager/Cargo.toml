@@ -38,12 +38,5 @@ time.workspace = true
 # Solana RPC
 solana-client = "=2.1.4"
 
-# For can_join command
-psyche-modeling.workspace = true
-psyche-eval.workspace = true
-psyche-data-provider.workspace = true
-psyche-client.workspace = true
-psyche-network.workspace = true
-
 [dev-dependencies]
 serial_test = "3.0"

@@ -12,7 +12,9 @@ use anchor_client::{
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys};
+use psyche_coordinator::model::{Checkpoint, Model};
 use psyche_network::SecretKey;
+use psyche_solana_rpc::SolanaBackend;
 use psyche_tui::{
     LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
@@ -77,6 +79,22 @@ enum Commands {
         ws_rpc_3: String,
         #[clap(long, env)]
         authorizer: Option<Pubkey>,
+    },
+    Predownload {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+
+        #[clap(short, long, env)]
+        run_id: String,
+
+        #[clap(long, env, action)]
+        model: bool,
+
+        #[clap(long, env)]
+        eval_tasks: Option<String>,
+
+        #[clap(long, env, default_value_t = 3)]
+        hub_max_concurrent_downloads: usize,
     },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
@@ -226,6 +244,79 @@ async fn async_main() -> Result<()> {
 
             app.run().await?;
             logger.shutdown()?;
+
+            Ok(())
+        }
+        Commands::Predownload {
+            cluster,
+            run_id,
+            model,
+            eval_tasks,
+            hub_max_concurrent_downloads,
+        } => {
+            use anchor_client::solana_sdk::commitment_config::CommitmentConfig;
+
+            // Create a read-only backend (no wallet needed)
+            let dummy_keypair = Keypair::new();
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Arc::new(dummy_keypair),
+                CommitmentConfig::confirmed(),
+            )?;
+
+            let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
+            let coordinator_instance_state = backend
+                .get_coordinator_instance(&coordinator_instance)
+                .await?;
+
+            let coordinator_account_state = backend
+                .get_coordinator_account(&coordinator_instance_state.coordinator_account)
+                .await?
+                .state
+                .coordinator;
+
+            if model {
+                #[allow(irrefutable_let_patterns)]
+                let Model::LLM(model_config) = coordinator_account_state.model else {
+                    bail!("Model is not an LLM, unsure how to predownload.");
+                };
+
+                let checkpoint = match model_config.checkpoint {
+                    Checkpoint::Ephemeral => {
+                        bail!("Can't predownload model with ephemeral checkpoint.")
+                    }
+                    Checkpoint::Dummy(hub_repo)
+                    | Checkpoint::Hub(hub_repo)
+                    | Checkpoint::P2P(hub_repo) => hub_repo,
+                };
+
+                let repo_id = checkpoint.repo_id.to_string();
+                let revision = checkpoint.revision.map(|s| s.to_string());
+                println!(
+                    "Predownloading model {repo_id} revision {}",
+                    revision.as_ref().unwrap_or(&"main".to_string())
+                );
+
+                let hub_read_token = std::env::var("HF_TOKEN").ok();
+                let cache_folder = None; // Uses HF_HOME env var
+
+                psyche_data_provider::download_model_repo_async(
+                    &repo_id,
+                    revision,
+                    cache_folder,
+                    hub_read_token,
+                    Some(hub_max_concurrent_downloads),
+                    true,
+                )
+                .await?;
+                println!("Model predownloaded successfully.");
+            }
+
+            if let Some(eval_tasks) = eval_tasks {
+                let _ = TrainArgs::eval_tasks_from_args(&eval_tasks, 0)?;
+                println!("Eval tasks `{eval_tasks}` predownloaded successfully.");
+            }
 
             Ok(())
         }

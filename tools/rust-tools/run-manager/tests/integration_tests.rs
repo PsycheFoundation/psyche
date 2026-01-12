@@ -4,20 +4,20 @@
 mod common;
 
 use anchor_client::{
-    Cluster,
     solana_sdk::{commitment_config::CommitmentConfig, signature::Signer},
+    Cluster,
 };
-use common::{TestClient, TestValidator, create_test_keypair};
+use common::{create_test_keypair, TestClient, TestValidator};
 use psyche_coordinator::RunState;
 use psyche_solana_rpc::SolanaBackend;
 use run_manager::commands::{
-    Command,
     authorization::{
         CommandJoinAuthorizationCreate, CommandJoinAuthorizationDelete,
         CommandJoinAuthorizationRead,
     },
     can_join::CommandCanJoin,
     run::{CommandCloseRun, CommandCreateRun, CommandJsonDumpRun, CommandSetPaused},
+    Command,
 };
 use serial_test::serial;
 
@@ -376,9 +376,6 @@ async fn test_can_join_paused_run() {
         run_id: run_id.clone(),
         authorizer: None,
         address: wallet_arc.pubkey(),
-        predownload_model: false,
-        predownload_eval_tasks: None,
-        hub_max_concurrent_downloads: 3,
     };
 
     // This should succeed (no authorization needed when join_authority is the same as address)
@@ -443,9 +440,6 @@ async fn test_full_authorization_workflow() {
         run_id: run_id.clone(),
         authorizer: Some(user_pubkey),
         address: user_pubkey,
-        predownload_model: false,
-        predownload_eval_tasks: None,
-        hub_max_concurrent_downloads: 3,
     };
 
     can_join_params
