@@ -5,6 +5,8 @@ use psyche_coordinator::{
 };
 use psyche_core::NodeIdentity;
 use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
+#[cfg(feature = "python")]
+use psyche_modeling::CausalLM;
 use psyche_modeling::{
     SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
