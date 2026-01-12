@@ -172,13 +172,6 @@ impl TokenizedLLHDocument {
             full_request.extend_from_slice(&choice_tokens);
             requests.push(full_request.clone());
 
-            // Debug code to write tokens to file so we can compare
-            if let Ok(mut file) = std::fs::File::create("tokens.my_impl.out") {
-                use std::io::Write;
-                let token_str = format!("{:?}\n", full_request);
-                let _ = file.write_all(token_str.as_bytes());
-            }
-
             choices_token_len.push(choice_tokens.len());
 
             if TASKS_WITH_ACC_UNCOND.contains(&doc.eval_name.as_str()) {
