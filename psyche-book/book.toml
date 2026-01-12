@@ -1,6 +1,7 @@
 [book]
 authors = ["Nous Research"]
 language = "en"
+multilingual = false
 src = "src"
 title = "Psyche"
 
