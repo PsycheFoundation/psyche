@@ -203,12 +203,16 @@ pub async fn upload_to_hub(
     hub_info: HubUploadInfo,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), UploadError> {
     let HubUploadInfo {
         hub_repo,
         hub_token,
     } = hub_info;
+
+    if cancellation_token.is_cancelled() {
+        return Err(UploadError::Cancelled);
+    }
 
     info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
 
@@ -218,48 +222,45 @@ pub async fn upload_to_hub(
     let repo = Repo::model(hub_repo.clone());
     let api_repo = api.repo(repo);
 
-    let files: Result<Vec<(UploadSource, String)>, _> = local
-        .into_iter()
-        .map(|path| {
-            path.file_name()
-                .ok_or(UploadError::NotAFile(path.clone()))
-                .and_then(|name| {
-                    name.to_str()
-                        .ok_or(UploadError::InvalidFilename(path.clone()))
-                        .map(|s| s.to_string())
-                })
-                .map(|name| (path.into(), name))
-        })
-        .collect();
+    for path in local {
+        if cancellation_token.is_cancelled() {
+            info!(repo = hub_repo, "Upload to HuggingFace cancelled");
+            return Err(UploadError::Cancelled);
+        }
 
-    let files = files?;
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| UploadError::NotAFile(path.clone()))?
+            .to_str()
+            .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?
+            .to_string();
 
-    let commit_info = api_repo
-        .upload_files(files, Some(format!("step {step}")), None, false)
-        .await
-        .map_err(|e| {
-            error!(
-                repo = hub_repo,
-                error = ?e,
-                "Failed to upload files to HuggingFace"
-            );
-            e
-        })?;
+        let upload_future = api_repo.upload_files(
+            vec![(path.into(), file_name.clone())],
+            Some(format!("step {step}")),
+            None,
+            false,
+        );
 
-    let revision = commit_info.oid;
+        tokio::select! {
+            biased;
 
-    info!(
-        repo = hub_repo,
-        revision = revision,
-        "Upload to HuggingFace complete"
-    );
+            _ = cancellation_token.cancelled() => {
+                info!(repo = hub_repo, file = file_name, "Upload cancelled");
+                return Err(UploadError::Cancelled);
+            }
+            result = upload_future => {
+                result.map_err(|e| {
+                    error!(repo = hub_repo, error = ?e, "Failed to upload file");
+                    e
+                })?;
+            }
+        }
 
-    tx_checkpoint
-        .send(model::Checkpoint::Hub(HubRepo {
-            repo_id: FixedString::from_str_truncated(&hub_repo),
-            revision: Some(FixedString::from_str_truncated(&revision)),
-        }))
-        .map_err(|_| UploadError::SendCheckpoint)?;
+        info!(repo = hub_repo, file = file_name, "Uploaded file");
+    }
+
+    info!(repo = hub_repo, "Upload to HuggingFace complete");
 
     Ok(())
 }

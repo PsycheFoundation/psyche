@@ -276,7 +276,6 @@ pub struct CoordinatorEpochState<T> {
     /// `get_historical_clients` is what you actually want.
     pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
     pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
-    pub checkpointers: FixedVec<Witness, { SOLANA_MAX_NUM_CHECKPOINTERS }>,
     pub rounds_head: u32,
     pub start_step: u32,
     pub last_step: u32,
@@ -415,7 +414,6 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             first_round: true.into(),
             clients: Default::default(),
             exited_clients: Default::default(),
-            checkpointers: Default::default(),
             cold_start_epoch: false.into(),
             start_step: Default::default(),
             last_step: Default::default(),
@@ -523,7 +521,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         if !matches!(self.run_state, RunState::Cooldown) {
-            return Err(CoordinatorError::InvalidRunState);
+            return Ok(());
         }
 
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
@@ -533,14 +531,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidWitness);
         }
 
-        self.epoch_state
-            .checkpointers
-            .push(witness)
-            .map_err(|_| CoordinatorError::WitnessesFull)?;
-
-        if self.epoch_state.checkpointers.len() == self.config.checkpointer_nodes as usize {
-            self.epoch_state.checkpointed = true;
-        }
+        self.epoch_state.checkpointed = true;
 
         Ok(())
     }

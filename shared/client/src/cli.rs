@@ -241,18 +241,6 @@ impl TrainArgs {
             bail!("Either --hub-repo or --gcs-bucket must be set for checkpoint uploads");
         }
 
-        let checkpoint_dir = match &self.checkpoint_dir {
-            Some(dir) => dir,
-            None => {
-                if self.hub_repo.is_some() || self.gcs_bucket.is_some() {
-                    bail!(
-                        "--hub-repo or --gcs-bucket was set, but no --checkpoint-dir was passed!"
-                    );
-                }
-                return Ok(None);
-            }
-        };
-
         let upload_info = self.build_upload_info(&hub_read_token)?;
 
         if upload_info.is_some() && self.keep_steps == 0 {
@@ -262,12 +250,12 @@ impl TrainArgs {
             );
         }
 
-        Ok(Some(CheckpointConfig {
-            checkpoint_dir: checkpoint_dir.clone(),
+        Ok(CheckpointConfig {
+            checkpoint_dir: self.checkpoint_dir.clone(),
             upload_info,
             delete_old_steps: self.delete_old_steps,
             keep_steps: self.keep_steps,
-        }))
+        })
     }
 
     fn build_upload_info(&self, hub_token: &Option<String>) -> Result<Option<UploadInfo>> {

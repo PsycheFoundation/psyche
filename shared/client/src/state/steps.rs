@@ -62,10 +62,6 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     sent_cooldown_witness: bool,
 
     coordinator_state: Coordinator<T>,
-
-    // Handles for HuggingFace uploads running in background
-    pending_upload_handles:
-        Vec<tokio::task::JoinHandle<Result<(), crate::state::cooldown::CheckpointError>>>,
 }
 
 #[derive(Error, Debug)]
@@ -168,8 +164,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             sent_warmup_finished: false,
             sent_warmup_witness: false,
             sent_cooldown_witness: false,
-
-            pending_upload_handles: Vec::new(),
         }
     }
 
@@ -786,9 +780,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                             "since we're not a member of this step, killing cooldown step and returning to warmup to wait."
                         );
                         let (trainers, upload_handle) = cooldown.finish().await?;
-                        if let Some(handle) = upload_handle {
-                            self.pending_upload_handles.push(handle);
-                        }
+                        // if let Some(handle) = upload_handle {
+                        //     self.pending_upload_handles.push(handle);
+                        // }
                         ActiveStep::Warmup(self.warmup.start(
                             trainers,
                             &mut self.previous_round,
@@ -909,11 +903,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
             | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
+                cooldown.cancel(); // Cancel any ongoing upload
+
                 self.sent_cooldown_witness = false;
                 let (trainers, upload_handle) = cooldown.finish().await?;
-                if let Some(handle) = upload_handle {
-                    self.pending_upload_handles.push(handle);
-                }
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
                     &mut self.previous_round,
@@ -949,8 +942,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     }
 
     fn cleanup_completed_uploads(&mut self) {
-        self.pending_upload_handles
-            .retain(|handle| !handle.is_finished());
+        // self.pending_upload_handles
+        //     .retain(|handle| !handle.is_finished());
     }
 }
 
@@ -1157,17 +1150,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     }
 
     pub fn doing_checkpoint(&self) -> bool {
-        match &self.0 {
-            InitStage::Running(step_state_machine) => {
-                let has_pending_uploads = step_state_machine
-                    .pending_upload_handles
-                    .iter()
-                    .any(|handle| !handle.is_finished());
+        //     match &self.0 {
+        //         InitStage::Running(step_state_machine) => {
+        //             let has_pending_uploads = step_state_machine
+        //                 .pending_upload_handles
+        //                 .iter()
+        //                 .any(|handle| !handle.is_finished());
 
-                has_pending_uploads
-            }
-            _ => false,
-        }
+        //             has_pending_uploads
+        //         }
+        //         _ => false,
+        //     }
+        false
     }
 }
 

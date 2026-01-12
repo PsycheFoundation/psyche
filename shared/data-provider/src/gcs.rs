@@ -141,7 +141,7 @@ pub async fn upload_to_gcs(
     gcs_info: GcsUploadInfo,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), UploadError> {
     let GcsUploadInfo {
         gcs_bucket,
@@ -160,6 +160,12 @@ pub async fn upload_to_gcs(
     let client = Client::new(config);
 
     for path in local {
+        // Check for cancellation before each file upload
+        if cancellation_token.is_cancelled() {
+            info!("Upload cancelled before uploading {}", path.display());
+            return Err(UploadError::Cancelled);
+        }
+
         let file_name = path
             .file_name()
             .ok_or_else(|| UploadError::NotAFile(path.clone()))?
@@ -174,16 +180,26 @@ pub async fn upload_to_gcs(
         let data = tokio::fs::read(&path).await?;
 
         let upload_type = UploadType::Simple(Media::new(object_name.clone()));
-        let uploaded = client
-            .upload_object(
-                &UploadObjectRequest {
-                    bucket: gcs_bucket.clone(),
-                    ..Default::default()
-                },
-                data,
-                &upload_type,
-            )
-            .await?;
+
+        // Bind to a variable so it lives long enough
+        let upload_request = UploadObjectRequest {
+            bucket: gcs_bucket.clone(),
+            ..Default::default()
+        };
+
+        let upload_future = client.upload_object(&upload_request, data, &upload_type);
+
+        let uploaded = tokio::select! {
+            biased;
+
+            _ = cancellation_token.cancelled() => {
+                info!("Upload cancelled during upload of {}", path.display());
+                return Err(UploadError::Cancelled);
+            }
+            result = upload_future => {
+                result?
+            }
+        };
 
         info!(
             bucket = gcs_bucket,
@@ -198,17 +214,6 @@ pub async fn upload_to_gcs(
         gcs_bucket,
         gcs_prefix.as_deref().unwrap_or("")
     );
-
-    tx_checkpoint
-        .send(model::Checkpoint::Gcs(GcsRepo {
-            bucket: FixedString::from_str_truncated(&format!(
-                "gs://{}/{}",
-                gcs_bucket,
-                gcs_prefix.as_deref().unwrap_or("")
-            )),
-            prefix: Some(FixedString::from_str_truncated(&format!("step-{step}"))),
-        }))
-        .map_err(|_| UploadError::SendCheckpoint)?;
 
     Ok(())
 }
