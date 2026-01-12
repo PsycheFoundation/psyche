@@ -1,3 +1,4 @@
+#![deny(unused_crate_dependencies)]
 // Shared Solana blockchain infrastructure for Psyche
 pub mod backend;
 pub mod instructions;
