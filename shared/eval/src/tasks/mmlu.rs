@@ -50,12 +50,7 @@ impl MMLU {
         let choices = (0..options.len())
             .map(|i| ASCII_UPPERCASE[i].to_owned())
             .collect::<Vec<_>>();
-        let text = format!(
-            "The following are multiple choice questions (with answers) about {}.\n\n{}\n{}\nAnswer:",
-            subject,
-            question,
-            options.join("\n")
-        );
+        let text = format!("{}\n{}\nAnswer:", question, options.join("\n"));
         let answer = row
             .get_long(dataset.get_column_id("answer").unwrap())
             .unwrap() as usize;
