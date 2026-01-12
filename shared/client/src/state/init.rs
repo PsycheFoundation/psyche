@@ -13,8 +13,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
-    LocalTrainer, ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer,
-    auto_tokenizer,
+    LocalTrainer, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
@@ -285,60 +284,65 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             | model::LLMArchitecture::HfDeepseek
             | model::LLMArchitecture::HfAuto
             | model::LLMArchitecture::Torchtitan => match &llm.checkpoint {
-                model::Checkpoint::Dummy(_) => tokio::spawn(async move {
-                    let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
-                        WordLevel::builder().build().unwrap(),
-                    )));
+                model::Checkpoint::Dummy(_) => {
+                    let tx_model_clone = tx_model.clone();
+                    tokio::spawn(async move {
+                        let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
+                            WordLevel::builder().build().unwrap(),
+                        )));
 
-                    let model = RawLoadedModel {
-                        models: RawLoadedModelType::ParallelNativeModels(
-                            (0..(init_config.data_parallelism * init_config.tensor_parallelism))
-                                .map(|_| {
-                                    if let Some(training_delay) =
-                                        init_config.dummy_training_delay_secs
-                                    {
-                                        Box::new(DummyModel::new(training_delay))
-                                            as Box<dyn CausalLM>
-                                    } else {
-                                        Box::new(DummyModel::default()) as Box<dyn CausalLM>
-                                    }
-                                })
-                                .collect(),
-                        ),
-                        tokenizer: tokenizer.clone(),
-                        checkpoint_extra_files: vec![],
-                        model_task_runner: ModelTaskRunner::new(
-                            vec![],
-                            false,
-                            tokenizer.clone(),
-                            None,
-                            0,
-                        ),
-                    };
-                    #[allow(clippy::arc_with_non_send_sync)]
-                    let config = &PretrainedSource::ConfigAndTensors(
-                        AutoConfig::Llama(LlamaConfig::dummy()),
-                        Arc::new(psyche_modeling::get_dummy_parameters()),
-                    )
-                    .serialize_config()?;
-                    let tokenizer = tokenizer.to_string(false).unwrap();
-                    info!("Config Uploaded: {}", config);
-                    tx_config.send((config.to_string(), tokenizer)).unwrap();
+                        let model = RawLoadedModel {
+                            models: RawLoadedModelType::ParallelNativeModels(
+                                (0..(init_config.data_parallelism
+                                    * init_config.tensor_parallelism))
+                                    .map(|_| {
+                                        if let Some(training_delay) =
+                                            init_config.dummy_training_delay_secs
+                                        {
+                                            Box::new(DummyModel::new(training_delay))
+                                                as Box<dyn CausalLM>
+                                        } else {
+                                            Box::new(DummyModel::default()) as Box<dyn CausalLM>
+                                        }
+                                    })
+                                    .collect(),
+                            ),
+                            tokenizer: tokenizer.clone(),
+                            checkpoint_extra_files: vec![],
+                            model_task_runner: ModelTaskRunner::new(
+                                vec![],
+                                false,
+                                tokenizer.clone(),
+                                None,
+                                0,
+                            ),
+                        };
+                        #[allow(clippy::arc_with_non_send_sync)]
+                        let config = &PretrainedSource::ConfigAndTensors(
+                            AutoConfig::Llama(LlamaConfig::dummy()),
+                            Arc::new(psyche_modeling::get_dummy_parameters()),
+                        )
+                        .serialize_config()?;
+                        let tokenizer = tokenizer.to_string(false).unwrap();
+                        info!("Config Uploaded: {}", config);
+                        tx_config.send((config.to_string(), tokenizer)).unwrap();
 
-                    // Extract parameter names and send them to populate sharable_model
-                    if let Some(variables) = model.models.get_first_model_variables() {
-                        let parameter_names: HashMap<String, Tensor> = variables
-                            .map(|var| (var.name().to_string(), Tensor::default()))
-                            .collect();
-                        if !parameter_names.is_empty() {
-                            tx_model.send(parameter_names).unwrap();
+                        // Extract parameter names and send them to populate sharable_model
+                        if let Some(variables) = model.models.get_first_model_variables() {
+                            let parameter_names: HashMap<String, Tensor> = variables
+                                .map(|var| (var.name().to_string(), Tensor::default()))
+                                .collect();
+                            if !parameter_names.is_empty() {
+                                tx_model_clone.send(parameter_names).unwrap();
+                            }
                         }
-                    }
 
-                    Ok(model)
-                }),
+                        Ok(model)
+                    })
+                }
                 model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => {
                     let checkpoint = llm.checkpoint;
+                    let tx_model_clone = tx_model.clone();
                     tokio::spawn(async move {
                         let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
                             model::Checkpoint::Hub(hub_repo) => {
@@ -646,7 +650,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 .map(|var| (var.name().to_string(), Tensor::default()))
                                 .collect();
                             if !parameter_names.is_empty() {
-                                tx_model.send(parameter_names).unwrap();
+                                tx_model_clone.send(parameter_names).unwrap();
                             }
                         }
 
