@@ -62,8 +62,10 @@ Your project is now linked to your billing account.
 7. Choose how to store your data - select **Uniform** access control and leave "Enforce public access prevention" checked
 8. Choose how to protect object data:
 
-- **Object versioning**: Turn **ON** — this is important for ML checkpoints! It keeps previous versions when files are overwritten
 - **Soft delete**: Leave default (7 days) — lets you recover accidentally deleted files
+- **Object versioning**: Turn **ON** — this is important for having a history of the latest checkpoints. It keeps previous versions when files are overwritten.
+  Select a number of versions to store per object – this will be important so that storage of the bucket doesn't grow infinitely. Set a reasonable number depending on the amount of checkpoints you want stored.
+  Leave the 'Expire noncurrent versions after' blank so that old versions of the checkpoints are not deleted after some amount of time.
 
 9. Encryption – Leave as **Google-managed encryption key** (default)
 10. Click **Create**
