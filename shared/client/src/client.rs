@@ -457,10 +457,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         // Handle parameter names request from init
                         Some(tx_response) = rx_request_parameter_names.recv() => {
                             sharable_model.tx_parameter_names_response = Some(tx_response);
-                            // Request parameter names from a peer
+                            let Some(coordinator_state) = watcher.coordinator_state() else {
+                                warn!("Coordinator state not yet registered, nothing to do");
+                                return Ok(());
+                            };
+
+                            let me = EndpointId::from_bytes(identity.get_p2p_public_key())?;
+                            let peer_ids: Vec<EndpointId> = participating_endpoint_ids(&coordinator_state)
+                                .into_iter()
+                                .filter(|peer_id| peer_id != &me)
+                                .collect();
+
+                            let peer_manager = peer_manager.clone();
+                            peer_manager.set_peers(peer_ids);
                             let router = p2p.router().clone();
                             let tx_parameter_names_download = tx_parameter_names_download.clone();
-                            let peer_manager = peer_manager.clone();
                             let param_requests_cancel_token = param_requests_cancel_token.clone();
 
                             tokio::spawn(async move {
