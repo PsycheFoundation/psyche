@@ -641,6 +641,9 @@ where
             Some(ModelConfigSharingMessage::Get(protocol_req_tx)) = self.rx_model_config_req.recv() => {
                 Ok(Some(NetworkEvent::ModelConfigRequest(protocol_req_tx)))
             }
+            Some(ParameterNamesSharingMessage::Get(protocol_req_tx)) = self.rx_parameter_names_req.recv() => {
+                Ok(Some(NetworkEvent::ParameterNamesRequest(protocol_req_tx)))
+            }
             _ = self.update_stats_interval.tick() => {
                 on_update_stats(&self.endpoint, self.remote_infos(), &mut self.state).await?;
                 Ok(None)
