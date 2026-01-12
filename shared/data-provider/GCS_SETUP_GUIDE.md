@@ -68,7 +68,7 @@ Your project is now linked to your billing account.
   Leave the 'Expire noncurrent versions after' blank so that old versions of the checkpoints are not deleted after some amount of time.
 
 9. Encryption – Leave as **Google-managed encryption key** (default)
-10. Click **Create**
+10. Click **Create**. If prompted, leave "enforce public access prevention" **on**
 
 ---
 
@@ -80,12 +80,31 @@ Your project is now linked to your billing account.
 
 ---
 
-## Bucket access from client code
+## Step 6: Grant Storage Access to a Gmail Account
 
-To access your bucket from code, you'll need to either:
+To allow users to access to the bucket in order to push checkpoints in a training run, you can grant them bucket-level permissions.
 
-1. Run `gcloud auth application-default login` or `gcloud auth application-default login --scopes="https://www.googleapis.com/auth/cloud-platform"` in your terminal
-2. Create a service account and download a JSON key file
+1. Go to **Cloud Storage** → **Buckets**
+2. Click on your bucket name to open it
+3. Click the **Permissions** tab
+4. Click **Grant Access**
+5. In the **New principals** field, enter the Gmail address (e.g., `someone@gmail.com`)
+6. Click **Select a role** and choose **Cloud Storage** → **Storage Object User**. This allows read, list, create, and overwrite objects, but not delete
+7. Click **Save**
+
+The user can now access the bucket using
+
+```
+gcloud auth application-default login
+```
+
+or
+
+```
+gcloud auth application-default login --scopes="https://www.googleapis.com/auth/cloud-platform"
+```
+
+from their machine.
 
 ---
 
