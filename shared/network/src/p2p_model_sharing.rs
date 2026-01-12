@@ -484,14 +484,14 @@ impl SharableModel {
                     config.clone(),
                     raw_tokenizer,
                     self.serialized_parameters
+                        .as_ref()
+                        .map(|x| x.keys().cloned())
                         .unwrap_or_default()
-                        .keys()
-                        .cloned()
                         .chain(
                             self.serializing_parameters
-                                .unwrap_or_default()
-                                .keys()
-                                .cloned(),
+                                .as_ref()
+                                .map(|x| x.keys().cloned())
+                                .unwrap_or_default(),
                         )
                         .collect::<HashSet<String>>()
                         .into_iter()

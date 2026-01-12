@@ -13,8 +13,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
-    LocalTrainer, ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer,
-    auto_tokenizer,
+    LocalTrainer, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
