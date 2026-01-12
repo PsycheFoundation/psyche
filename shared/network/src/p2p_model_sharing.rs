@@ -306,11 +306,16 @@ impl TransmittableModelParameter {
 pub struct TransmittableModelConfig {
     pub config: String,
     pub tokenizer: String,
+    pub parameter_names: Vec<String>,
 }
 
 impl TransmittableModelConfig {
-    pub fn new(config: String, tokenizer: String) -> Self {
-        Self { config, tokenizer }
+    pub fn new(config: String, tokenizer: String, parameter_names: Vec<String>) -> Self {
+        Self {
+            config,
+            tokenizer,
+            parameter_names,
+        }
     }
 }
 
@@ -324,10 +329,11 @@ pub struct SharableModel {
         HashMap<String, JoinHandle<Result<TransmittableModelParameter, SharableModelError>>>,
     >,
     serialized_parameters: Option<HashMap<String, BlobTicket>>,
+    parameters_to_download: Vec<String>,
     model_config: Option<String>,
     tokenizer_config: Option<Tokenizer>,
     config_and_tokenizer_ticket: Option<BlobTicket>,
-    pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
+    pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer, Vec<String>)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
 }
 
@@ -344,6 +350,7 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
+            parameters_to_download: Vec::new(),
         }
     }
 }
@@ -473,8 +480,23 @@ impl SharableModel {
                 let raw_tokenizer = tokenizer
                     .to_string(false)
                     .map_err(|err| SharableModelError::ParseConfig(err.to_string()))?;
-                let transmittable_config: TransmittableModelConfig =
-                    TransmittableModelConfig::new(config.clone(), raw_tokenizer);
+                let transmittable_config: TransmittableModelConfig = TransmittableModelConfig::new(
+                    config.clone(),
+                    raw_tokenizer,
+                    self.serialized_parameters
+                        .unwrap_or_default()
+                        .keys()
+                        .cloned()
+                        .chain(
+                            self.serializing_parameters
+                                .unwrap_or_default()
+                                .keys()
+                                .cloned(),
+                        )
+                        .collect::<HashSet<String>>()
+                        .iter()
+                        .collect::<Vec<String>>(),
+                );
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
                 let ticket = p2p
@@ -559,6 +581,7 @@ impl SharableModel {
 
         self.model_config = Some(config);
         self.tokenizer_config = Some(tokenizer);
+        self.parameters_to_download = transmittable_config.parameter_names;
         Ok(())
     }
 
@@ -609,7 +632,7 @@ impl SharableModel {
                 return Err(SharableModelError::TokenizerConfigNotInitialized);
             };
             tx_model_config_response
-                .send((config, tokenizer))
+                .send((config, tokenizer, self.parameters_to_download.clone()))
                 .map_err(|_e| SharableModelError::SendConfig)?;
             return Ok(());
         }
