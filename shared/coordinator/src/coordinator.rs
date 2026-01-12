@@ -531,12 +531,12 @@ impl<T: NodeIdentity> Coordinator<T> {
             .get_checkpointer(witness.proof.index, self.epoch_state.clients.len() as u64);
         if !is_checkpointer {
             return Err(CoordinatorError::InvalidWitness);
-        } else {
-            self.epoch_state
-                .checkpointers
-                .push(witness)
-                .map_err(|_| CoordinatorError::WitnessesFull)?;
         }
+
+        self.epoch_state
+            .checkpointers
+            .push(witness)
+            .map_err(|_| CoordinatorError::WitnessesFull)?;
 
         if self.epoch_state.checkpointers.len() == self.config.checkpointer_nodes as usize {
             self.epoch_state.checkpointed = true;
@@ -660,9 +660,9 @@ impl<T: NodeIdentity> Coordinator<T> {
             .get_checkpointer(index as u64, self.epoch_state.clients.len() as u64);
         if !is_checkpointer {
             return Err(CoordinatorError::InvalidWitness);
-        } else {
-            self.epoch_state.checkpointed = true;
         }
+
+        self.epoch_state.checkpointed = true;
 
         Ok(())
     }
