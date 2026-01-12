@@ -21,7 +21,7 @@ use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::model::{HubRepo, Model};
+use psyche_coordinator::model::Model;
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
@@ -165,7 +165,6 @@ impl CoordinatorInstance {
 pub mod psyche_solana_coordinator {
 
     use super::*;
-    use psyche_coordinator::model::Checkpoint;
     use psyche_core::FixedString;
 
     pub fn init_coordinator(

@@ -2,10 +2,10 @@ use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_client::HubUploadInfo;
 use psyche_client::UploadInfo;
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, HubUploadInfo, NC, RunInitConfig, TrainArgs,
-    read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
@@ -178,7 +178,7 @@ impl App {
             if let Some(UploadInfo::Hub(HubUploadInfo {
                 hub_repo,
                 hub_token,
-            })) = &checkpoint_config.hub_upload
+            })) = &checkpoint_config.upload_info
             {
                 let api = hf_hub::api::tokio::ApiBuilder::new()
                     .with_token(Some(hub_token.clone()))

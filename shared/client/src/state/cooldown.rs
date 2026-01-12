@@ -1,15 +1,12 @@
-use crate::{HubUploadInfo, state::types::GcsUploadInfo};
-
 use crate::UploadInfo;
 use psyche_coordinator::{
     Coordinator,
-    model::{self, GcsRepo, HubRepo},
+    model::{self},
 };
-use psyche_core::{FixedString, NodeIdentity};
-use psyche_data_provider::{UploadModelError, upload_model_repo_async, upload_to_gcs_async};
+use psyche_core::NodeIdentity;
+use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
 use psyche_modeling::{
-    CausalLM, SaveSafetensorsError, Trainer, TrainerThreadCommunicationError,
-    save_tensors_into_safetensors,
+    SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
 };
 use std::{
     cmp::Reverse,
@@ -94,8 +91,8 @@ pub enum CheckpointError {
     #[error("Writing extra file to disk failed: {0}")]
     WriteExtraFile(#[from] tokio::io::Error),
 
-    #[error("Couldn't upload model to huggingface: {0}")]
-    UploadError(#[from] UploadModelError),
+    #[error("Couldn't upload model to huggingface or GCS: {0}")]
+    UploadError(#[from] UploadError),
 
     #[error("Couldn't send checkpoint - channel closed")]
     SendCheckpoint,
@@ -182,127 +179,25 @@ impl CooldownStepMetadata {
                 let evals = model_task_runner.start(trainers);
 
                 let Some(CheckpointConfig {
-                    hub_upload,
+                    upload_info,
                     checkpoint_dir,
                     delete_old_steps,
                     keep_steps,
                 }) = checkpoint_info
                 else {
-                    // If there was no HF checkpointing configuration, return immediately
                     return Ok((evals, None));
                 };
 
-                // Start the upload process of the updated model parameters in a separate task
                 let upload_handle = tokio::task::spawn(async move {
                     let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
-                    info!("Saving to {}", path.display());
-                    let mut local = tokio::task::spawn_blocking({
-                        let path = path.clone();
-                        move || save_tensors_into_safetensors(variables, path)
-                    })
-                    .await
-                    .map_err(|_| CheckpointError::WriteThreadCrashed)??;
+                    let local =
+                        save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
 
-                    for extra in checkpoint_extra_files {
-                        let to = path.join(extra.file_name().unwrap());
-                        tokio::fs::copy(extra.clone(), to.clone())
-                            .await
-                            .map_err(CheckpointError::WriteExtraFile)?;
-                        local.push(to);
+                    if let Some(upload_info) = upload_info {
+                        upload_checkpoint(upload_info, local.clone(), step as u64, tx_checkpoint)
+                            .await?;
                     }
 
-                    match hub_upload {
-                        Some(UploadInfo::Gcs(GcsUploadInfo {
-                            gcs_bucket,
-                            gcs_prefix,
-                        })) => {
-                            info!(bucket = gcs_bucket, "Uploading checkpoint to GCS");
-                            match upload_to_gcs_async(gcs_bucket.clone(), local, gcs_prefix.clone())
-                                .await
-                            {
-                                Ok(path) => {
-                                    info!(
-                                        "Upload to GCS complete at gs://{}/{}",
-                                        gcs_bucket,
-                                        gcs_prefix.clone().unwrap_or_default()
-                                    );
-                                    path
-                                }
-                                Err(err) => {
-                                    error!(bucket = gcs_bucket, "Error uploading to GCS: {err:#}");
-                                    return Err(err.into());
-                                }
-                            };
-                            tx_checkpoint
-                                .send(model::Checkpoint::Gcs(GcsRepo {
-                                    bucket: FixedString::from_str_truncated(&format!(
-                                        "gs://{}/{:?}",
-                                        gcs_bucket, gcs_prefix
-                                    )),
-                                    prefix: Some(FixedString::from_str_truncated(&format!(
-                                        "step-{step}"
-                                    ))),
-                                }))
-                                .map_err(|_| CheckpointError::SendCheckpoint)?;
-                        }
-                        Some(UploadInfo::Hub(HubUploadInfo {
-                            hub_repo,
-                            hub_token,
-                        })) => {
-                            info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
-                            let revision = match upload_model_repo_async(
-                                hub_repo.clone(),
-                                local,
-                                hub_token.clone(),
-                                Some(format!("step {step}")),
-                                None,
-                            )
-                            .await
-                            {
-                                Ok(revision) => {
-                                    info!(
-                                        repo = hub_repo,
-                                        revision = revision,
-                                        "Upload to HuggingFace complete"
-                                    );
-                                    revision
-                                }
-                                Err(err) => {
-                                    error!(
-                                        repo = hub_repo,
-                                        "Error uploading to HuggingFace: {err:#}"
-                                    );
-                                    return Err(err.into());
-                                }
-                            };
-                            tx_checkpoint
-                                .send(model::Checkpoint::Hub(HubRepo {
-                                    repo_id: FixedString::from_str_truncated(&hub_repo),
-                                    revision: Some(FixedString::from_str_truncated(&revision)),
-                                }))
-                                .map_err(|_| CheckpointError::SendCheckpoint)?;
-                        }
-                        None => {
-                            cleanup_dirs(
-                                delete_queue,
-                                keep_steps,
-                                run_id,
-                                delete_old_steps,
-                                step,
-                                checkpoint_dir,
-                            )
-                            .await;
-                            return Ok::<(), CheckpointError>(());
-                        }
-                    }
-
-                    // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
-                    // we'll just delete the dir after we've uploaded it
-                    // if we fail in any of the above steps we may wind up not queueing this dir for delete
-                    // but that's probably better than risking having the dir deleted from under us
-                    // for a relatively low priority disk cleanup task
-                    // and this may actually be preferred anyway because if we failed to upload, we may want to keep
-                    // the data around locally on disk
                     cleanup_dirs(
                         delete_queue,
                         keep_steps,
@@ -320,9 +215,50 @@ impl CooldownStepMetadata {
             }
             .instrument(info_span!("checkpointing")),
         );
+
         Ok(CooldownStep {
             checkpointing_and_evals,
         })
+    }
+}
+
+async fn save_checkpoint_locally(
+    path: PathBuf,
+    variables: HashMap<String, Tensor>,
+    checkpoint_extra_files: Vec<PathBuf>,
+) -> Result<Vec<PathBuf>, CheckpointError> {
+    info!("Saving to {}", path.display());
+    let mut local = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || save_tensors_into_safetensors(variables, path)
+    })
+    .await
+    .map_err(|_| CheckpointError::WriteThreadCrashed)??;
+
+    for extra in checkpoint_extra_files {
+        let to = path.join(extra.file_name().unwrap());
+        tokio::fs::copy(extra.clone(), to.clone())
+            .await
+            .map_err(CheckpointError::WriteExtraFile)?;
+        local.push(to);
+    }
+
+    Ok(local)
+}
+
+async fn upload_checkpoint(
+    upload_info: UploadInfo,
+    local: Vec<PathBuf>,
+    step: u64,
+    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+) -> Result<(), CheckpointError> {
+    match upload_info {
+        UploadInfo::Gcs(gcs_info) => upload_to_gcs(gcs_info, local, step, tx_checkpoint)
+            .await
+            .map_err(CheckpointError::UploadError),
+        UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, tx_checkpoint)
+            .await
+            .map_err(CheckpointError::UploadError),
     }
 }
 

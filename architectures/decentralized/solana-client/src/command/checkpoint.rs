@@ -46,7 +46,7 @@ pub async fn command_checkpoint_execute(
         &coordinator_instance,
         &coordinator_account,
         &user,
-        Checkpoint::Hub(repo.clone()),
+        Checkpoint::Hub(repo),
     );
     let signature = backend
         .send_and_retry("Checkpoint", &[instruction], &[])

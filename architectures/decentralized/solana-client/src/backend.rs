@@ -21,7 +21,7 @@ use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::model::{self, Checkpoint};
-use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks, model::HubRepo};
+use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
