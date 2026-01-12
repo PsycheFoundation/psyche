@@ -494,7 +494,7 @@ impl SharableModel {
                                 .cloned(),
                         )
                         .collect::<HashSet<String>>()
-                        .iter()
+                        .into_iter()
                         .collect::<Vec<String>>(),
                 );
                 let transmittable_download =
