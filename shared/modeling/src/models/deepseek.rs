@@ -2,9 +2,9 @@
 
 use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, ColumnParallelLinear, Communicator,
-    CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig,
-    ModelLoadError, ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RoPEType, RowParallelLinear, rotate_half, yarn_get_mscale,
+    CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelLoadError,
+    ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig, RoPEType,
+    RowParallelLinear, rotate_half, yarn_get_mscale,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -1031,32 +1031,6 @@ impl DeepseekForCausalLM {
             tensor_parallelism_world,
             override_max_position_embeddings,
         )
-    }
-}
-
-impl ModelConfig for DeepseekConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
-        let mut parameters = Vec::new();
-
-        parameters.push("model.embed_tokens.weight".to_string());
-        parameters.push("model.norm.weight".to_string());
-        parameters.push("lm_head.weight".to_string());
-
-        for layer_idx in 0..self.num_hidden_layers {
-            let layer_prefix = format!("model.layers.{}", layer_idx);
-
-            parameters.push(format!("{}.input_layernorm.weight", layer_prefix));
-            parameters.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
-
-            self.generate_attention_params(&mut parameters, &layer_prefix);
-            if layer_idx >= self.first_k_dense_replace.unwrap() && self.n_routed_experts.is_some() {
-                self.generate_moe_params(&mut parameters, layer_idx);
-            } else {
-                self.generate_dense_mlp_params(&mut parameters, &layer_prefix);
-            }
-        }
-
-        parameters
     }
 }
 
