@@ -15,7 +15,7 @@ pub enum ClientToServerMessage {
     Join { run_id: String },
     Witness(Box<OpportunisticData>),
     HealthCheck(HealthChecks<ClientId>),
-    Checkpoint(model::HubRepo),
+    Checkpoint(model::Checkpoint),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

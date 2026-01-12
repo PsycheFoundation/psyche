@@ -1,9 +1,11 @@
-use crate::HubUploadInfo;
-
+use crate::UploadInfo;
 use psyche_coordinator::CheckpointerSelection;
-use psyche_coordinator::Coordinator;
+use psyche_coordinator::{
+    Coordinator,
+    model::{self},
+};
 use psyche_core::NodeIdentity;
-use psyche_data_provider::{UploadModelError, upload_model_repo_async};
+use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
 use psyche_modeling::{
@@ -89,8 +91,8 @@ pub enum CheckpointError {
     #[error("Writing extra file to disk failed: {0}")]
     WriteExtraFile(#[from] tokio::io::Error),
 
-    #[error("Couldn't upload model to huggingface: {0}")]
-    UploadError(#[from] UploadModelError),
+    #[error("Couldn't upload model to huggingface or GCS: {0}")]
+    UploadError(#[from] UploadError),
 
     #[error("Couldn't send checkpoint - channel closed")]
     SendCheckpoint,
@@ -143,8 +145,10 @@ impl CooldownStepMetadata {
             .map_err(|_| CooldownError::NoTrainers)?;
         let is_checkpointer = checkpointer_selection
             .get_checkpointer(client_index, state.epoch_state.clients.len() as u64);
+        let cancellation_token = tokio_util::sync::CancellationToken::new();
 
-        let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
+        let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn({
+            let cancellation_token = cancellation_token.clone();
             async move {
                 info!("Extracting full model...");
                 let (variables, trainer) =
@@ -171,81 +175,35 @@ impl CooldownStepMetadata {
                     Trainer::PythonDistributed(_) => {
                         info!("Converting distributed trainer variables for checkpointing...");
                         tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
-                        .await
-                        .map_err(|_| CheckpointError::ExtractThreadCrashed)?
+                            .await
+                            .map_err(|_| CheckpointError::ExtractThreadCrashed)?
                     }
                     _ => (variables, trainer),
                 };
 
                 trainers.push(trainer);
                 let evals = model_task_runner.start(trainers);
-
                 if !is_checkpointer {
                     info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
                     return Ok((evals, None));
                 }
-
                 let CheckpointConfig {
-                    hub_upload,
+                    upload_info,
                     checkpoint_dir,
                     delete_old_steps,
                     keep_steps,
                 } = checkpoint_info;
 
-                // Start the upload process of the updated model parameters in a separate task
                 let upload_handle = tokio::task::spawn(async move {
-                        let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
-                        info!("Saving to {}", path.display());
-                        let mut local = tokio::task::spawn_blocking({
-                            let path = path.clone();
-                            move || save_tensors_into_safetensors(variables, path)
-                        })
-                        .await
-                        .map_err(|_| CheckpointError::WriteThreadCrashed)??;
+                    let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
+                    let local =
+                        save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
 
-                        for extra in checkpoint_extra_files {
-                            let to = path.join(extra.file_name().unwrap());
-                            tokio::fs::copy(extra.clone(), to.clone())
-                                .await
-                                .map_err(CheckpointError::WriteExtraFile)?;
-                            local.push(to);
-                        }
+                    if let Some(upload_info) = upload_info {
+                        upload_checkpoint(upload_info, local.clone(), step as u64, cancellation_token.clone())
+                            .await?;
+                    }
 
-                    let HubUploadInfo {
-                        hub_repo,
-                        hub_token,
-                    } = hub_upload;
-
-                    info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
-                    match upload_model_repo_async(
-                        hub_repo.clone(),
-                        local,
-                        hub_token.clone(),
-                        Some(format!("step {step}")),
-                        None,
-                    )
-                    .await
-                    {
-                        Ok(revision) => {
-                            info!(
-                                repo = hub_repo,
-                                revision = revision,
-                                "Upload to HuggingFace complete"
-                            );
-                        }
-                        Err(err) => {
-                            error!(repo = hub_repo, "Error uploading to HuggingFace: {err:#}");
-                            return Err(err.into());
-                        }
-                    };
-
-                    // we put the cleanup step at the end, so that if keep_steps == 0 the logic will still work
-                    // we'll just delete the dir after we've uploaded it
-                    // if we fail in any of the above steps we may wind up not queueing this dir for delete
-                    // but that's probably better than risking having the dir deleted from under us
-                    // for a relatively low priority disk cleanup task
-                    // and this may actually be preferred anyway because if we failed to upload, we may want to keep
-                    // the data around locally on disk
                     cleanup_dirs(
                         delete_queue,
                         keep_steps,
@@ -261,11 +219,53 @@ impl CooldownStepMetadata {
 
                 Ok((evals, Some(upload_handle)))
             }
-            .instrument(info_span!("checkpointing")),
-        );
+            .instrument(info_span!("checkpointing"))
+        });
+
         Ok(CooldownStep {
             checkpointing_and_evals,
+            cancellation_token,
         })
+    }
+}
+
+async fn save_checkpoint_locally(
+    path: PathBuf,
+    variables: HashMap<String, Tensor>,
+    checkpoint_extra_files: Vec<PathBuf>,
+) -> Result<Vec<PathBuf>, CheckpointError> {
+    info!("Saving to {}", path.display());
+    let mut local = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || save_tensors_into_safetensors(variables, path)
+    })
+    .await
+    .map_err(|_| CheckpointError::WriteThreadCrashed)??;
+
+    for extra in checkpoint_extra_files {
+        let to = path.join(extra.file_name().unwrap());
+        tokio::fs::copy(extra.clone(), to.clone())
+            .await
+            .map_err(CheckpointError::WriteExtraFile)?;
+        local.push(to);
+    }
+
+    Ok(local)
+}
+
+async fn upload_checkpoint(
+    upload_info: UploadInfo,
+    local: Vec<PathBuf>,
+    step: u64,
+    cancellation_token: tokio_util::sync::CancellationToken,
+) -> Result<(), CheckpointError> {
+    match upload_info {
+        UploadInfo::Gcs(gcs_info) => upload_to_gcs(gcs_info, local, step, cancellation_token)
+            .await
+            .map_err(CheckpointError::UploadError),
+        UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, cancellation_token)
+            .await
+            .map_err(CheckpointError::UploadError),
     }
 }
 
@@ -282,6 +282,7 @@ type CheckpointAndEvalsHandle = JoinHandle<
 #[derive(Debug)]
 pub struct CooldownStep {
     checkpointing_and_evals: CheckpointAndEvalsHandle,
+    cancellation_token: tokio_util::sync::CancellationToken,
 }
 
 impl CooldownStep {
@@ -300,6 +301,10 @@ impl CooldownStep {
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
         Ok((running_evals, upload_handle))
+    }
+
+    pub fn cancel(&self) {
+        self.cancellation_token.cancel();
     }
 
     pub fn is_finished(&self) -> bool {

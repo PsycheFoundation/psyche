@@ -1,6 +1,8 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_client::HubUploadInfo;
+use psyche_client::UploadInfo;
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };

@@ -28,3 +28,4 @@ tokio-util.workspace = true
 [dev-dependencies]
 clap.workspace = true
 psyche-python-extension-impl.workspace = true
+tracing-subscriber = "0.3"

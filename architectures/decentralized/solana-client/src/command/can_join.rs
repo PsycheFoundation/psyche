@@ -109,34 +109,45 @@ pub async fn command_can_join_execute(
             bail!("model is not an LLM, unsure how to predownload.");
         };
 
-        let checkpoint = match model.checkpoint {
+        match model.checkpoint {
             Checkpoint::Ephemeral => {
                 bail!("Can't predownload model with ephemeral checkpoint.")
             }
             Checkpoint::Dummy(hub_repo) | Checkpoint::Hub(hub_repo) | Checkpoint::P2P(hub_repo) => {
-                hub_repo
+                let repo_id = hub_repo.repo_id.to_string();
+                let revision = hub_repo.revision.map(|s| s.to_string());
+                println!(
+                    "Predownloading model {repo_id} revision {}",
+                    revision.as_ref().unwrap_or(&"main".to_string())
+                );
+                let hub_read_token = std::env::var("HF_TOKEN").ok();
+
+                // If you pass None as a cache folder, it'll use the env var `HF_HOME`.
+                let cache_folder = None;
+
+                psyche_data_provider::download_model_repo_async(
+                    &repo_id,
+                    revision,
+                    cache_folder,
+                    hub_read_token,
+                    Some(hub_max_concurrent_downloads),
+                    true,
+                )
+                .await?;
+            }
+            Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
+                let bucket = gcs_repo.bucket.to_string();
+                let prefix: Option<String> = gcs_repo.prefix.map(|p| p.to_string());
+                println!(
+                    "Predownloading model from gs://{}/{}",
+                    bucket,
+                    prefix.as_deref().unwrap_or("")
+                );
+
+                psyche_data_provider::download_model_from_gcs_async(&bucket, prefix.as_deref())
+                    .await?;
             }
         };
-        let repo_id = checkpoint.repo_id.to_string();
-        let revision = checkpoint.revision.map(|s| s.to_string());
-        println!(
-            "Predownloading model {repo_id} revision {}",
-            revision.as_ref().unwrap_or(&"main".to_string())
-        );
-        let hub_read_token = std::env::var("HF_TOKEN").ok();
-
-        // If you pass None as a cache folder, it'll use the env var `HF_HOME`.
-        let cache_folder = None;
-
-        psyche_data_provider::download_model_repo_async(
-            &repo_id,
-            revision,
-            cache_folder,
-            hub_read_token,
-            Some(hub_max_concurrent_downloads),
-            true,
-        )
-        .await?;
         println!("Model predownloaded successfully.")
     }
 
