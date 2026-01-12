@@ -18,7 +18,7 @@ impl MMLU {
             validation_dataset: load_dataset(
                 "cais/mmlu",
                 None,
-                Split::Validation,
+                Split::Dev,
                 Some("all".to_owned()),
             )?,
         };
