@@ -7160,6 +7160,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "clap",
+ "clap-markdown",
  "flume",
  "itertools 0.14.0",
  "memmap2 0.9.8",
