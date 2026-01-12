@@ -6,8 +6,6 @@ use crate::{
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
-use rand::{SeedableRng, seq::SliceRandom};
-use rand_chacha::ChaCha8Rng;
 use regex::Regex;
 use std::sync::RwLock;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
@@ -50,17 +48,13 @@ pub enum TaskType {
 pub struct Task {
     task_type: TaskType,
     pub num_fewshot: usize,
-    rand: ChaCha8Rng,
 }
 
 impl Task {
-    pub fn new(task_type: TaskType, num_fewshot: usize, random_seed: u64) -> Self {
-        let mut seed = [0u8; 32];
-        seed[24..32].copy_from_slice(&random_seed.to_be_bytes());
+    pub fn new(task_type: TaskType, num_fewshot: usize, _random_seed: u64) -> Self {
         Task {
             task_type,
             num_fewshot,
-            rand: ChaCha8Rng::from_seed(seed),
         }
     }
 }
@@ -172,6 +166,13 @@ impl TokenizedLLHDocument {
             full_request.extend_from_slice(&choice_tokens);
             requests.push(full_request.clone());
 
+            // Debug code to write tokens to file so we can compare
+            if let Ok(mut file) = std::fs::File::create("tokens.my_impl.out") {
+                use std::io::Write;
+                let token_str = format!("{:?}\n", full_request);
+                let _ = file.write_all(token_str.as_bytes());
+            }
+
             choices_token_len.push(choice_tokens.len());
 
             if TASKS_WITH_ACC_UNCOND.contains(&doc.eval_name.as_str()) {
@@ -205,7 +206,7 @@ impl TokenizedLLHDocument {
 }
 
 impl Task {
-    pub fn prepare(mut self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
+    pub fn prepare(self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
         let name = format!("{}", &self);
         info!("Preparing {name}");
         match self.task_type {
@@ -224,7 +225,7 @@ impl Task {
                         let fewshot_prefix = if self.num_fewshot > 0 {
                             // Get fewshot examples for this document's category
                             let category = doc.category.as_deref().unwrap_or("default");
-                            let mut fewshot_examples = fewshot_by_category
+                            let fewshot_examples = fewshot_by_category
                                 .get(category)
                                 .cloned()
                                 .unwrap_or_else(|| {
