@@ -5,7 +5,7 @@ use psyche_coordinator::{
 };
 use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
 use psyche_data_provider::{
-    DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
+    DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider, GcsUploadInfo,
     PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
     download_model_from_gcs_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
@@ -31,9 +31,10 @@ use tokio::{
 use tracing::{debug, error, info};
 
 use super::{
-    CheckpointConfig, FinishedBroadcast, cooldown::CooldownStepMetadata, evals::ModelTaskRunner,
-    stats::StatsLogger, steps::StepStateMachine, train::TrainingStepMetadata,
-    types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata, witness::WitnessStepMetadata,
+    CheckpointConfig, FinishedBroadcast, UploadInfo, cooldown::CooldownStepMetadata,
+    evals::ModelTaskRunner, stats::StatsLogger, steps::StepStateMachine,
+    train::TrainingStepMetadata, types::DistroBroadcastAndPayload, warmup::WarmupStepMetadata,
+    witness::WitnessStepMetadata,
 };
 use iroh_blobs::api::Tag;
 
@@ -197,6 +198,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         let model::Model::LLM(llm) = state.model;
+
+        // Extract GCS source info before checkpoint is moved, for use in upload config
+        // todo: Can we move this?
+        let gcs_source = match &llm.checkpoint {
+            model::Checkpoint::Gcs(gcs_repo) | model::Checkpoint::P2PGcs(gcs_repo) => {
+                let bucket: String = (&gcs_repo.bucket).into();
+                let prefix: Option<String> = gcs_repo.prefix.as_ref().map(|p| p.into());
+                Some((bucket, prefix))
+            }
+            _ => None,
+        };
 
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
@@ -863,10 +875,22 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_witness: tx_witness.clone(),
         };
 
+        // If model was loaded from GCS, use that location for checkpoint uploads
+        let checkpoint_config = match (gcs_source, init_config.checkpoint_config) {
+            (Some((bucket, prefix)), Some(mut config)) => {
+                config.upload_info = Some(UploadInfo::Gcs(GcsUploadInfo {
+                    gcs_bucket: bucket,
+                    gcs_prefix: prefix,
+                }));
+                Some(config)
+            }
+            (_, config) => config,
+        };
+
         let cooldown = CooldownStepMetadata::new(
             tx_checkpoint,
             tx_model,
-            init_config.checkpoint_config,
+            checkpoint_config,
             checkpoint_extra_files,
             model_task_runner,
         );

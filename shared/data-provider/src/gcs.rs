@@ -1,4 +1,5 @@
 use crate::errors::{DownloadError, UploadError};
+use chrono::{DateTime, Utc};
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::upload::Media;
 use google_cloud_storage::http::objects::upload::UploadObjectRequest;
@@ -8,15 +9,45 @@ use google_cloud_storage::http::objects::{
 };
 use psyche_coordinator::model::{self, GcsRepo};
 use psyche_core::FixedString;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tracing::info;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GcsCheckpointManifest {
+    pub metadata: ManifestMetadata,
+    pub files: Vec<ManifestFileEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestMetadata {
+    pub client_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub epoch: u32,
+    pub step: u32,
+    pub run_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestFileEntry {
+    pub filename: String,
+    pub generation: i64,
+    pub size_bytes: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct GcsUploadInfo {
     pub gcs_bucket: String,
     pub gcs_prefix: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GcsManifestMetadata {
+    pub client_id: String,
+    pub epoch: u32,
+    pub run_id: String,
 }
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
@@ -26,6 +57,7 @@ fn check_model_extension(filename: &str) -> bool {
 }
 
 fn get_cache_dir(bucket: &str, prefix: Option<&str>) -> PathBuf {
+    // ~/.cache/psyche/gcs/{bucket}/{prefix}
     let base = std::env::var("HOME")
         .map(|h| PathBuf::from(h).join(".cache"))
         .unwrap_or_else(|_| PathBuf::from(".cache"))
@@ -53,7 +85,107 @@ pub async fn download_model_from_gcs_async(
     };
     let client = Client::new(config);
 
-    // List all objects in the bucket with optional prefix
+    let cache_dir = get_cache_dir(bucket, prefix);
+    std::fs::create_dir_all(&cache_dir)?;
+
+    // Try to download manifest first
+    let manifest_path = match prefix {
+        Some(p) => format!("{}/manifest.json", p),
+        None => "manifest.json".to_string(),
+    };
+
+    let manifest_result = client
+        .download_object(
+            &GetObjectRequest {
+                bucket: bucket.to_owned(),
+                object: manifest_path.clone(),
+                ..Default::default()
+            },
+            &Range::default(),
+        )
+        .await;
+
+    match manifest_result {
+        Ok(manifest_data) => {
+            let manifest: GcsCheckpointManifest = serde_json::from_slice(&manifest_data)?;
+            info!(
+                "Found manifest with {} files (step {}, epoch {})",
+                manifest.files.len(),
+                manifest.metadata.step,
+                manifest.metadata.epoch
+            );
+            download_files_from_manifest(&client, bucket, prefix, &cache_dir, &manifest).await
+        }
+        Err(_) => {
+            info!("No manifest found, falling back to listing objects");
+            download_files_by_listing(&client, bucket, prefix, &cache_dir).await
+        }
+    }
+}
+
+async fn download_files_from_manifest(
+    client: &Client,
+    bucket: &str,
+    prefix: Option<&str>,
+    cache_dir: &PathBuf,
+    manifest: &GcsCheckpointManifest,
+) -> Result<Vec<PathBuf>, DownloadError> {
+    let mut downloaded_files = Vec::new();
+
+    for file_entry in &manifest.files {
+        let object_name = match prefix {
+            Some(p) => format!("{}/{}", p, file_entry.filename),
+            None => file_entry.filename.clone(),
+        };
+
+        let local_path = cache_dir.join(&file_entry.filename);
+
+        // Use file size to check if cached file is valid
+        if local_path.exists() {
+            if let Ok(metadata) = std::fs::metadata(&local_path) {
+                if metadata.len() == file_entry.size_bytes {
+                    info!("Using cached: {}", file_entry.filename);
+                    downloaded_files.push(local_path);
+                    continue;
+                }
+            }
+            info!(
+                "Cached file size mismatch, re-downloading: {}",
+                file_entry.filename
+            );
+        }
+
+        info!(
+            "Downloading: {} (generation {})",
+            object_name, file_entry.generation
+        );
+
+        let data = client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: bucket.to_owned(),
+                    object: object_name.clone(),
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await?;
+
+        std::fs::write(&local_path, &data)?;
+
+        info!("Downloaded: {} ({} bytes)", file_entry.filename, data.len());
+        downloaded_files.push(local_path);
+    }
+
+    Ok(downloaded_files)
+}
+
+async fn download_files_by_listing(
+    client: &Client,
+    bucket: &str,
+    prefix: Option<&str>,
+    cache_dir: &PathBuf,
+) -> Result<Vec<PathBuf>, DownloadError> {
     let mut all_objects = vec![];
     let mut page_token: Option<String> = None;
 
@@ -86,18 +218,12 @@ pub async fn download_model_from_gcs_async(
         prefix.unwrap_or("")
     );
 
-    let cache_dir = get_cache_dir(bucket, prefix);
-    std::fs::create_dir_all(&cache_dir)?;
-
     let mut downloaded_files = Vec::new();
 
     for object_name in all_objects {
-        // Get just the filename (strip prefix if present)
         let filename = object_name.rsplit('/').next().unwrap_or(&object_name);
-
         let local_path = cache_dir.join(filename);
 
-        // Skip if already cached
         if local_path.exists() {
             info!("Using cached: {}", filename);
             downloaded_files.push(local_path);
@@ -106,7 +232,6 @@ pub async fn download_model_from_gcs_async(
 
         info!("Downloading: {}", object_name);
 
-        // Download the object
         let data = client
             .download_object(
                 &GetObjectRequest {
@@ -139,6 +264,7 @@ pub fn download_model_from_gcs_sync(
 
 pub async fn upload_to_gcs(
     gcs_info: GcsUploadInfo,
+    manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
     tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
@@ -147,6 +273,12 @@ pub async fn upload_to_gcs(
         gcs_bucket,
         gcs_prefix,
     } = gcs_info;
+
+    let GcsManifestMetadata {
+        client_id,
+        epoch,
+        run_id,
+    } = manifest_metadata;
 
     info!(bucket = gcs_bucket, "Uploading checkpoint to GCS");
 
@@ -158,6 +290,17 @@ pub async fn upload_to_gcs(
         ClientConfig::default().anonymous()
     };
     let client = Client::new(config);
+
+    let mut manifest = GcsCheckpointManifest {
+        metadata: ManifestMetadata {
+            client_id,
+            timestamp: Utc::now(),
+            epoch,
+            step: step as u32,
+            run_id,
+        },
+        files: Vec::new(),
+    };
 
     for path in local {
         let file_name = path
@@ -171,6 +314,7 @@ pub async fn upload_to_gcs(
             None => file_name.to_string(),
         };
 
+        let size = std::fs::metadata(&path)?.len();
         let data = tokio::fs::read(&path).await?;
 
         let upload_type = UploadType::Simple(Media::new(object_name.clone()));
@@ -189,9 +333,40 @@ pub async fn upload_to_gcs(
             bucket = gcs_bucket,
             object = object_name,
             size = uploaded.size,
-            "Successfully uploaded file to GCS"
+            generation = uploaded.generation,
+            "Uploaded file to GCS"
         );
+
+        manifest.files.push(ManifestFileEntry {
+            filename: file_name.to_string(),
+            generation: uploaded.generation,
+            size_bytes: size,
+        });
     }
+
+    let manifest_path = match &gcs_prefix {
+        Some(p) => format!("{}/manifest.json", p),
+        None => "manifest.json".to_string(),
+    };
+    let manifest_json = serde_json::to_string_pretty(&manifest)?;
+
+    let upload_type = UploadType::Simple(Media::new(manifest_path.clone()));
+    client
+        .upload_object(
+            &UploadObjectRequest {
+                bucket: gcs_bucket.clone(),
+                ..Default::default()
+            },
+            manifest_json.into_bytes(),
+            &upload_type,
+        )
+        .await?;
+
+    info!(
+        bucket = gcs_bucket,
+        object = manifest_path,
+        "Uploaded manifest to GCS"
+    );
 
     info!(
         "Upload to GCS complete at gs://{}/{}",
