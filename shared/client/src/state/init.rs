@@ -135,6 +135,20 @@ enum RawLoadedModelType {
     PythonDistributed(psyche_modeling::PythonDistributedCausalLM),
 }
 
+impl RawLoadedModelType {
+    fn get_first_model_variables(&self) -> Option<psyche_modeling::StableVariableIterator> {
+        match self {
+            RawLoadedModelType::ParallelNativeModels(models) => {
+                models.first().map(|m| m.variables())
+            }
+            #[cfg(feature = "python")]
+            RawLoadedModelType::Python(model) => Some(model.variables()),
+            #[cfg(feature = "python")]
+            RawLoadedModelType::PythonDistributed(model) => Some(model.variables()),
+        }
+    }
+}
+
 struct RawLoadedModel {
     models: RawLoadedModelType,
     tokenizer: Arc<Tokenizer>,
@@ -310,6 +324,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     let tokenizer = tokenizer.to_string(false).unwrap();
                     info!("Config Uploaded: {}", config);
                     tx_config.send((config.to_string(), tokenizer)).unwrap();
+
+                    // Extract parameter names and send them to populate sharable_model
+                    if let Some(variables) = model.models.get_first_model_variables() {
+                        let parameter_names: HashMap<String, Tensor> = variables
+                            .map(|var| (var.name().to_string(), Tensor::default()))
+                            .collect();
+                        if !parameter_names.is_empty() {
+                            tx_model.send(parameter_names).unwrap();
+                        }
+                    }
+
                     Ok(model)
                 }),
                 model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => {
@@ -613,6 +638,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         tx_config
                             .send((serialized_config.clone(), serialized_tokenizer))
                             .unwrap();
+
+                        // Extract parameter names and send them to populate sharable_model
+                        // This allows the client to respond to parameter name requests from peers
+                        if let Some(variables) = raw_loaded_model_type.get_first_model_variables() {
+                            let parameter_names: HashMap<String, Tensor> = variables
+                                .map(|var| (var.name().to_string(), Tensor::default()))
+                                .collect();
+                            if !parameter_names.is_empty() {
+                                tx_model.send(parameter_names).unwrap();
+                            }
+                        }
 
                         info!(
                             integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
