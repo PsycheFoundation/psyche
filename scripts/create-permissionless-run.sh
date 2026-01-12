@@ -39,14 +39,14 @@ echo -e "[+] -----------------------------------------------------------"
 
 # Create permisionless authorization
 echo -e "\n[+] Creating authorization for everyone to join the run"
-cargo run --release --bin psyche-solana-client -- \
+cargo run --release --bin run-manager -- \
     join-authorization-create \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \
     --authorizer 11111111111111111111111111111111
 
 echo -e "\n[+] Creating training run..."
-cargo run --release --bin psyche-solana-client -- \
+cargo run --release --bin run-manager -- \
     create-run \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc ${RPC} \
@@ -58,13 +58,13 @@ cargo run --release --bin psyche-solana-client -- \
 
 if [[ "$DEPLOY_TREASURER" == "true" ]]; then
     echo -e "\n[+] Setting treasurer collateral requirements..."
-    cargo run --release --bin psyche-solana-client treasurer-top-up-rewards \
+    cargo run --release --bin run-manager treasurer-top-up-rewards \
         --run-id ${RUN_ID} \
         --collateral-amount 10 \
         --wallet-private-key-path ${WALLET_FILE} \
         --rpc ${RPC}
 
-    cargo run --release --bin psyche-solana-client -- set-future-epoch-rates \
+    cargo run --release --bin run-manager -- set-future-epoch-rates \
         --rpc ${RPC} \
         --run-id ${RUN_ID} \
         --wallet-private-key-path ${WALLET_FILE} \
@@ -73,7 +73,7 @@ if [[ "$DEPLOY_TREASURER" == "true" ]]; then
 fi
 
 echo -e "\n[+] Update training run config..."
-cargo run --release --bin psyche-solana-client -- \
+cargo run --release --bin run-manager -- \
     update-config \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc ${RPC} \
@@ -84,7 +84,7 @@ cargo run --release --bin psyche-solana-client -- \
     --vocab-size 32768
 
 echo -e "\n[+] Unpause the training run..."
-cargo run --release --bin psyche-solana-client -- \
+cargo run --release --bin run-manager -- \
     set-paused \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc ${RPC} \
