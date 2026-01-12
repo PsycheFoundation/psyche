@@ -4,7 +4,6 @@ use crate::{
     device_utils::DevicePytorchStr,
 };
 
-use crate::{DeepseekConfig, LlamaConfig};
 use pyo3::{
     prelude::*,
     types::{IntoPyDict, PyDict, PyList, PyString, PyTuple},
