@@ -23,7 +23,6 @@ pub struct GcsCheckpointManifest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManifestMetadata {
-    pub client_id: String,
     pub timestamp: DateTime<Utc>,
     pub epoch: u32,
     pub step: u32,
@@ -45,7 +44,6 @@ pub struct GcsUploadInfo {
 
 #[derive(Debug, Clone)]
 pub struct GcsManifestMetadata {
-    pub client_id: String,
     pub epoch: u32,
     pub run_id: String,
 }
@@ -318,11 +316,7 @@ pub async fn upload_to_gcs(
         gcs_prefix,
     } = gcs_info;
 
-    let GcsManifestMetadata {
-        client_id,
-        epoch,
-        run_id,
-    } = manifest_metadata;
+    let GcsManifestMetadata { epoch, run_id } = manifest_metadata;
 
     info!(bucket = gcs_bucket, "Uploading checkpoint to GCS");
 
@@ -337,7 +331,6 @@ pub async fn upload_to_gcs(
 
     let mut manifest = GcsCheckpointManifest {
         metadata: ManifestMetadata {
-            client_id,
             timestamp: Utc::now(),
             epoch,
             step: step as u32,

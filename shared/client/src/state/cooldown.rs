@@ -198,7 +198,6 @@ impl CooldownStepMetadata {
 
                     if let Some(upload_info) = upload_info {
                         let manifest_metadata = GcsManifestMetadata {
-                            client_id: String::new(), // TODO: pass actual client identity
                             epoch,
                             run_id: run_id.clone(),
                         };
