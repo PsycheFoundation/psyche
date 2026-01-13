@@ -1,6 +1,7 @@
 import { PrivyClient } from "@privy-io/node";
-import { Pubkey, pubkeyFromBase58 } from "solana-kiss";
+import { pubkeyFromBase58 } from "solana-kiss";
 import { parseHtmlTable } from "./utils/parseHtmlTable";
+import { resolveUserWalletForDiscordUserInfo } from "./utils/resolveUserWalletForDiscordUsername";
 import { resolveUserWalletForEmailAddress } from "./utils/resolveUserWalletForEmailAddress";
 import { resolveUserWalletForGithubUsername } from "./utils/resolveUserWalletForGithubUsername";
 import { resolveUserWalletForTwitterUsername } from "./utils/resolveUserWalletForTwitterUsername";
@@ -16,7 +17,7 @@ const twitterBearerToken = process.argv[5];
 
 const tabVipGithubName = "Github Whitelist";
 const tabPaperGithubName = "Paper Whitelist (Github)";
-const tabAttroposGithubName = "Atropos Contributors Whitelist";
+const tabAtroposGithubName = "Atropos Contributors Whitelist";
 
 const tabVipTwitterName = "X Whitelist";
 const tabPaperTwitterName = "Paper Whitelist (Twitter)";
@@ -28,7 +29,28 @@ const tabNousDiscordName = "Discord Whitelist";
 
 main();
 
+async function processGithubPage(results: Array<any>, tabName: string) {
+  for (const tabRow of parseHtmlTable(whitelistFolder, tabName)) {
+    const githubUsername = stripPrefix(new URL(tabRow[0]).pathname, "/");
+    const tokenUiAmount = Number(tabRow[1]);
+    console.log("Resolving github user:", githubUsername);
+    const res = await resolveUserWalletForGithubUsername(
+      privyClient,
+      tabName,
+      githubUsername,
+    );
+    results.push({
+      userId: res.privyUser.id,
+      signerAddress: res.walletAddress,
+      uiAmount: tokenUiAmount,
+      description: res.sourceDescription,
+    });
+    break;
+  }
+}
+
 async function main() {
+  const results: Array<any> = [];
   //console.log(tabVipGithubName, parseHtmlTable(tabVipGithubName));
   //console.log(tabPaperGithubName, parseHtmlTable(tabPaperGithubName));
   //console.log(tabPaperLinkedInName, parseHtmlTable(tabPaperLinkedInName));
@@ -37,17 +59,22 @@ async function main() {
   //console.log(tabNousApiName, parseHtmlTable(tabNousApiName));
   //console.log(tabMiningPoolName, parseHtmlTable(tabMiningPoolName));
   //console.log(tabAttroposName, parseHtmlTable(tabAttroposName));
-  //console.log(tabDiscordName, parseHtmlTable(tabDiscordName));
+
+  await processGithubPage(results, tabVipGithubName);
+  await processGithubPage(results, tabPaperGithubName);
+  await processGithubPage(results, tabAtroposGithubName);
 
   for (const tabMiningPoolRow of parseHtmlTable(
     whitelistFolder,
     tabMiningPoolName,
   )) {
-    const solanaAddress = toPubkey(tabMiningPoolRow[0]);
-    if (solanaAddress === null) {
-      continue;
-    }
-    console.log(">>>> solanaAddress", solanaAddress);
+    const solanaAddress = pubkeyFromBase58(tabMiningPoolRow[0]);
+    const tokenUiAmount = Number(tabMiningPoolRow[1]);
+    results.push({
+      signerAddress: solanaAddress,
+      uiAmount: tokenUiAmount,
+      description: tabMiningPoolName,
+    });
     break;
   }
 
@@ -55,55 +82,47 @@ async function main() {
     whitelistFolder,
     tabNousApiEmailName,
   )) {
-    if (tabNousApiRow.length < 2) {
-      continue;
-    }
     const emailAddress = tabNousApiRow[0];
-    if (emailAddress.indexOf("@") === -1) {
-      continue;
-    }
-    console.log("emailAddress", emailAddress);
+    const tokenUiAmount = Number(tabNousApiRow[1]);
     const res = await resolveUserWalletForEmailAddress(
       privyClient,
+      tabNousApiEmailName,
       emailAddress,
     );
-    console.log(">>>> EMAIL (Nous API)", JSON.stringify(res, null, 2));
+    results.push({
+      userId: res.privyUser.id,
+      signerAddress: res.walletAddress,
+      uiAmount: tokenUiAmount,
+      description: res.sourceDescription,
+    });
     break;
   }
 
-  for (const tabAttroposGithubRow of parseHtmlTable(
+  for (const tabNousDiscordRow of parseHtmlTable(
     whitelistFolder,
-    tabAttroposGithubName,
+    tabNousDiscordName,
   )) {
-    const url = toUrl(tabAttroposGithubRow[0]);
-    if (url === null) {
-      continue;
-    }
-    const githubUsername = stripPrefix(url.pathname, "/");
-    console.log("githubUsername", githubUsername);
-    const res = await resolveUserWalletForGithubUsername(
+    const discordUserId = tabNousDiscordRow[0];
+    const discordUserName = tabNousDiscordRow[1];
+    const tokenUiAmount = Number(tabNousDiscordRow[2]);
+    console.log("discordUserName", discordUserName);
+    console.log("discordUserId", discordUserId);
+    const res = await resolveUserWalletForDiscordUserInfo(
       privyClient,
-      githubUsername,
+      tabNousDiscordName,
+      { id: discordUserId, name: discordUserName },
     );
-    console.log(">>>>> GITHUB", JSON.stringify(res, null, 2));
+    console.log(">>>> DISCORD", JSON.stringify(res, null, 2));
+    results.push({
+      userId: res.privyUser.id,
+      signerAddress: res.walletAddress,
+      uiAmount: tokenUiAmount,
+      description: res.sourceDescription,
+    });
     break;
   }
 
   /*
-  for (const tabNousDiscordRow of parseHtmlTable(
-    whitelistFolder,
-    tabNousDiscordName
-  )) {
-    const discordUsername = tabNousDiscordRow[0]
-    if (!discordUsername) {
-      continue
-    }
-    console.log('discordUsername', discordUsername)
-    const res = await resolveUserInfoForDiscordUsername(discordUsername)
-    console.log('DISCORD', JSON.stringify(res, null, 2))
-    break
-  }
-
   for (const paperLinkedIn of parseHtmlTable(whitelistFolder,tabPaperLinkedInName)) {
     const url = toUrl(paperLinkedIn[0]);
     if (url === null) {
@@ -115,61 +134,32 @@ async function main() {
   }
     */
 
-  for (const paperTwitter of parseHtmlTable(
+  for (const rowPaperTwitter of parseHtmlTable(
     whitelistFolder,
     tabPaperTwitterName,
   )) {
-    const url = toUrl(paperTwitter[0]);
-    if (url === null) {
-      continue;
-    }
+    const url = new URL(rowPaperTwitter[0]);
+    const tokenUiAmount = Number(rowPaperTwitter[1]);
     const twitterUsername = stripPrefix(url.pathname, "/");
-    console.log("twitter", twitterUsername);
     const res = await resolveUserWalletForTwitterUsername(
       privyClient,
+      tabPaperTwitterName,
       twitterUsername,
       twitterBearerToken,
     );
     console.log(">>>>> TWITTER", JSON.stringify(res, null, 2));
+    results.push({
+      signerAddress: res.walletAddress,
+      uiAmount: tokenUiAmount,
+      description: res.sourceDescription,
+    });
     break;
   }
+
+  console.log("results", results);
 }
 
 /*
-async function resolveUserInfoForDiscordUsername(discordUsername: string) {
-  return await resolveUserWalletOrPregenerate(
-    discordUsername,
-    (discordUsername) =>
-      privyClient.users().getByDiscordUsername({ username: discordUsername }),
-    async (fetchError) => {
-      const discordUserInfo = await fetchJson(
-        `https://discord.com/api/v10/users/${encodeURIComponent(
-          discordUsername
-        )}`,
-        'GET'
-      )
-      console.log('discordUserInfo', discordUserInfo)
-      const discordUserId = jsonAsNumber(jsonGetAt(discordUserInfo, 'id'))
-      if (!discordUserId) {
-        throw new ErrorStack(
-          'Failed to fetch Discord user info: ' + discordUserInfo,
-          fetchError
-        )
-      }
-      return privyClient.users().create({
-        linked_accounts: [
-          {
-            type: 'discord_oauth',
-            subject: discordUserId.toString(),
-            username: discordUsername,
-          },
-        ],
-        wallets: [{ chain_type: 'solana' }],
-      })
-    }
-  )
-}
-
 async function resolveInfoForLinkedInId(linkedInId: string) {
   return await resolveUserWalletOrPregenerate(
     privyClient,
@@ -200,24 +190,7 @@ async function resolveInfoForLinkedInId(linkedInId: string) {
     }
   )
 }
-
 */
-
-function toUrl(urlString: string) {
-  try {
-    return new URL(urlString);
-  } catch {
-    return null;
-  }
-}
-
-function toPubkey(value: string): Pubkey | null {
-  try {
-    return pubkeyFromBase58(value);
-  } catch {
-    return null;
-  }
-}
 
 function stripPrefix(value: string, prefix: string): string {
   return value.startsWith(prefix) ? value.slice(prefix.length) : value;

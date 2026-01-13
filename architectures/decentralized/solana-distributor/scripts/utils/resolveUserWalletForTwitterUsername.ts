@@ -5,12 +5,13 @@ import { resolveUserWallet } from "./resolveUserWallet";
 
 export async function resolveUserWalletForTwitterUsername(
   privyClient: PrivyClient,
+  sourceTab: string,
   twitterUsername: string,
   twitterBearerToken: string,
 ) {
   return await resolveUserWallet(
     privyClient,
-    twitterUsername,
+    `Twitter User: ${twitterUsername} (${sourceTab})`,
     () =>
       privyClient.users().getByTwitterUsername({ username: twitterUsername }),
     async () => {

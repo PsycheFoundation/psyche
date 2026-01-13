@@ -5,11 +5,12 @@ import { resolveUserWallet } from "./resolveUserWallet";
 
 export async function resolveUserWalletForGithubUsername(
   privyClient: PrivyClient,
+  sourceTab: string,
   githubUsername: string,
 ) {
   return await resolveUserWallet(
     privyClient,
-    githubUsername,
+    `Github User: ${githubUsername} (${sourceTab})`,
     () => privyClient.users().getByGitHubUsername({ username: githubUsername }),
     async () => {
       const githubUserInfo = await fetchJson(

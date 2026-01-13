@@ -6,7 +6,7 @@ export function parseHtmlTable(folder: string, tabName: string) {
   const htmlPath = folder + "/" + tabName + ".html";
   const $ = load(readFileSync(htmlPath, "utf8"));
   const htmlRows = $("tbody > tr");
-  for (let htmlRowIndex = 0; htmlRowIndex < htmlRows.length; htmlRowIndex++) {
+  for (let htmlRowIndex = 2; htmlRowIndex < htmlRows.length; htmlRowIndex++) {
     const parsedCells = [];
     const htmlRow = $(htmlRows[htmlRowIndex]);
     const htmlCells = htmlRow.find("td");
@@ -16,12 +16,7 @@ export function parseHtmlTable(folder: string, tabName: string) {
       htmlCellIndex++
     ) {
       const htmlCell = $(htmlCells[htmlCellIndex]);
-      const htmlInfo = htmlCell.find("a").attr("href") ?? htmlCell.text();
-      if (htmlInfo) {
-        parsedCells.push(htmlInfo);
-      } else {
-        break;
-      }
+      parsedCells.push(htmlCell.find("a").attr("href") ?? htmlCell.text());
     }
     parsedRows.push(parsedCells);
   }

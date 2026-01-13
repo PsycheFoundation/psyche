@@ -3,11 +3,12 @@ import { resolveUserWallet } from "./resolveUserWallet";
 
 export async function resolveUserWalletForEmailAddress(
   privyClient: PrivyClient,
+  sourceTab: string,
   emailAddress: string,
 ) {
   return await resolveUserWallet(
     privyClient,
-    emailAddress,
+    `Email user: ${emailAddress} (${sourceTab})`,
     () => privyClient.users().getByEmailAddress({ address: emailAddress }),
     async () => {
       return privyClient.users().create({
