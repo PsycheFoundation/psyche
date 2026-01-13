@@ -7,6 +7,18 @@ default:
 check-client:
     cargo run -p psyche-solana-client -- --help
 
+# test inference network discovery (2 nodes in tmux)
+test-inference-network:
+    ./scripts/test-inference-network.sh
+
+# format & lint-fix code
+fmt:
+    echo "deprecated, use 'nix fmt' instead..."
+    sleep 5
+    cargo clippy --fix --allow-staged --all-targets
+    cargo fmt
+    nixfmt .
+
 # spin up a local testnet
 local-testnet *args='':
     OLTP_METRICS_URL="http://localhost:4318/v1/metrics" OLTP_TRACING_URL="http://localhost:4318/v1/traces" OLTP_LOGS_URL="http://localhost:4318/v1/logs" cargo run -p psyche-centralized-local-testnet -- start {{ args }}
