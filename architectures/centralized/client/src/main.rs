@@ -1,13 +1,12 @@
-use crate::app::{TAB_NAMES, Tabs, build_app};
+use crate::app::{build_app, Tabs, TAB_NAMES};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
+use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
 use psyche_network::SecretKey;
 use psyche_tui::{
-    LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop,
+    maybe_start_render_loop, LogOutput, ServiceInfo,
 };
 use std::{path::PathBuf, time::Duration};
 use time::OffsetDateTime;
@@ -129,7 +128,6 @@ fn main() -> Result<()> {
     #[cfg(feature = "python")]
     psyche_python_extension_impl::init_embedded_python()?;
 
-    // let shutdown_handler =
     let runtime = Builder::new_multi_thread()
         .enable_io()
         .enable_time()
@@ -138,6 +136,5 @@ fn main() -> Result<()> {
         .build()
         .unwrap();
     runtime.block_on(async_main())?;
-    // shutdown_handler.shutdown()?;
     Ok(())
 }
