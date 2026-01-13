@@ -10,7 +10,7 @@ use google_cloud_storage::http::objects::{
 use psyche_coordinator::model::{self, GcsRepo};
 use psyche_core::FixedString;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tracing::info;
@@ -95,7 +95,7 @@ fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
 }
 
 fn collect_cached_files(
-    cache_dir: &PathBuf,
+    cache_dir: &Path,
     manifest: &GcsCheckpointManifest,
 ) -> Option<Vec<PathBuf>> {
     let mut files = Vec::new();
@@ -188,7 +188,7 @@ async fn download_files_from_manifest(
     client: &Client,
     bucket: &str,
     prefix: Option<&str>,
-    cache_dir: &PathBuf,
+    cache_dir: &Path,
     manifest: &GcsCheckpointManifest,
 ) -> Result<Vec<PathBuf>, DownloadError> {
     let mut downloaded_files = Vec::new();
@@ -228,7 +228,7 @@ async fn download_files_by_listing(
     client: &Client,
     bucket: &str,
     prefix: Option<&str>,
-    cache_dir: &PathBuf,
+    cache_dir: &Path,
 ) -> Result<Vec<PathBuf>, DownloadError> {
     let mut all_objects = vec![];
     let mut page_token: Option<String> = None;
