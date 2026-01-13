@@ -105,6 +105,7 @@ lib.makeScope pkgs.newScope (
           solana-distributor-idl = self.callPackage ../architectures/decentralized/solana-distributor { };
 
           psyche-book = self.callPackage ../psyche-book { inherit rustPackages rustPackageNames; };
+          run-manager = self.psycheLib.buildRustPackageWithoutPython { name = "run-manager"; };
         }
         rustPackages
         externalRustPackages
