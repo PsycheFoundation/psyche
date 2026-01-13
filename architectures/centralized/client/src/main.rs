@@ -1,8 +1,8 @@
-use crate::app::{build_app, Tabs, TAB_NAMES};
+use crate::app::{TAB_NAMES, Tabs, build_app};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use psyche_client::{print_identity_keys, read_identity_secret_key, TrainArgs};
+use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
 use psyche_network::SecretKey;
 use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
