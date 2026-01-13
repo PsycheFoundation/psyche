@@ -93,6 +93,21 @@ fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
     }
 }
 
+fn collect_cached_files(
+    cache_dir: &PathBuf,
+    manifest: &GcsCheckpointManifest,
+) -> Option<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    for file_entry in &manifest.files {
+        let path = cache_dir.join(&file_entry.filename);
+        if !path.exists() {
+            return None;
+        }
+        files.push(path);
+    }
+    Some(files)
+}
+
 pub async fn download_model_from_gcs_async(
     bucket: &str,
     prefix: Option<&str>,
