@@ -25,11 +25,21 @@ impl TestValidator {
     pub fn start() -> Result<Self> {
         println!("Starting Docker test validator...");
 
+        // Find workspace root (go up from CARGO_MANIFEST_DIR to workspace root)
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .context("CARGO_MANIFEST_DIR not set")?;
+        let workspace_root = std::path::Path::new(&manifest_dir)
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .context("Could not find workspace root")?;
+        let compose_file = workspace_root.join("docker/test/docker-compose.yml");
+
         let output = Command::new("docker")
             .args([
                 "compose",
                 "-f",
-                "docker/test/docker-compose.yml",
+                compose_file.to_str().unwrap(),
                 "up",
                 "-d",
                 "psyche-solana-test-validator",
@@ -78,11 +88,21 @@ impl TestValidator {
 impl Drop for TestValidator {
     fn drop(&mut self) {
         println!("Stopping Docker test validator...");
-        let _ = Command::new("docker")
-            .args(["compose", "-f", "docker/test/docker-compose.yml", "down"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output();
+        // Find workspace root for compose file path
+        if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+            if let Some(workspace_root) = std::path::Path::new(&manifest_dir)
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+            {
+                let compose_file = workspace_root.join("docker/test/docker-compose.yml");
+                let _ = Command::new("docker")
+                    .args(["compose", "-f", compose_file.to_str().unwrap(), "down"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .output();
+            }
+        }
     }
 }
 
