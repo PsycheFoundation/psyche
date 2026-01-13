@@ -180,7 +180,7 @@ pub async fn download_model_from_gcs_async(
             info!("No manifest found, falling back to listing objects");
             let cache_dir = get_cache_dir_no_manifest(bucket, prefix);
             std::fs::create_dir_all(&cache_dir)?;
-            download_files_by_listing(&client, bucket, prefix, &cache_dir).await
+            download_files_no_manifest(&client, bucket, prefix, &cache_dir).await
         }
     }
 }
@@ -225,7 +225,7 @@ async fn download_files_from_manifest(
     Ok(downloaded_files)
 }
 
-async fn download_files_by_listing(
+async fn download_files_no_manifest(
     client: &Client,
     bucket: &str,
     prefix: Option<&str>,
