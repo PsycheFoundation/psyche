@@ -56,20 +56,27 @@ fn check_model_extension(filename: &str) -> bool {
     MODEL_EXTENSIONS.iter().any(|ext| filename.ends_with(ext))
 }
 
+fn get_cache_base(bucket: &str) -> PathBuf {
+    // Use HF_HOME if set, otherwise fall back to ~/.cache
+    std::env::var("HF_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::env::var("HOME")
+                .map(|h| PathBuf::from(h).join(".cache"))
+                .unwrap_or_else(|_| PathBuf::from(".cache"))
+        })
+        .join("psyche")
+        .join("gcs")
+        .join(bucket)
+}
+
 fn get_cache_dir(
     bucket: &str,
     prefix: Option<&str>,
     step: u32,
     manifest_generation: i64,
 ) -> PathBuf {
-    // ~/.cache/psyche/gcs/{bucket}/{prefix}/step-{step}-{manifest_generation}
-    let base = std::env::var("HOME")
-        .map(|h| PathBuf::from(h).join(".cache"))
-        .unwrap_or_else(|_| PathBuf::from(".cache"))
-        .join("psyche")
-        .join("gcs")
-        .join(bucket);
-
+    let base = get_cache_base(bucket);
     let versioned_folder = format!("step-{}-{}", step, manifest_generation);
 
     match prefix {
@@ -79,17 +86,11 @@ fn get_cache_dir(
 }
 
 fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
-    // Legacy cache path for checkpoints without manifest
-    let base = std::env::var("HOME")
-        .map(|h| PathBuf::from(h).join(".cache"))
-        .unwrap_or_else(|_| PathBuf::from(".cache"))
-        .join("psyche")
-        .join("gcs")
-        .join(bucket);
+    let base = get_cache_base(bucket);
 
     match prefix {
-        Some(p) => base.join(p.trim_end_matches('/')),
-        None => base,
+        Some(p) => base.join(p.trim_end_matches('/')).join("no_manifest"),
+        None => base.join("no_manifest"),
     }
 }
 
