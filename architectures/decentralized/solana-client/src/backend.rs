@@ -133,9 +133,9 @@ impl SolanaBackend {
         cluster: Cluster,
         backup_clusters: Vec<Cluster>,
         payer: Arc<Keypair>,
-        committment: CommitmentConfig,
+        commitment: CommitmentConfig,
     ) -> Result<Self> {
-        let client = Client::new_with_options(cluster.clone(), payer.clone(), committment);
+        let client = Client::new_with_options(cluster.clone(), payer.clone(), commitment);
 
         let mut program_coordinators = vec![];
         program_coordinators.push(Arc::new(client.program(psyche_solana_coordinator::ID)?));
@@ -143,7 +143,7 @@ impl SolanaBackend {
         let backup_program_coordinators: Result<Vec<_>, _> = backup_clusters
             .iter()
             .map(|cluster| {
-                Client::new_with_options(cluster.clone(), payer.clone(), committment)
+                Client::new_with_options(cluster.clone(), payer.clone(), commitment)
                     .program(psyche_solana_coordinator::ID)
             })
             .collect();
