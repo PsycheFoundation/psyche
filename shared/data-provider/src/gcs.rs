@@ -165,19 +165,24 @@ pub async fn download_model_from_gcs_async(
             let cache_dir =
                 get_cache_dir(bucket, prefix, manifest.metadata.step, manifest_generation);
 
-            // Check if all files exist in cache
-            if let Some(cached_files) = collect_cached_files(&cache_dir, &manifest) {
+            // Check if all manifest files exist in cache
+            if collect_cached_files(&cache_dir, &manifest).is_some() {
                 info!("Using cached checkpoint at {:?}", cache_dir);
-                return Ok(cached_files);
+            } else {
+                info!(
+                    "Model not found in cache, downloading checkpoint to {:?}",
+                    cache_dir
+                );
+                std::fs::create_dir_all(&cache_dir)?;
+                download_files_from_manifest(&client, bucket, prefix, &cache_dir, &manifest)
+                    .await?;
             }
-
-            // Download all files (cache missing or incomplete)
-            std::fs::create_dir_all(&cache_dir)?;
-            download_files_from_manifest(&client, bucket, prefix, &cache_dir, &manifest).await
+            // Download config files (json, py) - skips if already cached
+            download_files_no_manifest(&client, bucket, prefix, &cache_dir).await
         }
         Err(_) => {
             // Fallback for old checkpoints without manifest
-            info!("No manifest found, falling back to listing objects");
+            info!("No manifest found, downloading model without manifest");
             let cache_dir = get_cache_dir_no_manifest(bucket, prefix);
             std::fs::create_dir_all(&cache_dir)?;
             download_files_no_manifest(&client, bucket, prefix, &cache_dir).await
@@ -201,9 +206,15 @@ async fn download_files_from_manifest(
         };
         let local_path = cache_dir.join(&file_entry.filename);
 
+        if local_path.exists() {
+            info!("Using cached: {}", file_entry.filename);
+            downloaded_files.push(local_path);
+            continue;
+        }
+
         info!(
-            "Downloading: {} (generation {})",
-            object_name, file_entry.generation
+            "Downloading: gs://{}/{} (generation {})",
+            bucket, object_name, file_entry.generation
         );
 
         let data = client
@@ -225,6 +236,8 @@ async fn download_files_from_manifest(
     Ok(downloaded_files)
 }
 
+/// Download model files by listing the bucket. Skips files that already exist in cache.
+/// Used for initial model download (no manifest) and to fetch config files (json, py) after manifest download.
 async fn download_files_no_manifest(
     client: &Client,
     bucket: &str,
