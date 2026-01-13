@@ -82,7 +82,7 @@ struct StartArgs {
     #[clap(long)]
     first_client_checkpoint: Option<String>,
 
-    // HF token for all the clients to fetch the model at the beggining of the run.
+    // HF token for all the clients to fetch the model at the beginning of the run.
     #[clap(long)]
     hf_token: Option<String>,
 
