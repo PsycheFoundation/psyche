@@ -15,12 +15,14 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tracing::info;
 
+/// Checkpoint manifest.json uploaded to GCS alongside safetensors files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GcsCheckpointManifest {
     pub metadata: ManifestMetadata,
     pub files: Vec<ManifestFileEntry>,
 }
 
+/// Checkpoint metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManifestMetadata {
     pub timestamp: DateTime<Utc>,
@@ -29,6 +31,7 @@ pub struct ManifestMetadata {
     pub run_id: String,
 }
 
+/// Single file entry in the manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManifestFileEntry {
     pub filename: String,
@@ -419,12 +422,8 @@ pub async fn upload_to_gcs(
 
     tx_checkpoint
         .send(model::Checkpoint::Gcs(GcsRepo {
-            bucket: FixedString::from_str_truncated(&format!(
-                "gs://{}/{}",
-                gcs_bucket,
-                gcs_prefix.as_deref().unwrap_or("")
-            )),
-            prefix: Some(FixedString::from_str_truncated(&format!("step-{step}"))),
+            bucket: FixedString::from_str_truncated(&gcs_bucket),
+            prefix: gcs_prefix.map(|p| FixedString::from_str_truncated(&p)),
         }))
         .map_err(|_| UploadError::SendCheckpoint)?;
 
