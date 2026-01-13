@@ -12,9 +12,6 @@ pub enum UploadError {
     #[error("failed to send checkpoint notification")]
     SendCheckpoint,
 
-    #[error("Upload was cancelled")]
-    Cancelled,
-
     // Hub-specific errors
     #[error("failed to connect to HF hub: {0}")]
     HfHub(#[from] hf_hub::api::tokio::ApiError),

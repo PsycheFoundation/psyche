@@ -779,7 +779,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         trace!(
                             "since we're not a member of this step, killing cooldown step and returning to warmup to wait."
                         );
-                        let (trainers, upload_handle) = cooldown.finish().await?;
+                        let (trainers, _) = cooldown.finish().await?;
                         // if let Some(handle) = upload_handle {
                         //     self.pending_upload_handles.push(handle);
                         // }
@@ -905,8 +905,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
                 cooldown.cancel(); // Cancel any ongoing upload
 
+                let (trainers, _) = cooldown.finish().await?;
                 self.sent_cooldown_witness = false;
-                let (trainers, upload_handle) = cooldown.finish().await?;
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
                     &mut self.previous_round,

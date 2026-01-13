@@ -1,9 +1,6 @@
 use crate::UploadInfo;
 use psyche_coordinator::CheckpointerSelection;
-use psyche_coordinator::{
-    Coordinator,
-    model::{self},
-};
+use psyche_coordinator::Coordinator;
 use psyche_core::NodeIdentity;
 use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]
@@ -183,43 +180,40 @@ impl CooldownStepMetadata {
 
                 trainers.push(trainer);
                 let evals = model_task_runner.start(trainers);
-                if !is_checkpointer {
+                 if !is_checkpointer {
                     info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
                     return Ok((evals, None));
                 }
-                let CheckpointConfig {
-                    upload_info,
-                    checkpoint_dir,
-                    delete_old_steps,
-                    keep_steps,
-                } = checkpoint_info;
 
-                let upload_handle = tokio::task::spawn(async move {
-                    let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
-                    let local =
-                        save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
+            let CheckpointConfig {
+                upload_info,
+                checkpoint_dir,
+                delete_old_steps,
+                keep_steps,
+            } = checkpoint_info;
 
-                    if let Some(upload_info) = upload_info {
-                        upload_checkpoint(upload_info, local.clone(), step as u64, cancellation_token.clone())
-                            .await?;
-                    }
+            // Do the upload inline instead of spawning
+            let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
+            let local = save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
 
-                    cleanup_dirs(
-                        delete_queue,
-                        keep_steps,
-                        run_id,
-                        delete_old_steps,
-                        step,
-                        checkpoint_dir,
-                    )
-                    .await;
-
-                    Ok(())
-                });
-
-                Ok((evals, Some(upload_handle)))
+            if let Some(upload_info) = upload_info {
+                upload_checkpoint(upload_info, local.clone(), step as u64, cancellation_token.clone())
+                    .await?;
             }
-            .instrument(info_span!("checkpointing"))
+
+            cleanup_dirs(
+                delete_queue,
+                keep_steps,
+                run_id,
+                delete_old_steps,
+                step,
+                checkpoint_dir,
+            )
+            .await;
+
+            Ok((evals, None))  // No separate handle needed
+        }
+        .instrument(info_span!("checkpointing"))
         });
 
         Ok(CooldownStep {
@@ -260,7 +254,7 @@ async fn upload_checkpoint(
     cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), CheckpointError> {
     match upload_info {
-        UploadInfo::Gcs(gcs_info) => upload_to_gcs(gcs_info, local, step, cancellation_token)
+        UploadInfo::Gcs(gcs_info) => upload_to_gcs(gcs_info, local, cancellation_token)
             .await
             .map_err(CheckpointError::UploadError),
         UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, cancellation_token)

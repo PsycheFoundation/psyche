@@ -6,11 +6,8 @@ use google_cloud_storage::http::objects::upload::UploadType;
 use google_cloud_storage::http::objects::{
     download::Range, get::GetObjectRequest, list::ListObjectsRequest,
 };
-use psyche_coordinator::model::{self, GcsRepo};
-use psyche_core::FixedString;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
 use tracing::info;
 
 #[derive(Debug, Clone)]
@@ -140,7 +137,6 @@ pub fn download_model_from_gcs_sync(
 pub async fn upload_to_gcs(
     gcs_info: GcsUploadInfo,
     local: Vec<PathBuf>,
-    step: u64,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), UploadError> {
     let GcsUploadInfo {
@@ -163,7 +159,7 @@ pub async fn upload_to_gcs(
         // Check for cancellation before each file upload
         if cancellation_token.is_cancelled() {
             info!("Upload cancelled before uploading {}", path.display());
-            return Err(UploadError::Cancelled);
+            return Ok(());
         }
 
         let file_name = path
@@ -186,7 +182,6 @@ pub async fn upload_to_gcs(
             bucket: gcs_bucket.clone(),
             ..Default::default()
         };
-
         let upload_future = client.upload_object(&upload_request, data, &upload_type);
 
         let uploaded = tokio::select! {
@@ -194,7 +189,7 @@ pub async fn upload_to_gcs(
 
             _ = cancellation_token.cancelled() => {
                 info!("Upload cancelled during upload of {}", path.display());
-                return Err(UploadError::Cancelled);
+                return Ok(());
             }
             result = upload_future => {
                 result?

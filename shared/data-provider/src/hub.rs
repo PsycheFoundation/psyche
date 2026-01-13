@@ -1,16 +1,9 @@
 use crate::errors::UploadError;
-use crate::hub::model::HubRepo;
 use hf_hub::{
     Cache, Repo, RepoType,
-    api::{
-        Siblings,
-        tokio::{ApiError, UploadSource},
-    },
+    api::{Siblings, tokio::ApiError},
 };
-use psyche_coordinator::model;
-use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
-use tokio::sync::mpsc;
 use tracing::{error, info};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
@@ -211,7 +204,7 @@ pub async fn upload_to_hub(
     } = hub_info;
 
     if cancellation_token.is_cancelled() {
-        return Err(UploadError::Cancelled);
+        return Ok(());
     }
 
     info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
@@ -225,7 +218,7 @@ pub async fn upload_to_hub(
     for path in local {
         if cancellation_token.is_cancelled() {
             info!(repo = hub_repo, "Upload to HuggingFace cancelled");
-            return Err(UploadError::Cancelled);
+            return Ok(());
         }
 
         let file_name = path
@@ -247,7 +240,7 @@ pub async fn upload_to_hub(
 
             _ = cancellation_token.cancelled() => {
                 info!(repo = hub_repo, file = file_name, "Upload cancelled");
-                return Err(UploadError::Cancelled);
+                return Ok(());
             }
             result = upload_future => {
                 result.map_err(|e| {
