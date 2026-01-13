@@ -1,8 +1,8 @@
 use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, CausalSelfAttention,
     ColumnParallelLinear, CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward,
-    ModelConfig, ModelLoadError, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RowParallelLinear, default_rope, parallelism::Communicator,
+    ModelLoadError, PretrainedSource, RMSNorm, RoPECache, RoPEConfig, RowParallelLinear,
+    default_rope, parallelism::Communicator,
 };
 use std::sync::Arc;
 use tch::{
@@ -296,12 +296,6 @@ impl LlamaForCausalLM {
             tensor_parallelism_world,
             override_max_position_embeddings,
         )
-    }
-}
-
-impl ModelConfig for LlamaConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
-        unimplemented!()
     }
 }
 
