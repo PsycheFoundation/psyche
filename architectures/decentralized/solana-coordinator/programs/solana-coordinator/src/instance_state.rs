@@ -127,7 +127,7 @@ impl CoordinatorInstanceState {
                 }
             },
             Ok(TickResult::EpochEnd(success)) => {
-                msg!("Epoch end, sucecsss: {}", success);
+                msg!("Epoch end, success: {}", success);
 
                 let finished_clients = &self.coordinator.epoch_state.clients;
                 let exited_clients =
