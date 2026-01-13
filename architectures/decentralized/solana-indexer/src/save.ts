@@ -1,101 +1,105 @@
-import { promises as fsp } from 'fs'
-import { dirname, join } from 'path'
+import { promises as fsp } from "fs";
+import { dirname, join } from "path";
 import {
-	jsonCodecObject,
-	jsonCodecRaw,
-	jsonCodecString,
-	JsonValue,
-} from 'solana-kiss'
-import { utilsGetStateDirectory } from './utils'
+  jsonCodecObject,
+  jsonCodecRaw,
+  jsonCodecString,
+  JsonValue,
+} from "solana-kiss";
+import { utilsGetStateDirectory } from "./utils";
 
 export async function saveExists(
-	saveSubject: string,
-	saveName: string
+  saveSubject: string,
+  saveName: string,
 ): Promise<boolean> {
-	const path = savePath(saveSubject, saveName, 'latest')
-	try {
-		await fsp.access(path)
-		return true
-	} catch {
-		return false
-	}
+  const path = savePath(saveSubject, saveName, "latest");
+  try {
+    await fsp.access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function saveWrite(
-	saveSubject: string,
-	saveName: string,
-	saveContent: {
-		checkpoint: JsonValue
-		dataStore: JsonValue
-	}
+  saveSubject: string,
+  saveName: string,
+  saveContent: {
+    checkpoint: JsonValue;
+    dataStore: JsonValue;
+  },
 ): Promise<void> {
-	const startTime = Date.now()
-	const pathBackup = savePath(saveSubject, saveName, `backup_${fileDateOnly()}`)
-	const pathTemp = savePath(saveSubject, saveName, `tmp_${fileDateTime()}`)
-	const path = savePath(saveSubject, saveName, 'latest')
-	const encoded = jsonCodec.encoder({
-		updatedAt: new Date().toISOString(),
-		checkpoint: saveContent.checkpoint,
-		dataStore: saveContent.dataStore,
-	})
-	const content = JSON.stringify(encoded)
-	await fsp.mkdir(dirname(pathBackup), { recursive: true })
-	await fsp.writeFile(pathBackup, content, { flush: true })
-	await fsp.mkdir(dirname(pathTemp), { recursive: true })
-	await fsp.writeFile(pathTemp, content, { flush: true })
-	await fsp.mkdir(dirname(path), { recursive: true })
-	await fsp.rename(pathTemp, path)
-	console.log(
-		new Date().toISOString(),
-		'>>>',
-		`Written ${saveName} in ${Date.now() - startTime}ms`
-	)
+  const startTime = Date.now();
+  const pathBackup = savePath(
+    saveSubject,
+    saveName,
+    `backup_${fileDateOnly()}`,
+  );
+  const pathTemp = savePath(saveSubject, saveName, `tmp_${fileDateTime()}`);
+  const path = savePath(saveSubject, saveName, "latest");
+  const encoded = jsonCodec.encoder({
+    updatedAt: new Date().toISOString(),
+    checkpoint: saveContent.checkpoint,
+    dataStore: saveContent.dataStore,
+  });
+  const content = JSON.stringify(encoded);
+  await fsp.mkdir(dirname(pathBackup), { recursive: true });
+  await fsp.writeFile(pathBackup, content, { flush: true });
+  await fsp.mkdir(dirname(pathTemp), { recursive: true });
+  await fsp.writeFile(pathTemp, content, { flush: true });
+  await fsp.mkdir(dirname(path), { recursive: true });
+  await fsp.rename(pathTemp, path);
+  console.log(
+    new Date().toISOString(),
+    ">>>",
+    `Written ${saveName} in ${Date.now() - startTime}ms`,
+  );
 }
 
 export async function saveRead(
-	saveSubject: string,
-	saveName: string
+  saveSubject: string,
+  saveName: string,
 ): Promise<{
-	updatedAt: string
-	checkpoint: JsonValue
-	dataStore: JsonValue
+  updatedAt: string;
+  checkpoint: JsonValue;
+  dataStore: JsonValue;
 }> {
-	const startTime = Date.now()
-	const pathStart = savePath(saveSubject, saveName, `start_${fileDateTime()}`)
-	const path = savePath(saveSubject, saveName, 'latest')
-	const content = await fsp.readFile(path, 'utf-8')
-	await fsp.mkdir(dirname(pathStart), { recursive: true })
-	await fsp.writeFile(pathStart, content, { flush: true })
-	const encoded = JSON.parse(content) as JsonValue
-	const decoded = jsonCodec.decoder(encoded)
-	console.log(
-		new Date().toISOString(),
-		`Read ${saveSubject}-${saveName} in ${Date.now() - startTime}ms`
-	)
-	return decoded
+  const startTime = Date.now();
+  const pathStart = savePath(saveSubject, saveName, `start_${fileDateTime()}`);
+  const path = savePath(saveSubject, saveName, "latest");
+  const content = await fsp.readFile(path, "utf-8");
+  await fsp.mkdir(dirname(pathStart), { recursive: true });
+  await fsp.writeFile(pathStart, content, { flush: true });
+  const encoded = JSON.parse(content) as JsonValue;
+  const decoded = jsonCodec.decoder(encoded);
+  console.log(
+    new Date().toISOString(),
+    `Read ${saveSubject}-${saveName} in ${Date.now() - startTime}ms`,
+  );
+  return decoded;
 }
 
 function savePath(saveSubject: string, saveName: string, kind: string): string {
-	return join(
-		utilsGetStateDirectory(),
-		'saves',
-		saveSubject,
-		`${saveName}.${kind}.json`
-	)
+  return join(
+    utilsGetStateDirectory(),
+    "saves",
+    saveSubject,
+    `${saveName}.${kind}.json`,
+  );
 }
 
 function fileDateOnly() {
-	const now = new Date()
-	return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 }
 
 function fileDateTime() {
-	const now = new Date()
-	return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
 }
 
 const jsonCodec = jsonCodecObject({
-	updatedAt: jsonCodecString,
-	checkpoint: jsonCodecRaw,
-	dataStore: jsonCodecRaw,
-})
+  updatedAt: jsonCodecString,
+  checkpoint: jsonCodecRaw,
+  dataStore: jsonCodecRaw,
+});
