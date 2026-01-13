@@ -309,6 +309,11 @@ pub async fn upload_to_gcs(
             .to_str()
             .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?;
 
+        // Only upload safetensors files
+        if !file_name.ends_with(".safetensors") {
+            continue;
+        }
+
         let object_name = match &gcs_prefix {
             Some(p) => format!("{}/{}", p, file_name),
             None => file_name.to_string(),
@@ -344,6 +349,7 @@ pub async fn upload_to_gcs(
         });
     }
 
+    // Upload the manifest file
     let manifest_path = match &gcs_prefix {
         Some(p) => format!("{}/manifest.json", p),
         None => "manifest.json".to_string(),
