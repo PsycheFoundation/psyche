@@ -37,7 +37,6 @@ pub struct InferenceResult {
     pub request_id: Option<String>,
     pub generated_text: Option<String>,
     pub full_text: Option<String>,
-    pub prompt: Option<String>,
     pub error: Option<String>,
 }
 
@@ -143,7 +142,7 @@ pub fn create_engine(
 pub fn run_inference(
     py: Python,
     engine_id: &str,
-    prompt: &str,
+    messages: Vec<crate::protocol::ChatMessage>,
     temperature: Option<f64>,
     top_p: Option<f64>,
     max_tokens: Option<i32>,
@@ -152,7 +151,15 @@ pub fn run_inference(
 
     let kwargs = PyDict::new(py);
     kwargs.set_item("engine_id", engine_id)?;
-    kwargs.set_item("prompt", prompt)?;
+
+    let py_messages = pyo3::types::PyList::empty(py);
+    for msg in messages {
+        let py_msg = pyo3::types::PyDict::new(py);
+        py_msg.set_item("role", msg.role)?;
+        py_msg.set_item("content", msg.content)?;
+        py_messages.append(py_msg)?;
+    }
+    kwargs.set_item("messages", py_messages)?;
 
     if let Some(temp) = temperature {
         kwargs.set_item("temperature", temp)?;
@@ -178,7 +185,6 @@ pub fn run_inference(
         request_id: get_optional_string(&map, "request_id", py),
         generated_text: get_optional_string(&map, "generated_text", py),
         full_text: get_optional_string(&map, "full_text", py),
-        prompt: get_optional_string(&map, "prompt", py),
         error: get_optional_string(&map, "error", py),
     })
 }

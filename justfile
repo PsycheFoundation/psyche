@@ -265,7 +265,7 @@ inference-stack model="gpt2":
 
     # Create window for testing
     tmux new-window -t $SESSION -n test
-    tmux send-keys -t $SESSION:test "echo 'Test inference with:'; echo 'curl -X POST http://127.0.0.1:8000/v1/inference -H \"Content-Type: application/json\" -d '\"'\"'{\"prompt\": \"Hello, world!\", \"max_tokens\": 50}'\"'\"''" C-m
+    tmux send-keys -t $SESSION:test "echo 'Test inference with:'; echo 'curl -X POST http://127.0.0.1:8000/v1/chat/completions -H \"Content-Type: application/json\" -d '\"'\"'{\"messages\": [{\"role\": \"user\", \"content\": \"Hello, world!\"}], \"max_tokens\": 50}'\"'\"''" C-m
 
     # Attach to session
     echo "Starting inference stack in tmux session '$SESSION'"
@@ -278,9 +278,9 @@ inference-stack model="gpt2":
 
 # Test inference via HTTP (requires inference stack to be running)
 test-inference prompt="Hello, world!" max_tokens="50":
-    curl -X POST http://127.0.0.1:8000/v1/inference \
+    curl -X POST http://127.0.0.1:8000/v1/chat/completions \
         -H "Content-Type: application/json" \
-        -d '{"prompt": "{{ prompt }}", "max_tokens": {{ max_tokens }}}'
+        -d '{"messages": [{"role": "user", "content": "{{ prompt }}"}], "max_tokens": {{ max_tokens }}}'
 
 # Run end-to-end test: start nodes, send request, verify response
 test-inference-e2e model="gpt2" prompt="Hello, world!":
