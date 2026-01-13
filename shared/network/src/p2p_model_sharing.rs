@@ -483,19 +483,12 @@ impl SharableModel {
                 let transmittable_config: TransmittableModelConfig = TransmittableModelConfig::new(
                     config.clone(),
                     raw_tokenizer,
-                    self.serialized_parameters
+                    self.parameters
                         .as_ref()
-                        .map(|x| x.keys().cloned())
-                        .unwrap_or_default()
-                        .chain(
-                            self.serializing_parameters
-                                .as_ref()
-                                .map(|x| x.keys().cloned())
-                                .unwrap_or_default(),
-                        )
-                        .collect::<HashSet<String>>()
-                        .into_iter()
-                        .collect::<Vec<String>>(),
+                        .ok_or_else(|| SharableModelError::ModelConfigNotInitialized)?
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>(),
                 );
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
