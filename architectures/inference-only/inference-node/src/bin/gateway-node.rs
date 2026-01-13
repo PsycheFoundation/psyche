@@ -85,48 +85,69 @@ struct GatewayState {
 }
 
 #[cfg(feature = "gateway")]
-#[derive(serde::Deserialize)]
-struct InferenceRequestBody {
-    prompt: String,
-    #[serde(default = "default_max_tokens")]
-    max_tokens: usize,
-    #[serde(default = "default_temperature")]
-    temperature: f64,
-    #[serde(default = "default_top_p")]
-    top_p: f64,
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
+struct ChatMessage {
+    role: String,
+    content: String,
 }
 
-fn default_max_tokens() -> usize {
-    100
+#[cfg(feature = "gateway")]
+#[derive(serde::Deserialize)]
+struct ChatCompletionRequest {
+    model: Option<String>,
+    messages: Vec<ChatMessage>,
+    #[serde(default = "default_max_tokens")]
+    max_tokens: Option<usize>,
+    #[serde(default = "default_temperature")]
+    temperature: Option<f64>,
+    #[serde(default = "default_top_p")]
+    top_p: Option<f64>,
+    #[serde(default)]
+    stream: bool,
 }
-fn default_temperature() -> f64 {
-    1.0
+
+fn default_max_tokens() -> Option<usize> {
+    Some(100)
 }
-fn default_top_p() -> f64 {
-    1.0
+fn default_temperature() -> Option<f64> {
+    Some(1.0)
+}
+fn default_top_p() -> Option<f64> {
+    Some(1.0)
 }
 
 #[cfg(feature = "gateway")]
 #[derive(serde::Serialize)]
-struct InferenceResponseBody {
-    request_id: String,
-    generated_text: String,
-    full_text: String,
+struct ChatCompletionChoice {
+    index: usize,
+    message: ChatMessage,
     finish_reason: Option<String>,
+}
+
+#[cfg(feature = "gateway")]
+#[derive(serde::Serialize)]
+struct ChatCompletionResponse {
+    id: String,
+    object: String,
+    created: u64,
+    model: String,
+    choices: Vec<ChatCompletionChoice>,
+    // we're omitting usage stats for now
 }
 
 #[cfg(feature = "gateway")]
 #[axum::debug_handler]
 async fn handle_inference(
     State(state): State<Arc<GatewayState>>,
-    Json(req): Json<InferenceRequestBody>,
-) -> Result<Json<InferenceResponseBody>, AppError> {
+    Json(req): Json<ChatCompletionRequest>,
+) -> Result<Json<ChatCompletionResponse>, AppError> {
     let nodes = state.available_nodes.read().await;
     if nodes.is_empty() {
         return Err(AppError::NoNodesAvailable);
     }
 
     let node = nodes.values().next().unwrap();
+    let model_name = req.model.clone().unwrap_or_else(|| node.model_name.clone());
     info!(
         "Routing request to node: {} (model: {})",
         node.peer_id.fmt_short(),
@@ -134,14 +155,23 @@ async fn handle_inference(
     );
     drop(nodes);
 
+    let messages: Vec<psyche_inference::ChatMessage> = req
+        .messages
+        .iter()
+        .map(|m| psyche_inference::ChatMessage {
+            role: m.role.clone(),
+            content: m.content.clone(),
+        })
+        .collect();
+
     let request_id = uuid::Uuid::new_v4().to_string();
     let inference_req = InferenceRequest {
         request_id: request_id.clone(),
-        prompt: req.prompt,
-        max_tokens: req.max_tokens,
-        temperature: req.temperature,
-        top_p: req.top_p,
-        stream: false,
+        messages,
+        max_tokens: req.max_tokens.unwrap_or(100),
+        temperature: req.temperature.unwrap_or(1.0),
+        top_p: req.top_p.unwrap_or(1.0),
+        stream: req.stream,
     };
 
     let (tx, mut rx) = mpsc::channel(1);
@@ -168,11 +198,24 @@ async fn handle_inference(
 
     state.pending_requests.write().await.remove(&request_id);
 
-    Ok(Json(InferenceResponseBody {
-        request_id: response.request_id,
-        generated_text: response.generated_text,
-        full_text: response.full_text,
-        finish_reason: response.finish_reason,
+    let created = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    Ok(Json(ChatCompletionResponse {
+        id: format!("chatcmpl-{}", response.request_id),
+        object: "chat.completion".to_string(),
+        created,
+        model: model_name,
+        choices: vec![ChatCompletionChoice {
+            index: 0,
+            message: ChatMessage {
+                role: "assistant".to_string(),
+                content: response.generated_text,
+            },
+            finish_reason: response.finish_reason,
+        }],
     }))
 }
 
@@ -502,7 +545,7 @@ async fn run_gateway() -> Result<()> {
     };
 
     let app = Router::new()
-        .route("/v1/inference", post(handle_inference))
+        .route("/v1/chat/completions", post(handle_inference))
         .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&args.listen_addr)

@@ -7,7 +7,7 @@ set -euo pipefail
 MODEL="${1:-gpt2}"
 PROMPT="${2:-Hello, world! This is a test.}"
 
-echo "🚀 Starting inference network test..."
+echo "Starting inference network test..."
 echo "  Model: $MODEL"
 echo "  Prompt: $PROMPT"
 echo ""
@@ -15,7 +15,7 @@ echo ""
 # Cleanup function
 cleanup() {
     echo ""
-    echo "🧹 Cleaning up..."
+    echo "Cleaning up..."
     if [ ! -z "${INFERENCE_PID:-}" ]; then
         kill $INFERENCE_PID 2>/dev/null || true
     fi
@@ -26,7 +26,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Start inference node
-echo "📦 Starting inference node..."
+echo "Starting inference node..."
 LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info cargo run --bin psyche-inference-node -- \
     --model-name "$MODEL" \
     --discovery-mode local \
@@ -39,13 +39,13 @@ sleep 5
 
 # Check if inference node is still running
 if ! kill -0 $INFERENCE_PID 2>/dev/null; then
-    echo "❌ Inference node failed to start. Check /tmp/psyche-inference-node.log"
+    echo "Inference node failed to start. Check /tmp/psyche-inference-node.log"
     tail -20 /tmp/psyche-inference-node.log
     exit 1
 fi
 
 # Start gateway
-echo "🌉 Starting gateway node..."
+echo "Starting gateway node..."
 RUST_LOG=info cargo run --bin gateway-node --features gateway -- \
     --discovery-mode local \
     > /tmp/psyche-gateway-node.log 2>&1 &
@@ -57,20 +57,20 @@ sleep 3
 
 # Check if gateway is still running
 if ! kill -0 $GATEWAY_PID 2>/dev/null; then
-    echo "❌ Gateway node failed to start. Check /tmp/psyche-gateway-node.log"
+    echo "Gateway node failed to start. Check /tmp/psyche-gateway-node.log"
     tail -20 /tmp/psyche-gateway-node.log
     exit 1
 fi
 
 echo ""
-echo "✅ Both nodes running!"
+echo "Both nodes running!"
 echo ""
-echo "📡 Sending test inference request..."
+echo "Sending test inference request..."
 
 # Send test request
-RESPONSE=$(curl -s -X POST http://127.0.0.1:8000/v1/inference \
+RESPONSE=$(curl -s -X POST http://127.0.0.1:8000/v1/chat/completions \
         -H "Content-Type: application/json" \
-        -d "{\"prompt\": \"$PROMPT\", \"max_tokens\": 50}" \
+        -d "{\"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}], \"max_tokens\": 50}" \
     -w "\nHTTP_STATUS:%{http_code}")
 
 HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
@@ -78,12 +78,12 @@ BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS:")
 
 echo ""
 if [ "$HTTP_STATUS" = "200" ]; then
-    echo "✅ Request succeeded (HTTP $HTTP_STATUS)"
+    echo "Request succeeded (HTTP $HTTP_STATUS)"
     echo ""
     echo "Response:"
     echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
 else
-    echo "❌ Request failed (HTTP $HTTP_STATUS)"
+    echo "Request failed (HTTP $HTTP_STATUS)"
     echo ""
     echo "Response:"
     echo "$BODY"
@@ -97,4 +97,4 @@ else
 fi
 
 echo ""
-echo "🎉 Test completed successfully!"
+echo "Test completed successfully!"

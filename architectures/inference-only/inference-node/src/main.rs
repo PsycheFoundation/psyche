@@ -241,7 +241,7 @@ async fn main() -> Result<()> {
     .await
     .context("Failed to initialize P2P network")?;
 
-    info!("✓ P2P network initialized");
+    info!("P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
     info!("Protocol handler registered");
 
