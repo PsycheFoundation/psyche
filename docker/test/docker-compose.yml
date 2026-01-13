@@ -22,7 +22,7 @@ services:
       test:
         [
           'CMD-SHELL',
-          'solana account PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw --url http://localhost:8899 | grep -q "Executable: true" && solana account 4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7 --url http://localhost:8899 | grep -q "Executable: true" || exit 1',
+          'AUTHORIZER_ID=$(solana address -k /local/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json) && COORDINATOR_ID=$(solana address -k /local/solana-coordinator/target/deploy/psyche_solana_coordinator-keypair.json) && solana account $AUTHORIZER_ID --url http://localhost:8899 | grep -q "Executable: true" && solana account $COORDINATOR_ID --url http://localhost:8899 | grep -q "Executable: true" || exit 1',
         ]
       interval: 5s
       timeout: 5s

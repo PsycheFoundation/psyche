@@ -26,8 +26,8 @@ impl TestValidator {
         println!("Starting Docker test validator...");
 
         // Find workspace root (go up from CARGO_MANIFEST_DIR to workspace root)
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .context("CARGO_MANIFEST_DIR not set")?;
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
         let workspace_root = std::path::Path::new(&manifest_dir)
             .parent()
             .and_then(|p| p.parent())
@@ -58,14 +58,22 @@ impl TestValidator {
 
         // Wait for validator to be healthy
         println!("Waiting for validator to be healthy...");
-        for _ in 0..30 {
+
+        // Get expected program IDs from the source
+        let authorizer_id = psyche_solana_authorizer::ID.to_string();
+        let coordinator_id = psyche_solana_coordinator::ID.to_string();
+
+        println!("Looking for Authorizer program: {}", authorizer_id);
+        println!("Looking for Coordinator program: {}", coordinator_id);
+
+        for i in 0..30 {
             let health_check = Command::new("docker")
                 .args([
                     "exec",
                     "test-psyche-solana-test-validator-1",
                     "solana",
                     "account",
-                    "PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw",
+                    &authorizer_id,
                     "--url",
                     "http://localhost:8899",
                 ])
@@ -74,10 +82,32 @@ impl TestValidator {
                 .status();
 
             if health_check.is_ok() && health_check.unwrap().success() {
-                println!("Validator is healthy!");
-                return Ok(Self);
+                // Verify coordinator is also deployed
+                let coord_check = Command::new("docker")
+                    .args([
+                        "exec",
+                        "test-psyche-solana-test-validator-1",
+                        "solana",
+                        "account",
+                        &coordinator_id,
+                        "--url",
+                        "http://localhost:8899",
+                    ])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+
+                if coord_check.is_ok() && coord_check.unwrap().success() {
+                    println!("Validator is healthy! Both programs deployed.");
+                    return Ok(Self);
+                } else {
+                    println!("Warning: Authorizer found but Coordinator not deployed yet");
+                }
             }
 
+            if i % 5 == 0 && i > 0 {
+                println!("Still waiting for validator... (attempt {}/30)", i + 1);
+            }
             std::thread::sleep(Duration::from_secs(2));
         }
 
