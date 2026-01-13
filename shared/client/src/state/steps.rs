@@ -358,12 +358,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             let checkpointer_selection =
                 CheckpointerSelection::from_coordinator(&self.coordinator_state, 0)
                     .map_err(|_| OpportunisticWitnessError::Send)?;
-            let is_checkpointer = checkpointer_selection.get_checkpointer(
+
+            if !checkpointer_selection.is_checkpointer(
                 client_index as u64,
                 self.coordinator_state.epoch_state.clients.len() as u64,
-            );
-
-            if !is_checkpointer {
+            ) {
                 return Ok(());
             }
 
@@ -779,10 +778,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                         trace!(
                             "since we're not a member of this step, killing cooldown step and returning to warmup to wait."
                         );
-                        let (trainers, _) = cooldown.finish().await?;
-                        // if let Some(handle) = upload_handle {
-                        //     self.pending_upload_handles.push(handle);
-                        // }
+                        let trainers = cooldown.finish().await?;
                         ActiveStep::Warmup(self.warmup.start(
                             trainers,
                             &mut self.previous_round,
@@ -894,8 +890,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             // the epoch ended & we're transitioning to cooldown
             (ActiveStep::Witness(witnessing), RunState::Cooldown) => {
                 let trainers = witnessing.finish().await?.stop_evals().await?;
-                // check here
-                self.cleanup_completed_uploads();
 
                 ActiveStep::Cooldown(self.cooldown.start(trainers, &state, client_index)?)
             }
@@ -903,9 +897,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
             | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
             | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
-                cooldown.cancel(); // Cancel any ongoing upload
+                // If we reach state it means at least one of the clients has successfully uploaded the model checkpoint.
+                // We can cancel any of the other uploads in progress.
+                cooldown.cancel();
 
-                let (trainers, _) = cooldown.finish().await?;
+                let trainers = cooldown.finish().await?;
                 self.sent_cooldown_witness = false;
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
@@ -939,11 +935,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             .map_err(|_| anyhow::anyhow!("stats logger mutex poisoned"))?
             .endpoint_info = endpoint_info;
         Ok(())
-    }
-
-    fn cleanup_completed_uploads(&mut self) {
-        // self.pending_upload_handles
-        //     .retain(|handle| !handle.is_finished());
     }
 }
 
@@ -1147,21 +1138,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
             run.set_endpoint_info(endpoint_info)?;
         }
         Ok(())
-    }
-
-    pub fn doing_checkpoint(&self) -> bool {
-        //     match &self.0 {
-        //         InitStage::Running(step_state_machine) => {
-        //             let has_pending_uploads = step_state_machine
-        //                 .pending_upload_handles
-        //                 .iter()
-        //                 .any(|handle| !handle.is_finished());
-
-        //             has_pending_uploads
-        //         }
-        //         _ => false,
-        //     }
-        false
     }
 }
 

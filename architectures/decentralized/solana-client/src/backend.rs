@@ -20,6 +20,7 @@ use anchor_client::{
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
+use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
@@ -335,6 +336,22 @@ impl SolanaBackend {
         self.spawn_scheduled_send("Health check", &[instruction], &[]);
     }
 
+    pub fn send_checkpoint(
+        &self,
+        coordinator_instance: Pubkey,
+        coordinator_account: Pubkey,
+        repo: Checkpoint,
+    ) {
+        let user = self.get_payer();
+        let instruction = instructions::coordinator_checkpoint(
+            &coordinator_instance,
+            &coordinator_account,
+            &user,
+            repo,
+        );
+        self.spawn_scheduled_send("Checkpoint", &[instruction], &[]);
+    }
+
     pub fn find_join_authorization(join_authority: &Pubkey, authorizer: Option<Pubkey>) -> Pubkey {
         psyche_solana_authorizer::find_authorization(
             join_authority,
@@ -590,6 +607,12 @@ impl WatcherBackend<psyche_solana_coordinator::ClientId> for SolanaBackendRunner
             self.backend
                 .send_health_check(self.instance, self.account, id, proof);
         }
+        Ok(())
+    }
+
+    async fn send_checkpoint(&mut self, checkpoint: Checkpoint) -> Result<()> {
+        self.backend
+            .send_checkpoint(self.instance, self.account, checkpoint);
         Ok(())
     }
 }

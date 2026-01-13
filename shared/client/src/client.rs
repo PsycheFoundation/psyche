@@ -133,7 +133,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut retry_check_interval = interval(DOWNLOAD_RETRY_CHECK_INTERVAL);
                 let mut opportunistic_witness_interval = interval(OPPROTUNISTIC_WITNESS_INTERVAL);
                 let mut check_connection_interval = interval(CHECK_CONNECTION_INTERVAL);
-                let mut _wait_for_checkpoint = false;
                 let mut last_gossip_connection_time = SystemTime::now();
                 debug!("Starting client loop");
 
@@ -141,9 +140,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     select! {
                         _ = cancel.cancelled() => {
                             info!("Got request to cancel main client loop");
-                            if run.doing_checkpoint() {
-                                _wait_for_checkpoint = true;
-                            }
                             break;
                         }
 

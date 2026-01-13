@@ -513,7 +513,6 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn cooldown_witness(
         &mut self,
-        _from: &T,
         witness: Witness,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
@@ -525,9 +524,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
-        let is_checkpointer = checkpointer_selection
-            .get_checkpointer(witness.proof.index, self.epoch_state.clients.len() as u64);
-        if !is_checkpointer {
+        if !checkpointer_selection
+            .is_checkpointer(witness.proof.index, self.epoch_state.clients.len() as u64)
+        {
             return Err(CoordinatorError::InvalidWitness);
         }
 
@@ -670,9 +669,9 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidRunState);
         }
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
-        let is_checkpointer = checkpointer_selection
-            .get_checkpointer(index as u64, self.epoch_state.clients.len() as u64);
-        if !is_checkpointer {
+        if !checkpointer_selection
+            .is_checkpointer(index as u64, self.epoch_state.clients.len() as u64)
+        {
             return Err(CoordinatorError::InvalidWitness);
         }
 
