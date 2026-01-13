@@ -14,6 +14,7 @@
         craneLib
         env
         psychePythonVenv
+        psychePythonVenvWithExtension
         ;
     in
     {
@@ -33,6 +34,7 @@
               UV_NO_SYNC = 1;
               # UV_PYTHON = pkgs.psycheLib.psychePythonVenv.interpreter;
               UV_PYTHON_DOWNLOADS = "never";
+              NIX_LDFLAGS = "-L${psychePythonVenv}/lib -lpython3.12";
             };
             packages =
               with pkgs;
@@ -61,6 +63,7 @@
 
                 # cargo stuff
                 cargo-watch
+                cargo-nextest
 
                 self'.packages.solana-toolbox-cli
 
@@ -104,8 +107,12 @@
             defaultShell
             // {
               packages = defaultShell.packages ++ [
-                psychePythonVenv
+                psychePythonVenvWithExtension
               ];
+              env = defaultShell.env // {
+                # Override NIX_LDFLAGS to use the venv with extension
+                NIX_LDFLAGS = "-L${psychePythonVenvWithExtension}/lib -lpython3.12";
+              };
               shellHook = defaultShell.shellHook + ''
                 echo "This shell has the 'psyche' module available in its python interpreter.";
               '';

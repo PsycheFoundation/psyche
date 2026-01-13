@@ -66,9 +66,9 @@ let
 
   rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
     buildInputs = rustWorkspaceArgs.buildInputs ++ [
-      psychePythonVenv
+      psychePythonVenvWithExtension
     ];
-    NIX_LDFLAGS = "-L${psychePythonVenv}/lib -lpython3.12";
+    NIX_LDFLAGS = "-L${psychePythonVenvWithExtension}/lib -lpython3.12";
   };
 
   rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
@@ -81,10 +81,27 @@ let
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
   cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
 
-  # Runtime python environment = build-time env + rust extension
-  psychePythonVenv = pkgs.callPackage ../python {
-    inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
-  };
+  psychePythonExtension = pkgs.callPackage ../python { };
+
+  # python venv without the psyche extension (vllm, etc)
+
+  pythonDeps = { inherit (inputs) uv2nix pyproject-nix pyproject-build-systems; };
+  psychePythonVenv = pkgs.callPackage ./python.nix (
+    {
+      extraPackages = { };
+    }
+    // pythonDeps
+  );
+
+  # python venv with the psyche extension
+  psychePythonVenvWithExtension = pkgs.callPackage ./python.nix (
+    {
+      extraPackages = {
+        psyche = psychePythonExtension;
+      };
+    }
+    // pythonDeps
+  );
 
   buildRustPackageWithPsychePythonEnvironment =
     {
@@ -374,6 +391,7 @@ in
     src
     gitcommit
     psychePythonVenv
+    psychePythonVenvWithExtension
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };
