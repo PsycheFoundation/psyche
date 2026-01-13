@@ -56,8 +56,30 @@ fn check_model_extension(filename: &str) -> bool {
     MODEL_EXTENSIONS.iter().any(|ext| filename.ends_with(ext))
 }
 
-fn get_cache_dir(bucket: &str, prefix: Option<&str>) -> PathBuf {
-    // ~/.cache/psyche/gcs/{bucket}/{prefix}
+fn get_cache_dir(
+    bucket: &str,
+    prefix: Option<&str>,
+    step: u32,
+    manifest_generation: i64,
+) -> PathBuf {
+    // ~/.cache/psyche/gcs/{bucket}/{prefix}/step-{step}-{manifest_generation}
+    let base = std::env::var("HOME")
+        .map(|h| PathBuf::from(h).join(".cache"))
+        .unwrap_or_else(|_| PathBuf::from(".cache"))
+        .join("psyche")
+        .join("gcs")
+        .join(bucket);
+
+    let versioned_folder = format!("step-{}-{}", step, manifest_generation);
+
+    match prefix {
+        Some(p) => base.join(p.trim_end_matches('/')).join(versioned_folder),
+        None => base.join(versioned_folder),
+    }
+}
+
+fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
+    // Legacy cache path for checkpoints without manifest
     let base = std::env::var("HOME")
         .map(|h| PathBuf::from(h).join(".cache"))
         .unwrap_or_else(|_| PathBuf::from(".cache"))
@@ -85,39 +107,62 @@ pub async fn download_model_from_gcs_async(
     };
     let client = Client::new(config);
 
-    let cache_dir = get_cache_dir(bucket, prefix);
-    std::fs::create_dir_all(&cache_dir)?;
-
-    // Try to download manifest first
-    let manifest_path = match prefix {
+    let manifest_object_path = match prefix {
         Some(p) => format!("{}/manifest.json", p),
         None => "manifest.json".to_string(),
     };
 
-    let manifest_result = client
-        .download_object(
-            &GetObjectRequest {
-                bucket: bucket.to_owned(),
-                object: manifest_path.clone(),
-                ..Default::default()
-            },
-            &Range::default(),
-        )
+    // Get manifest metadata to obtain generation number
+    let manifest_metadata = client
+        .get_object(&GetObjectRequest {
+            bucket: bucket.to_owned(),
+            object: manifest_object_path.clone(),
+            ..Default::default()
+        })
         .await;
 
-    match manifest_result {
-        Ok(manifest_data) => {
+    match manifest_metadata {
+        Ok(object_meta) => {
+            let manifest_generation = object_meta.generation;
+
+            // Download manifest content
+            let manifest_data = client
+                .download_object(
+                    &GetObjectRequest {
+                        bucket: bucket.to_owned(),
+                        object: manifest_object_path,
+                        ..Default::default()
+                    },
+                    &Range::default(),
+                )
+                .await?;
+
             let manifest: GcsCheckpointManifest = serde_json::from_slice(&manifest_data)?;
+
             info!(
-                "Found manifest with {} files (step {}, epoch {})",
-                manifest.files.len(),
-                manifest.metadata.step,
-                manifest.metadata.epoch
+                "Found manifest: step {}, epoch {}, generation {}",
+                manifest.metadata.step, manifest.metadata.epoch, manifest_generation
             );
+
+            // Build versioned cache path
+            let cache_dir =
+                get_cache_dir(bucket, prefix, manifest.metadata.step, manifest_generation);
+
+            // Check if all files exist in cache
+            if let Some(cached_files) = collect_cached_files(&cache_dir, &manifest) {
+                info!("Using cached checkpoint at {:?}", cache_dir);
+                return Ok(cached_files);
+            }
+
+            // Download all files (cache missing or incomplete)
+            std::fs::create_dir_all(&cache_dir)?;
             download_files_from_manifest(&client, bucket, prefix, &cache_dir, &manifest).await
         }
         Err(_) => {
+            // Fallback for old checkpoints without manifest
             info!("No manifest found, falling back to listing objects");
+            let cache_dir = get_cache_dir_no_manifest(bucket, prefix);
+            std::fs::create_dir_all(&cache_dir)?;
             download_files_by_listing(&client, bucket, prefix, &cache_dir).await
         }
     }
@@ -137,23 +182,7 @@ async fn download_files_from_manifest(
             Some(p) => format!("{}/{}", p, file_entry.filename),
             None => file_entry.filename.clone(),
         };
-
         let local_path = cache_dir.join(&file_entry.filename);
-
-        // Use file size to check if cached file is valid
-        if local_path.exists() {
-            if let Ok(metadata) = std::fs::metadata(&local_path) {
-                if metadata.len() == file_entry.size_bytes {
-                    info!("Using cached: {}", file_entry.filename);
-                    downloaded_files.push(local_path);
-                    continue;
-                }
-            }
-            info!(
-                "Cached file size mismatch, re-downloading: {}",
-                file_entry.filename
-            );
-        }
 
         info!(
             "Downloading: {} (generation {})",
@@ -164,7 +193,7 @@ async fn download_files_from_manifest(
             .download_object(
                 &GetObjectRequest {
                     bucket: bucket.to_owned(),
-                    object: object_name.clone(),
+                    object: object_name,
                     ..Default::default()
                 },
                 &Range::default(),
@@ -172,7 +201,6 @@ async fn download_files_from_manifest(
             .await?;
 
         std::fs::write(&local_path, &data)?;
-
         info!("Downloaded: {} ({} bytes)", file_entry.filename, data.len());
         downloaded_files.push(local_path);
     }
