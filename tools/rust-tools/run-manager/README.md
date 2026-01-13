@@ -20,9 +20,9 @@ Where:
   RPC=http://some-host:8899
   WS_RPC=ws://some-host:8900
   RUN_ID=the_run_id
-  WALLET_PATH=keys/keypair.json  # Optional
+  WALLET_PRIVATE_KEY_PATH=keys/keypair.json  # Optional
   ```
 
-  - If `WALLET_PATH` is defined it will use the specified keypair instead of the default `$HOME/.config/solana/id.json`
+  - If `WALLET_PRIVATE_KEY_PATH` is defined it will use the specified keypair instead of the default `$HOME/.config/solana/id.json`
 
 The run manager will also try to restart the client a few times in case it encounters an error. If you notice it somehow is stuck you may close the process manually via `ctrl+c` and run it again.

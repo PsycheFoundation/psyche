@@ -7,6 +7,14 @@ use crate::command::close_run::CommandCloseRunParams;
 use crate::command::close_run::command_close_run_execute;
 use crate::command::create_run::CommandCreateRunParams;
 use crate::command::create_run::command_create_run_execute;
+use crate::command::join_authorization_create::CommandJoinAuthorizationCreateParams;
+use crate::command::join_authorization_create::command_join_authorization_create_execute;
+use crate::command::join_authorization_delegate::CommandJoinAuthorizationDelegateParams;
+use crate::command::join_authorization_delegate::command_join_authorization_delegate_execute;
+use crate::command::join_authorization_delete::CommandJoinAuthorizationDeleteParams;
+use crate::command::join_authorization_delete::command_join_authorization_delete_execute;
+use crate::command::join_authorization_read::CommandJoinAuthorizationReadParams;
+use crate::command::join_authorization_read::command_join_authorization_read_execute;
 use crate::command::json_dump_run::CommandJsonDumpRunParams;
 use crate::command::json_dump_run::command_json_dump_run_execute;
 use crate::command::json_dump_user::CommandJsonDumpUserParams;
@@ -58,6 +66,7 @@ mod command;
 mod instructions;
 mod network_identity;
 mod retry;
+mod utils;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -200,6 +209,36 @@ enum Commands {
         #[clap(flatten)]
         params: CommandJsonDumpUserParams,
     },
+    JoinAuthorizationCreate {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationCreateParams,
+    },
+    JoinAuthorizationDelegate {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationDelegateParams,
+    },
+    JoinAuthorizationDelete {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        wallet: WalletArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationDeleteParams,
+    },
+    JoinAuthorizationRead {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandJoinAuthorizationReadParams,
+    },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
     PrintAllHelp {
@@ -268,6 +307,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -283,6 +325,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -298,6 +343,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -313,6 +361,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -328,6 +379,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -343,6 +397,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -358,6 +415,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -373,6 +433,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -388,6 +451,9 @@ async fn async_main() -> Result<()> {
             wallet,
             params,
         } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             let backend = SolanaBackend::new(
                 cluster.into(),
@@ -487,6 +553,9 @@ async fn async_main() -> Result<()> {
             Ok(())
         }
         Commands::CanJoin { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -497,6 +566,9 @@ async fn async_main() -> Result<()> {
             command_can_join_execute(backend, params).await
         }
         Commands::JsonDumpRun { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -507,6 +579,9 @@ async fn async_main() -> Result<()> {
             command_json_dump_run_execute(backend, params).await
         }
         Commands::JsonDumpUser { cluster, params } => {
+            psyche_tui::logging()
+                .with_output(LogOutput::Console)
+                .init()?;
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
@@ -515,6 +590,58 @@ async fn async_main() -> Result<()> {
             )
             .unwrap();
             command_json_dump_user_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationCreate {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Arc::new(wallet.try_into()?),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_create_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationDelegate {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Arc::new(wallet.try_into()?),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_delegate_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationDelete {
+            cluster,
+            wallet,
+            params,
+        } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Arc::new(wallet.try_into()?),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_delete_execute(backend, params).await
+        }
+        Commands::JoinAuthorizationRead { cluster, params } => {
+            let backend = SolanaBackend::new(
+                cluster.into(),
+                vec![],
+                Keypair::new().into(),
+                CommitmentConfig::confirmed(),
+            )
+            .unwrap();
+            command_join_authorization_read_execute(backend, params).await
         }
         Commands::PrintAllHelp { markdown } => {
             // This is a required argument for the time being.

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use psyche_coordinator::model::DummyType;
 use psyche_core::{BatchId, ClosedInterval, Shuffle, TokenSize};
 use psyche_data_provider::{
     DummyDataProvider, LengthKnownDataProvider, TokenizedData, TokenizedDataProvider,
@@ -186,8 +185,8 @@ async fn test_weighted_data_provider_consistency() -> Result<()> {
 
 #[test(tokio::test)]
 async fn test_weighted_data_provider_with_dummy_provider() -> Result<()> {
-    let dummy1 = DummyDataProvider::new(TokenSize::TwoBytes, 10, 50, DummyType::Working); // 10 tokens per sequence
-    let dummy2 = DummyDataProvider::new(TokenSize::TwoBytes, 10, 50, DummyType::Working);
+    let dummy1 = DummyDataProvider::new(TokenSize::TwoBytes, 10, 50); // 10 tokens per sequence
+    let dummy2 = DummyDataProvider::new(TokenSize::TwoBytes, 10, 50);
 
     let mut weighted_provider = WeightedDataProvider::new(
         vec![(dummy1, 0.5), (dummy2, 0.5)],
@@ -199,9 +198,8 @@ async fn test_weighted_data_provider_with_dummy_provider() -> Result<()> {
     let samples = weighted_provider.get_samples(batch_id).await?;
 
     assert_eq!(samples.len(), 10);
-    // each sample should have 11 tokens (10 + 1 for next token prediction)
     for sample in samples {
-        assert_eq!(sample.input_ids.len(), 11);
+        assert_eq!(sample.input_ids.len(), 10);
     }
 
     Ok(())

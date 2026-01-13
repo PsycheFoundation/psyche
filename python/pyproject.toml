@@ -1,9 +1,19 @@
 [project]
+dependencies = ["transformers==4.57.3", "flash-linear-attention==0.4.0"]
 name = "psyche-deps"
 version = "0.1.0"
 requires-python = "==3.12.*"
-# deps like torch and flash attn are provided by nix
-dependencies = ["transformers==4.56.1"]
+
+# these deps are provided by nix, never include them & their deps in the uv.lock
+[tool.uv]
+override-dependencies = [
+  "torch==99.99.99",
+  "torchtitan==99.99.99",
+  "flash-attn==99.99.99",
+  "liger-kernel==99.99.99",
+]
+[tool.uv.sources]
+torch = { path = "stub/torch" }
 
 [project.optional-dependencies]
 tests = ["pytest"]
