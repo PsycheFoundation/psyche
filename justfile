@@ -3,6 +3,10 @@ mod nix
 default:
     just --list
 
+# test inference network discovery (2 nodes in tmux)
+test-inference-network:
+    ./scripts/test-inference-network.sh
+
 # format & lint-fix code
 fmt:
     echo "deprecated, use 'nix fmt' instead..."
