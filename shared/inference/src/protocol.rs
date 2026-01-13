@@ -213,7 +213,10 @@ mod tests {
     fn test_inference_message_serialization() {
         let req = InferenceRequest {
             request_id: "test-1".to_string(),
-            prompt: "Hello".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
             max_tokens: 10,
             temperature: 0.7,
             top_p: 0.9,
@@ -227,7 +230,7 @@ mod tests {
         match parsed {
             InferenceMessage::Request(r) => {
                 assert_eq!(r.request_id, "test-1");
-                assert_eq!(r.prompt, "Hello");
+                assert_eq!(r.messages[0].content, "Hello");
             }
             _ => panic!("Expected Request variant"),
         }
