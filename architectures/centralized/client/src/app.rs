@@ -195,7 +195,6 @@ impl App {
                 }
             }
             Some(UploadInfo::Gcs(gcs_info)) => {
-                // Create GCS client
                 let config = ClientConfig::default().with_auth().await?;
                 let client = GcsClient::new(config);
 
@@ -211,14 +210,13 @@ impl App {
                             bucket: gcs_info.gcs_bucket.clone(),
                             ..Default::default()
                         },
-                        vec![], // empty content
+                        vec![],
                         &UploadType::Simple(Media::new(test_key.clone())),
                     )
                     .await;
 
                 match upload_result {
                     Ok(_) => {
-                        // Clean up test object
                         let delete_request = DeleteObjectRequest {
                             bucket: gcs_info.gcs_bucket.clone(),
                             object: test_key.clone(),
