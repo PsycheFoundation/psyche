@@ -305,7 +305,7 @@ impl App {
                     match ticked.tick(pending_clients_ids, timestamp, rand::rng().next_u64()) {
                         Ok(_) => {
                             if ticked.run_state != latest_update.run_state {
-                                // to avoid *everyone* sending a tick, we probabilisticly send it
+                                // to avoid *everyone* sending a tick, we probabilistically send it
                                 // targeting having two clients send it per interval
                                 let send_tick = match ticked.epoch_state.clients.len() {
                                     0..=2 => true,
