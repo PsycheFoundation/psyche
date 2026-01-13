@@ -2,9 +2,9 @@
 
 use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, ColumnParallelLinear, Communicator,
-    CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelConfig,
-    ModelLoadError, ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RoPEType, RowParallelLinear, rotate_half, yarn_get_mscale,
+    CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward, ModelLoadError,
+    ParallelExpandHeads, PretrainedSource, RMSNorm, RoPECache, RoPEConfig, RoPEType,
+    RowParallelLinear, rotate_half, yarn_get_mscale,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -1031,12 +1031,6 @@ impl DeepseekForCausalLM {
             tensor_parallelism_world,
             override_max_position_embeddings,
         )
-    }
-}
-
-impl ModelConfig for DeepseekConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
-        unimplemented!();
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
-    AttentionImplementation, AutoConfig, CausalLM, Communicator, EosToks, ModelConfig,
-    ModelLoadError, ParallelismConfig, PretrainedSource, StableVariableIterator, Variable,
+    AttentionImplementation, AutoConfig, CausalLM, Communicator, EosToks, ModelLoadError,
+    ParallelismConfig, PretrainedSource, StableVariableIterator, Variable,
     device_utils::DevicePytorchStr,
 };
 
@@ -18,12 +18,6 @@ use tracing::error;
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {
     config: serde_json::Value,
-}
-
-impl ModelConfig for PythonModelConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
-        unimplemented!()
-    }
 }
 
 impl serde::Serialize for PythonModelConfig {

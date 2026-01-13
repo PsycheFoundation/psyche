@@ -485,7 +485,7 @@ impl SharableModel {
                     raw_tokenizer,
                     self.parameters
                         .as_ref()
-                        .ok_or_else(|| SharableModelError::ModelConfigNotInitialized)?
+                        .ok_or(SharableModelError::ModelConfigNotInitialized)?
                         .keys()
                         .cloned()
                         .collect::<Vec<_>>(),
