@@ -39,7 +39,6 @@ let
     # i'm really not a fan of providing torchtitan like this. i'd much rather have it be built as a git dep via uv2nix.
     # i think there's room to figure out how to provide setuptools for it.
     "torchtitan"
-    "vllm"
   ];
 
   nixProvidedPythonPkgs = getAllTransitiveDeps topLevelNixPkgs;
