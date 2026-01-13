@@ -6,7 +6,8 @@ use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
 use psyche_network::SecretKey;
 use psyche_tui::{
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
-    maybe_start_render_loop, LogOutput, ServiceInfo,
+    maybe_start_render_loop,
+    LogOutput, ServiceInfo,
 };
 use std::{path::PathBuf, time::Duration};
 use time::OffsetDateTime;
