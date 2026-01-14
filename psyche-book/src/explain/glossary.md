@@ -39,14 +39,14 @@ The status of a `Client` as tracked by the `Coordinator`. Key states include `He
 **Commitment**
 A cryptographic hash (SHA-256) of a client's computational results for a given `Batch`. Submitting commitments allows the `Coordinator` and `Witnesses` to verify work was done without transferring the full results initially.
 
-**Commitee**
+**Committee**
 The particular role of a client in a given round. Can be one of `Trainer`, `Verifier` or `TieBreaker`.
 
 **Cooldown**
 A phase (`RunState` and `ActiveStep`) at the end of an `Epoch` where model `Checkpoints` are saved and the system prepares for the next epoch.
 
 **Coordinator**
-The central orchestrator of the Psyche training system, implemented as a Solana program. It manages the training lifecycle (`RunState`), client participation (`ClientState`), data batch assignment, and `Witnessing`.
+The central orchestrator of the Psyche training system, implemented as a Solana program. It manages the training life cycle (`RunState`), client participation (`ClientState`), data batch assignment, and `Witnessing`.
 
 **CoordinatorConfig**
 The set of parameters defining how a specific training run operates (e.g., `warmup_time`, `witness_quorum`, `rounds_per_epoch`).
