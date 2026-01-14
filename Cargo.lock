@@ -7108,12 +7108,33 @@ name = "psyche-inference"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "postcard",
  "pyo3",
  "serde",
  "serde_json",
  "serial_test",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "psyche-inference-node"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "iroh",
+ "iroh-blobs",
+ "iroh-gossip",
+ "psyche-core",
+ "psyche-inference",
+ "psyche-metrics",
+ "psyche-network",
+ "serde_json",
+ "tokio",
+ "tokio-util 0.7.16",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
