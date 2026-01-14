@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - 'rewbs/**' # Include my personal branches for testing
     tags:
       - 'v*'
   workflow_dispatch: # Allow manual triggering
@@ -54,8 +55,8 @@ jobs:
       - name: Prepare release artifact
         id: prepare
         run: |
-          # Get version from Cargo.toml (cargo pkgid outputs "run-manager@0.1.0")
-          VERSION=$(cargo pkgid -p run-manager | sed 's/.*@//')
+          # Get version from Cargo.toml (cargo pkgid outputs "path+file://...#0.1.0")
+          VERSION=$(cargo pkgid -p run-manager | sed 's/.*#//')
           SHORT_SHA=$(git rev-parse --short HEAD)
 
           # Determine filename based on whether this is a tag build

@@ -45,7 +45,7 @@ let
           busybox
           cacert
           solanaClientPackage
-          externalRustPackages.solana_toolbox_cli
+          externalRustPackages.solana-toolbox-cli
           jq
           # Create proper system structure including /tmp
           (pkgs.runCommand "system-setup" { } ''

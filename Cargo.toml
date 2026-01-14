@@ -35,10 +35,12 @@ psyche-watcher = { path = "./shared/watcher" }
 psyche-metrics = { path = "./shared/metrics" }
 
 psyche-solana-client = { path = "./architectures/decentralized/solana-client" }
+psyche-solana-rpc = { path = "./architectures/decentralized/solana-common" }
 psyche-solana-authorizer = { path = "./architectures/decentralized/solana-authorizer/programs/solana-authorizer" }
 psyche-solana-coordinator = { path = "./architectures/decentralized/solana-coordinator/programs/solana-coordinator" }
 psyche-solana-treasurer = { path = "./architectures/decentralized/solana-treasurer/programs/solana-treasurer" }
 psyche-solana-tooling = { path = "./architectures/decentralized/solana-tooling" }
+run-manager = { path = "./tools/rust-tools/run-manager" }
 
 hf-hub = { git = "https://github.com/NousResearch/hf-hub.git", rev = "269dc3df4e194f9071ddbdbd25ed90d4990f9262" }
 tokio = { version = "1", features = [
