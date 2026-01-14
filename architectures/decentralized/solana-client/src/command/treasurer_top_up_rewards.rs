@@ -85,7 +85,7 @@ pub async fn command_treasurer_top_up_rewards_execute(
         .send_and_retry("Top-up rewards", &[instruction], &[])
         .await?;
     println!(
-        "Transfered {} collateral to treasurer in transaction: {}",
+        "Transferred {} collateral to treasurer in transaction: {}",
         native_amount_to_ui_amount(collateral_amount, collateral_mint_decimals),
         signature
     );

@@ -109,16 +109,16 @@ pub async fn command_treasurer_claim_rewards_execute(
     }
     println!("Total earned points: {client_earned_points}");
 
-    let treasurer_participiant_state = backend
+    let treasurer_participant_state = backend
         .get_treasurer_participant(&treasurer_participant_address)
         .await?;
     println!(
         "Already claimed earned points: {}",
-        treasurer_participiant_state.claimed_earned_points
+        treasurer_participant_state.claimed_earned_points
     );
 
     let claimable_earned_points =
-        client_earned_points - treasurer_participiant_state.claimed_earned_points;
+        client_earned_points - treasurer_participant_state.claimed_earned_points;
     println!("Claimable earned points: {claimable_earned_points}");
 
     // 1:1 mapping between earned points and collateral amount
