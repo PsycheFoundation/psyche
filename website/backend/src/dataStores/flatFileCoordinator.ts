@@ -38,6 +38,7 @@ const ALLOWLISTED_RUN_IDS =
 				'hermes-4-8b',
 				'hermes-4-8b-2',
 				'dm-fwedu-baseline',
+				'dm-fwedu-baseline-2',
 				'dm-dclm-baseline',
 				'dm-fwedu-dclm',
 				'dm-fwedu-dclm-fpdf',
@@ -53,6 +54,7 @@ const ALLOWLISTED_RUN_IDS =
 				'hermes-4.1-36b',
 				'hermes-4.3-36b',
 				'hermes-4.3-36b-2',
+				'moe-10b-a1b-8k-wsd-lr3e4-1t',
 			]
 
 type WitnessV2 = Omit<
@@ -654,6 +656,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				phaseStartTime: new Date(
 					+`${c.coordinator.run_state_start_unix_timestamp.toString()}000`
 				),
+				epochStartTime: new Date(
+					+`${c.coordinator.epoch_state.start_timestamp.toString()}000`
+				),
 				round: currentRound.height,
 
 				clients: witnessStates,
@@ -661,7 +666,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 				config: {
 					minClients: config.init_min_clients,
-					roundsPerEpoch: config.rounds_per_epoch,
+					epochTime: Number(config.epoch_time),
 					cooldownTime: Number(config.cooldown_time),
 					maxRoundTrainTime: Number(config.max_round_train_time),
 					roundWitnessTime: Number(config.round_witness_time),

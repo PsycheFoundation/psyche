@@ -118,7 +118,7 @@ flowchart LR
     c{Max warmup time passed}
     d{Witness quorum reached}
     e{Max training time passed}
-    f{All rounds completed}
+    f{End of the epoch reached}
 
     WFM --> a
     a -->|Yes| W
@@ -163,8 +163,8 @@ sequenceDiagram
     Coordinator->>Coordinator: Update state to RoundWitness
     Note over Coordinator: Timeout round witness time
     alt step > total steps
-        Coordinator->>Coordinator: Update state to Waitingformembers
-    else height == rounds per epoch
+        Coordinator->>Coordinator: Update state to Finished
+    else current_epoch_time == max_time_per_epoch
         Coordinator->>Coordinator: Update state to Cooldown
     else
         Coordinator->>Coordinator: Update state to RoundTrain with step + 1

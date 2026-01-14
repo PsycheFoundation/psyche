@@ -1,17 +1,18 @@
 [config]
 warmup_time = 30
 cooldown_time = 30
-rounds_per_epoch = 20
-max_round_train_time = 30
-round_witness_time = 1
+epoch_time = 60
+max_round_train_time = 15
+round_witness_time = 5
 min_clients = 1
 init_min_clients = 1
 verification_percent = 0
-witness_nodes = 1
+witness_nodes = 0
 global_batch_size_start = 8
 global_batch_size_end = 8
 global_batch_size_warmup_tokens = 0
 total_steps = 25000
+waiting_for_members_extra_time = 3
 
 [model.LLM]
 architecture = "HfLlama"
@@ -28,6 +29,7 @@ shuffle = "DontShuffle"
 [model.LLM.data_location.Http.location.Gcp]
 bucket_name = "nous-pretraining-public-us"
 filter_directory = "fineweb-edu-tokenized-llama2"
+
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 250

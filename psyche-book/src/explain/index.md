@@ -84,13 +84,13 @@ At the start of each round, one or more clients are randomly selected as witness
 
 These bloom filters are sent to the coordinator, which then combines them into a provable consensus of which results to apply to the model.
 
-Once a witness quorum is reached, the coordinator advances to the _Training_ phase to allow all clients a brief window to download every training result of the previous round, clients are assigned new data, and the process repeats. After a predefined number of rounds, a _Cooldown_ round occurs, marking the end of an **epoch**.
+Once a witness quorum is reached, the coordinator advances to the _Training_ phase to allow all clients a brief window to download every training result of the previous round, clients are assigned new data, and the process repeats. After a fixed amount of time, a _Cooldown_ round occurs, marking the end of an **epoch**. This time is configurable in the run creation process that we'll explore in the other sections.
 
 ## The witness/train loop visualized
 
 Here's a high-level overview of the process.
 
-There's additional implementation details, but this captures the overall flow of a single Round in an Epoch:
+There are additional implementation details, but this captures the overall flow of a single Round in an Epoch:
 
 ```mermaid
 sequenceDiagram

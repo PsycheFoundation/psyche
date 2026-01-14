@@ -1,10 +1,23 @@
 mod nix
+mod dev 'architectures/decentralized/justfile'
 
 default:
     just --list
 
 check-client:
     cargo run -p psyche-solana-client -- --help
+
+# test inference network discovery (2 nodes in tmux)
+test-inference-network:
+    ./scripts/test-inference-network.sh
+
+# format & lint-fix code
+fmt:
+    echo "deprecated, use 'nix fmt' instead..."
+    sleep 5
+    cargo clippy --fix --allow-staged --all-targets
+    cargo fmt
+    nixfmt .
 
 # spin up a local testnet
 local-testnet *args='':
@@ -76,48 +89,6 @@ decentralized-chaos-integration-test test_name="":
     else \
         cargo test --release -p psyche-decentralized-testing --test chaos_tests -- --nocapture "{{ test_name }}"; \
     fi
-
-# Deploy coordinator on localnet and create a "test" run for 1.1b model.
-setup-solana-localnet-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/setup-and-deploy-solana-test.sh {{ args }}
-
-# Deploy coordinator on localnet and create a "test" run for 20m model.
-setup-solana-localnet-light-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/setup-and-deploy-solana-test.sh {{ args }}
-
-# Start client for training on localnet.
-start-training-localnet-client run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
-
-# Start client for training on localnet without data parallelism features and using light model.
-start-training-localnet-light-client run_id="test" *args='':
-    RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
-
-OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
-OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
-
-# The same command as above but with arguments set to export telemetry data
-start-training-localnet-light-client-telemetry run_id="test" *args='':
-    OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
-
-DEVNET_RPC := "https://api.devnet.solana.com"
-DEVNET_WS_RPC := "wss://api.devnet.solana.com"
-
-# Deploy coordinator on Devnet and create a "test" run for 1.1b model.
-setup-solana-devnet-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/deploy-solana-test.sh {{ args }}
-
-# Deploy coordinator on Devnet and create a "test" run for 20m model.
-setup-solana-devnet-light-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh  {{ args }}
-
-# Start client for training on Devnet.
-start-training-devnet-client run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/train-solana-test.sh {{ args }}
-
-# Start client for training on localnet without data parallelism features and using light model.
-start-training-devnet-light-client run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
 solana-client-tests:
     cargo test --package psyche-solana-client --features solana-localnet-tests

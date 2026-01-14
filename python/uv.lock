@@ -2,6 +2,14 @@ version = 1
 revision = 3
 requires-python = "==3.12.*"
 
+[manifest]
+overrides = [
+    { name = "flash-attn", specifier = "==99.99.99" },
+    { name = "liger-kernel", specifier = "==99.99.99" },
+    { name = "torch", directory = "stub/torch" },
+    { name = "torchtitan", specifier = "==99.99.99" },
+]
+
 [[package]]
 name = "certifi"
 version = "2025.10.5"
@@ -46,12 +54,47 @@ wheels = [
 ]
 
 [[package]]
+name = "einops"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/81/df4fbe24dff8ba3934af99044188e20a98ed441ad17a274539b74e82e126/einops-0.8.1.tar.gz", hash = "sha256:de5d960a7a761225532e0f1959e5315ebeafc0cd43394732f103ca44b9837e84", size = 54805, upload-time = "2025-02-09T03:17:00.434Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/62/9773de14fe6c45c23649e98b83231fffd7b9892b6cf863251dc2afa73643/einops-0.8.1-py3-none-any.whl", hash = "sha256:919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737", size = 64359, upload-time = "2025-02-09T03:17:01.998Z" },
+]
+
+[[package]]
 name = "filelock"
 version = "3.20.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/58/46/0028a82567109b5ef6e4d2a1f04a583fb513e6cf9527fcdd09afd817deeb/filelock-3.20.0.tar.gz", hash = "sha256:711e943b4ec6be42e1d4e6690b48dc175c822967466bb31c0c293f34334c13f4", size = 18922, upload-time = "2025-10-08T18:03:50.056Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/76/91/7216b27286936c16f5b4d0c530087e4a54eead683e6b0b73dd0c64844af6/filelock-3.20.0-py3-none-any.whl", hash = "sha256:339b4732ffda5cd79b13f4e2711a31b0365ce445d95d243bb996273d072546a2", size = 16054, upload-time = "2025-10-08T18:03:48.35Z" },
+]
+
+[[package]]
+name = "fla-core"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/db/3d/79a9d5c8cd973c86f35403931031787dfc6cc97d838a42d4c62e8cbbb66f/fla_core-0.4.0.tar.gz", hash = "sha256:d975022b074e97bfd086dc6b767dccb35e27a9fe36f26f3b26b1c2b68b36a1c8", size = 316316, upload-time = "2025-10-27T08:18:51.673Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/0c/d52ab65e9c163631895052d70d4111f8530ca52f45beb0895378d1a2a8b5/fla_core-0.4.0-py3-none-any.whl", hash = "sha256:5396f36a9838c99f9e45c70e88e2e0b26688f719d07d2ddd61be16d29327f4ea", size = 438519, upload-time = "2025-10-27T08:18:49.561Z" },
+]
+
+[[package]]
+name = "flash-linear-attention"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fla-core" },
+    { name = "transformers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/9a/e546815da2bf149e0af58449ff1ca10074165af4384febead438ad46f74c/flash_linear_attention-0.4.0.tar.gz", hash = "sha256:c5d2bf6e1a766af3a4426f07f710b0b87809f7218de21eb313314be6ff1b0dba", size = 157646, upload-time = "2025-10-27T08:18:52.445Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/76/4f716c953608204c970de7cd4045db1af02643d7f19c94a49254834b7563/flash_linear_attention-0.4.0-py3-none-any.whl", hash = "sha256:50c97163f7cb64dc53585194ef36af44d2a6bc545227c4f73bb3ba9062630f1a", size = 290439, upload-time = "2025-10-27T08:18:50.589Z" },
 ]
 
 [[package]]
@@ -157,6 +200,7 @@ name = "psyche-deps"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "flash-linear-attention" },
     { name = "transformers" },
 ]
 
@@ -167,8 +211,9 @@ tests = [
 
 [package.metadata]
 requires-dist = [
+    { name = "flash-linear-attention", specifier = "==0.4.0" },
     { name = "pytest", marker = "extra == 'tests'" },
-    { name = "transformers", specifier = "==4.56.1" },
+    { name = "transformers", specifier = "==4.57.3" },
 ]
 provides-extras = ["tests"]
 
@@ -300,6 +345,11 @@ wheels = [
 ]
 
 [[package]]
+name = "torch"
+version = "99.99.99"
+source = { directory = "stub/torch" }
+
+[[package]]
 name = "tqdm"
 version = "4.67.1"
 source = { registry = "https://pypi.org/simple" }
@@ -313,7 +363,7 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "4.56.1"
+version = "4.57.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -327,9 +377,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/21/dc88ef3da1e49af07ed69386a11047a31dcf1aaf4ded3bc4b173fbf94116/transformers-4.56.1.tar.gz", hash = "sha256:0d88b1089a563996fc5f2c34502f10516cad3ea1aa89f179f522b54c8311fe74", size = 9855473, upload-time = "2025-09-04T20:47:13.14Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/70/d42a739e8dfde3d92bb2fff5819cbf331fe9657323221e79415cd5eb65ee/transformers-4.57.3.tar.gz", hash = "sha256:df4945029aaddd7c09eec5cad851f30662f8bd1746721b34cc031d70c65afebc", size = 10139680, upload-time = "2025-11-25T15:51:30.139Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/7c/283c3dd35e00e22a7803a0b2a65251347b745474a82399be058bde1c9f15/transformers-4.56.1-py3-none-any.whl", hash = "sha256:1697af6addfb6ddbce9618b763f4b52d5a756f6da4899ffd1b4febf58b779248", size = 11608197, upload-time = "2025-09-04T20:47:04.895Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/6b/2f416568b3c4c91c96e5a365d164f8a4a4a88030aa8ab4644181fdadce97/transformers-4.57.3-py3-none-any.whl", hash = "sha256:c77d353a4851b1880191603d36acb313411d3577f6e2897814f333841f7003f4", size = 11993463, upload-time = "2025-11-25T15:51:26.493Z" },
 ]
 
 [[package]]

@@ -1,11 +1,35 @@
-use psyche_solana_coordinator::coordinator_account_from_bytes;
+use psyche_solana_coordinator::{
+    CoordinatorAccount, coordinator_account_from_bytes,
+};
 
 #[tokio::test]
 pub async fn run() {
     let coordinator_bytes =
-        include_bytes!("../fixtures/coordinator-account-v0.so").to_vec();
+        include_bytes!("../fixtures/coordinator-account-v1.so").to_vec();
     let coordinator_account =
         coordinator_account_from_bytes(&coordinator_bytes).unwrap();
-    assert_eq!(coordinator_account.state.metadata.vocab_size, 129280);
-    assert_eq!(coordinator_account.nonce, 563234);
+    assert_eq!(
+        coordinator_account.version,
+        CoordinatorAccount::VERSION,
+        "coordinator account version mismatch, expected {} got {}",
+        CoordinatorAccount::VERSION,
+        coordinator_account.version,
+    );
+    assert_eq!(
+        coordinator_account
+            .state
+            .coordinator
+            .config
+            .global_batch_size_start,
+        2048,
+        "coordinator account data mismatch, storage may have changed"
+    );
+    assert_eq!(
+        coordinator_account.state.metadata.vocab_size, 32768,
+        "coordinator account data mismatch, storage may have changed"
+    );
+    assert_eq!(
+        coordinator_account.nonce, 2,
+        "coordinator account data mismatch, storage may have changed"
+    );
 }

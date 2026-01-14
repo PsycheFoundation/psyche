@@ -11,16 +11,11 @@ If you can't / don't want to use Nix, it's also possible to manually install all
 
 #### Installing Nix
 
-To install `nix`, simply run `curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install` or find it at your local package manager.
+To install Nix, simply run the `./setup-nix.sh` script. This will install Nix and configure it appropriately.
 
-You may need to add the following line to `~/.config/nix/nix.conf` or `/etc/nix/nix.conf`
+##### Binary cache
 
-```
-experimental-features = nix-command flakes
-```
-
-#### Binary cache
-
+If you already have Nix installed, or are installing it manually,
 To speed up your builds & your local dev shell, we recommend enabling the binary cache from `garnix`, our CI provider.
 
 In order to use the cache that garnix provides, change your `nix.conf`, adding `https://cache.garnix.io` to substituters, and `cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=` to `trusted-public-keys`.
