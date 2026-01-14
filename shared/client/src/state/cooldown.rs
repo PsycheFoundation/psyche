@@ -1,10 +1,12 @@
 use crate::UploadInfo;
 use psyche_coordinator::{
     Coordinator,
-    model::{self},
+    model::{self, HubRepo, LLM, Model},
 };
 use psyche_core::NodeIdentity;
-use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
+use psyche_data_provider::{
+    GcsUploadInfo, HubUploadInfo, UploadError, upload_to_gcs, upload_to_hub,
+};
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
 use psyche_modeling::{
@@ -139,6 +141,7 @@ impl CooldownStepMetadata {
         let run_id = String::from(&state.run_id);
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
+        let Model::LLM(LLM { checkpoint, .. }) = state.model;
         let tx_checkpoint = self.tx_checkpoint.clone();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
@@ -181,13 +184,42 @@ impl CooldownStepMetadata {
                 let evals = model_task_runner.start(trainers);
 
                 let Some(CheckpointConfig {
-                    upload_info,
                     checkpoint_dir,
                     delete_old_steps,
                     keep_steps,
+                    hub_token,
                 }) = checkpoint_info
                 else {
                     return Ok((evals, None));
+                };
+
+                let upload_info = match checkpoint {
+                    model::Checkpoint::Hub(HubRepo {
+                        repo_id,
+                        revision: _,
+                    })
+                    | model::Checkpoint::P2P(HubRepo {
+                        repo_id,
+                        revision: _,
+                    }) => {
+                        if let Some(token) = hub_token {
+                            Some(UploadInfo::Hub(HubUploadInfo {
+                                hub_repo: (&repo_id).into(),
+                                hub_token: token,
+                            }))
+                        } else {
+                            warn!("HF_TOKEN env not provided, skipping upload to HuggingFace Hub");
+                            None
+                        }
+                    }
+                    model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
+                    | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                        Some(UploadInfo::Gcs(GcsUploadInfo {
+                            gcs_bucket: (&bucket).into(),
+                            gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
+                        }))
+                    }
+                    _ => None,
                 };
 
                 let upload_handle = tokio::task::spawn(async move {

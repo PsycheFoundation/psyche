@@ -2,11 +2,16 @@ use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_client::GcsUploadInfo;
 use psyche_client::HubUploadInfo;
 use psyche_client::UploadInfo;
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
+use psyche_coordinator::model::GcsRepo;
+use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::LLM;
+use psyche_coordinator::model::Model;
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
@@ -174,11 +179,31 @@ impl App {
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
         // sanity checks
-        if let Some(checkpoint_config) = &state_options.checkpoint_config {
+        let Model::LLM(LLM { checkpoint, .. }) = &self.coordinator_state.model;
+
+        let upload_info = match checkpoint {
+            model::Checkpoint::Hub(HubRepo { repo_id, revision })
+            | model::Checkpoint::P2P(HubRepo { repo_id, revision }) => {
+                Some(UploadInfo::Hub(HubUploadInfo {
+                    hub_repo: (repo_id).into(),
+                    hub_token: (&revision.unwrap_or_default()).into(),
+                }))
+            }
+            model::Checkpoint::Gcs(GcsRepo { bucket, prefix })
+            | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                Some(UploadInfo::Gcs(GcsUploadInfo {
+                    gcs_bucket: (bucket).into(),
+                    gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
+                }))
+            }
+            _ => None,
+        };
+
+        if state_options.checkpoint_config.is_some() {
             if let Some(UploadInfo::Hub(HubUploadInfo {
                 hub_repo,
                 hub_token,
-            })) = &checkpoint_config.upload_info
+            })) = &upload_info
             {
                 let api = hf_hub::api::tokio::ApiBuilder::new()
                     .with_token(Some(hub_token.clone()))
