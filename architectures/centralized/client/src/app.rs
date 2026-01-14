@@ -5,8 +5,9 @@ use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_client::UploadInfo;
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadInfo,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
     read_identity_secret_key,
 };
 use psyche_coordinator::model::Checkpoint;

@@ -1,8 +1,7 @@
 use crate::UploadInfo;
-use psyche_coordinator::CheckpointerSelection;
-use psyche_coordinator::Coordinator;
+use psyche_coordinator::{CheckpointerSelection, Coordinator};
 use psyche_core::NodeIdentity;
-use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
+use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
 use psyche_modeling::{
@@ -136,6 +135,7 @@ impl CooldownStepMetadata {
 
         let step = state.progress.step - 1;
         let run_id = String::from(&state.run_id);
+        let epoch = state.progress.epoch as u32;
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
         let tx_model = self.tx_model.clone();
@@ -199,7 +199,11 @@ impl CooldownStepMetadata {
             let local = save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
 
             if let Some(upload_info) = upload_info {
-                upload_checkpoint(upload_info, local.clone(), step as u64, cancellation_token.clone())
+                let manifest_metadata = GcsManifestMetadata {
+                    epoch,
+                    run_id: run_id.clone(),
+                };
+                upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
                     .await?;
             }
 
@@ -251,14 +255,17 @@ async fn save_checkpoint_locally(
 
 async fn upload_checkpoint(
     upload_info: UploadInfo,
+    manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), CheckpointError> {
     match upload_info {
-        UploadInfo::Gcs(gcs_info) => upload_to_gcs(gcs_info, local, cancellation_token)
-            .await
-            .map_err(CheckpointError::UploadError),
+        UploadInfo::Gcs(gcs_info) => {
+            upload_to_gcs(gcs_info, manifest_metadata, local, step, cancellation_token)
+                .await
+                .map_err(CheckpointError::UploadError)
+        }
         UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, cancellation_token)
             .await
             .map_err(CheckpointError::UploadError),

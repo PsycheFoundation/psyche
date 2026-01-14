@@ -1,6 +1,6 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
-    RunInitConfig, RunInitConfigAndIO, TrainingResult,
+    Broadcast, BroadcastType, ClientTUIState, Finished, NC, RunInitConfig, RunInitConfigAndIO,
+    TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
 };
 use anyhow::anyhow;
@@ -8,7 +8,7 @@ use anyhow::{Error, Result, bail};
 use futures::future::join_all;
 use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
-use psyche_core::NodeIdentity;
+use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
