@@ -7,7 +7,7 @@ use bollard::{
     models::DeviceRequest,
     secret::{ContainerSummary, HostConfig},
 };
-use psyche_client::IntegrationTestLogMarker;
+use psyche_core::IntegrationTestLogMarker;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;

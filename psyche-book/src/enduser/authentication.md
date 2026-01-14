@@ -25,7 +25,7 @@ Permissionless runs are open to anyone without any `authorization` required. The
 A CLI is provided for this:
 
 ```sh
-psyche-solana-client join-authorization-create \
+run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
     --authorizer 11111111111111111111111111111111
@@ -46,7 +46,7 @@ This is done through the following steps:
 For the `join_authority` to issues new `authorization`, a CLI is provided:
 
 ```sh
-psyche-solana-client join-authorization-create \
+run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
     --authorizer [USER_MASTER_PUBKEY]
@@ -55,7 +55,7 @@ psyche-solana-client join-authorization-create \
 For the `authorizer` to then set a list of delegate, the following CLI is provided:
 
 ```sh
-psyche-solana-client join-authorization-delegate \
+run-manager join-authorization-delegate \
     --rpc [RPC] \
     --wallet-private-key-path [USER_MASTER_KEYPAIR_FILE] \
     --join-authority [JOIN_AUTHORITY_PUBKEY]
@@ -66,7 +66,7 @@ psyche-solana-client join-authorization-delegate \
 Removing the authorization is also possible through CLI:
 
 ```sh
-psyche-solana-client join-authorization-delete \
+run-manager join-authorization-delete \
     --rpc [RPC] \
     --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
     --authorizer [USER_MASTER_PUBKEY]
