@@ -143,7 +143,7 @@ pub fn dummy_client_app_params_with_training_delay(
             "--max-concurrent-parameter-requests", "10",
             "--hub-max-concurrent-downloads", "1",
             "--dummy-training-delay-secs", training_delay_secs.to_string().as_str(),
-            "--test-mode", "true",
+            "--test-mode",
         ])
         .train_args,
     }
