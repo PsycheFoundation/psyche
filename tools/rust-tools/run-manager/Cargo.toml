@@ -34,9 +34,10 @@ toml.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 time.workspace = true
-
-# Solana RPC
 solana-client = "=2.1.4"
 
 [dev-dependencies]
 serial_test = "3.0"
+
+[build-dependencies]
+chrono.workspace = true
