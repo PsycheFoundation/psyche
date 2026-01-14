@@ -53,10 +53,6 @@ pub struct GcsManifestMetadata {
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 
-fn check_model_extension(filename: &str) -> bool {
-    MODEL_EXTENSIONS.iter().any(|ext| filename.ends_with(ext))
-}
-
 fn get_cache_base(bucket: &str) -> PathBuf {
     // Use HF_HOME if set, otherwise fall back to ~/.cache
     std::env::var("HF_HOME")
@@ -166,26 +162,30 @@ pub async fn download_model_from_gcs_async(
                 get_cache_dir(bucket, prefix, manifest.metadata.step, manifest_generation);
 
             // Check if all manifest files exist in cache
-            if collect_cached_files(&cache_dir, &manifest).is_some() {
+            let mut files = if let Some(cached) = collect_cached_files(&cache_dir, &manifest) {
                 info!("Using cached checkpoint at {:?}", cache_dir);
+                cached
             } else {
                 info!(
                     "Model not found in cache, downloading checkpoint to {:?}",
                     cache_dir
                 );
                 std::fs::create_dir_all(&cache_dir)?;
-                download_files_from_manifest(&client, bucket, prefix, &cache_dir, &manifest)
-                    .await?;
-            }
+                download_files_from_manifest(&client, bucket, prefix, &cache_dir, &manifest).await?
+            };
             // Download config files (json, py) - skips if already cached
-            download_files_no_manifest(&client, bucket, prefix, &cache_dir).await
+            let config_files =
+                download_files_no_manifest(&client, bucket, prefix, &cache_dir, &[".json", ".py"])
+                    .await?;
+            files.extend(config_files);
+            Ok(files)
         }
         Err(_) => {
             // Fallback for old checkpoints without manifest
             info!("No manifest found, downloading model without manifest");
             let cache_dir = get_cache_dir_no_manifest(bucket, prefix);
             std::fs::create_dir_all(&cache_dir)?;
-            download_files_no_manifest(&client, bucket, prefix, &cache_dir).await
+            download_files_no_manifest(&client, bucket, prefix, &cache_dir, &MODEL_EXTENSIONS).await
         }
     }
 }
@@ -243,6 +243,7 @@ async fn download_files_no_manifest(
     bucket: &str,
     prefix: Option<&str>,
     cache_dir: &Path,
+    extensions: &[&str],
 ) -> Result<Vec<PathBuf>, DownloadError> {
     let mut all_objects = vec![];
     let mut page_token: Option<String> = None;
@@ -258,7 +259,7 @@ async fn download_files_no_manifest(
             .await?;
 
         for obj in results.items.iter().flatten() {
-            if check_model_extension(&obj.name) {
+            if extensions.iter().any(|ext| obj.name.ends_with(ext)) {
                 all_objects.push(obj.name.clone());
             }
         }
