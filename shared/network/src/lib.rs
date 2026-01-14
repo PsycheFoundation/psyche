@@ -220,7 +220,69 @@ where
     Download: Networkable,
 {
     #[allow(clippy::too_many_arguments)]
-    pub async fn init<
+    pub async fn init<A: Allowlist + 'static + Send + std::marker::Sync>(
+        run_id: &str,
+        port: Option<u16>,
+        interface: Option<String>,
+        discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
+        secret_key: Option<SecretKey>,
+        allowlist: A,
+        metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
+    ) -> Result<Self> {
+        Self::init_internal::<A, iroh_gossip::net::Gossip>(
+            run_id,
+            port,
+            interface,
+            discovery_mode,
+            relay_kind,
+            bootstrap_peers,
+            secret_key,
+            allowlist,
+            metrics,
+            cancel,
+            None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn init_with_custom_protocol<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
+        run_id: &str,
+        port: Option<u16>,
+        interface: Option<String>,
+        discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
+        secret_key: Option<SecretKey>,
+        allowlist: A,
+        metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
+        additional_protocol: (&'static [u8], P),
+    ) -> Result<Self> {
+        Self::init_internal(
+            run_id,
+            port,
+            interface,
+            discovery_mode,
+            relay_kind,
+            bootstrap_peers,
+            secret_key,
+            allowlist,
+            metrics,
+            cancel,
+            Some(additional_protocol),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn init_internal<
         A: Allowlist + 'static + Send + std::marker::Sync,
         P: ProtocolHandler + Clone,
     >(
