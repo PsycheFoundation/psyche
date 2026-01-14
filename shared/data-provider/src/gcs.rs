@@ -271,8 +271,9 @@ async fn download_files_no_manifest(
     }
 
     info!(
-        "Found {} model files in gs://{}/{}",
+        "Found {} files ({}) in gs://{}/{}",
         all_objects.len(),
+        extensions.join(", "),
         bucket,
         prefix.unwrap_or("")
     );
@@ -289,7 +290,7 @@ async fn download_files_no_manifest(
             continue;
         }
 
-        info!("Downloading: {}", object_name);
+        info!("Downloading: gs://{}/{}", bucket, object_name);
 
         let data = client
             .download_object(
