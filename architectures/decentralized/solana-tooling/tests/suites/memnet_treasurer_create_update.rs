@@ -49,7 +49,6 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 1,
-            checkpointer_nodes: 0,
             epoch_time: 30,
             total_steps: 100,
             waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
