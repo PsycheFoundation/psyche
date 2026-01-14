@@ -25,7 +25,7 @@ We’ll need a keypair file that manages join permissions. This can be the defau
 If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone. In this case, if we set the authorizer to be `11111111111111111111111111111111` in the following command it will be valid for everyone so any other client can join the created run without additional restrictions.
 
 ```sh
-psyche-solana-client join-authorization-create \
+run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path [SOLANA_KEY_FILE] \
     --authorizer 11111111111111111111111111111111
@@ -42,7 +42,7 @@ For example, imagine you have a keypair for the run creator at `~/.config/solana
 First, create the authorization with the following parameters:
 
 ```sh
-psyche-solana-client join-authorization-create \
+run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path ~/.config/solana/owner.json \
     --authorizer $(solana-keygen pubkey ~/.config/solana/joiner.json)
@@ -64,7 +64,7 @@ Run creation accepts a variety of parameters. We’ll start with the fundamental
 For a standard run without a token incentive distribution layer (see [rewards](../explain/rewards.md) for more details):
 
 ```bash
-psyche-solana-client create-run \
+run-manager create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
@@ -75,7 +75,7 @@ psyche-solana-client create-run \
 For a run that distributes tokens as rewards to training participants, you must specify the public key of the token created on the Solana blockchain. This will be used as the mint for the collateral token to be distributed:
 
 ```bash
-psyche-solana-client create-run \
+run-manager create-run \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --join-authority [JOIN_AUTHORITY_PUBKEY] \
@@ -93,7 +93,7 @@ Initially, the run will not have any configuration defined and will remain pause
 To set the run configuration, you’ll need to provide mostly the same parameters as when creating the run, along with the path to a `config.toml` file that follows the [run config schema](./run-config.md).
 
 ```bash
-psyche-solana-client update-config \
+run-manager update-config \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --config-path [CONFIG_FILE_PATH] \
@@ -105,7 +105,7 @@ psyche-solana-client update-config \
 At this point, your run is ready to go. You can now set its state to **unpaused**, allowing clients to join and begin training your model.
 
 ```bash
-psyche-solana-client set-paused \
+run-manager set-paused \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --resume \
@@ -119,7 +119,7 @@ Congratulations! As soon as your first client joins, your model will start train
 If you created a run with rewards enabled, you can configure how many points each client earns or loses per training epoch.
 
 ```bash
-psyche-solana-client set-future-epoch-rates \
+run-manager set-future-epoch-rates \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --earning-rate-total-shared [EARNING_RATE] \
@@ -130,7 +130,7 @@ psyche-solana-client set-future-epoch-rates \
 To distribute collateral to users, you must periodically top up the run’s treasury so that points earned during computation can be claimed.
 
 ```sh
-psyche-solana-client treasurer-top-up-rewards \
+run-manager treasurer-top-up-rewards \
     --rpc [RPC] \
     --run-id [RUN_ID] \
     --collateral-amount [COLLATERAL_AMOUNT] \
@@ -142,7 +142,7 @@ psyche-solana-client treasurer-top-up-rewards \
 Optionally, you can retrieve detailed technical information about a previously created run for troubleshooting purposes.
 
 ```bash
-psyche-solana-client json-dump-run \
+run-manager json-dump-run \
     --rpc [RPC] \
     --run-id [RUN_ID]
 ```
@@ -150,8 +150,8 @@ psyche-solana-client json-dump-run \
 For more information about a specific user within a run, you can also use:
 
 ```bash
-psyche-solana-client json-dump-user \
+run-manager json-dump-user \
     --rpc [RPC] \
     --run-id [RUN_ID] \
-    --wallet [PUBLIC_KEY]
+    --address [PUBLIC_KEY]
 ```
