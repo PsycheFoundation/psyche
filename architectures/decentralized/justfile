@@ -4,6 +4,8 @@ set working-directory := '../../'
 
 # In case a recipe is not found here, it will fallback to the root justfile.
 
+AUTHORIZER := env_var_or_default("AUTHORIZER", "11111111111111111111111111111111")
+
 set fallback := true
 
 default:
@@ -35,16 +37,16 @@ setup-solana-localnet-permissioned-light-test-run-treasurer run_id="test" *args=
     RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh --treasurer {{ args }}
 
 start-training-localnet-client run_id="test" *args='':
-    AUTHORIZER=${AUTHORIZER} RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
+    AUTHORIZER={{ AUTHORIZER }} RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
 
 start-training-localnet-light-client run_id="test" *args='':
-    AUTHORIZER=${AUTHORIZER} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+    AUTHORIZER={{ AUTHORIZER }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
 OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
 OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
 
 start-training-localnet-light-client-telemetry run_id="test" *args='':
-    AUTHORIZER=${AUTHORIZER} OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+    AUTHORIZER={{ AUTHORIZER }} OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
 
 DEVNET_RPC := "https://api.devnet.solana.com"
 DEVNET_WS_RPC := "wss://api.devnet.solana.com"

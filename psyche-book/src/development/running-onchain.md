@@ -124,7 +124,7 @@ Here, the `--wallet-private-key-path` is the path to the Solana KeyPair that wil
 You can then join any authorized client by running the training commands described above, adding the authorized key as an environment variable, for example:
 
 ```sh
-AUTHORIZATION=<GRANTEE_PUBKEY> just dev start-training-localnet-light-client
+AUTHORIZER=<GRANTEE_PUBKEY> just dev start-training-localnet-light-client
 ```
 
 ## Running a run with rewards
