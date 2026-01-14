@@ -20,7 +20,8 @@ use anchor_client::{
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_client::IntegrationTestLogMarker;
-use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks, model::HubRepo};
+use psyche_coordinator::model::{self, Checkpoint};
+use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
@@ -333,7 +334,7 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        repo: HubRepo,
+        repo: Checkpoint,
     ) {
         let user = self.get_payer();
         let instruction = instructions::coordinator_checkpoint(
@@ -603,7 +604,7 @@ impl WatcherBackend<psyche_solana_coordinator::ClientId> for SolanaBackendRunner
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: HubRepo) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
         self.backend
             .send_checkpoint(self.instance, self.account, checkpoint);
         Ok(())

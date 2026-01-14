@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Args;
+use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_core::FixedString;
 
@@ -45,7 +46,7 @@ pub async fn command_checkpoint_execute(
         &coordinator_instance,
         &coordinator_account,
         &user,
-        repo,
+        Checkpoint::Hub(repo),
     );
     let signature = backend
         .send_and_retry("Checkpoint", &[instruction], &[])

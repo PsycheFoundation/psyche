@@ -21,7 +21,7 @@ use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::model::{HubRepo, Model};
+use psyche_coordinator::model::Model;
 use psyche_core::MerkleRoot;
 use serde::Deserialize;
 use serde::Serialize;
@@ -313,7 +313,7 @@ pub mod psyche_solana_coordinator {
 
     pub fn checkpoint(
         ctx: Context<PermissionlessCoordinatorAccounts>,
-        repo: HubRepo,
+        repo: psyche_coordinator::model::Checkpoint,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();

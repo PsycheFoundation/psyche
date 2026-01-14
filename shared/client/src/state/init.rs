@@ -5,9 +5,9 @@ use psyche_coordinator::{
 };
 use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
 use psyche_data_provider::{
-    DataProvider, DataProviderTcpClient, DummyDataProvider, GcsError, PreprocessedDataProvider,
-    Split, WeightedDataProvider, download_dataset_repo_async, download_model_from_gcs_async,
-    download_model_repo_async,
+    DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
+    PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
+    download_model_from_gcs_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
@@ -90,7 +90,7 @@ pub enum InitRunError {
     HfModelLoad(#[from] hf_hub::api::tokio::ApiError),
 
     #[error("failed to download model from GCS: {0}")]
-    GcsModelLoad(#[from] GcsError),
+    GcsModelLoad(#[from] DownloadError),
 
     #[error("model loading thread crashed")]
     ModelLoadingThreadCrashed(JoinError),
@@ -153,7 +153,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
 
     pub tx_health_check: UnboundedSender<HealthChecks<T>>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
-    pub tx_checkpoint: UnboundedSender<model::HubRepo>,
+    pub tx_checkpoint: UnboundedSender<model::Checkpoint>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
