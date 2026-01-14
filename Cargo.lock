@@ -7015,6 +7015,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytemuck",
+ "chrono",
  "clap",
  "futures",
  "google-cloud-storage",
