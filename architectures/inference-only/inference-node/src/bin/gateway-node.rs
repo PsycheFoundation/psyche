@@ -20,17 +20,22 @@ use clap::Parser;
 use psyche_inference::{
     INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
+#[cfg(feature = "gateway")]
 use psyche_metrics::ClientMetrics;
+#[cfg(feature = "gateway")]
 use psyche_network::{
-    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, ProtocolHandler, RelayKind,
-    allowlist,
+    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, RelayKind, allowlist,
 };
-use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
+#[cfg(feature = "gateway")]
+use std::{collections::HashMap, fs, sync::Arc, time::Duration};
+#[cfg(feature = "gateway")]
 use tokio::{
     sync::{RwLock, mpsc},
     time::sleep,
 };
+#[cfg(feature = "gateway")]
 use tokio_util::sync::CancellationToken;
+#[cfg(feature = "gateway")]
 use tracing::{debug, error, info};
 
 #[derive(Parser, Debug)]
@@ -53,6 +58,7 @@ struct Args {
     write_endpoint_file: Option<PathBuf>,
 }
 
+#[cfg(feature = "gateway")]
 #[derive(Clone, Debug)]
 struct InferenceNodeInfo {
     peer_id: EndpointId,
@@ -63,6 +69,7 @@ struct InferenceNodeInfo {
     capabilities: Vec<String>,
 }
 
+#[cfg(feature = "gateway")]
 struct GatewayState {
     available_nodes: RwLock<HashMap<EndpointId, InferenceNodeInfo>>,
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
@@ -89,12 +96,15 @@ struct ChatCompletionRequest {
     stream: bool,
 }
 
+#[cfg(feature = "gateway")]
 fn default_max_tokens() -> Option<usize> {
     Some(100)
 }
+#[cfg(feature = "gateway")]
 fn default_temperature() -> Option<f64> {
     Some(1.0)
 }
+#[cfg(feature = "gateway")]
 fn default_top_p() -> Option<f64> {
     Some(1.0)
 }
@@ -316,7 +326,6 @@ async fn run_gateway() -> Result<()> {
         allowlist::AllowAll,
         metrics.clone(),
         Some(cancel.clone()),
-        None::<(&[u8], NoProtocol)>,
     )
     .await
     .context("Failed to initialize P2P network")?;
