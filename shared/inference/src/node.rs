@@ -160,6 +160,7 @@ impl Drop for InferenceNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ChatMessage;
 
     #[test]
     fn test_node_creation() {

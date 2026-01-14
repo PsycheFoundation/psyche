@@ -225,7 +225,7 @@ async fn main() -> Result<()> {
     info!("Registering inference protocol handler...");
     let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
 
-    let mut network = P2PNetwork::init(
+    let mut network = P2PNetwork::init_with_custom_protocol(
         run_id,
         None, // port (let OS choose)
         None, // interface
@@ -236,7 +236,7 @@ async fn main() -> Result<()> {
         allowlist::AllowAll, // No allowlist for inference network
         metrics.clone(),
         Some(cancel.clone()),
-        Some((INFERENCE_ALPN, inference_protocol)),
+        (INFERENCE_ALPN, inference_protocol),
     )
     .await
     .context("Failed to initialize P2P network")?;
