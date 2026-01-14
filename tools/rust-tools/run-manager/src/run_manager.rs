@@ -66,9 +66,7 @@ impl RunManager {
 
         let run_id = get_env_var("RUN_ID")?;
         let rpc = get_env_var("RPC")?;
-
         let scratch_dir = std::env::var("SCRATCH_DIR").ok();
-
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
 
         Ok(Self {
@@ -164,7 +162,11 @@ impl RunManager {
 
         if let Some(dir) = &self.scratch_dir {
             cmd.arg("--mount")
-                .arg(format!("type=bind,src={dir},dst=/scratch"));
+                .arg(format!("type=bind,src={dir},dst=/scratch"))
+                .arg("--env")
+                .arg(
+                    "GOOGLE_APPLICATION_CREDENTIALS=/scratch/application_default_credentials.json",
+                );
         }
 
         if let Some(Entrypoint { entrypoint, .. }) = entrypoint {
