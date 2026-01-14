@@ -216,7 +216,7 @@ impl CooldownStepMetadata {
                     | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
                         Some(UploadInfo::Gcs(GcsUploadInfo {
                             gcs_bucket: (&bucket).into(),
-                            gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
+                            gcs_prefix: prefix.as_ref().map(|p| p.into()),
                         }))
                     }
                     _ => None,
