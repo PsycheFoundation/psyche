@@ -269,6 +269,10 @@ async fn upload_checkpoint(
         UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, cancellation_token)
             .await
             .map_err(CheckpointError::UploadError),
+        UploadInfo::Dummy() => {
+            info!("Dummy upload info provided; skipping upload");
+            Ok(())
+        }
     }
 }
 

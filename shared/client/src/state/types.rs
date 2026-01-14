@@ -13,6 +13,7 @@ use tokio::task::JoinHandle;
 pub enum UploadInfo {
     Hub(HubUploadInfo),
     Gcs(GcsUploadInfo),
+    Dummy(),
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +22,17 @@ pub struct CheckpointConfig {
     pub checkpoint_dir: PathBuf,
     pub delete_old_steps: bool,
     pub keep_steps: u32,
+}
+
+impl CheckpointConfig {
+    pub fn dummy() -> Self {
+        Self {
+            upload_info: Some(UploadInfo::Dummy()),
+            checkpoint_dir: PathBuf::from("./checkpoints"),
+            delete_old_steps: false,
+            keep_steps: 1,
+        }
+    }
 }
 
 #[derive(Debug)]

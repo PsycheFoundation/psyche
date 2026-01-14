@@ -235,6 +235,9 @@ impl App {
                     }
                 }
             }
+            Some(UploadInfo::Dummy()) => {
+                // In test mode, we skip upload checks
+            }
             None => {}
         }
 
