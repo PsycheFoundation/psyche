@@ -1,6 +1,9 @@
 use crate::UploadInfo;
 use psyche_coordinator::CheckpointerSelection;
 use psyche_coordinator::Coordinator;
+use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::LLM;
+use psyche_coordinator::model::Model;
 use psyche_core::NodeIdentity;
 use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]

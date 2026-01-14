@@ -36,6 +36,10 @@ impl<T: NodeIdentity> WatcherBackend<T> for DummyBackend<T> {
     async fn send_health_check(&mut self, _health_checks: HealthChecks<T>) -> anyhow::Result<()> {
         bail!("Data provider does not send health check");
     }
+
+    async fn send_checkpoint(&mut self, _checkpoint: model::Checkpoint) -> anyhow::Result<()> {
+        bail!("Data provider does not send checkpoints");
+    }
 }
 
 #[derive(
