@@ -50,7 +50,7 @@ pub(crate) fn spawn_router_with_allowlist<
         .accept(iroh_gossip::ALPN, allowlisted_gossip)
         .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing);
 
-    // add optional additional custom protocol
+    // add optional custom protocol if provided
     if let Some((alpn, handler)) = additional_protocol {
         let allowlist_clone = allowlist.clone();
         let allowlisted_handler = AccessLimit::new(handler, move |endpoint_id| {
@@ -94,11 +94,11 @@ mod tests {
         let p2p_model_sharing = ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
         let allowlist = allowlist::AllowAll;
         let blobs_protocol = BlobsProtocol::new(&blobs, None);
-        let router = spawn_router_with_allowlist(
+        let router = spawn_router_with_allowlist::<_, iroh_gossip::net::Gossip>(
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, p2p_model_sharing),
-            None::<(&[u8], ())>,
+            None,
         )?;
 
         assert!(!router.is_shutdown());
