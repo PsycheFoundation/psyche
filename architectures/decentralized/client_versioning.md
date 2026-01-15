@@ -23,8 +23,8 @@ for a particular run with the following command:
 [!] The run must be paused beforehand to do the client version update
 
 ```bash
-cargo run --release --bin psyche-solana-client \
-	-- update-config \
+cargo run --release --bin run-manager -- \
+	update-config \
 	--wallet-private-key-path <path_to_run_owner_private_key> \
 	--run-id <your_run_id> \
 	--client-version <new_version>
