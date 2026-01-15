@@ -158,9 +158,11 @@ let
   # Automatically discovers and builds examples from the crate's examples/ directory
   # Auto-detects if package has a main binary by checking for src/main.rs or src/bin/
   # needsPython: true = only with Python + ext, false = only without Python + ext, "optional" = both variants
+  # needsGpu: wraps the package with nix-gl-host
   buildRustPackage =
     {
       needsPython ? false,
+      needsGpu ? false,
       isExample ? false,
       cratePath, # path to the crate dir
     }:
@@ -177,14 +179,17 @@ let
 
       buildVariants =
         name: withPython: withoutPython:
+        let
+          maybeWrapGpu = pkg: if needsGpu then useHostGpuDrivers pkg else pkg;
+        in
         if needsPython == "optional" then
           {
-            ${name} = withPython;
-            "${name}-nopython" = withoutPython;
+            ${name} = maybeWrapGpu withPython;
+            "${name}-nopython" = maybeWrapGpu withoutPython;
           }
         else if lib.isBool needsPython then
           {
-            ${name} = if needsPython then withPython else withoutPython;
+            ${name} = maybeWrapGpu (if needsPython then withPython else withoutPython);
           }
         else
           throw "needsPython must be true, false, or \"optional\", got: ${builtins.toString needsPython}";
@@ -214,10 +219,10 @@ let
             let
               build =
                 builder:
-                useHostGpuDrivers (builder {
+                builder {
                   name = exampleName;
                   isExample = true;
-                });
+                };
               withPythonExample = build buildRustPackageWithPsychePythonEnvironment;
               withoutPythonExample = build buildRustPackageWithoutPython;
             in
