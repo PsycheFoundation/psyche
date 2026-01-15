@@ -529,16 +529,6 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidWitness);
         }
 
-        let Model::LLM(llm) = &mut self.model;
-        match &llm.checkpoint {
-            Checkpoint::Hub(hub_repo) => {
-                llm.checkpoint = Checkpoint::P2P(*hub_repo);
-            }
-            Checkpoint::Gcs(gcs_repo) => {
-                llm.checkpoint = Checkpoint::P2PGcs(*gcs_repo);
-            }
-            _ => {}
-        }
         self.epoch_state.checkpointed = true;
 
         Ok(())

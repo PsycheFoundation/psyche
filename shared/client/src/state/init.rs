@@ -1,9 +1,11 @@
-use crate::{IntegrationTestLogMarker, WandBInfo, fetch_data::DataFetcher};
+use crate::{WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
     Coordinator, HealthChecks,
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
-use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
+use psyche_core::{
+    Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
+};
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
     PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
@@ -14,8 +16,7 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
-    LocalTrainer, ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer,
-    auto_tokenizer,
+    LocalTrainer, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
@@ -147,7 +148,7 @@ struct RawLoadedModel {
 }
 
 type OneshotModelParameterSender = oneshot::Sender<HashMap<String, Tensor>>;
-type OneShotModelConfigSender = oneshot::Sender<(String, Tokenizer)>;
+type OneShotModelConfigSender = oneshot::Sender<(String, Tokenizer, Vec<String>)>;
 
 pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub init_config: RunInitConfig<T, A>,
@@ -380,7 +381,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     .send(tx_model_config_response)
                                     .unwrap();
 
-                                let (model_config, tokenizer) =
+                                let (model_config, tokenizer, parameter_names) =
                                     rx_model_config_response.await.unwrap();
                                 debug!("Got p2p info, model_config: {}", model_config);
 
@@ -410,7 +411,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                         }
                                     }
                                 };
-                                let parameter_names = model_config.get_parameter_names();
                                 info!(
                                     "Requesting {} parameters over p2p network",
                                     parameter_names.len()
@@ -460,7 +460,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     .collect();
                                 let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
                                 (
-                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files.to_vec()),
                                     tokenizer,
                                     checkpoint_extra_files,
                                 )
