@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_comittee_selections() {
+    fn test_invalid_committee_selections() {
         // verification_percent > 100
         assert!(CommitteeSelection::new(10, 5, 101, 100, 12345).is_err());
         // total_nodes < tie_breaker_nodes

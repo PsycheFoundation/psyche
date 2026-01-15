@@ -1,5 +1,5 @@
 use crate::{
-    AllReduce, AttentionImplementation, Communicator, CommunicatorId, ModelConfig, ModelLoadError,
+    AllReduce, AttentionImplementation, Communicator, CommunicatorId, ModelLoadError,
     PretrainedSource, ReduceType, RoPEConfig, StableVarStoreIterator, StableVariableIterator,
 };
 use std::collections::HashMap;
@@ -58,7 +58,9 @@ pub trait LanguageModelForward: Send + Debug {
     ) -> Tensor;
 }
 
-pub trait LanguageModelConfig: ModelConfig + Send + Debug + serde::de::DeserializeOwned {
+pub trait LanguageModelConfig:
+    serde::Serialize + Clone + Send + Debug + serde::de::DeserializeOwned
+{
     fn tie_word_embeddings(&self) -> bool;
     fn set_max_position_embeddings(&mut self, set: usize);
     fn hidden_size(&self) -> usize;
