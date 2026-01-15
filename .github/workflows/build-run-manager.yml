@@ -9,6 +9,9 @@ on:
       - 'v*'
   workflow_dispatch: # Allow manual triggering
 
+permissions:
+  contents: write
+
 # Note: Previously filtered by paths (tools/rust-tools/run-manager/**).
 # Removed because GitHub Actions ANDs paths with tags, which breaks tag triggers.
 # The build is fast enough that running on all main pushes is acceptable.
