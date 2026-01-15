@@ -7323,6 +7323,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-solana-mining-pool"
+version = "0.1.1"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+]
+
+[[package]]
 name = "psyche-solana-rpc"
 version = "0.1.0"
 dependencies = [
@@ -7357,6 +7365,7 @@ dependencies = [
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
  "psyche-solana-distributor",
+ "psyche-solana-mining-pool",
  "psyche-solana-treasurer",
  "solana-sdk",
  "solana_toolbox_endpoint",
