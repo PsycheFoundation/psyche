@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 
+use crate::ProgramError;
 use crate::state::Airdrop;
 use crate::state::AirdropMetadata;
 use crate::state::MerkleHash;
@@ -37,6 +38,9 @@ pub fn airdrop_update_processor(
 
     if let Some(merkle_root) = params.merkle_root {
         msg!("merkle_root: {:?}", merkle_root);
+        if merkle_root == MerkleHash::default() {
+            return err!(ProgramError::ParamsMerkleRootIsZeroed);
+        }
         airdrop.merkle_root = merkle_root;
     }
 

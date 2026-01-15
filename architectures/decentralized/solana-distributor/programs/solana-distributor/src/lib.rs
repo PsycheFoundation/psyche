@@ -52,6 +52,18 @@ pub enum ProgramError {
     AirdropClaimFreezeIsTrue,
     #[msg("params.merkle_proof is invalid")]
     ParamsMerkleProofIsInvalid,
+    #[msg("params.merkle_root is zeroed")]
+    ParamsMerkleRootIsZeroed,
     #[msg("params.collateral_amount is too large")]
     ParamsCollateralAmountIsTooLarge,
+    #[msg("Vesting elapsed seconds overflow")]
+    VestingElapsedSecondsOverflow,
+    #[msg("Vesting collateral amount overflow")]
+    VestingNumeratorCollateralAmountOverflow,
+    #[msg("Vesting collateral amount overflow")]
+    VestingDenominatorCollateralAmountOverflow,
+    #[msg("Vesting vested collateral amount overflow")]
+    VestingVestedCollateralAmountOverflow,
+    #[msg("Accounting updates overflow")]
+    AccountingUpdatesOverflow,
 }

@@ -86,17 +86,20 @@ pub fn claim_redeem_processor(
         return err!(ProgramError::ParamsMerkleProofIsInvalid);
     }
 
-    let claim = &mut context.accounts.claim;
-    let claimable_collateral_amount = params
+    let vested_collateral_amount = params
         .vesting
-        .compute_vested_collateral_amount(Clock::get()?.unix_timestamp)
-        - claim.claimed_collateral_amount;
+        .compute_vested_collateral_amount(Clock::get()?.unix_timestamp)?;
+
+    let claim = &mut context.accounts.claim;
+    let claimable_collateral_amount = vested_collateral_amount
+        .saturating_sub(claim.claimed_collateral_amount);
     if claimable_collateral_amount < params.collateral_amount {
         return err!(ProgramError::ParamsCollateralAmountIsTooLarge);
     }
-    claim.claimed_collateral_amount += params.collateral_amount;
 
+    claim.claimed_collateral_amount += params.collateral_amount;
     airdrop.total_claimed_collateral_amount += params.collateral_amount;
+
     let airdrop_signer_seeds: &[&[&[u8]]] = &[&[
         Airdrop::SEEDS_PREFIX,
         &airdrop.id.to_le_bytes(),

@@ -400,6 +400,19 @@ pub async fn run() {
     .await
     .unwrap_err();
 
+    // Setting the merkle root to all zeroes should be rejected
+    process_airdrop_update(
+        &mut endpoint,
+        &payer,
+        airdrop_id,
+        &airdrop_authority,
+        None,
+        Some(MerkleHash::default()),
+        None,
+    )
+    .await
+    .unwrap_err();
+
     // Restoring the correct merkle root should make redeeming work again
     endpoint.forward_clock_slot(1).await.unwrap();
     process_airdrop_update(

@@ -3,7 +3,9 @@ use std::fmt;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
 
-#[derive(InitSpace, AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
+#[derive(
+    InitSpace, AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Default,
+)]
 pub struct MerkleHash {
     bytes: [u8; 32],
 }
