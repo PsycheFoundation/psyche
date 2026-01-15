@@ -131,7 +131,7 @@ let
       ''
         mkdir -p $out/bin
         makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-          --prefix PATH : "${psychePythonVenv}/bin"
+          --prefix PATH : "${psychePythonVenvWithExtension}/bin"
       '';
 
   buildRustPackageWithoutPython =

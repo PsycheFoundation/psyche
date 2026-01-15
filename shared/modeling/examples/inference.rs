@@ -288,14 +288,12 @@ fn main() -> Result<()> {
     let _no_grad = tch::no_grad_guard();
     let cli_args = CliArgs::parse();
 
-    // Handle print-all-help command
     if let Some(Commands::PrintAllHelp { markdown }) = cli_args.command {
         assert!(markdown);
         clap_markdown::print_help_markdown::<CliArgs>();
         return Ok(());
     }
 
-    // Run normal inference with the args
     let args = cli_args.run_args;
     let repo_files = if std::fs::exists(args.model.clone()).unwrap_or_default() {
         std::fs::read_dir(args.model.clone())
