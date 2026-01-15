@@ -18,7 +18,8 @@ pub use dummy::DummyDataProvider;
 pub use errors::{DownloadError, UploadError};
 pub use file_extensions::{DATA_FILE_EXTENSIONS, PARQUET_EXTENSION};
 pub use gcs::{
-    GcsUploadInfo, download_model_from_gcs_async, download_model_from_gcs_sync, upload_to_gcs,
+    GcsCheckpointManifest, GcsManifestMetadata, GcsUploadInfo, ManifestFileEntry, ManifestMetadata,
+    download_model_from_gcs_async, download_model_from_gcs_sync, upload_to_gcs,
 };
 pub use hub::{
     HubUploadInfo, download_dataset_repo_async, download_dataset_repo_sync,

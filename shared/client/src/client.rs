@@ -1,6 +1,6 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
-    RunInitConfig, RunInitConfigAndIO, TrainingResult,
+    Broadcast, BroadcastType, ClientTUIState, Finished, NC, RunInitConfig, RunInitConfigAndIO,
+    TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
 };
 use anyhow::anyhow;
@@ -8,7 +8,7 @@ use anyhow::{Error, Result, bail};
 use futures::future::join_all;
 use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
-use psyche_core::NodeIdentity;
+use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
@@ -133,7 +133,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut retry_check_interval = interval(DOWNLOAD_RETRY_CHECK_INTERVAL);
                 let mut opportunistic_witness_interval = interval(OPPROTUNISTIC_WITNESS_INTERVAL);
                 let mut check_connection_interval = interval(CHECK_CONNECTION_INTERVAL);
-                let mut _wait_for_checkpoint = false;
                 let mut last_gossip_connection_time = SystemTime::now();
                 debug!("Starting client loop");
 
@@ -141,9 +140,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     select! {
                         _ = cancel.cancelled() => {
                             info!("Got request to cancel main client loop");
-                            if run.doing_checkpoint() {
-                                _wait_for_checkpoint = true;
-                            }
                             break;
                         }
 

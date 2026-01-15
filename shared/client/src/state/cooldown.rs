@@ -1,8 +1,7 @@
 use crate::UploadInfo;
-use psyche_coordinator::CheckpointerSelection;
-use psyche_coordinator::Coordinator;
+use psyche_coordinator::{CheckpointerSelection, Coordinator};
 use psyche_core::NodeIdentity;
-use psyche_data_provider::{UploadError, upload_to_gcs, upload_to_hub};
+use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
 use psyche_modeling::{
@@ -37,6 +36,9 @@ pub enum CooldownError {
 
     #[error("error while checkpointing: {0}")]
     Checkpoint(#[from] CheckpointError),
+
+    #[error("error in cooldown step: {0}")]
+    CoordinatorError(#[from] psyche_coordinator::CoordinatorError),
 }
 
 pub struct CooldownStepMetadata {
@@ -133,20 +135,21 @@ impl CooldownStepMetadata {
 
         let step = state.progress.step - 1;
         let run_id = String::from(&state.run_id);
+        let epoch = state.progress.epoch as u32;
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
-        let checkpointer_selection = CheckpointerSelection::from_coordinator(state, 0)
-            .map_err(|_| CooldownError::NoTrainers)?;
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(state, 0)?;
         let is_checkpointer = checkpointer_selection
-            .get_checkpointer(client_index, state.epoch_state.clients.len() as u64);
+            .is_checkpointer(client_index, state.epoch_state.clients.len() as u64);
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
-        let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn({
-            let cancellation_token = cancellation_token.clone();
-            async move {
+        let checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>> =
+            tokio::task::spawn({
+                let cancellation_token = cancellation_token.clone();
+                async move {
                 info!("Extracting full model...");
                 let (variables, trainer) =
                     tokio::task::spawn_blocking::<_, Result<_, CheckpointError>>(|| {
@@ -182,7 +185,7 @@ impl CooldownStepMetadata {
                 let evals = model_task_runner.start(trainers);
                  if !is_checkpointer {
                     info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
-                    return Ok((evals, None));
+                    return Ok(evals);
                 }
 
             let CheckpointConfig {
@@ -192,12 +195,15 @@ impl CooldownStepMetadata {
                 keep_steps,
             } = checkpoint_info;
 
-            // Do the upload inline instead of spawning
             let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
             let local = save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
 
             if let Some(upload_info) = upload_info {
-                upload_checkpoint(upload_info, local.clone(), step as u64, cancellation_token.clone())
+                let manifest_metadata = GcsManifestMetadata {
+                    epoch,
+                    run_id: run_id.clone(),
+                };
+                upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
                     .await?;
             }
 
@@ -211,10 +217,10 @@ impl CooldownStepMetadata {
             )
             .await;
 
-            Ok((evals, None))  // No separate handle needed
+            Ok(evals)
         }
         .instrument(info_span!("checkpointing"))
-        });
+            });
 
         Ok(CooldownStep {
             checkpointing_and_evals,
@@ -249,52 +255,41 @@ async fn save_checkpoint_locally(
 
 async fn upload_checkpoint(
     upload_info: UploadInfo,
+    manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), CheckpointError> {
     match upload_info {
-        UploadInfo::Gcs(gcs_info) => upload_to_gcs(gcs_info, local, cancellation_token)
-            .await
-            .map_err(CheckpointError::UploadError),
+        UploadInfo::Gcs(gcs_info) => {
+            upload_to_gcs(gcs_info, manifest_metadata, local, step, cancellation_token)
+                .await
+                .map_err(CheckpointError::UploadError)
+        }
         UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, cancellation_token)
             .await
             .map_err(CheckpointError::UploadError),
+        UploadInfo::Dummy() => {
+            info!("Dummy upload info provided; skipping upload");
+            Ok(())
+        }
     }
 }
 
-type CheckpointAndEvalsHandle = JoinHandle<
-    Result<
-        (
-            RunningEvals,
-            Option<JoinHandle<Result<(), CheckpointError>>>,
-        ),
-        CheckpointError,
-    >,
->;
-
 #[derive(Debug)]
 pub struct CooldownStep {
-    checkpointing_and_evals: CheckpointAndEvalsHandle,
+    checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
     cancellation_token: tokio_util::sync::CancellationToken,
 }
 
 impl CooldownStep {
-    pub async fn finish(
-        self,
-    ) -> Result<
-        (
-            RunningEvals,
-            Option<JoinHandle<Result<(), CheckpointError>>>,
-        ),
-        CooldownError,
-    > {
-        let (running_evals, upload_handle) = self
+    pub async fn finish(self) -> Result<RunningEvals, CooldownError> {
+        let running_evals = self
             .checkpointing_and_evals
             .await
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
-        Ok((running_evals, upload_handle))
+        Ok(running_evals)
     }
 
     pub fn cancel(&self) {

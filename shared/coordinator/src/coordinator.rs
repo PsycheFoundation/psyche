@@ -252,7 +252,6 @@ pub struct CoordinatorConfig {
     pub init_min_clients: u16,
     pub min_clients: u16,
     pub witness_nodes: u16,
-    pub checkpointer_nodes: u16,
 
     pub global_batch_size_start: u16,
     pub global_batch_size_end: u16,
@@ -513,7 +512,6 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn cooldown_witness(
         &mut self,
-        _from: &T,
         witness: Witness,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
@@ -525,9 +523,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
 
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
-        let is_checkpointer = checkpointer_selection
-            .get_checkpointer(witness.proof.index, self.epoch_state.clients.len() as u64);
-        if !is_checkpointer {
+        if !checkpointer_selection
+            .is_checkpointer(witness.proof.index, self.epoch_state.clients.len() as u64)
+        {
             return Err(CoordinatorError::InvalidWitness);
         }
 
@@ -670,9 +668,9 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidRunState);
         }
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
-        let is_checkpointer = checkpointer_selection
-            .get_checkpointer(index as u64, self.epoch_state.clients.len() as u64);
-        if !is_checkpointer {
+        if !checkpointer_selection
+            .is_checkpointer(index as u64, self.epoch_state.clients.len() as u64)
+        {
             return Err(CoordinatorError::InvalidWitness);
         }
 
@@ -1246,8 +1244,6 @@ impl CoordinatorConfig {
             && self.global_batch_size_end >= self.global_batch_size_start
             && self.total_steps != 0
             && self.witness_nodes <= self.min_clients
-            && self.checkpointer_nodes <= self.min_clients
-            && self.checkpointer_nodes as usize <= SOLANA_MAX_NUM_CHECKPOINTERS
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0
             && self.waiting_for_members_extra_time > 0

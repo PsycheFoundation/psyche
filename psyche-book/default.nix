@@ -9,7 +9,6 @@
 
   # custom args
   rustPackages,
-  rustPackageNames,
 }:
 let
   mdbook-0-4-47 = mdbook.overrideAttrs (
@@ -34,6 +33,18 @@ let
     }
   );
 in
+let
+  # Pull crate binary package names from rustPackages
+  # prefer -nopython suffix if available, otherwise use normal version
+  allPackageNames = builtins.attrNames rustPackages;
+
+  binaryPackageNames = lib.unique (
+    builtins.filter (
+      name:
+      if lib.hasSuffix "-nopython" name then true else !(builtins.elem "${name}-nopython" allPackageNames)
+    ) allPackageNames
+  );
+in
 stdenvNoCC.mkDerivation {
   __structuredAttrs = true;
 
@@ -55,12 +66,10 @@ stdenvNoCC.mkDerivation {
     ${lib.concatMapStringsSep "\n" (
       name:
       let
-        noPythonPackage = "${name}-nopython";
+        basename = lib.replaceStrings [ "-nopython" ] [ "" ] name;
       in
-      "${rustPackages.${noPythonPackage}}/bin/${name} print-all-help --markdown > generated/cli/${
-        lib.replaceStrings [ "-" ] [ "-" ] name
-      }.md"
-    ) rustPackageNames}
+      "${rustPackages.${name}}/bin/${basename} print-all-help --markdown > generated/cli/${basename}.md"
+    ) binaryPackageNames}
 
     cp ${../secrets.nix} generated/secrets.nix
   '';

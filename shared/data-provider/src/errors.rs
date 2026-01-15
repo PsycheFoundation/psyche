@@ -26,6 +26,9 @@ pub enum UploadError {
 
     #[error("HuggingFace Hub commit error: {0}")]
     HubCommit(#[from] CommitError),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 #[derive(Error, Debug)]
@@ -40,4 +43,7 @@ pub enum DownloadError {
 
     #[error("GCS error: {0}")]
     Gcs(String),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 }
