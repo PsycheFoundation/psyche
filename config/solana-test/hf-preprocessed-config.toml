@@ -1,0 +1,45 @@
+[config]
+warmup_time = 30
+cooldown_time = 30
+epoch_time = 60
+max_round_train_time = 15
+round_witness_time = 5
+min_clients = 1
+init_min_clients = 1
+verification_percent = 0
+witness_nodes = 0
+global_batch_size_start = 4
+global_batch_size_end = 4
+global_batch_size_warmup_tokens = 0
+total_steps = 100                   # Keep it short for testing
+waiting_for_members_extra_time = 3
+
+[model.LLM]
+architecture = "HfLlama"
+data_type = "Finetuning"    # Use Finetuning for preprocessed data
+max_seq_len = 95344         # Match your dataset's sequence length
+cold_start_warmup_steps = 0
+
+[model.LLM.checkpoint.Hub]
+repo_id = "emozilla/llama2-20m-init"
+
+# New HuggingFacePreprocessed data location
+[model.LLM.data_location.HuggingFacePreprocessed]
+repo_id = "emozilla/pg19-test-tokenized"
+config = "default"
+split = "test"
+shuffle = "DontShuffle"
+
+[model.LLM.lr_schedule.Cosine]
+base_lr = 4.0e-4
+warmup_steps = 10
+warmup_init_lr = 0.0
+total_steps = 100
+final_lr = 4.0e-5
+
+[model.LLM.optimizer.Distro]
+clip_grad_norm = 1.0
+compression_decay = 0.999
+compression_chunk = 64
+compression_topk = 8
+quantize_1bit = true
