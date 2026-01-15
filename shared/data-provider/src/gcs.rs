@@ -222,6 +222,7 @@ async fn download_files_from_manifest(
                 &GetObjectRequest {
                     bucket: bucket.to_owned(),
                     object: object_name,
+                    generation: Some(file_entry.generation),
                     ..Default::default()
                 },
                 &Range::default(),
