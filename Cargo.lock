@@ -6982,7 +6982,6 @@ dependencies = [
  "async-trait",
  "bytemuck",
  "cfg_eval",
- "google-cloud-storage",
  "psyche-core",
  "serde",
  "serde_with",
