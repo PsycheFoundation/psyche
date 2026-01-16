@@ -210,7 +210,7 @@ pub async fn upload_to_hub(
     info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
 
     let api = hf_hub::api::tokio::ApiBuilder::new()
-        .with_token(Some(hub_token.clone()))
+        .with_token(Some(hub_token))
         .build()?;
     let repo = Repo::model(hub_repo.clone());
     let api_repo = api.repo(repo);

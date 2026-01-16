@@ -5,12 +5,11 @@ use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_client::UploadInfo;
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
-    read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
-use psyche_coordinator::model::Checkpoint;
+use psyche_client::{GcsUploadInfo, HubUploadInfo, UploadInfo};
+use psyche_coordinator::model::{self, Checkpoint, GcsRepo, HubRepo, LLM, Model};
 use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
@@ -181,28 +180,45 @@ impl App {
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
         // sanity checks
-        let CheckpointConfig { upload_info, .. } = state_options.checkpoint_config.clone();
+        let Model::LLM(LLM { checkpoint, .. }) = &self.coordinator_state.model;
         if !self.skip_upload_check {
+            let upload_info = match checkpoint {
+                model::Checkpoint::Hub(HubRepo { repo_id, revision })
+                | model::Checkpoint::P2P(HubRepo { repo_id, revision }) => {
+                    Some(UploadInfo::Hub(HubUploadInfo {
+                        hub_repo: (repo_id).into(),
+                        hub_token: (&revision.unwrap_or_default()).into(),
+                    }))
+                }
+                model::Checkpoint::Gcs(GcsRepo { bucket, prefix })
+                | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                    Some(UploadInfo::Gcs(GcsUploadInfo {
+                        gcs_bucket: (bucket).into(),
+                        gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
+                    }))
+                }
+                _ => None,
+            };
+
             match upload_info {
-                Some(UploadInfo::Hub(hub_info)) => {
+                Some(UploadInfo::Hub(HubUploadInfo {
+                    hub_repo,
+                    hub_token,
+                })) => {
                     let api = hf_hub::api::tokio::ApiBuilder::new()
-                        .with_token(Some(hub_info.hub_token))
+                        .with_token(Some(hub_token.clone()))
                         .build()?;
-                    let repo_api = api.repo(Repo::new(
-                        hub_info.hub_repo.clone(),
-                        hf_hub::RepoType::Model,
-                    ));
+                    let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
                     if !repo_api.is_writable().await {
                         anyhow::bail!(
                             "Checkpoint upload repo {} is not writable with the passed API key.",
-                            hub_info.hub_repo
+                            hub_repo
                         )
                     }
                 }
                 Some(UploadInfo::Gcs(gcs_info)) => {
                     let config = ClientConfig::default().with_auth().await?;
                     let client = GcsClient::new(config);
-
                     // Test write access by attempting to upload a small test object
                     let test_key = format!(
                         "{}/.write_test",
@@ -219,7 +235,6 @@ impl App {
                             &UploadType::Simple(Media::new(test_key.clone())),
                         )
                         .await;
-
                     match upload_result {
                         Ok(_) => {
                             let delete_request = DeleteObjectRequest {
@@ -242,7 +257,9 @@ impl App {
                 Some(UploadInfo::Dummy()) => {
                     // In test mode, we skip upload checks
                 }
-                None => {}
+                None => {
+                    anyhow::bail!("No upload info found for checkpointing");
+                }
             }
         }
 
