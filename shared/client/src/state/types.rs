@@ -18,19 +18,19 @@ pub enum UploadInfo {
 
 #[derive(Debug, Clone)]
 pub struct CheckpointConfig {
-    pub upload_info: Option<UploadInfo>,
     pub checkpoint_dir: PathBuf,
     pub delete_old_steps: bool,
     pub keep_steps: u32,
+    pub hub_token: Option<String>,
 }
 
 impl CheckpointConfig {
     pub fn dummy() -> Self {
         Self {
-            upload_info: Some(UploadInfo::Dummy()),
             checkpoint_dir: PathBuf::from("./checkpoints"),
             delete_old_steps: false,
             keep_steps: 1,
+            hub_token: None,
         }
     }
 }

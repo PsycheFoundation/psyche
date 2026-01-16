@@ -126,5 +126,7 @@ jobs:
 
       # Step 4: Run Integration Tests
       - name: Run integration test
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "${{ inputs.test-name }}"

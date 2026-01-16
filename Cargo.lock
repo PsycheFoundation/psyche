@@ -7480,6 +7480,8 @@ dependencies = [
  "async-trait",
  "clap",
  "clap-markdown",
+ "google-cloud-storage",
+ "hf-hub",
  "psyche-client",
  "psyche-coordinator",
  "psyche-core",

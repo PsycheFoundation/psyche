@@ -1,9 +1,7 @@
 use crate::{CheckpointConfig, WandBInfo};
 
-use crate::UploadInfo;
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
-use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
@@ -144,18 +142,6 @@ pub struct TrainArgs {
     #[clap(long, env, default_value = "~/.cache/psyche/checkpoints")]
     pub checkpoint_dir: PathBuf,
 
-    /// Path to the Hugging Face repository containing model data and configuration.
-    #[clap(long, env)]
-    pub hub_repo: Option<String>,
-
-    /// Name of the GCS bucket containing model data and configuration.
-    #[clap(long, env)]
-    pub gcs_bucket: Option<String>,
-
-    /// Prefix within the GCS bucket for model data and configuration.
-    #[clap(long, env)]
-    pub gcs_prefix: Option<String>,
-
     #[clap(long, env, default_value_t = 3)]
     pub hub_max_concurrent_downloads: usize,
 
@@ -240,17 +226,16 @@ impl TrainArgs {
             return Ok(CheckpointConfig::dummy());
         }
 
-        let hub_read_token = std::env::var("HF_TOKEN").ok();
+        let hub_token = std::env::var("HF_TOKEN").ok();
+        let google_application_credentials = std::env::var("GOOGLE_APPLICATION_CREDENTIALS").ok();
 
-        if self.hub_repo.is_some() && self.gcs_bucket.is_some() {
-            bail!("Use either GCS or HF hub for checkpoint uploads, not both.");
-        } else if self.hub_repo.is_none() && self.gcs_bucket.is_none() {
-            bail!("Either --hub-repo or --gcs-bucket must be set for checkpoint uploads");
+        if hub_token.is_none() && google_application_credentials.is_none() {
+            return Err(anyhow!(
+                "Either HF_TOKEN or GOOGLE_APPLICATION_CREDENTIALS environment variable must be set for checkpoint uploads"
+            ));
         }
 
-        let upload_info = self.build_upload_info(&hub_read_token)?;
-
-        if upload_info.is_some() && self.keep_steps == 0 {
+        if self.keep_steps == 0 {
             bail!(
                 "keep_steps must be >= 1 for checkpoint uploads (got {})",
                 self.keep_steps
@@ -259,44 +244,10 @@ impl TrainArgs {
 
         Ok(CheckpointConfig {
             checkpoint_dir: self.checkpoint_dir.clone(),
-            upload_info,
             delete_old_steps: self.delete_old_steps,
             keep_steps: self.keep_steps,
+            hub_token,
         })
-    }
-
-    fn build_upload_info(&self, hub_token: &Option<String>) -> Result<Option<UploadInfo>> {
-        if let Some(repo) = &self.hub_repo {
-            return self.build_hub_upload_info(repo, hub_token);
-        }
-
-        if let Some(bucket) = &self.gcs_bucket {
-            return self.build_gcs_upload_info(bucket);
-        }
-
-        Ok(None)
-    }
-
-    fn build_hub_upload_info(
-        &self,
-        repo: &str,
-        token: &Option<String>,
-    ) -> Result<Option<UploadInfo>> {
-        let token = token.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
-        })?;
-
-        Ok(Some(UploadInfo::Hub(HubUploadInfo {
-            hub_repo: repo.to_string(),
-            hub_token: token.to_string(),
-        })))
-    }
-
-    fn build_gcs_upload_info(&self, bucket: &str) -> Result<Option<UploadInfo>> {
-        Ok(Some(UploadInfo::Gcs(GcsUploadInfo {
-            gcs_bucket: bucket.to_string(),
-            gcs_prefix: self.gcs_prefix.clone(),
-        })))
     }
 
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {
