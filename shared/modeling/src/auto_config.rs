@@ -64,20 +64,16 @@ pub enum ModelLoadError {
     NoDeviceForRank(usize, Devices),
 }
 
-pub trait ModelConfig: serde::Serialize + Clone {
-    fn get_parameter_names(&self) -> Vec<String>;
-}
-
 #[derive(Clone)]
-pub enum PretrainedSource<T: ModelConfig> {
+pub enum PretrainedSource<T: serde::Serialize + Clone> {
     RepoFiles(Vec<PathBuf>),
     ConfigAndTensors(T, Arc<HashMap<String, Tensor>>),
 }
 
-unsafe impl<T: ModelConfig> Send for PretrainedSource<T> {}
-unsafe impl<T: ModelConfig> Sync for PretrainedSource<T> {}
+unsafe impl<T: serde::Serialize + Clone> Send for PretrainedSource<T> {}
+unsafe impl<T: serde::Serialize + Clone> Sync for PretrainedSource<T> {}
 
-impl<T: ModelConfig + serde::de::DeserializeOwned> PretrainedSource<T> {
+impl<T: serde::Serialize + Clone + serde::de::DeserializeOwned> PretrainedSource<T> {
     pub fn get_config(&self) -> Result<T, ModelLoadError> {
         match self {
             PretrainedSource::RepoFiles(repo_files) => {
@@ -130,7 +126,7 @@ impl<T: ModelConfig + serde::de::DeserializeOwned> PretrainedSource<T> {
     }
 }
 
-impl<T: ModelConfig> PretrainedSource<T> {
+impl<T: serde::Serialize + Clone> PretrainedSource<T> {
     pub fn serialize_config(&self) -> Result<String, ModelLoadError> {
         match self {
             PretrainedSource::RepoFiles(repo_files) => Ok(std::fs::read_to_string(
@@ -187,17 +183,6 @@ impl serde::Serialize for AutoConfig {
             AutoConfig::Deepseek(config) => config.serialize(serializer),
             #[cfg(feature = "python")]
             AutoConfig::Auto(config) => config.serialize(serializer),
-        }
-    }
-}
-
-impl ModelConfig for AutoConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
-        match self {
-            AutoConfig::Llama(config) => config.get_parameter_names(),
-            AutoConfig::Deepseek(config) => config.get_parameter_names(),
-            #[cfg(feature = "python")]
-            AutoConfig::Auto(config) => config.get_parameter_names(),
         }
     }
 }
