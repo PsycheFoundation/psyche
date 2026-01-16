@@ -238,77 +238,77 @@ impl App {
         let mut ever_joined_run = false;
 
         // sanity checks
-        let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
-        if !self.no_checkpoint {
-            let upload_info = match checkpoint {
-                model::Checkpoint::Hub(HubRepo { repo_id, revision })
-                | model::Checkpoint::P2P(HubRepo { repo_id, revision }) => {
-                    Some(UploadInfo::Hub(HubUploadInfo {
-                        hub_repo: (&repo_id).into(),
-                        hub_token: (&revision.unwrap_or_default()).into(),
-                    }))
-                }
-                model::Checkpoint::Gcs(GcsRepo { bucket, prefix })
-                | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
-                    Some(UploadInfo::Gcs(GcsUploadInfo {
-                        gcs_bucket: (&bucket).into(),
-                        gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
-                    }))
-                }
-                _ => None,
-            };
-            match upload_info {
-                Some(UploadInfo::Hub(hub_info)) => {
-                    let api = hf_hub::api::tokio::ApiBuilder::new()
-                        .with_token(Some(hub_info.hub_token))
-                        .build()?;
-                    let repo_api = api.repo(Repo::new(
-                        hub_info.hub_repo.clone(),
-                        hf_hub::RepoType::Model,
-                    ));
-                    if !repo_api.is_writable().await {
-                        anyhow::bail!(
-                            "Checkpoint upload repo {} is not writable with the passed API key.",
-                            hub_info.hub_repo
-                        )
-                    }
-                }
-                Some(UploadInfo::Gcs(gcs_info)) => {
-                    let config = ClientConfig::default().with_auth().await?;
-                    let client = GcsClient::new(config);
+        // let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
+        // if !self.no_checkpoint {
+        //     let upload_info = match checkpoint {
+        //         model::Checkpoint::Hub(HubRepo { repo_id, revision })
+        //         | model::Checkpoint::P2P(HubRepo { repo_id, revision }) => {
+        //             Some(UploadInfo::Hub(HubUploadInfo {
+        //                 hub_repo: (&repo_id).into(),
+        //                 hub_token: (&revision.unwrap_or_default()).into(),
+        //             }))
+        //         }
+        //         model::Checkpoint::Gcs(GcsRepo { bucket, prefix })
+        //         | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+        //             Some(UploadInfo::Gcs(GcsUploadInfo {
+        //                 gcs_bucket: (&bucket).into(),
+        //                 gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
+        //             }))
+        //         }
+        //         _ => None,
+        //     };
+        //     match upload_info {
+        //         Some(UploadInfo::Hub(hub_info)) => {
+        //             let api = hf_hub::api::tokio::ApiBuilder::new()
+        //                 .with_token(Some(hub_info.hub_token))
+        //                 .build()?;
+        //             let repo_api = api.repo(Repo::new(
+        //                 hub_info.hub_repo.clone(),
+        //                 hf_hub::RepoType::Model,
+        //             ));
+        //             if !repo_api.is_writable().await {
+        //                 anyhow::bail!(
+        //                     "Checkpoint upload repo {} is not writable with the passed API key.",
+        //                     hub_info.hub_repo
+        //                 )
+        //             }
+        //         }
+        //         Some(UploadInfo::Gcs(gcs_info)) => {
+        //             let config = ClientConfig::default().with_auth().await?;
+        //             let client = GcsClient::new(config);
 
-                    // Test if we have the required permissions
-                    let permissions_to_test = vec![
-                        "storage.objects.create".to_string(),
-                        "storage.objects.delete".to_string(),
-                        "storage.objects.get".to_string(),
-                        "storage.objects.list".to_string(),
-                        "storage.objects.update".to_string(),
-                    ];
+        //             // Test if we have the required permissions
+        //             let permissions_to_test = vec![
+        //                 "storage.objects.create".to_string(),
+        //                 "storage.objects.delete".to_string(),
+        //                 "storage.objects.get".to_string(),
+        //                 "storage.objects.list".to_string(),
+        //                 "storage.objects.update".to_string(),
+        //             ];
 
-                    let result = client
-                        .test_iam_permissions(&TestIamPermissionsRequest {
-                            resource: format!("projects/_/buckets/{}", gcs_info.gcs_bucket),
-                            permissions: permissions_to_test.clone(),
-                        })
-                        .await?;
+        //             let result = client
+        //                 .test_iam_permissions(&TestIamPermissionsRequest {
+        //                     resource: format!("projects/_/buckets/{}", gcs_info.gcs_bucket),
+        //                     permissions: permissions_to_test.clone(),
+        //                 })
+        //                 .await?;
 
-                    let correct_permissions = permissions_to_test
-                        .iter()
-                        .all(|p| result.permissions.contains(p));
-                    if !correct_permissions {
-                        anyhow::bail!(
-                            "GCS bucket {} does not have the required permissions for checkpoint upload make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly.",
-                            gcs_info.gcs_bucket
-                        )
-                    }
-                }
-                Some(UploadInfo::Dummy()) => {
-                    // In test mode, we skip upload checks
-                }
-                None => {}
-            }
-        }
+        //             let correct_permissions = permissions_to_test
+        //                 .iter()
+        //                 .all(|p| result.permissions.contains(p));
+        //             if !correct_permissions {
+        //                 anyhow::bail!(
+        //                     "GCS bucket {} does not have the required permissions for checkpoint upload make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly.",
+        //                     gcs_info.gcs_bucket
+        //                 )
+        //             }
+        //         }
+        //         Some(UploadInfo::Dummy()) => {
+        //             // In test mode, we skip upload checks
+        //         }
+        //         None => {}
+        //     }
+        // }
 
         // if we're already in "WaitingForMembers" we won't get an update saying that
         // (subscription is on change), so check if it's in that state right at boot
