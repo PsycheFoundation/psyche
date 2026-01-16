@@ -5,8 +5,9 @@ use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_client::UploadInfo;
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadInfo,
+    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
     read_identity_secret_key,
 };
 use psyche_coordinator::model::Checkpoint;
@@ -87,6 +88,7 @@ pub struct App {
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
 
     metrics: Arc<ClientMetrics>,
+    skip_upload_check: bool,
 }
 
 pub async fn build_app(
@@ -94,6 +96,7 @@ pub async fn build_app(
     server_addr: String,
     tx_tui_state: Option<Sender<TabsData>>,
     p: TrainArgs,
+    is_test: bool,
 ) -> Result<(
     App,
     allowlist::AllowDynamic,
@@ -165,6 +168,7 @@ pub async fn build_app(
         server_conn,
         run_id: p.run_id,
         metrics,
+        skip_upload_check: is_test,
     };
     Ok((app, allowlist, p2p, state_options))
 }
@@ -178,63 +182,68 @@ impl App {
     ) -> Result<()> {
         // sanity checks
         let CheckpointConfig { upload_info, .. } = state_options.checkpoint_config.clone();
-        match upload_info {
-            Some(UploadInfo::Hub(hub_info)) => {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_info.hub_token))
-                    .build()?;
-                let repo_api = api.repo(Repo::new(
-                    hub_info.hub_repo.clone(),
-                    hf_hub::RepoType::Model,
-                ));
-                if !repo_api.is_writable().await {
-                    anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_info.hub_repo
-                    )
-                }
-            }
-            Some(UploadInfo::Gcs(gcs_info)) => {
-                let config = ClientConfig::default().with_auth().await?;
-                let client = GcsClient::new(config);
-
-                // Test write access by attempting to upload a small test object
-                let test_key = format!(
-                    "{}/.write_test",
-                    gcs_info.gcs_prefix.clone().unwrap_or_default()
-                );
-
-                let upload_result = client
-                    .upload_object(
-                        &UploadObjectRequest {
-                            bucket: gcs_info.gcs_bucket.clone(),
-                            ..Default::default()
-                        },
-                        vec![],
-                        &UploadType::Simple(Media::new(test_key.clone())),
-                    )
-                    .await;
-
-                match upload_result {
-                    Ok(_) => {
-                        let delete_request = DeleteObjectRequest {
-                            bucket: gcs_info.gcs_bucket.clone(),
-                            object: test_key.clone(),
-                            ..Default::default()
-                        };
-                        let _ = client.delete_object(&delete_request).await;
-                    }
-                    Err(e) => {
+        if !self.skip_upload_check {
+            match upload_info {
+                Some(UploadInfo::Hub(hub_info)) => {
+                    let api = hf_hub::api::tokio::ApiBuilder::new()
+                        .with_token(Some(hub_info.hub_token))
+                        .build()?;
+                    let repo_api = api.repo(Repo::new(
+                        hub_info.hub_repo.clone(),
+                        hf_hub::RepoType::Model,
+                    ));
+                    if !repo_api.is_writable().await {
                         anyhow::bail!(
-                            "GCS bucket gs://{}/{} is not writable: {}",
-                            gcs_info.gcs_bucket,
-                            gcs_info.gcs_prefix.clone().unwrap_or_default(),
-                            e
+                            "Checkpoint upload repo {} is not writable with the passed API key.",
+                            hub_info.hub_repo
                         )
                     }
                 }
+                Some(UploadInfo::Gcs(gcs_info)) => {
+                    let config = ClientConfig::default().with_auth().await?;
+                    let client = GcsClient::new(config);
+
+                    // Test write access by attempting to upload a small test object
+                    let test_key = format!(
+                        "{}/.write_test",
+                        gcs_info.gcs_prefix.clone().unwrap_or_default()
+                    );
+
+                    let upload_result = client
+                        .upload_object(
+                            &UploadObjectRequest {
+                                bucket: gcs_info.gcs_bucket.clone(),
+                                ..Default::default()
+                            },
+                            vec![],
+                            &UploadType::Simple(Media::new(test_key.clone())),
+                        )
+                        .await;
+
+                    match upload_result {
+                        Ok(_) => {
+                            let delete_request = DeleteObjectRequest {
+                                bucket: gcs_info.gcs_bucket.clone(),
+                                object: test_key.clone(),
+                                ..Default::default()
+                            };
+                            let _ = client.delete_object(&delete_request).await;
+                        }
+                        Err(e) => {
+                            anyhow::bail!(
+                                "GCS bucket gs://{}/{} is not writable: {}",
+                                gcs_info.gcs_bucket,
+                                gcs_info.gcs_prefix.clone().unwrap_or_default(),
+                                e
+                            )
+                        }
+                    }
+                }
+                Some(UploadInfo::Dummy()) => {
+                    // In test mode, we skip upload checks
+                }
+                None => {}
             }
-            None => {}
         }
 
         self.server_conn

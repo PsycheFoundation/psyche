@@ -460,7 +460,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     .collect();
                                 let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
                                 (
-                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files.to_vec()),
                                     tokenizer,
                                     checkpoint_extra_files,
                                 )

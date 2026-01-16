@@ -252,7 +252,6 @@ pub struct CoordinatorConfig {
     pub init_min_clients: u16,
     pub min_clients: u16,
     pub witness_nodes: u16,
-    pub checkpointer_nodes: u16,
 
     pub global_batch_size_start: u16,
     pub global_batch_size_end: u16,
@@ -1245,8 +1244,6 @@ impl CoordinatorConfig {
             && self.global_batch_size_end >= self.global_batch_size_start
             && self.total_steps != 0
             && self.witness_nodes <= self.min_clients
-            && self.checkpointer_nodes <= self.min_clients
-            && self.checkpointer_nodes as usize <= SOLANA_MAX_NUM_CHECKPOINTERS
             && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
             && self.cooldown_time > 0
             && self.waiting_for_members_extra_time > 0

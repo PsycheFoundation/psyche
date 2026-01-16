@@ -204,6 +204,9 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
+
+    #[clap(long, default_value_t = false, env, hide = true)]
+    pub test_mode: bool,
 }
 
 impl TrainArgs {
@@ -233,6 +236,10 @@ impl TrainArgs {
     }
 
     pub fn checkpoint_config(&self) -> Result<CheckpointConfig> {
+        if self.test_mode {
+            return Ok(CheckpointConfig::dummy());
+        }
+
         let hub_read_token = std::env::var("HF_TOKEN").ok();
 
         if self.hub_repo.is_some() && self.gcs_bucket.is_some() {

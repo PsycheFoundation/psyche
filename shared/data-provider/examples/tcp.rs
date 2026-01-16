@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bytemuck::Zeroable;
 use futures::future::try_join_all;
 use parquet::data_type::AsBytes;
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::{Coordinator, HealthChecks, model::Checkpoint};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{
     DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedData,
@@ -35,6 +35,10 @@ impl<T: NodeIdentity> WatcherBackend<T> for DummyBackend<T> {
 
     async fn send_health_check(&mut self, _health_checks: HealthChecks<T>) -> anyhow::Result<()> {
         bail!("Data provider does not send health check");
+    }
+
+    async fn send_checkpoint(&mut self, _checkpoint: Checkpoint) -> anyhow::Result<()> {
+        bail!("Data provider does not send checkpoints");
     }
 }
 
