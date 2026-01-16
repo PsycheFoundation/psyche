@@ -205,7 +205,7 @@ pub struct TrainArgs {
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
 
-    #[clap(long, default_value_t = false, env)]
+    #[clap(long, default_value_t = false, env, hide = true)]
     pub test_mode: bool,
 }
 
