@@ -66,7 +66,7 @@ Follow the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com
 After installation, verify GPU access works inside Docker:
 
 ```bash
-docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.2.2-devel-ubuntu22.04
 ```
 
 You should see the same GPU information as running `nvidia-smi` directly.
