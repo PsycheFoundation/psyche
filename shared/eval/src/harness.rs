@@ -219,9 +219,20 @@ impl Task {
                     .into_iter()
                     .map(|doc| {
                         // Build fewshot prefix for this document
+                        let category = doc.category.as_deref().unwrap_or("default");
+
+                        // Add preamble for MMLU tasks (appears once at the beginning)
+                        let preamble = if [MMLU::name(), MMLUCF::name()].contains(&name.as_str()) {
+                            format!(
+                                "The following are multiple choice questions (with answers) about {}.\n\n",
+                                category
+                            )
+                        } else {
+                            String::new()
+                        };
+
                         let fewshot_prefix = if self.num_fewshot > 0 {
                             // Get fewshot examples for this document's category
-                            let category = doc.category.as_deref().unwrap_or("default");
                             let fewshot_examples = fewshot_by_category
                                 .get(category)
                                 .cloned()
@@ -252,15 +263,16 @@ impl Task {
 
                             // Build fewshots to match how test question is tokenized:
                             // text (ends with "Answer:") + " " + choice
-                            fewshot_examples
-                                .into_iter()
-                                .take(self.num_fewshot)
-                                .map(|x| format!("{} {}", x.text, ASCII_UPPERCASE[x.answer]))
-                                .collect::<Vec<_>>()
-                                .join("\n\n")
+                            preamble
+                                + &fewshot_examples
+                                    .into_iter()
+                                    .take(self.num_fewshot)
+                                    .map(|x| format!("{} {}", x.text, ASCII_UPPERCASE[x.answer]))
+                                    .collect::<Vec<_>>()
+                                    .join("\n\n")
                                 + "\n\n"
                         } else {
-                            String::new()
+                            preamble
                         };
 
                         TokenizedLLHDocument::from_document(doc, tokenizer, &fewshot_prefix)
