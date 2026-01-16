@@ -92,7 +92,7 @@ To allow users to access to the bucket in order to push checkpoints in a trainin
 6. Click **Select a role** and choose **Cloud Storage** → **Storage Object User**. This allows read, list, create, and overwrite objects, but not delete
 7. Click **Save**
 
-The user can now access the bucket using
+The user can now authenticate using the gcloud CLI. If you don't have it installed, follow the [installation guide](https://cloud.google.com/sdk/docs/install).
 
 ```
 gcloud auth application-default login
