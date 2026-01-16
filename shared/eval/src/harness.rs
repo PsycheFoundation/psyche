@@ -6,6 +6,8 @@ use crate::{
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
+use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use regex::Regex;
 use std::sync::RwLock;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
@@ -48,13 +50,15 @@ pub enum TaskType {
 pub struct Task {
     task_type: TaskType,
     pub num_fewshot: usize,
+    random_seed: u64,
 }
 
 impl Task {
-    pub fn new(task_type: TaskType, num_fewshot: usize, _random_seed: u64) -> Self {
+    pub fn new(task_type: TaskType, num_fewshot: usize, random_seed: u64) -> Self {
         Task {
             task_type,
             num_fewshot,
+            random_seed,
         }
     }
 }
@@ -229,6 +233,23 @@ impl Task {
                                         .cloned()
                                         .unwrap_or_else(Vec::new)
                                 });
+
+                            // MMLU/ARC tasks use first_n sampling (deterministic) other tasks like PIQA/Hellaswag use random sampling
+                            let should_shuffle = ![
+                                MMLU::name(),
+                                MMLUPro::name(),
+                                MMLUCF::name(),
+                                ArcEasy::name(),
+                                ArcChallenge::name(),
+                            ]
+                            .contains(&name.as_str());
+
+                            let mut fewshot_examples = fewshot_examples;
+                            if should_shuffle {
+                                let mut rng = rand::rngs::StdRng::seed_from_u64(self.random_seed);
+                                fewshot_examples.shuffle(&mut rng);
+                            }
+
                             // Build fewshots to match how test question is tokenized:
                             // text (ends with "Answer:") + " " + choice
                             fewshot_examples
