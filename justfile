@@ -142,12 +142,9 @@ run_test_infra num_clients="1":
     cd docker/test
 
     # Start validator only first
-    echo "Starting validator..."
-    docker compose up -d psyche-solana-test-validator
+    echo "Starting validator and deploying contracts..."
+    docker compose up -d --wait psyche-solana-test-validator
 
-    # Wait for validator to be healthy
-    echo "Waiting for validator to be ready..."
-    docker compose wait psyche-solana-test-validator
     sleep 2  # Extra buffer for RPC to be fully ready
 
     # Run setup script from project root
@@ -173,12 +170,9 @@ run_test_infra_with_proxies_validator num_clients="1":
     cd docker/test/subscriptions_test
 
     # Start validator only first
-    echo "Starting validator..."
-    docker compose -f ../docker-compose.yml up -d psyche-solana-test-validator
+    echo "Starting validator and deploying contracts..."
+    docker compose -f ../docker-compose.yml up -d --wait psyche-solana-test-validator
 
-    # Wait for validator to be healthy
-    echo "Waiting for validator to be ready..."
-    docker compose -f ../docker-compose.yml wait psyche-solana-test-validator
     sleep 2  # Extra buffer for RPC to be fully ready
 
     # Run setup script from project root
