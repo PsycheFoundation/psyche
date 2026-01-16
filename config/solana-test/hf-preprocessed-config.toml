@@ -15,19 +15,18 @@ total_steps = 100                   # Keep it short for testing
 waiting_for_members_extra_time = 3
 
 [model.LLM]
-architecture = "HfLlama"
-data_type = "Finetuning"    # Use Finetuning for preprocessed data
-max_seq_len = 95344         # Match your dataset's sequence length
+architecture = "HfAuto"
+data_type = "Finetuning"
+max_seq_len = 4096
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
 repo_id = "emozilla/llama2-20m-init"
 
-# New HuggingFacePreprocessed data location
 [model.LLM.data_location.HuggingFacePreprocessed]
-repo_id = "emozilla/pg19-test-tokenized"
+repo_id = "emozilla/Hermes-3-Preprocessed-Llama3"
 config = "default"
-split = "test"
+split = "train"
 shuffle = "DontShuffle"
 
 [model.LLM.lr_schedule.Cosine]
