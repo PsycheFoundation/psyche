@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
 };
@@ -73,8 +73,26 @@ impl std::fmt::Display for DummyNodeIdentity {
     }
 }
 
-#[derive(Parser, Debug, Clone)]
-struct Args {
+#[derive(Parser, Debug)]
+struct CliArgs {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[command(flatten)]
+    run_args: RunArgs,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[clap(hide = true)]
+    PrintAllHelp {
+        #[arg(long, required = true)]
+        markdown: bool,
+    },
+}
+
+#[derive(Args, Debug, Clone)]
+struct RunArgs {
     #[arg(long, default_value = "emozilla/llama2-215m-init")]
     model: String,
 
@@ -180,7 +198,15 @@ async fn main() -> Result<()> {
     // For ctrl-c handling
     let cancel = setup_ctrl_c();
 
-    let args = Args::parse();
+    let cli_args = CliArgs::parse();
+
+    if let Some(Commands::PrintAllHelp { markdown }) = cli_args.command {
+        assert!(markdown);
+        clap_markdown::print_help_markdown::<CliArgs>();
+        return Ok(());
+    }
+
+    let args = cli_args.run_args;
 
     let target_device = args.device.device_for_rank(0).unwrap();
 
