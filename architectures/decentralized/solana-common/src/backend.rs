@@ -19,7 +19,7 @@ use anchor_client::{
 };
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
-use psyche_coordinator::model::{self, Checkpoint};
+use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
 use psyche_core::IntegrationTestLogMarker;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
@@ -304,6 +304,12 @@ impl SolanaBackend {
                 metadata,
             ),
             OpportunisticData::WarmupStep(witness) => instructions::coordinator_warmup_witness(
+                &coordinator_instance,
+                &coordinator_account,
+                &user,
+                witness,
+            ),
+            OpportunisticData::CooldownStep(witness) => instructions::coordinator_cooldown_witness(
                 &coordinator_instance,
                 &coordinator_account,
                 &user,
@@ -605,7 +611,7 @@ impl WatcherBackend<psyche_solana_coordinator::ClientId> for SolanaBackendRunner
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: Checkpoint) -> Result<()> {
         self.backend
             .send_checkpoint(self.instance, self.account, checkpoint);
         Ok(())

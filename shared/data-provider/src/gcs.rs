@@ -7,12 +7,9 @@ use google_cloud_storage::http::objects::upload::UploadType;
 use google_cloud_storage::http::objects::{
     download::Range, get::GetObjectRequest, list::ListObjectsRequest,
 };
-use psyche_coordinator::model::{self, GcsRepo};
-use psyche_core::FixedString;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
 use tracing::info;
 
 /// Checkpoint manifest.json uploaded to GCS alongside safetensors files.
@@ -328,14 +325,12 @@ pub async fn upload_to_gcs(
     manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), UploadError> {
     let GcsUploadInfo {
         gcs_bucket,
         gcs_prefix,
     } = gcs_info;
-
-    let GcsManifestMetadata { epoch, run_id } = manifest_metadata;
 
     info!(bucket = gcs_bucket, "Uploading checkpoint to GCS");
 
@@ -351,51 +346,60 @@ pub async fn upload_to_gcs(
     let mut manifest = GcsCheckpointManifest {
         metadata: ManifestMetadata {
             timestamp: Utc::now(),
-            epoch,
+            epoch: manifest_metadata.epoch,
             step: step as u32,
-            run_id,
+            run_id: manifest_metadata.run_id,
         },
         files: Vec::new(),
     };
 
     for path in local {
+        // Check for cancellation before each file upload
+        if cancellation_token.is_cancelled() {
+            info!("Upload cancelled before uploading {}", path.display());
+            return Ok(());
+        }
+
         let file_name = path
             .file_name()
             .ok_or_else(|| UploadError::NotAFile(path.clone()))?
             .to_str()
             .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?;
 
-        // Only upload safetensors files
-        if !file_name.ends_with(".safetensors") {
-            continue;
-        }
-
         let object_name = match &gcs_prefix {
             Some(p) => format!("{}/{}", p, file_name),
             None => file_name.to_string(),
         };
 
-        let size = std::fs::metadata(&path)?.len();
         let data = tokio::fs::read(&path).await?;
+        let size = std::fs::metadata(&path)?.len();
 
         let upload_type = UploadType::Simple(Media::new(object_name.clone()));
-        let uploaded = client
-            .upload_object(
-                &UploadObjectRequest {
-                    bucket: gcs_bucket.clone(),
-                    ..Default::default()
-                },
-                data,
-                &upload_type,
-            )
-            .await?;
+
+        // Bind to a variable so it lives long enough
+        let upload_request = UploadObjectRequest {
+            bucket: gcs_bucket.clone(),
+            ..Default::default()
+        };
+        let upload_future = client.upload_object(&upload_request, data, &upload_type);
+
+        let uploaded = tokio::select! {
+            biased;
+
+            _ = cancellation_token.cancelled() => {
+                info!("Upload cancelled during upload of {}", path.display());
+                return Ok(());
+            }
+            result = upload_future => {
+                result?
+            }
+        };
 
         info!(
             bucket = gcs_bucket,
             object = object_name,
             size = uploaded.size,
-            generation = uploaded.generation,
-            "Uploaded file to GCS"
+            "Successfully uploaded file to GCS"
         );
 
         manifest.files.push(ManifestFileEntry {
@@ -436,12 +440,11 @@ pub async fn upload_to_gcs(
         gcs_prefix.as_deref().unwrap_or("")
     );
 
-    tx_checkpoint
-        .send(model::Checkpoint::Gcs(GcsRepo {
-            bucket: FixedString::from_str_truncated(&gcs_bucket),
-            prefix: gcs_prefix.map(|p| FixedString::from_str_truncated(&p)),
-        }))
-        .map_err(|_| UploadError::SendCheckpoint)?;
+    info!(
+        "Upload to GCS complete at gs://{}/{}",
+        gcs_bucket,
+        gcs_prefix.as_deref().unwrap_or("")
+    );
 
     Ok(())
 }
