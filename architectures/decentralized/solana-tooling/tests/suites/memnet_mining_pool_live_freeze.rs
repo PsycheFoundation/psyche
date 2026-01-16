@@ -1,16 +1,15 @@
 use psyche_solana_mining_pool::find_pool;
 use psyche_solana_mining_pool::state::PoolMetadata;
+use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
+use psyche_solana_tooling::mining_pool::process_lender_claim;
+use psyche_solana_tooling::mining_pool::process_lender_create;
+use psyche_solana_tooling::mining_pool::process_lender_deposit;
+use psyche_solana_tooling::mining_pool::process_pool_claimable;
+use psyche_solana_tooling::mining_pool::process_pool_create;
+use psyche_solana_tooling::mining_pool::process_pool_extract;
+use psyche_solana_tooling::mining_pool::process_pool_update;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
-
-use crate::api::create_memnet_endpoint::create_memnet_endpoint;
-use crate::api::process_lender_claim::process_lender_claim;
-use crate::api::process_lender_create::process_lender_create;
-use crate::api::process_lender_deposit::process_lender_deposit;
-use crate::api::process_pool_claimable::process_pool_claimable;
-use crate::api::process_pool_create::process_pool_create;
-use crate::api::process_pool_extract::process_pool_extract;
-use crate::api::process_pool_update::process_pool_update;
 
 #[tokio::test]
 pub async fn run() {
