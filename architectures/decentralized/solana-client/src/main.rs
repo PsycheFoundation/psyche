@@ -346,10 +346,17 @@ async fn async_main() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    // Multi-threaded runtime for ML workloads
-    Builder::new_multi_thread()
-        .enable_all()
+    #[cfg(feature = "python")]
+    psyche_python_extension_impl::init_embedded_python()?;
+
+    let runtime = Builder::new_multi_thread()
+        .enable_io()
+        .enable_time()
+        .max_blocking_threads(8192)
+        .thread_stack_size(10 * 1024 * 1024)
         .build()
-        .unwrap()
-        .block_on(async_main())
+        .unwrap();
+    let ret = runtime.block_on(async_main());
+    runtime.shutdown_timeout(Duration::from_millis(1000));
+    ret
 }
