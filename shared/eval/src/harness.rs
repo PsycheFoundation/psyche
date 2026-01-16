@@ -6,8 +6,8 @@ use crate::{
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
-use rand::{SeedableRng, seq::SliceRandom};
-use rand_chacha::ChaCha8Rng;
+use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use regex::Regex;
 use std::sync::RwLock;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
@@ -50,17 +50,15 @@ pub enum TaskType {
 pub struct Task {
     task_type: TaskType,
     pub num_fewshot: usize,
-    rand: ChaCha8Rng,
+    random_seed: u64,
 }
 
 impl Task {
     pub fn new(task_type: TaskType, num_fewshot: usize, random_seed: u64) -> Self {
-        let mut seed = [0u8; 32];
-        seed[24..32].copy_from_slice(&random_seed.to_be_bytes());
         Task {
             task_type,
             num_fewshot,
-            rand: ChaCha8Rng::from_seed(seed),
+            random_seed,
         }
     }
 }
@@ -205,7 +203,7 @@ impl TokenizedLLHDocument {
 }
 
 impl Task {
-    pub fn prepare(mut self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
+    pub fn prepare(self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
         let name = format!("{}", &self);
         info!("Preparing {name}");
         match self.task_type {
@@ -224,7 +222,7 @@ impl Task {
                         let fewshot_prefix = if self.num_fewshot > 0 {
                             // Get fewshot examples for this document's category
                             let category = doc.category.as_deref().unwrap_or("default");
-                            let mut fewshot_examples = fewshot_by_category
+                            let fewshot_examples = fewshot_by_category
                                 .get(category)
                                 .cloned()
                                 .unwrap_or_else(|| {
@@ -235,13 +233,29 @@ impl Task {
                                         .cloned()
                                         .unwrap_or_else(Vec::new)
                                 });
+
+                            // MMLU/ARC tasks use first_n sampling (deterministic) other tasks like PIQA/Hellaswag use random sampling
+                            let should_shuffle = ![
+                                MMLU::name(),
+                                MMLUPro::name(),
+                                MMLUCF::name(),
+                                ArcEasy::name(),
+                                ArcChallenge::name(),
+                            ]
+                            .contains(&name.as_str());
+
+                            let mut fewshot_examples = fewshot_examples;
+                            if should_shuffle {
+                                let mut rng = rand::rngs::StdRng::seed_from_u64(self.random_seed);
+                                fewshot_examples.shuffle(&mut rng);
+                            }
+
                             // Build fewshots to match how test question is tokenized:
                             // text (ends with "Answer:") + " " + choice
-                            fewshot_examples.shuffle(&mut self.rand);
                             fewshot_examples
                                 .into_iter()
                                 .take(self.num_fewshot)
-                                .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
+                                .map(|x| format!("{} {}", x.text, ASCII_UPPERCASE[x.answer]))
                                 .collect::<Vec<_>>()
                                 .join("\n\n")
                                 + "\n\n"
