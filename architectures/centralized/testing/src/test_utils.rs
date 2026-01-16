@@ -135,7 +135,6 @@ pub fn dummy_client_app_params_with_training_delay(
             "dummy",
             "--run-id", run_id,
             "--iroh-relay", "disabled",
-            "--hub-repo", "dummy/repo",
             "--iroh-discovery", "local",
             "--data-parallelism", "1",
             "--tensor-parallelism", "1",
