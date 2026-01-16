@@ -7053,6 +7053,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytemuck",
+ "bytes",
  "clap",
  "clap-markdown",
  "google-cloud-storage",
