@@ -46,7 +46,7 @@ impl Command for CommandCheckpoint {
             &coordinator_instance,
             &coordinator_account,
             &user,
-            repo,
+            psyche_coordinator::model::Checkpoint::Hub(repo),
         );
         let signature = backend
             .send_and_retry("Checkpoint", &[instruction], &[])
