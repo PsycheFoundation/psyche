@@ -1,18 +1,16 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
+use google_cloud_storage::client::{Client as GcsClient, ClientConfig};
+use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
+use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_client::GcsUploadInfo;
-use psyche_client::HubUploadInfo;
-use psyche_client::UploadInfo;
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
-use psyche_coordinator::model::GcsRepo;
-use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::LLM;
-use psyche_coordinator::model::Model;
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_client::{GcsUploadInfo, HubUploadInfo, UploadInfo};
+use psyche_coordinator::model::{self, Checkpoint, GcsRepo, HubRepo, LLM, Model};
+use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
     AuthenticatableIdentity, EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient,
@@ -36,7 +34,7 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
     HealthCheck(HealthChecks<ClientId>),
-    Checkpoint(model::Checkpoint),
+    Checkpoint(Checkpoint),
 }
 
 struct Backend {
@@ -74,7 +72,7 @@ impl WatcherBackend<ClientId> for Backend {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: Checkpoint) -> Result<()> {
         self.tx.send(ToSend::Checkpoint(checkpoint))?;
         Ok(())
     }
@@ -89,6 +87,7 @@ pub struct App {
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
 
     metrics: Arc<ClientMetrics>,
+    skip_upload_check: bool,
 }
 
 pub async fn build_app(
@@ -96,6 +95,7 @@ pub async fn build_app(
     server_addr: String,
     tx_tui_state: Option<Sender<TabsData>>,
     p: TrainArgs,
+    is_test: bool,
 ) -> Result<(
     App,
     allowlist::AllowDynamic,
@@ -167,6 +167,7 @@ pub async fn build_app(
         server_conn,
         run_id: p.run_id,
         metrics,
+        skip_upload_check: is_test,
     };
     Ok((app, allowlist, p2p, state_options))
 }
@@ -180,40 +181,84 @@ impl App {
     ) -> Result<()> {
         // sanity checks
         let Model::LLM(LLM { checkpoint, .. }) = &self.coordinator_state.model;
+        if !self.skip_upload_check {
+            let upload_info = match checkpoint {
+                model::Checkpoint::Hub(HubRepo { repo_id, revision })
+                | model::Checkpoint::P2P(HubRepo { repo_id, revision }) => {
+                    Some(UploadInfo::Hub(HubUploadInfo {
+                        hub_repo: (repo_id).into(),
+                        hub_token: (&revision.unwrap_or_default()).into(),
+                    }))
+                }
+                model::Checkpoint::Gcs(GcsRepo { bucket, prefix })
+                | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                    Some(UploadInfo::Gcs(GcsUploadInfo {
+                        gcs_bucket: (bucket).into(),
+                        gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
+                    }))
+                }
+                _ => None,
+            };
 
-        let upload_info = match checkpoint {
-            model::Checkpoint::Hub(HubRepo { repo_id, revision })
-            | model::Checkpoint::P2P(HubRepo { repo_id, revision }) => {
+            match upload_info {
                 Some(UploadInfo::Hub(HubUploadInfo {
-                    hub_repo: (repo_id).into(),
-                    hub_token: (&revision.unwrap_or_default()).into(),
-                }))
-            }
-            model::Checkpoint::Gcs(GcsRepo { bucket, prefix })
-            | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
-                Some(UploadInfo::Gcs(GcsUploadInfo {
-                    gcs_bucket: (bucket).into(),
-                    gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
-                }))
-            }
-            _ => None,
-        };
+                    hub_repo,
+                    hub_token,
+                })) => {
+                    let api = hf_hub::api::tokio::ApiBuilder::new()
+                        .with_token(Some(hub_token.clone()))
+                        .build()?;
+                    let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
+                    if !repo_api.is_writable().await {
+                        anyhow::bail!(
+                            "Checkpoint upload repo {} is not writable with the passed API key.",
+                            hub_repo
+                        )
+                    }
+                }
+                Some(UploadInfo::Gcs(gcs_info)) => {
+                    let config = ClientConfig::default().with_auth().await?;
+                    let client = GcsClient::new(config);
+                    // Test write access by attempting to upload a small test object
+                    let test_key = format!(
+                        "{}/.write_test",
+                        gcs_info.gcs_prefix.clone().unwrap_or_default()
+                    );
 
-        if state_options.checkpoint_config.is_some() {
-            if let Some(UploadInfo::Hub(HubUploadInfo {
-                hub_repo,
-                hub_token,
-            })) = &upload_info
-            {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_token.clone()))
-                    .build()?;
-                let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
-                if !repo_api.is_writable().await {
-                    anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_repo
-                    )
+                    let upload_result = client
+                        .upload_object(
+                            &UploadObjectRequest {
+                                bucket: gcs_info.gcs_bucket.clone(),
+                                ..Default::default()
+                            },
+                            vec![],
+                            &UploadType::Simple(Media::new(test_key.clone())),
+                        )
+                        .await;
+                    match upload_result {
+                        Ok(_) => {
+                            let delete_request = DeleteObjectRequest {
+                                bucket: gcs_info.gcs_bucket.clone(),
+                                object: test_key.clone(),
+                                ..Default::default()
+                            };
+                            let _ = client.delete_object(&delete_request).await;
+                        }
+                        Err(e) => {
+                            anyhow::bail!(
+                                "GCS bucket gs://{}/{} is not writable: {}",
+                                gcs_info.gcs_bucket,
+                                gcs_info.gcs_prefix.clone().unwrap_or_default(),
+                                e
+                            )
+                        }
+                    }
+                }
+                Some(UploadInfo::Dummy()) => {
+                    // In test mode, we skip upload checks
+                }
+                None => {
+                    anyhow::bail!("No upload info found for checkpointing");
                 }
             }
         }

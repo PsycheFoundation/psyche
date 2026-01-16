@@ -233,6 +233,14 @@ impl CoordinatorInstanceState {
         self.tick()
     }
 
+    pub fn cooldown_witness(&mut self, witness: Witness) -> Result<()> {
+        self.coordinator
+            .cooldown_witness(witness)
+            .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
+
+        self.tick()
+    }
+
     pub fn warmup_witness(
         &mut self,
         payer: &Pubkey,

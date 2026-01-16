@@ -3,7 +3,6 @@ mod client;
 mod fetch_data;
 mod protocol;
 mod state;
-mod testing;
 mod tui;
 
 pub use cli::{TrainArgs, prepare_environment, print_identity_keys, read_identity_secret_key};
@@ -13,7 +12,6 @@ pub use state::{
     CheckpointConfig, GcsUploadInfo, HubUploadInfo, InitRunError, RoundState, RunInitConfig,
     RunInitConfigAndIO, UploadInfo,
 };
-pub use testing::IntegrationTestLogMarker;
 pub use tui::{ClientTUI, ClientTUIState};
 
 #[derive(Clone, Debug)]

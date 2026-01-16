@@ -190,6 +190,9 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
+
+    #[clap(long, default_value_t = false, env, hide = true)]
+    pub test_mode: bool,
 }
 
 impl TrainArgs {
@@ -218,8 +221,19 @@ impl TrainArgs {
         Ok(wandb_info)
     }
 
-    pub fn checkpoint_config(&self) -> Result<Option<CheckpointConfig>> {
+    pub fn checkpoint_config(&self) -> Result<CheckpointConfig> {
+        if self.test_mode {
+            return Ok(CheckpointConfig::dummy());
+        }
+
         let hub_token = std::env::var("HF_TOKEN").ok();
+        let google_application_credentials = std::env::var("GOOGLE_APPLICATION_CREDENTIALS").ok();
+
+        if hub_token.is_none() && google_application_credentials.is_none() {
+            return Err(anyhow!(
+                "Either HF_TOKEN or GOOGLE_APPLICATION_CREDENTIALS environment variable must be set for checkpoint uploads"
+            ));
+        }
 
         if self.keep_steps == 0 {
             bail!(
@@ -228,12 +242,12 @@ impl TrainArgs {
             );
         }
 
-        Ok(Some(CheckpointConfig {
+        Ok(CheckpointConfig {
             checkpoint_dir: self.checkpoint_dir.clone(),
             delete_old_steps: self.delete_old_steps,
             keep_steps: self.keep_steps,
             hub_token,
-        }))
+        })
     }
 
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {

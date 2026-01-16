@@ -67,6 +67,11 @@ WS_RPC=wss://your-primary-rpc-provider.com
 # Required: Which run id to join
 RUN_ID=your_run_id_here
 
+# Required: access token to write model states in the storage.
+# Depending on the config this will be a HuggingFace token or Google cloud storage access file path, only one of them should be needed
+HF_TOKEN=HuggingFace_write_token_for_repo
+GOOGLE_APPLICATION_CREDENTIALS=path_to_credentials_file_with_access_to_bucket
+
 # Recommended: Fallback RPC Endpoints (for reliability)
 RPC_2=https://your-backup-rpc-provider.com
 WS_RPC_2=wss://your-backup-rpc-provider.com
@@ -113,10 +118,10 @@ though you might need to.
 
 ## Testing Authorization
 
-Before joining a run, you can verify that your client is authorized by using the `psyche-solana-client` command:
+Before joining a run, you can verify that your client is authorized by using the `run-manager` command:
 
 ```bash
-psyche-solana-client can-join --run-id <RUN_ID> --authorizer <AUTHORIZER> --wallet <PUBKEY>
+run-manager can-join --run-id <RUN_ID> --authorizer <AUTHORIZER> --address <PUBKEY>
 ```
 
 Where:
@@ -225,10 +230,10 @@ docker logs CONTAINER_ID
 
 ## Claiming Rewards
 
-After participating in training and accumulating rewards, you can claim them using the `psyche-solana-client` command:
+After participating in training and accumulating rewards, you can claim them using the `run-manager` command:
 
 ```bash
-psyche-solana-client treasurer-claim-rewards \
+run-manager treasurer-claim-rewards \
     --rpc <RPC> \
     --run-id <RUN_ID> \
     --wallet-private-key-path <JSON_PRIVATE_KEY_PATH>
