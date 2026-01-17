@@ -64,6 +64,7 @@ impl std::fmt::Display for LLMArchitecture {
     Serialize,
     Deserialize,
     InitSpace,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
