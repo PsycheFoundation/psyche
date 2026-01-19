@@ -16,7 +16,10 @@ use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tch::Tensor;
 use thiserror::Error;
@@ -151,10 +154,12 @@ impl CooldownStepMetadata {
         let is_checkpointer = checkpointer_selection
             .is_checkpointer(client_index, state.epoch_state.clients.len() as u64);
         let cancellation_token = tokio_util::sync::CancellationToken::new();
+        let checkpoint_completed = Arc::new(AtomicBool::new(false));
 
         let checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>> =
             tokio::task::spawn({
                 let cancellation_token = cancellation_token.clone();
+                let checkpoint_completed = checkpoint_completed.clone();
                 async move {
                     info!("Extracting full model...");
                     let (variables, trainer) =
@@ -253,6 +258,7 @@ impl CooldownStepMetadata {
                     )
                     .await;
 
+                    checkpoint_completed.store(true, Ordering::SeqCst);
                     Ok(evals)
                 }
                 .instrument(info_span!("checkpointing"))
@@ -261,6 +267,7 @@ impl CooldownStepMetadata {
         Ok(CooldownStep {
             checkpointing_and_evals,
             cancellation_token,
+            checkpoint_completed,
         })
     }
 }
@@ -316,6 +323,7 @@ async fn upload_checkpoint(
 pub struct CooldownStep {
     checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
     cancellation_token: tokio_util::sync::CancellationToken,
+    checkpoint_completed: Arc<AtomicBool>,
 }
 
 impl CooldownStep {
@@ -334,5 +342,9 @@ impl CooldownStep {
 
     pub fn is_finished(&self) -> bool {
         self.checkpointing_and_evals.is_finished()
+    }
+
+    pub fn checkpoint_complete(&self) -> bool {
+        self.checkpoint_completed.load(Ordering::SeqCst)
     }
 }
