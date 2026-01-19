@@ -20,8 +20,8 @@ elif [[ -z "${WALLET_FILE:-}" ]]; then
     trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
 fi
 
-RPC=${RPC:-"http://7da1cfaf-50:8899"}
-WS_RPC=${WS_RPC:-"ws://7da1cfaf-50:8900"}
+RPC=${RPC:-"http://localhost:8899"}
+WS_RPC=${WS_RPC:-"ws://localhost:8900"}
 RUN_ID=${RUN_ID:-"test"}
 AUTHORIZER=${AUTHORIZER:-"11111111111111111111111111111111"}
 

@@ -294,7 +294,7 @@ impl App {
                     .all(|p| response.permissions.contains(&p.to_string()));
                 if !correct_permissions {
                     anyhow::bail!(
-                        "GCS bucket {} does not have the required permissions for checkpoint upload make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly.",
+                        "GCS bucket {} does not have the required permissions for checkpoint upload make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
                         gcs_info.gcs_bucket
                     )
                 }
