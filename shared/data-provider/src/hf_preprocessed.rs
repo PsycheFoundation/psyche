@@ -187,30 +187,6 @@ impl HuggingFacePreprocessedDataProvider {
             .map(|v| parse_int_array(v, "sequence_lengths"))
             .transpose()?;
 
-        // Debug logging to verify data is being parsed correctly
-        let labels_info = labels.as_ref().map(|l| {
-            let masked_count = l.iter().filter(|&&x| x == -100).count();
-            let trainable_count = l.len() - masked_count;
-            (masked_count, trainable_count)
-        });
-
-        debug!(
-            "Parsed row: input_ids[0..5]={:?}, len={}, labels={}, position_ids={}, seq_lengths={}",
-            &input_ids[..5.min(input_ids.len())],
-            input_ids.len(),
-            labels_info
-                .map(|(m, t)| format!("masked={}, trainable={}", m, t))
-                .unwrap_or("None".to_string()),
-            position_ids
-                .as_ref()
-                .map(|p| format!("present, len={}", p.len()))
-                .unwrap_or("None".to_string()),
-            sequence_lengths
-                .as_ref()
-                .map(|s| format!("{:?}", s))
-                .unwrap_or("None".to_string()),
-        );
-
         Ok(TokenizedData {
             input_ids,
             labels,
@@ -252,7 +228,7 @@ impl TokenizedDataProvider for HuggingFacePreprocessedDataProvider {
             let start_idx = row_indices[i];
             let mut length = 1;
 
-            // Find consecutive indices (up to MAX_ROWS_PER_REQUEST)
+            // Find consecutive indices (e.g. 5, 6, 7) (up to MAX_ROWS_PER_REQUEST)
             while i + length < row_indices.len()
                 && length < MAX_ROWS_PER_REQUEST
                 && row_indices[i + length] == start_idx + length
