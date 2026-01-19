@@ -24,14 +24,15 @@ import { RunBox } from '../../components/RunBox.js'
 import { FullPagePortal } from '../../components/FullPagePortal.js'
 import { ApiGetRun } from 'shared'
 import AnimatedTokensCounter from '../../components/AnimatedTokensCounter.js'
-export const Route = createFileRoute('/runs/$run/$index')({
-	loader: async ({ params }) => fetchRunStreaming(params.run, params.index),
+export const Route = createFileRoute('/runs/$run/$programId/$index')({
+	loader: async ({ params }) =>
+		fetchRunStreaming(params.run, params.index, params.programId),
 	component: RouteComponent,
 })
 
 function RouteComponent() {
 	const runData = useStreamingLoaderData<ApiGetRun>({
-		from: '/runs/$run/$index',
+		from: '/runs/$run/$programId/$index',
 	})
 	const run = runData?.run
 	const isOnlyRun = runData?.isOnlyRun
@@ -154,6 +155,7 @@ function RouteComponent() {
 							<span className={text['display/4xl']}>
 								{info.name || info.id}{' '}
 								{info.isOnlyRunAtThisIndex ? '' : `(v${info.index + 1})`}
+								{run.programId && ` - ${run.programId.slice(0, 12)}`}
 							</span>
 							<TitleRightInfo>
 								<StatusChip status={info.status.type} style="minimal" />
