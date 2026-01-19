@@ -1,8 +1,5 @@
 use crate::network_identity::NetworkIdentity;
-use google_cloud_storage::{
-    client::{Client as GcsClient, ClientConfig},
-    http::buckets::test_iam_permissions::TestIamPermissionsRequest,
-};
+use google_cloud_storage::client::StorageControl;
 use hf_hub::Repo;
 use psyche_solana_rpc::SolanaBackend;
 
@@ -271,28 +268,30 @@ impl App {
                 }
             }
             Some(UploadInfo::Gcs(gcs_info)) => {
-                let config = ClientConfig::default().with_auth().await?;
-                let client = GcsClient::new(config);
+                let client = StorageControl::builder().build().await?;
 
-                // Test if we have the required permissions
                 let permissions_to_test = vec![
-                    "storage.objects.create".to_string(),
-                    "storage.objects.delete".to_string(),
-                    "storage.objects.get".to_string(),
-                    "storage.objects.list".to_string(),
-                    "storage.objects.update".to_string(),
+                    "storage.buckets.get",
+                    "storage.buckets.getIamPolicy",
+                    "storage.objects.list",
+                    "storage.objects.get",
+                    "storage.objects.create",
+                    "storage.objects.delete",
                 ];
 
-                let result = client
-                    .test_iam_permissions(&TestIamPermissionsRequest {
-                        resource: format!("projects/_/buckets/{}", gcs_info.gcs_bucket),
-                        permissions: permissions_to_test.clone(),
-                    })
+                let resource = format!("projects/_/buckets/{}", gcs_info.gcs_bucket);
+                let perms_vec: Vec<String> =
+                    permissions_to_test.iter().map(|s| s.to_string()).collect();
+                let response = client
+                    .test_iam_permissions()
+                    .set_resource(&resource)
+                    .set_permissions(perms_vec)
+                    .send()
                     .await?;
 
                 let correct_permissions = permissions_to_test
-                    .iter()
-                    .all(|p| result.permissions.contains(p));
+                    .into_iter()
+                    .all(|p| response.permissions.contains(&p.to_string()));
                 if !correct_permissions {
                     anyhow::bail!(
                         "GCS bucket {} does not have the required permissions for checkpoint upload make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly.",
