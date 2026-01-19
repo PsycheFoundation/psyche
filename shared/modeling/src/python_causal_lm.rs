@@ -1,10 +1,9 @@
 use crate::{
-    AttentionImplementation, AutoConfig, CausalLM, Communicator, EosToks, ModelConfig,
-    ModelLoadError, ParallelismConfig, PretrainedSource, StableVariableIterator, Variable,
+    AttentionImplementation, AutoConfig, CausalLM, Communicator, EosToks, ModelLoadError,
+    ParallelismConfig, PretrainedSource, StableVariableIterator, Variable,
     device_utils::DevicePytorchStr,
 };
 
-use crate::{DeepseekConfig, LlamaConfig};
 use pyo3::{
     prelude::*,
     types::{IntoPyDict, PyDict, PyList, PyString, PyTuple},
@@ -19,30 +18,6 @@ use tracing::error;
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {
     config: serde_json::Value,
-}
-
-impl ModelConfig for PythonModelConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
-        let architecture = self.config["architectures"][0]
-            .as_str()
-            .unwrap_or("")
-            .to_lowercase();
-        if architecture.contains("llama") || architecture.contains("oss") {
-            if let Ok(config) = serde_json::from_value::<LlamaConfig>(self.config.clone()) {
-                return config.get_parameter_names();
-            }
-            error!("Failed to parse LlamaConfig from JSON");
-            vec![]
-        } else if architecture.contains("deepseek") {
-            if let Ok(config) = serde_json::from_value::<DeepseekConfig>(self.config.clone()) {
-                return config.get_parameter_names();
-            }
-            error!("Failed to parse DeepseekConfig from JSON");
-            vec![]
-        } else {
-            vec![]
-        }
-    }
 }
 
 impl serde::Serialize for PythonModelConfig {

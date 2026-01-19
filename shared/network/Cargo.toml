@@ -38,5 +38,6 @@ url = { version = "2.5", features = ["serde"] }
 [dev-dependencies]
 # for examples
 clap.workspace = true
+clap-markdown.workspace = true
 
 test-log.workspace = true
