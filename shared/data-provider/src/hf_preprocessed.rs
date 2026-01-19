@@ -53,7 +53,6 @@ pub struct HuggingFacePreprocessedDataProvider {
     split: String,
     token: Option<String>,
     num_rows: usize,
-    num_tokens_per_sequence: usize,
     shuffle_indices: Option<Vec<usize>>,
 }
 
@@ -62,7 +61,6 @@ impl HuggingFacePreprocessedDataProvider {
         dataset: String,
         config: String,
         split: String,
-        num_tokens_per_sequence: usize,
         token: Option<String>,
         shuffle: Shuffle,
     ) -> Result<Self> {
@@ -96,7 +94,6 @@ impl HuggingFacePreprocessedDataProvider {
             split,
             token,
             num_rows,
-            num_tokens_per_sequence,
             shuffle_indices,
         })
     }
@@ -195,9 +192,8 @@ impl HuggingFacePreprocessedDataProvider {
             .as_object()
             .ok_or_else(|| anyhow::anyhow!("Row is not a JSON object"))?;
 
-        // Parse inputs (required) - support both "inputs" and "input_ids" column names
-        // Don't enforce length here - handle truncation/padding after parsing
-        let mut input_ids = if let Some(inputs) = obj.get("inputs") {
+        // Depending on the repo sometimes 'inputs' or 'input_ids' is used
+        let input_ids = if let Some(inputs) = obj.get("inputs") {
             self.parse_int_array(inputs, None, "inputs")?
         } else if let Some(input_ids) = obj.get("input_ids") {
             self.parse_int_array(input_ids, None, "input_ids")?
@@ -205,54 +201,45 @@ impl HuggingFacePreprocessedDataProvider {
             bail!("Missing 'inputs' or 'input_ids' column");
         };
 
-        // Truncate or pad to expected sequence length
-        if input_ids.len() > self.num_tokens_per_sequence {
-            debug!(
-                "Truncating input_ids from {} to {} tokens",
-                input_ids.len(),
-                self.num_tokens_per_sequence
-            );
-            input_ids.truncate(self.num_tokens_per_sequence);
-        } else if input_ids.len() < self.num_tokens_per_sequence {
-            debug!(
-                "Padding input_ids from {} to {} tokens (padding with 0)",
-                input_ids.len(),
-                self.num_tokens_per_sequence
-            );
-            input_ids.resize(self.num_tokens_per_sequence, 0);
-        }
-
         // Parse optional columns - also handle length mismatch
         let labels = obj
             .get("labels")
-            .map(|v| -> Result<Vec<i32>> {
-                let mut arr = self.parse_int_array(v, None, "labels")?;
-                if arr.len() > self.num_tokens_per_sequence {
-                    arr.truncate(self.num_tokens_per_sequence);
-                } else if arr.len() < self.num_tokens_per_sequence {
-                    arr.resize(self.num_tokens_per_sequence, -100); // Standard ignore index
-                }
-                Ok(arr)
-            })
+            .map(|v| -> Result<Vec<i32>> { self.parse_int_array(v, None, "labels") })
             .transpose()?;
 
         let position_ids = obj
             .get("position_ids")
-            .map(|v| -> Result<Vec<i32>> {
-                let mut arr = self.parse_int_array(v, None, "position_ids")?;
-                if arr.len() > self.num_tokens_per_sequence {
-                    arr.truncate(self.num_tokens_per_sequence);
-                } else if arr.len() < self.num_tokens_per_sequence {
-                    arr.resize(self.num_tokens_per_sequence, 0);
-                }
-                Ok(arr)
-            })
+            .map(|v| -> Result<Vec<i32>> { self.parse_int_array(v, None, "position_ids") })
             .transpose()?;
 
         let sequence_lengths = obj
             .get("sequence_lengths")
             .map(|v| self.parse_int_array(v, None, "sequence_lengths"))
             .transpose()?;
+
+        // Debug logging to verify data is being parsed correctly
+        let labels_info = labels.as_ref().map(|l| {
+            let masked_count = l.iter().filter(|&&x| x == -100).count();
+            let trainable_count = l.len() - masked_count;
+            (masked_count, trainable_count)
+        });
+
+        debug!(
+            "Parsed row: input_ids[0..5]={:?}, len={}, labels={}, position_ids={}, seq_lengths={}",
+            &input_ids[..5.min(input_ids.len())],
+            input_ids.len(),
+            labels_info
+                .map(|(m, t)| format!("masked={}, trainable={}", m, t))
+                .unwrap_or("None".to_string()),
+            position_ids
+                .as_ref()
+                .map(|p| format!("present, len={}", p.len()))
+                .unwrap_or("None".to_string()),
+            sequence_lengths
+                .as_ref()
+                .map(|s| format!("{:?}", s))
+                .unwrap_or("None".to_string()),
+        );
 
         Ok(TokenizedData {
             input_ids,

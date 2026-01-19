@@ -21,7 +21,7 @@ max_seq_len = 4096
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
+repo_id = "NousResearch/Meta-Llama-3.1-8B"
 
 [model.LLM.data_location.HuggingFacePreprocessed]
 repo_id = "emozilla/Hermes-3-Preprocessed-Llama3"
