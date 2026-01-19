@@ -71,7 +71,6 @@ impl HuggingFacePreprocessedDataProvider {
 
         // Fetch dataset metadata to get row count
         let num_rows = Self::fetch_num_rows(&client, &dataset, &config, &split, &token).await?;
-
         info!(
             "Initialized HuggingFace preprocessed data provider for {}/{}/{} with {} rows",
             dataset, config, split, num_rows
@@ -110,26 +109,9 @@ impl HuggingFacePreprocessedDataProvider {
             HF_DATASETS_SERVER_BASE_URL, dataset, config
         );
 
-        let mut request = client.get(&url);
-        if let Some(token) = token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
-
-        let response = request
-            .send()
+        let response = make_authenticated_request(client, &url, token)
             .await
             .context("Failed to fetch dataset info from HuggingFace")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!(
-                "Failed to fetch dataset info: {} - {}. URL: {}",
-                status,
-                body,
-                url
-            );
-        }
 
         let info: InfoResponse = response
             .json()
@@ -151,26 +133,14 @@ impl HuggingFacePreprocessedDataProvider {
             HF_DATASETS_SERVER_BASE_URL, self.dataset, self.config, self.split, offset, length
         );
 
-        let mut request = self.client.get(&url);
-        if let Some(token) = &self.token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
-
         debug!(
             "Fetching rows from HuggingFace: offset={}, length={}",
             offset, length
         );
 
-        let response = request
-            .send()
+        let response = make_authenticated_request(&self.client, &url, &self.token)
             .await
             .context("Failed to fetch rows from HuggingFace")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("Failed to fetch rows: {} - {}. URL: {}", status, body, url);
-        }
 
         let rows_response: RowsResponse = response
             .json()
@@ -194,27 +164,27 @@ impl HuggingFacePreprocessedDataProvider {
 
         // Depending on the repo sometimes 'inputs' or 'input_ids' is used
         let input_ids = if let Some(inputs) = obj.get("inputs") {
-            self.parse_int_array(inputs, None, "inputs")?
+            parse_int_array(inputs, "inputs")?
         } else if let Some(input_ids) = obj.get("input_ids") {
-            self.parse_int_array(input_ids, None, "input_ids")?
+            parse_int_array(input_ids, "input_ids")?
         } else {
             bail!("Missing 'inputs' or 'input_ids' column");
         };
 
-        // Parse optional columns - also handle length mismatch
+        // These columns are optional and they might or might not be present
         let labels = obj
             .get("labels")
-            .map(|v| -> Result<Vec<i32>> { self.parse_int_array(v, None, "labels") })
+            .map(|v| parse_int_array(v, "labels"))
             .transpose()?;
 
         let position_ids = obj
             .get("position_ids")
-            .map(|v| -> Result<Vec<i32>> { self.parse_int_array(v, None, "position_ids") })
+            .map(|v| parse_int_array(v, "position_ids"))
             .transpose()?;
 
         let sequence_lengths = obj
             .get("sequence_lengths")
-            .map(|v| self.parse_int_array(v, None, "sequence_lengths"))
+            .map(|v| parse_int_array(v, "sequence_lengths"))
             .transpose()?;
 
         // Debug logging to verify data is being parsed correctly
@@ -249,61 +219,18 @@ impl HuggingFacePreprocessedDataProvider {
         })
     }
 
-    fn parse_int_array(
-        &self,
-        value: &serde_json::Value,
-        expected_len: Option<usize>,
-        column_name: &str,
-    ) -> Result<Vec<i32>> {
-        let array = value
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("Column '{}' is not an array", column_name))?;
-
-        let result: Result<Vec<i32>> = array
-            .iter()
-            .map(|v| {
-                v.as_i64()
-                    .ok_or_else(|| anyhow::anyhow!("Non-integer value in column '{}'", column_name))
-                    .map(|i| i as i32)
-            })
-            .collect();
-
-        let result = result?;
-
-        if let Some(expected) = expected_len {
-            if result.len() != expected {
-                bail!(
-                    "Column '{}' has length {} instead of expected {}",
-                    column_name,
-                    result.len(),
-                    expected
-                );
-            }
-        }
-
-        Ok(result)
-    }
-
     fn map_batch_id_to_rows(&self, batch_id: BatchId) -> Vec<usize> {
-        let start = batch_id.0.start as usize;
-        let end = batch_id.0.end as usize;
-
         if self.num_rows == 0 {
             return vec![];
         }
 
-        let mut row_indices = Vec::new();
-        for i in start..=end {
-            let idx = i % self.num_rows;
-            let actual_idx = if let Some(shuffle_indices) = &self.shuffle_indices {
-                shuffle_indices[idx]
-            } else {
-                idx
-            };
-            row_indices.push(actual_idx);
-        }
-
-        row_indices
+        let (start, end) = (batch_id.0.start as usize, batch_id.0.end as usize);
+        (start..=end)
+            .map(|i| {
+                let idx = i % self.num_rows;
+                self.shuffle_indices.as_ref().map_or(idx, |s| s[idx])
+            })
+            .collect()
     }
 }
 
@@ -313,12 +240,14 @@ impl TokenizedDataProvider for HuggingFacePreprocessedDataProvider {
             bail!("No data available");
         }
 
-        let row_indices = self.map_batch_id_to_rows(data_ids);
-
         // Batch consecutive indices together for efficient API calls
+        let row_indices = self.map_batch_id_to_rows(data_ids);
         let mut samples = Vec::with_capacity(row_indices.len());
-        let mut i = 0;
 
+        // For example if row_indices = [5, 6, 7, 10, 11] then the loop does:
+        // - [5, 6, 7] in first iteration since they are consecutive
+        // - [10, 11] in second iteration
+        let mut i = 0;
         while i < row_indices.len() {
             let start_idx = row_indices[i];
             let mut length = 1;
@@ -338,15 +267,12 @@ impl TokenizedDataProvider for HuggingFacePreprocessedDataProvider {
             i += length;
         }
 
-        // If indices weren't consecutive, we may have fetched out of order
-        // In that case, we need to reorder based on the requested indices
         if samples.len() != row_indices.len() {
-            // Fall back to individual fetches for non-consecutive access
-            samples.clear();
-            for &row_idx in &row_indices {
-                let row_samples = self.fetch_rows(row_idx, 1).await?;
-                samples.extend(row_samples);
-            }
+            bail!(
+                "Expected {} rows but got {}",
+                row_indices.len(),
+                samples.len()
+            );
         }
 
         Ok(samples)
@@ -357,4 +283,40 @@ impl LengthKnownDataProvider for HuggingFacePreprocessedDataProvider {
     fn num_sequences(&self) -> usize {
         self.num_rows
     }
+}
+
+async fn make_authenticated_request(
+    client: &reqwest::Client,
+    url: &str,
+    token: &Option<String>,
+) -> Result<reqwest::Response> {
+    let mut request = client.get(url);
+    if let Some(token) = token {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    let response = request.send().await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        bail!("HTTP {} - {}. URL: {}", status, body, url);
+    }
+
+    Ok(response)
+}
+
+fn parse_int_array(value: &serde_json::Value, column_name: &str) -> Result<Vec<i32>> {
+    let array = value
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("Column '{}' is not an array", column_name))?;
+
+    array
+        .iter()
+        .map(|v| {
+            v.as_i64()
+                .ok_or_else(|| anyhow::anyhow!("Non-integer value in column '{}'", column_name))
+                .map(|i| i as i32)
+        })
+        .collect()
 }
