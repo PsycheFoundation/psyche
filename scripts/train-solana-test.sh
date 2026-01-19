@@ -66,7 +66,6 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --micro-batch-size ${BATCH_SIZE} \
         --authorizer ${AUTHORIZER} \
         --logs "console" \
-        $( [[ "$CHECKPOINT" == false ]] && echo "--test-mode" ) \
         "${EXTRA_ARGS[@]}"
 else
     HF_TOKEN=${HF_TOKEN} GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} cargo run --release --bin psyche-solana-client -- \
@@ -82,6 +81,5 @@ else
         --authorizer ${AUTHORIZER} \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
         --oltp-logs-url "http://localhost:4318/v1/logs" \
-        $( [[ "$CHECKPOINT" == false ]] && echo "--test-mode" ) \
         "${EXTRA_ARGS[@]}"
 fi

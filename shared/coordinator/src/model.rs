@@ -292,7 +292,7 @@ impl GcsRepo {
 #[repr(C)]
 pub enum Checkpoint {
     Ephemeral,
-    Dummy(HubRepo),
+    Dummy(HubRepo), // Used for testing
     Hub(HubRepo),
     P2P(HubRepo),
     Gcs(GcsRepo),
