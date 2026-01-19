@@ -1,7 +1,7 @@
 [config]
 warmup_time = 50
-cooldown_time = 30
 epoch_time = 60
+cooldown_time = 30
 max_round_train_time = 15
 round_witness_time = 1
 min_clients = 1
@@ -20,7 +20,7 @@ data_type = "Pretraining"
 max_seq_len = 64
 cold_start_warmup_steps = 0
 
-[model.LLM.checkpoint.Dummy]
+[model.LLM.checkpoint.NoUploadHubRepo]
 repo_id = "pefontana/Nano-Llama"
 revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
 

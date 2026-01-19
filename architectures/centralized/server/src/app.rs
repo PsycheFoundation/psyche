@@ -184,7 +184,8 @@ impl App {
                 }) => {
                     if let LLMTrainingDataLocation::Server(url) = data_location {
                         match checkpoint {
-                            Checkpoint::Hub(hub_repo) => {
+                            Checkpoint::Hub(hub_repo)
+                            | Checkpoint::NoUploadHubRepo(hub_repo) => {
                                 let repo_id = String::from(&hub_repo.repo_id);
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
                                 if revision.is_some()
@@ -205,7 +206,7 @@ impl App {
                             Checkpoint::P2P(_) | Checkpoint::P2PGcs(_) => {
                                 bail!("Can't start up a run with a P2P checkpoint.")
                             }
-                            Checkpoint::Gcs(gcs_repo) => {
+                            Checkpoint::Gcs(gcs_repo) | Checkpoint::NoUploadGcs(gcs_repo) => {
                                 let bucket: String = (&gcs_repo.bucket).into();
                                 let prefix: Option<String> =
                                     gcs_repo.prefix.map(|p| (&p).into());

@@ -95,6 +95,7 @@ impl Command for CommandUpdateConfig {
                 Checkpoint::P2P(hub_repo) | Checkpoint::Dummy(hub_repo) => {
                     llm.checkpoint = Checkpoint::Hub(hub_repo)
                 }
+                Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
                 _ => {}
             }
             Some(Model::LLM(llm))

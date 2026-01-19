@@ -2,17 +2,6 @@
 
 set -eo pipefail
 
-CHECKPOINT=false
-EXTRA_ARGS=()
-# Parse command line arguments
-for arg in "$@"; do
-    if [[ "$arg" == "--checkpoint" ]]; then
-        CHECKPOINT=true
-    else
-        EXTRA_ARGS+=("$arg")
-    fi
-done
-
 # use the agenix provided wallet if you have it
 if [[ -n "${devnet__keypair__wallet_PATH}" && -f "${devnet__keypair__wallet_PATH}" ]]; then
     WALLET_FILE="${devnet__keypair__wallet_PATH}"
@@ -66,7 +55,7 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --micro-batch-size ${BATCH_SIZE} \
         --authorizer ${AUTHORIZER} \
         --logs "console" \
-        "${EXTRA_ARGS[@]}"
+        "$@"
 else
     HF_TOKEN=${HF_TOKEN} GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} cargo run --release --bin psyche-solana-client -- \
         train \
@@ -81,5 +70,5 @@ else
         --authorizer ${AUTHORIZER} \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
         --oltp-logs-url "http://localhost:4318/v1/logs" \
-        "${EXTRA_ARGS[@]}"
+        "$@"
 fi

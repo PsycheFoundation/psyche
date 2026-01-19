@@ -289,6 +289,7 @@ async fn async_main() -> Result<()> {
                     }
                     Checkpoint::Dummy(hub_repo)
                     | Checkpoint::Hub(hub_repo)
+                    | Checkpoint::NoUploadHubRepo(hub_repo)
                     | Checkpoint::P2P(hub_repo) => {
                         let repo_id = hub_repo.repo_id.to_string();
                         let revision = hub_repo.revision.map(|s| s.to_string());
@@ -310,7 +311,9 @@ async fn async_main() -> Result<()> {
                         )
                         .await?;
                     }
-                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
+                    Checkpoint::Gcs(gcs_repo)
+                    | Checkpoint::NoUploadGcs(gcs_repo)
+                    | Checkpoint::P2PGcs(gcs_repo) => {
                         let bucket = gcs_repo.bucket.to_string();
                         let prefix: Option<String> = gcs_repo.prefix.map(|p| p.to_string());
                         println!(
