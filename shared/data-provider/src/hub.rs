@@ -215,7 +215,10 @@ pub async fn upload_to_hub(
     let repo = Repo::model(hub_repo.clone());
     let api_repo = api.repo(repo);
 
-    for path in local {
+    for path in local
+        .iter()
+        .filter(|p| p.extension() == Some("safetensors".as_ref()))
+    {
         if cancellation_token.is_cancelled() {
             info!(repo = hub_repo, "Upload to HuggingFace cancelled");
             return Ok(());
@@ -229,7 +232,7 @@ pub async fn upload_to_hub(
             .to_string();
 
         let upload_future = api_repo.upload_files(
-            vec![(path.into(), file_name.clone())],
+            vec![(path.clone().into(), file_name.clone())],
             Some(format!("step {step}")),
             None,
             false,

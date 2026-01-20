@@ -271,8 +271,6 @@ impl App {
                 let client = StorageControl::builder().build().await?;
 
                 let permissions_to_test = vec![
-                    "storage.buckets.get",
-                    "storage.buckets.getIamPolicy",
                     "storage.objects.list",
                     "storage.objects.get",
                     "storage.objects.create",

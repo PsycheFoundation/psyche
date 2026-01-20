@@ -347,7 +347,10 @@ pub async fn upload_to_gcs(
         files: Vec::new(),
     };
 
-    for path in local {
+    for path in local
+        .iter()
+        .filter(|p| p.extension() == Some("safetensors".as_ref()))
+    {
         if cancellation_token.is_cancelled() {
             info!("Upload cancelled before uploading {}", path.display());
             return Ok(());
