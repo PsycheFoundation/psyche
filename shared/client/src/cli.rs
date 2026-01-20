@@ -191,6 +191,10 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
+
+    /// Skip uploading checkpoints to Hub/GCS (for testing). Checkpoints are still saved locally.
+    #[clap(long, default_value_t = false, env, hide = true)]
+    pub skip_checkpoint_upload: bool,
 }
 
 impl TrainArgs {
@@ -234,6 +238,7 @@ impl TrainArgs {
             delete_old_steps: self.delete_old_steps,
             keep_steps: self.keep_steps,
             hub_token,
+            skip_upload: self.skip_checkpoint_upload,
         })
     }
 

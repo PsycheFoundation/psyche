@@ -204,35 +204,41 @@ impl CooldownStepMetadata {
                         delete_old_steps,
                         keep_steps,
                         hub_token,
+                        skip_upload,
                     } = checkpoint_info;
 
-                    let upload_info = match checkpoint {
-                        model::Checkpoint::Hub(HubRepo {
-                            repo_id,
-                            revision: _,
-                        })
-                        | model::Checkpoint::P2P(HubRepo {
-                            repo_id,
-                            revision: _,
-                        }) => {
-                            if let Some(token) = hub_token {
-                                Some(UploadInfo::Hub(HubUploadInfo {
-                                    hub_repo: (&repo_id).into(),
-                                    hub_token: token,
-                                }))
-                            } else {
-                                warn!("HF_TOKEN env not provided, skipping upload to HuggingFace Hub");
-                                None
+                    let upload_info = if skip_upload {
+                        info!("Skipping checkpoint upload (skip_upload flag is set)");
+                        None
+                    } else {
+                        match checkpoint {
+                            model::Checkpoint::Hub(HubRepo {
+                                repo_id,
+                                revision: _,
+                            })
+                            | model::Checkpoint::P2P(HubRepo {
+                                repo_id,
+                                revision: _,
+                            }) => {
+                                if let Some(token) = hub_token {
+                                    Some(UploadInfo::Hub(HubUploadInfo {
+                                        hub_repo: (&repo_id).into(),
+                                        hub_token: token,
+                                    }))
+                                } else {
+                                    warn!("HF_TOKEN env not provided, skipping upload to HuggingFace Hub");
+                                    None
+                                }
                             }
+                            model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
+                            | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                                Some(UploadInfo::Gcs(GcsUploadInfo {
+                                    gcs_bucket: (&bucket).into(),
+                                    gcs_prefix: prefix.as_ref().map(|p| p.into()),
+                                }))
+                            }
+                            _ => None,
                         }
-                        model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
-                        | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
-                            Some(UploadInfo::Gcs(GcsUploadInfo {
-                                gcs_bucket: (&bucket).into(),
-                                gcs_prefix: prefix.as_ref().map(|p| p.into()),
-                            }))
-                        }
-                        _ => None,
                     };
 
                     let path = checkpoint_dir.join(format!("{run_id}-step{step}"));

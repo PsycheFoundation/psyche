@@ -39,10 +39,16 @@ setup-solana-localnet-permissioned-light-test-run-treasurer run_id="test" *args=
     RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh --treasurer {{ args }}
 
 start-training-localnet-client run_id="test" *args='':
-    HF_TOKEN={{ HF_TOKEN }} GOOGLE_APPLICATION_CREDENTIALS={{ GOOGLE_APPLICATION_CREDENTIALS }} AUTHORIZER={{ AUTHORIZER }} RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
+    HF_TOKEN={{ HF_TOKEN }} GOOGLE_APPLICATION_CREDENTIALS={{ GOOGLE_APPLICATION_CREDENTIALS }} AUTHORIZER={{ AUTHORIZER }} CHECKPOINT="false" RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
 
 start-training-localnet-light-client run_id="test" *args='':
-    HF_TOKEN={{ HF_TOKEN }} GOOGLE_APPLICATION_CREDENTIALS={{ GOOGLE_APPLICATION_CREDENTIALS }} AUTHORIZER={{ AUTHORIZER }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+    HF_TOKEN={{ HF_TOKEN }} GOOGLE_APPLICATION_CREDENTIALS={{ GOOGLE_APPLICATION_CREDENTIALS }} AUTHORIZER={{ AUTHORIZER }} CHECKPOINT="false" RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+start-training-localnet-light-client-checkpoint run_id="test" *args='':
+    HF_TOKEN={{ HF_TOKEN }} GOOGLE_APPLICATION_CREDENTIALS={{ GOOGLE_APPLICATION_CREDENTIALS }} AUTHORIZER={{ AUTHORIZER }} CHECKPOINT="true" RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+start-training-localnet-client-checkpoint run_id="test" *args='':
+    HF_TOKEN={{ HF_TOKEN }} GOOGLE_APPLICATION_CREDENTIALS={{ GOOGLE_APPLICATION_CREDENTIALS }} AUTHORIZER={{ AUTHORIZER }} CHECKPOINT="true" RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
 
 OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
 OTLP_LOGS_URL := "http://localhost:4318/v1/logs"

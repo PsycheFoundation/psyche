@@ -316,14 +316,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 model::Checkpoint::Hub(_)
                 | model::Checkpoint::P2P(_)
                 | model::Checkpoint::P2PGcs(_)
-                | model::Checkpoint::Gcs(_)
-                | model::Checkpoint::NoUploadHubRepo(_)
-                | model::Checkpoint::NoUploadGcs(_) => {
+                | model::Checkpoint::Gcs(_) => {
                     let checkpoint = llm.checkpoint;
                     tokio::spawn(async move {
                         let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
-                            model::Checkpoint::Hub(hub_repo)
-                            | model::Checkpoint::NoUploadHubRepo(hub_repo) => {
+                            model::Checkpoint::Hub(hub_repo) => {
                                 let repo_id: String = (&hub_repo.repo_id).into();
                                 let potential_local_path = PathBuf::from(repo_id.clone());
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
@@ -435,8 +432,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     vec![],
                                 )
                             }
-                            model::Checkpoint::Gcs(gcs_repo)
-                            | model::Checkpoint::NoUploadGcs(gcs_repo) => {
+                            model::Checkpoint::Gcs(gcs_repo) => {
                                 let bucket: String = (&gcs_repo.bucket).into();
                                 let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
 
