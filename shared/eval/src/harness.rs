@@ -6,8 +6,8 @@ use crate::{
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
 use psyche_modeling::{CausalLM, LogitsProcessor, Sampling};
-use rand::SeedableRng;
-use rand::seq::SliceRandom;
+use rand::{SeedableRng, seq::SliceRandom};
+use rand_chacha::ChaCha8Rng;
 use regex::Regex;
 use std::sync::RwLock;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
@@ -50,15 +50,17 @@ pub enum TaskType {
 pub struct Task {
     task_type: TaskType,
     pub num_fewshot: usize,
-    random_seed: u64,
+    rand: ChaCha8Rng,
 }
 
 impl Task {
     pub fn new(task_type: TaskType, num_fewshot: usize, random_seed: u64) -> Self {
+        let mut seed = [0u8; 32];
+        seed[24..32].copy_from_slice(&random_seed.to_be_bytes());
         Task {
             task_type,
             num_fewshot,
-            random_seed,
+            rand: ChaCha8Rng::from_seed(seed),
         }
     }
 }
@@ -203,7 +205,7 @@ impl TokenizedLLHDocument {
 }
 
 impl Task {
-    pub fn prepare(self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
+    pub fn prepare(mut self, tokenizer: &Tokenizer, limit: Option<usize>) -> PreparedTask {
         let name = format!("{}", &self);
         info!("Preparing {name}");
         match self.task_type {
@@ -248,8 +250,7 @@ impl Task {
 
                             let mut fewshot_examples = fewshot_examples;
                             if should_shuffle {
-                                let mut rng = rand::rngs::StdRng::seed_from_u64(self.random_seed);
-                                fewshot_examples.shuffle(&mut rng);
+                                fewshot_examples.shuffle(&mut self.rand);
                             }
 
                             // Build fewshots to match how test question is tokenized:
