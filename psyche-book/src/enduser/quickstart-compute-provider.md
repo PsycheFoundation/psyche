@@ -1,6 +1,6 @@
-# Quickstart: Providing Compute to Psyche
+# Quickstart: Providing Compute to NousNet
 
-This guide walks you through the complete process of setting up your machine to provide compute to a Psyche training run. It assumes you have been provided the `run-manager` binary by the run administrator.
+This guide walks you through the complete process of setting up your machine to provide compute to a NousNet training run. It assumes you have been provided the `run-manager` binary by the run administrator.
 
 ## Prerequisites Checklist
 
@@ -15,7 +15,7 @@ Before starting, ensure you have:
 
 ## Step 1: Verify NVIDIA Drivers
 
-Psyche requires an NVIDIA CUDA-capable GPU. Verify your drivers are installed:
+NousNet requires an NVIDIA CUDA-capable GPU. Verify your drivers are installed:
 
 ```bash
 nvidia-smi
@@ -59,7 +59,7 @@ For more details, see the [Docker post-installation guide](https://docs.docker.c
 
 ## Step 3: Install NVIDIA Container Toolkit
 
-The NVIDIA Container Toolkit enables GPU access inside Docker containers. This is required for Psyche to use your GPU for training.
+The NVIDIA Container Toolkit enables GPU access inside Docker containers. This is required for NousNet to use your GPU for training.
 
 Follow the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for your distribution.
 
@@ -125,7 +125,7 @@ solana-keygen pubkey ~/.config/solana/psyche-node.json
 
 ## Step 5: Get Authorization to Join the Run
 
-Psyche runs are permissioned. To join, you need the run administrator to authorize your wallet.
+NousNet runs are permissioned. To join, you need the run administrator to authorize your wallet.
 
 1. **Send your public key to the run administrator** (the output from `solana-keygen pubkey` above)
 2. The administrator will create an authorization for your key
@@ -236,7 +236,7 @@ The run-manager will:
 
 After starting, you should see:
 
-1. **Image pull progress** - Docker downloading the Psyche client image
+1. **Image pull progress** - Docker downloading the NousNet client image
 2. **Container startup** - The training container initializing
 3. **Connection logs** - Your client connecting to the coordinator
 4. **Training logs** - Progress updates as training proceeds
@@ -352,7 +352,7 @@ ls -l ~/.config/solana/psyche-node.json
 
 If you want to provide compute from multiple machines, **each machine must use a different keypair**. Running the same keypair on multiple machines simultaneously will cause issues.
 
-Psyche uses a delegation system for this:
+NousNet uses a delegation system for this:
 
 1. Your main keypair (the one authorized by the run admin) acts as your **master key**
 2. You generate additional **delegate keys** for each machine
