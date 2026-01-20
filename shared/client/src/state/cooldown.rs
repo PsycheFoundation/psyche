@@ -257,6 +257,10 @@ impl CooldownStepMetadata {
                         } else {
                             checkpoint_completed.store(true, Ordering::SeqCst);
                         }
+                    } else {
+                        // No upload needed (skip_upload or unsupported checkpoint type)
+                        // Mark checkpoint as complete so cooldown witness can be sent
+                        checkpoint_completed.store(true, Ordering::SeqCst);
                     }
 
                     cleanup_dirs(
