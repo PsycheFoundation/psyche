@@ -217,6 +217,12 @@ Make the binary executable if needed:
 chmod +x ./run-manager
 ```
 
+Open and enter a tmux window:
+
+```bash
+tmux
+```
+
 Start providing compute to the network:
 
 ```bash
@@ -319,35 +325,6 @@ ls -l ~/.config/solana/psyche-node.json
 
 ---
 
-## Quick Reference
-
-| Command | Purpose |
-|---------|---------|
-| `nvidia-smi` | Verify GPU and drivers |
-| `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi` | Verify GPU access in Docker |
-| `solana-keygen pubkey ~/.config/solana/psyche-node.json` | Get your public key |
-| `solana balance ~/.config/solana/psyche-node.json` | Check wallet balance |
-| `./run-manager --env-file ~/.config/psyche/run.env` | Start providing compute |
-| `Ctrl+C` | Stop the client gracefully |
-
----
-
-## Next Steps
-
-- **Claiming Rewards:** After participating in training, you can claim rewards using:
-  ```bash
-  ./run-manager treasurer-claim-rewards \
-      --rpc https://api.devnet.solana.com \
-      --run-id YOUR_RUN_ID \
-      --wallet-private-key-path ~/.config/solana/psyche-node.json
-  ```
-
-- **Multiple GPUs:** If you have multiple GPUs, adjust `DATA_PARALLELISM` and `TENSOR_PARALLELISM` in your `.env` file.
-
-- **Questions:** Check the [Client FAQ](./client-faq.md) or the full [Join Run documentation](./join-run.md) for more details.
-
----
-
 ## Running Multiple Machines
 
 If you want to provide compute from multiple machines, **each machine must use a different keypair**. Running the same keypair on multiple machines simultaneously will cause issues.
@@ -405,3 +382,28 @@ AUTHORIZER=YOUR_MASTER_PUBLIC_KEY
 ```
 
 The `AUTHORIZER` should be your master key's public key (the one authorized by the run admin), not the delegate's public key.
+
+---
+
+## Claiming
+
+- **Claiming Rewards:** After participating in training, you can claim rewards using:
+  ```bash
+  ./run-manager treasurer-claim-rewards \
+      --rpc https://api.devnet.solana.com \
+      --run-id YOUR_RUN_ID \
+      --wallet-private-key-path ~/.config/solana/psyche-node.json
+  ```
+---
+
+## Quick Reference
+
+| Command | Purpose |
+|---------|---------|
+| `nvidia-smi` | Verify GPU and drivers |
+| `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi` | Verify GPU access in Docker |
+| `solana-keygen pubkey ~/.config/solana/psyche-node.json` | Get your public key |
+| `solana balance ~/.config/solana/psyche-node.json` | Check wallet balance |
+| `./run-manager --env-file ~/.config/psyche/run.env` | Start providing compute |
+| `Ctrl+C` | Stop the client gracefully |
+
