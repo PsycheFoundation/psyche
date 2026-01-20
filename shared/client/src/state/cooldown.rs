@@ -244,8 +244,13 @@ impl CooldownStepMetadata {
                             epoch,
                             run_id: run_id.clone(),
                         };
-                        upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
-                            .await?;
+                        let result = upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
+                            .await;
+                        if let Err(err) = result {
+                            error!("Error uploading checkpoint: {}", err);
+                        } else {
+                            checkpoint_completed.store(true, Ordering::SeqCst);
+                        }
                     }
 
                     cleanup_dirs(
@@ -258,7 +263,6 @@ impl CooldownStepMetadata {
                     )
                     .await;
 
-                    checkpoint_completed.store(true, Ordering::SeqCst);
                     Ok(evals)
                 }
                 .instrument(info_span!("checkpointing"))
