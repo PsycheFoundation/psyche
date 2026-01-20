@@ -381,11 +381,12 @@ solana-keygen pubkey ~/.config/solana/psyche-delegate-2.json
 3. Register the delegates under your master key (requires the run admin's join authority pubkey):
 
 ```bash
-./run-manager join-authorization-delegate \
-    --rpc https://api.devnet.solana.com \
-    --wallet-private-key-path ~/.config/solana/psyche-node.json \
-    --join-authority JOIN_AUTHORITY_PUBKEY \
-    --delegates-added DELEGATE_1_PUBKEY DELEGATE_2_PUBKEY
+run-manager join-authorization-delegate \
+    --rpc [RPC] \
+    --wallet-private-key-path [USER_MASTER_KEYPAIR_FILE] \
+    --join-authority [JOIN_AUTHORITY_PUBKEY]
+    --delegates-clear [true/false] # Optionally remove previously set delegates
+    --delegates-added [USER_DELEGATES_PUBKEYS] # Multiple pubkeys can be added
 ```
 
 > **Note:** Ask the run administrator for the `JOIN_AUTHORITY_PUBKEY`.
