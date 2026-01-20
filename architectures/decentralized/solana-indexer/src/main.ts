@@ -4,26 +4,29 @@ import {
   rpcHttpFromUrl,
   rpcHttpWithMaxConcurrentRequests,
   rpcHttpWithRetryOnError,
+  Solana,
+  timeoutMs,
 } from "solana-kiss";
 import { coordinatorService } from "./coordinator/CoordinatorService";
 import { miningPoolService } from "./mining-pool/MiningPoolService";
 import { utilsGetEnv } from "./utils";
 
-function rpcHttpBuilder(url: string) {
-  return rpcHttpWithRetryOnError(
-    rpcHttpWithMaxConcurrentRequests(
-      rpcHttpFromUrl(url, { commitment: "confirmed" }),
-      100,
+function makeSolanaEndpoint(url: string) {
+  return new Solana(
+    rpcHttpWithRetryOnError(
+      rpcHttpWithMaxConcurrentRequests(
+        rpcHttpFromUrl(url, { commitment: "confirmed" }),
+        100,
+      ),
+      async (context) => {
+        if (context.totalDurationMs >= 60 * 60 * 1000) {
+          console.error("Giving up retries after 1 hour", context);
+          return false;
+        }
+        await timeoutMs(context.retriedCounter * 1000);
+        return true;
+      },
     ),
-    async (_error, context) => {
-      if (context.totalDurationMs >= 60 * 60 * 1000) {
-        console.log("Giving up retries after 1 hour");
-        return false;
-      }
-      const delay = context.retriedCounter * 1000;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      return true;
-    },
   );
 }
 
@@ -38,13 +41,18 @@ async function main() {
     }
   });
   miningPoolService(
-    rpcHttpBuilder(utilsGetEnv("MINING_POOL_RPC", "Mining Pool RPC url")),
+    makeSolanaEndpoint(utilsGetEnv("MINING_POOL_RPC", "Mining Pool RPC url")),
     pubkeyFromBase58("PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf"),
     expressApp,
   );
   coordinatorService(
-    rpcHttpBuilder(utilsGetEnv("COORDINATOR_RPC", "Coordinator RPC url")),
+    makeSolanaEndpoint(utilsGetEnv("COORDINATOR_RPC", "Coordinator RPC url")),
     pubkeyFromBase58("HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y"),
+    expressApp,
+  );
+  coordinatorService(
+    makeSolanaEndpoint(utilsGetEnv("COORDINATOR_RPC", "Coordinator RPC url")),
+    pubkeyFromBase58("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7"),
     expressApp,
   );
 }

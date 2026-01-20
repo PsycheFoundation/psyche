@@ -16,6 +16,6 @@
 	},
 	"dependencies": {
 		"express": "^5.1.0",
-		"solana-kiss": "0.1.7"
+		"solana-kiss": "0.2.9"
 	}
 }

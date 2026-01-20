@@ -1,27 +1,27 @@
 import {
   Pubkey,
-  jsonCodecObject,
+  jsonCodecObjectToObject,
   jsonCodecPubkey,
-  jsonCodecTransform,
+  jsonCodecWrapped,
   pubkeyFindPdaAddress,
   utf8Encode,
 } from "solana-kiss";
-import { utilsObjectToPubkeyMapJsonCodec } from "../utils";
+import { jsonCodecObjectToMapByPubkey } from "../json";
 import {
-  MiningPoolDataPoolInfo,
-  miningPoolDataPoolInfoJsonCodec,
-} from "./MiningPoolDataPoolInfo";
+  MiningPoolDataPoolAnalysis,
+  miningPoolDataPoolAnalysisJsonCodec,
+} from "./MiningPoolDataTypes";
 
 export class MiningPoolDataStore {
-  programAddress: Pubkey;
-  poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>;
+  programAddress: Pubkey; // TODO - this might not belong here ??
+  poolAnalysisByAddress: Map<Pubkey, MiningPoolDataPoolAnalysis>;
 
   constructor(
     programAddress: Pubkey,
-    poolInfoByAddress: Map<Pubkey, MiningPoolDataPoolInfo>,
+    poolAnalysisByAddress: Map<Pubkey, MiningPoolDataPoolAnalysis>,
   ) {
     this.programAddress = programAddress;
-    this.poolInfoByAddress = poolInfoByAddress;
+    this.poolAnalysisByAddress = poolAnalysisByAddress;
   }
 
   public getPoolAddress(poolIndex: bigint): Pubkey {
@@ -33,14 +33,13 @@ export class MiningPoolDataStore {
     ]);
   }
 
-  public getPoolInfo(poolAddress: Pubkey): MiningPoolDataPoolInfo {
-    let poolInfo = this.poolInfoByAddress.get(poolAddress);
-    if (poolInfo === undefined) {
-      poolInfo = {
-        accountState: undefined,
-        accountUpdatedAt: undefined,
-        changeAcknowledgedOrdinal: 0n,
-        changeNotificationOrdinal: 0n,
+  public getPoolAnalysis(poolAddress: Pubkey): MiningPoolDataPoolAnalysis {
+    let poolAnalysis = this.poolAnalysisByAddress.get(poolAddress);
+    if (poolAnalysis === undefined) {
+      poolAnalysis = {
+        latestKnownChangeOrdinal: 0n,
+        latestUpdateFetchOrdinal: 0n,
+        latestOnchainSnapshot: null,
         depositCollateralAmountPerUser: new Map<Pubkey, bigint>(),
         claimRedeemableAmountPerUser: new Map<Pubkey, bigint>(),
         totalExtractCollateralAmount: 0n,
@@ -48,28 +47,28 @@ export class MiningPoolDataStore {
         totalClaimRedeemableAmount: 0n,
         importantHistory: [],
       };
-      this.poolInfoByAddress.set(poolAddress, poolInfo);
+      this.poolAnalysisByAddress.set(poolAddress, poolAnalysis);
     }
-    return poolInfo;
+    return poolAnalysis;
   }
 }
 
-export const miningPoolDataStoreJsonCodec = jsonCodecTransform(
-  jsonCodecObject({
+export const miningPoolDataStoreJsonCodec = jsonCodecWrapped(
+  jsonCodecObjectToObject({
     programAddress: jsonCodecPubkey,
-    poolInfoByAddress: utilsObjectToPubkeyMapJsonCodec(
-      miningPoolDataPoolInfoJsonCodec,
+    poolAnalysisByAddress: jsonCodecObjectToMapByPubkey(
+      miningPoolDataPoolAnalysisJsonCodec,
     ),
   }),
   {
     decoder: (encoded) =>
       new MiningPoolDataStore(
         encoded.programAddress,
-        encoded.poolInfoByAddress,
+        encoded.poolAnalysisByAddress,
       ),
     encoder: (decoded) => ({
       programAddress: decoded.programAddress,
-      poolInfoByAddress: decoded.poolInfoByAddress,
+      poolAnalysisByAddress: decoded.poolAnalysisByAddress,
     }),
   },
 );

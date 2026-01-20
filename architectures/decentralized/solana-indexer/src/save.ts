@@ -1,105 +1,138 @@
 import { promises as fsp } from "fs";
 import { dirname, join } from "path";
 import {
-  jsonCodecObject,
-  jsonCodecRaw,
+  jsonCodecObjectToObject,
   jsonCodecString,
+  jsonCodecValue,
+  JsonDecoder,
+  JsonEncoder,
   JsonValue,
+  Pubkey,
+  pubkeyToBase58,
 } from "solana-kiss";
-import { utilsGetStateDirectory } from "./utils";
+import {
+  CrawlerCheckpoint,
+  crawlerCheckpointJsonCodec,
+} from "./crawler/CrawlerTypes";
+import { utilLogWithTimestamp, utilsGetStateDirectory } from "./utils";
 
-export async function saveExists(
-  saveSubject: string,
-  saveName: string,
-): Promise<boolean> {
-  const path = savePath(saveSubject, saveName, "latest");
+export async function saveWrite<DataStore>(
+  programAddress: Pubkey,
+  programName: string,
+  checkpoint: CrawlerCheckpoint,
+  dataStore: DataStore,
+  dataStoreJsonEncoder: JsonEncoder<DataStore>,
+): Promise<void> {
+  const startTime = Date.now();
+  const content = JSON.stringify(
+    fileJsonCodec.encoder({
+      updatedAt: new Date().toISOString(),
+      checkpoint: crawlerCheckpointJsonCodec.encoder(checkpoint),
+      dataStore: dataStoreJsonEncoder(dataStore),
+    }),
+  );
+  await fileWriteSafely(
+    filePath(programAddress, programName, `backup_${fileNameDateOnly()}`),
+    content,
+  );
+  await fileWriteSafely(
+    filePath(programAddress, programName, fileTagLatest),
+    content,
+  );
+  utilLogWithTimestamp(
+    programAddress,
+    `Saved ${programName}`,
+    Date.now() - startTime,
+  );
+}
+
+export async function saveRead<DataStore>(
+  programAddress: Pubkey,
+  programName: string,
+  dataStoreJsonDecoder: JsonDecoder<DataStore>,
+  dataStoreFactory: () => DataStore,
+): Promise<{
+  updatedAt: string;
+  checkpoint: CrawlerCheckpoint;
+  dataStore: DataStore;
+}> {
+  const startTime = Date.now();
   try {
-    await fsp.access(path);
-    return true;
-  } catch {
-    return false;
+    const content = await fsp.readFile(
+      filePath(programAddress, programName, fileTagLatest),
+      "utf-8",
+    );
+    await fileWriteSafely(
+      filePath(programAddress, programName, `start_${fileNameDateTime()}`),
+      content,
+    );
+    const saveContent = fileJsonCodec.decoder(JSON.parse(content) as JsonValue);
+    utilLogWithTimestamp(
+      programAddress,
+      `Read ${programName}`,
+      Date.now() - startTime,
+    );
+    utilLogWithTimestamp(
+      programAddress,
+      `Loaded ${programName} state from: ${saveContent.updatedAt}`,
+      Date.now() - startTime,
+    );
+    return {
+      updatedAt: saveContent.updatedAt,
+      checkpoint: crawlerCheckpointJsonCodec.decoder(saveContent.checkpoint),
+      dataStore: dataStoreJsonDecoder(saveContent.dataStore),
+    };
+  } catch (error) {
+    console.warn(
+      `Failed to read existing ${programName} JSON, starting fresh`,
+      error,
+    );
+    return {
+      updatedAt: new Date().toISOString(),
+      checkpoint: [],
+      dataStore: dataStoreFactory(),
+    };
   }
 }
 
-export async function saveWrite(
-  saveSubject: string,
+function filePath(
+  saveProgramAddress: Pubkey,
   saveName: string,
-  saveContent: {
-    checkpoint: JsonValue;
-    dataStore: JsonValue;
-  },
-): Promise<void> {
-  const startTime = Date.now();
-  const pathBackup = savePath(
-    saveSubject,
-    saveName,
-    `backup_${fileDateOnly()}`,
-  );
-  const pathTemp = savePath(saveSubject, saveName, `tmp_${fileDateTime()}`);
-  const path = savePath(saveSubject, saveName, "latest");
-  const encoded = jsonCodec.encoder({
-    updatedAt: new Date().toISOString(),
-    checkpoint: saveContent.checkpoint,
-    dataStore: saveContent.dataStore,
-  });
-  const content = JSON.stringify(encoded);
-  await fsp.mkdir(dirname(pathBackup), { recursive: true });
-  await fsp.writeFile(pathBackup, content, { flush: true });
-  await fsp.mkdir(dirname(pathTemp), { recursive: true });
-  await fsp.writeFile(pathTemp, content, { flush: true });
-  await fsp.mkdir(dirname(path), { recursive: true });
-  await fsp.rename(pathTemp, path);
-  console.log(
-    new Date().toISOString(),
-    ">>>",
-    `Written ${saveName} in ${Date.now() - startTime}ms`,
-  );
-}
-
-export async function saveRead(
-  saveSubject: string,
-  saveName: string,
-): Promise<{
-  updatedAt: string;
-  checkpoint: JsonValue;
-  dataStore: JsonValue;
-}> {
-  const startTime = Date.now();
-  const pathStart = savePath(saveSubject, saveName, `start_${fileDateTime()}`);
-  const path = savePath(saveSubject, saveName, "latest");
-  const content = await fsp.readFile(path, "utf-8");
-  await fsp.mkdir(dirname(pathStart), { recursive: true });
-  await fsp.writeFile(pathStart, content, { flush: true });
-  const encoded = JSON.parse(content) as JsonValue;
-  const decoded = jsonCodec.decoder(encoded);
-  console.log(
-    new Date().toISOString(),
-    `Read ${saveSubject}-${saveName} in ${Date.now() - startTime}ms`,
-  );
-  return decoded;
-}
-
-function savePath(saveSubject: string, saveName: string, kind: string): string {
+  tag: string,
+): string {
   return join(
     utilsGetStateDirectory(),
     "saves",
-    saveSubject,
-    `${saveName}.${kind}.json`,
+    pubkeyToBase58(saveProgramAddress),
+    `${saveName}.${tag}.json`,
   );
 }
 
-function fileDateOnly() {
+async function fileWriteSafely(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  const filePathTmp = `${filePath}.tmp`;
+  await fsp.mkdir(dirname(filePathTmp), { recursive: true });
+  await fsp.writeFile(filePathTmp, content, { flush: true });
+  await fsp.mkdir(dirname(filePath), { recursive: true });
+  await fsp.rename(filePathTmp, filePath);
+}
+
+function fileNameDateOnly(): string {
   const now = new Date();
   return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 }
 
-function fileDateTime() {
+function fileNameDateTime(): string {
   const now = new Date();
   return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
 }
 
-const jsonCodec = jsonCodecObject({
+const fileTagLatest = "latest";
+
+const fileJsonCodec = jsonCodecObjectToObject({
   updatedAt: jsonCodecString,
-  checkpoint: jsonCodecRaw,
-  dataStore: jsonCodecRaw,
+  checkpoint: jsonCodecValue,
+  dataStore: jsonCodecValue,
 });

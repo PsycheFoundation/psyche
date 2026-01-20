@@ -1,33 +1,11 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
-import {
-  idlAccountDecode,
-  idlOnchainAnchorAddress,
-  idlOnchainAnchorDecode,
-  IdlProgram,
-  idlProgramGuessAccount,
-  JsonCodec,
-  jsonCodecInteger,
-  jsonCodecNumber,
-  jsonCodecObjectToMap,
-  jsonCodecPubkey,
-  JsonDecoder,
-  jsonDecoderArray,
-  jsonDecoderArrayToObject,
-  jsonDecoderObject,
-  jsonDecoderObjectWithKeysSnakeEncoded,
-  jsonDecoderTransform,
-  Pubkey,
-  pubkeyFromBase58,
-  pubkeyFromBytes,
-  pubkeyToBase58,
-  RpcHttp,
-  rpcHttpGetAccountWithData,
-} from "solana-kiss";
+import { Pubkey, Result } from "solana-kiss";
 
 export function utilsGetStateDirectory() {
-  return process.env["STATE_DIRECTORY"] ?? process.cwd();
+  return process.env["STATE_DIRECTORY"] ?? `${process.cwd()}/data`;
 }
+
 export function utilsGetEnv(name: string, description: string) {
   const value = process.env[name];
   if (!value) {
@@ -36,103 +14,38 @@ export function utilsGetEnv(name: string, description: string) {
   return value;
 }
 
-export async function utilsGetProgramAnchorIdl(
-  rpcHttp: RpcHttp,
+export function utilLogWithTimestamp(
   programAddress: Pubkey,
-): Promise<IdlProgram> {
-  const onchainAnchorAddress = idlOnchainAnchorAddress(programAddress);
-  const { accountInfo: onchainAnchorInfo } = await rpcHttpGetAccountWithData(
-    rpcHttp,
-    onchainAnchorAddress,
-  );
-  if (onchainAnchorInfo.data.length === 0) {
-    throw new Error("Idl account has no data");
-  }
-  return idlOnchainAnchorDecode(onchainAnchorInfo.data);
-}
-export async function utilsGetAndDecodeAccountState<Content>(
-  rpcHttp: RpcHttp,
-  programIdl: IdlProgram,
-  accountAddress: Pubkey,
-  accountDecoder: JsonDecoder<Content>,
-): Promise<Content> {
-  const { accountInfo } = await rpcHttpGetAccountWithData(
-    rpcHttp,
-    accountAddress,
-  );
-  if (accountInfo.data.length === 0) {
-    throw new Error(`Failed to decode account with no data: ${accountAddress}`);
-  }
-  const accountIdl = idlProgramGuessAccount(programIdl, accountInfo.data);
-  if (accountIdl === undefined) {
-    throw new Error(
-      `Failed to resolve Idl account type for: ${accountAddress}`,
-    );
-  }
-  return accountDecoder(idlAccountDecode(accountIdl, accountInfo.data));
-}
-
-export function utilsObjectToPubkeyMapJsonCodec<T>(
-  valueType: JsonCodec<T>,
-): JsonCodec<Map<Pubkey, T>> {
-  return jsonCodecObjectToMap(
-    {
-      keyDecoder: pubkeyFromBase58,
-      keyEncoder: pubkeyToBase58,
-    },
-    valueType,
-  );
-}
-export function utilsObjectToStringMapJsonCodec<T>(
-  valueType: JsonCodec<T>,
-): JsonCodec<Map<string, T>> {
-  return jsonCodecObjectToMap(
-    {
-      keyDecoder: (key) => key,
-      keyEncoder: (key) => key,
-    },
-    valueType,
+  message: string,
+  durationMs?: number,
+) {
+  console.log(
+    new Date().toISOString(),
+    programAddress,
+    ">",
+    message,
+    durationMs !== undefined ? `[duration: ${durationMs}ms]` : "",
   );
 }
 
-export const utilsRustFixedStringJsonDecoder = jsonDecoderTransform(
-  jsonDecoderArrayToObject({
-    bytes: jsonDecoderArray(jsonCodecNumber.decoder),
-  }),
-  (encoded) => {
-    let lastNonNull = 0;
-    for (let index = encoded.bytes.length - 1; index >= 0; index--) {
-      if (encoded.bytes[index] !== 0) {
-        lastNonNull = index + 1;
-        break;
-      }
-    }
-    return new TextDecoder().decode(
-      new Uint8Array(encoded.bytes.slice(0, lastNonNull)),
+export async function utilRunInParallel<Input, Output>(
+  inputs: Iterable<Input>,
+  processor: (input: Input) => Promise<Output>,
+): Promise<Array<{ input: Input; result: Result<Output> }>> {
+  const promises = [];
+  for (const input of inputs) {
+    promises.push(
+      (async () => {
+        try {
+          return { input, result: { value: await processor(input) } };
+        } catch (error) {
+          return { input, result: { error } };
+        }
+      })(),
     );
-  },
-);
-export function utilsRustFixedArrayJsonDecoder<T>(itemDecode: JsonDecoder<T>) {
-  return jsonDecoderTransform(
-    jsonDecoderObject({
-      data: jsonDecoderArray(itemDecode),
-      len: jsonCodecInteger.decoder,
-    }),
-    (encoded) => encoded.data.slice(0, Number(encoded.len)),
-  );
+  }
+  return await Promise.all(promises);
 }
-export const utilsRustSmallBooleanJsonDecoder = jsonDecoderTransform(
-  jsonDecoderArrayToObject({ bit: jsonCodecNumber.decoder }),
-  (encoded) => encoded.bit !== 0,
-);
-export const utilsRustClientIdJsonDecoder =
-  jsonDecoderObjectWithKeysSnakeEncoded({
-    p2pIdentity: jsonDecoderTransform(
-      jsonDecoderArray(jsonCodecNumber.decoder),
-      (encoded) => pubkeyFromBytes(new Uint8Array(encoded)),
-    ),
-    signer: jsonCodecPubkey.decoder,
-  });
 
 export function utilsBigIntMax(a: bigint, b: bigint): bigint {
   return a > b ? a : b;
@@ -140,10 +53,11 @@ export function utilsBigIntMax(a: bigint, b: bigint): bigint {
 export function utilsBigIntMin(a: bigint, b: bigint): bigint {
   return a < b ? a : b;
 }
+
 export function utilsBigintArraySortAscending<Content>(
   array: Array<Content>,
   getKey: (item: Content) => bigint,
-) {
+): void {
   array.sort((a, b) => {
     const aKey = getKey(a);
     const bKey = getKey(b);
@@ -166,7 +80,7 @@ export function utilsPlotPoints(
     y: number | undefined;
   }[],
   xLabel?: (x: number) => string,
-) {
+): void {
   const size = { x: 66, y: 14 };
   const pointsCleaned = points.filter(
     (p) =>

@@ -1,28 +1,28 @@
 import {
   JsonCodec,
-  jsonCodecObject,
+  jsonCodecObjectToObject,
   jsonCodecPubkey,
-  jsonCodecTransform,
+  jsonCodecWrapped,
   Pubkey,
   pubkeyFindPdaAddress,
   utf8Encode,
 } from "solana-kiss";
-import { utilsObjectToPubkeyMapJsonCodec } from "../utils";
+import { jsonCodecObjectToMapByPubkey } from "../json";
 import {
-  CoordinatorDataRunInfo,
-  coordinatorDataRunInfoJsonCodec,
-} from "./CoordinatorDataRunInfo";
+  CoordinatorDataRunAnalysis,
+  coordinatorDataRunAnalysisJsonCodec,
+} from "./CoordinatorDataTypes";
 
 export class CoordinatorDataStore {
   public programAddress: Pubkey;
-  public runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>;
+  public runAnalysisByAddress: Map<Pubkey, CoordinatorDataRunAnalysis>;
 
   constructor(
     programAddress: Pubkey,
-    runInfoByAddress: Map<Pubkey, CoordinatorDataRunInfo>,
+    runAnalysisByAddress: Map<Pubkey, CoordinatorDataRunAnalysis>,
   ) {
     this.programAddress = programAddress;
-    this.runInfoByAddress = runInfoByAddress;
+    this.runAnalysisByAddress = runAnalysisByAddress;
   }
 
   public getRunAddress(runId: string): Pubkey {
@@ -34,42 +34,41 @@ export class CoordinatorDataStore {
     ]);
   }
 
-  public getRunInfo(runAddress: Pubkey): CoordinatorDataRunInfo {
-    let runInfo = this.runInfoByAddress.get(runAddress);
-    if (runInfo === undefined) {
-      runInfo = {
-        accountState: undefined,
-        accountUpdatedAt: undefined,
-        changeAcknowledgedOrdinal: 0n,
-        changeNotificationOrdinal: 0n,
+  public getRunInfo(runAddress: Pubkey): CoordinatorDataRunAnalysis {
+    let runAnalysis = this.runAnalysisByAddress.get(runAddress);
+    if (runAnalysis === undefined) {
+      runAnalysis = {
+        latestKnownChangeOrdinal: 0n,
+        latestUpdateFetchOrdinal: 0n,
+        latestOnchainSnapshot: null,
         lastWitnessByUser: new Map(),
         samplesByStatName: new Map(),
         finishesOrdinals: [],
         importantHistory: [],
       };
-      this.runInfoByAddress.set(runAddress, runInfo);
+      this.runAnalysisByAddress.set(runAddress, runAnalysis);
     }
-    return runInfo;
+    return runAnalysis;
   }
 }
 
 export const coordinatorDataStoreJsonCodec: JsonCodec<CoordinatorDataStore> =
-  jsonCodecTransform(
-    jsonCodecObject({
+  jsonCodecWrapped(
+    jsonCodecObjectToObject({
       programAddress: jsonCodecPubkey,
-      runInfoByAddress: utilsObjectToPubkeyMapJsonCodec(
-        coordinatorDataRunInfoJsonCodec,
+      runAnalysisByAddress: jsonCodecObjectToMapByPubkey(
+        coordinatorDataRunAnalysisJsonCodec,
       ),
     }),
     {
       decoder: (encoded) =>
         new CoordinatorDataStore(
           encoded.programAddress,
-          encoded.runInfoByAddress,
+          encoded.runAnalysisByAddress,
         ),
       encoder: (decoded) => ({
         programAddress: decoded.programAddress,
-        runInfoByAddress: decoded.runInfoByAddress,
+        runAnalysisByAddress: decoded.runAnalysisByAddress,
       }),
     },
   );
