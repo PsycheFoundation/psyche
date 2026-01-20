@@ -207,11 +207,12 @@ impl CooldownStepMetadata {
                         skip_upload,
                     } = checkpoint_info;
 
-                    let upload_info = if skip_upload {
-                        info!("Skipping checkpoint upload (skip_upload flag is set)");
-                        None
+                    // When skip_upload is true (testing), skip all checkpoint saving
+                    if skip_upload {
+                        info!("Skipping checkpoint save and upload (skip_upload flag is set)");
+                        checkpoint_completed.store(true, Ordering::SeqCst);
                     } else {
-                        match checkpoint {
+                        let upload_info = match checkpoint {
                             model::Checkpoint::Hub(HubRepo {
                                 repo_id,
                                 revision: _,
@@ -238,40 +239,39 @@ impl CooldownStepMetadata {
                                 }))
                             }
                             _ => None,
-                        }
-                    };
-
-                    let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
-                    let local =
-                        save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
-
-                    if let Some(upload_info) = upload_info {
-                        let manifest_metadata = GcsManifestMetadata {
-                            epoch,
-                            run_id: run_id.clone(),
                         };
-                        let result = upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
-                            .await;
-                        if let Err(err) = result {
-                            error!("Error uploading checkpoint: {}", err);
+
+                        let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
+                        let local =
+                            save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
+
+                        if let Some(upload_info) = upload_info {
+                            let manifest_metadata = GcsManifestMetadata {
+                                epoch,
+                                run_id: run_id.clone(),
+                            };
+                            let result = upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
+                                .await;
+                            if let Err(err) = result {
+                                error!("Error uploading checkpoint: {}", err);
+                            } else {
+                                checkpoint_completed.store(true, Ordering::SeqCst);
+                            }
                         } else {
+                            // No upload configured, but local save succeeded
                             checkpoint_completed.store(true, Ordering::SeqCst);
                         }
-                    } else {
-                        // No upload needed (skip_upload or unsupported checkpoint type)
-                        // Mark checkpoint as complete so cooldown witness can be sent
-                        checkpoint_completed.store(true, Ordering::SeqCst);
-                    }
 
-                    cleanup_dirs(
-                        delete_queue,
-                        keep_steps,
-                        run_id,
-                        delete_old_steps,
-                        step,
-                        checkpoint_dir,
-                    )
-                    .await;
+                        cleanup_dirs(
+                            delete_queue,
+                            keep_steps,
+                            run_id,
+                            delete_old_steps,
+                            step,
+                            checkpoint_dir,
+                        )
+                        .await;
+                    }
 
                     Ok(evals)
                 }
