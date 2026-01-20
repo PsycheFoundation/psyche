@@ -267,7 +267,7 @@ impl Task {
                                 + &fewshot_examples
                                     .into_iter()
                                     .take(self.num_fewshot)
-                                    .map(|x| format!("{} {}", x.text, ASCII_UPPERCASE[x.answer]))
+                                    .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
                                     .collect::<Vec<_>>()
                                     .join("\n\n")
                                 + "\n\n"
