@@ -630,16 +630,13 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
 
-        // TODO: In the case of more than one checkpointer, this will overwrite the checkpoint
-        // with the last checkpointed one. We could instead have a vector of checkpoints to have
-        // more download options.
         let Model::LLM(llm) = &mut self.model;
         match (&llm.checkpoint, checkpoint_repo) {
             // If current is P2P, wrap the new checkpoint in P2P
-            (Checkpoint::P2P(_), Checkpoint::Hub(hub_repo)) => {
+            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
                 llm.checkpoint = Checkpoint::P2P(hub_repo);
             }
-            (Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
+            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
                 llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
             }
             // If current is Hub, only accept Hub updates
@@ -649,12 +646,6 @@ impl<T: NodeIdentity> Coordinator<T> {
             // If current is Gcs, only accept Gcs updates
             (Checkpoint::Gcs(_), Checkpoint::Gcs(gcs_repo)) => {
                 llm.checkpoint = Checkpoint::Gcs(gcs_repo);
-            }
-            (Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::P2P(hub_repo);
-            }
-            (Checkpoint::P2P(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
             }
             // Ignore other combinations
             _ => {}

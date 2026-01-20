@@ -16,7 +16,10 @@ use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tch::Tensor;
 use thiserror::Error;
@@ -151,10 +154,12 @@ impl CooldownStepMetadata {
         let is_checkpointer = checkpointer_selection
             .is_checkpointer(client_index, state.epoch_state.clients.len() as u64);
         let cancellation_token = tokio_util::sync::CancellationToken::new();
+        let checkpoint_completed = Arc::new(AtomicBool::new(false));
 
         let checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>> =
             tokio::task::spawn({
                 let cancellation_token = cancellation_token.clone();
+                let checkpoint_completed = checkpoint_completed.clone();
                 async move {
                     info!("Extracting full model...");
                     let (variables, trainer) =
@@ -199,59 +204,74 @@ impl CooldownStepMetadata {
                         delete_old_steps,
                         keep_steps,
                         hub_token,
+                        skip_upload,
                     } = checkpoint_info;
 
-                    let upload_info = match checkpoint {
-                        model::Checkpoint::Hub(HubRepo {
-                            repo_id,
-                            revision: _,
-                        })
-                        | model::Checkpoint::P2P(HubRepo {
-                            repo_id,
-                            revision: _,
-                        }) => {
-                            if let Some(token) = hub_token {
-                                Some(UploadInfo::Hub(HubUploadInfo {
-                                    hub_repo: (&repo_id).into(),
-                                    hub_token: token,
-                                }))
-                            } else {
-                                warn!("HF_TOKEN env not provided, skipping upload to HuggingFace Hub");
-                                None
+                    // When skip_upload is true (testing), skip all checkpoint saving
+                    if skip_upload {
+                        info!("Skipping checkpoint save and upload (skip_upload flag is set)");
+                        checkpoint_completed.store(true, Ordering::SeqCst);
+                    } else {
+                        let upload_info = match checkpoint {
+                            model::Checkpoint::Hub(HubRepo {
+                                repo_id,
+                                revision: _,
+                            })
+                            | model::Checkpoint::P2P(HubRepo {
+                                repo_id,
+                                revision: _,
+                            }) => {
+                                if let Some(token) = hub_token {
+                                    Some(UploadInfo::Hub(HubUploadInfo {
+                                        hub_repo: (&repo_id).into(),
+                                        hub_token: token,
+                                    }))
+                                } else {
+                                    warn!("HF_TOKEN env not provided, skipping upload to HuggingFace Hub");
+                                    None
+                                }
                             }
-                        }
-                        model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
-                        | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
-                            Some(UploadInfo::Gcs(GcsUploadInfo {
-                                gcs_bucket: (&bucket).into(),
-                                gcs_prefix: prefix.as_ref().map(|p| p.into()),
-                            }))
-                        }
-                        _ => None,
-                    };
-
-                    let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
-                    let local =
-                        save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
-
-                    if let Some(upload_info) = upload_info {
-                        let manifest_metadata = GcsManifestMetadata {
-                            epoch,
-                            run_id: run_id.clone(),
+                            model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
+                            | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                                Some(UploadInfo::Gcs(GcsUploadInfo {
+                                    gcs_bucket: (&bucket).into(),
+                                    gcs_prefix: prefix.as_ref().map(|p| p.into()),
+                                }))
+                            }
+                            _ => None,
                         };
-                        upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
-                            .await?;
-                    }
 
-                    cleanup_dirs(
-                        delete_queue,
-                        keep_steps,
-                        run_id,
-                        delete_old_steps,
-                        step,
-                        checkpoint_dir,
-                    )
-                    .await;
+                        let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
+                        let local =
+                            save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
+
+                        if let Some(upload_info) = upload_info {
+                            let manifest_metadata = GcsManifestMetadata {
+                                epoch,
+                                run_id: run_id.clone(),
+                            };
+                            let result = upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
+                                .await;
+                            if let Err(err) = result {
+                                error!("Error uploading checkpoint: {}", err);
+                            } else {
+                                checkpoint_completed.store(true, Ordering::SeqCst);
+                            }
+                        } else {
+                            // No upload configured, but local save succeeded
+                            checkpoint_completed.store(true, Ordering::SeqCst);
+                        }
+
+                        cleanup_dirs(
+                            delete_queue,
+                            keep_steps,
+                            run_id,
+                            delete_old_steps,
+                            step,
+                            checkpoint_dir,
+                        )
+                        .await;
+                    }
 
                     Ok(evals)
                 }
@@ -261,6 +281,7 @@ impl CooldownStepMetadata {
         Ok(CooldownStep {
             checkpointing_and_evals,
             cancellation_token,
+            checkpoint_completed,
         })
     }
 }
@@ -316,6 +337,7 @@ async fn upload_checkpoint(
 pub struct CooldownStep {
     checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
     cancellation_token: tokio_util::sync::CancellationToken,
+    checkpoint_completed: Arc<AtomicBool>,
 }
 
 impl CooldownStep {
@@ -334,5 +356,9 @@ impl CooldownStep {
 
     pub fn is_finished(&self) -> bool {
         self.checkpointing_and_evals.is_finished()
+    }
+
+    pub fn checkpoint_complete(&self) -> bool {
+        self.checkpoint_completed.load(Ordering::SeqCst)
     }
 }

@@ -7,6 +7,7 @@ use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
+use tracing::info;
 
 pub fn read_identity_secret_key(
     identity_secret_key_path: Option<&PathBuf>,
@@ -139,7 +140,7 @@ pub struct TrainArgs {
     pub prompt_task: bool,
 
     /// If provided, every model parameters update will be save in this directory after each epoch.
-    #[clap(long, env, default_value = "~/.cache/psyche/checkpoints")]
+    #[clap(long, env, default_value_os_t = default_checkpoint_dir())]
     pub checkpoint_dir: PathBuf,
 
     #[clap(long, env, default_value_t = 3)]
@@ -191,8 +192,9 @@ pub struct TrainArgs {
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
 
+    /// Skip uploading checkpoints to Hub/GCS (for testing). Checkpoints are still saved locally.
     #[clap(long, default_value_t = false, env, hide = true)]
-    pub test_mode: bool,
+    pub skip_checkpoint_upload: bool,
 }
 
 impl TrainArgs {
@@ -222,18 +224,7 @@ impl TrainArgs {
     }
 
     pub fn checkpoint_config(&self) -> Result<CheckpointConfig> {
-        if self.test_mode {
-            return Ok(CheckpointConfig::dummy());
-        }
-
         let hub_token = std::env::var("HF_TOKEN").ok();
-        let google_application_credentials = std::env::var("GOOGLE_APPLICATION_CREDENTIALS").ok();
-
-        if hub_token.is_none() && google_application_credentials.is_none() {
-            return Err(anyhow!(
-                "Either HF_TOKEN or GOOGLE_APPLICATION_CREDENTIALS environment variable must be set for checkpoint uploads"
-            ));
-        }
 
         if self.keep_steps == 0 {
             bail!(
@@ -247,6 +238,7 @@ impl TrainArgs {
             delete_old_steps: self.delete_old_steps,
             keep_steps: self.keep_steps,
             hub_token,
+            skip_upload: self.skip_checkpoint_upload,
         })
     }
 
@@ -275,6 +267,13 @@ impl TrainArgs {
             .collect();
         result
     }
+}
+
+fn default_checkpoint_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let final_dir = PathBuf::from(home).join(".cache/psyche/local_checkpoints");
+    info!("Default checkpoint directory set to {:?}", final_dir);
+    final_dir
 }
 
 pub fn prepare_environment() {

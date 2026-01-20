@@ -1,4 +1,5 @@
 use crate::errors::UploadError;
+use futures::future::try_join_all;
 use hf_hub::{
     Cache, Repo, RepoType,
     api::{Siblings, tokio::ApiError},
@@ -51,26 +52,22 @@ async fn download_repo_async(
         .collect::<Vec<_>>();
     let mut ret: Vec<PathBuf> = Vec::new();
     for chunk in siblings.chunks(max_concurrent_downloads.unwrap_or(siblings.len())) {
-        let futures = chunk
-            .iter()
-            .map(|x| async {
-                let start_time = Instant::now();
-                tracing::debug!(filename = x.rfilename, "Starting file download from hub");
-                let res = api.get(&x.rfilename).await;
-                if res.is_ok() {
-                    let duration_secs = (Instant::now() - start_time).as_secs_f32();
-                    tracing::info!(
-                        filename = x.rfilename,
-                        duration_secs = duration_secs,
-                        "Finished downloading file from hub"
-                    );
-                }
-                res
-            })
-            .collect::<Vec<_>>();
-        for future in futures {
-            ret.push(future.await?);
-        }
+        let futures = chunk.iter().map(|x| async {
+            let start_time = Instant::now();
+            tracing::debug!(filename = x.rfilename, "Starting file download from hub");
+            let res = api.get(&x.rfilename).await;
+            if res.is_ok() {
+                let duration_secs = (Instant::now() - start_time).as_secs_f32();
+                tracing::info!(
+                    filename = x.rfilename,
+                    duration_secs = duration_secs,
+                    "Finished downloading file from hub"
+                );
+            }
+            res
+        });
+        let chunk_results = try_join_all(futures).await?;
+        ret.extend(chunk_results);
     }
     Ok(ret)
 }
@@ -207,7 +204,35 @@ pub async fn upload_to_hub(
         return Ok(());
     }
 
-    info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
+    // Collect all safetensors files to upload in a single commit
+    let files_to_upload: Vec<_> = local
+        .iter()
+        .filter(|p| p.extension() == Some("safetensors".as_ref()))
+        .map(|path| -> Result<_, UploadError> {
+            let file_name = path
+                .file_name()
+                .ok_or_else(|| UploadError::NotAFile(path.clone()))?
+                .to_str()
+                .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?
+                .to_string();
+            Ok((path.clone().into(), file_name))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if files_to_upload.is_empty() {
+        info!(repo = hub_repo, "No safetensors files to upload");
+        return Ok(());
+    }
+
+    let file_names: Vec<_> = files_to_upload
+        .iter()
+        .map(|(_, name)| name.clone())
+        .collect();
+    info!(
+        repo = hub_repo,
+        file_count = files_to_upload.len(),
+        "Uploading checkpoint to HuggingFace"
+    );
 
     let api = hf_hub::api::tokio::ApiBuilder::new()
         .with_token(Some(hub_token))
@@ -215,45 +240,25 @@ pub async fn upload_to_hub(
     let repo = Repo::model(hub_repo.clone());
     let api_repo = api.repo(repo);
 
-    for path in local {
-        if cancellation_token.is_cancelled() {
+    let upload_future =
+        api_repo.upload_files(files_to_upload, Some(format!("step {step}")), None, false);
+
+    tokio::select! {
+        biased;
+
+        _ = cancellation_token.cancelled() => {
             info!(repo = hub_repo, "Upload to HuggingFace cancelled");
             return Ok(());
         }
-
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| UploadError::NotAFile(path.clone()))?
-            .to_str()
-            .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?
-            .to_string();
-
-        let upload_future = api_repo.upload_files(
-            vec![(path.into(), file_name.clone())],
-            Some(format!("step {step}")),
-            None,
-            false,
-        );
-
-        tokio::select! {
-            biased;
-
-            _ = cancellation_token.cancelled() => {
-                info!(repo = hub_repo, file = file_name, "Upload cancelled");
-                return Ok(());
-            }
-            result = upload_future => {
-                result.map_err(|e| {
-                    error!(repo = hub_repo, error = ?e, "Failed to upload file");
-                    e
-                })?;
-            }
+        result = upload_future => {
+            result.map_err(|e| {
+                error!(repo = hub_repo, error = ?e, "Failed to upload files");
+                e
+            })?;
         }
-
-        info!(repo = hub_repo, file = file_name, "Uploaded file");
     }
 
-    info!(repo = hub_repo, "Upload to HuggingFace complete");
+    info!(repo = hub_repo, files = ?file_names, "Upload to HuggingFace complete");
 
     Ok(())
 }

@@ -292,10 +292,10 @@ impl GcsRepo {
 #[repr(C)]
 pub enum Checkpoint {
     Ephemeral,
-    Dummy(HubRepo),
+    Dummy(HubRepo), // Used for testing
     Hub(HubRepo),
-    P2P(HubRepo),
     Gcs(GcsRepo),
+    P2P(HubRepo),
     P2PGcs(GcsRepo),
 }
 
@@ -305,12 +305,16 @@ impl std::fmt::Display for Checkpoint {
             Checkpoint::Dummy(_hub_repo) => write!(f, "Dummy"),
             Checkpoint::Ephemeral => write!(f, "Ephemeral"),
             Checkpoint::Hub(hub_repo) => write!(f, "{}", &hub_repo.repo_id),
+            Checkpoint::Gcs(gcs_repo) => match &gcs_repo.prefix {
+                Some(prefix) => write!(f, "gs://{}/{}", &gcs_repo.bucket, prefix),
+                None => write!(f, "gs://{}", &gcs_repo.bucket),
+            },
             Checkpoint::P2P(hub_repo) => {
                 write!(f, "P2P - Hub repo: {}", &hub_repo.repo_id)
             }
-            Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => match &gcs_repo.prefix {
-                Some(prefix) => write!(f, "gs://{}/{}", &gcs_repo.bucket, prefix),
-                None => write!(f, "gs://{}", &gcs_repo.bucket),
+            Checkpoint::P2PGcs(gcs_repo) => match &gcs_repo.prefix {
+                Some(prefix) => write!(f, "P2P - gs://{}/{}", &gcs_repo.bucket, prefix),
+                None => write!(f, "P2P - gs://{}", &gcs_repo.bucket),
             },
         }
     }
@@ -350,11 +354,9 @@ impl Model {
                 let bad_checkpoint = match llm.checkpoint {
                     Checkpoint::Dummy(_hub_repo) => false,
                     Checkpoint::Ephemeral => true,
+                    Checkpoint::P2P(_) | Checkpoint::P2PGcs(_) => true, // P2P is internal state, not configurable
                     Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
-                        gcs_repo.bucket.is_empty()
-                    }
+                    Checkpoint::Gcs(gcs_repo) => gcs_repo.bucket.is_empty(),
                 };
 
                 if bad_checkpoint {

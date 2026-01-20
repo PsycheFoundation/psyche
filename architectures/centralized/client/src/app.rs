@@ -1,8 +1,7 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use google_cloud_storage::client::{Client as GcsClient, ClientConfig};
-use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
-use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
+use bytes::Bytes;
+use google_cloud_storage::client::{Storage, StorageControl};
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
@@ -217,32 +216,38 @@ impl App {
                     }
                 }
                 Some(UploadInfo::Gcs(gcs_info)) => {
-                    let config = ClientConfig::default().with_auth().await?;
-                    let client = GcsClient::new(config);
+                    let storage = Storage::builder()
+                        .build()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
+
+                    let storage_control = StorageControl::builder().build().await.map_err(|e| {
+                        anyhow::anyhow!("Failed to create GCS control client: {}", e)
+                    })?;
+
                     // Test write access by attempting to upload a small test object
                     let test_key = format!(
                         "{}/.write_test",
                         gcs_info.gcs_prefix.clone().unwrap_or_default()
                     );
 
-                    let upload_result = client
-                        .upload_object(
-                            &UploadObjectRequest {
-                                bucket: gcs_info.gcs_bucket.clone(),
-                                ..Default::default()
-                            },
-                            vec![],
-                            &UploadType::Simple(Media::new(test_key.clone())),
-                        )
+                    let bucket_resource_name =
+                        format!("projects/_/buckets/{}", gcs_info.gcs_bucket);
+                    let test_data = Bytes::from(vec![]);
+
+                    let upload_result = storage
+                        .write_object(&bucket_resource_name, &test_key, test_data)
+                        .send_unbuffered()
                         .await;
                     match upload_result {
                         Ok(_) => {
-                            let delete_request = DeleteObjectRequest {
-                                bucket: gcs_info.gcs_bucket.clone(),
-                                object: test_key.clone(),
-                                ..Default::default()
-                            };
-                            let _ = client.delete_object(&delete_request).await;
+                            // Test upload succeeded, the bucket is writable. Now we delete the test file
+                            let _ = storage_control
+                                .delete_object()
+                                .set_bucket(bucket_resource_name.clone())
+                                .set_object(test_key)
+                                .send()
+                                .await;
                         }
                         Err(e) => {
                             anyhow::bail!(

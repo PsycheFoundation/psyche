@@ -343,7 +343,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             }
         } else if self.coordinator_state.run_state == RunState::Cooldown {
             if let ActiveStep::Cooldown(active_step) = &self.active_step {
-                if !active_step.is_finished() || self.sent_cooldown_witness {
+                if !active_step.checkpoint_complete() || self.sent_cooldown_witness {
                     return Ok(());
                 }
             }

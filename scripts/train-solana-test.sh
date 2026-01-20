@@ -2,14 +2,6 @@
 
 set -eo pipefail
 
-CHECKPOINT=false
-# Parse command line arguments
-for arg in "$@"; do
-    if [[ "$arg" == "--checkpoint" ]]; then
-        CHECKPOINT=true
-    fi
-done
-
 # use the agenix provided wallet if you have it
 if [[ -n "${devnet__keypair__wallet_PATH}" && -f "${devnet__keypair__wallet_PATH}" ]]; then
     WALLET_FILE="${devnet__keypair__wallet_PATH}"
@@ -28,8 +20,8 @@ elif [[ -z "${WALLET_FILE:-}" ]]; then
     trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
 fi
 
-RPC=${RPC:-"http://127.0.0.1:8899"}
-WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
+RPC=${RPC:-"http://localhost:8899"}
+WS_RPC=${WS_RPC:-"ws://localhost:8900"}
 RUN_ID=${RUN_ID:-"test"}
 AUTHORIZER=${AUTHORIZER:-"11111111111111111111111111111111"}
 
@@ -63,7 +55,7 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --micro-batch-size ${BATCH_SIZE} \
         --authorizer ${AUTHORIZER} \
         --logs "console" \
-        $( [[ "$CHECKPOINT" == false ]] && echo "--test-mode" ) \
+        [[ "$CHECKPOINT" == "true" ]] && echo "--skip-checkpoint-upload" || echo "" \
         "$@"
 else
     HF_TOKEN=${HF_TOKEN} GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} cargo run --release --bin psyche-solana-client -- \
@@ -79,6 +71,6 @@ else
         --authorizer ${AUTHORIZER} \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
         --oltp-logs-url "http://localhost:4318/v1/logs" \
-        $( [[ "$CHECKPOINT" == false ]] && echo "--test-mode" ) \
+        [[ "$CHECKPOINT" == "true" ]] && echo "--skip-checkpoint-upload" || echo "" \
         "$@"
 fi

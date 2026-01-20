@@ -22,6 +22,8 @@ pub struct CheckpointConfig {
     pub delete_old_steps: bool,
     pub keep_steps: u32,
     pub hub_token: Option<String>,
+    /// Skip uploading checkpoints (for testing). Checkpoints are still saved locally.
+    pub skip_upload: bool,
 }
 
 impl CheckpointConfig {
@@ -31,6 +33,7 @@ impl CheckpointConfig {
             delete_old_steps: false,
             keep_steps: 1,
             hub_token: None,
+            skip_upload: false,
         }
     }
 }
