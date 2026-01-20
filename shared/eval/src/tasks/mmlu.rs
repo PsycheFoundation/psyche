@@ -87,6 +87,13 @@ impl LogLikelihoodTask for MMLU {
         });
         fewshot_documents
     }
+
+    fn get_preamble(&self, category: &str) -> String {
+        format!(
+            "The following are multiple choice questions (with answers) about {}.\n\n",
+            category
+        )
+    }
 }
 
 impl Display for MMLU {

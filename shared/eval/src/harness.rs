@@ -220,16 +220,7 @@ impl Task {
                     .map(|doc| {
                         // Build fewshot prefix for this document
                         let category = doc.category.as_deref().unwrap_or("default");
-
-                        // Add preamble for MMLU tasks (appears once at the beginning)
-                        let preamble = if [MMLU::name(), MMLUCF::name()].contains(&name.as_str()) {
-                            format!(
-                                "The following are multiple choice questions (with answers) about {}.\n\n",
-                                category
-                            )
-                        } else {
-                            String::new()
-                        };
+                        let preamble = llh.get_preamble(category);
 
                         let fewshot_prefix = if self.num_fewshot > 0 {
                             // Get fewshot examples for this document's category
