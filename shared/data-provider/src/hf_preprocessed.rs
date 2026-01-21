@@ -53,6 +53,7 @@ pub struct HuggingFacePreprocessedDataProvider {
     split: String,
     token: Option<String>,
     num_rows: usize,
+    num_tokens_per_sequence: usize,
     shuffle_indices: Option<Vec<usize>>,
 }
 
@@ -62,6 +63,7 @@ impl HuggingFacePreprocessedDataProvider {
         config: String,
         split: String,
         token: Option<String>,
+        num_tokens_per_sequence: usize,
         shuffle: Shuffle,
     ) -> Result<Self> {
         let client = reqwest::Client::builder()
@@ -93,6 +95,7 @@ impl HuggingFacePreprocessedDataProvider {
             split,
             token,
             num_rows,
+            num_tokens_per_sequence,
             shuffle_indices,
         })
     }
@@ -164,9 +167,9 @@ impl HuggingFacePreprocessedDataProvider {
 
         // Depending on the repo sometimes 'inputs' or 'input_ids' is used
         let input_ids = if let Some(inputs) = obj.get("inputs") {
-            parse_int_array(inputs, "inputs")?
+            parse_int_array(inputs, "inputs", Some(self.num_tokens_per_sequence))?
         } else if let Some(input_ids) = obj.get("input_ids") {
-            parse_int_array(input_ids, "input_ids")?
+            parse_int_array(input_ids, "input_ids", Some(self.num_tokens_per_sequence))?
         } else {
             bail!("Missing 'inputs' or 'input_ids' column");
         };
@@ -174,17 +177,17 @@ impl HuggingFacePreprocessedDataProvider {
         // These columns are optional and they might or might not be present
         let labels = obj
             .get("labels")
-            .map(|v| parse_int_array(v, "labels"))
+            .map(|v| parse_int_array(v, "labels", Some(self.num_tokens_per_sequence)))
             .transpose()?;
 
         let position_ids = obj
             .get("position_ids")
-            .map(|v| parse_int_array(v, "position_ids"))
+            .map(|v| parse_int_array(v, "position_ids", Some(self.num_tokens_per_sequence)))
             .transpose()?;
 
         let sequence_lengths = obj
             .get("sequence_lengths")
-            .map(|v| parse_int_array(v, "sequence_lengths"))
+            .map(|v| parse_int_array(v, "sequence_lengths", None))
             .transpose()?;
 
         Ok(TokenizedData {
@@ -282,17 +285,30 @@ async fn make_authenticated_request(
     Ok(response)
 }
 
-fn parse_int_array(value: &serde_json::Value, column_name: &str) -> Result<Vec<i32>> {
+fn parse_int_array(
+    value: &serde_json::Value,
+    column_name: &str,
+    required_len: Option<usize>,
+) -> Result<Vec<i32>> {
     let array = value
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("Column '{}' is not an array", column_name))?;
 
-    array
+    let ret = array
         .iter()
         .map(|v| {
             v.as_i64()
                 .ok_or_else(|| anyhow::anyhow!("Non-integer value in column '{}'", column_name))
                 .map(|i| i as i32)
         })
-        .collect()
+        .collect::<Result<Vec<i32>, _>>()?;
+
+    if let Some(required_len) = required_len {
+        let len = ret.len();
+        if len != required_len {
+            bail!("`{column_name}` has length {len} instead of {required_len}");
+        }
+    }
+
+    Ok(ret)
 }

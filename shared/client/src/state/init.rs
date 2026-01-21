@@ -268,6 +268,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             (&location.config).into(),
                             (&location.split).into(),
                             hub_read_token.clone(),
+                            llm.max_seq_len as usize,
                             location.shuffle,
                         )
                         .await?,
