@@ -1,6 +1,7 @@
 mod attention;
 mod auto_config;
 mod auto_model;
+mod auto_parallelism;
 mod auto_tokenizer;
 mod batcher;
 mod causal_language_model;
@@ -28,6 +29,10 @@ mod variable;
 pub use attention::CausalSelfAttention;
 pub use auto_config::{AttentionImplementation, AutoConfig, ModelLoadError, PretrainedSource};
 pub use auto_model::auto_model_for_causal_lm_from_pretrained;
+pub use auto_parallelism::{
+    ComputedParallelism, HardwareProfile, ModelMemoryEstimate, ModelParamEstimator,
+    calculate_parallelism, compute_auto_parallelism, detect_hardware, estimate_memory,
+};
 pub use auto_tokenizer::{AutoTokenizerError, auto_tokenizer};
 pub use batcher::Batcher;
 pub use causal_language_model::{

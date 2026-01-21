@@ -15,7 +15,8 @@ use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
-    LocalTrainer, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
+    LocalTrainer, ModelLoadError, ModelParamEstimator, ParallelModels, PretrainedSource, Trainer,
+    auto_tokenizer, compute_auto_parallelism, detect_hardware,
 };
 use psyche_network::{AuthenticatableIdentity, BlobTicket};
 use psyche_watcher::OpportunisticData;
@@ -50,9 +51,12 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub device: Devices,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
-    pub data_parallelism: usize,
-    pub tensor_parallelism: usize,
-    pub micro_batch_size: usize,
+    /// Data parallelism degree. None = auto-detect based on hardware and model.
+    pub data_parallelism: Option<usize>,
+    /// Tensor parallelism degree. None = auto-detect based on hardware and model.
+    pub tensor_parallelism: Option<usize>,
+    /// Micro batch size. None = auto-detect based on hardware and model.
+    pub micro_batch_size: Option<usize>,
     pub optim_stats_every_n_steps: Option<u32>,
     pub grad_accum_in_fp32: bool,
 
@@ -141,6 +145,57 @@ struct RawLoadedModel {
     tokenizer: Arc<Tokenizer>,
     model_task_runner: ModelTaskRunner,
     checkpoint_extra_files: Vec<PathBuf>,
+    parallelism: ResolvedParallelism,
+}
+
+/// Resolved parallelism values (either from manual config or auto-calculated)
+#[derive(Clone, Copy, Debug)]
+struct ResolvedParallelism {
+    data_parallelism: usize,
+    tensor_parallelism: usize,
+    micro_batch_size: usize,
+}
+
+impl ResolvedParallelism {
+    /// Create from manual configuration (all values must be provided)
+    fn from_manual(dp: usize, tp: usize, mbs: usize) -> Self {
+        Self {
+            data_parallelism: dp,
+            tensor_parallelism: tp,
+            micro_batch_size: mbs,
+        }
+    }
+
+    /// Default fallback for Dummy models or unsupported hardware
+    fn fallback() -> Self {
+        Self {
+            data_parallelism: 1,
+            tensor_parallelism: 1,
+            micro_batch_size: 1,
+        }
+    }
+
+    /// Calculate from model config and coordinator settings
+    fn from_auto<C: ModelParamEstimator>(
+        model_config: &C,
+        optimizer: &psyche_core::OptimizerDefinition,
+        max_seq_len: u32,
+        global_batch_size: u16,
+        min_clients: u16,
+    ) -> Self {
+        let computed = compute_auto_parallelism(
+            model_config,
+            optimizer,
+            max_seq_len,
+            global_batch_size,
+            min_clients,
+        );
+        Self {
+            data_parallelism: computed.data_parallelism,
+            tensor_parallelism: computed.tensor_parallelism,
+            micro_batch_size: computed.micro_batch_size,
+        }
+    }
 }
 
 type OneshotModelParameterSender = oneshot::Sender<HashMap<String, Tensor>>;
@@ -194,6 +249,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         let model::Model::LLM(llm) = state.model;
+
+        // Extract coordinator config values needed for auto-parallelism calculation
+        let coordinator_global_batch_size = state.config.global_batch_size_end;
+        let coordinator_min_clients = state.config.min_clients;
+        let model_optimizer = llm.optimizer;
+        let model_max_seq_len = llm.max_seq_len;
 
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
@@ -271,13 +332,30 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             | model::LLMArchitecture::HfAuto
             | model::LLMArchitecture::Torchtitan => match &llm.checkpoint {
                 model::Checkpoint::Dummy(_) => tokio::spawn(async move {
+                    // For Dummy models, use fallback parallelism (1, 1, 1) if not explicitly set
+                    let parallelism = match (
+                        init_config.data_parallelism,
+                        init_config.tensor_parallelism,
+                        init_config.micro_batch_size,
+                    ) {
+                        (Some(dp), Some(tp), Some(mbs)) => {
+                            ResolvedParallelism::from_manual(dp, tp, mbs)
+                        }
+                        _ => {
+                            info!(
+                                "Using fallback parallelism for Dummy model: DP=1, TP=1, micro_batch_size=1"
+                            );
+                            ResolvedParallelism::fallback()
+                        }
+                    };
+
                     let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
                         WordLevel::builder().build().unwrap(),
                     )));
 
                     let model = RawLoadedModel {
                         models: RawLoadedModelType::ParallelNativeModels(
-                            (0..(init_config.data_parallelism * init_config.tensor_parallelism))
+                            (0..(parallelism.data_parallelism * parallelism.tensor_parallelism))
                                 .map(|_| {
                                     if let Some(training_delay) =
                                         init_config.dummy_training_delay_secs
@@ -299,6 +377,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             None,
                             0,
                         ),
+                        parallelism,
                     };
                     #[allow(clippy::arc_with_non_send_sync)]
                     let config = &PretrainedSource::ConfigAndTensors(
@@ -430,6 +509,72 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             _ => unreachable!(),
                         };
 
+                        // Resolve parallelism configuration (auto or manual)
+                        let parallelism = match (
+                            init_config.data_parallelism,
+                            init_config.tensor_parallelism,
+                            init_config.micro_batch_size,
+                        ) {
+                            // Manual mode: all values provided
+                            (Some(dp), Some(tp), Some(mbs)) => {
+                                info!(
+                                    "Using manual parallelism: DP={}, TP={}, micro_batch_size={}",
+                                    dp, tp, mbs
+                                );
+                                ResolvedParallelism::from_manual(dp, tp, mbs)
+                            }
+                            // Auto mode: calculate from model config based on architecture
+                            _ => {
+                                // Get the serialized config JSON for parsing
+                                let config_json = source.serialize_config()?;
+                                match llm.architecture {
+                                    model::LLMArchitecture::HfLlama => {
+                                        let config: LlamaConfig =
+                                            serde_json::from_str(&config_json)?;
+                                        ResolvedParallelism::from_auto(
+                                            &config,
+                                            &model_optimizer,
+                                            model_max_seq_len,
+                                            coordinator_global_batch_size,
+                                            coordinator_min_clients,
+                                        )
+                                    }
+                                    model::LLMArchitecture::HfDeepseek => {
+                                        let config: psyche_modeling::DeepseekConfig =
+                                            serde_json::from_str(&config_json)?;
+                                        ResolvedParallelism::from_auto(
+                                            &config,
+                                            &model_optimizer,
+                                            model_max_seq_len,
+                                            coordinator_global_batch_size,
+                                            coordinator_min_clients,
+                                        )
+                                    }
+                                    model::LLMArchitecture::HfAuto
+                                    | model::LLMArchitecture::Torchtitan => {
+                                        // For Python/Auto models, we can't easily estimate params
+                                        // Use hardware detection with conservative defaults
+                                        let hardware = detect_hardware();
+                                        if hardware.is_supported() {
+                                            // Use all GPUs with TP, DP=1 for large models
+                                            info!(
+                                                "Auto-parallelism for Python model: using {} GPUs",
+                                                hardware.num_gpus
+                                            );
+                                            ResolvedParallelism::from_manual(
+                                                1,
+                                                hardware.num_gpus,
+                                                1,
+                                            )
+                                        } else {
+                                            info!("Using fallback parallelism for Python model");
+                                            ResolvedParallelism::fallback()
+                                        }
+                                    }
+                                }
+                            }
+                        };
+
                         info!("Loading model...");
 
                         let model_task_runner = ModelTaskRunner::new(
@@ -438,12 +583,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             tokenizer.clone(),
                             init_config.eval_task_max_docs,
                             // if doing python fsdp we only have one effective dp rank for inference
-                            if init_config.data_parallelism > 1
+                            if parallelism.data_parallelism > 1
                                 && llm.architecture == model::LLMArchitecture::HfAuto
                             {
                                 1
                             } else {
-                                init_config.data_parallelism
+                                parallelism.data_parallelism
                             },
                         );
 
@@ -467,8 +612,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             model::LLMArchitecture::HfAuto | model::LLMArchitecture::Torchtitan => {
                                 #[cfg(feature = "python")]
                                 {
-                                    let dp = init_config.data_parallelism;
-                                    let tp = init_config.tensor_parallelism;
+                                    let dp = parallelism.data_parallelism;
+                                    let tp = parallelism.tensor_parallelism;
 
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
@@ -521,30 +666,30 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 let mut futures: Vec<
                                     JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>,
                                 > = Vec::with_capacity(
-                                    init_config.data_parallelism * init_config.tensor_parallelism,
+                                    parallelism.data_parallelism * parallelism.tensor_parallelism,
                                 );
                                 let devices = init_config.device.clone();
 
-                                for dp in 0..init_config.data_parallelism {
+                                for dp in 0..parallelism.data_parallelism {
                                     let communicator_id: Option<CommunicatorId> =
-                                        match init_config.tensor_parallelism {
+                                        match parallelism.tensor_parallelism {
                                             0 | 1 => None,
                                             #[cfg(feature = "parallelism")]
                                             _ => Some(tch::CStore::new().into()),
                                             #[cfg(not(feature = "parallelism"))]
                                             _ => unimplemented!(),
                                         };
-                                    for tp in 0..init_config.tensor_parallelism {
+                                    for tp in 0..parallelism.tensor_parallelism {
                                         let tensor_parallelism_world =
                                             communicator_id.as_ref().map(|communicator_id| {
                                                 (
                                                     communicator_id.clone(),
                                                     tp,
-                                                    init_config.tensor_parallelism,
+                                                    parallelism.tensor_parallelism,
                                                 )
                                             });
                                         let source = source.clone();
-                                        let rank = dp * init_config.tensor_parallelism + tp;
+                                        let rank = dp * parallelism.tensor_parallelism + tp;
                                         let devices = devices.clone();
                                         let device = devices.device_for_rank(rank);
                                         futures.push(tokio::task::spawn_blocking(move || {
@@ -604,9 +749,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         info!(
                             integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
                             checkpoint = %llm.checkpoint,
-                            gpus = init_config.data_parallelism * init_config.tensor_parallelism,
-                            dp = init_config.data_parallelism,
-                            tp = init_config.tensor_parallelism,
+                            gpus = parallelism.data_parallelism * parallelism.tensor_parallelism,
+                            dp = parallelism.data_parallelism,
+                            tp = parallelism.tensor_parallelism,
                             "loaded_model",
                         );
 
@@ -615,6 +760,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             tokenizer,
                             model_task_runner,
                             checkpoint_extra_files,
+                            parallelism,
                         })
                     })
                 }
@@ -677,12 +823,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tokenizer,
             checkpoint_extra_files,
             model_task_runner,
+            parallelism,
         } = models.map_err(InitRunError::ModelLoadingThreadCrashed)??;
 
         // TODO add data fetching for verifying, too..
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
         let data_fetcher =
-            DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
+            DataFetcher::<T, A>::new(data_provider, parallelism.data_parallelism * 2);
 
         let trainers: Vec<Trainer> = match models {
             RawLoadedModelType::ParallelNativeModels(models) => {
@@ -690,25 +837,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 for model in models {
                     if tp_models
                         .last()
-                        .map(|x| x.len() == init_config.tensor_parallelism)
+                        .map(|x| x.len() == parallelism.tensor_parallelism)
                         .unwrap_or(true)
                     {
-                        tp_models.push(Vec::with_capacity(init_config.tensor_parallelism));
+                        tp_models.push(Vec::with_capacity(parallelism.tensor_parallelism));
                     }
                     tp_models.last_mut().unwrap().push(model);
                 }
 
                 let data_parallel: Option<Vec<(CommunicatorId, Arc<dyn Barrier>)>> =
-                    if init_config.data_parallelism > 1 {
+                    if parallelism.data_parallelism > 1 {
                         #[cfg(feature = "parallelism")]
                         {
                             Some(
-                                (0..init_config.tensor_parallelism)
+                                (0..parallelism.tensor_parallelism)
                                     .map(|_| {
                                         (
                                             tch::CStore::new().into(),
                                             Arc::new(CancellableBarrier::new(
-                                                init_config.tensor_parallelism,
+                                                parallelism.tensor_parallelism,
                                             ))
                                                 as Arc<dyn Barrier>,
                                         )
@@ -736,12 +883,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     id: id.clone(),
                                     barrier: barrier.clone(),
                                     rank: dp,
-                                    world_size: init_config.data_parallelism,
+                                    world_size: parallelism.data_parallelism,
                                 })
                                 .collect()
                         });
                         let barrier =
-                            Arc::new(CancellableBarrier::new(init_config.tensor_parallelism))
+                            Arc::new(CancellableBarrier::new(parallelism.tensor_parallelism))
                                 as Arc<dyn Barrier>;
                         LocalTrainer::new(
                             ParallelModels {
@@ -751,7 +898,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             },
                             llm.lr_schedule,
                             llm.optimizer,
-                            init_config.micro_batch_size,
+                            parallelism.micro_batch_size,
                             init_config.optim_stats_every_n_steps,
                             init_config.grad_accum_in_fp32,
                         )
@@ -770,7 +917,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         },
                         llm.lr_schedule,
                         llm.optimizer,
-                        init_config.micro_batch_size,
+                        parallelism.micro_batch_size,
                         init_config.optim_stats_every_n_steps,
                         init_config.grad_accum_in_fp32,
                     )
@@ -784,7 +931,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         model,
                         llm.lr_schedule,
                         llm.optimizer,
-                        init_config.micro_batch_size,
+                        parallelism.micro_batch_size,
                         init_config.optim_stats_every_n_steps,
                         init_config.grad_accum_in_fp32,
                     )?
