@@ -122,3 +122,9 @@ opt-level = 1
 
 [profile.test]
 opt-level = 1
+
+[workspace.metadata.release]
+tag-name = "v{{version}}"
+sign-tag = true
+push = true
+publish = false
