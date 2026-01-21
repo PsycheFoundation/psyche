@@ -1,23 +1,18 @@
 import {
-  IdlInstructionAddresses,
   jsonCodecBigInt,
+  JsonCodecContent,
   jsonCodecDateTime,
   jsonCodecNullable,
   jsonCodecObjectToObject,
   jsonCodecPubkey,
   jsonCodecString,
   jsonCodecValue,
-  JsonValue,
 } from "solana-kiss";
 import { jsonCodecObjectToRecord } from "../json";
 
-export interface IndexerInstruction {
-  blockTime: Date | null;
-  instructionOrdinal: bigint;
-  instructionName: string;
-  instructionAddresses: IdlInstructionAddresses;
-  instructionPayload: JsonValue;
-}
+export type IndexerInstruction = JsonCodecContent<
+  typeof indexerInstructionJsonCodec
+>;
 
 export const indexerInstructionJsonCodec = jsonCodecObjectToObject({
   blockTime: jsonCodecNullable(jsonCodecDateTime),

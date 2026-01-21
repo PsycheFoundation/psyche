@@ -11,6 +11,7 @@ import { coordinatorService } from "./coordinator/CoordinatorService";
 import { miningPoolService } from "./mining-pool/MiningPoolService";
 import { utilsGetEnv } from "./utils";
 
+// TODO - dont use solana directly to leave capability of loading idls manually
 function makeSolanaEndpoint(url: string) {
   return new Solana(
     rpcHttpWithRetryOnError(

@@ -23,7 +23,6 @@ export function miningPoolOnInstruction(
   if (signerAddress === undefined) {
     throw new Error("MiningPool: Instruction: Could not find signer address");
   }
-  console.log(instruction.instructionName);
   const processors = processorsByInstructionName.get(
     instruction.instructionName,
   );

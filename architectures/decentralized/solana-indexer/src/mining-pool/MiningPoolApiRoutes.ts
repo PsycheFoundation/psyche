@@ -5,6 +5,8 @@ import {
   jsonCodecBigInt,
   jsonCodecObjectToObject,
   jsonCodecPubkey,
+  pubkeyFindPdaAddress,
+  utf8Encode,
 } from "solana-kiss";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
 import {
@@ -40,7 +42,7 @@ export async function miningPoolApiRoutes(
     `/${programAddress}/mining-pool/pool/:index`,
     (req, res) => {
       const poolIndex = jsonCodecBigInt.decoder(req.params.index);
-      const poolAddress = dataStore.getPoolAddress(poolIndex);
+      const poolAddress = getPoolAddress(programAddress, poolIndex);
       const poolAnalysis = dataStore.poolAnalysisByAddress.get(poolAddress);
       if (poolAnalysis === undefined) {
         return res.status(404).json({ error: "Pool not found" });
@@ -50,6 +52,15 @@ export async function miningPoolApiRoutes(
         .json(miningPoolDataPoolAnalysisJsonCodec.encoder(poolAnalysis));
     },
   );
+}
+
+function getPoolAddress(programAddress: Pubkey, poolIndex: bigint): Pubkey {
+  const poolIndexSeed = new Uint8Array(8);
+  new DataView(poolIndexSeed.buffer).setBigUint64(0, poolIndex, true);
+  return pubkeyFindPdaAddress(programAddress, [
+    utf8Encode("Pool"),
+    poolIndexSeed,
+  ]);
 }
 
 const poolSummariesJsonCodec = jsonCodecArrayToArray(

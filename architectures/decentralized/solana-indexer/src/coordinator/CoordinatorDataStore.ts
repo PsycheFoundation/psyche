@@ -4,8 +4,6 @@ import {
   jsonCodecPubkey,
   jsonCodecWrapped,
   Pubkey,
-  pubkeyFindPdaAddress,
-  utf8Encode,
 } from "solana-kiss";
 import { jsonCodecObjectToMapByPubkey } from "../json";
 import {
@@ -23,15 +21,6 @@ export class CoordinatorDataStore {
   ) {
     this.programAddress = programAddress;
     this.runAnalysisByAddress = runAnalysisByAddress;
-  }
-
-  public getRunAddress(runId: string): Pubkey {
-    const runIdSeed = new Uint8Array(32);
-    runIdSeed.set(utf8Encode(runId).slice(0, 32));
-    return pubkeyFindPdaAddress(this.programAddress, [
-      utf8Encode("coordinator"),
-      runIdSeed,
-    ]);
   }
 
   public getRunInfo(runAddress: Pubkey): CoordinatorDataRunAnalysis {

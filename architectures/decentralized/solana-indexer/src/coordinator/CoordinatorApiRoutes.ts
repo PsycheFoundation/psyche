@@ -5,6 +5,8 @@ import {
   jsonCodecObjectToObject,
   jsonCodecPubkey,
   jsonCodecString,
+  pubkeyFindPdaAddress,
+  utf8Encode,
 } from "solana-kiss";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
 import {
@@ -30,7 +32,7 @@ export async function coordinatorApiRoutes(
   });
   expressApp.get(`/${programAddress}/coordinator/run/:runId`, (req, res) => {
     const runId = jsonCodecString.decoder(req.params.runId);
-    const runAddress = dataStore.getRunAddress(runId);
+    const runAddress = getRunAddress(programAddress, runId);
     const runAnalysis = dataStore.runAnalysisByAddress.get(runAddress);
     if (!runAnalysis) {
       return res.status(404).json({ error: "Run not found" });
@@ -39,6 +41,15 @@ export async function coordinatorApiRoutes(
       .status(200)
       .json(coordinatorDataRunAnalysisJsonCodec.encoder(runAnalysis));
   });
+}
+
+function getRunAddress(programAddress: Pubkey, runId: string): Pubkey {
+  const runIdSeed = new Uint8Array(32);
+  runIdSeed.set(utf8Encode(runId).slice(0, 32));
+  return pubkeyFindPdaAddress(programAddress, [
+    utf8Encode("coordinator"),
+    runIdSeed,
+  ]);
 }
 
 const runSummariesJsonCodec = jsonCodecArrayToArray(

@@ -3,7 +3,6 @@ import {
   jsonCodecNumber,
   jsonCodecPubkey,
   jsonCodecString,
-  jsonCodecValue,
   jsonDecoderObjectToObject,
   Pubkey,
   Solana,
@@ -12,7 +11,6 @@ import {
   jsonDecoderRustClientId,
   jsonDecoderRustFixedArray,
   jsonDecoderRustFixedString,
-  jsonDecoderRustSmallBoolean,
 } from "../json";
 import {
   utilRunInParallel,
@@ -231,10 +229,7 @@ async function fetchAndUpdateOnchainState(
         }),
       ),
       epochClients: runAccountParsed.state.coordinator.epochState.clients.map(
-        (client) => ({
-          signer: client.id.signer,
-          state: client.state,
-        }),
+        (client) => ({ signer: client.id.signer, state: client.state }),
       ),
       progress: {
         epoch: runAccountParsed.state.coordinator.progress.epoch,
@@ -293,7 +288,7 @@ const runAccountJsonDecoder = jsonDecoderObjectToObject({
         epochStartDataIndex: jsonCodecBigInt.decoder,
       }),
       epochState: jsonDecoderObjectToObject({
-        rounds: jsonCodecValue.decoder,
+        // rounds: jsonCodecValue.decoder,
         clients: jsonDecoderRustFixedArray(
           jsonDecoderObjectToObject({
             id: jsonDecoderRustClientId,
@@ -317,7 +312,7 @@ const runAccountJsonDecoder = jsonDecoderObjectToObject({
         */
       }),
       // runStateStartUnixTimestamp: jsonCodecBigInt.decoder,
-      pendingPause: jsonDecoderRustSmallBoolean,
+      // pendingPause: jsonDecoderRustSmallBoolean,
     }),
     clientsState: jsonDecoderObjectToObject({
       nextActive: jsonCodecBigInt.decoder,
