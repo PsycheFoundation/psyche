@@ -57,6 +57,7 @@ const processorsByInstructionName = new Map([
   ["update", [processImportantAction]],
   ["set_future_epoch_rates", [processImportantAction]],
   ["set_paused", [processImportantAction]],
+  ["update_client_version", [processImportantAction]],
   ["join_run", [processImportantAction]],
   ["warmup_witness", []], // TODO - how to handle warmup witness?
   ["witness", [processWitness]],

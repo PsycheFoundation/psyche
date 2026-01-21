@@ -12,8 +12,8 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
       solana-kiss:
-        specifier: 0.1.4
-        version: 0.1.4
+        specifier: 0.2.10
+        version: 0.2.10
     devDependencies:
       '@types/express':
         specifier: ^5.0.3
@@ -497,8 +497,8 @@ packages:
     resolution: {integrity: sha512-ZX99e6tRweoUXqR+VBrslhda51Nh5MTQwou5tnUDgbtyM0dBgmhEDtWGP/xbKn6hqfPRHujUNwz5fy/wbbhnpw==}
     engines: {node: '>= 0.4'}
 
-  solana-kiss@0.1.4:
-    resolution: {integrity: sha512-5RICgsSqC3C/RBHmZNdSGaiOuc+aQJL+vov3N4Yw7A6Pd3IuF1mju7BOuYvIqz+drMiyndsj8HJQb5EBFx4Tsw==}
+  solana-kiss@0.2.10:
+    resolution: {integrity: sha512-PF9RClTTzXWiTnGU0lZeTj73dwOrMPa3w4850NN298sV/zy+FtvCVhsfVkL9yNqE6Y6VsDYZsceTJwStFkEubg==}
 
   statuses@2.0.1:
     resolution: {integrity: sha512-RwNA9Z/7PrK06rYLIzFMlaF+l73iwpzsqRIFgbMLbTcLD6cOao82TaWefPXQvB2fOC4AjuYSEndS7N/mTCbkdQ==}
@@ -532,9 +532,6 @@ packages:
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
-
-  uzip@0.20201231.0:
-    resolution: {integrity: sha512-OZeJfZP+R0z9D6TmBgLq2LHzSSptGMGDGigGiEe0pr8UBe/7fdflgHlHBNDASTXB5jnFuxHpNaJywSg8YFeGng==}
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -1000,9 +997,7 @@ snapshots:
       side-channel-map: 1.0.1
       side-channel-weakmap: 1.0.2
 
-  solana-kiss@0.1.4:
-    dependencies:
-      uzip: 0.20201231.0
+  solana-kiss@0.2.10: {}
 
   statuses@2.0.1: {}
 
@@ -1028,8 +1023,6 @@ snapshots:
   undici-types@7.14.0: {}
 
   unpipe@1.0.0: {}
-
-  uzip@0.20201231.0: {}
 
   vary@1.1.2: {}
 
