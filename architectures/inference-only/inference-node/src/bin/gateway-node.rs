@@ -69,7 +69,7 @@ struct Args {
 #[derive(Clone, Debug)]
 struct InferenceNodeInfo {
     peer_id: EndpointId,
-    model_name: String,
+    model_name: Option<String>,
     #[allow(dead_code)]
     checkpoint_id: Option<String>,
     #[allow(dead_code)]
@@ -144,17 +144,27 @@ async fn handle_inference(
     Json(req): Json<ChatCompletionRequest>,
 ) -> Result<Json<ChatCompletionResponse>, AppError> {
     let nodes = state.available_nodes.read().await;
-    if nodes.is_empty() {
+
+    let available_nodes: Vec<&InferenceNodeInfo> =
+        nodes.values().filter(|n| n.model_name.is_some()).collect();
+
+    if available_nodes.is_empty() {
         return Err(AppError::NoNodesAvailable);
     }
 
-    let node = nodes.values().next().unwrap();
-    let model_name = req.model.clone().unwrap_or_else(|| node.model_name.clone());
+    let node = available_nodes.first().unwrap();
+    let model_name = req
+        .model
+        .clone()
+        .or_else(|| node.model_name.clone())
+        .unwrap_or_else(|| "unknown".to_string());
+
     info!(
         "Routing request to node: {} (model: {})",
         node.peer_id.fmt_short(),
-        node.model_name
+        node.model_name.as_ref().unwrap_or(&"unknown".to_string())
     );
+    let target_peer_id = node.peer_id;
     drop(nodes);
 
     let messages: Vec<psyche_inference::ChatMessage> = req
@@ -465,11 +475,11 @@ async fn run_gateway() -> Result<()> {
                     Some(msg) = network_rx.recv() => {
                         match msg {
                             InferenceMessage::Request(req) => {
-                                // Send request via direct P2P connection
+                                // send request via direct P2P connection
                                 let request_id = req.request_id.clone();
                                 info!("Sending inference request {} via direct P2P", request_id);
 
-                                // Get target node
+                                // get target node
                                 let nodes = state.available_nodes.read().await;
                                 let target_node = match nodes.values().next() {
                                     Some(node) => node.peer_id,
@@ -480,14 +490,14 @@ async fn run_gateway() -> Result<()> {
                                 };
                                 drop(nodes);
 
-                                // Spawn task to handle P2P connection
+                                // spawn task to handle P2P connection
                                 let endpoint = network.router().endpoint().clone();
                                 let state_clone = state.clone();
                                 tokio::spawn(async move {
                                     match send_inference_request(endpoint, target_node, req).await {
                                         Ok(response) => {
                                             info!("Received inference response for {}", request_id);
-                                            // Forward response to pending request
+                                            // forward response to pending request
                                             if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
                                                 let _ = tx.send(response).await;
                                             }
@@ -510,7 +520,11 @@ async fn run_gateway() -> Result<()> {
                                     InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
                                         info!("Discovered inference node!");
                                         info!("  Peer ID: {}", peer_id.fmt_short());
-                                        info!("  Model: {}", model_name);
+                                        if let Some(ref model) = model_name {
+                                            info!("  Model: {}", model);
+                                        } else {
+                                            info!("  Model: <idle>");
+                                        }
                                         info!("  Checkpoint: {:?}", checkpoint_id);
                                         info!("  Capabilities: {:?}", capabilities);
 
@@ -525,6 +539,9 @@ async fn run_gateway() -> Result<()> {
                                     InferenceGossipMessage::NodeUnavailable => {
                                         info!("Inference node {} went offline", peer_id.fmt_short());
                                         state.available_nodes.write().await.remove(&peer_id);
+                                    }
+                                    InferenceGossipMessage::LoadModel { .. } => {
+                                        debug!("Ignoring LoadModel message (gateways don't load models)");
                                     }
                                     InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
                                         debug!("Checkpoint reload notification: {} from {}", checkpoint_id, checkpoint_source);
