@@ -241,7 +241,6 @@ impl Task {
                             // MMLU/ARC tasks use first_n sampling (deterministic) other tasks like PIQA/Hellaswag use random sampling
                             let should_shuffle = ![
                                 MMLU::name(),
-                                MMLUPro::name(),
                                 MMLUCF::name(),
                                 ArcEasy::name(),
                                 ArcChallenge::name(),
