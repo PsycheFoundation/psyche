@@ -322,7 +322,7 @@ async fn main() -> Result<()> {
                                         }
                                     }
 
-                                    match (|| -> Result<()> {
+                                    match (async || -> Result<()> {
                                         let mut new_node = InferenceNode::new(
                                             model_path.clone(),
                                             Some(tensor_parallel_size),
@@ -337,7 +337,7 @@ async fn main() -> Result<()> {
                                         *inference_node_shared.write().await = Some(new_node);
                                         *current_model_name.write().await = Some(requested_model.clone());
                                         Ok(())
-                                    })() {
+                                    })().await {
                                         Ok(()) => {
                                             info!("Successfully loaded model: {}", requested_model);
 
