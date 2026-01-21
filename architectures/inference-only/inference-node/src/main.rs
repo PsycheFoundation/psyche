@@ -136,60 +136,10 @@ async fn main() -> Result<()> {
     info!("Relay kind: {:?}", relay_kind);
     info!("Capabilities: {:?}", capabilities);
 
-    // read bootstrap peers from multiple sources in priority order
-    let bootstrap_peers: Vec<EndpointAddr> =
-        if let Ok(endpoints_json) = std::env::var("PSYCHE_GATEWAY_ENDPOINTS") {
-            // production: JSON array of gateway endpoints
-            info!("Reading gateway endpoints from PSYCHE_GATEWAY_ENDPOINTS env var");
-            let peers: Vec<EndpointAddr> = serde_json::from_str(&endpoints_json)
-                .context("Failed to parse PSYCHE_GATEWAY_ENDPOINTS as JSON array")?;
-            info!("Loaded {} gateway endpoint(s) from env var", peers.len());
-            for peer in &peers {
-                info!("  Gateway: {}", peer.id.fmt_short());
-            }
-            peers
-        } else if let Ok(file_path) = std::env::var("PSYCHE_GATEWAY_BOOTSTRAP_FILE") {
-            // alternative: env var pointing to file
-            let peer_file = PathBuf::from(file_path);
-            if peer_file.exists() {
-                info!(
-                    "Reading bootstrap peers from PSYCHE_GATEWAY_BOOTSTRAP_FILE: {:?}",
-                    peer_file
-                );
-                let content = fs::read_to_string(&peer_file)
-                    .context("Failed to read gateway bootstrap file")?;
-                let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
-                    .context("Failed to parse gateway bootstrap file as JSON array")?;
-                info!("Loaded {} gateway endpoint(s) from file", peers.len());
-                peers
-            } else {
-                info!("Gateway bootstrap file not found, starting without peers");
-                vec![]
-            }
-        } else if let Some(ref peer_file) = args.bootstrap_peer_file {
-            // local testing: CLI argument
-            if peer_file.exists() {
-                info!("Reading bootstrap peer from {:?}", peer_file);
-                let content =
-                    fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
-                // Support both single endpoint and array
-                if let Ok(peer) = serde_json::from_str::<EndpointAddr>(&content) {
-                    info!("Bootstrap peer: {}", peer.id.fmt_short());
-                    vec![peer]
-                } else {
-                    let peers: Vec<EndpointAddr> = serde_json::from_str(&content)
-                        .context("Failed to parse bootstrap peer file")?;
-                    info!("Loaded {} bootstrap peer(s)", peers.len());
-                    peers
-                }
-            } else {
-                info!("Bootstrap peer file not found, starting without peers");
-                vec![]
-            }
-        } else {
-            info!("No bootstrap peers configured (no env vars or CLI args)");
-            vec![]
-        };
+    let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
+        args.bootstrap_peer_file.as_ref(),
+        "No bootstrap peers configured (no env vars or CLI args)",
+    )?;
 
     let cancel = CancellationToken::new();
 
