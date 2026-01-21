@@ -1,13 +1,13 @@
 services:
   psyche-test-client:
     env_file:
-      - '../../config/client/.env.test'
+      - "../../config/client/.env.test"
 
   nginx:
     image: nginx:latest
     container_name: nginx-proxy-1
     ports:
-      - '8901:8901'
+      - "8901:8901"
     volumes:
       - ./subscriptions_test/nginx_p8901.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -19,7 +19,7 @@ services:
     image: nginx:latest
     container_name: nginx-proxy-2
     ports:
-      - '8902:8902'
+      - "8902:8902"
     volumes:
       - ./subscriptions_test/nginx_p8902.conf:/etc/nginx/nginx.conf:ro
     depends_on:

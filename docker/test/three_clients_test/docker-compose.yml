@@ -11,11 +11,11 @@ services:
           devices:
             - driver: nvidia
               capabilities: [gpu]
-              device_ids: ['1']
+              device_ids: ["1"]
     extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - "host.docker.internal:host-gateway"
     env_file:
-      - '../../../config/client/.env.local'
+      - "../../../config/client/.env.local"
     networks:
       - psyche-test-network
 
@@ -31,11 +31,11 @@ services:
           devices:
             - driver: nvidia
               capabilities: [gpu]
-              device_ids: ['2']
+              device_ids: ["2"]
     extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - "host.docker.internal:host-gateway"
     env_file:
-      - '../../../config/client/.env.local'
+      - "../../../config/client/.env.local"
     networks:
       - psyche-test-network
 
@@ -51,19 +51,19 @@ services:
           devices:
             - driver: nvidia
               capabilities: [gpu]
-              device_ids: ['3']
+              device_ids: ["3"]
     extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - "host.docker.internal:host-gateway"
     env_file:
-      - '../../../config/client/.env.local'
+      - "../../../config/client/.env.local"
     networks:
       - psyche-test-network
 
   psyche-solana-test-validator:
     image: psyche_solana_validator
     ports:
-      - '8899:8899'
-      - '8900:8900'
+      - "8899:8899"
+      - "8900:8900"
     networks:
       - psyche-test-network
 

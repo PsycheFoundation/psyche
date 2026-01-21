@@ -1,28 +1,28 @@
 {
-	"prompts": [
-		{
-			"text": "EDWARD:\nI wonder how our princely father 'scaped,\nOr whether he be 'scaped away or no\nFrom Clifford's and Northumberland's pursuit:\nHad he been ta'en, we should have heard the news;\nHad he been slain, we should have heard the news;\nOr had he 'scaped, methinks we should have heard\nThe happy tidings of his good escape.\nHow fares my brother? why is he so sad?\n\nRICHARD:\nI cannot joy, until I be resolved\nWhere our right valiant father is become.\nI saw him in the battle range about;\nAnd watch'd him how he singled Clifford forth.\nMethought he bore him in the thickest troop\nAs doth a lion in a herd of neat;\nOr as a bear, encompass'd round with dogs,\nWho having pinch'd a few and made them cry,\nThe rest stand all aloof, and bark at him.\nSo fared our father with his enemies;\nSo fled his enemies my warlike father:\nMethinks, 'tis prize enough to be his son.\nSee how the morning opes her golden gates,\nAnd takes her farewell of the glorious sun!\nHow well resembles it the prime of youth,\nTrimm'd like a younker prancing to his love!\n\nEDWARD:\nDazzle mine eyes, or do I see three suns?\n\nRICHARD:\nThree glorious suns, each one a perfect sun;\nNot separated with the racking clouds,\nBut sever'd in a pale clear-shining sky.\nSee, see! they join, embrace, and seem to kiss,\nAs if they vow'd some league inviolable:\nNow are they but one lamp, one light, one sun.\nIn this the heaven figures some event.\n\nEDWARD:\n'Tis wondrous strange, the like yet never heard of.\nI think it cites us, brother, to the field,\nThat we, the sons of brave Plantagenet,\nEach one already blazing by our meeds,\nShould notwithstanding join our lights together\nAnd over-shine the earth as this the world.\nWhate'er it bodes, henceforward will I bear\nUpon my target three fair-shining suns."
-		},
-		{
-			"text": "LADY MACBETH:\nDid not you speak?\nMACBETH:\nWhen?\nLADY MACBETH:\nNow.\nMACBETH:\nAs I descended?\nLADY MACBETH:\nAy.\nMACBETH:\nHark! Who lies i' the second chamber?\nLADY MACBETH:\nDonalbain.\nMACBETH:\nThis is a sorry sight.\nLADY MACBETH:\nA foolish thought, to say a sorry sight.\nMACBETH:\nMethought I heard a voice cry 'Sleep no more!\nMacbeth does murder sleep', the innocent sleep,\nSleep that knits up the ravell'd sleeve of care,\nThe death of each day's life, sore labour's bath,\nBalm of hurt minds, great nature's second course,\nChief nourisher in life's feast,—\nLADY MACBETH:\nWhat do you mean?"
-		},
-		{
-			"text": "What is the meaning of life?"
-		},
-		{
-			"text": "Explain quantum physics in simple terms."
-		},
-		{
-			"text": "Write a short story about a robot learning to love."
-		},
-		{
-			"text": "What are the benefits of renewable energy?"
-		},
-		{
-			"text": "How do neural networks work?"
-		},
-		{
-			"text": "Describe the perfect day."
-		}
-	]
+  "prompts": [
+    {
+      "text": "EDWARD:\nI wonder how our princely father 'scaped,\nOr whether he be 'scaped away or no\nFrom Clifford's and Northumberland's pursuit:\nHad he been ta'en, we should have heard the news;\nHad he been slain, we should have heard the news;\nOr had he 'scaped, methinks we should have heard\nThe happy tidings of his good escape.\nHow fares my brother? why is he so sad?\n\nRICHARD:\nI cannot joy, until I be resolved\nWhere our right valiant father is become.\nI saw him in the battle range about;\nAnd watch'd him how he singled Clifford forth.\nMethought he bore him in the thickest troop\nAs doth a lion in a herd of neat;\nOr as a bear, encompass'd round with dogs,\nWho having pinch'd a few and made them cry,\nThe rest stand all aloof, and bark at him.\nSo fared our father with his enemies;\nSo fled his enemies my warlike father:\nMethinks, 'tis prize enough to be his son.\nSee how the morning opes her golden gates,\nAnd takes her farewell of the glorious sun!\nHow well resembles it the prime of youth,\nTrimm'd like a younker prancing to his love!\n\nEDWARD:\nDazzle mine eyes, or do I see three suns?\n\nRICHARD:\nThree glorious suns, each one a perfect sun;\nNot separated with the racking clouds,\nBut sever'd in a pale clear-shining sky.\nSee, see! they join, embrace, and seem to kiss,\nAs if they vow'd some league inviolable:\nNow are they but one lamp, one light, one sun.\nIn this the heaven figures some event.\n\nEDWARD:\n'Tis wondrous strange, the like yet never heard of.\nI think it cites us, brother, to the field,\nThat we, the sons of brave Plantagenet,\nEach one already blazing by our meeds,\nShould notwithstanding join our lights together\nAnd over-shine the earth as this the world.\nWhate'er it bodes, henceforward will I bear\nUpon my target three fair-shining suns."
+    },
+    {
+      "text": "LADY MACBETH:\nDid not you speak?\nMACBETH:\nWhen?\nLADY MACBETH:\nNow.\nMACBETH:\nAs I descended?\nLADY MACBETH:\nAy.\nMACBETH:\nHark! Who lies i' the second chamber?\nLADY MACBETH:\nDonalbain.\nMACBETH:\nThis is a sorry sight.\nLADY MACBETH:\nA foolish thought, to say a sorry sight.\nMACBETH:\nMethought I heard a voice cry 'Sleep no more!\nMacbeth does murder sleep', the innocent sleep,\nSleep that knits up the ravell'd sleeve of care,\nThe death of each day's life, sore labour's bath,\nBalm of hurt minds, great nature's second course,\nChief nourisher in life's feast,—\nLADY MACBETH:\nWhat do you mean?"
+    },
+    {
+      "text": "What is the meaning of life?"
+    },
+    {
+      "text": "Explain quantum physics in simple terms."
+    },
+    {
+      "text": "Write a short story about a robot learning to love."
+    },
+    {
+      "text": "What are the benefits of renewable energy?"
+    },
+    {
+      "text": "How do neural networks work?"
+    },
+    {
+      "text": "Describe the perfect day."
+    }
+  ]
 }

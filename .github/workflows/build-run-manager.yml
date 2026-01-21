@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - main
-      - 'rewbs/**' # Include my personal branches for testing
+      - "rewbs/**" # Include my personal branches for testing
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch: # Allow manual triggering
 
 # Ensure workflow has permissions to create releases
@@ -45,7 +45,8 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-run-manager-${{ hashFiles('**/Cargo.lock') }}
+          key:
+            ${{ runner.os }}-cargo-run-manager-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-run-manager-
             ${{ runner.os }}-cargo-

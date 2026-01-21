@@ -26,7 +26,7 @@ jobs:
       - name: Wait for Garnix Image Build
         uses: ./.github/actions/wait-for-garnix
         with:
-          package: 'docker-psyche-solana-client [x86_64-linux]'
+          package: "docker-psyche-solana-client [x86_64-linux]"
 
       - name: Download image from Garnix cache
         run: |

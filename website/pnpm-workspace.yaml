@@ -1,6 +1,6 @@
 packages:
-  - 'shared'
-  - 'frontend'
-  - 'backend'
+  - "shared"
+  - "frontend"
+  - "backend"
 
 packageImportMethod: hardlink

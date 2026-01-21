@@ -16,7 +16,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{
+          key:
+            validator-image-${{ runner.os }}-${{
             hashFiles('shared/coordinator/src/coordinator.rs',
             'architectures/decentralized/solana-coordinator/**/*.rs',
             'architectures/decentralized/solana-coordinator/**/*.toml',
@@ -95,7 +96,8 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{
+          key:
+            validator-image-${{ runner.os }}-${{
             hashFiles('shared/coordinator/src/coordinator.rs',
             'architectures/decentralized/solana-coordinator/**/*.rs',
             'architectures/decentralized/solana-coordinator/**/*.toml',

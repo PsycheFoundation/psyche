@@ -135,10 +135,10 @@ Then this script can be run by the authority's keypair owner:
 ```typescript
 // Pseudo-code (Local script)
 async function migrateMyAccount(address: Pubkey) {
-	let infoV1 = await fetchMyAccount(address)
-	let infoV2 = convertToV2(infoV1)
-	let dataV2 = infoV2.serialize()
-	await forceUploadDataTo(address, dataV2) // force-push (upload) signed by program upgrade authority
+  let infoV1 = await fetchMyAccount(address);
+  let infoV2 = convertToV2(infoV1);
+  let dataV2 = infoV2.serialize();
+  await forceUploadDataTo(address, dataV2); // force-push (upload) signed by program upgrade authority
 }
 ```
 

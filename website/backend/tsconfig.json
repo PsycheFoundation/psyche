@@ -1,7 +1,7 @@
 {
-	"extends": "../tsconfig.json",
-	"ts-node": {
-		"esm": true,
-		"transpileOnly": true
-	}
+  "extends": "../tsconfig.json",
+  "ts-node": {
+    "esm": true,
+    "transpileOnly": true
+  }
 }

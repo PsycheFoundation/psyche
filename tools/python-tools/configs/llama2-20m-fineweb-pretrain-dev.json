@@ -1,48 +1,48 @@
 {
-	"run_id": "llama2-20m",
-	"model": {
-		"type": "hf-nanotron",
-		"path": "emozilla/llama2-20m-init-nanotron",
-		"revision": null
-	},
-	"data": {
-		"type": "nanosetsv2",
-		"parts": [
-			{
-				"path": "datasets/fineweb-10bt"
-			}
-		],
-		"bytes_per_token": 2,
-		"seed": 42
-	},
-	"data_strategy": "pretrain-packed",
-	"hf_tokenizer_path": "NousResearch/Llama-2-7b-hf",
-	"micro_batch_size": 8,
-	"global_batch_size": 2048,
-	"sequence_length": 512,
-	"epoch_warmup_secs": 10,
-	"epoch_duration_secs": 600,
-	"micro_batch_estimate_secs": 4,
-	"micro_batch_accumulate_secs": 1,
-	"method": {
-		"type": "distro",
-		"weight_decay": 0.1,
-		"dct_2d_chunk": 16,
-		"compress_topk": 4,
-		"compress_randk": 0,
-		"error_implicit_momentum": 0.99,
-		"error_explicit_momentum": 0.0,
-		"error_clip": 1e-2,
-		"error_lookahead_factor": 1e-2
-	},
-	"learning_rate_schedule": {
-		"type": "cosine",
-		"lr": 4e-4,
-		"warmup_steps": 20,
-		"max_steps": 2000
-	},
-	"epoch_number": 0,
-	"current_step": 0,
-	"data_offset": 0,
-	"eval_steps": 50
+  "run_id": "llama2-20m",
+  "model": {
+    "type": "hf-nanotron",
+    "path": "emozilla/llama2-20m-init-nanotron",
+    "revision": null
+  },
+  "data": {
+    "type": "nanosetsv2",
+    "parts": [
+      {
+        "path": "datasets/fineweb-10bt"
+      }
+    ],
+    "bytes_per_token": 2,
+    "seed": 42
+  },
+  "data_strategy": "pretrain-packed",
+  "hf_tokenizer_path": "NousResearch/Llama-2-7b-hf",
+  "micro_batch_size": 8,
+  "global_batch_size": 2048,
+  "sequence_length": 512,
+  "epoch_warmup_secs": 10,
+  "epoch_duration_secs": 600,
+  "micro_batch_estimate_secs": 4,
+  "micro_batch_accumulate_secs": 1,
+  "method": {
+    "type": "distro",
+    "weight_decay": 0.1,
+    "dct_2d_chunk": 16,
+    "compress_topk": 4,
+    "compress_randk": 0,
+    "error_implicit_momentum": 0.99,
+    "error_explicit_momentum": 0.0,
+    "error_clip": 1e-2,
+    "error_lookahead_factor": 1e-2
+  },
+  "learning_rate_schedule": {
+    "type": "cosine",
+    "lr": 4e-4,
+    "warmup_steps": 20,
+    "max_steps": 2000
+  },
+  "epoch_number": 0,
+  "current_step": 0,
+  "data_offset": 0,
+  "eval_steps": 50
 }
