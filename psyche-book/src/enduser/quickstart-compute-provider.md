@@ -186,11 +186,11 @@ EOF
 
 **Replace the following values:**
 
-| Variable | Replace With |
-|----------|--------------|
-| `YOUR_USERNAME` | Your Linux username |
-| `your_run_id_here` | The run ID from your administrator |
-| `YOUR_PUBLIC_KEY_HERE` | Your wallet's public key |
+| Variable               | Replace With                       |
+| ---------------------- | ---------------------------------- |
+| `YOUR_USERNAME`        | Your Linux username                |
+| `your_run_id_here`     | The run ID from your administrator |
+| `YOUR_PUBLIC_KEY_HERE` | Your wallet's public key           |
 
 ### Optional Configuration
 
@@ -296,6 +296,7 @@ ls -l ~/.config/solana/psyche-node.json
 **Error:** `RPC error: failed to get account` or connection timeouts
 
 **Solution:**
+
 - Verify your RPC endpoints are correct in the `.env` file
 - For devnet, use `https://api.devnet.solana.com` and `wss://api.devnet.solana.com`
 - The public devnet RPC has rate limits; if issues persist, consider using a dedicated RPC provider
@@ -319,6 +320,7 @@ ls -l ~/.config/solana/psyche-node.json
 **Symptom:** Container restarts repeatedly with "version mismatch"
 
 **Solution:** This usually indicates a Docker image pull issue:
+
 - Check your internet connection
 - Verify Docker Hub is accessible: `docker pull hello-world`
 - Check disk space: `df -h`
@@ -394,16 +396,16 @@ The `AUTHORIZER` should be your master key's public key (the one authorized by t
       --run-id YOUR_RUN_ID \
       --wallet-private-key-path ~/.config/solana/psyche-node.json
   ```
+
 ---
 
 ## Quick Reference
 
-| Command | Purpose |
-|---------|---------|
-| `nvidia-smi` | Verify GPU and drivers |
+| Command                                                       | Purpose                     |
+| ------------------------------------------------------------- | --------------------------- |
+| `nvidia-smi`                                                  | Verify GPU and drivers      |
 | `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi` | Verify GPU access in Docker |
-| `solana-keygen pubkey ~/.config/solana/psyche-node.json` | Get your public key |
-| `solana balance ~/.config/solana/psyche-node.json` | Check wallet balance |
-| `./run-manager --env-file ~/.config/psyche/run.env` | Start providing compute |
-| `Ctrl+C` | Stop the client gracefully |
-
+| `solana-keygen pubkey ~/.config/solana/psyche-node.json`      | Get your public key         |
+| `solana balance ~/.config/solana/psyche-node.json`            | Check wallet balance        |
+| `./run-manager --env-file ~/.config/psyche/run.env`           | Start providing compute     |
+| `Ctrl+C`                                                      | Stop the client gracefully  |
