@@ -21,7 +21,7 @@ stdenv.mkDerivation {
     inherit pname version;
     fetcherVersion = 2;
     src = workspaceSrc;
-    hash = "";
+    hash = "sha256-D/7ZgnuC/w7VyUqPuCCxx1w3x37A2pzH2Fn35ck+lmQ=";
   };
 
   nativeBuildInputs = [
