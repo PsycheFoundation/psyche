@@ -49,7 +49,16 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{ hashFiles('shared/coordinator/src/coordinator.rs', 'architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          key: validator-image-${{ runner.os }}-${{
+            hashFiles('shared/coordinator/src/coordinator.rs',
+            'architectures/decentralized/solana-coordinator/**/*.rs',
+            'architectures/decentralized/solana-coordinator/**/*.toml',
+            'architectures/decentralized/solana-coordinator/Cargo.lock',
+            'architectures/decentralized/solana-authorizer/**/*.rs',
+            'architectures/decentralized/solana-authorizer/**/*.toml',
+            'architectures/decentralized/solana-authorizer/Cargo.lock',
+            'docker/test/psyche_solana_validator_entrypoint.sh',
+            'nix/docker.nix', 'flake.lock') }}
           fail-on-cache-miss: true
 
       - name: Load Validator Image

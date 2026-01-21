@@ -20,15 +20,13 @@ if you don't, make one:
 solana-keygen new
 ```
 
-3. start a local solana testnet:
-   in another terminal,
+3. start a local solana testnet: in another terminal,
 
 ```bash
 solana-test-validator
 ```
 
-4. deploy the programs to testnet:
-   in another terminal,
+4. deploy the programs to testnet: in another terminal,
 
 ```bash
 scripts/deploy-solana-test.sh

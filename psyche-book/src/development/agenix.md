@@ -1,10 +1,11 @@
 # Secrets
 
-We manage secrets in our repo using `agenix`.
-These secrets are keyed to specific developers via SSH public keys.
-Some are used for deployments, and some can be used for development.
+We manage secrets in our repo using `agenix`. These secrets are keyed to
+specific developers via SSH public keys. Some are used for deployments, and some
+can be used for development.
 
-You can read more about agenix and how secrets are used in our deployment [HERE](https://garnix.io/docs/hosting/secrets)
+You can read more about agenix and how secrets are used in our deployment
+[HERE](https://garnix.io/docs/hosting/secrets)
 
 ## What secrets do we store?
 
@@ -14,7 +15,8 @@ You can read more about agenix and how secrets are used in our deployment [HERE]
 
 ## Editing a secret
 
-you must have your pubkey listed in `secrets.nix` for a secret if you want to modify the existing one!
+you must have your pubkey listed in `secrets.nix` for a secret if you want to
+modify the existing one!
 
 ask someone whose key is in `secrets.nix` to be added.
 
