@@ -64,12 +64,40 @@ impl RunManager {
 
         info!("Using coordinator program ID: {}", coordinator_program_id);
 
-        let run_id = get_env_var("RUN_ID")?;
         let rpc = get_env_var("RPC")?;
-
         let scratch_dir = std::env::var("SCRATCH_DIR").ok();
 
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
+
+        // Try to get RUN_ID from env, or discover available runs
+        let run_id = match std::env::var("RUN_ID") {
+            Ok(id) => {
+                info!("Using RUN_ID from environment: {}", id);
+                id
+            }
+            Err(_) => {
+                info!("RUN_ID not set, discovering available runs...");
+                let runs = coordinator_client.get_all_runs()?;
+
+                if runs.is_empty() {
+                    bail!("No runs found on coordinator program");
+                }
+
+                // Log all discovered runs
+                info!("Discovered {} run(s):", runs.len());
+                for run in &runs {
+                    info!("  - {} (state: {})", run.run_id, run.run_state);
+                }
+
+                // Select first available run
+                let selected = &runs[0];
+                info!(
+                    "Selected run: {} (state: {})",
+                    selected.run_id, selected.run_state
+                );
+                selected.run_id.clone()
+            }
+        };
 
         Ok(Self {
             wallet_key,

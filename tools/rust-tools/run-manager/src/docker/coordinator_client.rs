@@ -1,16 +1,28 @@
 use anchor_client::solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use anchor_lang::AccountDeserialize;
+use anchor_lang::{AccountDeserialize, Discriminator, Space};
 use anyhow::{Context, Result};
+use psyche_coordinator::RunState;
 use psyche_solana_coordinator::{
     CoordinatorInstance, coordinator_account_from_bytes, find_coordinator_instance,
 };
+use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_client::RpcClient;
+use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
+use solana_client::rpc_filter::RpcFilterType;
 use tracing::info;
+
+/// Information about a discovered run
+#[derive(Debug, Clone)]
+pub struct RunInfo {
+    pub run_id: String,
+    pub instance_pubkey: Pubkey,
+    pub coordinator_account: Pubkey,
+    pub run_state: RunState,
+}
 
 /// Coordinator client for querying Solana
 pub struct CoordinatorClient {
     rpc_client: RpcClient,
-    #[allow(dead_code)]
     program_id: Pubkey,
 }
 
@@ -81,5 +93,65 @@ impl CoordinatorClient {
         };
 
         Ok(image_name)
+    }
+
+    /// Fetch all available runs from the coordinator program
+    pub fn get_all_runs(&self) -> Result<Vec<RunInfo>> {
+        // Get Anchor discriminator for CoordinatorInstance (first 8 bytes)
+        let discriminator = CoordinatorInstance::DISCRIMINATOR;
+
+        // Fetch all accounts and filter client-side by discriminator
+        // (getProgramAccounts with memcmp filter has encoding issues on some RPC nodes)
+        let accounts = self
+            .rpc_client
+            .get_program_accounts_with_config(
+                &self.program_id,
+                RpcProgramAccountsConfig {
+                    filters: Some(vec![RpcFilterType::DataSize(
+                        CoordinatorInstance::INIT_SPACE as u64 + 8, // +8 for discriminator
+                    )]),
+                    account_config: RpcAccountInfoConfig {
+                        encoding: Some(UiAccountEncoding::Base64),
+                        commitment: Some(CommitmentConfig::confirmed()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to fetch program accounts from coordinator program {}: {}",
+                    self.program_id,
+                    e
+                )
+            })?;
+
+        let mut runs = Vec::new();
+        for (pubkey, account) in accounts {
+            // Check discriminator matches CoordinatorInstance
+            if account.data.len() < 8 || &account.data[..8] != discriminator {
+                continue;
+            }
+
+            if let Ok(instance) = CoordinatorInstance::try_deserialize(&mut account.data.as_slice())
+            {
+                // Fetch run state from coordinator account
+                let run_state = match self.rpc_client.get_account(&instance.coordinator_account) {
+                    Ok(coord_account) => coordinator_account_from_bytes(&coord_account.data)
+                        .map(|acc| acc.state.coordinator.run_state)
+                        .unwrap_or(RunState::Uninitialized),
+                    Err(_) => RunState::Uninitialized,
+                };
+
+                runs.push(RunInfo {
+                    run_id: instance.run_id.clone(),
+                    instance_pubkey: pubkey,
+                    coordinator_account: instance.coordinator_account,
+                    run_state,
+                });
+            }
+        }
+
+        Ok(runs)
     }
 }
