@@ -81,6 +81,7 @@ struct GatewayState {
     available_nodes: RwLock<HashMap<EndpointId, InferenceNodeInfo>>,
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
     network_tx: mpsc::Sender<InferenceMessage>,
+    gossip_tx: mpsc::Sender<InferenceGossipMessage>,
 }
 
 #[cfg(feature = "gateway")]
@@ -116,6 +117,28 @@ fn default_temperature() -> Option<f64> {
 #[cfg(feature = "gateway")]
 fn default_top_p() -> Option<f64> {
     Some(1.0)
+}
+
+#[cfg(feature = "gateway")]
+#[derive(serde::Deserialize)]
+struct LoadModelRequest {
+    model_name: String,
+    #[serde(default = "default_model_source_type")]
+    source_type: String, // "huggingface" or "local"
+    #[serde(default)]
+    source_path: Option<String>,
+}
+
+#[cfg(feature = "gateway")]
+fn default_model_source_type() -> String {
+    "huggingface".to_string()
+}
+
+#[cfg(feature = "gateway")]
+#[derive(serde::Serialize)]
+struct LoadModelResponse {
+    success: bool,
+    message: String,
 }
 
 #[cfg(feature = "gateway")]
@@ -229,6 +252,71 @@ async fn handle_inference(
             finish_reason: response.finish_reason,
         }],
     }))
+}
+
+#[cfg(feature = "gateway")]
+#[axum::debug_handler]
+async fn handle_load_model(
+    State(state): State<Arc<GatewayState>>,
+    Json(req): Json<LoadModelRequest>,
+) -> Json<LoadModelResponse> {
+    use psyche_inference::ModelSource;
+
+    info!(
+        "Admin API: Received LoadModel request for model: {} (source: {})",
+        req.model_name, req.source_type
+    );
+
+    let model_source = match req.source_type.as_str() {
+        "huggingface" => {
+            let path = req.source_path.unwrap_or_else(|| req.model_name.clone());
+            ModelSource::HuggingFace(path)
+        }
+        "local" => {
+            if let Some(path) = req.source_path {
+                ModelSource::Local(path)
+            } else {
+                return Json(LoadModelResponse {
+                    success: false,
+                    message: "source_path is required for local models".to_string(),
+                });
+            }
+        }
+        _ => {
+            return Json(LoadModelResponse {
+                success: false,
+                message: format!(
+                    "Invalid source_type: {}. Must be 'huggingface' or 'local'",
+                    req.source_type
+                ),
+            });
+        }
+    };
+
+    let load_msg = InferenceGossipMessage::LoadModel {
+        model_name: req.model_name.clone(),
+        model_source,
+    };
+
+    match state.gossip_tx.send(load_msg).await {
+        Ok(()) => {
+            info!(
+                "Successfully broadcasted LoadModel message for: {}",
+                req.model_name
+            );
+            Json(LoadModelResponse {
+                success: true,
+                message: format!("LoadModel broadcast sent for model: {}", req.model_name),
+            })
+        }
+        Err(e) => {
+            error!("Failed to broadcast LoadModel message: {:#}", e);
+            Json(LoadModelResponse {
+                success: false,
+                message: format!("Failed to broadcast: {}", e),
+            })
+        }
+    }
 }
 
 #[cfg(feature = "gateway")]
@@ -452,10 +540,12 @@ async fn run_gateway() -> Result<()> {
     info!("Gossip mesh should be ready");
 
     let (network_tx, mut network_rx) = mpsc::channel::<InferenceMessage>(100);
+    let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
     let state = Arc::new(GatewayState {
         available_nodes: RwLock::new(HashMap::new()),
         pending_requests: RwLock::new(HashMap::new()),
         network_tx,
+        gossip_tx,
     });
 
     info!("Gateway ready! Listening on http://{}", args.listen_addr);
@@ -512,6 +602,15 @@ async fn run_gateway() -> Result<()> {
                         };
                     }
 
+                    Some(gossip_msg) = gossip_rx.recv() => {
+                        info!("Broadcasting gossip message: {:?}", gossip_msg);
+                        if let Err(e) = network.broadcast(&gossip_msg) {
+                            error!("Failed to broadcast gossip message: {:#}", e);
+                        } else {
+                            info!("Successfully broadcasted gossip message");
+                        }
+                    }
+
                     event = network.poll_next() => {
                         match event {
                             Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
@@ -564,6 +663,7 @@ async fn run_gateway() -> Result<()> {
 
     let app = Router::new()
         .route("/v1/chat/completions", post(handle_inference))
+        .route("/admin/load-model", post(handle_load_model))
         .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&args.listen_addr)
