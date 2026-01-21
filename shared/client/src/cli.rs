@@ -112,14 +112,20 @@ pub struct TrainArgs {
     #[clap(long, env, value_parser = parse_trim_quotes)]
     pub run_id: String,
 
-    #[clap(long, default_value_t = 1, env)]
-    pub data_parallelism: usize,
+    /// Data parallelism degree. If not set, auto-detected based on hardware and model.
+    /// When using manual mode, all three parallelism args must be provided.
+    #[clap(long, env)]
+    pub data_parallelism: Option<usize>,
 
-    #[clap(long, default_value_t = 1, env)]
-    pub tensor_parallelism: usize,
+    /// Tensor parallelism degree. If not set, auto-detected based on hardware and model.
+    /// When using manual mode, all three parallelism args must be provided.
+    #[clap(long, env)]
+    pub tensor_parallelism: Option<usize>,
 
-    #[clap(long, env, default_value_t = 1)]
-    pub micro_batch_size: usize,
+    /// Micro batch size. If not set, auto-detected based on hardware and model.
+    /// When using manual mode, all three parallelism args must be provided.
+    #[clap(long, env)]
+    pub micro_batch_size: Option<usize>,
 
     /// If provided, every shared gradient this client sees will be written to this directory.
     #[clap(long, env)]
@@ -287,6 +293,58 @@ impl TrainArgs {
             })
             .collect();
         result
+    }
+
+    /// Check if auto-parallelism mode should be used.
+    /// Returns true if none of the parallelism args are set.
+    pub fn is_auto_parallelism(&self) -> bool {
+        self.data_parallelism.is_none()
+            && self.tensor_parallelism.is_none()
+            && self.micro_batch_size.is_none()
+    }
+
+    /// Validate parallelism configuration.
+    /// Either all three must be None (auto mode) or all three must be Some (manual mode).
+    pub fn validate_parallelism(&self) -> Result<()> {
+        let dp = self.data_parallelism.is_some();
+        let tp = self.tensor_parallelism.is_some();
+        let mbs = self.micro_batch_size.is_some();
+
+        match (dp, tp, mbs) {
+            // All None = auto mode
+            (false, false, false) => Ok(()),
+            // All Some = manual mode
+            (true, true, true) => Ok(()),
+            // Mixed = error
+            _ => {
+                let mut missing = Vec::new();
+                if !dp {
+                    missing.push("--data-parallelism");
+                }
+                if !tp {
+                    missing.push("--tensor-parallelism");
+                }
+                if !mbs {
+                    missing.push("--micro-batch-size");
+                }
+                bail!(
+                    "Parallelism configuration error: when using manual mode, all three arguments must be provided. Missing: {}",
+                    missing.join(", ")
+                )
+            }
+        }
+    }
+
+    /// Get manual parallelism values (panics if not in manual mode)
+    pub fn get_manual_parallelism(&self) -> (usize, usize, usize) {
+        (
+            self.data_parallelism
+                .expect("data_parallelism should be set in manual mode"),
+            self.tensor_parallelism
+                .expect("tensor_parallelism should be set in manual mode"),
+            self.micro_batch_size
+                .expect("micro_batch_size should be set in manual mode"),
+        )
     }
 }
 
