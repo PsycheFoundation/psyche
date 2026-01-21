@@ -25,7 +25,7 @@ use tracing::{debug, error, info, warn};
 #[command(name = "psyche-inference-node")]
 struct Args {
     #[arg(long)]
-    model_name: String,
+    model_name: Option<String>,
 
     #[arg(long, default_value = "1")]
     tensor_parallel_size: usize,
@@ -70,7 +70,11 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     info!("Starting Psyche Inference Node");
-    info!("Model: {}", args.model_name);
+    if let Some(ref model) = args.model_name {
+        info!("Initial Model: {}", model);
+    } else {
+        info!("No initial model specified - will wait for LoadModel gossip message");
+    }
     info!("Tensor Parallel Size: {}", args.tensor_parallel_size);
     info!("GPU Memory Utilization: {}", args.gpu_memory_utilization);
 

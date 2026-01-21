@@ -2,14 +2,28 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ModelSource {
+    HuggingFace(String),
+    Local(String),
+    // /// S3 or object storage URI - should be GCP
+    // S3(String),
+    // /// Iroh blob hash
+    // IrohBlob(String),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InferenceGossipMessage {
     NodeAvailable {
-        model_name: String,
+        model_name: Option<String>, // None if no model loaded yet
         checkpoint_id: Option<String>,
         capabilities: Vec<String>,
     },
     NodeUnavailable,
+    LoadModel {
+        model_name: String,
+        model_source: ModelSource,
+    },
     ReloadCheckpoint {
         checkpoint_id: String,
         checkpoint_source: String,
@@ -187,7 +201,7 @@ mod tests {
     #[test]
     fn test_gossip_message_serialization() {
         let msg = InferenceGossipMessage::NodeAvailable {
-            model_name: "gpt2".to_string(),
+            model_name: Some("gpt2".to_string()),
             checkpoint_id: Some("checkpoint-123".to_string()),
             capabilities: vec!["streaming".to_string()],
         };
@@ -201,11 +215,59 @@ mod tests {
                 checkpoint_id,
                 capabilities,
             } => {
-                assert_eq!(model_name, "gpt2");
+                assert_eq!(model_name, Some("gpt2".to_string()));
                 assert_eq!(checkpoint_id, Some("checkpoint-123".to_string()));
                 assert_eq!(capabilities, vec!["streaming"]);
             }
             _ => panic!("Expected NodeAvailable variant"),
         }
+    }
+
+    #[test]
+    fn test_load_model_message_serialization() {
+        let msg = InferenceGossipMessage::LoadModel {
+            model_name: "gpt2".to_string(),
+            model_source: ModelSource::HuggingFace("gpt2".to_string()),
+        };
+
+        let bytes = postcard::to_stdvec(&msg).unwrap();
+        let parsed: InferenceGossipMessage = postcard::from_bytes(&bytes).unwrap();
+
+        match parsed {
+            InferenceGossipMessage::LoadModel {
+                model_name,
+                model_source,
+            } => {
+                assert_eq!(model_name, "gpt2");
+                assert_eq!(model_source, ModelSource::HuggingFace("gpt2".to_string()));
+            }
+            _ => panic!("Expected LoadModel variant"),
+        }
+    }
+
+    #[test]
+    fn test_model_source_variants() {
+        let hf = ModelSource::HuggingFace("meta-llama/Llama-2-7b".to_string()); // make hermes
+        let bytes = postcard::to_stdvec(&hf).unwrap();
+        let parsed: ModelSource = postcard::from_bytes(&bytes).unwrap();
+        assert_eq!(parsed, hf);
+
+        // local
+        // let local = ModelSource::Local("/path/to/model".to_string());
+        // let bytes = postcard::to_stdvec(&local).unwrap();
+        // let parsed: ModelSource = postcard::from_bytes(&bytes).unwrap();
+        // assert_eq!(parsed, local);
+
+        // // s3 - should be GCP
+        // let s3 = ModelSource::S3("s3://bucket/model".to_string());
+        // let bytes = postcard::to_stdvec(&s3).unwrap();
+        // let parsed: ModelSource = postcard::from_bytes(&bytes).unwrap();
+        // assert_eq!(parsed, s3);
+
+        // // iroh blob - TBD on how to test
+        // let iroh = ModelSource::IrohBlob("bafyreib...".to_string());
+        // let bytes = postcard::to_stdvec(&iroh).unwrap();
+        // let parsed: ModelSource = postcard::from_bytes(&bytes).unwrap();
+        // assert_eq!(parsed, iroh);
     }
 }
