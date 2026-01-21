@@ -1,6 +1,8 @@
 # Quickstart: Providing Compute to NousNet
 
-This guide walks you through the complete process of setting up your machine to provide compute to a NousNet training run. It assumes you have been provided the `run-manager` binary by the run administrator.
+This guide walks you through the complete process of setting up your machine to
+provide compute to a NousNet training run. It assumes you have been provided the
+`run-manager` binary by the run administrator.
 
 ## Prerequisites Checklist
 
@@ -21,13 +23,17 @@ NousNet requires an NVIDIA CUDA-capable GPU. Verify your drivers are installed:
 nvidia-smi
 ```
 
-You should see output showing your GPU model, driver version, and CUDA version. If this command fails, install NVIDIA drivers following the [NVIDIA driver installation guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/).
+You should see output showing your GPU model, driver version, and CUDA version.
+If this command fails, install NVIDIA drivers following the
+[NVIDIA driver installation guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/).
 
 ---
 
 ## Step 2: Install Docker
 
-Install Docker Engine following the [official Docker installation guide](https://docs.docker.com/engine/install/) for your Linux distribution.
+Install Docker Engine following the
+[official Docker installation guide](https://docs.docker.com/engine/install/)
+for your Linux distribution.
 
 After installation, verify Docker is working:
 
@@ -37,7 +43,8 @@ docker --version
 
 ### Docker Post-Installation Steps
 
-**Important:** You must add your user to the `docker` group to run Docker without `sudo`:
+**Important:** You must add your user to the `docker` group to run Docker
+without `sudo`:
 
 ```bash
 sudo usermod -aG docker $USER
@@ -53,15 +60,19 @@ docker run hello-world
 
 If this runs without requiring `sudo`, you're set.
 
-For more details, see the [Docker post-installation guide](https://docs.docker.com/engine/install/linux-postinstall/).
+For more details, see the
+[Docker post-installation guide](https://docs.docker.com/engine/install/linux-postinstall/).
 
 ---
 
 ## Step 3: Install NVIDIA Container Toolkit
 
-The NVIDIA Container Toolkit enables GPU access inside Docker containers. This is required for NousNet to use your GPU for training.
+The NVIDIA Container Toolkit enables GPU access inside Docker containers. This
+is required for NousNet to use your GPU for training.
 
-Follow the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for your distribution.
+Follow the
+[NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+for your distribution.
 
 After installation, verify GPU access works inside Docker:
 
@@ -71,7 +82,9 @@ docker run --rm --gpus all nvidia/cuda:12.2.2-devel-ubuntu22.04
 
 You should see the same GPU information as running `nvidia-smi` directly.
 
-> **Troubleshooting:** If you see an error like `could not select device driver "" with capabilities: [[gpu]]`, the NVIDIA Container Toolkit is not installed correctly. Revisit the installation guide.
+> **Troubleshooting:** If you see an error like
+> `could not select device driver "" with capabilities: [[gpu]]`, the NVIDIA
+> Container Toolkit is not installed correctly. Revisit the installation guide.
 
 ---
 
@@ -83,7 +96,8 @@ You should see the same GPU information as running `nvidia-smi` directly.
 sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
 ```
 
-After installation, add Solana to your PATH by adding this line to your `~/.bashrc` or `~/.zshrc`:
+After installation, add Solana to your PATH by adding this line to your
+`~/.bashrc` or `~/.zshrc`:
 
 ```bash
 export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
@@ -101,7 +115,8 @@ Verify the installation:
 solana --version
 ```
 
-For more details, see the [Solana installation docs](https://solana.com/docs/intro/installation).
+For more details, see the
+[Solana installation docs](https://solana.com/docs/intro/installation).
 
 ### Generate a Keypair
 
@@ -111,9 +126,11 @@ Create a new Solana keypair for your node:
 solana-keygen new --outfile ~/.config/solana/psyche-node.json
 ```
 
-You'll be prompted to set an optional passphrase. The keypair file will be created at the specified path.
+You'll be prompted to set an optional passphrase. The keypair file will be
+created at the specified path.
 
-**Important:** Back up this keypair file securely. If you lose it, you lose access to any rewards earned.
+**Important:** Back up this keypair file securely. If you lose it, you lose
+access to any rewards earned.
 
 Get your public key (you'll need this):
 
@@ -125,9 +142,11 @@ solana-keygen pubkey ~/.config/solana/psyche-node.json
 
 ## Step 5: Get Authorization to Join the Run
 
-NousNet runs are permissioned. To join, you need the run administrator to authorize your wallet.
+NousNet runs are permissioned. To join, you need the run administrator to
+authorize your wallet.
 
-1. **Send your public key to the run administrator** (the output from `solana-keygen pubkey` above)
+1. **Send your public key to the run administrator** (the output from
+   `solana-keygen pubkey` above)
 2. The administrator will create an authorization for your key
 3. Once authorized, you can proceed to join the run
 
@@ -135,7 +154,8 @@ NousNet runs are permissioned. To join, you need the run administrator to author
 
 ## Step 6: Fund Your Wallet (Devnet)
 
-Your wallet needs SOL to pay for transaction fees when communicating with the Solana blockchain.
+Your wallet needs SOL to pay for transaction fees when communicating with the
+Solana blockchain.
 
 First, configure Solana CLI to use devnet:
 
@@ -155,13 +175,16 @@ Verify your balance:
 solana balance ~/.config/solana/psyche-node.json
 ```
 
-> **Note:** If the airdrop fails due to rate limiting, wait a few minutes and try again, or use the [Solana Faucet web interface](https://faucet.solana.com/).
+> **Note:** If the airdrop fails due to rate limiting, wait a few minutes and
+> try again, or use the
+> [Solana Faucet web interface](https://faucet.solana.com/).
 
 ---
 
 ## Step 7: Create the Environment File
 
-Create a `.env` file with your configuration. This file tells the run-manager how to connect and authenticate.
+Create a `.env` file with your configuration. This file tells the run-manager
+how to connect and authenticate.
 
 ```bash
 # Create the env file
@@ -194,7 +217,8 @@ EOF
 
 ### Optional Configuration
 
-You can add these optional variables to tune performance, please ask run adminstrator for help:
+You can add these optional variables to tune performance, please ask run
+adminstrator for help:
 
 ```bash
 # Number of GPUs to use for data parallelism (default: 1)
@@ -267,11 +291,14 @@ To stop the client gracefully, press `Ctrl+C`.
 
 **Error:** `could not select device driver "" with capabilities: [[gpu]]`
 
-**Solution:** The NVIDIA Container Toolkit is not installed or configured correctly. Revisit Step 3 and ensure you can run `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi` successfully.
+**Solution:** The NVIDIA Container Toolkit is not installed or configured
+correctly. Revisit Step 3 and ensure you can run
+`docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi` successfully.
 
 ### Docker Permission Denied
 
-**Error:** `permission denied while trying to connect to the Docker daemon socket`
+**Error:**
+`permission denied while trying to connect to the Docker daemon socket`
 
 **Solution:** Your user isn't in the `docker` group. Run:
 
@@ -285,7 +312,8 @@ Then **log out and back in**.
 
 **Error:** `Failed to read wallet file from: /path/to/keypair.json`
 
-**Solution:** Verify the `WALLET_PRIVATE_KEY_PATH` in your `.env` file points to an existing file:
+**Solution:** Verify the `WALLET_PRIVATE_KEY_PATH` in your `.env` file points to
+an existing file:
 
 ```bash
 ls -l ~/.config/solana/psyche-node.json
@@ -298,14 +326,17 @@ ls -l ~/.config/solana/psyche-node.json
 **Solution:**
 
 - Verify your RPC endpoints are correct in the `.env` file
-- For devnet, use `https://api.devnet.solana.com` and `wss://api.devnet.solana.com`
-- The public devnet RPC has rate limits; if issues persist, consider using a dedicated RPC provider
+- For devnet, use `https://api.devnet.solana.com` and
+  `wss://api.devnet.solana.com`
+- The public devnet RPC has rate limits; if issues persist, consider using a
+  dedicated RPC provider
 
 ### Not Authorized to Join
 
 **Error:** Authorization or permission errors when trying to join
 
-**Solution:** Confirm with the run administrator that your public key has been authorized. You can verify your authorization status:
+**Solution:** Confirm with the run administrator that your public key has been
+authorized. You can verify your authorization status:
 
 ```bash
 ./run-manager can-join \
@@ -329,11 +360,14 @@ ls -l ~/.config/solana/psyche-node.json
 
 ## Running Multiple Machines
 
-If you want to provide compute from multiple machines, **each machine must use a different keypair**. Running the same keypair on multiple machines simultaneously will cause issues.
+If you want to provide compute from multiple machines, **each machine must use a
+different keypair**. Running the same keypair on multiple machines
+simultaneously will cause issues.
 
 NousNet uses a delegation system for this:
 
-1. Your main keypair (the one authorized by the run admin) acts as your **master key**
+1. Your main keypair (the one authorized by the run admin) acts as your **master
+   key**
 2. You generate additional **delegate keys** for each machine
 3. You register those delegates under your master key
 4. Each machine uses its own delegate key
@@ -357,7 +391,8 @@ solana-keygen pubkey ~/.config/solana/psyche-delegate-1.json
 solana-keygen pubkey ~/.config/solana/psyche-delegate-2.json
 ```
 
-3. Register the delegates under your master key (requires the run admin's join authority pubkey):
+3. Register the delegates under your master key (requires the run admin's join
+   authority pubkey):
 
 ```bash
 run-manager join-authorization-delegate \
@@ -383,13 +418,15 @@ WALLET_PRIVATE_KEY_PATH=/path/to/psyche-delegate-N.json
 AUTHORIZER=YOUR_MASTER_PUBLIC_KEY
 ```
 
-The `AUTHORIZER` should be your master key's public key (the one authorized by the run admin), not the delegate's public key.
+The `AUTHORIZER` should be your master key's public key (the one authorized by
+the run admin), not the delegate's public key.
 
 ---
 
 ## Claiming
 
-- **Claiming Rewards:** After participating in training, you can claim rewards using:
+- **Claiming Rewards:** After participating in training, you can claim rewards
+  using:
   ```bash
   ./run-manager treasurer-claim-rewards \
       --rpc https://api.devnet.solana.com \
