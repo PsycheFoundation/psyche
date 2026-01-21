@@ -133,6 +133,7 @@ impl LearningRateScheduler for LinearLR {
     Debug,
     Zeroable,
     Copy,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
