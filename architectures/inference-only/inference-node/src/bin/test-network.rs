@@ -8,7 +8,6 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use iroh::EndpointAddr;
 use psyche_inference::InferenceGossipMessage;
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
@@ -60,24 +59,10 @@ async fn main() -> Result<()> {
 
     let cancel = CancellationToken::new();
 
-    // Read bootstrap peer if provided
-    let bootstrap_peers = if let Some(ref peer_file) = args.bootstrap_peer_file {
-        if peer_file.exists() {
-            info!("Reading bootstrap peer from {:?}", peer_file);
-            let content =
-                fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
-            let endpoint_addr: EndpointAddr = serde_json::from_str(&content)
-                .context("Failed to parse bootstrap peer endpoint")?;
-            info!("Bootstrap peer: {}", endpoint_addr.id.fmt_short());
-            vec![endpoint_addr]
-        } else {
-            info!("Bootstrap peer file not found yet, starting without peers");
-            vec![]
-        }
-    } else {
-        info!("No bootstrap peer file specified");
-        vec![]
-    };
+    let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
+        args.bootstrap_peer_file.as_ref(),
+        "No bootstrap peer file specified",
+    )?;
 
     info!("Initializing P2P network...");
 
