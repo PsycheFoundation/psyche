@@ -1,5 +1,6 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::{Context, Result, anyhow, bail};
+use psyche_coordinator::RunState;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -7,7 +8,7 @@ use std::process::{Command, Stdio};
 use tokio::signal;
 use tracing::{error, info, warn};
 
-use crate::docker::coordinator_client::CoordinatorClient;
+use crate::docker::coordinator_client::{CoordinatorClient, RunInfo};
 use crate::get_env_var;
 use crate::load_and_apply_env_file;
 
@@ -69,7 +70,7 @@ impl RunManager {
 
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
 
-        // Try to get RUN_ID from env, or discover available runs
+        // If we provide a RUN_ID join that one else we discover available runs and join one of those
         let run_id = match std::env::var("RUN_ID") {
             Ok(id) => {
                 info!("Using RUN_ID from environment: {}", id);
@@ -89,8 +90,8 @@ impl RunManager {
                     info!("  - {} (state: {})", run.run_id, run.run_state);
                 }
 
-                // Select first available run
-                let selected = &runs[0];
+                // Select best available run based on state and avoid halted runs
+                let selected = select_best_run(&runs)?;
                 info!(
                     "Selected run: {} (state: {})",
                     selected.run_id, selected.run_state
@@ -346,5 +347,40 @@ impl RunManager {
                 return Ok(());
             }
         }
+    }
+}
+
+/// Select the best run to join based on state priority.
+/// Prefers runs in WaitingForMembers/Warmup, avoids Uninitialized/Finished/Paused.
+fn select_best_run(runs: &[RunInfo]) -> Result<&RunInfo> {
+    let mut joinable: Vec<_> = runs
+        .iter()
+        .filter(|run| {
+            !matches!(
+                run.run_state,
+                RunState::Uninitialized | RunState::Finished | RunState::Paused
+            )
+        })
+        .collect();
+
+    if joinable.is_empty() {
+        bail!(
+            "No joinable runs found. All {} run(s) are in unjoinable states.",
+            runs.len()
+        );
+    }
+
+    joinable.sort_by_key(|run| run_priority(run.run_state));
+    Ok(joinable[0])
+}
+
+/// Return priority for joinable states (lower is more prioritary)
+fn run_priority(state: RunState) -> u8 {
+    match state {
+        RunState::WaitingForMembers => 0,
+        RunState::Warmup => 1,
+        RunState::Cooldown => 2,
+        RunState::RoundTrain | RunState::RoundWitness => 3,
+        _ => 255,
     }
 }
