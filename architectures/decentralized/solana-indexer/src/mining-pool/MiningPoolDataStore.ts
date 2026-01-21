@@ -3,8 +3,6 @@ import {
   jsonCodecObjectToObject,
   jsonCodecPubkey,
   jsonCodecWrapped,
-  pubkeyFindPdaAddress,
-  utf8Encode,
 } from "solana-kiss";
 import { jsonCodecObjectToMapByPubkey } from "../json";
 import {
@@ -22,15 +20,6 @@ export class MiningPoolDataStore {
   ) {
     this.programAddress = programAddress;
     this.poolAnalysisByAddress = poolAnalysisByAddress;
-  }
-
-  public getPoolAddress(poolIndex: bigint): Pubkey {
-    const poolIndexSeed = new Uint8Array(8);
-    new DataView(poolIndexSeed.buffer).setBigUint64(0, poolIndex, true);
-    return pubkeyFindPdaAddress(this.programAddress, [
-      utf8Encode("Pool"),
-      poolIndexSeed,
-    ]);
   }
 
   public getPoolAnalysis(poolAddress: Pubkey): MiningPoolDataPoolAnalysis {

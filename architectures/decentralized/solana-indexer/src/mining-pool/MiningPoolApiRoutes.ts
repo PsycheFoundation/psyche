@@ -20,7 +20,7 @@ export async function miningPoolApiRoutes(
   dataStore: MiningPoolDataStore,
 ) {
   expressApplication.get(
-    `${programAddress}/mining-pool/summaries`,
+    `/${programAddress}/mining-pool/summaries`,
     (_, res) => {
       const poolsSummaries = [];
       for (const [
