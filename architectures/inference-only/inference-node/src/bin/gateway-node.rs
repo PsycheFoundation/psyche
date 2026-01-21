@@ -62,7 +62,7 @@ struct Args {
 #[derive(Clone, Debug)]
 struct InferenceNodeInfo {
     peer_id: EndpointId,
-    model_name: String,
+    model_name: Option<String>,
     #[allow(dead_code)]
     checkpoint_id: Option<String>,
     #[allow(dead_code)]
@@ -132,15 +132,34 @@ async fn handle_inference(
     Json(req): Json<ChatCompletionRequest>,
 ) -> Result<Json<ChatCompletionResponse>, AppError> {
     let nodes = state.available_nodes.read().await;
+<<<<<<< HEAD
     let node = nodes.values().next().ok_or(AppError::NoNodesAvailable)?;
 
     let target_peer_id = node.peer_id;
     let model_name = req.model.clone().unwrap_or_else(|| node.model_name.clone());
+=======
+
+    let available_nodes: Vec<&InferenceNodeInfo> =
+        nodes.values().filter(|n| n.model_name.is_some()).collect();
+
+    if available_nodes.is_empty() {
+        return Err(AppError::NoNodesAvailable);
+    }
+
+    let node = available_nodes.first().unwrap();
+    let model_name = req
+        .model
+        .clone()
+        .or_else(|| node.model_name.clone())
+        .unwrap_or_else(|| "unknown".to_string());
+
+>>>>>>> e9063fd4 (Gateway node changes to hande LoadModel messages)
     info!(
         "Routing request to node: {} (model: {})",
         node.peer_id.fmt_short(),
-        node.model_name
+        node.model_name.as_ref().unwrap_or(&"unknown".to_string())
     );
+    let target_peer_id = node.peer_id;
     drop(nodes);
 
     let messages: Vec<psyche_inference::ChatMessage> = req
@@ -431,7 +450,11 @@ async fn run_gateway() -> Result<()> {
                                     InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
                                         info!("Discovered inference node!");
                                         info!("  Peer ID: {}", peer_id.fmt_short());
-                                        info!("  Model: {}", model_name);
+                                        if let Some(ref model) = model_name {
+                                            info!("  Model: {}", model);
+                                        } else {
+                                            info!("  Model: <idle>");
+                                        }
                                         info!("  Checkpoint: {:?}", checkpoint_id);
                                         info!("  Capabilities: {:?}", capabilities);
 
@@ -446,6 +469,9 @@ async fn run_gateway() -> Result<()> {
                                     InferenceGossipMessage::NodeUnavailable => {
                                         info!("Inference node {} went offline", peer_id.fmt_short());
                                         state.available_nodes.write().await.remove(&peer_id);
+                                    }
+                                    InferenceGossipMessage::LoadModel { .. } => {
+                                        debug!("Ignoring LoadModel message (gateways don't load models)");
                                     }
                                     InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
                                         debug!("Checkpoint reload notification: {} from {}", checkpoint_id, checkpoint_source);
