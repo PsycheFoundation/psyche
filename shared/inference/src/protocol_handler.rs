@@ -62,12 +62,13 @@ impl InferenceProtocol {
                 info!("Finishing send stream to {}", peer_id.fmt_short());
                 send.finish()?;
 
+                // wait for a moment to let the connection flush all the bytes to the reciever
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
                 info!(
                     "Successfully sent inference response to {}",
                     peer_id.fmt_short()
                 );
-
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
             _ => {
                 error!("Unexpected message type from {}", peer_id.fmt_short());
