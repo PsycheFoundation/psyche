@@ -42,9 +42,6 @@ uuid = { version = "1", features = ["v4"] }
 pyo3.workspace = true
 postcard.workspace = true
 
-axum = { version = "0.7", features = ["macros"], optional = true }
-tower = { version = "0.4", optional = true }
-tower-http = { version = "0.5", features = ["cors"], optional = true }
-
-[features]
-gateway = ["axum", "tower", "tower-http"]
+axum = { version = "0.7", features = ["macros"] }
+tower = { version = "0.4" }
+tower-http = { version = "0.5", features = ["cors"] }

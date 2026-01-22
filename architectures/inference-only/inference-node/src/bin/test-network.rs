@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
     info!("P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
 
-    // Write endpoint to file if requested
+    // write endpoint to file if requested
     if let Some(ref endpoint_file) = args.write_endpoint_file {
         let endpoint_addr = network.router().endpoint().addr();
         let content = serde_json::to_string(&endpoint_addr)
