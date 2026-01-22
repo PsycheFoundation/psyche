@@ -367,6 +367,44 @@ pub fn fetch_json_from_gcs_sync<T: serde::de::DeserializeOwned>(
     rt.block_on(fetch_json_from_gcs(bucket, object_path))
 }
 
+/// Upload a JSON-serializable value to GCS.
+pub async fn upload_json_to_gcs<T: serde::Serialize>(
+    bucket: &str,
+    object_path: &str,
+    value: &T,
+) -> Result<(), UploadError> {
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+
+    let json = serde_json::to_string_pretty(value)?;
+    let data = bytes::Bytes::from(json.into_bytes());
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+
+    info!("Uploading JSON to gs://{}/{}", bucket, object_path);
+
+    storage
+        .write_object(&bucket_resource_name, object_path, data)
+        .send_unbuffered()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+
+    info!("Uploaded JSON to gs://{}/{}", bucket, object_path);
+
+    Ok(())
+}
+
+/// Upload a JSON-serializable value to GCS synchronously.
+pub fn upload_json_to_gcs_sync<T: serde::Serialize>(
+    bucket: &str,
+    object_path: &str,
+    value: &T,
+) -> Result<(), UploadError> {
+    let rt = Runtime::new().map_err(|e| UploadError::Io(e))?;
+    rt.block_on(upload_json_to_gcs(bucket, object_path, value))
+}
+
 pub async fn upload_to_gcs(
     gcs_info: GcsUploadInfo,
     manifest_metadata: GcsManifestMetadata,

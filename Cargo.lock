@@ -8106,6 +8106,7 @@ dependencies = [
  "clap-markdown",
  "psyche-coordinator",
  "psyche-core",
+ "psyche-data-provider",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
  "psyche-solana-rpc",

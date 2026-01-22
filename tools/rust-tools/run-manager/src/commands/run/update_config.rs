@@ -5,11 +5,15 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
-    CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
+    CoordinatorConfig, CoordinatorProgress,
+    external_config::{ExternalModelConfig, get_config_gcs_path},
+    get_data_index_for_step,
     model::{Checkpoint, Model},
 };
+use psyche_data_provider::upload_json_to_gcs;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{SolanaBackend, instructions};
 
@@ -69,12 +73,14 @@ impl Command for CommandUpdateConfig {
             .get_coordinator_account(&coordinator_account)
             .await?;
 
-        let (config, mut model) = match config_path {
+        let (config, mut model, external_config) = match config_path {
             Some(config_path) => {
                 #[derive(Serialize, Deserialize)]
                 struct State {
                     pub config: CoordinatorConfig,
                     pub model: Model,
+                    #[serde(default)]
+                    pub external_config: ExternalModelConfig,
                 }
                 let state: State = toml::from_str(std::str::from_utf8(
                     &std::fs::read(&config_path).with_context(|| {
@@ -83,9 +89,13 @@ impl Command for CommandUpdateConfig {
                 )?)
                 .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
-                (Some(state.config), Some(state.model))
+                (
+                    Some(state.config),
+                    Some(state.model),
+                    Some(state.external_config),
+                )
             }
-            None => (None, None),
+            None => (None, None, None),
         };
 
         model = if switch_to_hub {
@@ -133,6 +143,27 @@ impl Command for CommandUpdateConfig {
 
         if let Some(model) = model {
             coordinator_account_state.state.coordinator.model = model;
+        }
+
+        // Upload external config to GCS if provided
+        if let Some(ref external_config) = external_config {
+            let Model::LLM(llm) = &coordinator_account_state.state.coordinator.model;
+            if let Some((bucket, path)) = get_config_gcs_path(&llm.checkpoint) {
+                info!("Uploading external config to gs://{}/{}", bucket, path);
+                upload_json_to_gcs(&bucket, &path, external_config)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "failed to upload external config to gs://{}/{}",
+                            bucket, path
+                        )
+                    })?;
+                println!("Uploaded external config to gs://{}/{}", bucket, path);
+            } else {
+                println!(
+                    "Warning: external_config provided but checkpoint is not GCS-based, skipping upload"
+                );
+            }
         }
 
         let progress = restart_from_step.map(|step| CoordinatorProgress {
