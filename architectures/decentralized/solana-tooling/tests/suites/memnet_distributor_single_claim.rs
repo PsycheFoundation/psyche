@@ -8,13 +8,13 @@ use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
-use psyche_solana_tooling::distributor::AirdropMerkleTree;
 use psyche_solana_tooling::distributor::find_pda_airdrop;
 use psyche_solana_tooling::distributor::process_airdrop_create;
 use psyche_solana_tooling::distributor::process_airdrop_update;
 use psyche_solana_tooling::distributor::process_airdrop_withdraw;
 use psyche_solana_tooling::distributor::process_claim_create;
 use psyche_solana_tooling::distributor::process_claim_redeem;
+use psyche_solana_tooling::distributor::AirdropMerkleTree;
 
 #[tokio::test]
 pub async fn run() {
@@ -34,22 +34,26 @@ pub async fn run() {
     // Airdrop merkle tree content
     let claimer_total_collateral_amount = 323232;
     let claimer = Keypair::new();
-    let airdrop_merkle_tree = AirdropMerkleTree::try_from(&vec![
-        make_dummy_stranger_allocation(),
-        make_dummy_stranger_allocation(),
-        Allocation {
-            claimer: claimer.pubkey(),
-            nonce: 77,
-            vesting: Vesting {
-                start_unix_timestamp: 10,
-                duration_seconds: 10,
-                end_collateral_amount: claimer_total_collateral_amount,
-            },
+
+    let mut allocations = vec![];
+    for _ in 0..200000 {
+        allocations.push(make_dummy_stranger_allocation());
+    }
+    allocations.push(Allocation {
+        claimer: claimer.pubkey(),
+        nonce: 77,
+        vesting: Vesting {
+            start_unix_timestamp: 10,
+            duration_seconds: 10,
+            end_collateral_amount: claimer_total_collateral_amount,
         },
-        make_dummy_stranger_allocation(),
-        make_dummy_stranger_allocation(),
-    ])
-    .unwrap();
+    });
+    for _ in 0..200000 {
+        allocations.push(make_dummy_stranger_allocation());
+    }
+
+    let airdrop_merkle_tree =
+        AirdropMerkleTree::try_from(&allocations).unwrap();
 
     // Prepare the payer
     endpoint
@@ -251,6 +255,9 @@ pub async fn run() {
     )
     .await
     .unwrap();
+
+    eprintln!("claimer_merkle_proof: {:?}", claimer_merkle_proof);
+    panic!("Debug stop");
 
     // Redeeming something should fail (not enough collateral deposited in airdrop)
     process_claim_redeem(
