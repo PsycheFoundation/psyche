@@ -203,7 +203,7 @@ inference-node model="gpt2":
 
 # Run gateway node (HTTP API for inference requests)
 gateway-node:
-    RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node --features gateway -- \
+    RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node -- \
         --discovery-mode n0 \
         --relay-kind n0
 
@@ -231,7 +231,7 @@ inference-stack model="gpt2":
 
     # Create new session with gateway (starts first to be bootstrap node)
     tmux new-session -d -s $SESSION -n gateway
-    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node --features gateway -- --discovery-mode n0 --relay-kind n0" C-m
+    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node -- --discovery-mode n0 --relay-kind n0" C-m
 
     # Wait for gateway to start and write peer file
     echo "Waiting for gateway to initialize and write endpoint..."
