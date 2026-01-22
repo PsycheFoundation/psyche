@@ -5,6 +5,7 @@ use psyche_coordinator::ClientState;
 use psyche_coordinator::Coordinator;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::ExtendedMetadata;
 use psyche_coordinator::HealthChecks;
 use psyche_coordinator::RunState;
 use psyche_coordinator::SOLANA_MAX_STRING_LEN;
@@ -24,6 +25,8 @@ use crate::ProgramError;
 use crate::client::Client;
 use crate::clients_state::ClientsState;
 
+/// DEPRECATED: Use ExtendedMetadata instead.
+/// Kept for backwards compatibility during migration.
 #[derive(
     Debug,
     Clone,
@@ -62,12 +65,20 @@ impl RunMetadata {}
 )]
 #[repr(C)]
 pub struct CoordinatorInstanceState {
+    /// DEPRECATED: Use extended_metadata instead.
+    /// Kept for backwards compatibility during migration.
     pub metadata: RunMetadata,
     pub coordinator: Coordinator<ClientId>,
     pub clients_state: ClientsState,
     pub is_warmup_first_tick: SmallBoolean,
     pub is_training_first_tick: SmallBoolean,
+    /// DEPRECATED: Use extended_metadata instead.
+    /// Kept for backwards compatibility during migration.
     pub client_version: FixedString<96>,
+    /// Extended metadata stored as JSON blob.
+    /// Contains: run metadata, client_version, config presets, download auth, lifecycle info.
+    /// Clients deserialize this using ExtendedMetadataSchema.
+    pub extended_metadata: ExtendedMetadata,
 }
 
 unsafe impl Pod for CoordinatorInstanceState {}
@@ -281,12 +292,13 @@ impl CoordinatorInstanceState {
         config: Option<CoordinatorConfig>,
         model: Option<Model>,
         progress: Option<CoordinatorProgress>,
+        extended_metadata: Option<ExtendedMetadata>,
     ) -> Result<()> {
         if self.coordinator.run_state == RunState::Finished {
             return err!(ProgramError::UpdateConfigFinished);
         } else if !self.coordinator.halted()
             // these can't be updated without pausing
-            // but metadata can be updated without pausing so it's not included here
+            // but metadata and extended_metadata can be updated without pausing so they're not included here
             && (config.is_some() || model.is_some() || progress.is_some())
         {
             return err!(ProgramError::UpdateConfigNotHalted);
@@ -318,6 +330,13 @@ impl CoordinatorInstanceState {
             }
 
             let _ = std::mem::replace(&mut self.coordinator.progress, progress);
+        }
+
+        if let Some(extended_metadata) = extended_metadata {
+            let _ = std::mem::replace(
+                &mut self.extended_metadata,
+                extended_metadata,
+            );
         }
 
         Ok(())
@@ -415,5 +434,27 @@ impl CoordinatorInstanceState {
             );
             Ok(())
         }
+    }
+
+    /// Get the extended metadata as a deserialized schema.
+    /// Returns None if the extended_metadata is empty or invalid JSON.
+    pub fn get_extended_metadata_schema(
+        &self,
+    ) -> Option<psyche_coordinator::ExtendedMetadataSchema> {
+        if self.extended_metadata.length == 0 {
+            return None;
+        }
+        self.extended_metadata.deserialize_schema().ok()
+    }
+
+    /// Get the client version, preferring extended_metadata if available.
+    /// Falls back to the deprecated client_version field.
+    pub fn get_client_version(&self) -> String {
+        if let Some(schema) = self.get_extended_metadata_schema() {
+            if !schema.client_version.is_empty() {
+                return schema.client_version;
+            }
+        }
+        String::from(&self.client_version)
     }
 }

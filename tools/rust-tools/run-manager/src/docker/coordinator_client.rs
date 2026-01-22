@@ -54,7 +54,9 @@ impl CoordinatorClient {
         let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)
             .context("Failed to deserialize CoordinatorAccount")?;
 
-        let client_version = String::from(&coordinator_account.state.client_version);
+        // Prefer client_version from extended_metadata if available,
+        // fall back to deprecated client_version field
+        let client_version = coordinator_account.state.get_client_version();
 
         info!(
             "Fetched CoordinatorInstance from chain: {{ run_id: {}, coordinator_account: {}, client_version: {} }}",

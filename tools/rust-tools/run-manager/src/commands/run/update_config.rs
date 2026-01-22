@@ -164,6 +164,7 @@ impl Command for CommandUpdateConfig {
                     config,
                     model,
                     progress,
+                    extended_metadata: None,
                     epoch_earning_rate_total_shared: None,
                     epoch_slashing_rate_per_client: None,
                     paused: None,
@@ -182,6 +183,7 @@ impl Command for CommandUpdateConfig {
                     config,
                     model,
                     progress,
+                    None, // extended_metadata
                 ));
             }
 

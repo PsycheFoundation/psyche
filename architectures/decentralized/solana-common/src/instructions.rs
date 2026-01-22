@@ -61,6 +61,7 @@ pub fn coordinator_update(
     config: Option<psyche_coordinator::CoordinatorConfig>,
     model: Option<psyche_coordinator::model::Model>,
     progress: Option<psyche_coordinator::CoordinatorProgress>,
+    extended_metadata: Option<psyche_coordinator::ExtendedMetadata>,
 ) -> Instruction {
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     anchor_instruction(
@@ -75,6 +76,7 @@ pub fn coordinator_update(
             config,
             model,
             progress,
+            extended_metadata,
         },
     )
 }

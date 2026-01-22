@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::ExtendedMetadata;
 use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::CoordinatorInstance;
@@ -43,6 +44,7 @@ pub struct RunUpdateParams {
     pub config: Option<CoordinatorConfig>,
     pub model: Option<Model>,
     pub progress: Option<CoordinatorProgress>,
+    pub extended_metadata: Option<ExtendedMetadata>,
     pub epoch_earning_rate_total_shared: Option<u64>,
     pub epoch_slashing_rate_per_client: Option<u64>,
     pub paused: Option<bool>,
@@ -61,6 +63,7 @@ pub fn run_update_processor(
         || params.config.is_some()
         || params.model.is_some()
         || params.progress.is_some()
+        || params.extended_metadata.is_some()
     {
         update(
             CpiContext::new(
@@ -82,6 +85,7 @@ pub fn run_update_processor(
             params.config,
             params.model,
             params.progress,
+            params.extended_metadata,
         )?;
     }
 

@@ -4,6 +4,7 @@ mod commitment;
 mod committee_selection;
 mod coordinator;
 mod data_selection;
+pub mod extended_metadata;
 pub mod model;
 
 pub use commitment::Commitment;
@@ -19,4 +20,9 @@ pub use coordinator::{
 };
 pub use data_selection::{
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, get_data_index_for_step,
+};
+pub use extended_metadata::{
+    AuthConfigSchema, ConfigPresetsSchema, DownloadsSchema, EXTENDED_METADATA_BYTES,
+    ExtendedMetadata, ExtendedMetadataError, ExtendedMetadataSchema, LifecycleSchema,
+    ModelConfigSchema, RunMetadataSchema,
 };

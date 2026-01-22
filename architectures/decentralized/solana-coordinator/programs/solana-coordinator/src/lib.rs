@@ -15,6 +15,7 @@ use psyche_coordinator::Committee;
 use psyche_coordinator::CommitteeProof;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::ExtendedMetadata;
 use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
 use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
@@ -187,10 +188,17 @@ pub mod psyche_solana_coordinator {
         config: Option<CoordinatorConfig>,
         model: Option<Model>,
         progress: Option<CoordinatorProgress>,
+        extended_metadata: Option<ExtendedMetadata>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
-        account.state.update(metadata, config, model, progress)
+        account.state.update(
+            metadata,
+            config,
+            model,
+            progress,
+            extended_metadata,
+        )
     }
 
     pub fn update_client_version(

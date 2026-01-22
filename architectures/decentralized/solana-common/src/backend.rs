@@ -615,4 +615,39 @@ impl SolanaBackendRunner {
     pub fn updates(&self) -> broadcast::Receiver<Coordinator<psyche_solana_coordinator::ClientId>> {
         self.updates.resubscribe()
     }
+
+    /// Get the coordinator account address
+    pub fn coordinator_account(&self) -> &Pubkey {
+        &self.account
+    }
+
+    /// Get the coordinator instance address
+    pub fn coordinator_instance(&self) -> &Pubkey {
+        &self.instance
+    }
+
+    /// Fetch the extended metadata from the coordinator account.
+    /// This performs an RPC call to get the current state.
+    pub async fn get_extended_metadata(
+        &self,
+    ) -> Result<Option<psyche_coordinator::ExtendedMetadataSchema>> {
+        let account = self.backend.get_coordinator_account(&self.account).await?;
+        Ok(account.state.get_extended_metadata_schema())
+    }
+
+    /// Get the client version, preferring extended_metadata if available.
+    /// This performs an RPC call to get the current state.
+    pub async fn get_client_version(&self) -> Result<String> {
+        let account = self.backend.get_coordinator_account(&self.account).await?;
+        Ok(account.state.get_client_version())
+    }
+
+    /// Get the full coordinator instance state.
+    /// This performs an RPC call to get the current state.
+    pub async fn get_coordinator_instance_state(
+        &self,
+    ) -> Result<psyche_solana_coordinator::CoordinatorInstanceState> {
+        let account = self.backend.get_coordinator_account(&self.account).await?;
+        Ok(account.state)
+    }
 }

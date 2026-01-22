@@ -49,6 +49,7 @@ impl Command for CommandSetPaused {
                     config: None,
                     model: None,
                     progress: None,
+                    extended_metadata: None,
                     epoch_earning_rate_total_shared: None,
                     epoch_slashing_rate_per_client: None,
                     paused: Some(paused),

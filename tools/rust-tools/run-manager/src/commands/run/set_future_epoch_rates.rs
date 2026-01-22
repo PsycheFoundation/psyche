@@ -67,6 +67,7 @@ impl Command for CommandSetFutureEpochRates {
                 config: None,
                 model: None,
                 progress: None,
+                extended_metadata: None,
                 epoch_earning_rate_total_shared: earning_rate_total_shared
                     .map(|amount| ui_amount_to_native_amount(amount, mint_decimals)),
                 epoch_slashing_rate_per_client: slashing_rate_per_client

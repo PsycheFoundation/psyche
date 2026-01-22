@@ -3,6 +3,7 @@ use anchor_lang::ToAccountMetas;
 use anyhow::Result;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::ExtendedMetadata;
 use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::RunMetadata;
@@ -91,6 +92,7 @@ pub async fn process_update(
     config: Option<CoordinatorConfig>,
     model: Option<Model>,
     progress: Option<CoordinatorProgress>,
+    extended_metadata: Option<ExtendedMetadata>,
 ) -> Result<()> {
     let accounts = OwnerCoordinatorAccounts {
         authority: authority.pubkey(),
@@ -104,6 +106,7 @@ pub async fn process_update(
             config,
             model,
             progress,
+            extended_metadata,
         }
         .data(),
         program_id: psyche_solana_coordinator::ID,

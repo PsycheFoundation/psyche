@@ -72,6 +72,7 @@ pub async fn run() {
             cold_start_warmup_steps: 0,
         })),
         progress: None,
+        extended_metadata: None,
         epoch_earning_rate_total_shared: Some(66),
         epoch_slashing_rate_per_client: None,
         paused: Some(false),

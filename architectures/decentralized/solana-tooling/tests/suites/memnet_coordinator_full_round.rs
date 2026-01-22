@@ -128,6 +128,7 @@ pub async fn run() {
             cold_start_warmup_steps: 0,
         })),
         None, // no explicit progress
+        None, // no extended_metadata
     )
     .await
     .unwrap();
