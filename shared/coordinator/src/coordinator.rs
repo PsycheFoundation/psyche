@@ -628,14 +628,13 @@ impl<T: NodeIdentity> Coordinator<T> {
         Err(CoordinatorError::InvalidWithdraw)
     }
 
-    pub fn withdraw_all(&mut self) -> std::result::Result<(), CoordinatorError> {
+    pub fn withdraw_all(&mut self) {
         if !self.epoch_state.clients.is_empty() {
             let clients_max_index = self.epoch_state.clients.len() - 1;
             for client_index in 0..=clients_max_index {
-                self.withdraw(client_index as u64)?;
+                let _ = self.withdraw(client_index as u64); // we need to withdraw everyone, ignore error of already withdrawn
             }
         }
-        Ok(())
     }
 
     pub fn pause(&mut self, unix_timestamp: u64) -> std::result::Result<(), CoordinatorError> {
@@ -643,7 +642,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             if self.active() {
                 self.pending_pause = true.into();
             } else {
-                self.withdraw_all()?;
+                self.withdraw_all();
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.epoch_state.cold_start_epoch = true.into();
             }
@@ -987,7 +986,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             // disconnected. We just set everyone to withdrawn state and change
             // to Cooldown.
             if num_witnesses == 0 {
-                self.withdraw_all()?;
+                self.withdraw_all();
                 self.start_cooldown(unix_timestamp);
                 return Ok(TickResult::Ticked);
             }
@@ -1050,7 +1049,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
 
             if self.pending_pause.is_true() {
-                self.withdraw_all()?;
+                self.withdraw_all();
                 self.change_state(unix_timestamp, RunState::Paused);
                 self.pending_pause = false.into();
                 self.epoch_state.cold_start_epoch = true.into();
