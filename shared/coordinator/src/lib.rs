@@ -4,6 +4,7 @@ mod commitment;
 mod committee_selection;
 mod coordinator;
 mod data_selection;
+pub mod external_config;
 pub mod model;
 
 pub use commitment::Commitment;

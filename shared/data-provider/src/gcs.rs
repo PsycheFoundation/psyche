@@ -323,6 +323,50 @@ pub fn download_model_from_gcs_sync(
     rt.block_on(download_model_from_gcs_async(bucket, prefix))
 }
 
+/// Fetch a JSON file from GCS and deserialize it.
+/// Used for fetching external model configuration.
+pub async fn fetch_json_from_gcs<T: serde::de::DeserializeOwned>(
+    bucket: &str,
+    object_path: &str,
+) -> Result<T, DownloadError> {
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+
+    debug!("Fetching gs://{}/{}", bucket, object_path);
+
+    let mut read_response = storage
+        .read_object(&bucket_resource_name, object_path)
+        .send()
+        .await
+        .map_err(|e| DownloadError::Gcs(format!("Failed to read {}: {}", object_path, e)))?;
+
+    let mut data = Vec::new();
+    while let Some(chunk_result) = read_response.next().await {
+        let chunk = chunk_result.map_err(|e| DownloadError::Gcs(e.to_string()))?;
+        data.extend_from_slice(&chunk);
+    }
+
+    serde_json::from_slice(&data).map_err(|e| {
+        DownloadError::Gcs(format!(
+            "Failed to parse JSON from gs://{}/{}: {}",
+            bucket, object_path, e
+        ))
+    })
+}
+
+/// Fetch a JSON file from GCS synchronously.
+pub fn fetch_json_from_gcs_sync<T: serde::de::DeserializeOwned>(
+    bucket: &str,
+    object_path: &str,
+) -> Result<T, DownloadError> {
+    let rt = Runtime::new().map_err(DownloadError::Io)?;
+    rt.block_on(fetch_json_from_gcs(bucket, object_path))
+}
+
 pub async fn upload_to_gcs(
     gcs_info: GcsUploadInfo,
     manifest_metadata: GcsManifestMetadata,

@@ -1,6 +1,6 @@
 use clap::Parser;
 use plotters::prelude::*;
-use psyche_coordinator::{CoordinatorConfig, model::Model};
+use psyche_coordinator::{CoordinatorConfig, external_config::ExternalModelConfig, model::Model};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -28,7 +28,9 @@ enum Commands {
 #[derive(Deserialize)]
 struct Config {
     pub config: CoordinatorConfig,
+    #[allow(dead_code)]
     pub model: Model,
+    pub external_config: ExternalModelConfig,
 }
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -48,9 +50,8 @@ fn main() -> anyhow::Result<()> {
 
     let config: Config = toml::from_str(&std::fs::read_to_string(&config_path)?)?;
 
-    let Model::LLM(llm) = config.model;
     let steps = config.config.total_steps;
-    let lr = llm.lr_schedule;
+    let lr = config.external_config.lr_schedule;
 
     let root = BitMapBackend::new("lr-plot.png", (steps.min(10_000), 1024)).into_drawing_area();
     root.fill(&WHITE)?;
