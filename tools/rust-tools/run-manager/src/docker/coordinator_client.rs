@@ -1,5 +1,5 @@
 use anchor_client::solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use anchor_lang::{AccountDeserialize, Discriminator, Space};
+use anchor_lang::{AccountDeserialize, Space};
 use anyhow::{Context, Result};
 use psyche_coordinator::RunState;
 use psyche_solana_coordinator::{
@@ -9,7 +9,7 @@ use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
 use solana_client::rpc_filter::RpcFilterType;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Information about a discovered run
 #[derive(Debug, Clone)]
@@ -50,6 +50,31 @@ impl CoordinatorClient {
             .context("Failed to deserialize CoordinatorInstance")?;
 
         Ok(instance)
+    }
+
+    /// Fetch the run state from a coordinator account
+    fn fetch_run_state(&self, coordinator_account: &Pubkey) -> Option<RunState> {
+        match self.rpc_client.get_account(coordinator_account) {
+            Ok(coord_account) => {
+                match coordinator_account_from_bytes(&coord_account.data) {
+                    Ok(account) => Some(account.state.coordinator.run_state),
+                    Err(e) => {
+                        warn!(
+                            "Failed to deserialize coordinator account {}: {}",
+                            coordinator_account, e
+                        );
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to fetch coordinator account {}: {}",
+                    coordinator_account, e
+                );
+                None
+            }
+        }
     }
 
     pub fn get_docker_tag_for_run(&self, run_id: &str, local_docker: bool) -> Result<String> {
@@ -97,19 +122,12 @@ impl CoordinatorClient {
 
     /// Fetch all available runs from the coordinator program
     pub fn get_all_runs(&self) -> Result<Vec<RunInfo>> {
-        // Get Anchor discriminator for CoordinatorInstance (first 8 bytes)
-        let discriminator = CoordinatorInstance::DISCRIMINATOR;
-
-        // Fetch all accounts and filter client-side by discriminator
-        // (getProgramAccounts with memcmp filter has encoding issues on some RPC nodes)
+        // Fetch all CoordinatorInstance accounts that are owned by the program
         let accounts = self
             .rpc_client
             .get_program_accounts_with_config(
                 &self.program_id,
                 RpcProgramAccountsConfig {
-                    filters: Some(vec![RpcFilterType::DataSize(
-                        CoordinatorInstance::INIT_SPACE as u64 + 8, // +8 for discriminator
-                    )]),
                     account_config: RpcAccountInfoConfig {
                         encoding: Some(UiAccountEncoding::Base64),
                         commitment: Some(CommitmentConfig::confirmed()),
@@ -128,27 +146,28 @@ impl CoordinatorClient {
 
         let mut runs = Vec::new();
         for (pubkey, account) in accounts {
-            // Check discriminator matches CoordinatorInstance
-            if account.data.len() < 8 || &account.data[..8] != discriminator {
-                continue;
-            }
-
-            if let Ok(instance) = CoordinatorInstance::try_deserialize(&mut account.data.as_slice())
-            {
-                // Fetch run state from coordinator account
-                let run_state = match self.rpc_client.get_account(&instance.coordinator_account) {
-                    Ok(coord_account) => coordinator_account_from_bytes(&coord_account.data)
-                        .map(|acc| acc.state.coordinator.run_state)
-                        .unwrap_or(RunState::Uninitialized),
-                    Err(_) => RunState::Uninitialized,
-                };
-
-                runs.push(RunInfo {
-                    run_id: instance.run_id.clone(),
-                    instance_pubkey: pubkey,
-                    coordinator_account: instance.coordinator_account,
-                    run_state,
-                });
+            match CoordinatorInstance::try_deserialize(&mut account.data.as_slice()) {
+                Ok(instance) => {
+                    if let Some(run_state) = self.fetch_run_state(&instance.coordinator_account) {
+                        runs.push(RunInfo {
+                            run_id: instance.run_id.clone(),
+                            instance_pubkey: pubkey,
+                            coordinator_account: instance.coordinator_account,
+                            run_state,
+                        });
+                    } else {
+                        warn!(
+                            "Skipping run {} (instance: {}) - could not fetch coordinator state",
+                            instance.run_id, pubkey
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to deserialize CoordinatorInstance at {}: {}",
+                        pubkey, e
+                    );
+                }
             }
         }
 
