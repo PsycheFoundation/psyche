@@ -275,6 +275,26 @@ pub struct DownloadsSchema {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_auth: Option<AuthConfigSchema>,
+
+    /// Alternative/fallback checkpoint sources.
+    /// The on-chain Checkpoint enum is the primary source (and controls Hub↔P2P state).
+    /// These are additional download options clients can try.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkpoint_mirrors: Vec<CheckpointMirrorSchema>,
+}
+
+/// Alternative checkpoint download location.
+/// Supplements (does not replace) the on-chain Checkpoint enum.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum CheckpointMirrorSchema {
+    /// HuggingFace Hub mirror
+    #[serde(rename = "hub")]
+    Hub {
+        repo_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revision: Option<String>,
+    },
 }
 
 /// Authentication configuration for downloads
@@ -299,6 +319,22 @@ pub struct LifecycleSchema {
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub announcements: Vec<String>,
+
+    //Test new addition
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test_addition: Option<TestNewField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TestNewField {
+    #[serde(default)]
+    pub test_field_int: u64,
+
+    #[serde(default)]
+    pub test_field_string: String,
+
+    #[serde(default)]
+    pub test_field_string_2: String,
 }
 
 #[cfg(test)]
@@ -365,5 +401,173 @@ mod tests {
         assert_eq!(llm.cold_start_warmup_steps, 100);
         assert_eq!(llm.architecture, LLMArchitecture::HfLlama);
         assert!(matches!(llm.checkpoint, Checkpoint::Hub(_)));
+    }
+
+    /// This test demonstrates BACKWARD COMPATIBILITY:
+    /// A new client (with MaintenanceWindow field) can read old on-chain data
+    /// that was written before MaintenanceWindow existed.
+    #[test]
+    fn test_backward_compatibility_new_client_reads_old_data() {
+        // Simulate "old" JSON data that was written before MaintenanceWindow existed
+        let old_json = r#"{
+            "version": 1,
+            "run": {
+                "name": "Old Run",
+                "description": "Written before maintenance_window field existed",
+                "num_parameters": 1000000,
+                "vocab_size": 32000
+            },
+            "model": {},
+            "client_version": "v0.9.0",
+            "lifecycle": {
+                "status": "active",
+                "announcements": ["Welcome!"]
+            }
+        }"#;
+
+        // New client deserializes old data - maintenance_window should default to None
+        let blob = ExtendedMetadata::from_json(old_json.as_bytes()).unwrap();
+        let schema = blob.deserialize_schema().unwrap();
+
+        assert_eq!(schema.run.name, "Old Run");
+        assert_eq!(schema.client_version, "v0.9.0");
+
+        // The new field defaults to None - no error!
+        assert!(schema.lifecycle.is_some());
+        let lifecycle = schema.lifecycle.unwrap();
+        assert_eq!(lifecycle.status, "active");
+        assert!(lifecycle.test_addition.is_none()); // <-- Backward compatible!
+    }
+
+    /// This test demonstrates FORWARD COMPATIBILITY:
+    /// When we add a new field and write it on-chain, the memory layout doesn't change.
+    #[test]
+    fn test_forward_compatibility_adding_new_field() {
+        // Create schema WITH the new MaintenanceWindow field
+        let schema_with_new_field = ExtendedMetadataSchema {
+            version: 2,
+            run: RunMetadataSchema {
+                name: "New Run".to_string(),
+                description: "Has maintenance window".to_string(),
+                num_parameters: 20_000_000,
+                vocab_size: 32_000,
+            },
+            model: ModelConfigSchema::default(),
+            client_version: "v1.1.0".to_string(),
+            config_presets: None,
+            downloads: None,
+            lifecycle: Some(LifecycleSchema {
+                status: "maintenance".to_string(),
+                announcements: vec!["Scheduled maintenance".to_string()],
+                test_addition: Some(TestNewField {
+                    test_field_string_2: "Additional field".to_string(),
+                    test_field_int: 1700000000,
+                    test_field_string: "Database upgrade".to_string(),
+                }),
+            }),
+        };
+
+        // Serialize to on-chain blob
+        let blob = schema_with_new_field.to_extended_metadata().unwrap();
+
+        // CRITICAL: The blob size is ALWAYS the same (2 + 2048 bytes)
+        // regardless of what fields are in the schema!
+        assert_eq!(
+            std::mem::size_of::<ExtendedMetadata>(),
+            2 + EXTENDED_METADATA_BYTES
+        );
+
+        // Deserialize and verify the new field is preserved
+        let parsed = blob.deserialize_schema().unwrap();
+        let lifecycle = parsed.lifecycle.unwrap();
+        let maint = lifecycle.test_addition.unwrap();
+
+        assert_eq!(maint.test_field_int, 1700000000);
+        assert_eq!(maint.test_field_string, "Database upgrade");
+    }
+
+    /// This test shows that on-chain size is FIXED regardless of JSON content
+    #[test]
+    fn test_memory_layout_is_fixed() {
+        // Empty schema
+        let empty = ExtendedMetadataSchema::default();
+        let empty_blob = empty.to_extended_metadata().unwrap();
+
+        // Full schema with all fields populated
+        let full = ExtendedMetadataSchema {
+            version: 99,
+            run: RunMetadataSchema {
+                name: "A".repeat(100),
+                description: "B".repeat(200),
+                num_parameters: u64::MAX,
+                vocab_size: u64::MAX,
+            },
+            model: ModelConfigSchema::default(),
+            client_version: "v999.999.999".to_string(),
+            config_presets: Some(ConfigPresetsSchema {
+                recommended_micro_batch: Some(32),
+                recommended_total_batch: Some(1024),
+                min_gpu_memory_gb: Some(80),
+                recommended_gpu: Some("H100".to_string()),
+            }),
+            downloads: Some(DownloadsSchema {
+                checkpoint_auth: Some(AuthConfigSchema::Bearer {
+                    endpoint: "https://example.com/auth".to_string(),
+                }),
+                data_auth: None,
+                checkpoint_mirrors: vec![],
+            }),
+            lifecycle: Some(LifecycleSchema {
+                status: "running".to_string(),
+                announcements: vec!["Hello".to_string(), "World".to_string()],
+                test_addition: Some(TestNewField {
+                    test_field_int: 12345,
+                    test_field_string_2: "Another Test".to_string(),
+                    test_field_string: "Testing".to_string(),
+                }),
+            }),
+        };
+        let full_blob = full.to_extended_metadata().unwrap();
+
+        // BOTH have the exact same on-chain size!
+        assert_eq!(
+            std::mem::size_of_val(&empty_blob),
+            std::mem::size_of_val(&full_blob)
+        );
+
+        // The difference is only in `length` field (how many bytes are actually used)
+        println!("Empty JSON uses {} bytes", empty_blob.length);
+        println!("Full JSON uses {} bytes", full_blob.length);
+        assert!(empty_blob.length < full_blob.length);
+    }
+
+    /// Test checkpoint mirrors with Hub variant
+    #[test]
+    fn test_checkpoint_hub_mirror() {
+        let schema = ExtendedMetadataSchema {
+            version: 1,
+            downloads: Some(DownloadsSchema {
+                checkpoint_auth: None,
+                data_auth: None,
+                checkpoint_mirrors: vec![CheckpointMirrorSchema::Hub {
+                    repo_id: "emozilla/llama2-20m-init".to_string(),
+                    revision: Some("main".to_string()),
+                }],
+            }),
+            ..Default::default()
+        };
+
+        let blob = schema.to_extended_metadata().unwrap();
+        let parsed = blob.deserialize_schema().unwrap();
+
+        let downloads = parsed.downloads.unwrap();
+        assert_eq!(downloads.checkpoint_mirrors.len(), 1);
+
+        match &downloads.checkpoint_mirrors[0] {
+            CheckpointMirrorSchema::Hub { repo_id, revision } => {
+                assert_eq!(repo_id, "emozilla/llama2-20m-init");
+                assert_eq!(revision.as_deref(), Some("main"));
+            }
+        }
     }
 }
