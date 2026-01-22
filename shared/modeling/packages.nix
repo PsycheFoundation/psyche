@@ -1,7 +1,7 @@
 { psycheLib, ... }:
 
-# Library package - examples will be auto-discovered and built
 psycheLib.buildRustPackage {
+  needsGpu = true;
   needsPython = "optional";
   cratePath = ./.;
 }

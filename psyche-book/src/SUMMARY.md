@@ -3,6 +3,7 @@
 - [Intro to Psyche](./intro.md)
 
 - [End-user usage](./enduser/index.md)
+  - [Quickstart: Compute Provider](./enduser/quickstart-compute-provider.md)
   - [Joining a run](./enduser/join-run.md)
   - [Creating a run](./enduser/create-run.md)
   - [Run configuration](./enduser/run-config.md)

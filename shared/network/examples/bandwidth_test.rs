@@ -270,14 +270,12 @@ impl App {
 async fn main() -> Result<()> {
     let cli_args = CliArgs::parse();
 
-    // Handle print-all-help command
     if let Some(Commands::PrintAllHelp { markdown }) = cli_args.command {
         assert!(markdown);
         clap_markdown::print_help_markdown::<CliArgs>();
         return Ok(());
     }
 
-    // Run normal bandwidth test with the args
     let args = cli_args.run_args;
 
     let logger = psyche_tui::logging()

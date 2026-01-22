@@ -15,8 +15,8 @@ else
 fi
 
 # Use RPC and WS_RPC from env file (should point to localhost:8899/8900)
-RPC=${RPC:-"http://127.0.0.1:8899"}
-WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
+RPC="http://127.0.0.1:8899"
+WS_RPC="ws://127.0.0.1:8900"
 RUN_ID=${RUN_ID:-"test"}
 
 # Create a temporary wallet for the run owner

@@ -123,6 +123,7 @@ impl<I: NodeIdentity> Hash for Client<I> {
     Deserialize,
     AnchorSerialize,
     AnchorDeserialize,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
