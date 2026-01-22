@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use solana_toolbox_endpoint::toolbox_endpoint_program_test_builtin_program_anchor;
 use solana_toolbox_endpoint::ToolboxEndpoint;
 use solana_toolbox_endpoint::ToolboxEndpointLoggerPrinter;
+use solana_toolbox_endpoint::toolbox_endpoint_program_test_builtin_program_anchor;
 
 pub async fn create_memnet_endpoint() -> ToolboxEndpoint {
     let mut endpoint = ToolboxEndpoint::new_program_test_with_config(
