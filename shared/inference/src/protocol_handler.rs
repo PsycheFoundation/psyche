@@ -62,8 +62,17 @@ impl InferenceProtocol {
                 info!("Finishing send stream to {}", peer_id.fmt_short());
                 send.finish()?;
 
-                // wait for a moment to let the connection flush all the bytes to the reciever
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                // adaptive delay to ensure data is flushed before connection is dropped
+                // without this, the connection might close before the peer reads all bytes
+                // base 50ms + 10ms per MB of data
+                let size_mb = response_bytes.len() as f64 / (1024.0 * 1024.0);
+                let delay_ms = 50 + (size_mb * 10.0) as u64;
+                debug!(
+                    "Waiting {}ms for {} bytes to flush",
+                    delay_ms,
+                    response_bytes.len()
+                );
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
 
                 info!(
                     "Successfully sent inference response to {}",

@@ -6,37 +6,9 @@
 //! 3. Routes requests to available inference nodes via gossip
 //! 4. Returns responses to HTTP clients
 //!
-//!   cargo run --bin gateway-node --features gateway -- --discovery-mode local
+//!   cargo run --bin gateway-node -- --discovery-mode local
 
-use anyhow::Result;
-use clap::Parser;
-use std::path::PathBuf;
-
-#[cfg(feature = "gateway")]
-use anyhow::Context;
-#[cfg(feature = "gateway")]
-use psyche_inference::{
-    INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
-};
-#[cfg(feature = "gateway")]
-use psyche_metrics::ClientMetrics;
-#[cfg(feature = "gateway")]
-use psyche_network::{
-    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, RelayKind, allowlist,
-};
-#[cfg(feature = "gateway")]
-use std::{collections::HashMap, fs, sync::Arc, time::Duration};
-#[cfg(feature = "gateway")]
-use tokio::{
-    sync::{RwLock, mpsc},
-    time::sleep,
-};
-#[cfg(feature = "gateway")]
-use tokio_util::sync::CancellationToken;
-#[cfg(feature = "gateway")]
-use tracing::{debug, error, info};
-
-#[cfg(feature = "gateway")]
+use anyhow::{Context, Result};
 use axum::{
     Json, Router,
     extract::State,
@@ -44,6 +16,21 @@ use axum::{
     response::{IntoResponse, Response},
     routing::post,
 };
+use clap::Parser;
+use psyche_inference::{
+    INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
+};
+use psyche_metrics::ClientMetrics;
+use psyche_network::{
+    DiscoveryMode, EndpointId, NetworkConnection, NetworkEvent, RelayKind, allowlist,
+};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
+use tokio::{
+    sync::{RwLock, mpsc},
+    time::sleep,
+};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -63,7 +50,6 @@ struct Args {
     write_endpoint_file: Option<PathBuf>,
 }
 
-#[cfg(feature = "gateway")]
 #[derive(Clone, Debug)]
 struct InferenceNodeInfo {
     peer_id: EndpointId,
@@ -74,21 +60,18 @@ struct InferenceNodeInfo {
     capabilities: Vec<String>,
 }
 
-#[cfg(feature = "gateway")]
 struct GatewayState {
     available_nodes: RwLock<HashMap<EndpointId, InferenceNodeInfo>>,
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
     network_tx: mpsc::Sender<(EndpointId, InferenceMessage)>,
 }
 
-#[cfg(feature = "gateway")]
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 struct ChatMessage {
     role: String,
     content: String,
 }
 
-#[cfg(feature = "gateway")]
 #[derive(serde::Deserialize)]
 struct ChatCompletionRequest {
     model: Option<String>,
@@ -103,20 +86,16 @@ struct ChatCompletionRequest {
     stream: bool,
 }
 
-#[cfg(feature = "gateway")]
 fn default_max_tokens() -> Option<usize> {
     Some(100)
 }
-#[cfg(feature = "gateway")]
 fn default_temperature() -> Option<f64> {
     Some(1.0)
 }
-#[cfg(feature = "gateway")]
 fn default_top_p() -> Option<f64> {
     Some(1.0)
 }
 
-#[cfg(feature = "gateway")]
 #[derive(serde::Serialize)]
 struct ChatCompletionChoice {
     index: usize,
@@ -124,7 +103,6 @@ struct ChatCompletionChoice {
     finish_reason: Option<String>,
 }
 
-#[cfg(feature = "gateway")]
 #[derive(serde::Serialize)]
 struct ChatCompletionResponse {
     id: String,
@@ -135,7 +113,6 @@ struct ChatCompletionResponse {
     // we're omitting usage stats for now
 }
 
-#[cfg(feature = "gateway")]
 #[axum::debug_handler]
 async fn handle_inference(
     State(state): State<Arc<GatewayState>>,
@@ -217,7 +194,6 @@ async fn handle_inference(
     }))
 }
 
-#[cfg(feature = "gateway")]
 #[derive(Debug)]
 enum AppError {
     NoNodesAvailable,
@@ -225,7 +201,6 @@ enum AppError {
     InternalError,
 }
 
-#[cfg(feature = "gateway")]
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
@@ -242,18 +217,9 @@ impl IntoResponse for AppError {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    #[cfg(not(feature = "gateway"))]
-    {
-        eprintln!("Gateway node requires the 'gateway' feature to be enabled.");
-        eprintln!("Build with: cargo run --bin gateway-node --features gateway");
-        std::process::exit(1);
-    }
-
-    #[cfg(feature = "gateway")]
     run_gateway().await
 }
 
-#[cfg(feature = "gateway")]
 async fn send_inference_request(
     endpoint: iroh::Endpoint,
     peer_id: EndpointId,
@@ -308,7 +274,6 @@ async fn send_inference_request(
     }
 }
 
-#[cfg(feature = "gateway")]
 async fn run_gateway() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -401,37 +366,46 @@ async fn run_gateway() -> Result<()> {
         let state = state.clone();
         let cancel = cancel.clone();
         tokio::spawn(async move {
+            let mut task_set = tokio::task::JoinSet::new();
+
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
                         info!("Network task shutting down");
+                        info!("Aborting {} active P2P request tasks", task_set.len());
+                        task_set.shutdown().await;
                         break;
                     }
 
                     Some((target_peer_id, msg)) = network_rx.recv() => {
                         match msg {
                             InferenceMessage::Request(req) => {
-                                // Send request via direct P2P connection
                                 let request_id = req.request_id.clone();
                                 info!("Sending inference request {} to {} via direct P2P",
                                       request_id, target_peer_id.fmt_short());
 
-                                // Spawn task to handle P2P connection
                                 let endpoint = network.router().endpoint().clone();
                                 let state_clone = state.clone();
-                                tokio::spawn(async move {
-                                    match send_inference_request(endpoint, target_peer_id, req).await {
-                                        Ok(response) => {
+                                task_set.spawn(async move {
+                                    // timeout slightly longer than HTTP handler timeout (30s) to avoid race - might need to adjust
+                                    let result = tokio::time::timeout(
+                                        Duration::from_secs(35),
+                                        send_inference_request(endpoint, target_peer_id, req)
+                                    ).await;
+
+                                    match result {
+                                        Ok(Ok(response)) => {
                                             info!("Received inference response for {}", request_id);
-                                            // Forward response to pending request
                                             if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
                                                 let _ = tx.send(response).await;
                                             }
                                         }
-                                        Err(e) => {
+                                        Ok(Err(e)) => {
                                             error!("Failed to send inference request: {:#}", e);
-                                            // Clean up the pending request so we don't leak memory
-                                            // The HTTP handler will timeout and return an error to the client
+                                            state_clone.pending_requests.write().await.remove(&request_id);
+                                        }
+                                        Err(_) => {
+                                            error!("Inference request {} timed out after 35s", request_id);
                                             state_clone.pending_requests.write().await.remove(&request_id);
                                         }
                                     }
@@ -439,6 +413,9 @@ async fn run_gateway() -> Result<()> {
                             }
                             _ => continue,
                         };
+                    }
+
+                    Some(_) = task_set.join_next(), if !task_set.is_empty() => {
                     }
 
                     event = network.poll_next() => {

@@ -205,7 +205,7 @@ async fn main() -> Result<()> {
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    // Announce availability via gossip
+    // announce availability via gossip
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: model_name.clone(),
         checkpoint_id: None, // TODO: Track actual checkpoint when reloading - do we need this?
