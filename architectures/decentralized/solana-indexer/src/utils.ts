@@ -1,9 +1,11 @@
+import { randomUUID } from "crypto";
 import { promises as fsp } from "fs";
+import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { Pubkey, Result } from "solana-kiss";
 
 export function utilsGetStateDirectory() {
-  return process.env["STATE_DIRECTORY"] ?? `${process.cwd()}/data`;
+  return process.env["STATE_DIRECTORY"] ?? `${process.cwd()}/state`;
 }
 
 export function utilsGetEnv(name: string, description: string) {
@@ -75,20 +77,13 @@ export async function utilsWritePointPlot(
   directory: string,
   subject: string,
   category: string,
-  points: {
-    x: number | undefined;
-    y: number | undefined;
-  }[],
+  points: { x: number; y: number }[],
   xLabel?: (x: number) => string,
 ): Promise<void> {
   const size = { x: 66, y: 14 };
   const pointsCleaned = points.filter(
-    (p) =>
-      p.x !== undefined &&
-      p.y !== undefined &&
-      Number.isFinite(p.x) &&
-      Number.isFinite(p.y),
-  ) as Array<{ x: number; y: number }>;
+    (p) => Number.isFinite(p.x) && Number.isFinite(p.y),
+  );
   const minX = Math.min(...pointsCleaned.map((p) => p.x));
   const maxX = Math.max(...pointsCleaned.map((p) => p.x));
   const minY = Math.min(...pointsCleaned.map((p) => p.y));
@@ -148,17 +143,16 @@ export async function utilsWritePointPlot(
   await utilsFsWrite(plotPath, plotContent);
 }
 
-export async function utilsFsRead(filePath: string): Promise<string> {
-  return await fsp.readFile(filePath, { encoding: "utf-8" });
-}
-
 export async function utilsFsWrite(
   filePath: string,
   content: string,
 ): Promise<void> {
-  const filePathTmp = `${filePath}.tmp`;
-  await fsp.mkdir(dirname(filePathTmp), { recursive: true });
-  await fsp.writeFile(filePathTmp, content, { flush: true });
+  const fileTmpPath = join(tmpdir(), `${randomUUID()}.tmp`);
+  await fsp.writeFile(fileTmpPath, content, { flush: true });
   await fsp.mkdir(dirname(filePath), { recursive: true });
-  await fsp.rename(filePathTmp, filePath);
+  await fsp.rename(fileTmpPath, filePath);
+}
+
+export async function utilsFsRead(filePath: string): Promise<string> {
+  return await fsp.readFile(filePath, { encoding: "utf-8" });
 }

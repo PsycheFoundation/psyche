@@ -77,7 +77,6 @@ async function processImportantAction(
   dataStore: CoordinatorDataStore,
   context: ProcessingContext,
 ): Promise<void> {
-  // TODO - later on we may want to dedup important actions that are identical
   const runAnalysis = dataStore.getRunInfo(context.runAddress);
   runAnalysis.importantHistory.push(context.instruction);
   utilsBigintArraySortAscending(

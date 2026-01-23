@@ -125,7 +125,7 @@ async function aggregateStatSamplesSlice(
     }
   }
   if (runId) {
-    utilsWritePointPlot(
+    await utilsWritePointPlot(
       `${programAddress}`,
       runId,
       `run ${runCycleIndex + 1} (${statName})`,

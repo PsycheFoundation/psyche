@@ -18,7 +18,7 @@ export async function crawlerStep(
   const { newToOldTransactionsHandles } = await rpcHttpFindAccountTransactions(
     rpcHttp,
     programAddress,
-    1000,
+    100,
     {
       startBeforeTransactionHandle:
         newerStep?.oldestTransaction.transactionHandle,
