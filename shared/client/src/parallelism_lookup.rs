@@ -1,7 +1,8 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::process::Command;
+use tracing::info;
 
 const PARALLELISM_DATA: &str = include_str!("parallelism_data.json");
 
@@ -14,28 +15,21 @@ pub struct ParallelismConfig {
 
 type Table = HashMap<String, HashMap<String, ParallelismConfig>>;
 
-pub fn get_num_gpus() -> Result<usize> {
-    let output = Command::new("nvidia-smi")
+fn get_gpu_name() -> String {
+    Command::new("nvidia-smi")
         .args(["--query-gpu=name", "--format=csv,noheader"])
-        .output()?;
-
-    if !output.status.success() {
-        bail!("nvidia-smi failed");
-    }
-
-    let count = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter(|s| !s.is_empty())
-        .count();
-
-    if count == 0 {
-        bail!("No GPUs detected");
-    }
-
-    Ok(count)
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.lines().next().map(|l| l.trim().to_string()))
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
-pub fn lookup(model_repo_id: &str, num_gpus: usize) -> Result<ParallelismConfig> {
+pub fn lookup(model_repo_id: &str) -> Result<ParallelismConfig> {
+    let num_gpus = tch::Cuda::device_count();
+    let gpu_name = get_gpu_name();
+    info!("Detected {} GPU(s): {}", num_gpus, gpu_name);
+
     let table: Table = serde_json::from_str(PARALLELISM_DATA)?;
 
     let gpu_configs = table

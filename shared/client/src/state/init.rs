@@ -213,26 +213,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             .parallelism_auto
         {
             if init_config.data_parallelism != 1
-                && init_config.tensor_parallelism != 1
-                && init_config.micro_batch_size != 1
+                || init_config.tensor_parallelism != 1
+                || init_config.micro_batch_size != 1
             {
                 warn!("--parallelism-auto is set, ignoring manual dp/tp/micro_batch_size values");
             }
 
-            let model_repo_id: Option<String> = match &llm.checkpoint {
+            let model_repo_id: String = match &llm.checkpoint {
                 model::Checkpoint::Hub(hub_repo) | model::Checkpoint::P2P(hub_repo) => {
-                    Some((&hub_repo.repo_id).into())
+                    (&hub_repo.repo_id).into()
                 }
-                _ => None,
+                _ => {
+                    return Err(InitRunError::ParallelismLookupFailed(anyhow::anyhow!(
+                        "--parallelism-auto requires a Hub or P2P checkpoint"
+                    )));
+                }
             };
 
-            if let Some(repo_id) = model_repo_id {
-                let num_gpus = parallelism_lookup::get_num_gpus()?;
-                let config = parallelism_lookup::lookup(&repo_id, num_gpus)?;
-                (config.dp, config.tp, config.micro_batch_size)
-            } else {
-                (1, 1, 1)
-            }
+            let config = parallelism_lookup::lookup(&model_repo_id)?;
+            (config.dp, config.tp, config.micro_batch_size)
         } else {
             (
                 init_config.data_parallelism,
