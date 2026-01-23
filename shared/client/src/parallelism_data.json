@@ -1,0 +1,17 @@
+{
+	"NousResearch/Meta-Llama-3.1-8B": {
+		"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
+		"8": { "dp": 8, "tp": 1, "micro_batch_size": 4 }
+	},
+	"TinyLlama/TinyLlama-1.1B-Chat-v0.4": {
+		"1": { "dp": 1, "tp": 1, "micro_batch_size": 8 },
+		"8": { "dp": 8, "tp": 1, "micro_batch_size": 8 }
+	},
+	"deepseek-ai/DeepSeek-V2-Lite": {
+		"1": { "dp": 1, "tp": 1, "micro_batch_size": 2 },
+		"8": { "dp": 4, "tp": 2, "micro_batch_size": 2 }
+	},
+	"NousResearch/Hermes-4-70B": {
+		"8": { "dp": 1, "tp": 8, "micro_batch_size": 1 }
+	}
+}
