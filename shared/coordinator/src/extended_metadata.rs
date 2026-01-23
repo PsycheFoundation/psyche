@@ -120,17 +120,9 @@ pub struct ExtendedMetadataSchema {
     #[serde(default)]
     pub client_version: String,
 
-    /// Optional config presets for automated joining
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub config_presets: Option<ConfigPresetsSchema>,
-
     /// Optional download authentication info
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub downloads: Option<DownloadsSchema>,
-
-    /// Optional lifecycle status
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lifecycle: Option<LifecycleSchema>,
 }
 
 fn default_version() -> u32 {
@@ -353,9 +345,7 @@ mod tests {
             },
             model: ModelConfigSchema::default(),
             client_version: "v1.0.0".to_string(),
-            config_presets: None,
             downloads: None,
-            lifecycle: None,
         };
 
         let blob = schema.to_extended_metadata().unwrap();
@@ -431,12 +421,6 @@ mod tests {
 
         assert_eq!(schema.run.name, "Old Run");
         assert_eq!(schema.client_version, "v0.9.0");
-
-        // The new field defaults to None - no error!
-        assert!(schema.lifecycle.is_some());
-        let lifecycle = schema.lifecycle.unwrap();
-        assert_eq!(lifecycle.status, "active");
-        assert!(lifecycle.test_addition.is_none()); // <-- Backward compatible!
     }
 
     /// This test demonstrates FORWARD COMPATIBILITY:
@@ -454,17 +438,7 @@ mod tests {
             },
             model: ModelConfigSchema::default(),
             client_version: "v1.1.0".to_string(),
-            config_presets: None,
             downloads: None,
-            lifecycle: Some(LifecycleSchema {
-                status: "maintenance".to_string(),
-                announcements: vec!["Scheduled maintenance".to_string()],
-                test_addition: Some(TestNewField {
-                    test_field_string_2: "Additional field".to_string(),
-                    test_field_int: 1700000000,
-                    test_field_string: "Database upgrade".to_string(),
-                }),
-            }),
         };
 
         // Serialize to on-chain blob
@@ -479,11 +453,9 @@ mod tests {
 
         // Deserialize and verify the new field is preserved
         let parsed = blob.deserialize_schema().unwrap();
-        let lifecycle = parsed.lifecycle.unwrap();
-        let maint = lifecycle.test_addition.unwrap();
 
-        assert_eq!(maint.test_field_int, 1700000000);
-        assert_eq!(maint.test_field_string, "Database upgrade");
+        assert_eq!(parsed.run.name, "New Run");
+        assert_eq!(parsed.client_version, "v1.1.0");
     }
 
     /// This test shows that on-chain size is FIXED regardless of JSON content
@@ -504,27 +476,12 @@ mod tests {
             },
             model: ModelConfigSchema::default(),
             client_version: "v999.999.999".to_string(),
-            config_presets: Some(ConfigPresetsSchema {
-                recommended_micro_batch: Some(32),
-                recommended_total_batch: Some(1024),
-                min_gpu_memory_gb: Some(80),
-                recommended_gpu: Some("H100".to_string()),
-            }),
             downloads: Some(DownloadsSchema {
                 checkpoint_auth: Some(AuthConfigSchema::Bearer {
                     endpoint: "https://example.com/auth".to_string(),
                 }),
                 data_auth: None,
                 checkpoint_mirrors: vec![],
-            }),
-            lifecycle: Some(LifecycleSchema {
-                status: "running".to_string(),
-                announcements: vec!["Hello".to_string(), "World".to_string()],
-                test_addition: Some(TestNewField {
-                    test_field_int: 12345,
-                    test_field_string_2: "Another Test".to_string(),
-                    test_field_string: "Testing".to_string(),
-                }),
             }),
         };
         let full_blob = full.to_extended_metadata().unwrap();
