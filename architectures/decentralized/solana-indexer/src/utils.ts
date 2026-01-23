@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "fs";
+import { promises as fsp } from "fs";
 import { dirname, join } from "path";
 import { Pubkey, Result } from "solana-kiss";
 
@@ -71,7 +71,7 @@ export function utilsBigintArraySortAscending<Content>(
   });
 }
 
-export function utilsPlotPoints(
+export async function utilsPlotPoints(
   directory: string,
   subject: string,
   category: string,
@@ -80,7 +80,7 @@ export function utilsPlotPoints(
     y: number | undefined;
   }[],
   xLabel?: (x: number) => string,
-): void {
+): Promise<void> {
   const size = { x: 66, y: 14 };
   const pointsCleaned = points.filter(
     (p) =>
@@ -145,6 +145,20 @@ export function utilsPlotPoints(
     subject,
     `${title}.txt`,
   );
-  mkdirSync(dirname(plotPath), { recursive: true });
-  writeFileSync(plotPath, plotContent);
+  await utilsFsWrite(plotPath, plotContent);
+}
+
+export async function utilsFsRead(filePath: string): Promise<string> {
+  return await fsp.readFile(filePath, { encoding: "utf-8" });
+}
+
+export async function utilsFsWrite(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  const filePathTmp = `${filePath}.tmp`;
+  await fsp.mkdir(dirname(filePathTmp), { recursive: true });
+  await fsp.writeFile(filePathTmp, content, { flush: true });
+  await fsp.mkdir(dirname(filePath), { recursive: true });
+  await fsp.rename(filePathTmp, filePath);
 }

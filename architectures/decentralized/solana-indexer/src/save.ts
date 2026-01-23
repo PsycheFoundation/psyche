@@ -1,5 +1,4 @@
-import { promises as fsp } from "fs";
-import { dirname, join } from "path";
+import { join } from "path";
 import {
   jsonCodecObjectToObject,
   jsonCodecString,
@@ -14,7 +13,12 @@ import {
   CrawlerCheckpoint,
   crawlerCheckpointJsonCodec,
 } from "./crawler/CrawlerTypes";
-import { utilLogWithTimestamp, utilsGetStateDirectory } from "./utils";
+import {
+  utilLogWithTimestamp,
+  utilsFsRead,
+  utilsFsWrite,
+  utilsGetStateDirectory,
+} from "./utils";
 
 export async function saveWrite<DataStore>(
   programAddress: Pubkey,
@@ -31,11 +35,11 @@ export async function saveWrite<DataStore>(
       dataStore: dataStoreJsonEncoder(dataStore),
     }),
   );
-  await fileWriteSafely(
-    filePath(programAddress, programName, `backup_${fileNameDateOnly()}`),
+  await utilsFsWrite(
+    filePath(programAddress, programName, `${fileNameDateOnly()}_backup`),
     content,
   );
-  await fileWriteSafely(
+  await utilsFsWrite(
     filePath(programAddress, programName, fileTagLatest),
     content,
   );
@@ -58,12 +62,11 @@ export async function saveRead<DataStore>(
 }> {
   const startTime = Date.now();
   try {
-    const content = await fsp.readFile(
+    const content = await utilsFsRead(
       filePath(programAddress, programName, fileTagLatest),
-      "utf-8",
     );
-    await fileWriteSafely(
-      filePath(programAddress, programName, `start_${fileNameDateTime()}`),
+    await utilsFsWrite(
+      filePath(programAddress, programName, `${fileNameDateTime()}_start`),
       content,
     );
     const saveContent = fileJsonCodec.decoder(JSON.parse(content) as JsonValue);
@@ -108,17 +111,6 @@ function filePath(
   );
 }
 
-async function fileWriteSafely(
-  filePath: string,
-  content: string,
-): Promise<void> {
-  const filePathTmp = `${filePath}.tmp`;
-  await fsp.mkdir(dirname(filePathTmp), { recursive: true });
-  await fsp.writeFile(filePathTmp, content, { flush: true });
-  await fsp.mkdir(dirname(filePath), { recursive: true });
-  await fsp.rename(filePathTmp, filePath);
-}
-
 function fileNameDateOnly(): string {
   const now = new Date();
   return [
@@ -141,7 +133,7 @@ function fileNameDateTime(): string {
   );
 }
 
-const fileTagLatest = "latest";
+const fileTagLatest = "current-v1";
 
 const fileJsonCodec = jsonCodecObjectToObject({
   updatedAt: jsonCodecString,
