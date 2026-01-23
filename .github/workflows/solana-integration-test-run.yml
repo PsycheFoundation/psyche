@@ -90,7 +90,7 @@ jobs:
 
           # download from Garnix cache first
           echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0
+          nix-store --realise $OUT_PATH --option substitute true
 
           # Load the image into Docker
           $OUT_PATH | docker load
