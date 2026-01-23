@@ -849,14 +849,7 @@ fn calculate_unconditional_loglikelihood(
 
     let (logits_uncond, _) = {
         let _no_grad = tch::no_grad_guard();
-        model.forward(
-            &uncond_tensor,
-            None,
-            None,
-            None,
-            Some(uncond_request.len() as i64),
-            None,
-        )
+        model.forward(&uncond_tensor, None, None, None, None, None)
     };
 
     let logits_uncond = logits_uncond.unwrap().squeeze_dim(0);
