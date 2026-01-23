@@ -1,4 +1,6 @@
-use crate::{WandBInfo, fetch_data::DataFetcher, parallelism_lookup};
+#[cfg(feature = "parallelism")]
+use crate::parallelism_lookup;
+use crate::{WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
     Coordinator, HealthChecks,
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
@@ -209,36 +211,37 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         #[cfg(feature = "parallelism")]
-        let (data_parallelism, tensor_parallelism, micro_batch_size) = if init_config
-            .parallelism_auto
-        {
-            if init_config.data_parallelism != 1
-                || init_config.tensor_parallelism != 1
-                || init_config.micro_batch_size != 1
-            {
-                warn!("--parallelism-auto is set, ignoring manual dp/tp/micro_batch_size values");
-            }
+        let (data_parallelism, tensor_parallelism, micro_batch_size) =
+            if init_config.parallelism_auto {
+                if init_config.data_parallelism != 1
+                    || init_config.tensor_parallelism != 1
+                    || init_config.micro_batch_size != 1
+                {
+                    tracing::warn!(
+                        "--parallelism-auto is set, ignoring manual dp/tp/micro_batch_size values"
+                    );
+                }
 
-            let model_repo_id: String = match &llm.checkpoint {
-                model::Checkpoint::Hub(hub_repo) | model::Checkpoint::P2P(hub_repo) => {
-                    (&hub_repo.repo_id).into()
-                }
-                _ => {
-                    return Err(InitRunError::ParallelismLookupFailed(anyhow::anyhow!(
-                        "--parallelism-auto requires a Hub or P2P checkpoint"
-                    )));
-                }
+                let model_repo_id: String = match &llm.checkpoint {
+                    model::Checkpoint::Hub(hub_repo) | model::Checkpoint::P2P(hub_repo) => {
+                        (&hub_repo.repo_id).into()
+                    }
+                    _ => {
+                        return Err(InitRunError::ParallelismLookupFailed(anyhow::anyhow!(
+                            "--parallelism-auto requires a Hub or P2P checkpoint"
+                        )));
+                    }
+                };
+
+                let config = parallelism_lookup::lookup(&model_repo_id)?;
+                (config.dp, config.tp, config.micro_batch_size)
+            } else {
+                (
+                    init_config.data_parallelism,
+                    init_config.tensor_parallelism,
+                    init_config.micro_batch_size,
+                )
             };
-
-            let config = parallelism_lookup::lookup(&model_repo_id)?;
-            (config.dp, config.tp, config.micro_batch_size)
-        } else {
-            (
-                init_config.data_parallelism,
-                init_config.tensor_parallelism,
-                init_config.micro_batch_size,
-            )
-        };
 
         #[cfg(not(feature = "parallelism"))]
         let (data_parallelism, tensor_parallelism, micro_batch_size) = (
