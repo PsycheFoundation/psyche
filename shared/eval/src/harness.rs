@@ -493,7 +493,6 @@ impl PreparedTask {
 
                 // The request already contains [fewshot_tokens] + [question + choice_without_last_token]
                 let full_request = request;
-                let input_length = &full_request.len();
 
                 let request_tensor = Tensor::from_slice(&full_request)
                     .to(options.model.device())
@@ -510,17 +509,8 @@ impl PreparedTask {
                     )
                 };
 
-                let logits = logits.unwrap().squeeze_dim(0).slice(0, 0, None, 1);
-
-                // Get tensor of shape `[choice.len(), vocab_size]` containing the
-                // model's logits for each token of the `choice` text.
-                // This should skip the fewshot tokens and get the tokens from the end.
-                let logits = logits.slice(
-                    0,
-                    *input_length as i64 - choice.len() as i64,
-                    *input_length as i64,
-                    1,
-                );
+                // Shape: [choice.len(), vocab_size]
+                let logits = logits.unwrap().squeeze_dim(0);
 
                 let greedy_tokens: Vec<i64> = logits.argmax(-1, false).try_into().unwrap();
                 let exact_match = greedy_tokens.eq(&choice);
