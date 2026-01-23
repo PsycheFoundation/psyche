@@ -83,7 +83,7 @@ impl RunManager {
                 scratch_dir,
             });
         }
-        
+
         info!("RUN_ID not set, discovering available runs...");
         let runs = coordinator_client.get_all_runs()?;
         if runs.is_empty() {

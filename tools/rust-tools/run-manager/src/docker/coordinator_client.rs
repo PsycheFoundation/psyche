@@ -8,7 +8,7 @@ use psyche_solana_coordinator::{
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use tracing::{info, warn};
+use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct RunInfo {
@@ -55,11 +55,21 @@ impl CoordinatorClient {
         let solana_account = self
             .rpc_client
             .get_account(coordinator_account)
-            .with_context(|| format!("Failed to fetch coordinator account {}", coordinator_account))?;
+            .with_context(|| {
+                format!(
+                    "Failed to fetch coordinator account {}",
+                    coordinator_account
+                )
+            })?;
 
         // Deserialize the account data into a CoordinatorAccount struct
-        let coordinator = coordinator_account_from_bytes(&solana_account.data)
-            .with_context(|| format!("Failed to deserialize coordinator account {}", coordinator_account))?;
+        let coordinator =
+            coordinator_account_from_bytes(&solana_account.data).with_context(|| {
+                format!(
+                    "Failed to deserialize coordinator account {}",
+                    coordinator_account
+                )
+            })?;
 
         Ok(coordinator.state.coordinator.run_state)
     }
@@ -70,13 +80,9 @@ impl CoordinatorClient {
         let instance = self.fetch_coordinator_data(run_id)?;
 
         // Fetch the coordinator account to get the client version
-        let coordinator_account_data = self
-            .rpc_client
-            .get_account(&instance.coordinator_account)
-            .context("RPC error: failed to get coordinator account")?;
-
-        let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)
-            .context("Failed to deserialize CoordinatorAccount")?;
+        let coordinator_account_data =
+            self.rpc_client.get_account(&instance.coordinator_account)?;
+        let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)?;
 
         let client_version = String::from(&coordinator_account.state.client_version);
 
@@ -142,14 +148,14 @@ impl CoordinatorClient {
                             run_state,
                         });
                     } else {
-                        warn!(
+                        debug!(
                             "Skipping run {} (instance: {}) - could not fetch coordinator state",
                             instance.run_id, pubkey
                         );
                     }
                 }
                 Err(e) => {
-                    warn!(
+                    debug!(
                         "Failed to deserialize CoordinatorInstance at {}: {}",
                         pubkey, e
                     );
