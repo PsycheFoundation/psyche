@@ -1,11 +1,17 @@
-use anchor_lang::prelude::borsh::{
-    self, BorshDeserialize, BorshSchema, BorshSerialize,
-    schema::{Declaration, Definition, Fields},
+use anchor_lang::prelude::borsh::BorshSchema;
+use anchor_lang::prelude::borsh::schema::{Declaration, Definition, Fields};
+use anchor_lang::prelude::*;
+use anchor_lang_idl::{
+    build::IdlBuild,
+    types::{
+        IdlArrayLen, IdlDefinedFields, IdlField, IdlRepr, IdlReprModifier, IdlType, IdlTypeDef,
+        IdlTypeDefTy,
+    },
 };
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use serde_with::{Bytes, serde_as};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use ts_rs::TS;
 
 use crate::model::{
@@ -23,9 +29,7 @@ pub const EXTENDED_METADATA_BYTES: usize = 2048;
 ///
 /// Uses Pod + Zeroable for zero-copy account access.
 #[serde_as]
-#[derive(
-    Debug, Clone, Copy, Zeroable, BorshSerialize, BorshDeserialize, Serialize, Deserialize, TS,
-)]
+#[derive(Debug, Clone, Copy, Zeroable, Serialize, Deserialize, TS)]
 #[repr(C)]
 pub struct ExtendedMetadata {
     /// Length of the actual JSON content in bytes
@@ -34,6 +38,67 @@ pub struct ExtendedMetadata {
     #[serde_as(as = "Bytes")]
     #[ts(type = "number[]")]
     pub bytes: [u8; EXTENDED_METADATA_BYTES],
+}
+
+impl AnchorSerialize for ExtendedMetadata {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        AnchorSerialize::serialize(&self.length, writer)?;
+        writer.write_all(&self.bytes)?;
+        Ok(())
+    }
+}
+
+impl AnchorDeserialize for ExtendedMetadata {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let length = u16::deserialize_reader(reader)?;
+        let mut bytes = [0u8; EXTENDED_METADATA_BYTES];
+        reader.read_exact(&mut bytes)?;
+        Ok(Self { length, bytes })
+    }
+}
+
+impl IdlBuild for ExtendedMetadata {
+    fn create_type() -> Option<IdlTypeDef> {
+        Some(IdlTypeDef {
+            name: "ExtendedMetadata".to_string(),
+            docs: vec![
+                "On-chain blob for extended metadata.".to_string(),
+                "Stores JSON-encoded metadata that the coordinator program doesn't need to parse."
+                    .to_string(),
+            ],
+            serialization: Default::default(),
+            repr: Some(IdlRepr::C(IdlReprModifier {
+                packed: false,
+                align: None,
+            })),
+            generics: vec![],
+            ty: IdlTypeDefTy::Struct {
+                fields: Some(IdlDefinedFields::Named(vec![
+                    IdlField {
+                        name: "length".to_string(),
+                        docs: vec!["Length of the actual JSON content in bytes".to_string()],
+                        ty: IdlType::U16,
+                    },
+                    IdlField {
+                        name: "bytes".to_string(),
+                        docs: vec!["Raw bytes containing JSON-encoded metadata".to_string()],
+                        ty: IdlType::Array(
+                            Box::new(IdlType::U8),
+                            IdlArrayLen::Value(EXTENDED_METADATA_BYTES),
+                        ),
+                    },
+                ])),
+            },
+        })
+    }
+
+    fn insert_types(_types: &mut BTreeMap<String, IdlTypeDef>) {
+        // No nested types that need insertion
+    }
+
+    fn get_full_path() -> String {
+        format!("{}::ExtendedMetadata", module_path!())
+    }
 }
 
 unsafe impl Pod for ExtendedMetadata {}
@@ -77,7 +142,7 @@ impl BorshSchema for ExtendedMetadata {
 
 impl ExtendedMetadata {
     /// Create a new ExtendedMetadata from JSON bytes
-    pub fn from_json(json: &[u8]) -> Result<Self, ExtendedMetadataError> {
+    pub fn from_json(json: &[u8]) -> std::result::Result<Self, ExtendedMetadataError> {
         if json.len() > EXTENDED_METADATA_BYTES {
             return Err(ExtendedMetadataError::TooLarge {
                 size: json.len(),
@@ -100,7 +165,9 @@ impl ExtendedMetadata {
     }
 
     /// Deserialize into the schema struct
-    pub fn deserialize_schema(&self) -> Result<ExtendedMetadataSchema, ExtendedMetadataError> {
+    pub fn deserialize_schema(
+        &self,
+    ) -> std::result::Result<ExtendedMetadataSchema, ExtendedMetadataError> {
         serde_json::from_slice(self.as_json()).map_err(ExtendedMetadataError::JsonParse)
     }
 }
@@ -163,12 +230,14 @@ fn default_version() -> u32 {
 
 impl ExtendedMetadataSchema {
     /// Serialize to JSON bytes for storing on-chain
-    pub fn to_json(&self) -> Result<Vec<u8>, ExtendedMetadataError> {
+    pub fn to_json(&self) -> std::result::Result<Vec<u8>, ExtendedMetadataError> {
         serde_json::to_vec(self).map_err(ExtendedMetadataError::JsonSerialize)
     }
 
     /// Create an ExtendedMetadata blob from this schema
-    pub fn to_extended_metadata(&self) -> Result<ExtendedMetadata, ExtendedMetadataError> {
+    pub fn to_extended_metadata(
+        &self,
+    ) -> std::result::Result<ExtendedMetadata, ExtendedMetadataError> {
         let json = self.to_json()?;
         ExtendedMetadata::from_json(&json)
     }
