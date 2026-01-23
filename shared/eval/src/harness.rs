@@ -500,9 +500,14 @@ impl PreparedTask {
                     .unsqueeze(0);
                 let (logits, _) = {
                     let _no_grad = tch::no_grad_guard();
-                    options
-                        .model
-                        .forward(&request_tensor, None, None, None, None, None)
+                    options.model.forward(
+                        &request_tensor,
+                        None,
+                        None,
+                        None,
+                        Some(choice.len() as i64),
+                        None,
+                    )
                 };
 
                 let logits = logits.unwrap().squeeze_dim(0).slice(0, 0, None, 1);
@@ -854,7 +859,14 @@ fn calculate_unconditional_loglikelihood(
 
     let (logits_uncond, _) = {
         let _no_grad = tch::no_grad_guard();
-        model.forward(&uncond_tensor, None, None, None, None, None)
+        model.forward(
+            &uncond_tensor,
+            None,
+            None,
+            None,
+            Some(uncond_request.len() as i64),
+            None,
+        )
     };
 
     let logits_uncond = logits_uncond.unwrap().squeeze_dim(0);
