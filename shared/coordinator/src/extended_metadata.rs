@@ -1,7 +1,11 @@
-use anchor_lang::prelude::borsh::{self, BorshDeserialize, BorshSerialize};
+use anchor_lang::prelude::borsh::{
+    self, BorshDeserialize, BorshSchema, BorshSerialize,
+    schema::{Declaration, Definition, Fields},
+};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use serde_with::{Bytes, serde_as};
+use std::collections::HashMap;
 use ts_rs::TS;
 
 use crate::model::{
@@ -40,6 +44,34 @@ impl Default for ExtendedMetadata {
             length: 0,
             bytes: [0u8; EXTENDED_METADATA_BYTES],
         }
+    }
+}
+
+// Manual BorshSchema implementation because the derive macro doesn't support
+// arrays larger than 32 elements. This is needed for Anchor IDL generation.
+impl BorshSchema for ExtendedMetadata {
+    fn declaration() -> Declaration {
+        "ExtendedMetadata".to_string()
+    }
+
+    fn add_definitions_recursively(definitions: &mut HashMap<Declaration, Definition>) {
+        let byte_array_decl = format!("[u8; {}]", EXTENDED_METADATA_BYTES);
+        let fields = Fields::NamedFields(vec![
+            ("length".to_string(), <u16 as BorshSchema>::declaration()),
+            ("bytes".to_string(), byte_array_decl.clone()),
+        ]);
+        let definition = Definition::Struct { fields };
+        Self::add_definition(Self::declaration(), definition, definitions);
+        <u16 as BorshSchema>::add_definitions_recursively(definitions);
+        // Define the byte array as a fixed-size array of u8
+        definitions.insert(
+            byte_array_decl,
+            Definition::Array {
+                length: EXTENDED_METADATA_BYTES as u32,
+                elements: <u8 as BorshSchema>::declaration(),
+            },
+        );
+        <u8 as BorshSchema>::add_definitions_recursively(definitions);
     }
 }
 
@@ -230,9 +262,9 @@ impl ModelConfigSchema {
             architecture: self.architecture,
             checkpoint,
             data_type: self.data_type,
-            data_location: self.data_location.clone(),
-            lr_schedule: self.lr_schedule.clone(),
-            optimizer: self.optimizer.clone(),
+            data_location: self.data_location,
+            lr_schedule: self.lr_schedule,
+            optimizer: self.optimizer,
         }
     }
 

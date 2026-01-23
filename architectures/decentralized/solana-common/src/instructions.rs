@@ -53,6 +53,7 @@ pub fn coordinator_close_run(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn coordinator_update(
     run_id: &str,
     coordinator_account: &Pubkey,
