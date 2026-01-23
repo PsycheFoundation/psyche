@@ -1,5 +1,5 @@
 import { Pubkey } from "solana-kiss";
-import { utilsBigintArraySortAscending, utilsPlotPoints } from "../utils";
+import { utilsBigintArraySortAscending, utilsWritePointPlot } from "../utils";
 import {
   CoordinatorDataRunAnalysis,
   CoordinatorDataRunSample,
@@ -68,7 +68,7 @@ async function aggregateStatSamplesCategory(
     );
   }
   if (runId) {
-    await utilsPlotPoints(
+    await utilsWritePointPlot(
       `${programAddress}`,
       runId,
       `history (${statName})`,
@@ -125,10 +125,10 @@ async function aggregateStatSamplesSlice(
     }
   }
   if (runId) {
-    utilsPlotPoints(
+    utilsWritePointPlot(
       `${programAddress}`,
       runId,
-      `s${runCycleIndex} (${statName})`,
+      `run ${runCycleIndex + 1} (${statName})`,
       statSamples.slice(sampleIndexMin, sampleIndexMax + 1).map((sample) => ({
         x: sample.step,
         y: sample.sumValue / sample.numValue,
@@ -138,4 +138,4 @@ async function aggregateStatSamplesSlice(
   }
 }
 
-const desiredSampleStepBucketCount = 100;
+const desiredSampleStepBucketCount = 1000;

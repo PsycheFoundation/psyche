@@ -32,6 +32,7 @@ export class CoordinatorDataStore {
         latestOnchainSnapshot: null,
         lastWitnessByUser: new Map(),
         samplesByStatName: new Map(),
+        firstJoinByUser: new Map(),
         finishesOrdinals: [],
         importantHistory: [],
       };

@@ -71,7 +71,7 @@ export function utilsBigintArraySortAscending<Content>(
   });
 }
 
-export async function utilsPlotPoints(
+export async function utilsWritePointPlot(
   directory: string,
   subject: string,
   category: string,

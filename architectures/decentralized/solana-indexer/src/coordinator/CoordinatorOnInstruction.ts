@@ -37,7 +37,7 @@ export async function coordinatorOnInstruction(
       await processor(dataStore, {
         runAddress,
         signerAddress,
-        indexerInstruction: instruction,
+        instruction,
       });
     }
   } else {
@@ -58,30 +58,28 @@ const processorsByInstructionName = new Map([
   ["set_future_epoch_rates", [processImportantAction]],
   ["set_paused", [processImportantAction]],
   ["update_client_version", [processImportantAction]],
-  ["join_run", [processImportantAction]],
-  ["warmup_witness", []], // TODO - how to handle warmup witness?
-  ["witness", [processWitness]],
-  ["tick", []],
   ["checkpoint", [processImportantAction]],
-  ["health_check", []], // TODO - how to handle health check?
+  ["tick", []],
+  ["warmup_witness", []],
+  ["health_check", []],
+  ["join_run", [processJoinRun]],
+  ["witness", [processWitness]],
   ["free_coordinator", [processImportantAction, processFinish]],
 ]);
 
 type ProcessingContext = {
   runAddress: Pubkey;
   signerAddress: Pubkey;
-  indexerInstruction: IndexerInstruction;
+  instruction: IndexerInstruction;
 };
 
 async function processImportantAction(
-  coordinatorDataStore: CoordinatorDataStore,
-  processingContext: ProcessingContext,
+  dataStore: CoordinatorDataStore,
+  context: ProcessingContext,
 ): Promise<void> {
   // TODO - later on we may want to dedup important actions that are identical
-  const runAnalysis = coordinatorDataStore.getRunInfo(
-    processingContext.runAddress,
-  );
-  runAnalysis.importantHistory.push(processingContext.indexerInstruction);
+  const runAnalysis = dataStore.getRunInfo(context.runAddress);
+  runAnalysis.importantHistory.push(context.instruction);
   utilsBigintArraySortAscending(
     runAnalysis.importantHistory,
     (importantAction) => importantAction.instructionOrdinal,
@@ -89,31 +87,42 @@ async function processImportantAction(
   runAnalysis.importantHistory.reverse();
 }
 
+async function processJoinRun(
+  dataStore: CoordinatorDataStore,
+  context: ProcessingContext,
+) {
+  const runAnalysis = dataStore.getRunInfo(context.runAddress);
+  const existingJoin = runAnalysis.firstJoinByUser.get(context.signerAddress);
+  if (
+    existingJoin &&
+    existingJoin.instructionOrdinal < context.instruction.instructionOrdinal
+  ) {
+    return;
+  }
+  runAnalysis.firstJoinByUser.set(context.signerAddress, context.instruction);
+}
+
 async function processFinish(
-  coordinatorDataStore: CoordinatorDataStore,
-  processingContext: ProcessingContext,
+  dataStore: CoordinatorDataStore,
+  context: ProcessingContext,
 ): Promise<void> {
-  const runAnalysis = coordinatorDataStore.getRunInfo(
-    processingContext.runAddress,
-  );
-  runAnalysis.finishesOrdinals.push(
-    processingContext.indexerInstruction.instructionOrdinal,
-  );
+  const runAnalysis = dataStore.getRunInfo(context.runAddress);
+  runAnalysis.finishesOrdinals.push(context.instruction.instructionOrdinal);
 }
 
 async function processWitness(
-  coordinatorDataStore: CoordinatorDataStore,
+  dataStore: CoordinatorDataStore,
   context: ProcessingContext,
 ): Promise<void> {
-  const runAnalysis = coordinatorDataStore.getRunInfo(context.runAddress);
+  const runAnalysis = dataStore.getRunInfo(context.runAddress);
   const witnessPayload = witnessJsonDecoder(
-    context.indexerInstruction.instructionPayload,
+    context.instruction.instructionPayload,
   );
   if (!witnessPayload.proof.witness) {
     return;
   }
   const witnessUser = context.signerAddress;
-  const witnessOrdinal = context.indexerInstruction.instructionOrdinal;
+  const witnessOrdinal = context.instruction.instructionOrdinal;
   const witnessStep = witnessPayload.metadata.step;
   const lastWitnessForUser = runAnalysis.lastWitnessByUser.get(witnessUser);
   if (
@@ -161,7 +170,7 @@ async function processWitness(
       step: witnessStep,
       sumValue: statValue,
       numValue: 1,
-      time: context.indexerInstruction.blockTime,
+      time: context.instruction.blockTime,
     });
   }
 }

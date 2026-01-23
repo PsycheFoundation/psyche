@@ -133,7 +133,7 @@ function fileNameDateTime(): string {
   );
 }
 
-const fileTagLatest = "current-v1";
+const fileTagLatest = "latest-v002";
 
 const fileJsonCodec = jsonCodecObjectToObject({
   updatedAt: jsonCodecString,

@@ -100,6 +100,7 @@ export const coordinatorDataRunAnalysisJsonCodec = jsonCodecObjectToObject({
     },
     valueCodec: jsonCodecArrayToArray(coordinatorDataRunSampleJsonCodec),
   }),
+  firstJoinByUser: jsonCodecObjectToMapByPubkey(indexerInstructionJsonCodec),
   finishesOrdinals: jsonCodecArrayToArray(jsonCodecBigInt),
   importantHistory: jsonCodecArrayToArray(indexerInstructionJsonCodec),
 });
