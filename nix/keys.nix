@@ -16,7 +16,12 @@ rec {
     ariLunaKey
   ];
 
-  allDevKeys = ariKeys;
+  vincentMb2025Key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILQMmXWPPTMLQz75G1zUngxTtW8nlcSn7mHb5I/M4gzQ vincent@Vincents-MBP.localdomain";
+  vincentKeys = [
+    vincentMb2025Key
+  ];
+
+  allDevKeys = ariKeys ++ vincentKeys;
 
   allKeys = [
     nousRepoKey
