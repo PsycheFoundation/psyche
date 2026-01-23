@@ -20,11 +20,12 @@ use crate::{
     utils::ConfigBuilder,
 };
 
-/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
+/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable.
+/// This logic mirrors the justfile's GPU detection to ensure consistency.
 fn has_gpu_support() -> bool {
-    // Check if USE_GPU environment variable is set
-    if std::env::var("USE_GPU").is_ok() {
-        return true;
+    // Check if USE_GPU environment variable is explicitly set to "0" to disable GPU
+    if let Ok(val) = std::env::var("USE_GPU") {
+        return val != "0";
     }
 
     // Check if nvidia-smi command exists
