@@ -11,7 +11,6 @@ use crate::docker::RunInfo;
 use crate::docker::coordinator_client::CoordinatorClient;
 use crate::get_env_var;
 use crate::load_and_apply_env_file;
-use psyche_coordinator::RunState;
 
 const RETRY_DELAY_SECS: u64 = 5;
 const VERSION_MISMATCH_EXIT_CODE: i32 = 10;
@@ -355,15 +354,7 @@ impl RunManager {
 
 fn select_best_run(runs: &[RunInfo]) -> Result<&RunInfo> {
     // Avoid joining runs that are halted
-    let joinable: Vec<_> = runs
-        .iter()
-        .filter(|run| {
-            !matches!(
-                run.run_state,
-                RunState::Uninitialized | RunState::Finished | RunState::Paused
-            )
-        })
-        .collect();
+    let joinable: Vec<_> = runs.iter().filter(|run| !run.run_state.halted()).collect();
 
     if joinable.is_empty() {
         bail!(
