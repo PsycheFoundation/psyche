@@ -24,7 +24,7 @@ impl DummyDataProvider {
     fn internal_get_samples(&self, num_samples: usize) -> Result<Vec<TokenizedData>> {
         let mut ret: Vec<_> = Vec::new();
         for _ in 0..num_samples {
-            let data_len = usize::from(self.token_size_in_bytes) * (self.seq_len + 1);
+            let data_len = usize::from(self.token_size_in_bytes) * self.seq_len;
             let data = vec![0; data_len];
 
             let tokens: Vec<i32> = data

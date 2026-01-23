@@ -7,7 +7,7 @@ use bollard::{
     models::DeviceRequest,
     secret::{ContainerSummary, HostConfig},
 };
-use psyche_client::IntegrationTestLogMarker;
+use psyche_core::IntegrationTestLogMarker;
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::str::FromStr;
