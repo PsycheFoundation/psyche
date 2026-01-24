@@ -68,59 +68,115 @@ impl Drop for DockerTestCleanup {
     }
 }
 
-/// FIXME: The config path must be relative to the compose file for now.
-pub async fn e2e_testing_setup(
-    docker_client: Arc<Docker>,
-    init_num_clients: usize,
-) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client).await;
-
-    spawn_psyche_network(init_num_clients).unwrap();
-
-    spawn_ctrl_c_task();
-
-    DockerTestCleanup {}
+/// Configuration for spawning a psyche network with custom settings
+pub struct PsycheNetworkConfig {
+    pub num_clients: usize,
+    pub architecture: String,
+    pub model: String,
+    pub batch_size: u32,
+    pub use_proxies: bool,
 }
 
-pub async fn e2e_testing_setup_subscription(
-    docker_client: Arc<Docker>,
-    init_num_clients: usize,
-) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client).await;
-    #[cfg(not(feature = "python"))]
+impl Default for PsycheNetworkConfig {
+    fn default() -> Self {
+        #[cfg(not(feature = "python"))]
+        {
+            Self {
+                num_clients: 1,
+                architecture: "HfLlama".to_string(),
+                model: "pefontana/Nano-Llama".to_string(),
+                batch_size: 4,
+                use_proxies: false,
+            }
+        }
+        #[cfg(feature = "python")]
+        {
+            Self {
+                num_clients: 1,
+                architecture: "HfAuto".to_string(),
+                model: "NousResearch/Meta-Llama-3.1-8B".to_string(),
+                batch_size: 8,
+                use_proxies: false,
+            }
+        }
+    }
+}
+
+impl PsycheNetworkConfig {
+    pub fn with_num_clients(mut self, num_clients: usize) -> Self {
+        self.num_clients = num_clients;
+        self
+    }
+
+    pub fn with_proxies(mut self) -> Self {
+        self.use_proxies = true;
+        self
+    }
+}
+
+/// Spawn psyche network with configuration
+fn spawn_psyche_network(config: &PsycheNetworkConfig) -> Result<(), DockerWatcherError> {
     ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
+        .with_num_clients(config.num_clients)
+        .with_architecture(&config.architecture)
+        .with_model(&config.model)
+        .with_batch_size(config.batch_size)
         .build();
-    #[cfg(feature = "python")]
-    ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_architecture("HfAuto")
-        .with_model("NousResearch/Meta-Llama-3.1-8B")
-        .with_batch_size(8 * init_num_clients as u32)
-        .build();
+
+    let just_command = if config.use_proxies {
+        "run_test_infra_with_proxies_validator"
+    } else {
+        "run_test_infra"
+    };
 
     let mut command = Command::new("just");
-    let command = command
-        .args([
-            "run_test_infra_with_proxies_validator",
-            &format!("{init_num_clients}"),
-        ])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
     let output = command
+        .args([just_command, &format!("{}", config.num_clients)])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .output()
         .expect("Failed to spawn docker compose instances");
+
     if !output.status.success() {
         panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
     }
 
     println!("\n[+] Docker compose network spawned successfully!");
     println!();
+    Ok(())
+}
+
+/// E2E testing setup with configuration
+pub async fn e2e_testing_setup_with_config(
+    docker_client: Arc<Docker>,
+    config: PsycheNetworkConfig,
+) -> DockerTestCleanup {
+    remove_old_client_containers(docker_client).await;
+
+    spawn_psyche_network(&config).unwrap();
 
     spawn_ctrl_c_task();
 
     DockerTestCleanup {}
+}
+
+/// FIXME: The config path must be relative to the compose file for now.
+pub async fn e2e_testing_setup(
+    docker_client: Arc<Docker>,
+    init_num_clients: usize,
+) -> DockerTestCleanup {
+    let config = PsycheNetworkConfig::default().with_num_clients(init_num_clients);
+    e2e_testing_setup_with_config(docker_client, config).await
+}
+
+pub async fn e2e_testing_setup_subscription(
+    docker_client: Arc<Docker>,
+    init_num_clients: usize,
+) -> DockerTestCleanup {
+    let config = PsycheNetworkConfig::default()
+        .with_num_clients(init_num_clients)
+        .with_proxies();
+    e2e_testing_setup_with_config(docker_client, config).await
 }
 
 pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
@@ -265,38 +321,6 @@ pub async fn spawn_new_client_with_monitoring(
         .unwrap();
     println!("Spawned client {container_id}");
     Ok(container_id)
-}
-
-// Updated spawn function
-pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
-    #[cfg(not(feature = "python"))]
-    ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .build();
-
-    #[cfg(feature = "python")]
-    ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_architecture("HfAuto")
-        .with_model("NousResearch/Meta-Llama-3.1-8B")
-        .with_batch_size(8 * init_num_clients as u32)
-        .build();
-
-    let mut command = Command::new("just");
-    let output = command
-        .args(["run_test_infra", &format!("{init_num_clients}")])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-        .expect("Failed to spawn docker compose instances");
-
-    if !output.status.success() {
-        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
-    }
-
-    println!("\n[+] Docker compose network spawned successfully!");
-    println!();
-    Ok(())
 }
 
 pub fn spawn_ctrl_c_task() {
