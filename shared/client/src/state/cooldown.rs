@@ -161,6 +161,7 @@ impl CooldownStepMetadata {
                     .map(|(name, var)| (name.clone(), var.shallow_clone()))
                     .collect();
 
+                // for p2p model sharing we use the native trainer shape
                 tx_model
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
