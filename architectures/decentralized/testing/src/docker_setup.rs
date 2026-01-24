@@ -299,6 +299,71 @@ pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcher
     Ok(())
 }
 
+/// Configuration for spawning a psyche network with custom settings
+#[cfg(feature = "python")]
+pub struct PsycheNetworkConfig {
+    pub num_clients: usize,
+    pub architecture: String,
+    pub model: String,
+    pub batch_size: u32,
+}
+
+#[cfg(feature = "python")]
+impl Default for PsycheNetworkConfig {
+    fn default() -> Self {
+        Self {
+            num_clients: 1,
+            architecture: "HfAuto".to_string(),
+            model: "NousResearch/Meta-Llama-3.1-8B".to_string(),
+            batch_size: 8,
+        }
+    }
+}
+
+/// Spawn psyche network with custom configuration (Python feature only)
+#[cfg(feature = "python")]
+pub fn spawn_psyche_network_with_config(
+    config: PsycheNetworkConfig,
+) -> Result<(), DockerWatcherError> {
+    ConfigBuilder::new()
+        .with_num_clients(config.num_clients)
+        .with_architecture(&config.architecture)
+        .with_model(&config.model)
+        .with_batch_size(config.batch_size)
+        .build();
+
+    let mut command = Command::new("just");
+    let output = command
+        .args(["run_test_infra", &format!("{}", config.num_clients)])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()
+        .expect("Failed to spawn docker compose instances");
+
+    if !output.status.success() {
+        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    println!("\n[+] Docker compose network spawned successfully!");
+    println!();
+    Ok(())
+}
+
+/// E2E testing setup with custom configuration (Python feature only)
+#[cfg(feature = "python")]
+pub async fn e2e_testing_setup_with_config(
+    docker_client: Arc<Docker>,
+    config: PsycheNetworkConfig,
+) -> DockerTestCleanup {
+    remove_old_client_containers(docker_client).await;
+
+    spawn_psyche_network_with_config(config).unwrap();
+
+    spawn_ctrl_c_task();
+
+    DockerTestCleanup {}
+}
+
 pub fn spawn_ctrl_c_task() {
     tokio::spawn(async {
         signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");

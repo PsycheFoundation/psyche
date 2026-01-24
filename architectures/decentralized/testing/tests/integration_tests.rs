@@ -12,6 +12,10 @@ use bollard::{Docker, container::KillContainerOptions};
 use psyche_coordinator::{RunState, model::Checkpoint};
 use psyche_core::IntegrationTestLogMarker;
 use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
+#[cfg(feature = "python")]
+use psyche_decentralized_testing::docker_setup::{
+    PsycheNetworkConfig, e2e_testing_setup_with_config,
+};
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
@@ -1039,4 +1043,125 @@ async fn test_big_model_with_sidecars() {
             }
         }
     }
+}
+
+/// Test P2P model sharing with TorchTitan backend.
+/// This exercises the code path where:
+/// 1. First client downloads model from HuggingFace Hub (in HF format)
+/// 2. Model is loaded into TorchTitan backend for training
+/// 3. New clients join and receive the model via P2P sharing
+/// 4. The P2P-received model (in state dict format) is loaded into TorchTitan
+///
+/// This tests the PretrainedSourceStateDict code path in TorchTitan which may have
+/// bugs when initializing with a config-and-tensor dict from P2P sharing.
+#[cfg(feature = "python")]
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_torchtitan_p2p_model_share() {
+    let run_id = "test".to_string();
+    // epochs the test will run
+    let num_of_epochs_to_run = 3;
+    let n_new_clients = 2;
+    let init_num_clients = 1;
+
+    // Initialize DockerWatcher
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // Initialize a Solana run with TorchTitan architecture
+    // Using Meta-Llama-3.1-8B (same as test_big_model_with_sidecars)
+    let config = PsycheNetworkConfig {
+        num_clients: init_num_clients,
+        architecture: "Torchtitan".to_string(),
+        model: "NousResearch/Meta-Llama-3.1-8B".to_string(),
+        batch_size: 8 * init_num_clients as u32,
+    };
+    let _cleanup = e2e_testing_setup_with_config(docker.clone(), config).await;
+
+    // Monitor the first client container
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![
+                IntegrationTestLogMarker::StateChange,
+                IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::LoadedModel,
+            ],
+        )
+        .unwrap();
+
+    println!("Waiting for first client to load model and start training");
+    tokio::time::sleep(Duration::from_secs(60)).await;
+
+    // Initialize solana client to query the coordinator state
+    let solana_client = SolanaTestClient::new(run_id).await;
+    let mut live_interval = time::interval(Duration::from_secs(10));
+    let mut clients_with_model = 0;
+    let mut first_client_loaded = false;
+
+    println!("Adding new clients to test P2P model sharing with TorchTitan");
+    for i in 1..=n_new_clients {
+        spawn_new_client(docker.clone()).await.unwrap();
+        let _monitor_client = watcher
+            .monitor_container(
+                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
+                vec![
+                    IntegrationTestLogMarker::LoadedModel,
+                    IntegrationTestLogMarker::Loss,
+                ],
+            )
+            .unwrap();
+    }
+
+    loop {
+        tokio::select! {
+            _ = live_interval.tick() => {
+                if let Err(e) = watcher.monitor_clients_health(n_new_clients + init_num_clients).await {
+                    panic!("{}", e);
+                }
+            }
+            response = watcher.log_rx.recv() => {
+                match response {
+                    Some(Response::StateChange(timestamp, _client_1, old_state, new_state, _ , _)) => {
+                        let _coordinator_state = solana_client.get_run_state().await;
+                        println!(
+                            "client: new_state: {new_state}, old_state: {old_state}, timestamp: {timestamp}"
+                        );
+                    }
+                    Some(Response::Loss(client, epoch, step, loss)) => {
+                        println!(
+                            "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
+                        );
+                        if epoch == num_of_epochs_to_run {
+                            break;
+                        }
+                    }
+                    Some(Response::LoadedModel(checkpoint)) => {
+                        println!("LoadedModel event: checkpoint = {checkpoint}");
+                        if checkpoint.starts_with("Hub") {
+                            // First client loaded from Hub
+                            println!("First client loaded model from Hub (TorchTitan backend)");
+                            first_client_loaded = true;
+                        } else if checkpoint.starts_with("P2P") {
+                            // Subsequent clients loaded via P2P
+                            assert!(first_client_loaded, "P2P client loaded before Hub client");
+                            println!("Client got the model via P2P (TorchTitan backend)");
+                            clients_with_model += 1;
+                            if clients_with_model == n_new_clients {
+                                println!("All {} new clients got the model via P2P with TorchTitan!", n_new_clients);
+                            }
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    // Verify all new clients received the model via P2P
+    assert_eq!(
+        clients_with_model, n_new_clients,
+        "Expected {} clients to receive model via P2P, but only {} did",
+        n_new_clients, clients_with_model
+    );
 }
