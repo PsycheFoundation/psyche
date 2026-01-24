@@ -1051,25 +1051,18 @@ async fn test_big_model_with_sidecars() {
 /// 2. Model is loaded into TorchTitan backend for training
 /// 3. New clients join and receive the model via P2P sharing
 /// 4. The P2P-received model (in state dict format) is loaded into TorchTitan
-///
-/// This tests the PretrainedSourceStateDict code path in TorchTitan which may have
-/// bugs when initializing with a config-and-tensor dict from P2P sharing.
 #[cfg(feature = "python")]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
 async fn test_torchtitan_p2p_model_share() {
     let run_id = "test".to_string();
-    // epochs the test will run
     let num_of_epochs_to_run = 3;
     let n_new_clients = 2;
     let init_num_clients = 1;
 
-    // Initialize DockerWatcher
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with TorchTitan architecture
-    // Using Meta-Llama-3.1-8B (same as test_big_model_with_sidecars)
     let config = PsycheNetworkConfig {
         num_clients: init_num_clients,
         architecture: "Torchtitan".to_string(),
