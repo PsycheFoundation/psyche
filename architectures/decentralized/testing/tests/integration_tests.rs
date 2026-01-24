@@ -1116,7 +1116,7 @@ async fn test_torchtitan_p2p_model_share() {
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(n_new_clients + init_num_clients).await {
+                if let Err(e) = watcher.monitor_clients_health((n_new_clients + init_num_clients).try_into().unwrap()).await {
                     panic!("{}", e);
                 }
             }
