@@ -3,6 +3,7 @@ import json
 import os
 from contextlib import contextmanager, nullcontext
 
+import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
 import torch.nn.functional as F
 
@@ -376,9 +377,15 @@ class TorchtitanAuto(CausalLM):
             dcp.load(hf_state_dict, storage_reader=hf_storage_reader)
 
             state_dict = sd_adapter.from_hf(hf_state_dict)
+            # Barrier to synchronize all ranks before collective distribute_tensor operations
+            if dist.is_initialized():
+                dist.barrier()
             TorchtitanAuto._load_into_model(model, state_dict)
         else:
-            # state_dict already in TT format
+            # state_dict already in TT format (from P2P sharing)
+            # Barrier to synchronize all ranks before collective distribute_tensor operations
+            if dist.is_initialized():
+                dist.barrier()
             TorchtitanAuto._load_into_model(model, state_dict)
 
         loss_fn = build_cross_entropy_loss(job_config)
