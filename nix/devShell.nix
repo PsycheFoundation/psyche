@@ -29,6 +29,7 @@
           defaultShell = {
             inputsFrom = [
               self'.packages.psyche-book
+              self'.packages.psyche-website-backend
             ];
             env = env // {
               UV_NO_SYNC = 1;

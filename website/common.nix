@@ -20,7 +20,7 @@ lib.extendMkDerivation {
       preBuild,
       buildCommand ? "build",
       installPhase,
-      extraInputs ? [ ],
+      extraNativeBuildInputs ? [ ],
       meta ? { },
     }@args:
     {
@@ -42,7 +42,7 @@ lib.extendMkDerivation {
         nodejs
         curl
       ]
-      ++ extraInputs;
+      ++ extraNativeBuildInputs;
 
       inherit preBuild installPhase;
 
