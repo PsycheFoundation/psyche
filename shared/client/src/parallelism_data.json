@@ -22,7 +22,7 @@
 	},
 	"NousResearch/Meta-Llama-3.1-8B": {
 		"H100": {
-			"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
+			"1": { "dp": 1, "tp": 1, "micro_batch_size": 1 },
 			"8": { "dp": 8, "tp": 1, "micro_batch_size": 4 }
 		}
 	},
