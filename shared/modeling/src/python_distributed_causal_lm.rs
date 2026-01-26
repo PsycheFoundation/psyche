@@ -324,6 +324,10 @@ impl PythonDistributedCausalLM {
                 }
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
+
+                info!("Synchronizing ranks before model creation");
+                comm.barrier(Some(device))?;
+
                 let local = PythonCausalLM::new(
                     &architecture,
                     &source,

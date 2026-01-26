@@ -1,27 +1,27 @@
 [config]
-warmup_time = 30
-cooldown_time = 30
-epoch_time = 60
-max_round_train_time = 15
+warmup_time = 10000
+cooldown_time = 240
+epoch_time = 240
+max_round_train_time = 120
 round_witness_time = 5
 min_clients = 1
 init_min_clients = 1
 verification_percent = 0
 witness_nodes = 0
-global_batch_size_start = 8
-global_batch_size_end = 8
+global_batch_size_start = 16
+global_batch_size_end = 16
 global_batch_size_warmup_tokens = 0
 total_steps = 25000
 waiting_for_members_extra_time = 3
 
 [model.LLM]
-architecture = "HfLlama"
+architecture = "Torchtitan"
 data_type = "Pretraining"
 max_seq_len = 2048
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
+repo_id = "NousResearch/Meta-Llama-3.1-8B"
 
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"

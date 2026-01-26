@@ -206,6 +206,8 @@ def main():
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
 
+    barrier()
+
     device = args.device if args.device else 0
 
     model = make_causal_lm(
