@@ -263,9 +263,13 @@ class TorchtitanAuto(CausalLM):
             for k in model_sd.keys()
         }
 
-        total_keys = len(state_dict)
+        # Sort keys to ensure all ranks process tensors in the same order
+        # This is critical because distribute_tensor is a collective operation
+        sorted_keys = sorted(state_dict.keys())
+        total_keys = len(sorted_keys)
         logger.info(f"_load_into_model: loading {total_keys} parameters")
-        for idx, (k, source) in enumerate(state_dict.items()):
+        for idx, k in enumerate(sorted_keys):
+            source = state_dict[k]
             actual_key = clean_to_actual.get(k)
             if actual_key is not None:
                 dest = model_sd[actual_key]
