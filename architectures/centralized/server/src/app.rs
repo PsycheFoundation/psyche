@@ -403,7 +403,7 @@ impl App {
                         rand::rng().next_u64(),
                     ),
                     OpportunisticData::CooldownStep(witness) => {
-                        self.coordinator.cooldown_witness(witness)
+                        self.coordinator.cooldown_witness(&from, witness)
                     }
                 } {
                     warn!("Error when processing witness: {error}");
