@@ -1,5 +1,5 @@
 use anyhow::{Error, Result, anyhow};
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use psyche_data_provider::download_model_repo_sync;
 use psyche_modeling::{
     AttentionImplementation, CausalLM, CommunicatorId, Devices, LogitsProcessor, Sampling,
@@ -84,8 +84,26 @@ impl From<AttnImpl> for AttentionImplementation {
     }
 }
 
-#[derive(Parser, Debug, Clone)]
-struct Args {
+#[derive(Parser, Debug)]
+struct CliArgs {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[command(flatten)]
+    run_args: RunArgs,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[clap(hide = true)]
+    PrintAllHelp {
+        #[arg(long, required = true)]
+        markdown: bool,
+    },
+}
+
+#[derive(Args, Debug, Clone)]
+struct RunArgs {
     #[arg(long, default_value = "NousResearch/Llama-2-7b-hf")]
     model: String,
 
@@ -134,7 +152,7 @@ struct Args {
 fn inference(
     repo_files: Vec<PathBuf>,
     tensor_parallelism: Option<(CommunicatorId, usize, usize, Arc<Barrier>)>,
-    args: Args,
+    args: RunArgs,
     seed: u64,
     mut tokens: Vec<i64>,
     tokenizer: Tokenizer,
@@ -268,7 +286,15 @@ fn main() -> Result<()> {
     psyche_modeling::set_suggested_env_vars();
 
     let _no_grad = tch::no_grad_guard();
-    let args = Args::parse();
+    let cli_args = CliArgs::parse();
+
+    if let Some(Commands::PrintAllHelp { markdown }) = cli_args.command {
+        assert!(markdown);
+        clap_markdown::print_help_markdown::<CliArgs>();
+        return Ok(());
+    }
+
+    let args = cli_args.run_args;
     let repo_files = if std::fs::exists(args.model.clone()).unwrap_or_default() {
         std::fs::read_dir(args.model.clone())
             .unwrap()

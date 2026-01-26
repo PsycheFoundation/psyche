@@ -89,7 +89,7 @@ jobs:
 
           # download from Garnix cache first
           echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0
+          nix-store --realise $OUT_PATH --option substitute true
 
           # Load the image into Docker
           $OUT_PATH | docker load
@@ -126,5 +126,7 @@ jobs:
 
       # Step 4: Run Integration Tests
       - name: Run integration test
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "${{ inputs.test-name }}"

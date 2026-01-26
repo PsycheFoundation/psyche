@@ -1,45 +1,9 @@
 use crate::app::build_app;
-use crate::command::can_join::CommandCanJoinParams;
-use crate::command::can_join::command_can_join_execute;
-use crate::command::checkpoint::CommandCheckpointParams;
-use crate::command::checkpoint::command_checkpoint_execute;
-use crate::command::close_run::CommandCloseRunParams;
-use crate::command::close_run::command_close_run_execute;
-use crate::command::create_run::CommandCreateRunParams;
-use crate::command::create_run::command_create_run_execute;
-use crate::command::join_authorization_create::CommandJoinAuthorizationCreateParams;
-use crate::command::join_authorization_create::command_join_authorization_create_execute;
-use crate::command::join_authorization_delegate::CommandJoinAuthorizationDelegateParams;
-use crate::command::join_authorization_delegate::command_join_authorization_delegate_execute;
-use crate::command::join_authorization_delete::CommandJoinAuthorizationDeleteParams;
-use crate::command::join_authorization_delete::command_join_authorization_delete_execute;
-use crate::command::join_authorization_read::CommandJoinAuthorizationReadParams;
-use crate::command::join_authorization_read::command_join_authorization_read_execute;
-use crate::command::json_dump_run::CommandJsonDumpRunParams;
-use crate::command::json_dump_run::command_json_dump_run_execute;
-use crate::command::json_dump_user::CommandJsonDumpUserParams;
-use crate::command::json_dump_user::command_json_dump_user_execute;
-use crate::command::set_future_epoch_rates::CommandSetFutureEpochRatesParams;
-use crate::command::set_future_epoch_rates::command_set_future_epoch_rates_execute;
-use crate::command::set_paused::CommandSetPausedParams;
-use crate::command::set_paused::command_set_paused_execute;
-use crate::command::tick::CommandTickParams;
-use crate::command::tick::command_tick_execute;
-use crate::command::treasurer_claim_rewards::CommandTreasurerClaimRewardsParams;
-use crate::command::treasurer_claim_rewards::command_treasurer_claim_rewards_execute;
-use crate::command::treasurer_top_up_rewards::CommandTreasurerTopUpRewardsParams;
-use crate::command::treasurer_top_up_rewards::command_treasurer_top_up_rewards_execute;
-use crate::command::update_config::CommandUpdateConfigParams;
-use crate::command::update_config::command_update_config_execute;
-use crate::{
-    app::{AppParams, TAB_NAMES, Tabs},
-    backend::SolanaBackend,
-};
+use crate::app::{AppParams, TAB_NAMES, Tabs};
 
 use anchor_client::{
     Cluster,
     solana_sdk::{
-        commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{EncodableKey, Keypair},
         signer::Signer,
@@ -48,7 +12,9 @@ use anchor_client::{
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys};
+use psyche_coordinator::model::{Checkpoint, Model};
 use psyche_network::SecretKey;
+use psyche_solana_rpc::SolanaBackend;
 use psyche_tui::{
     LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
@@ -61,12 +27,7 @@ use tokio::runtime::Builder;
 use tracing::info;
 
 mod app;
-mod backend;
-mod command;
-mod instructions;
 mod network_identity;
-mod retry;
-mod utils;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -89,7 +50,7 @@ struct ClusterArgs {
     ws_rpc: String,
 }
 
-#[allow(clippy::large_enum_variant)] // it's only used at startup, we don't care.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 enum Commands {
     ShowStaticP2PIdentity {
@@ -97,78 +58,6 @@ enum Commands {
     },
     CreateStaticP2PIdentity {
         save_path: PathBuf,
-    },
-    CreateRun {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandCreateRunParams,
-    },
-    CloseRun {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandCloseRunParams,
-    },
-    SetPaused {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandSetPausedParams,
-    },
-    UpdateConfig {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandUpdateConfigParams,
-    },
-    Tick {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandTickParams,
-    },
-    SetFutureEpochRates {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandSetFutureEpochRatesParams,
-    },
-    TreasurerClaimRewards {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandTreasurerClaimRewardsParams,
-    },
-    TreasurerTopUpRewards {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandTreasurerTopUpRewardsParams,
-    },
-    Checkpoint {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandCheckpointParams,
     },
     Train {
         #[clap(flatten)]
@@ -191,53 +80,21 @@ enum Commands {
         #[clap(long, env)]
         authorizer: Option<Pubkey>,
     },
-    CanJoin {
+    Predownload {
         #[clap(flatten)]
         cluster: ClusterArgs,
-        #[clap(flatten)]
-        params: CommandCanJoinParams,
-    },
-    JsonDumpRun {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        params: CommandJsonDumpRunParams,
-    },
-    JsonDumpUser {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        params: CommandJsonDumpUserParams,
-    },
-    JoinAuthorizationCreate {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandJoinAuthorizationCreateParams,
-    },
-    JoinAuthorizationDelegate {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandJoinAuthorizationDelegateParams,
-    },
-    JoinAuthorizationDelete {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        wallet: WalletArgs,
-        #[clap(flatten)]
-        params: CommandJoinAuthorizationDeleteParams,
-    },
-    JoinAuthorizationRead {
-        #[clap(flatten)]
-        cluster: ClusterArgs,
-        #[clap(flatten)]
-        params: CommandJoinAuthorizationReadParams,
+
+        #[clap(short, long, env)]
+        run_id: String,
+
+        #[clap(long, env, action)]
+        model: bool,
+
+        #[clap(long, env)]
+        eval_tasks: Option<String>,
+
+        #[clap(long, env, default_value_t = 3)]
+        hub_max_concurrent_downloads: usize,
     },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
@@ -301,168 +158,6 @@ async fn async_main() -> Result<()> {
             print_identity_keys(Some(&save_path))?;
             println!("Wrote secret key to {}", save_path.display());
             Ok(())
-        }
-        Commands::CreateRun {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_create_run_execute(backend, params).await
-        }
-        Commands::CloseRun {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_close_run_execute(backend, params).await
-        }
-        Commands::UpdateConfig {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_update_config_execute(backend, params).await
-        }
-        Commands::SetPaused {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_set_paused_execute(backend, params).await
-        }
-        Commands::Tick {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_tick_execute(backend, params).await
-        }
-        Commands::SetFutureEpochRates {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_set_future_epoch_rates_execute(backend, params).await
-        }
-        Commands::TreasurerClaimRewards {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_treasurer_claim_rewards_execute(backend, params).await
-        }
-        Commands::TreasurerTopUpRewards {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_treasurer_top_up_rewards_execute(backend, params).await
-        }
-        Commands::Checkpoint {
-            cluster,
-            wallet,
-            params,
-        } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let key_pair: Arc<Keypair> = Arc::new(wallet.try_into()?);
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                key_pair.clone(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_checkpoint_execute(backend, params).await
         }
         Commands::Train {
             cluster,
@@ -552,101 +247,83 @@ async fn async_main() -> Result<()> {
 
             Ok(())
         }
-        Commands::CanJoin { cluster, params } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                Keypair::new().into(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_can_join_execute(backend, params).await
-        }
-        Commands::JsonDumpRun { cluster, params } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                Keypair::new().into(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_json_dump_run_execute(backend, params).await
-        }
-        Commands::JsonDumpUser { cluster, params } => {
-            psyche_tui::logging()
-                .with_output(LogOutput::Console)
-                .init()?;
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                Keypair::new().into(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_json_dump_user_execute(backend, params).await
-        }
-        Commands::JoinAuthorizationCreate {
+        Commands::Predownload {
             cluster,
-            wallet,
-            params,
+            run_id,
+            model,
+            eval_tasks,
+            hub_max_concurrent_downloads,
         } => {
+            use anchor_client::solana_sdk::commitment_config::CommitmentConfig;
+
+            // Create a read-only backend (no wallet needed)
+            let dummy_keypair = Keypair::new();
             let backend = SolanaBackend::new(
                 cluster.into(),
                 vec![],
-                Arc::new(wallet.try_into()?),
+                Arc::new(dummy_keypair),
                 CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_join_authorization_create_execute(backend, params).await
-        }
-        Commands::JoinAuthorizationDelegate {
-            cluster,
-            wallet,
-            params,
-        } => {
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                Arc::new(wallet.try_into()?),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_join_authorization_delegate_execute(backend, params).await
-        }
-        Commands::JoinAuthorizationDelete {
-            cluster,
-            wallet,
-            params,
-        } => {
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                Arc::new(wallet.try_into()?),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_join_authorization_delete_execute(backend, params).await
-        }
-        Commands::JoinAuthorizationRead { cluster, params } => {
-            let backend = SolanaBackend::new(
-                cluster.into(),
-                vec![],
-                Keypair::new().into(),
-                CommitmentConfig::confirmed(),
-            )
-            .unwrap();
-            command_join_authorization_read_execute(backend, params).await
+            )?;
+
+            let coordinator_instance =
+                psyche_solana_coordinator::find_coordinator_instance(&run_id);
+            let coordinator_instance_state = backend
+                .get_coordinator_instance(&coordinator_instance)
+                .await?;
+
+            let coordinator_account_state = backend
+                .get_coordinator_account(&coordinator_instance_state.coordinator_account)
+                .await?
+                .state
+                .coordinator;
+
+            if model {
+                #[allow(irrefutable_let_patterns)]
+                let Model::LLM(model_config) = coordinator_account_state.model else {
+                    bail!("Model is not an LLM, unsure how to predownload.");
+                };
+
+                let checkpoint = match model_config.checkpoint {
+                    Checkpoint::Ephemeral => {
+                        bail!("Can't predownload model with ephemeral checkpoint.")
+                    }
+                    Checkpoint::Dummy(hub_repo)
+                    | Checkpoint::Hub(hub_repo)
+                    | Checkpoint::P2P(hub_repo) => hub_repo,
+                };
+
+                let repo_id = checkpoint.repo_id.to_string();
+                let revision = checkpoint.revision.map(|s| s.to_string());
+                println!(
+                    "Predownloading model {repo_id} revision {}",
+                    revision.as_ref().unwrap_or(&"main".to_string())
+                );
+
+                let hub_read_token = std::env::var("HF_TOKEN").ok();
+                let cache_folder = None; // Uses HF_HOME env var
+
+                psyche_data_provider::download_model_repo_async(
+                    &repo_id,
+                    revision,
+                    cache_folder,
+                    hub_read_token,
+                    Some(hub_max_concurrent_downloads),
+                    true,
+                )
+                .await?;
+                println!("Model predownloaded successfully.");
+            }
+
+            if let Some(eval_tasks) = eval_tasks {
+                let _ = TrainArgs::eval_tasks_from_args(&eval_tasks, 0)?;
+                println!("Eval tasks `{eval_tasks}` predownloaded successfully.");
+            }
+
+            Ok(())
         }
         Commands::PrintAllHelp { markdown } => {
-            // This is a required argument for the time being.
             assert!(markdown);
-            let () = clap_markdown::print_help_markdown::<CliArgs>();
+            clap_markdown::print_help_markdown::<CliArgs>();
             Ok(())
         }
     }
