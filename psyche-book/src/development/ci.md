@@ -9,11 +9,13 @@ We use [Garnix](https://garnix.io/) as our CI provider. It:
 
 ## Deployment Branches
 
-Some branches are configured for automatic deployment. These branches serve as dedicated testing environments.
+Some branches are configured for automatic deployment. These branches serve as
+dedicated testing environments.
 
 ### Development Environments
 
-These environments are stateful and accessible via SSH for developer troubleshooting. Public keys are listed in this repo.
+These environments are stateful and accessible via SSH for developer
+troubleshooting. Public keys are listed in this repo.
 
 | Source Branch         | Purpose                      | Hostname                         |
 | --------------------- | ---------------------------- | -------------------------------- |
@@ -23,6 +25,7 @@ These environments are stateful and accessible via SSH for developer troubleshoo
 
 ### Production Environment
 
-`main` automatically deploys the website/indexer to https://mainnet.psyche.network/ and the docs to https://docs.psyche.network/.
+`main` automatically deploys the website/indexer to
+https://mainnet.psyche.network/ and the docs to https://docs.psyche.network/.
 
 This is a stateful deploy, but with no SSH access for security reasons.

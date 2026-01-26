@@ -1,9 +1,9 @@
-import { createFileRoute, Navigate } from '@tanstack/react-router'
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
-export const Route = createFileRoute('/')({
-	component: RouteComponent,
-})
+export const Route = createFileRoute("/")({
+  component: RouteComponent,
+});
 
 function RouteComponent() {
-	return <Navigate to={'/runs'} />
+  return <Navigate to={"/runs"} />;
 }

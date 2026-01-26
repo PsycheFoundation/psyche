@@ -1,6 +1,7 @@
 # data-provider
 
-there's a bunch of functionality here, but the http stuff is what you probably wanna try out.
+there's a bunch of functionality here, but the http stuff is what you probably
+wanna try out.
 
 ## http data provider fetch example
 
@@ -19,7 +20,8 @@ This will fetch some fineweb data & output it using the llama3 tokenizer!
 cargo run --example http --file-size <SIZE> [--sequence-length <LENGTH>] [--token-size <SIZE>] --batch-ids <IDS> [--tokenizer <PATH>] <SUBCOMMAND>
 ```
 
-The tool supports two main modes of operation: template-based URLs and explicit URL lists.
+The tool supports two main modes of operation: template-based URLs and explicit
+URL lists.
 
 #### Required
 
@@ -49,7 +51,8 @@ this will fetch urls http://example.com/0.ds thru http://example.com/10.ds
 
 ###### left pad zeros
 
-`--left-pad-zeros 3` will transform fetch URLs http://example.com/000.ds thru http://example.com/010.ds
+`--left-pad-zeros 3` will transform fetch URLs http://example.com/000.ds thru
+http://example.com/010.ds
 
 ##### URL List Mode
 
@@ -79,4 +82,6 @@ cargo run --example http --sequence-length 1024 --batch-ids 1,2,3 urls "http://e
 
 ### Output
 
-The tool will output the retrieved samples for each batch ID. If a tokenizer is specified, the output will be decoded using the tokenizer. Otherwise, the raw sample data will be displayed.
+The tool will output the retrieved samples for each batch ID. If a tokenizer is
+specified, the output will be decoded using the tokenizer. Otherwise, the raw
+sample data will be displayed.

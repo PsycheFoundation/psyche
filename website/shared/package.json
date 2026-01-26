@@ -1,25 +1,25 @@
 {
-	"name": "shared",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.ts",
-	"type": "module",
-	"scripts": {
-		"get-coordinator-local-address": "(cd ../../architectures/decentralized/solana-coordinator/programs/solana-coordinator && anchor idl build | grep -oP -m 1 '(?<=\"address\": \").*?(?=\")')",
-		"get-mining-pool-local-address": "(cd ../../architectures/decentralized/solana-mining-pool/programs/solana-mining-pool && anchor idl build | grep -oP -m 1 '(?<=\"address\": \").*?(?=\")')",
-		"build-coordinator-idl": "mkdir -p idl && (cd ../../architectures/decentralized/solana-coordinator/programs/solana-coordinator && anchor idl build --out ../../../../../website/shared/idl/coordinator_idl.json --out-ts ../../../../../website/shared/idl/coordinator_idlType.ts)",
-		"build-contribute-idl": "mkdir -p idl && (cd ../../architectures/decentralized/solana-mining-pool/programs/solana-mining-pool && anchor idl build --out ../../../../../website/shared/idl/mining-pool_idl.json --out-ts ../../../../../website/shared/idl/mining-pool_idlType.ts)",
-		"build-idl": "pnpm build-coordinator-idl && pnpm build-contribute-idl",
-		"build": "echo noop"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"dependencies": {
-		"@solana/web3.js": "^1.98.0",
-		"psyche-deserialize-zerocopy-wasm": "../wasm/pkg"
-	},
-	"devDependencies": {
-		"typescript": "^5.7.3"
-	}
+  "name": "shared",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.ts",
+  "type": "module",
+  "scripts": {
+    "get-coordinator-local-address": "(cd ../../architectures/decentralized/solana-coordinator/programs/solana-coordinator && anchor idl build | grep -oP -m 1 '(?<=\"address\": \").*?(?=\")')",
+    "get-mining-pool-local-address": "(cd ../../architectures/decentralized/solana-mining-pool/programs/solana-mining-pool && anchor idl build | grep -oP -m 1 '(?<=\"address\": \").*?(?=\")')",
+    "build-coordinator-idl": "mkdir -p idl && (cd ../../architectures/decentralized/solana-coordinator/programs/solana-coordinator && anchor idl build --out ../../../../../website/shared/idl/coordinator_idl.json --out-ts ../../../../../website/shared/idl/coordinator_idlType.ts)",
+    "build-contribute-idl": "mkdir -p idl && (cd ../../architectures/decentralized/solana-mining-pool/programs/solana-mining-pool && anchor idl build --out ../../../../../website/shared/idl/mining-pool_idl.json --out-ts ../../../../../website/shared/idl/mining-pool_idlType.ts)",
+    "build-idl": "pnpm build-coordinator-idl && pnpm build-contribute-idl",
+    "build": "echo noop"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0",
+    "psyche-deserialize-zerocopy-wasm": "../wasm/pkg"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
 }

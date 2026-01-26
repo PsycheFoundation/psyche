@@ -1,16 +1,16 @@
-name: 'Wait for Garnix CI'
-description: 'Wait for Garnix CI checks to complete'
+name: "Wait for Garnix CI"
+description: "Wait for Garnix CI checks to complete"
 inputs:
   timeout-minutes:
-    description: 'Maximum time to wait in minutes'
+    description: "Maximum time to wait in minutes"
     required: false
-    default: '50'
+    default: "50"
   package:
-    description: 'Name of the package to wait for'
+    description: "Name of the package to wait for"
     required: false
-    default: 'docker-psyche-solana-test-client-no-python [x86_64-linux]'
+    default: "docker-psyche-solana-test-client-no-python [x86_64-linux]"
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
     - name: Wait for All Garnix checks
       shell: bash

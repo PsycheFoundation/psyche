@@ -20,10 +20,16 @@
           # js, ts, etc.
           enable = true;
           settings = {
-            trailingComma = "es5";
-            useTabs = true;
-            semi = false;
-            singleQuote = true;
+            "arrowParens" = "always";
+            "bracketSpacing" = true;
+            "bracketSameLine" = false;
+            "printWidth" = 80;
+            "proseWrap" = "always";
+            "semi" = true;
+            "singleQuote" = false;
+            "tabWidth" = 2;
+            "trailingComma" = "all";
+            "useTabs" = false;
           };
         };
 

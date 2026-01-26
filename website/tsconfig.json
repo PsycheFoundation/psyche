@@ -1,31 +1,31 @@
 {
-	"compilerOptions": {
-		"module": "NodeNext",
-		"moduleResolution": "nodenext",
-		"target": "ES2022",
-		"lib": ["es2023"],
-		"esModuleInterop": true,
-		"forceConsistentCasingInFileNames": true,
-		"resolveJsonModule": true,
-		"experimentalDecorators": true,
-		"noErrorTruncation": true,
-		"skipLibCheck": true,
-		"useDefineForClassFields": true,
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["es2023"],
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "noErrorTruncation": true,
+    "skipLibCheck": true,
+    "useDefineForClassFields": true,
 
-		"allowImportingTsExtensions": false,
-		"isolatedModules": true,
-		"moduleDetection": "force",
-		"noEmit": true,
-		"jsx": "react-jsx",
+    "allowImportingTsExtensions": false,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
 
-		"strict": true,
-		"noUnusedLocals": true,
-		"noUnusedParameters": true,
-		"noFallthroughCasesInSwitch": true,
-		"noUncheckedSideEffectImports": true
-	},
-	"ts-node": {
-		"esm": true,
-		"transpileOnly": true
-	}
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "ts-node": {
+    "esm": true,
+    "transpileOnly": true
+  }
 }

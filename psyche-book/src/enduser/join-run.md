@@ -1,6 +1,9 @@
 # Joining a training run
 
-This guide is for end-users who wish to participate in a training run, it assumes you have a predistributed `run-manager` binary. If you are looking for more in-depth documentation or how to run from source you can refer to the [development documentation](../development/index.md)
+This guide is for end-users who wish to participate in a training run, it
+assumes you have a predistributed `run-manager` binary. If you are looking for
+more in-depth documentation or how to run from source you can refer to the
+[development documentation](../development/index.md)
 
 ## Prerequisites
 
@@ -12,7 +15,8 @@ The Psyche client currently only runs on modern Linux distributions.
 
 ### NVIDIA GPU and Drivers
 
-Psyche requires an NVIDIA CUDA-capable GPU for model training. Your system must have NVIDIA drivers installed.
+Psyche requires an NVIDIA CUDA-capable GPU for model training. Your system must
+have NVIDIA drivers installed.
 
 To check if you have NVIDIA drivers:
 
@@ -20,11 +24,15 @@ To check if you have NVIDIA drivers:
 nvidia-smi
 ```
 
-If this command doesn't work or shows an error, you need to install NVIDIA drivers. Follow NVIDIA's [installation guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/) for your Linux distribution.
+If this command doesn't work or shows an error, you need to install NVIDIA
+drivers. Follow NVIDIA's
+[installation guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/)
+for your Linux distribution.
 
 ### Docker
 
-The Psyche client runs inside a Docker container. You need Docker Engine installed on your system.
+The Psyche client runs inside a Docker container. You need Docker Engine
+installed on your system.
 
 To check if Docker is installed:
 
@@ -32,19 +40,26 @@ To check if Docker is installed:
 docker --version
 ```
 
-If Docker isn't installed, follow the [Docker Engine installation guide](https://docs.docker.com/engine/install/) for your Linux distribution.
+If Docker isn't installed, follow the
+[Docker Engine installation guide](https://docs.docker.com/engine/install/) for
+your Linux distribution.
 
 ### NVIDIA Container Toolkit
 
-The NVIDIA Container Toolkit is required to enable GPU access inside Docker containers, which Psyche uses for model training.
+The NVIDIA Container Toolkit is required to enable GPU access inside Docker
+containers, which Psyche uses for model training.
 
-To install the NVIDIA Container Toolkit, follow the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for your Linux distribution.
+To install the NVIDIA Container Toolkit, follow the
+[NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+for your Linux distribution.
 
 ### Solana Wallet/Keypair
 
-You need a Solana keypair (wallet) to participate in training. This keypair identifies your client on the blockchain.
+You need a Solana keypair (wallet) to participate in training. This keypair
+identifies your client on the blockchain.
 
-If you need to create a new keypair, you can use the Solana CLI, specifying where you want to create it
+If you need to create a new keypair, you can use the Solana CLI, specifying
+where you want to create it
 
 ```bash
 solana-keygen new --outfile <path/to/keypair/file.json>
@@ -52,8 +67,11 @@ solana-keygen new --outfile <path/to/keypair/file.json>
 
 ## Quick Start
 
-The recommended way to run a Psyche client is through the `run-manager`, which should have been distributed to you. The run manager will handle downloading the correct Docker image, starting your client, and keeping it updated automatically.
-Before running it, you should create an environment file with some needed variables.
+The recommended way to run a Psyche client is through the `run-manager`, which
+should have been distributed to you. The run manager will handle downloading the
+correct Docker image, starting your client, and keeping it updated
+automatically. Before running it, you should create an environment file with
+some needed variables.
 
 The `.env` file should have at least this defined:
 
@@ -78,42 +96,53 @@ Then, you can start training through the run manager running:
 ./run-manager --env-file /path/to/your/.env
 ```
 
-After the initial setup, you'll see the Psyche client logs streaming in real-time. These logs show training progress, network status, and other important information.
+After the initial setup, you'll see the Psyche client logs streaming in
+real-time. These logs show training progress, network status, and other
+important information.
 
 To stop the client, press `Ctrl+C` in the terminal.
 
 ## RPC Hosts
 
-We recommend using a dedicated RPC service such as [Helius](https://www.helius.dev/), [QuickNode](https://www.quicknode.com/), [Triton](https://triton.one/), or self-hosting your own Solana RPC node.
+We recommend using a dedicated RPC service such as
+[Helius](https://www.helius.dev/), [QuickNode](https://www.quicknode.com/),
+[Triton](https://triton.one/), or self-hosting your own Solana RPC node.
 
 ## Additional config variables
 
-In general it's not neccesary to change these variables to join a run since we provide sensible defaults,
-though you might need to.
+In general it's not neccesary to change these variables to join a run since we
+provide sensible defaults, though you might need to.
 
-**`NVIDIA_DRIVER_CAPABILITIES`** - An environment variable that the NVIDIA Container Toolkit uses to determine which compute capabilities should be provided to your container. It is recommended to set it to 'all', e.g. `NVIDIA_DRIVER_CAPABILITIES=all`.
+**`NVIDIA_DRIVER_CAPABILITIES`** - An environment variable that the NVIDIA
+Container Toolkit uses to determine which compute capabilities should be
+provided to your container. It is recommended to set it to 'all', e.g.
+`NVIDIA_DRIVER_CAPABILITIES=all`.
 
 **`DATA_PARALLELISM`** - Number of GPUs to distribute training data across.
 
 - If you have multiple GPUs, you can set this to 2, 4, etc. to speed up training
 - If you have 1 GPU, set this to `1`
 
-**`TENSOR_PARALLELISM`** - Number of GPUs to distribute the model across, this lets you train a model you can't fit on one single GPU.
+**`TENSOR_PARALLELISM`** - Number of GPUs to distribute the model across, this
+lets you train a model you can't fit on one single GPU.
 
 - If you have 1 GPU, set this to `1`
-- If your have `n` GPUs you can distribute the model across all of them by setting it to `n`.
+- If your have `n` GPUs you can distribute the model across all of them by
+  setting it to `n`.
 
 **`MICRO_BATCH_SIZE`** - Number of samples processed per GPU per training step
 
 - Set as high as your GPU memory allows
 
-**`AUTHORIZER`** - The Solana address that authorized your wallet to join this run
+**`AUTHORIZER`** - The Solana address that authorized your wallet to join this
+run
 
 - See [Authentication](./authentication.md) for more details
 
 ## Testing Authorization
 
-Before joining a run, you can verify that your client is authorized by using the `run-manager` command:
+Before joining a run, you can verify that your client is authorized by using the
+`run-manager` command:
 
 ```bash
 run-manager can-join --run-id <RUN_ID> --authorizer <AUTHORIZER> --address <PUBKEY>
@@ -131,15 +160,19 @@ You can find your wallet's public key by running:
 solana address
 ```
 
-This command will return successfully if your wallet is authorized to join the run. This helps debug authorization issues before attempting to join.
+This command will return successfully if your wallet is authorized to join the
+run. This helps debug authorization issues before attempting to join.
 
 ## Troubleshooting
 
 ### Docker Not Found
 
-**Error:** `Failed to execute docker command. Is Docker installed and accessible?`
+**Error:**
+`Failed to execute docker command. Is Docker installed and accessible?`
 
-**Solution:** Install Docker using the [Docker installation guide](https://docs.docker.com/engine/install/). Make sure your user is in the `docker` group:
+**Solution:** Install Docker using the
+[Docker installation guide](https://docs.docker.com/engine/install/). Make sure
+your user is in the `docker` group:
 
 ```bash
 sudo usermod -aG docker $USER
@@ -149,7 +182,8 @@ Then log out and back in for the group change to take effect.
 
 ### NVIDIA Drivers Not Working
 
-**Error:** Container starts but crashes immediately, or you see GPU-related errors in logs
+**Error:** Container starts but crashes immediately, or you see GPU-related
+errors in logs
 
 **Solution:**
 
@@ -186,22 +220,26 @@ Then log out and back in for the group change to take effect.
 - Ensure all required variables are in your `.env` file
 - Verify GPU access: `docker run --rm --gpus all ubuntu nvidia-smi`
 - Check disk space: `df -h`
-- Verify you have enough VRAM for your `MICRO_BATCH_SIZE` setting (try reducing it)
+- Verify you have enough VRAM for your `MICRO_BATCH_SIZE` setting (try reducing
+  it)
 
 ### Process Appears Stuck
 
-**Error:** No new logs appearing, process seems frozen, stuck with error messages.
+**Error:** No new logs appearing, process seems frozen, stuck with error
+messages.
 
 **Solution:**
 
-- The run manager will attempt to restart the client, but sometimes this can fail and hang.
+- The run manager will attempt to restart the client, but sometimes this can
+  fail and hang.
 - Press `Ctrl+C` to stop run-manager and wait a few seconds.
-- If for some reason this fails to stop it, you can check the running containers with `docker ps`
-  and force stop the container manually with `docker stop`.
+- If for some reason this fails to stop it, you can check the running containers
+  with `docker ps` and force stop the container manually with `docker stop`.
 
 ### Version Mismatch Loop
 
-**Symptom:** Container keeps restarting every few seconds with "version mismatch"
+**Symptom:** Container keeps restarting every few seconds with "version
+mismatch"
 
 **Solution:**
 
@@ -213,7 +251,8 @@ Then log out and back in for the group change to take effect.
 
 ### Checking Container Logs Manually
 
-If run-manager exits but you want to see what happened, you can view Docker logs:
+If run-manager exits but you want to see what happened, you can view Docker
+logs:
 
 ```bash
 # List recent containers (including stopped ones)
@@ -225,7 +264,8 @@ docker logs CONTAINER_ID
 
 ## Claiming Rewards
 
-After participating in training and accumulating rewards, you can claim them using the `run-manager` command:
+After participating in training and accumulating rewards, you can claim them
+using the `run-manager` command:
 
 ```bash
 run-manager treasurer-claim-rewards \
@@ -238,10 +278,14 @@ Where:
 
 - `<RPC>` is your Solana RPC endpoint (same as in your `.env` file)
 - `<RUN_ID>` is the run ID you participated in
-- `<JSON_PRIVATE_KEY_PATH>` is the path to your wallet keypair file (e.g., `~/.config/solana/id.json`)
+- `<JSON_PRIVATE_KEY_PATH>` is the path to your wallet keypair file (e.g.,
+  `~/.config/solana/id.json`)
 
-This command will claim any rewards you've earned from contributing to the training run.
+This command will claim any rewards you've earned from contributing to the
+training run.
 
 ## Building from source
 
-If you wish to run the run-manager from source, first make sure that you have followed the [development setup](../development/setup.md), are inside the `nix` environment, and run `just run-manager path/to/.env.file`
+If you wish to run the run-manager from source, first make sure that you have
+followed the [development setup](../development/setup.md), are inside the `nix`
+environment, and run `just run-manager path/to/.env.file`

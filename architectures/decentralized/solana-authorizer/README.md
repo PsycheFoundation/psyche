@@ -1,6 +1,7 @@
 # Psyche Solana Authorizer
 
-This smart contract is a piece of the Psyche's onchain logic dedicated to giving permissions to specific users.
+This smart contract is a piece of the Psyche's onchain logic dedicated to giving
+permissions to specific users.
 
 ## How it works
 
@@ -8,9 +9,11 @@ The Authorizer smart contract manages `Authorization` PDAs.
 
 Each `Authorization` PDA represents:
 
-A single role (the `scope`), assigned to a single user (the `grantee`), by a specific authority (the `grantor`).
+A single role (the `scope`), assigned to a single user (the `grantee`), by a
+specific authority (the `grantor`).
 
-The `grantee` is then able to select a list of other keys that can act on its behalf (the `delegates`).
+The `grantee` is then able to select a list of other keys that can act on its
+behalf (the `delegates`).
 
 Conceptually an `Authorization` is made of:
 
@@ -47,17 +50,20 @@ impl Authorization {
 }
 ```
 
-The smart contract then exposes a set of instruction to manipulate those `Authorization` PDAs:
+The smart contract then exposes a set of instruction to manipulate those
+`Authorization` PDAs:
 
 - `authorization_create`, create a new PDA
-- `authorization_grantor_update`, allow the grantor to activate/deactivate the authorization
+- `authorization_grantor_update`, allow the grantor to activate/deactivate the
+  authorization
 - `authorization_grantee_update`, allow the grantee to add/remove delegates
 - `authorization_close` allow the grantor to remove the PDA
 
 ## Example usages
 
-Note: We'll use the `jq` library in this example which is an open-source JSON cli tool <https://jqlang.org/>
-Note: We'll also use the `solana-toolbox` from the `cargo install solana_toolbox_cli` rust crate
+Note: We'll use the `jq` library in this example which is an open-source JSON
+cli tool <https://jqlang.org/> Note: We'll also use the `solana-toolbox` from
+the `cargo install solana_toolbox_cli` rust crate
 
 ## Setting up an authorized user from the authority
 
@@ -102,7 +108,8 @@ solana-toolbox --rpc=devnet instruction \
 
 ## Setting up delegates from the authorized user
 
-Here is an example from the user's perspective to add delegates for its own master key
+Here is an example from the user's perspective to add delegates for its own
+master key
 
 ```sh
 # Deployed authorizer

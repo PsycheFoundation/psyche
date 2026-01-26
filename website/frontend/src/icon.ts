@@ -1,3 +1,3 @@
-import { svgFillCurrentColor } from './utils.js'
+import { svgFillCurrentColor } from "./utils.js";
 
-export const iconClass = `icon ${svgFillCurrentColor}`
+export const iconClass = `icon ${svgFillCurrentColor}`;

@@ -1,51 +1,51 @@
 {
-	"name": "psyche-website-backend",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
-	"type": "module",
-	"scripts": {
-		"get-commit": "test -z \"$(git status --porcelain)\" && echo \"$(git rev-parse --short HEAD)\" || echo \"$(git rev-parse --short HEAD)-dirty\"",
-		"build-wasm": "cd ../wasm && ./build.sh",
-		"prep": "pnpm i && pnpm -C ../shared build-idl && pnpm build-wasm",
-		"dev": "pnpm prep && NODE_ENV=development GITCOMMIT=$(pnpm --silent run get-commit) NODE_OPTIONS='--max-old-space-size=10000' nodemon",
-		"dev-local": "COORDINATOR_WS_RPC=http://localhost:8900 COORDINATOR_RPC=http://localhost:8899 MINING_POOL_WS_RPC=http://localhost:8900 MINING_POOL_RPC=http://localhost:8899 pnpm dev",
-		"dev-local-and-devnet": "COORDINATOR_RPC=http://localhost:8899 MINING_POOL_RPC=\"${MINING_POOL_RPC:-$devnet__rpc}\" pnpm dev",
-		"dev-devnet": "COORDINATOR_MIN_SLOT=378081650 COORDINATOR_RPC=\"${COORDINATOR_RPC:-$devnet__rpc}\" MINING_POOL_RPC=\"${MINING_POOL_RPC:-$devnet__rpc}\" pnpm dev",
-		"dev-devnet-and-mainnet": "COORDINATOR_MIN_SLOT=378081650 COORDINATOR_RPC=\"${COORDINATOR_RPC:-$devnet__rpc}\" MINING_POOL_RPC=\"${MINING_POOL_RPC:-$mainnet__rpc}\" MINING_POOL_PROGRAM_ID=PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf pnpm dev",
-		"build": "rm -rf dist/ && node esbuild.js"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"devDependencies": {
-		"@mikro-orm/cli": "^6.4.5",
-		"@types/bn.js": "^5.1.6",
-		"@types/node": "^22.12.0",
-		"@types/write-file-atomic": "^4.0.3",
-		"esbuild": "^0.25.0",
-		"nodemon": "^3.1.9",
-		"ts-node": "^10.9.2",
-		"typescript": "^5.5.4",
-		"vitest": "^3.0.4"
-	},
-	"dependencies": {
-		"@coral-xyz/anchor": "^0.30.1",
-		"@fastify/cors": "^10.1.0",
-		"@mikro-orm/core": "^6.4.5",
-		"@mikro-orm/reflection": "^6.4.5",
-		"@mikro-orm/sqlite": "^6.4.5",
-		"@solana/spl-token": "^0.4.13",
-		"@solana/web3.js": "^1.98.0",
-		"fastify": "^5.2.1",
-		"psyche-deserialize-zerocopy-wasm": "link:../wasm/pkg",
-		"shared": "link:../shared",
-		"write-file-atomic": "^6.0.0"
-	},
-	"mikro-orm": {
-		"configPaths": [
-			"./src/mikro-orm.config.ts",
-			"./dist/mikro-orm.config.js"
-		]
-	}
+  "name": "psyche-website-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "get-commit": "test -z \"$(git status --porcelain)\" && echo \"$(git rev-parse --short HEAD)\" || echo \"$(git rev-parse --short HEAD)-dirty\"",
+    "build-wasm": "cd ../wasm && ./build.sh",
+    "prep": "pnpm i && pnpm -C ../shared build-idl && pnpm build-wasm",
+    "dev": "pnpm prep && NODE_ENV=development GITCOMMIT=$(pnpm --silent run get-commit) NODE_OPTIONS='--max-old-space-size=10000' nodemon",
+    "dev-local": "COORDINATOR_WS_RPC=http://localhost:8900 COORDINATOR_RPC=http://localhost:8899 MINING_POOL_WS_RPC=http://localhost:8900 MINING_POOL_RPC=http://localhost:8899 pnpm dev",
+    "dev-local-and-devnet": "COORDINATOR_RPC=http://localhost:8899 MINING_POOL_RPC=\"${MINING_POOL_RPC:-$devnet__rpc}\" pnpm dev",
+    "dev-devnet": "COORDINATOR_MIN_SLOT=378081650 COORDINATOR_RPC=\"${COORDINATOR_RPC:-$devnet__rpc}\" MINING_POOL_RPC=\"${MINING_POOL_RPC:-$devnet__rpc}\" pnpm dev",
+    "dev-devnet-and-mainnet": "COORDINATOR_MIN_SLOT=378081650 COORDINATOR_RPC=\"${COORDINATOR_RPC:-$devnet__rpc}\" MINING_POOL_RPC=\"${MINING_POOL_RPC:-$mainnet__rpc}\" MINING_POOL_PROGRAM_ID=PsyMP8fXEEMo2C6C84s8eXuRUrvzQnZyquyjipDRohf pnpm dev",
+    "build": "rm -rf dist/ && node esbuild.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@mikro-orm/cli": "^6.4.5",
+    "@types/bn.js": "^5.1.6",
+    "@types/node": "^22.12.0",
+    "@types/write-file-atomic": "^4.0.3",
+    "esbuild": "^0.25.0",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4",
+    "vitest": "^3.0.4"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
+    "@fastify/cors": "^10.1.0",
+    "@mikro-orm/core": "^6.4.5",
+    "@mikro-orm/reflection": "^6.4.5",
+    "@mikro-orm/sqlite": "^6.4.5",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.0",
+    "fastify": "^5.2.1",
+    "psyche-deserialize-zerocopy-wasm": "link:../wasm/pkg",
+    "shared": "link:../shared",
+    "write-file-atomic": "^6.0.0"
+  },
+  "mikro-orm": {
+    "configPaths": [
+      "./src/mikro-orm.config.ts",
+      "./dist/mikro-orm.config.js"
+    ]
+  }
 }

@@ -35,24 +35,24 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 */
 
 .psyche-dark pre code.hljs {
-	display: block;
-	overflow-x: auto;
-	padding: 1em;
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
 }
 
 .psyche-dark code.hljs {
-	padding: 3px 5px;
+  padding: 3px 5px;
 }
 
 .psyche-dark .hljs {
-	color: #a8a19f;
-	background: #1b1918;
+  color: #a8a19f;
+  background: #1b1918;
 }
 
 .psyche-dark .hljs::selection,
 .psyche-dark .hljs ::selection {
-	background-color: #68615e;
-	color: #a8a19f;
+  background-color: #68615e;
+  color: #a8a19f;
 }
 
 /* purposely do not highlight these things */
@@ -63,23 +63,23 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 
 /* base03 - #766e6b -  Comments, Invisibles, Line Highlighting */
 .psyche-dark .hljs-comment {
-	color: #766e6b;
+  color: #766e6b;
 }
 
 /* base04 - #9c9491 -  Dark Foreground (Used for status bars) */
 .psyche-dark .hljs-tag {
-	color: #9c9491;
+  color: #9c9491;
 }
 
 /* base05 - #a8a19f -  Default Foreground, Caret, Delimiters, Operators */
 .psyche-dark .hljs-subst,
 .psyche-dark .hljs-punctuation,
 .psyche-dark .hljs-operator {
-	color: #a8a19f;
+  color: #a8a19f;
 }
 
 .psyche-dark .hljs-operator {
-	opacity: 0.7;
+  opacity: 0.7;
 }
 
 /* base08 - Variables, XML Tags, Markup Link Text, Markup Lists, Diff Deleted */
@@ -89,7 +89,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-dark .hljs-selector-tag,
 .psyche-dark .hljs-name,
 .psyche-dark .hljs-deletion {
-	color: #f22c40;
+  color: #f22c40;
 }
 
 /* base09 - Integers, Boolean, Constants, XML Attributes, Markup Link Url */
@@ -99,19 +99,19 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-dark .hljs-attr,
 .psyche-dark .hljs-variable.constant_,
 .psyche-dark .hljs-literal {
-	color: #df5320;
+  color: #df5320;
 }
 
 /* base0A - Classes, Markup Bold, Search Text Background */
 .psyche-dark .hljs-title,
 .psyche-dark .hljs-class .hljs-title,
 .psyche-dark .hljs-title.class_ {
-	color: #c38418;
+  color: #c38418;
 }
 
 .psyche-dark .hljs-strong {
-	font-weight: bold;
-	color: #c38418;
+  font-weight: bold;
+  color: #c38418;
 }
 
 /* base0B - Strings, Inherited Class, Markup Code, Diff Inserted */
@@ -119,7 +119,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-dark .hljs-addition,
 .psyche-dark .hljs-title.class_.inherited__,
 .psyche-dark .hljs-string {
-	color: #7b9726;
+  color: #7b9726;
 }
 
 /* base0C - Support, Regular Expressions, Escape Characters, Markup Quotes */
@@ -128,7 +128,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-dark .hljs-quote,
 .psyche-dark .hljs-keyword.hljs-atrule,
 .psyche-dark .hljs-regexp {
-	color: #3d97b8;
+  color: #3d97b8;
 }
 
 /* base0D - Functions, Methods, Attribute IDs, Headings */
@@ -137,7 +137,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .ruby .hljs-property,
 .psyche-dark .hljs-title.function_,
 .psyche-dark .hljs-section {
-	color: #407ee7;
+  color: #407ee7;
 }
 
 /* base0E - Keywords, Storage, Selector, Markup Italic, Diff Changed */
@@ -149,11 +149,11 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-dark .hljs-template-tag,
 .diff .hljs-meta,
 .psyche-dark .hljs-keyword {
-	color: #6666ea;
+  color: #6666ea;
 }
 .psyche-dark .hljs-emphasis {
-	color: #6666ea;
-	font-style: italic;
+  color: #6666ea;
+  font-style: italic;
 }
 
 /* base0F - Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php ?> */
@@ -164,13 +164,13 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 */
 .psyche-dark .hljs-meta .hljs-keyword,
 .psyche-dark .hljs-meta .hljs-string {
-	color: #c33ff3;
+  color: #c33ff3;
 }
 
 .psyche-dark .hljs-meta .hljs-keyword,
 /* for v10 compatible themes */
 .psyche-dark .hljs-meta-keyword {
-	font-weight: bold;
+  font-weight: bold;
 }
 
 /*!
@@ -210,24 +210,24 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 */
 
 .psyche-light pre code.hljs {
-	display: block;
-	overflow-x: auto;
-	padding: 1em;
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
 }
 
 .psyche-light code.hljs {
-	padding: 3px 5px;
+  padding: 3px 5px;
 }
 
 .psyche-light .hljs {
-	color: #68615e;
-	background: #f1efee;
+  color: #68615e;
+  background: #f1efee;
 }
 
 .psyche-light .hljs::selection,
 .psyche-light .hljs ::selection {
-	background-color: #a8a19f;
-	color: #68615e;
+  background-color: #a8a19f;
+  color: #68615e;
 }
 
 /* purposely do not highlight these things */
@@ -238,23 +238,23 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 
 /* base03 - #9c9491 -  Comments, Invisibles, Line Highlighting */
 .psyche-light .hljs-comment {
-	color: #9c9491;
+  color: #9c9491;
 }
 
 /* base04 - #766e6b -  Dark Foreground (Used for status bars) */
 .psyche-light .hljs-tag {
-	color: #766e6b;
+  color: #766e6b;
 }
 
 /* base05 - #68615e -  Default Foreground, Caret, Delimiters, Operators */
 .psyche-light .hljs-subst,
 .psyche-light .hljs-punctuation,
 .psyche-light .hljs-operator {
-	color: #68615e;
+  color: #68615e;
 }
 
 .psyche-light .hljs-operator {
-	opacity: 0.7;
+  opacity: 0.7;
 }
 
 /* base08 - Variables, XML Tags, Markup Link Text, Markup Lists, Diff Deleted */
@@ -264,7 +264,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-light .hljs-selector-tag,
 .psyche-light .hljs-name,
 .psyche-light .hljs-deletion {
-	color: #f22c40;
+  color: #f22c40;
 }
 
 /* base09 - Integers, Boolean, Constants, XML Attributes, Markup Link Url */
@@ -274,19 +274,19 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-light .hljs-attr,
 .psyche-light .hljs-variable.constant_,
 .psyche-light .hljs-literal {
-	color: #df5320;
+  color: #df5320;
 }
 
 /* base0A - Classes, Markup Bold, Search Text Background */
 .psyche-light .hljs-title,
 .psyche-light .hljs-class .hljs-title,
 .psyche-light .hljs-title.class_ {
-	color: #c38418;
+  color: #c38418;
 }
 
 .psyche-light .hljs-strong {
-	font-weight: bold;
-	color: #c38418;
+  font-weight: bold;
+  color: #c38418;
 }
 
 /* base0B - Strings, Inherited Class, Markup Code, Diff Inserted */
@@ -294,7 +294,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-light .hljs-addition,
 .psyche-light .hljs-title.class_.inherited__,
 .psyche-light .hljs-string {
-	color: #7b9726;
+  color: #7b9726;
 }
 
 /* base0C - Support, Regular Expressions, Escape Characters, Markup Quotes */
@@ -303,7 +303,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-light .hljs-quote,
 .psyche-light .hljs-keyword.hljs-atrule,
 .psyche-light .hljs-regexp {
-	color: #3d97b8;
+  color: #3d97b8;
 }
 
 /* base0D - Functions, Methods, Attribute IDs, Headings */
@@ -312,7 +312,7 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .ruby .hljs-property,
 .psyche-light .hljs-title.function_,
 .psyche-light .hljs-section {
-	color: #407ee7;
+  color: #407ee7;
 }
 
 /* base0E - Keywords, Storage, Selector, Markup Italic, Diff Changed */
@@ -324,11 +324,11 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 .psyche-light .hljs-template-tag,
 .diff .hljs-meta,
 .psyche-light .hljs-keyword {
-	color: #6666ea;
+  color: #6666ea;
 }
 .psyche-light .hljs-emphasis {
-	color: #6666ea;
-	font-style: italic;
+  color: #6666ea;
+  font-style: italic;
 }
 
 /* base0F - Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php ?> */
@@ -339,88 +339,88 @@ base0F  #c33ff3  Deprecated, Opening/Closing Embedded Language Tags, e.g. <?php 
 */
 .psyche-light .hljs-meta .hljs-keyword,
 .psyche-light .hljs-meta .hljs-string {
-	color: #c33ff3;
+  color: #c33ff3;
 }
 
 .psyche-light .hljs-meta .hljs-keyword,
 /* for v10 compatible themes */
 .psyche-light .hljs-meta-keyword {
-	font-weight: bold;
+  font-weight: bold;
 }
 
 .psyche-light {
-	--darkgreen: #243d26;
-	--slate-100: #f7f8f7;
-	--slate-200: #eff2ee;
-	--brightgreen: #005e08;
-	--med-green: #4b970c;
+  --darkgreen: #243d26;
+  --slate-100: #f7f8f7;
+  --slate-200: #eff2ee;
+  --brightgreen: #005e08;
+  --med-green: #4b970c;
 
-	--bg: var(--slate-100);
-	--fg: var(--darkgreen);
-	--sidebar-bg: var(--slate-200);
-	--sidebar-fg: var(--darkgreen);
-	--sidebar-non-existant: var(--darkgreen);
-	--sidebar-active: var(--brightgreen);
-	--sidebar-spacer: var(--darkgreen);
-	--scrollbar: var(--darkgreen);
-	--icons: var(--darkgreen);
-	--icons-hover: #7c7f93;
-	--links: var(--brightgreen);
-	--inline-code-color: var(--darkgreen);
-	--theme-popup-bg: var(--slate-100);
-	--theme-popup-border: var(--darkgreen);
-	--theme-hover: var(--slate-200);
-	--quote-bg: var(--slate-200);
-	--quote-border: #dce0e8;
-	--table-border-color: var(--darkgreen);
-	--table-header-bg: var(--slate-200);
-	--table-alternate-bg: var(--slate-200);
-	--searchbar-border-color: var(--darkgreen);
-	--searchbar-bg: var(--slate-200);
-	--searchbar-fg: var(--darkgreen);
-	--searchbar-shadow-color: #dce0e8;
-	--searchresults-header-fg: var(--darkgreen);
-	--searchresults-border-color: var(--darkgreen);
-	--searchresults-li-bg: var(--slate-100);
-	--search-mark-bg: #fe640b;
-	--warning-border: #fe640b;
-	--color-scheme: light;
+  --bg: var(--slate-100);
+  --fg: var(--darkgreen);
+  --sidebar-bg: var(--slate-200);
+  --sidebar-fg: var(--darkgreen);
+  --sidebar-non-existant: var(--darkgreen);
+  --sidebar-active: var(--brightgreen);
+  --sidebar-spacer: var(--darkgreen);
+  --scrollbar: var(--darkgreen);
+  --icons: var(--darkgreen);
+  --icons-hover: #7c7f93;
+  --links: var(--brightgreen);
+  --inline-code-color: var(--darkgreen);
+  --theme-popup-bg: var(--slate-100);
+  --theme-popup-border: var(--darkgreen);
+  --theme-hover: var(--slate-200);
+  --quote-bg: var(--slate-200);
+  --quote-border: #dce0e8;
+  --table-border-color: var(--darkgreen);
+  --table-header-bg: var(--slate-200);
+  --table-alternate-bg: var(--slate-200);
+  --searchbar-border-color: var(--darkgreen);
+  --searchbar-bg: var(--slate-200);
+  --searchbar-fg: var(--darkgreen);
+  --searchbar-shadow-color: #dce0e8;
+  --searchresults-header-fg: var(--darkgreen);
+  --searchresults-border-color: var(--darkgreen);
+  --searchresults-li-bg: var(--slate-100);
+  --search-mark-bg: #fe640b;
+  --warning-border: #fe640b;
+  --color-scheme: light;
 }
 
 .psyche-dark {
-	--darkgreen: #243d26;
-	--bright: #fcfdfc;
-	--brightgreen: #4b9551;
-	--med-green: #2a4b2d;
+  --darkgreen: #243d26;
+  --bright: #fcfdfc;
+  --brightgreen: #4b9551;
+  --med-green: #2a4b2d;
 
-	--bg: var(--darkgreen);
-	--fg: var(--bright);
-	--sidebar-bg: var(--darkgreen);
-	--sidebar-fg: var(--bright);
-	--sidebar-non-existant: var(--bright);
-	--sidebar-active: var(--brightgreen);
-	--sidebar-spacer: var(--bright);
-	--scrollbar: var(--bright);
-	--icons: var(--bright);
-	--icons-hover: var(--brightgreen);
-	--links: var(--brightgreen);
-	--inline-code-color: var(--bright);
-	--theme-popup-bg: var(--darkgreen);
-	--theme-popup-border: var(--bright);
-	--theme-hover: var(--med-green);
-	--quote-bg: var(--darkgreen);
-	--quote-border: #232634;
-	--table-border-color: var(--brightgreen);
-	--table-header-bg: var(--darkgreen);
-	--table-alternate-bg: var(--darkgreen);
-	--searchbar-border-color: var(--brightgreen);
-	--searchbar-bg: var(--darkgreen);
-	--searchbar-fg: var(--bright);
-	--searchbar-shadow-color: #232634;
-	--searchresults-header-fg: var(--bright);
-	--searchresults-border-color: var(--brightgreen);
-	--searchresults-li-bg: var(--darkgreen);
-	--search-mark-bg: #ef9f76;
-	--warning-border: #ef9f76;
-	--color-scheme: dark;
+  --bg: var(--darkgreen);
+  --fg: var(--bright);
+  --sidebar-bg: var(--darkgreen);
+  --sidebar-fg: var(--bright);
+  --sidebar-non-existant: var(--bright);
+  --sidebar-active: var(--brightgreen);
+  --sidebar-spacer: var(--bright);
+  --scrollbar: var(--bright);
+  --icons: var(--bright);
+  --icons-hover: var(--brightgreen);
+  --links: var(--brightgreen);
+  --inline-code-color: var(--bright);
+  --theme-popup-bg: var(--darkgreen);
+  --theme-popup-border: var(--bright);
+  --theme-hover: var(--med-green);
+  --quote-bg: var(--darkgreen);
+  --quote-border: #232634;
+  --table-border-color: var(--brightgreen);
+  --table-header-bg: var(--darkgreen);
+  --table-alternate-bg: var(--darkgreen);
+  --searchbar-border-color: var(--brightgreen);
+  --searchbar-bg: var(--darkgreen);
+  --searchbar-fg: var(--bright);
+  --searchbar-shadow-color: #232634;
+  --searchresults-header-fg: var(--bright);
+  --searchresults-border-color: var(--brightgreen);
+  --searchresults-li-bg: var(--darkgreen);
+  --search-mark-bg: #ef9f76;
+  --warning-border: #ef9f76;
+  --color-scheme: dark;
 }
