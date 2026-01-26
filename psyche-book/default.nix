@@ -12,7 +12,9 @@
 let
   # Pull crate binary package names from rustPackages
   # prefer -nopython suffix if available, otherwise use normal version
-  allPackageNames = builtins.attrNames rustPackages;
+  allPackageNames = builtins.filter (name: !(lib.hasPrefix "test-" name)) (
+    builtins.attrNames rustPackages
+  );
 
   binaryPackageNames = lib.unique (
     builtins.filter (

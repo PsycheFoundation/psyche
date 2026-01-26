@@ -103,59 +103,10 @@ let
     // pythonDeps
   );
 
-  buildRustPackageWithPsychePythonEnvironment =
-    {
-      name,
-      isExample ? false,
-    }:
-    let
-      rustPackage = craneLib.buildPackage (
-        rustWorkspaceArgsWithPython
-        // {
-          inherit cargoArtifacts;
-          pname = name;
-          cargoExtraArgs =
-            rustWorkspaceArgsWithPython.cargoExtraArgs
-            + (if isExample then " --example ${name}" else " --bin ${name}");
-          doCheck = false;
-
-          meta.mainProgram = name;
-        }
-      );
-    in
-    pkgs.runCommand "${name}"
-      {
-        buildInputs = [ pkgs.makeWrapper ];
-        meta.mainProgram = name;
-      }
-      ''
-        mkdir -p $out/bin
-        makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-          --prefix PATH : "${psychePythonVenvWithExtension}/bin"
-      '';
-
-  buildRustPackageWithoutPython =
-    {
-      name,
-      isExample ? false,
-    }:
-    craneLib.buildPackage (
-      rustWorkspaceArgsNoPython
-      // {
-        cargoArtifacts = cargoArtifactsNoPython;
-        pname = name;
-        cargoExtraArgs =
-          rustWorkspaceArgsNoPython.cargoExtraArgs
-          + (if isExample then " --example ${name}" else " --bin ${name}");
-        doCheck = false;
-
-        meta.mainProgram = name;
-      }
-    );
-
   # builds a rust package
   # Returns an attrset of packages: { packageName = ...; packageName-nopython = ...; }
   # Automatically discovers and builds examples from the crate's examples/ directory
+  # Automatically discovers and builds integration tests from the crate's tests/ directory
   # Auto-detects if package has a main binary by checking for src/main.rs or src/bin/
   # needsPython: true = only with Python + ext, false = only without Python + ext, "optional" = both variants
   # needsGpu: wraps the package with nix-gl-host
@@ -163,74 +114,141 @@ let
     {
       needsPython ? false,
       needsGpu ? false,
-      isExample ? false,
       cratePath, # path to the crate dir
     }:
     let
-      actualPath = if cratePath != null then cratePath else ./.;
+      buildMaybePythonRustPackage =
+        {
+          name,
+          type,
+          withPython,
+        }:
+        let
+          workspaceArgs = if withPython then rustWorkspaceArgsWithPython else rustWorkspaceArgsNoPython;
+          artifacts = if withPython then cargoArtifacts else cargoArtifactsNoPython;
+          rustPackage = craneLib.buildPackage (
+            workspaceArgs
+            // {
+              cargoArtifacts = artifacts;
+              pname = name;
+              cargoExtraArgs = workspaceArgs.cargoExtraArgs + " --${type} ${name}";
+              doCheck = false;
+              meta.mainProgram = name;
+            }
+          );
+        in
+        if withPython then
+          pkgs.runCommand "${name}"
+            {
+              buildInputs = [ pkgs.makeWrapper ];
+              meta.mainProgram = name;
+            }
+            ''
+              mkdir -p $out/bin
+              makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
+                --prefix PATH : "${psychePythonVenvWithExtension}/bin"
+            ''
+        else
+          rustPackage;
 
+      # build a target with python/nopython variants
+      buildTarget =
+        {
+          name,
+          outName ? name,
+          type,
+          needsPython,
+          needsGpu,
+        }:
+        let
+          maybeWrapGpu = pkg: if needsGpu then useHostGpuDrivers pkg else pkg;
+
+          withPython = maybeWrapGpu (buildMaybePythonRustPackage {
+            inherit name type;
+            withPython = true;
+          });
+          withoutPython = maybeWrapGpu (buildMaybePythonRustPackage {
+            inherit name type;
+            withPython = false;
+          });
+
+        in
+        if needsPython == "optional" then
+          {
+            ${outName} = withPython;
+            "${outName}-nopython" = withoutPython;
+          }
+        else if lib.isBool needsPython then
+          { ${outName} = if needsPython then withPython else withoutPython; }
+        else
+          throw "needsPython must be true, false, or \"optional\", got: ${builtins.toString needsPython}";
+
+      allRsFilenamesInDir =
+        dir:
+        let
+          entries = if builtins.pathExists dir then builtins.readDir dir else { };
+          rustFiles = lib.filterAttrs (n: v: v == "regular" && lib.hasSuffix ".rs" n) entries;
+        in
+        lib.mapAttrsToList (name: _: lib.removeSuffix ".rs" name) rustFiles;
+
+      buildTargetsFromDir =
+        {
+          dir,
+          type,
+          needsPython,
+          needsGpu,
+          prefix ? "",
+        }:
+        let
+          targetNames = allRsFilenamesInDir dir;
+          buildOne =
+            name:
+            buildTarget {
+              inherit
+                name
+                type
+                needsPython
+                needsGpu
+                ;
+              outName = "${prefix}${name}";
+            };
+        in
+        builtins.foldl' (acc: name: acc // (buildOne name)) { } targetNames;
+
+      actualPath = if cratePath != null then cratePath else ./.;
       cargoToml = builtins.fromTOML (builtins.readFile (actualPath + "/Cargo.toml"));
       packageName = cargoToml.package.name;
 
-      # Auto-detect if this crate has a binary
       hasMainRs = builtins.pathExists (actualPath + "/src/main.rs");
       hasBinDir = builtins.pathExists (actualPath + "/src/bin");
       hasBinary = hasMainRs || hasBinDir;
 
-      buildVariants =
-        name: withPython: withoutPython:
-        let
-          maybeWrapGpu = pkg: if needsGpu then useHostGpuDrivers pkg else pkg;
-        in
-        if needsPython == "optional" then
-          {
-            ${name} = maybeWrapGpu withPython;
-            "${name}-nopython" = maybeWrapGpu withoutPython;
-          }
-        else if lib.isBool needsPython then
-          {
-            ${name} = maybeWrapGpu (if needsPython then withPython else withoutPython);
-          }
+      mainPackages =
+        if !hasBinary then
+          { }
         else
-          throw "needsPython must be true, false, or \"optional\", got: ${builtins.toString needsPython}";
-
-      withPython = buildRustPackageWithPsychePythonEnvironment {
-        name = packageName;
-        inherit isExample;
-      };
-
-      withoutPython = buildRustPackageWithoutPython {
-        name = packageName;
-        inherit isExample;
-      };
-
-      mainPackages = if !hasBinary then { } else buildVariants packageName withPython withoutPython;
+          buildTarget {
+            name = packageName;
+            type = "bin";
+            inherit needsPython needsGpu;
+          };
 
       examplesDir = actualPath + "/examples";
+      examplePackages = buildTargetsFromDir {
+        dir = examplesDir;
+        type = "example";
+        inherit needsPython needsGpu;
+      };
 
-      examplePackages =
-        let
-          entries = if builtins.pathExists examplesDir then builtins.readDir examplesDir else { };
-          exampleFiles = lib.filterAttrs (n: v: v == "regular" && lib.hasSuffix ".rs" n) entries;
-          exampleNames = lib.mapAttrsToList (name: _: lib.removeSuffix ".rs" name) exampleFiles;
-
-          buildExample =
-            exampleName:
-            let
-              build =
-                builder:
-                builder {
-                  name = exampleName;
-                  isExample = true;
-                };
-              withPythonExample = build buildRustPackageWithPsychePythonEnvironment;
-              withoutPythonExample = build buildRustPackageWithoutPython;
-            in
-            buildVariants exampleName withPythonExample withoutPythonExample;
-        in
-        builtins.foldl' (acc: exampleName: acc // (buildExample exampleName)) { } exampleNames;
+      testsDir = actualPath + "/tests";
+      testPackages = buildTargetsFromDir {
+        dir = testsDir;
+        type = "test";
+        prefix = "test-${packageName}-";
+        inherit needsPython needsGpu;
+      };
     in
-    mainPackages // examplePackages;
+    mainPackages // examplePackages // testPackages;
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
@@ -387,8 +405,6 @@ in
     rustWorkspaceArgs
     rustWorkspaceArgsWithPython
     cargoArtifacts
-    buildRustPackageWithPsychePythonEnvironment
-    buildRustPackageWithoutPython
     buildRustPackage
     buildRustWasmTsPackage
     useHostGpuDrivers

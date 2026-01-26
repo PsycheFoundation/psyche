@@ -97,10 +97,10 @@ jobs:
           echo "Disk space after client build"
           df -h
 
-      # pre-build run-manager
-      - name: Build run-manager
+      - name: Build run-manager & integration tests
         run: |
           nix build --out-link run-manager .#run-manager
+          nix build --out-link do-test .#test-psyche-decentralized-testing-integration_tests
 
       # Clean Nix store
       - name: Clean after client build
@@ -134,4 +134,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "${{ inputs.test-name }}"
+          nix run .#test-psyche-decentralized-testing-integration_tests -- --nocapture "${{ inputs.test-name }}"
