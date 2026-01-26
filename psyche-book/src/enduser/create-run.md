@@ -86,11 +86,30 @@ run-manager create-run \
 
 At this point, your run has been successfully created.
 
+### Updating the parallelism lookup table (recommended)
+
+If your run uses a model that is not already in the [parallelism lookup table](https://github.com/PsycheFoundation/psyche/blob/main/shared/client/src/parallelism_data.json), it's recommended to add the optimal parallelism configuration for your model and target GPU hardware. This allows clients to use `PARALLELISM_AUTO=true` for automatic configuration.
+
+The table maps model (HuggingFace repo ID) → GPU type → number of GPUs → parallelism settings:
+
+```json
+{
+	"your-org/your-model": {
+		"H100": {
+			"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
+			"8": { "dp": 4, "tp": 2, "micro_batch_size": 4 }
+		}
+	}
+}
+```
+
+Consider opening a PR to add your model's configuration so other clients can benefit from it.
+
 ### Initializing configuration
 
 Initially, the run will not have any configuration defined and will remain paused, so no clients can join yet.
 
-To set the run configuration, you’ll need to provide mostly the same parameters as when creating the run, along with the path to a `config.toml` file that follows the [run config schema](./run-config.md).
+To set the run configuration, you'll need to provide mostly the same parameters as when creating the run, along with the path to a `config.toml` file that follows the [run config schema](./run-config.md).
 
 ```bash
 run-manager update-config \
