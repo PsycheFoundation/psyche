@@ -224,6 +224,7 @@ def main():
 
     device = args.device if args.device else 0
 
+    logger.info(f"Creating model with dp={dp}, tp={tp} on device {device}")
     model = make_causal_lm(
         architecture,
         source,
@@ -232,14 +233,17 @@ def main():
         dp=dp,
         tp=tp,
     )
+    logger.info("Model created successfully, entering main operation loop")
 
     trainer: Optional[Trainer] = None
     iteration = 0
 
     while True:
+        logger.info(f"Waiting for operation {iteration} from store")
         try:
             operation = store.get(str(iteration))
         except:
+            logger.info("Store closed, exiting")
             return
         operation = json.loads(operation.decode())
 
