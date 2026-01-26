@@ -2,16 +2,16 @@
 	"_doc (HuggingFace repo)": {
 		"gpu type from nvidia-smi": {
 			"numember of gpus": {
-				"dp": "data parallelism",
-				"tp": "tensor parallelism",
-				"micro_batch_size": "micro batch size"
+				"dp": 0,
+				"tp": 0,
+				"micro_batch_size": 0
 			}
 		}
 	},
-	"NousResearch/Meta-Llama-3.1-8B": {
+	"emozilla/llama2-20m-init": {
 		"H100": {
-			"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
-			"8": { "dp": 8, "tp": 1, "micro_batch_size": 4 }
+			"1": { "dp": 1, "tp": 1, "micro_batch_size": 1 },
+			"8": { "dp": 1, "tp": 1, "micro_batch_size": 1 }
 		}
 	},
 	"TinyLlama/TinyLlama-1.1B-Chat-v0.4": {
@@ -20,9 +20,15 @@
 			"8": { "dp": 8, "tp": 1, "micro_batch_size": 8 }
 		}
 	},
+	"NousResearch/Meta-Llama-3.1-8B": {
+		"H100": {
+			"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
+			"8": { "dp": 8, "tp": 1, "micro_batch_size": 4 }
+		}
+	},
 	"deepseek-ai/DeepSeek-V2-Lite": {
 		"H100": {
-			"1": { "dp": 1, "tp": 1, "micro_batch_size": 2 },
+			"1": { "dp": 1, "tp": 1, "micro_batch_size": 1 },
 			"8": { "dp": 4, "tp": 2, "micro_batch_size": 2 }
 		}
 	},
