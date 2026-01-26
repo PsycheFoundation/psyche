@@ -299,9 +299,10 @@ impl PythonDistributedCausalLM {
 
                         // Wait for all ranks to be ready before broadcasting tensors
                         comm.barrier(Some(device))?;
-                        info!("Sharing parameters with the other ranks");
+                        let total_tensors = tensors_vec.len();
+                        info!("Sharing {} parameters with the other ranks", total_tensors);
 
-                        for (name, tensor) in tensors_vec.into_iter() {
+                        for (idx, (name, tensor)) in tensors_vec.into_iter().enumerate() {
                             comm.set(
                                 &format!("tensor_shape_{}", name),
                                 &serde_json::to_string(&tensor.size()).unwrap(),
@@ -311,7 +312,13 @@ impl PythonDistributedCausalLM {
                                 &format!("{:?}", tensor.kind()),
                             )?;
 
-                            debug!("Broadcasting tensor {} to other ranks", name);
+                            info!(
+                                "Broadcasting tensor {}/{}: {} (shape: {:?})",
+                                idx + 1,
+                                total_tensors,
+                                name,
+                                tensor.size()
+                            );
 
                             // To broadcast we have to move the tensor to the GPU
                             let tensor = tensor.to(device);
@@ -322,8 +329,11 @@ impl PythonDistributedCausalLM {
                             }
 
                             // Ensure all ranks have received the tensor before continuing
+                            info!("Waiting for barrier after tensor {}", name);
                             comm.barrier(Some(device))?;
+                            info!("Barrier passed for tensor {}", name);
                         }
+                        info!("Finished sharing all {} parameters", total_tensors);
                     }
                 }
                 comm.set("dp", &format!("{}", parallelism.dp))?;

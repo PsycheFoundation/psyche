@@ -1,10 +1,18 @@
 import torch
 import json
 import os
+import logging
 from contextlib import contextmanager, nullcontext
 
+import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
 import torch.nn.functional as F
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"timestamp":"%(asctime)s","level":"%(levelname)s","message":"%(message)s","target":"psyche.sidecar"}',
+)
+logger = logging.getLogger(__name__)
 
 from .causal_lm import CausalLM, PretrainedSourceRepoFiles, PretrainedSourceStateDict
 from typing import Tuple, Union, Iterable, Optional
@@ -255,19 +263,28 @@ class TorchtitanAuto(CausalLM):
             for k in model_sd.keys()
         }
 
-        for k, source in state_dict.items():
+        # Sort keys to ensure all ranks process tensors in the same order
+        # This is critical because distribute_tensor is a collective operation
+        sorted_keys = sorted(state_dict.keys())
+        total_keys = len(sorted_keys)
+        logger.info(f"_load_into_model: loading {total_keys} parameters")
+        for idx, k in enumerate(sorted_keys):
+            source = state_dict[k]
             actual_key = clean_to_actual.get(k)
             if actual_key is not None:
                 dest = model_sd[actual_key]
 
                 if isinstance(dest, DTensor):
+                    logger.info(f"Loading DTensor {idx+1}/{total_keys}: {k}")
                     source = distribute_tensor(
                         source, device_mesh=dest.device_mesh, placements=dest.placements
                     )
+                    logger.info(f"Distributed tensor {k}")
 
                 dest.copy_(source)
             else:
                 raise RuntimeError(f"Missing parameter {actual_key}")
+        logger.info(f"_load_into_model: finished loading all {total_keys} parameters")
 
     @staticmethod
     def from_pretrained(
@@ -376,10 +393,19 @@ class TorchtitanAuto(CausalLM):
             dcp.load(hf_state_dict, storage_reader=hf_storage_reader)
 
             state_dict = sd_adapter.from_hf(hf_state_dict)
+            # Barrier to synchronize all ranks before collective distribute_tensor operations
+            if dist.is_initialized():
+                dist.barrier()
             TorchtitanAuto._load_into_model(model, state_dict)
         else:
-            # state_dict already in TT format
+            # state_dict already in TT format (from P2P sharing)
+            # Barrier to synchronize all ranks before collective distribute_tensor operations
+            logger.info("Waiting for barrier before _load_into_model")
+            if dist.is_initialized():
+                dist.barrier()
+            logger.info("Barrier passed, calling _load_into_model")
             TorchtitanAuto._load_into_model(model, state_dict)
+            logger.info("Finished _load_into_model")
 
         loss_fn = build_cross_entropy_loss(job_config)
 
