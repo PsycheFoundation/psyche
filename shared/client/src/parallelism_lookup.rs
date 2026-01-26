@@ -16,12 +16,31 @@ pub struct ParallelismConfig {
 type Table = HashMap<String, HashMap<String, HashMap<String, ParallelismConfig>>>;
 
 fn get_gpu_type() -> String {
+    // Try nvidia-smi first
     let raw = Command::new("nvidia-smi")
         .args(["--query-gpu=name", "--format=csv,noheader"])
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .and_then(|s| s.lines().next().map(|l| l.trim().to_string()))
+        .filter(|s| !s.is_empty())
+        // Fallback: read from /proc/driver/nvidia (works in containers without nvidia-smi)
+        .or_else(|| {
+            std::fs::read_dir("/proc/driver/nvidia/gpus")
+                .ok()?
+                .filter_map(|e| e.ok())
+                .next()
+                .and_then(|entry| {
+                    let info_path = entry.path().join("information");
+                    std::fs::read_to_string(info_path).ok()
+                })
+                .and_then(|content| {
+                    content
+                        .lines()
+                        .find(|line| line.starts_with("Model:"))
+                        .map(|line| line.trim_start_matches("Model:").trim().to_string())
+                })
+        })
         .unwrap_or_default();
 
     // Normalize GPU name to match table keys
