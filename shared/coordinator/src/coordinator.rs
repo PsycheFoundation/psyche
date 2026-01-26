@@ -53,15 +53,6 @@ pub enum RunState {
     Paused = 7,
 }
 
-impl RunState {
-    pub fn halted(&self) -> bool {
-        matches!(
-            self,
-            RunState::Uninitialized | RunState::Finished | RunState::Paused
-        )
-    }
-}
-
 #[derive(
     Clone,
     Copy,
@@ -820,7 +811,10 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 
     pub fn halted(&self) -> bool {
-        self.run_state.halted()
+        matches!(
+            self.run_state,
+            RunState::Uninitialized | RunState::Finished | RunState::Paused
+        )
     }
 
     pub fn get_client_at_historical_index(
