@@ -97,7 +97,12 @@ jobs:
           echo "Disk space after client build"
           df -h
 
-      # Clean Nix store after client build
+      # pre-build run-manager
+      - name: Build run-manager
+        run: |
+          nix build --out-link run-manager .#run-manager
+
+      # Clean Nix store
       - name: Clean after client build
         run: |
           # Clean up the path file
