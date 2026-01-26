@@ -290,12 +290,14 @@ impl Default for PsycheNetworkConfig {
 pub fn spawn_psyche_network_with_config(
     config: PsycheNetworkConfig,
 ) -> Result<(), DockerWatcherError> {
-    ConfigBuilder::new()
+    let config_file_path = ConfigBuilder::new()
         .with_num_clients(config.num_clients)
         .with_architecture(&config.architecture)
         .with_model(&config.model)
         .with_batch_size(config.batch_size)
         .build();
+
+    println!("[+] Config file written to: {}", config_file_path.display());
 
     let mut command = Command::new("just");
     let output = command

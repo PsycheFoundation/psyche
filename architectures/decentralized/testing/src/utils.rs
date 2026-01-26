@@ -182,7 +182,7 @@ impl ConfigBuilder {
         self
     }
 
-    pub fn build(mut self) {
+    pub fn build(mut self) -> PathBuf {
         // Apply runtime overrides
         self.set_value("config.min_clients", self.num_clients as u32);
         self.set_value("config.init_min_clients", self.num_clients as u32);
@@ -203,6 +203,7 @@ impl ConfigBuilder {
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
         fs::write(&config_file_path, config_content).unwrap();
+        config_file_path
     }
 
     fn set_value(&mut self, path: &str, value: impl Into<toml::Value>) {
