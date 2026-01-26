@@ -4,15 +4,9 @@ import torch
 import json
 import os
 import torch.distributed as dist
-import logging
 
 from datetime import timedelta
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"timestamp":"%(asctime)s","level":"%(levelname)s","message":"%(message)s","target":"psyche.sidecar"}',
-)
-logger = logging.getLogger(__name__)
 from .. import (
     make_causal_lm,
     PretrainedSourceRepoFiles,
@@ -179,10 +173,8 @@ def main():
         config = store.get("config").decode()
         tensor_names = json.loads(store.get("tensor_names").decode())
         state_dict = {}
-        total_tensors = len(tensor_names)
-        logger.info(f"Receiving {total_tensors} parameters from rank 0")
 
-        for idx, name in enumerate(tensor_names):
+        for name in tensor_names:
             # Get metadata for this tensor
             tensor_shape = json.loads(store.get(f"tensor_shape_{name}").decode())
             tensor_dtype_str = store.get(f"tensor_dtype_{name}").decode()
@@ -198,23 +190,16 @@ def main():
             }
             tensor_dtype = dtype_map.get(tensor_dtype_str, torch.float32)
 
-            logger.info(
-                f"Receiving tensor {idx + 1}/{total_tensors}: {name} (shape: {tensor_shape})"
-            )
-
             # Create empty tensor to overwrite with the broadcasted tensor
             tensor = torch.empty(tensor_shape, dtype=tensor_dtype, device=args.device)
 
             dist.broadcast(tensor, 0)
-            logger.info(f"Waiting for barrier after tensor {name}")
             barrier()
-            logger.info(f"Barrier passed for tensor {name}")
 
             state_dict[name] = (
                 tensor.cpu()
             )  # move back to CPU memory so we don't hold full model in GPU memory
 
-        logger.info(f"Finished receiving all {total_tensors} parameters")
         source = PretrainedSourceStateDict(config_json=config, state_dict=state_dict)
     else:
         raise ValueError(f"Unsupported source type {source}")
@@ -224,7 +209,6 @@ def main():
 
     device = args.device if args.device else 0
 
-    logger.info(f"Creating model with dp={dp}, tp={tp} on device {device}")
     model = make_causal_lm(
         architecture,
         source,
@@ -233,17 +217,14 @@ def main():
         dp=dp,
         tp=tp,
     )
-    logger.info("Model created successfully, entering main operation loop")
 
     trainer: Optional[Trainer] = None
     iteration = 0
 
     while True:
-        logger.info(f"Waiting for operation {iteration} from store")
         try:
             operation = store.get(str(iteration))
         except:
-            logger.info("Store closed, exiting")
             return
         operation = json.loads(operation.decode())
 
