@@ -512,6 +512,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn cooldown_witness(
         &mut self,
+        from: &T,
         witness: Witness,
     ) -> std::result::Result<(), CoordinatorError> {
         if self.halted() {
@@ -520,6 +521,12 @@ impl<T: NodeIdentity> Coordinator<T> {
 
         if !matches!(self.run_state, RunState::Cooldown) {
             return Ok(());
+        }
+
+        // Verify the sender matches the witness index to prevent spoofing
+        let index = witness.proof.index as usize;
+        if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
+            return Err(CoordinatorError::InvalidWitness);
         }
 
         let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
@@ -630,6 +637,21 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
 
+        if self.halted() {
+            return Err(CoordinatorError::Halted);
+        }
+
+        if !matches!(self.run_state, RunState::Cooldown) {
+            return Err(CoordinatorError::InvalidRunState);
+        }
+
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
+        if !checkpointer_selection
+            .is_checkpointer(index as u64, self.epoch_state.clients.len() as u64)
+        {
+            return Err(CoordinatorError::InvalidWitness);
+        }
+
         let Model::LLM(llm) = &mut self.model;
         match (&llm.checkpoint, checkpoint_repo) {
             // If current is P2P, wrap the new checkpoint in P2P
@@ -649,20 +671,6 @@ impl<T: NodeIdentity> Coordinator<T> {
             }
             // Ignore other combinations
             _ => {}
-        }
-
-        if self.halted() {
-            return Err(CoordinatorError::Halted);
-        }
-
-        if !matches!(self.run_state, RunState::Cooldown) {
-            return Err(CoordinatorError::InvalidRunState);
-        }
-        let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
-        if !checkpointer_selection
-            .is_checkpointer(index as u64, self.epoch_state.clients.len() as u64)
-        {
-            return Err(CoordinatorError::InvalidWitness);
         }
 
         self.epoch_state.checkpointed = true;

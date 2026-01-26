@@ -233,9 +233,15 @@ impl CoordinatorInstanceState {
         self.tick()
     }
 
-    pub fn cooldown_witness(&mut self, witness: Witness) -> Result<()> {
+    pub fn cooldown_witness(
+        &mut self,
+        payer: &Pubkey,
+        witness: Witness,
+    ) -> Result<()> {
+        let id = self.clients_state.find_signer(payer)?;
+
         self.coordinator
-            .cooldown_witness(witness)
+            .cooldown_witness(id, witness)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         self.tick()
