@@ -8,22 +8,26 @@ WALLET_FILE="/root/.config/solana/id.json"
 
 solana airdrop 10 "$(solana-keygen pubkey)"
 
-bash /bin/join-authorization-create.sh ${RPC} ${WALLET_FILE} 11111111111111111111111111111111
-psyche-solana-client create-run \
+run-manager join-authorization-create \
+    --wallet-private-key-path ${WALLET_FILE} \
+    --rpc "${RPC}" \
+    --authorizer 11111111111111111111111111111111
+
+run-manager create-run \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \
     --ws-rpc "${WS_RPC}" \
     --run-id "${RUN_ID}" \
     --client-version "latest"
 
-psyche-solana-client update-config \
+run-manager update-config \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \
     --ws-rpc "${WS_RPC}" \
     --run-id "${RUN_ID}" \
     --config-path "/usr/local/config.toml"
 
-psyche-solana-client set-paused \
+run-manager set-paused \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \
     --ws-rpc "${WS_RPC}" \

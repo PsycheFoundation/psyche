@@ -164,6 +164,7 @@ impl CEval {
             answer,
             category: Some(subject.to_owned()),
             cot_content: None,
+            eval_name: CEval::name().to_string(),
         }
     }
 }
