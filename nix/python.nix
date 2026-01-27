@@ -31,9 +31,9 @@ let
   # packages that we provide to the venv via nix derivations
   topLevelNixPkgs = [
     "torch"
-    "vllm"
   ]
   ++ lib.optionals stdenvNoCC.hostPlatform.isLinux [
+    "vllm" # for inference package
     "flash-attn"
     "liger-kernel"
     # i'm really not a fan of providing torchtitan like this. i'd much rather have it be built as a git dep via uv2nix.

@@ -5,6 +5,8 @@
   gitcommit ? inputs.self.rev or inputs.self.dirtyRev or "unknown",
 }:
 let
+  optionalApply = cond: f: if cond then f else lib.id;
+
   system = pkgs.stdenv.hostPlatform.system;
 
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
@@ -110,11 +112,13 @@ let
   # Auto-detects if package has a main binary by checking for src/main.rs or src/bin/
   # needsPython: true = only with Python + ext, false = only without Python + ext, "optional" = both variants
   # needsGpu: wraps the package with nix-gl-host
+  # supportedSystems: list of systems to build on (e.g., [ "x86_64-linux" "aarch64-linux" ]), null means all systems
   buildRustPackage =
     {
       needsPython ? false,
       needsGpu ? false,
       cratePath, # path to the crate dir
+      supportedSystems ? null,
     }:
     let
       buildMaybePythonRustPackage =
@@ -123,9 +127,32 @@ let
           type,
           withPython,
         }:
+        assert lib.assertMsg (builtins.elem type [
+          "bin"
+          "test"
+          "example"
+        ]) "type must be 'bin', 'test', or 'example', got: ${type}";
         let
           workspaceArgs = if withPython then rustWorkspaceArgsWithPython else rustWorkspaceArgsNoPython;
           artifacts = if withPython then cargoArtifacts else cargoArtifactsNoPython;
+
+          # test builds aren't copied by default in crane, so we need our own copy phase for it
+          testInstallPhase = ''
+            mkdir -p $out/bin
+            # find the test binary in target/release/deps
+            # it has a hash suffix like `integration_tests-abc123` that we need to ignore
+            test_binary=$(find target/release/deps -maxdepth 1 -name "${name}-*" -type f -executable | head -n1)
+            if [ -n "$test_binary" ] && [ -f "$test_binary" ]; then
+              cp "$test_binary" $out/bin/${name}
+              chmod +x $out/bin/${name}
+            else
+              echo "Error: Test binary ${name}-* not found in target/release/deps"
+              echo "Contents of target/release/deps:"
+              ls -la target/release/deps/ | grep "${name}" || true
+              exit 1
+            fi
+          '';
+
           rustPackage = craneLib.buildPackage (
             workspaceArgs
             // {
@@ -135,21 +162,25 @@ let
               doCheck = false;
               meta.mainProgram = name;
             }
-          );
-        in
-        if withPython then
-          pkgs.runCommand "${name}"
-            {
-              buildInputs = [ pkgs.makeWrapper ];
-              meta.mainProgram = name;
+            // lib.optionalAttrs (type == "test") {
+              # for tests, skip crane's installFromCargoBuildLogHook and use custom install
+              doInstallCargoArtifacts = false;
+              installPhase = testInstallPhase;
             }
-            ''
-              mkdir -p $out/bin
-              makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-                --prefix PATH : "${psychePythonVenvWithExtension}/bin"
-            ''
-        else
-          rustPackage;
+          );
+          pythonWrappedRustPackage =
+            pkgs.runCommand "${name}"
+              {
+                buildInputs = [ pkgs.makeWrapper ];
+                meta.mainProgram = name;
+              }
+              ''
+                mkdir -p $out/bin
+                makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
+                  --prefix PATH : "${psychePythonVenvWithExtension}/bin"
+              '';
+        in
+        if withPython then pythonWrappedRustPackage else rustPackage;
 
       # build a target with python/nopython variants
       buildTarget =
@@ -161,7 +192,7 @@ let
           needsGpu,
         }:
         let
-          maybeWrapGpu = pkg: if needsGpu then useHostGpuDrivers pkg else pkg;
+          maybeWrapGpu = optionalApply needsGpu useHostGpuDrivers;
 
           withPython = maybeWrapGpu (buildMaybePythonRustPackage {
             inherit name type;
@@ -186,7 +217,7 @@ let
       allRsFilenamesInDir =
         dir:
         let
-          entries = if builtins.pathExists dir then builtins.readDir dir else { };
+          entries = lib.optionalAttrs (builtins.pathExists dir) (builtins.readDir dir);
           rustFiles = lib.filterAttrs (n: v: v == "regular" && lib.hasSuffix ".rs" n) entries;
         in
         lib.mapAttrsToList (name: _: lib.removeSuffix ".rs" name) rustFiles;
@@ -223,15 +254,11 @@ let
       hasBinDir = builtins.pathExists (actualPath + "/src/bin");
       hasBinary = hasMainRs || hasBinDir;
 
-      mainPackages =
-        if !hasBinary then
-          { }
-        else
-          buildTarget {
-            name = packageName;
-            type = "bin";
-            inherit needsPython needsGpu;
-          };
+      mainPackages = lib.optionalAttrs hasBinary (buildTarget {
+        name = packageName;
+        type = "bin";
+        inherit needsPython needsGpu;
+      });
 
       examplesDir = actualPath + "/examples";
       examplePackages = buildTargetsFromDir {
@@ -247,8 +274,10 @@ let
         prefix = "test-${packageName}-";
         inherit needsPython needsGpu;
       };
+
+      shouldBuildForThisSystem = supportedSystems == null || builtins.elem system supportedSystems;
     in
-    mainPackages // examplePackages // testPackages;
+    lib.optionalAttrs shouldBuildForThisSystem (mainPackages // examplePackages // testPackages);
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
@@ -302,30 +331,26 @@ let
       }
     );
 
-  useHostGpuDrivers =
-    if pkgs.config.cudaSupport then
-      (
-        package:
-        assert lib.assertMsg (
-          package.meta ? mainProgram
-        ) "Package ${package.name} must have meta.mainProgram set to use useHostGpuDrivers";
-        pkgs.runCommand "${package.name}-nixgl-wrapped"
-          {
-            nativeBuildInputs = [ pkgs.makeWrapper ];
-            meta.mainProgram = package.meta.mainProgram;
-          }
-          ''
-            mkdir -p $out/bin
-            for bin in ${package}/bin/*; do
-              if [ -f "$bin" ] && [ -x "$bin" ]; then
-                makeWrapper "$bin" "$out/bin/$(basename $bin)" \
-                  --run 'exec ${pkgs.nix-gl-host}/bin/nixglhost "'"$bin"'" -- "$@"'
-              fi
-            done
-          ''
-      )
-    else
-      (package: package);
+  useHostGpuDrivers = optionalApply pkgs.config.cudaSupport (
+    package:
+    assert lib.assertMsg (
+      package.meta ? mainProgram
+    ) "Package ${package.name} must have meta.mainProgram set to use useHostGpuDrivers";
+    pkgs.runCommand "${package.name}-nixgl-wrapped"
+      {
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        meta.mainProgram = package.meta.mainProgram;
+      }
+      ''
+        mkdir -p $out/bin
+        for bin in ${package}/bin/*; do
+          if [ -f "$bin" ] && [ -x "$bin" ]; then
+            makeWrapper "$bin" "$out/bin/$(basename $bin)" \
+              --run 'exec ${pkgs.nix-gl-host}/bin/nixglhost "'"$bin"'" -- "$@"'
+          fi
+        done
+      ''
+  );
 
   solanaCraneLib =
     (inputs.crane.mkLib pkgs).overrideToolchain
