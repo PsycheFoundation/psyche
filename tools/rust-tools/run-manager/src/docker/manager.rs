@@ -1,7 +1,8 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
+use anchor_client::solana_sdk::signature::{EncodableKey, Keypair, Signer};
 use anyhow::{Context, Result, anyhow, bail};
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Cursor};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tokio::signal;
@@ -96,12 +97,16 @@ impl RunManager {
             info!("  - {} (state: {})", run.run_id, run.run_state);
         }
 
-        let selected = select_best_run(&runs)?;
+        // Parse wallet key to get user's pubkey for authorization checks
+        let user_pubkey = parse_wallet_pubkey(&wallet_key)?;
+        info!("User pubkey: {}", user_pubkey);
+
+        let run_id = select_best_run(&runs, &user_pubkey, &coordinator_client)?;
+        let selected = runs.iter().find(|r| r.run_id == run_id).unwrap();
         info!(
             "Selected run: {} (state: {})",
             selected.run_id, selected.run_state
         );
-        let run_id = selected.run_id.clone();
 
         Ok(Self {
             wallet_key,
@@ -353,9 +358,26 @@ impl RunManager {
     }
 }
 
-fn select_best_run(runs: &[RunInfo]) -> Result<&RunInfo> {
+/// Parse wallet key string to extract the user's pubkey.
+fn parse_wallet_pubkey(wallet_key: &str) -> Result<Pubkey> {
+    let keypair = if wallet_key.starts_with('[') {
+        // Assume Keypair::read format (JSON array of bytes)
+        Keypair::read(&mut Cursor::new(wallet_key))
+            .map_err(|e| anyhow!("Failed to parse wallet key: {}", e))?
+    } else {
+        // Assume base58 encoded private key
+        Keypair::from_base58_string(wallet_key)
+    };
+    Ok(keypair.pubkey())
+}
+
+fn select_best_run(
+    runs: &[RunInfo],
+    user_pubkey: &Pubkey,
+    coordinator_client: &CoordinatorClient,
+) -> Result<String> {
     // Avoid joining runs that are halted
-    let mut joinable: Vec<_> = runs
+    let joinable: Vec<_> = runs
         .iter()
         .filter(|run| {
             !matches!(
@@ -372,11 +394,35 @@ fn select_best_run(runs: &[RunInfo]) -> Result<&RunInfo> {
         );
     }
 
+    // Filter out runs the user is not authorized to join
+    let mut authorized: Vec<_> = Vec::new();
+    for run in joinable {
+        match coordinator_client.can_user_join_run(run, user_pubkey) {
+            Ok(true) => authorized.push(run),
+            Ok(false) => {
+                info!(
+                    "Skipping run {} - not authorized (user: {})",
+                    run.run_id, user_pubkey
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Skipping run {} - failed to check authorization: {}",
+                    run.run_id, e
+                );
+            }
+        }
+    }
+
+    if authorized.is_empty() {
+        bail!("No authorized runs found for user {}.", user_pubkey);
+    }
+
     // Prioritize joining runs waiting for compute and then just pick the first one
     // available from those for now
-    joinable.sort_by_key(|run| match run.run_state {
+    authorized.sort_by_key(|run| match run.run_state {
         RunState::WaitingForMembers => 0,
         _ => 1,
     });
-    Ok(joinable[0])
+    Ok(authorized[0].run_id.clone())
 }
