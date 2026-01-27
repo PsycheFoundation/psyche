@@ -401,7 +401,7 @@ pub fn upload_json_to_gcs_sync<T: serde::Serialize>(
     object_path: &str,
     value: &T,
 ) -> Result<(), UploadError> {
-    let rt = Runtime::new().map_err(|e| UploadError::Io(e))?;
+    let rt = Runtime::new().map_err(UploadError::Io)?;
     rt.block_on(upload_json_to_gcs(bucket, object_path, value))
 }
 

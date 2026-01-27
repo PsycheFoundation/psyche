@@ -291,7 +291,7 @@ pub fn get_config_gcs_uri(checkpoint: &Checkpoint) -> Option<String> {
 pub fn get_config_gcs_repo(checkpoint: &Checkpoint) -> Option<GcsRepo> {
     match checkpoint {
         Checkpoint::Gcs(repo) | Checkpoint::P2PGcs(repo) => Some(GcsRepo {
-            bucket: repo.bucket.clone(),
+            bucket: repo.bucket,
             prefix: Some(psyche_core::FixedString::from_str_truncated(CONFIG_PREFIX)),
         }),
         _ => None,
