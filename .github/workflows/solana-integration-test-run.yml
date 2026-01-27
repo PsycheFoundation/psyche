@@ -102,4 +102,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          nix develop .#dev-python --command bash -c "cargo test --release --features python,parallelism -p psyche-decentralized-testing --test integration_tests -- --nocapture test_big_model_with_sidecars test_torchtitan_p2p_model_share"
+          nix develop .#dev-python --command bash -c "cargo test --release --features python,parallelism -p psyche-decentralized-testing --test integration_tests -- --nocapture test_run_with_python"
