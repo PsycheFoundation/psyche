@@ -221,10 +221,12 @@ impl Task {
                     .into_iter()
                     .map(|doc| {
                         // Build fewshot prefix for this document
+                        let category = doc.category.as_deref().unwrap_or("default");
+                        let preamble = llh.get_preamble(category);
+
                         let fewshot_prefix = if self.num_fewshot > 0 {
                             // Get fewshot examples for this document's category
-                            let category = doc.category.as_deref().unwrap_or("default");
-                            let mut fewshot_examples = fewshot_by_category
+                            let fewshot_examples = fewshot_by_category
                                 .get(category)
                                 .cloned()
                                 .unwrap_or_else(|| {
@@ -235,18 +237,33 @@ impl Task {
                                         .cloned()
                                         .unwrap_or_else(Vec::new)
                                 });
+
+                            // MMLU/ARC tasks use first_n sampling (deterministic) other tasks like PIQA/Hellaswag use random sampling
+                            let should_shuffle = ![
+                                MMLU::name(),
+                                MMLUCF::name(),
+                                ArcEasy::name(),
+                                ArcChallenge::name(),
+                            ]
+                            .contains(&name.as_str());
+
+                            let mut fewshot_examples = fewshot_examples;
+                            if should_shuffle {
+                                fewshot_examples.shuffle(&mut self.rand);
+                            }
+
                             // Build fewshots to match how test question is tokenized:
                             // text (ends with "Answer:") + " " + choice
-                            fewshot_examples.shuffle(&mut self.rand);
-                            fewshot_examples
-                                .into_iter()
-                                .take(self.num_fewshot)
-                                .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
-                                .collect::<Vec<_>>()
-                                .join("\n\n")
+                            preamble
+                                + &fewshot_examples
+                                    .into_iter()
+                                    .take(self.num_fewshot)
+                                    .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
+                                    .collect::<Vec<_>>()
+                                    .join("\n\n")
                                 + "\n\n"
                         } else {
-                            String::new()
+                            preamble
                         };
 
                         TokenizedLLHDocument::from_document(doc, tokenizer, &fewshot_prefix)
