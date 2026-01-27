@@ -123,6 +123,8 @@ lib.makeScope pkgs.newScope (
           psyche-deserialize-zerocopy-wasm = psycheLib.buildRustWasmTsPackage "psyche-deserialize-zerocopy-wasm";
           psyche-website-wasm = self.callPackage ../website/wasm { };
 
+          psyche-website-backend = self.callPackage ../website/backend { };
+
           solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
           solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
