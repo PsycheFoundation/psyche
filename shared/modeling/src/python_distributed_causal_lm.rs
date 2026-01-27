@@ -19,7 +19,7 @@ use std::{
 };
 use tch::{Device, Tensor};
 use thiserror::Error;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug, Error)]
 pub enum PythonDistributedCausalLMError {
@@ -299,6 +299,7 @@ impl PythonDistributedCausalLM {
 
                         // Wait for all ranks to be ready before broadcasting tensors
                         comm.barrier(Some(device))?;
+                        info!("Sharing parameters with the other ranks");
 
                         for (name, tensor) in tensors_vec.into_iter() {
                             comm.set(
@@ -309,6 +310,8 @@ impl PythonDistributedCausalLM {
                                 &format!("tensor_dtype_{}", name),
                                 &format!("{:?}", tensor.kind()),
                             )?;
+
+                            debug!("Broadcasting tensor {} to other ranks", name);
 
                             // To broadcast we have to move the tensor to the GPU
                             let tensor = tensor.to(device);

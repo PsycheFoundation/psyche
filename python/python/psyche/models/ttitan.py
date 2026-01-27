@@ -3,7 +3,6 @@ import json
 import os
 from contextlib import contextmanager, nullcontext
 
-import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
 import torch.nn.functional as F
 
@@ -267,7 +266,6 @@ class TorchtitanAuto(CausalLM):
                     source = distribute_tensor(
                         source, device_mesh=dest.device_mesh, placements=dest.placements
                     )
-                    logger.info(f"Distributed tensor {k}")
 
                 dest.copy_(source)
             else:
@@ -382,6 +380,7 @@ class TorchtitanAuto(CausalLM):
             state_dict = sd_adapter.from_hf(hf_state_dict)
             TorchtitanAuto._load_into_model(model, state_dict)
         else:
+            # state_dict already in TT format
             TorchtitanAuto._load_into_model(model, state_dict)
 
         loss_fn = build_cross_entropy_loss(job_config)
