@@ -17,8 +17,10 @@ rec {
   ];
 
   vincentMb2025Key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILQMmXWPPTMLQz75G1zUngxTtW8nlcSn7mHb5I/M4gzQ vincent@Vincents-MBP.localdomain";
+  vincentLinuxKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPtyv/q22opbcfM6eP7BEo6YsKikhnI2w5NdL3pcaKSL vincent@vincent-linux";
   vincentKeys = [
     vincentMb2025Key
+    vincentLinuxKey
   ];
 
   allDevKeys = ariKeys ++ vincentKeys;
