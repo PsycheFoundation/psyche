@@ -17,7 +17,7 @@ type Table = HashMap<String, HashMap<String, HashMap<String, ParallelismConfig>>
 
 fn get_gpu_type() -> String {
     // Try nvidia-smi first
-    let raw = Command::new("nvidia-smi")
+    let raw_gpu_name = Command::new("nvidia-smi")
         .args(["--query-gpu=name", "--format=csv,noheader"])
         .output()
         .ok()
@@ -44,12 +44,12 @@ fn get_gpu_type() -> String {
         .unwrap_or_default();
 
     // Normalize GPU name to match table keys
-    if raw.to_uppercase().contains("H200") {
+    if raw_gpu_name.to_uppercase().contains("H200") {
         "H200".to_string()
-    } else if raw.to_uppercase().contains("H100") {
+    } else if raw_gpu_name.to_uppercase().contains("H100") {
         "H100".to_string()
     } else {
-        raw
+        raw_gpu_name
     }
 }
 
