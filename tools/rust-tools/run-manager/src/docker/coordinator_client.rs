@@ -1,14 +1,18 @@
-use anchor_client::solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use anchor_client::solana_sdk::{
+    commitment_config::CommitmentConfig, pubkey::Pubkey, system_program,
+};
 use anchor_lang::AccountDeserialize;
 use anyhow::{Context, Result};
 use psyche_coordinator::RunState;
+use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{
     CoordinatorInstance, coordinator_account_from_bytes, find_coordinator_instance,
+    logic::JOIN_RUN_AUTHORIZATION_SCOPE,
 };
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone)]
 pub struct RunInfo {
@@ -164,5 +168,51 @@ impl CoordinatorClient {
         }
 
         Ok(runs)
+    }
+
+    /// Check if a user is authorized to join a specific run.
+    ///
+    /// This checks both permissionless authorization (grantee = system_program::ID)
+    /// and user-specific authorization (grantee = user_pubkey).
+    pub fn can_user_join_run(&self, run: &RunInfo, user_pubkey: &Pubkey) -> Result<bool> {
+        // Fetch the CoordinatorInstance to get join_authority
+        let instance = self.fetch_coordinator_data(&run.run_id)?;
+        let join_authority = instance.join_authority;
+
+        // Try permissionless authorization first (grantee = system_program::ID)
+        if self.check_authorization_for_grantee(&join_authority, &system_program::ID, user_pubkey) {
+            return Ok(true);
+        }
+
+        // Try user-specific authorization (grantee = user_pubkey)
+        Ok(self.check_authorization_for_grantee(&join_authority, user_pubkey, user_pubkey))
+    }
+
+    /// Check if an authorization exists and is valid for a specific grantee.
+    fn check_authorization_for_grantee(
+        &self,
+        join_authority: &Pubkey,
+        grantee: &Pubkey,
+        user_pubkey: &Pubkey,
+    ) -> bool {
+        let auth_pda = psyche_solana_authorizer::find_authorization(
+            join_authority,
+            grantee,
+            JOIN_RUN_AUTHORIZATION_SCOPE,
+        );
+
+        let Ok(account) = self.rpc_client.get_account(&auth_pda) else {
+            return false;
+        };
+
+        let Ok(authorization) = Authorization::try_deserialize(&mut account.data.as_slice()) else {
+            warn!(
+                "Failed to deserialize authorization at {}: invalid data",
+                auth_pda
+            );
+            return false;
+        };
+
+        authorization.is_valid_for(join_authority, user_pubkey, JOIN_RUN_AUTHORIZATION_SCOPE)
     }
 }
