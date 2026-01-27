@@ -42,6 +42,7 @@ decentralized-integration-tests test_name="":
 
     if [[ "{{ use_python }}" == "1" ]]; then
         echo "Running tests with Python support"
+        export PYTHON_ENABLED=true
         just setup_python_test_infra
 
         if [[ -z "{{ test_name }}" ]]; then
@@ -154,10 +155,26 @@ run_test_infra num_clients="1":
         COMPOSE_FILES="${COMPOSE_FILES} -f docker-compose.python.yml"
     fi
 
-    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d --force-recreate
+    # Start validator only first
+    echo "Starting validator and deploying contracts..."
+    docker compose ${COMPOSE_FILES} up -d --wait psyche-solana-test-validator
+
+    sleep 2  # Extra buffer for RPC to be fully ready
+
+    # Run setup script from project root
+    echo "Setting up test run..."
+    cd ../..
+    ./scripts/setup-test-run.sh
+
+    # Now start the client services
+    cd docker/test
+    echo "Starting clients..."
+    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d psyche-test-client
 
 run_test_infra_with_proxies_validator num_clients="1":
     #!/usr/bin/env bash
+    set -e
+
     cd docker/test/subscriptions_test
     COMPOSE_FILES="-f ../docker-compose.yml -f docker-compose.yml"
 
@@ -171,7 +188,21 @@ run_test_infra_with_proxies_validator num_clients="1":
         COMPOSE_FILES="${COMPOSE_FILES} -f ../docker-compose.python.yml"
     fi
 
-    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d --force-recreate
+    # Start validator only first
+    echo "Starting validator and deploying contracts..."
+    docker compose ${COMPOSE_FILES} up -d --wait psyche-solana-test-validator
+
+    sleep 2  # Extra buffer for RPC to be fully ready
+
+    # Run setup script from project root
+    echo "Setting up test run..."
+    cd ../../..
+    RPC="http://127.0.0.1:8899" WS_RPC="ws://127.0.0.1:8900" RUN_ID="test" ./scripts/setup-test-run.sh
+
+    # Now start the client and proxy services
+    cd docker/test/subscriptions_test
+    echo "Starting clients and proxies..."
+    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d psyche-test-client nginx nginx_2
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
