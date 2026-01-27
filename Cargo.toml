@@ -17,7 +17,7 @@ resolver = "2"
 name = "psyche-workspace"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 
 [workspace.dependencies]
 psyche-coordinator = { path = "./shared/coordinator" }
@@ -123,3 +123,9 @@ opt-level = 1
 
 [profile.test]
 opt-level = 1
+
+[workspace.metadata.release]
+tag-name = "v{{version}}"
+sign-tag = true
+push = true
+publish = false

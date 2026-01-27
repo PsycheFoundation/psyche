@@ -2655,7 +2655,7 @@ dependencies = [
 
 [[package]]
 name = "expand-distro"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -6864,7 +6864,7 @@ dependencies = [
 
 [[package]]
 name = "preview-lr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7015,7 +7015,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7045,7 +7045,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-local-testnet"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7059,7 +7059,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7092,7 +7092,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-shared"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anyhow",
@@ -7108,7 +7108,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-centralized-testing"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7131,7 +7131,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7169,7 +7169,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-coordinator"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anyhow",
@@ -7184,7 +7184,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-lang-idl",
@@ -7205,7 +7205,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-data-provider"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anyhow",
@@ -7248,7 +7248,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-decentralized-testing"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-client",
  "bollard",
@@ -7271,7 +7271,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-deserialize-zerocopy-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "psyche-core",
  "psyche-solana-coordinator",
@@ -7283,7 +7283,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-eval"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7307,7 +7307,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-inference"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "postcard",
@@ -7321,7 +7321,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-inference-node"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7341,7 +7341,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-metrics"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "iroh-metrics 0.35.0",
@@ -7357,7 +7357,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-modeling"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -7388,7 +7388,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-network"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7427,14 +7427,14 @@ dependencies = [
 
 [[package]]
 name = "psyche-python-extension"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "psyche-python-extension-impl",
 ]
 
 [[package]]
 name = "psyche-python-extension-impl"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "psyche-core",
  "psyche-modeling",
@@ -7451,7 +7451,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-sidecar"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -7465,7 +7465,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-authorizer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -7473,7 +7473,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-client",
  "anyhow",
@@ -7507,7 +7507,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-coordinator"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
@@ -7520,7 +7520,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-mining-pool"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -7528,7 +7528,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-rpc"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-client",
  "anchor-spl",
@@ -7550,7 +7550,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-tooling"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -7569,7 +7569,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-treasurer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -7583,7 +7583,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-tui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7608,7 +7608,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-watcher"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8280,7 +8280,7 @@ dependencies = [
 
 [[package]]
 name = "run-manager"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-client",
  "anchor-lang",

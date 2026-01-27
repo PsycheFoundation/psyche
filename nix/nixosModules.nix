@@ -39,10 +39,10 @@
               StateDirectory = "backend";
               DynamicUser = true;
               EnvironmentFile = config.age.secrets.backendRpc.path;
-              Environment = "NODE_OPTIONS=--max-old-space-size=3000";
+              Environment = "NODE_OPTIONS='--max-old-space-size=3000 --enable-source-maps'";
               # don't start until we have DNS!
               ExecStartPre = "/bin/sh -c 'until ${pkgs.bind.host}/bin/host example.com; do sleep 1; done'";
-              ExecStart = lib.getExe (pkgs.callPackage ../website/backend { });
+              ExecStart = lib.getExe pkgs.psyche-website-backend;
 
               # restart if something breaks, e.g. OOM
               Restart = "on-failure";
