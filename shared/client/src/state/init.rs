@@ -1,7 +1,7 @@
 use crate::{WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
     Coordinator, HealthChecks,
-    external_config::{ExternalModelConfig, get_config_gcs_path},
+    external_config::{ExternalModelConfig, get_config_gcs_path, get_config_hub_path},
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
 use psyche_core::{
@@ -11,6 +11,7 @@ use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
     PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
     download_model_from_gcs_async, download_model_repo_async, fetch_json_from_gcs,
+    fetch_json_from_hub,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
@@ -200,16 +201,37 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         let model::Model::LLM(llm) = state.model;
 
-        // Fetch external model config from GCS
-        let external_config: ExternalModelConfig = match get_config_gcs_path(&llm.checkpoint) {
-            Some((bucket, path)) => {
-                debug!("Fetching external config from gs://{}/{}", bucket, path);
-                fetch_json_from_gcs(&bucket, &path).await?
+        // Fetch external model config - try GCS first, then Hub, then default
+        let external_config: ExternalModelConfig = if let Some((bucket, path)) =
+            get_config_gcs_path(&llm.checkpoint)
+        {
+            debug!("Fetching external config from gs://{}/{}", bucket, path);
+            fetch_json_from_gcs(&bucket, &path).await?
+        } else if let Some((repo_id, revision, filename)) = get_config_hub_path(&llm.checkpoint) {
+            debug!(
+                "Fetching external config from Hub: {}/{}",
+                repo_id, filename
+            );
+            match fetch_json_from_hub(
+                &repo_id,
+                revision,
+                filename,
+                init_config.hub_read_token.clone(),
+            )
+            .await
+            {
+                Ok(config) => config,
+                Err(e) => {
+                    debug!(
+                        "Failed to fetch external config from Hub ({}), using default: {}",
+                        repo_id, e
+                    );
+                    ExternalModelConfig::default()
+                }
             }
-            None => {
-                debug!("No GCS checkpoint, using default external config");
-                ExternalModelConfig::default()
-            }
+        } else {
+            debug!("No GCS/Hub checkpoint, using default external config");
+            ExternalModelConfig::default()
         };
 
         let hub_read_token = init_config.hub_read_token.clone();

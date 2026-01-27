@@ -24,7 +24,7 @@ pub use gcs::{
 };
 pub use hub::{
     HubUploadInfo, download_dataset_repo_async, download_dataset_repo_sync,
-    download_model_repo_async, download_model_repo_sync, upload_to_hub,
+    download_model_repo_async, download_model_repo_sync, fetch_json_from_hub, upload_to_hub,
 };
 pub use local::LocalDataProvider;
 pub use parquet::record::{ListAccessor, MapAccessor, RowAccessor};

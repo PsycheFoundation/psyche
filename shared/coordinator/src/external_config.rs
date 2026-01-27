@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    Checkpoint, GcsRepo, LLMArchitecture, LLMTrainingDataLocation, LLMTrainingDataType,
+    Checkpoint, GcsRepo, LLM, LLMArchitecture, LLMTrainingDataLocation, LLMTrainingDataType, Model,
 };
 use psyche_core::{LearningRateSchedule, OptimizerDefinition};
 
@@ -20,6 +20,76 @@ use psyche_core::{LearningRateSchedule, OptimizerDefinition};
 pub const CONFIG_PREFIX: &str = "config";
 /// Filename for the model config
 pub const MODEL_CONFIG_FILENAME: &str = "model_config.json";
+
+// ============================================================================
+// Config-file representations (old format with all fields in [model.LLM])
+// ============================================================================
+
+/// Config-file representation of the model with all fields.
+/// This allows config files to keep the old format where everything
+/// is under `[model.LLM]`.
+///
+/// Use `ConfigModel::split()` to separate into on-chain `Model` and `ExternalModelConfig`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConfigModel {
+    LLM(ConfigLLM),
+}
+
+impl ConfigModel {
+    /// Split the config model into on-chain Model and ExternalModelConfig.
+    pub fn split(self) -> (Model, ExternalModelConfig) {
+        match self {
+            ConfigModel::LLM(config_llm) => config_llm.split(),
+        }
+    }
+}
+
+/// Config-file representation of LLM with all fields (old format).
+/// This includes both on-chain fields and external config fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigLLM {
+    // On-chain fields
+    pub max_seq_len: u32,
+    #[serde(default)]
+    pub cold_start_warmup_steps: u32,
+    pub checkpoint: Checkpoint,
+
+    // External config fields (with defaults for backward compatibility)
+    #[serde(default = "default_architecture")]
+    pub architecture: LLMArchitecture,
+    #[serde(default = "default_data_type")]
+    pub data_type: LLMTrainingDataType,
+    #[serde(default)]
+    pub data_location: LLMTrainingDataLocation,
+    #[serde(default = "default_lr_schedule")]
+    pub lr_schedule: LearningRateSchedule,
+    #[serde(default = "default_optimizer")]
+    pub optimizer: OptimizerDefinition,
+}
+
+impl ConfigLLM {
+    /// Split into on-chain LLM and ExternalModelConfig.
+    pub fn split(self) -> (Model, ExternalModelConfig) {
+        let llm = LLM {
+            max_seq_len: self.max_seq_len,
+            cold_start_warmup_steps: self.cold_start_warmup_steps,
+            checkpoint: self.checkpoint,
+        };
+
+        let external_config = ExternalModelConfig {
+            version: default_version(),
+            architecture: self.architecture,
+            data_type: self.data_type,
+            data_location: self.data_location,
+            lr_schedule: self.lr_schedule,
+            optimizer: self.optimizer,
+            run_metadata: None,
+            client_requirements: None,
+        };
+
+        (Model::LLM(llm), external_config)
+    }
+}
 
 /// External model configuration schema.
 /// This is stored in GCS and fetched by clients.
@@ -183,8 +253,6 @@ impl ExternalModelConfig {
 pub fn get_config_gcs_path(checkpoint: &Checkpoint) -> Option<(String, String)> {
     let gcs_repo = match checkpoint {
         Checkpoint::Gcs(repo) | Checkpoint::P2PGcs(repo) => repo,
-        // For Hub/P2P checkpoints, we could potentially use a different mechanism
-        // or require explicit config URL
         _ => return None,
     };
 
@@ -192,6 +260,26 @@ pub fn get_config_gcs_path(checkpoint: &Checkpoint) -> Option<(String, String)> 
     let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
 
     Some((bucket, path))
+}
+
+/// Helper to derive the config Hub path from a checkpoint.
+/// Returns `Some((repo_id, revision, filename))` for Hub checkpoints, `None` for others.
+pub fn get_config_hub_path(
+    checkpoint: &Checkpoint,
+) -> Option<(String, Option<String>, &'static str)> {
+    let hub_repo = match checkpoint {
+        Checkpoint::Hub(repo) | Checkpoint::P2P(repo) | Checkpoint::Dummy(repo) => repo,
+        _ => return None,
+    };
+
+    let repo_id = hub_repo.repo_id.to_string();
+    if repo_id.is_empty() {
+        return None;
+    }
+
+    let revision = hub_repo.revision.as_ref().map(|r| r.to_string());
+
+    Some((repo_id, revision, MODEL_CONFIG_FILENAME))
 }
 
 /// Construct the full GCS URI for the config file

@@ -329,33 +329,30 @@ pub async fn fetch_json_from_gcs<T: serde::de::DeserializeOwned>(
     bucket: &str,
     object_path: &str,
 ) -> Result<T, DownloadError> {
-    let storage = Storage::builder()
-        .build()
-        .await
-        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+    // Use authenticated client if GOOGLE_APPLICATION_CREDENTIALS is set, otherwise anonymous
+    let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
+        info!("Using authenticated GCS client for config fetch");
+        ClientConfig::default().with_auth().await?
+    } else {
+        info!("Using anonymous GCS client for config fetch");
+        ClientConfig::default().anonymous()
+    };
+    let client = Client::new(config);
 
-    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+    info!("Fetching gs://{}/{}", bucket, object_path);
 
-    debug!("Fetching gs://{}/{}", bucket, object_path);
+    let data = client
+        .download_object(
+            &GetObjectRequest {
+                bucket: bucket.to_owned(),
+                object: object_path.to_owned(),
+                ..Default::default()
+            },
+            &Range::default(),
+        )
+        .await?;
 
-    let mut read_response = storage
-        .read_object(&bucket_resource_name, object_path)
-        .send()
-        .await
-        .map_err(|e| DownloadError::Gcs(format!("Failed to read {}: {}", object_path, e)))?;
-
-    let mut data = Vec::new();
-    while let Some(chunk_result) = read_response.next().await {
-        let chunk = chunk_result.map_err(|e| DownloadError::Gcs(e.to_string()))?;
-        data.extend_from_slice(&chunk);
-    }
-
-    serde_json::from_slice(&data).map_err(|e| {
-        DownloadError::Gcs(format!(
-            "Failed to parse JSON from gs://{}/{}: {}",
-            bucket, object_path, e
-        ))
-    })
+    serde_json::from_slice(&data).map_err(DownloadError::Json)
 }
 
 /// Fetch a JSON file from GCS synchronously.
@@ -373,22 +370,25 @@ pub async fn upload_json_to_gcs<T: serde::Serialize>(
     object_path: &str,
     value: &T,
 ) -> Result<(), UploadError> {
-    let storage = Storage::builder()
-        .build()
-        .await
-        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+    // Use authenticated client - must have credentials for upload
+    let config = ClientConfig::default().with_auth().await?;
+    let client = Client::new(config);
 
     let json = serde_json::to_string_pretty(value)?;
-    let data = bytes::Bytes::from(json.into_bytes());
-    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+    let data = json.into_bytes();
 
     info!("Uploading JSON to gs://{}/{}", bucket, object_path);
 
-    storage
-        .write_object(&bucket_resource_name, object_path, data)
-        .send_unbuffered()
-        .await
-        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+    client
+        .upload_object(
+            &UploadObjectRequest {
+                bucket: bucket.to_owned(),
+                ..Default::default()
+            },
+            data,
+            &UploadType::Simple(Media::new(object_path.to_owned())),
+        )
+        .await?;
 
     info!("Uploaded JSON to gs://{}/{}", bucket, object_path);
 

@@ -1,4 +1,4 @@
-use crate::errors::UploadError;
+use crate::errors::{DownloadError, UploadError};
 use crate::hub::model::HubRepo;
 use hf_hub::{
     Cache, Repo, RepoType,
@@ -11,7 +11,7 @@ use psyche_coordinator::model;
 use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 const DATASET_EXTENSIONS: [&str; 1] = [".parquet"];
@@ -191,6 +191,35 @@ pub fn download_dataset_repo_sync(
         progress_bar,
         &DATASET_EXTENSIONS,
     )
+}
+
+/// Fetch a JSON file from HuggingFace and deserialize it.
+/// Used for fetching external model configuration from Hub checkpoints.
+pub async fn fetch_json_from_hub<T: serde::de::DeserializeOwned>(
+    repo_id: &str,
+    revision: Option<String>,
+    filename: &str,
+    token: Option<String>,
+) -> Result<T, DownloadError> {
+    let cache = Cache::default();
+    let api = hf_hub::api::tokio::ApiBuilder::new()
+        .with_cache_dir(cache.path().clone())
+        .with_token(token.or(cache.token()))
+        .with_progress(false)
+        .build()?;
+
+    let repo = match revision {
+        Some(rev) => Repo::with_revision(repo_id.to_string(), RepoType::Model, rev),
+        None => Repo::model(repo_id.to_string()),
+    };
+    let api_repo = api.repo(repo);
+
+    debug!("Fetching {} from {}", filename, repo_id);
+
+    let file_path = api_repo.get(filename).await?;
+    let content = tokio::fs::read_to_string(&file_path).await?;
+
+    serde_json::from_str(&content).map_err(DownloadError::Json)
 }
 
 #[derive(Debug, Clone)]
