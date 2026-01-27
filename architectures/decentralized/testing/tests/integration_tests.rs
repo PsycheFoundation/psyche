@@ -11,16 +11,13 @@ use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
 use psyche_coordinator::{RunState, model::Checkpoint};
 use psyche_core::IntegrationTestLogMarker;
-use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
-#[cfg(feature = "python")]
-use psyche_decentralized_testing::docker_setup::{
-    PsycheNetworkConfig, e2e_testing_setup_with_config,
-};
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
+        PsycheNetworkConfig, e2e_testing_setup, e2e_testing_setup_subscription,
+        e2e_testing_setup_with_config, kill_all_clients, spawn_new_client,
+        spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -954,45 +951,50 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
     }
 }
 
-/// spawn 1 clients and run for 3 epochs
-/// assert client and coordinator state synchronization
-/// assert that the loss decreases in each epoch
+/// Test P2P model sharing with different backends.
+/// This exercises the code path where:
+/// 1. First client downloads model from HuggingFace Hub
+/// 2. Model is loaded into the specified backend for training
+/// 3. New clients join and receive the model via P2P sharing
+/// 4. The P2P-received model is loaded into the backend
 #[cfg(feature = "python")]
+#[rstest]
+#[case("HfLlama")]
+#[case("Torchtitan")]
+#[trace]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
-async fn test_big_model_with_sidecars() {
+async fn test_run_with_python(#[case] architecture: &str) {
     let run_id = "test".to_string();
-    // epochs the test will run
     let num_of_epochs_to_run = 3;
-    let n_new_clients = 3;
+    let n_new_clients: usize = 2;
+    let init_num_clients = 1;
 
-    // Initialize DockerWatcher
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
+    let config = PsycheNetworkConfig {
+        num_clients: init_num_clients,
+        architecture: architecture.to_string(),
+        model: "NousResearch/Meta-Llama-3.1-8B".to_string(),
+        batch_size: 8 * (init_num_clients as u32 + n_new_clients as u32),
+    };
+    let _cleanup = e2e_testing_setup_with_config(docker.clone(), config).await;
 
-    // Monitor the client container
+    // Monitor the first client container
     let _monitor_client_1 = watcher
         .monitor_container(
             &format!("{CLIENT_CONTAINER_PREFIX}-1"),
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::LoadedModel,
                 IntegrationTestLogMarker::EvalResult,
             ],
         )
         .unwrap();
 
-    let _monitor_client_2 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
-            vec![IntegrationTestLogMarker::EvalResult],
-        )
-        .unwrap();
-
-    println!("Waiting for run to go on with the first client");
+    println!("Waiting for first client to load model and start training");
     tokio::time::sleep(Duration::from_secs(30)).await;
 
     // Initialize solana client to query the coordinator state
@@ -1001,7 +1003,7 @@ async fn test_big_model_with_sidecars() {
     let mut clients_with_model = 0;
     let mut eval_results_received: Vec<f64> = Vec::new();
 
-    println!("Adding new clients");
+    println!("Adding new clients to test P2P model sharing with {architecture}");
     for i in 1..=n_new_clients {
         spawn_new_client(docker.clone()).await.unwrap();
         let _monitor_client = watcher
@@ -1010,6 +1012,7 @@ async fn test_big_model_with_sidecars() {
                 vec![
                     IntegrationTestLogMarker::LoadedModel,
                     IntegrationTestLogMarker::Loss,
+                    IntegrationTestLogMarker::EvalResult,
                 ],
             )
             .unwrap();
@@ -1018,7 +1021,7 @@ async fn test_big_model_with_sidecars() {
     loop {
         tokio::select! {
             _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(n_new_clients + 1).await {
+                if let Err(e) = watcher.monitor_clients_health((n_new_clients + init_num_clients).try_into().unwrap()).await {
                     panic!("{}", e);
                 }
             }
@@ -1054,6 +1057,20 @@ async fn test_big_model_with_sidecars() {
                             break;
                         }
                     }
+                    Some(Response::LoadedModel(checkpoint)) => {
+                        println!("LoadedModel event: checkpoint = {checkpoint}");
+                        if checkpoint.starts_with("Hub") {
+                            // First client loaded from Hub
+                            println!("First client loaded model from Hub ({architecture} backend)");
+                        } else if checkpoint.starts_with("P2P") {
+                            // Subsequent clients loaded via P2P
+                            println!("Client got the model via P2P ({architecture} backend)");
+                            clients_with_model += 1;
+                            if clients_with_model == n_new_clients {
+                                println!("All {n_new_clients} new clients got the model via P2P with {architecture}!");
+                            }
+                        }
+                    }
                     Some(Response::EvalResult(client_id, task_name, metric_value, step, epoch)) => {
                         println!(
                             "client: {client_id}, epoch: {epoch}, step: {step}, Eval: {task_name} = {metric_value:.4}"
@@ -1061,132 +1078,9 @@ async fn test_big_model_with_sidecars() {
                         assert_eq!(task_name, "ARC-Easy", "Expected ARC-Easy eval results");
                         eval_results_received.push(metric_value);
                     }
-                    Some(Response::LoadedModel(checkpoint)) => {
-                        // assert client and coordinator state synchronization
-                        assert!(checkpoint.starts_with("P2P"), "The model should be obtained from P2P");
-                        println!("Client got the model with P2P");
-                        clients_with_model += 1;
-                        if clients_with_model == n_new_clients {
-                            println!("All clients got the model with P2P");
-                        }
-                    }
                     _ => unreachable!(),
                 }
             }
         }
     }
-}
-
-/// Test P2P model sharing with TorchTitan backend.
-/// This exercises the code path where:
-/// 1. First client downloads model from HuggingFace Hub (in HF format)
-/// 2. Model is loaded into TorchTitan backend for training
-/// 3. New clients join and receive the model via P2P sharing
-/// 4. The P2P-received model (in state dict format) is loaded into TorchTitan
-#[cfg(feature = "python")]
-#[test_log::test(tokio::test(flavor = "multi_thread"))]
-#[serial]
-async fn test_torchtitan_p2p_model_share() {
-    let run_id = "test".to_string();
-    let num_of_epochs_to_run = 3;
-    let n_new_clients = 2;
-    let init_num_clients = 1;
-
-    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
-    let mut watcher = DockerWatcher::new(docker.clone());
-
-    let config = PsycheNetworkConfig {
-        num_clients: init_num_clients,
-        architecture: "Torchtitan".to_string(),
-        model: "NousResearch/Meta-Llama-3.1-8B".to_string(),
-        batch_size: 8 * init_num_clients as u32,
-    };
-    let _cleanup = e2e_testing_setup_with_config(docker.clone(), config).await;
-
-    // Monitor the first client container
-    let _monitor_client_1 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
-            vec![
-                IntegrationTestLogMarker::StateChange,
-                IntegrationTestLogMarker::Loss,
-                IntegrationTestLogMarker::LoadedModel,
-            ],
-        )
-        .unwrap();
-
-    println!("Waiting for first client to load model and start training");
-    tokio::time::sleep(Duration::from_secs(60)).await;
-
-    // Initialize solana client to query the coordinator state
-    let solana_client = SolanaTestClient::new(run_id).await;
-    let mut live_interval = time::interval(Duration::from_secs(10));
-    let mut clients_with_model = 0;
-    let mut first_client_loaded = false;
-
-    println!("Adding new clients to test P2P model sharing with TorchTitan");
-    for i in 1..=n_new_clients {
-        spawn_new_client(docker.clone()).await.unwrap();
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
-                vec![
-                    IntegrationTestLogMarker::LoadedModel,
-                    IntegrationTestLogMarker::Loss,
-                ],
-            )
-            .unwrap();
-    }
-
-    loop {
-        tokio::select! {
-            _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health((n_new_clients + init_num_clients).try_into().unwrap()).await {
-                    panic!("{}", e);
-                }
-            }
-            response = watcher.log_rx.recv() => {
-                match response {
-                    Some(Response::StateChange(timestamp, _client_1, old_state, new_state, _ , _)) => {
-                        let _coordinator_state = solana_client.get_run_state().await;
-                        println!(
-                            "client: new_state: {new_state}, old_state: {old_state}, timestamp: {timestamp}"
-                        );
-                    }
-                    Some(Response::Loss(client, epoch, step, loss)) => {
-                        println!(
-                            "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
-                        );
-                        if epoch == num_of_epochs_to_run {
-                            break;
-                        }
-                    }
-                    Some(Response::LoadedModel(checkpoint)) => {
-                        println!("LoadedModel event: checkpoint = {checkpoint}");
-                        if checkpoint.starts_with("Hub") {
-                            // First client loaded from Hub
-                            println!("First client loaded model from Hub (TorchTitan backend)");
-                            first_client_loaded = true;
-                        } else if checkpoint.starts_with("P2P") {
-                            // Subsequent clients loaded via P2P
-                            assert!(first_client_loaded, "P2P client loaded before Hub client");
-                            println!("Client got the model via P2P (TorchTitan backend)");
-                            clients_with_model += 1;
-                            if clients_with_model == n_new_clients {
-                                println!("All {} new clients got the model via P2P with TorchTitan!", n_new_clients);
-                            }
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
-
-    // Verify all new clients received the model via P2P
-    assert_eq!(
-        clients_with_model, n_new_clients,
-        "Expected {} clients to receive model via P2P, but only {} did",
-        n_new_clients, clients_with_model
-    );
 }

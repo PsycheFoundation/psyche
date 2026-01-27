@@ -5,7 +5,7 @@ use anchor_client::{
     solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair},
 };
 use psyche_coordinator::{
-    NUM_STORED_ROUNDS, Round, RunState,
+    RunState,
     model::{Checkpoint, Model},
 };
 use psyche_core::FixedVec;
@@ -73,24 +73,9 @@ impl SolanaTestClient {
         coordinator.state.coordinator.epoch_state.clients
     }
 
-    pub async fn get_clients_len(&self) -> usize {
-        let clients = self.get_clients().await;
-        clients.len()
-    }
-
     pub async fn get_run_state(&self) -> RunState {
         let coordinator = self.get_coordinator_account().await;
         coordinator.state.coordinator.run_state
-    }
-
-    pub async fn get_rounds(&self) -> [Round; NUM_STORED_ROUNDS] {
-        let coordinator = self.get_coordinator_account().await;
-        coordinator.state.coordinator.epoch_state.rounds
-    }
-
-    pub async fn get_rounds_head(&self) -> u32 {
-        let coordinator = self.get_coordinator_account().await;
-        coordinator.state.coordinator.epoch_state.rounds_head
     }
 
     pub async fn get_current_epoch(&self) -> u16 {
