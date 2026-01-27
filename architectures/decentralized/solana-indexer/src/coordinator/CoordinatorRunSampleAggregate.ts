@@ -108,8 +108,7 @@ async function aggregateStatSamplesSlice(
       nextSample.numValue += prevSample.numValue;
       statSamples.splice(prevIndex, 1);
       sampleIndexMax--;
-    }
-    if (prevSample.step > nextSample.step) {
+    } else if (prevSample.step > nextSample.step) {
       statSamples.splice(prevIndex, 1);
       sampleIndexMax--;
     }
