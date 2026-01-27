@@ -355,7 +355,7 @@ impl RunManager {
 
 fn select_best_run(runs: &[RunInfo]) -> Result<&RunInfo> {
     // Avoid joining runs that are halted
-    let joinable: Vec<_> = runs
+    let mut joinable: Vec<_> = runs
         .iter()
         .filter(|run| {
             !matches!(
@@ -372,7 +372,11 @@ fn select_best_run(runs: &[RunInfo]) -> Result<&RunInfo> {
         );
     }
 
-    // For now let's just return the first joinable run, later we can define
-    // a more sophisticated priority system if needed.
+    // Prioritize joining runs waiting for compute and then just pick the first one
+    // available from those for now
+    joinable.sort_by_key(|run| match run.run_state {
+        RunState::WaitingForMembers => 0,
+        _ => 1,
+    });
     Ok(joinable[0])
 }
