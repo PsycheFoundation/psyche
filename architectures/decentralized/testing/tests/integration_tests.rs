@@ -978,6 +978,7 @@ async fn test_run_with_python(#[case] architecture: &str) {
         architecture: architecture.to_string(),
         model: "NousResearch/Meta-Llama-3.1-8B".to_string(),
         batch_size: 8 * (init_num_clients as u32 + n_new_clients as u32),
+        use_proxies: false,
     };
     let _cleanup = e2e_testing_setup_with_config(docker.clone(), config).await;
 
