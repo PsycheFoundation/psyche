@@ -82,7 +82,7 @@ Your project is now linked to your billing account.
 
 ## Step 6: Grant Storage Access to a Gmail Account
 
-To allow users to access to the bucket in order to push checkpoints in a training run, you can grant them bucket-level permissions.
+To allow users to access the bucket in order to push checkpoints in a training run, you can grant them bucket-level permissions.
 
 1. Go to **Cloud Storage** → **Buckets**
 2. Click on your bucket name to open it
