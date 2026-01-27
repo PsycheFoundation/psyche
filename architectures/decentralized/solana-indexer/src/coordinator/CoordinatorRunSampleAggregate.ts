@@ -109,6 +109,10 @@ async function aggregateStatSamplesSlice(
       statSamples.splice(prevIndex, 1);
       sampleIndexMax--;
     }
+    if (prevSample.step > nextSample.step) {
+      statSamples.splice(prevIndex, 1);
+      sampleIndexMax--;
+    }
   }
   let chunkSize = 1;
   while (chunkSize * desiredSampleStepBucketCount < maxStep - minStep) {

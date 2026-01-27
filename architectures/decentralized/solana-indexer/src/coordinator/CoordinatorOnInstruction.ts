@@ -116,10 +116,7 @@ async function processCheckpoint(
     blockTime: context.instruction.blockTime,
     instructionOrdinal: context.instruction.instructionOrdinal,
     user: context.signerAddress,
-    repo: {
-      repoId: checkpointPayload.repo.repoId,
-      revision: checkpointPayload.repo.revision,
-    },
+    repo: checkpointPayload.repo,
   });
   utilsBigintArraySortAscending(
     runAnalysis.checkpointHistory,
@@ -204,7 +201,7 @@ const joinRunJsonDecoder = jsonDecoderObjectToObject({
   }),
 });
 
-export const checkpointJsonDecoder = jsonDecoderObjectToObject({
+const checkpointJsonDecoder = jsonDecoderObjectToObject({
   repo: jsonDecoderObjectToObject({
     repoId: jsonDecoderRustFixedString,
     revision: jsonDecoderNullable(jsonDecoderRustFixedString),

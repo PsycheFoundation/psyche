@@ -1,5 +1,5 @@
 import { Pubkey, RpcHttp } from "solana-kiss";
-import { crawlerStep } from "./CrawlerStep";
+import { crawlerCycle } from "./CrawlerCycle";
 import { CrawlerCheckpoint, CrawlerTransaction } from "./CrawlerTypes";
 
 export async function crawlerLoop(
@@ -14,7 +14,7 @@ export async function crawlerLoop(
   let currentCheckpoint = initialCheckpoint;
   while (true) {
     try {
-      const { updatedCheckpoint, discoveredTransactions } = await crawlerStep(
+      const { updatedCheckpoint, discoveredTransactions } = await crawlerCycle(
         rpcHttp,
         programAddress,
         currentCheckpoint,

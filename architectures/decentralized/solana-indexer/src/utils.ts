@@ -23,9 +23,9 @@ export function utilLogWithTimestamp(
 ) {
   console.log(
     new Date().toISOString(),
-    programAddress,
+    programAddress.toString().padEnd(44, " "),
     ">",
-    message,
+    message.padEnd(30, " "),
     durationMs !== undefined ? `[duration: ${durationMs}ms]` : "",
   );
 }

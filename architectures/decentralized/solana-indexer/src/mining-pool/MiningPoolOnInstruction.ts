@@ -70,7 +70,7 @@ async function processAdminAction(
   poolAnalysis.adminHistory.push(context.instruction);
   utilsBigintArraySortAscending(
     poolAnalysis.adminHistory,
-    (adminAction) => adminAction.instructionOrdinal,
+    (adminInstruction) => adminInstruction.instructionOrdinal,
   );
 }
 

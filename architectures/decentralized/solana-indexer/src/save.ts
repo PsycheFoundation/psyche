@@ -116,7 +116,7 @@ function fileDate(): string {
   ].join("-");
 }
 
-const fileLiveTag = "live-v007";
+const fileLiveTag = "live-v008";
 
 const fileJsonCodec = jsonCodecObjectToObject({
   updatedAt: jsonCodecString,

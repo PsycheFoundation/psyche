@@ -14,9 +14,8 @@ export async function indexerLoop(
     discoveredInstructions: Array<IndexerInstruction>;
   }) => Promise<void>,
 ): Promise<void> {
-  const rpcHttp = solana.getRpcHttp();
   return crawlerLoop(
-    rpcHttp,
+    solana.getRpcHttp(),
     programAddress,
     initialCheckpoint,
     async ({ updatedCheckpoint, discoveredTransactions }) => {
@@ -28,14 +27,14 @@ export async function indexerLoop(
       );
       utilLogWithTimestamp(
         programAddress,
-        `Resolved: Transactions: x${discoveredTransactions.length}`,
+        `Resolved: Transactions x${discoveredTransactions.length}`,
         Date.now() - startResolveTimeMs,
       );
       const startProcessTimeMs = Date.now();
       await onProgress({ updatedCheckpoint, discoveredInstructions });
       utilLogWithTimestamp(
         programAddress,
-        `Processed: Instructions (x${discoveredInstructions.length})`,
+        `Processed: Instructions x${discoveredInstructions.length}`,
         Date.now() - startProcessTimeMs,
       );
     },

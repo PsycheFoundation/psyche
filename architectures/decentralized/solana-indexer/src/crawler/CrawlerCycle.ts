@@ -1,7 +1,7 @@
 import { Pubkey, RpcHttp, rpcHttpFindAccountTransactions } from "solana-kiss";
 import { CrawlerCheckpoint, CrawlerTransaction } from "./CrawlerTypes";
 
-export async function crawlerStep(
+export async function crawlerCycle(
   rpcHttp: RpcHttp,
   programAddress: Pubkey,
   initialCheckpoint: CrawlerCheckpoint,
@@ -9,21 +9,21 @@ export async function crawlerStep(
   updatedCheckpoint: CrawlerCheckpoint;
   discoveredTransactions: Array<CrawlerTransaction>;
 }> {
-  const updatedCheckpoint = initialCheckpoint.map((step) => ({ ...step }));
-  const newerStepIndex =
+  const updatedCheckpoint = initialCheckpoint.map((chunk) => ({ ...chunk }));
+  const newerChunkIndex =
     Math.floor(Math.random() * (updatedCheckpoint.length + 1)) - 1;
-  const olderStepIndex = newerStepIndex + 1;
-  const newerStep = updatedCheckpoint[newerStepIndex];
-  const olderStep = updatedCheckpoint[olderStepIndex];
+  const olderChunkIndex = newerChunkIndex + 1;
+  const newerChunk = updatedCheckpoint[newerChunkIndex];
+  const olderChunk = updatedCheckpoint[olderChunkIndex];
   const { newToOldTransactionsHandles } = await rpcHttpFindAccountTransactions(
     rpcHttp,
     programAddress,
-    mexTransactionPerStep,
+    maxTransactionPerCycle,
     {
       startBeforeTransactionHandle:
-        newerStep?.oldestTransaction.transactionHandle,
+        newerChunk?.oldestTransaction.transactionHandle,
       rewindUntilTransactionHandle:
-        olderStep?.newestTransaction.transactionHandle,
+        olderChunk?.newestTransaction.transactionHandle,
     },
   );
   if (newToOldTransactionsHandles.length === 0) {
@@ -31,8 +31,8 @@ export async function crawlerStep(
   }
   const newerTransaction = {
     transactionHandle: newToOldTransactionsHandles[0]!,
-    transactionOrdinal: newerStep
-      ? newerStep.oldestTransaction.transactionOrdinal
+    transactionOrdinal: newerChunk
+      ? newerChunk.oldestTransaction.transactionOrdinal - 1n
       : BigInt(Math.floor(Date.now())) * maxTransactionPerMillisecond,
   };
   let olderTransaction = {
@@ -45,16 +45,16 @@ export async function crawlerStep(
   let transactionCounter = newToOldTransactionsHandles.length;
   if (
     olderTransaction.transactionHandle ===
-    olderStep?.newestTransaction.transactionHandle
+    olderChunk?.newestTransaction.transactionHandle
   ) {
-    olderTransaction = olderStep.oldestTransaction;
-    transactionCounter += olderStep.transactionCounter - 1;
-    updatedCheckpoint.splice(olderStepIndex, 1);
+    olderTransaction = olderChunk.oldestTransaction;
+    transactionCounter += olderChunk.transactionCounter - 1;
+    updatedCheckpoint.splice(olderChunkIndex, 1);
     newToOldTransactionsHandles.pop();
   }
-  if (newerStep !== undefined) {
-    newerStep.oldestTransaction = olderTransaction;
-    newerStep.transactionCounter += transactionCounter;
+  if (newerChunk !== undefined) {
+    newerChunk.oldestTransaction = olderTransaction;
+    newerChunk.transactionCounter += transactionCounter;
   } else {
     updatedCheckpoint.unshift({
       newestTransaction: newerTransaction,
@@ -75,5 +75,5 @@ export async function crawlerStep(
   return { updatedCheckpoint, discoveredTransactions };
 }
 
-const mexTransactionPerStep = 100;
+const maxTransactionPerCycle = 100;
 const maxTransactionPerMillisecond = 1000n;

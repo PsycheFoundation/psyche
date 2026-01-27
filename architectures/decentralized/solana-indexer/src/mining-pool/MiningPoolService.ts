@@ -1,5 +1,5 @@
 import { Application } from "express";
-import { Pubkey, Solana } from "solana-kiss";
+import { Pubkey, Solana, timeoutMs } from "solana-kiss";
 import { indexerLoop } from "../indexer/IndexerLoop";
 import { saveRead, saveWrite } from "../save";
 import { miningPoolApiRoutes } from "./MiningPoolApiRoutes";
@@ -41,6 +41,7 @@ export async function miningPoolService(
         miningPoolDataStore,
         miningPoolDataStoreJsonCodec.encoder,
       );
+      await timeoutMs(1000);
     },
   );
 }
