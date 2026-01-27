@@ -86,11 +86,13 @@ run-manager create-run \
 
 At this point, your run has been successfully created.
 
-### Updating the parallelism lookup table (recommended)
+### Adding parallelism configuration (recommended)
 
 If your run uses a model that is not already in the [parallelism lookup table](https://github.com/PsycheFoundation/psyche/blob/main/shared/client/src/parallelism_data.json), it's recommended to add the optimal parallelism configuration for your model and target GPU hardware. This allows clients to use `PARALLELISM_AUTO=true` for automatic configuration.
 
-The table maps model (HuggingFace repo ID) → GPU type → number of GPUs → parallelism settings:
+#### Option 1: Add to your model's HuggingFace repo (preferred)
+
+Add a `parallelism_data.json` file directly to your model's HuggingFace repository. The client will automatically fetch this configuration at runtime - no Psyche rebuild required.
 
 ```json
 {
@@ -98,12 +100,26 @@ The table maps model (HuggingFace repo ID) → GPU type → number of GPUs → p
 		"H100": {
 			"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
 			"8": { "dp": 4, "tp": 2, "micro_batch_size": 4 }
+		},
+		"H200": {
+			"8": { "dp": 8, "tp": 1, "micro_batch_size": 8 }
 		}
 	}
 }
 ```
 
-Consider opening a PR to add your model's configuration so other clients can benefit from it.
+This is the preferred approach because:
+
+- No PR to Psyche required
+- No Docker image rebuild needed
+- Model creators manage their own configuration
+- Changes take effect immediately
+
+#### Option 2: Add to Psyche's compiled table
+
+Alternatively, open a PR to add your model to the [compiled parallelism table](https://github.com/PsycheFoundation/psyche/blob/main/shared/client/src/parallelism_data.json). This is useful for widely-used models that should have default configurations. The format is the same as above.
+
+**Lookup order**: The client first tries to fetch config from the model's HuggingFace repo, then falls back to the compiled table with a warning if not found.
 
 ### Initializing configuration
 
