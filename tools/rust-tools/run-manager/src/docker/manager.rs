@@ -74,15 +74,17 @@ impl RunManager {
 
         // Try to get RUN_ID from env, or discover available runs
         if let Ok(run_id) = std::env::var("RUN_ID") {
-            info!("Using RUN_ID from environment: {}", run_id);
-            return Ok(Self {
-                wallet_key,
-                run_id,
-                coordinator_client,
-                env_file,
-                local_docker,
-                scratch_dir,
-            });
+            if !run_id.is_empty() {
+                info!("Using RUN_ID from environment: {}", run_id);
+                return Ok(Self {
+                    wallet_key,
+                    run_id,
+                    coordinator_client,
+                    env_file,
+                    local_docker,
+                    scratch_dir,
+                });
+            }
         }
 
         info!("RUN_ID not set, discovering available runs...");
@@ -196,6 +198,8 @@ impl RunManager {
             .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key))
             .arg("--env")
             .arg(format!("CLIENT_VERSION={}", client_version))
+            .arg("--env")
+            .arg(format!("RUN_ID={}", &self.run_id))
             .arg("--env-file")
             .arg(&self.env_file);
 
