@@ -37,6 +37,7 @@ impl RunManager {
         coordinator_program_id: String,
         env_file: PathBuf,
         local_docker: bool,
+        authorizer: Option<Pubkey>,
     ) -> Result<Self> {
         // Verify docker is available
         Command::new("docker")
@@ -93,22 +94,16 @@ impl RunManager {
             bail!("No runs found on coordinator program");
         }
 
-        // Log all discovered runs
-        info!("Discovered {} run(s):", runs.len());
-        for run in &runs {
-            info!("  - {} (state: {})", run.run_id, run.run_state);
-        }
-
         // Parse wallet key to get user's pubkey for authorization checks
         let user_pubkey = parse_wallet_pubkey(&wallet_key)?;
         info!("User pubkey: {}", user_pubkey);
 
-        let run_id = select_best_run(&runs, &user_pubkey, &coordinator_client)?;
-        let selected = runs.iter().find(|r| r.run_id == run_id).unwrap();
-        info!(
-            "Selected run: {} (state: {})",
-            selected.run_id, selected.run_state
-        );
+        let run_id = select_best_run(
+            &runs,
+            &user_pubkey,
+            &coordinator_client,
+            authorizer.as_ref(),
+        )?;
 
         Ok(Self {
             wallet_key,
@@ -379,9 +374,10 @@ fn select_best_run(
     runs: &[RunInfo],
     user_pubkey: &Pubkey,
     coordinator_client: &CoordinatorClient,
+    authorizer: Option<&Pubkey>,
 ) -> Result<String> {
-    // Avoid joining runs that are halted
-    let joinable: Vec<_> = runs
+    // Filter out unjoinable run states
+    let mut candidates: Vec<_> = runs
         .iter()
         .filter(|run| {
             !matches!(
@@ -391,42 +387,62 @@ fn select_best_run(
         })
         .collect();
 
-    if joinable.is_empty() {
+    if candidates.is_empty() {
         bail!(
             "No joinable runs found. All {} run(s) are in unjoinable states.",
             runs.len()
         );
     }
 
-    // Filter out runs the user is not authorized to join
-    let mut authorized: Vec<_> = Vec::new();
-    for run in joinable {
-        match coordinator_client.can_user_join_run(run, user_pubkey) {
-            Ok(true) => authorized.push(run),
-            Ok(false) => {
-                info!(
-                    "Skipping run {} - not authorized (user: {})",
-                    run.run_id, user_pubkey
-                );
-            }
-            Err(e) => {
-                warn!(
-                    "Skipping run {} - failed to check authorization: {}",
-                    run.run_id, e
-                );
-            }
+    // Filter by join_authority if --authorizer was specified
+    if let Some(auth) = authorizer {
+        info!("Filtering runs by join_authority: {}", auth);
+        candidates.retain(
+            |run| match coordinator_client.fetch_coordinator_data(&run.run_id) {
+                Ok(data) => data.join_authority == *auth,
+                Err(e) => {
+                    warn!("Skipping run {} - failed to fetch data: {}", run.run_id, e);
+                    false
+                }
+            },
+        );
+        if candidates.is_empty() {
+            bail!("No runs found matching authorizer {}", auth);
         }
     }
 
-    if authorized.is_empty() {
-        bail!("No authorized runs found for user {}.", user_pubkey);
+    // Filter to runs the user is authorized to join
+    candidates.retain(
+        |run| match coordinator_client.can_user_join_run(run, user_pubkey) {
+            Ok(authorized) => authorized,
+            Err(e) => {
+                warn!(
+                    "Skipping run {} - authorization check failed: {}",
+                    run.run_id, e
+                );
+                false
+            }
+        },
+    );
+
+    if candidates.is_empty() {
+        bail!("No authorized runs found for user {}", user_pubkey);
     }
 
-    // Prioritize joining runs waiting for compute and then just pick the first one
-    // available from those for now
-    authorized.sort_by_key(|run| match run.run_state {
+    // Prioritize runs waiting for members
+    candidates.sort_by_key(|run| match run.run_state {
         RunState::WaitingForMembers => 0,
         _ => 1,
     });
-    Ok(authorized[0].run_id.clone())
+
+    info!("Found {} available run(s):", candidates.len());
+    for run in &candidates {
+        info!("  - {} (state: {})", run.run_id, run.run_state);
+    }
+
+    info!(
+        "Selected run: {} (state: {})",
+        candidates[0].run_id, candidates[0].run_state
+    );
+    Ok(candidates[0].run_id.clone())
 }

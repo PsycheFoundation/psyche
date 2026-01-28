@@ -59,6 +59,10 @@ struct CliArgs {
     #[arg(long)]
     local: bool,
 
+    /// Only join runs where this pubkey is the join_authority (Docker mode)
+    #[arg(long)]
+    authorizer: Option<String>,
+
     /// Optional entrypoint (Docker mode)
     #[arg(long)]
     entrypoint: Option<String>,
@@ -287,7 +291,22 @@ async fn async_main() -> Result<()> {
             None => None,
         };
 
-        let run_mgr = RunManager::new(args.coordinator_program_id, env_file, args.local)?;
+        // Parse pubkey into Pubkey type
+        let authorizer = args
+            .authorizer
+            .as_ref()
+            .map(|s| {
+                s.parse()
+                    .map_err(|e| anyhow::anyhow!("Failed to parse authorizer pubkey: {}", e))
+            })
+            .transpose()?;
+
+        let run_mgr = RunManager::new(
+            args.coordinator_program_id,
+            env_file,
+            args.local,
+            authorizer,
+        )?;
         let result = run_mgr.run(entrypoint).await;
         if let Err(e) = &result {
             error!("Error: {}", e);
