@@ -1,6 +1,4 @@
-import { randomUUID } from "crypto";
 import { promises as fsp } from "fs";
-import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { Pubkey, Result } from "solana-kiss";
 
@@ -147,10 +145,10 @@ export async function utilsFsWrite(
   filePath: string,
   content: string,
 ): Promise<void> {
-  const fileTmpPath = join(tmpdir(), `${randomUUID()}.tmp`);
-  await fsp.writeFile(fileTmpPath, content, { flush: true });
   await fsp.mkdir(dirname(filePath), { recursive: true });
-  await fsp.rename(fileTmpPath, filePath);
+  const filePathTmp = `${filePath}.tmp`;
+  await fsp.writeFile(filePathTmp, content, { flush: true });
+  await fsp.rename(filePathTmp, filePath);
 }
 
 export async function utilsFsRead(filePath: string): Promise<string> {

@@ -44,11 +44,9 @@ export async function coordinatorApiRoutes(
 }
 
 function getRunAddress(programAddress: Pubkey, runId: string): Pubkey {
-  const runIdSeed = new Uint8Array(32);
-  runIdSeed.set(utf8Encode(runId).slice(0, 32));
   return pubkeyFindPdaAddress(programAddress, [
     utf8Encode("coordinator"),
-    runIdSeed,
+    utf8Encode(runId).slice(0, 32),
   ]);
 }
 
