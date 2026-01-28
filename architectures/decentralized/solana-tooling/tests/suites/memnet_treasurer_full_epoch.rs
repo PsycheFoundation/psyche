@@ -7,13 +7,7 @@ use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
-use psyche_coordinator::model::LLMArchitecture;
-use psyche_coordinator::model::LLMTrainingDataLocation;
-use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
-use psyche_core::ConstantLR;
-use psyche_core::LearningRateSchedule;
-use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
 use psyche_solana_coordinator::ClientId;
@@ -230,22 +224,8 @@ pub async fn run() {
                 waiting_for_members_extra_time: 3,
             }),
             model: Some(Model::LLM(LLM {
-                architecture: LLMArchitecture::HfLlama,
                 checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
                 max_seq_len: 4096,
-                data_type: LLMTrainingDataType::Pretraining,
-                data_location: LLMTrainingDataLocation::default(),
-                lr_schedule: LearningRateSchedule::Constant(
-                    ConstantLR::default(),
-                ),
-                optimizer: OptimizerDefinition::Distro {
-                    clip_grad_norm: None,
-                    compression_decay: 1.0,
-                    compression_topk: 1,
-                    compression_chunk: 1,
-                    quantize_1bit: false,
-                    weight_decay: None,
-                },
                 cold_start_warmup_steps: 0,
             })),
             progress: None,

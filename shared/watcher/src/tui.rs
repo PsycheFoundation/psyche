@@ -187,9 +187,7 @@ impl<T: NodeIdentity> From<&Coordinator<T>> for CoordinatorTuiState {
                 .iter()
                 .map(|c| format!("{:?}", c.id))
                 .collect(),
-            data_source: match &value.model {
-                Model::LLM(l) => format!("{:?}", l.data_type),
-            },
+            data_source: "External Config".to_string(), // data_type moved to external config
             model_checkpoint: match &value.model {
                 Model::LLM(l) => format!("{}", l.checkpoint),
             },

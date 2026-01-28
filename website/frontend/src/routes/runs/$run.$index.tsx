@@ -178,7 +178,6 @@ function RouteComponent() {
 									<InfoChit label="params">
 										{formatNumber(Number(info.size), 2)}
 									</InfoChit>
-									<InfoChit label="arch">{info.arch}</InfoChit>
 									<InfoChit label="type">{info.type}</InfoChit>
 								</InfoChits>
 

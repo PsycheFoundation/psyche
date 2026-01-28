@@ -1610,6 +1610,7 @@ dependencies = [
  "cfg_eval",
  "psyche-core",
  "serde",
+ "serde_json",
  "serde_with",
  "ts-rs",
 ]
