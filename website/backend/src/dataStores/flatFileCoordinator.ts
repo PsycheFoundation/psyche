@@ -4,7 +4,6 @@ import {
 	Model,
 	PsycheCoordinator,
 	RunMetadata,
-	lr_at_step,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
 	RunSummary,
@@ -291,13 +290,8 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = eventTime
 		lastRun.lastState = newState
 
-		const step = newState.coordinator.progress.step
-		if (step > (lastRun.observedLrByStep.at(-1)?.[0] ?? 0)) {
-			const lr = lr_at_step(newState.coordinator.model.LLM.lr_schedule, step)
-			if (isGoodNumber(lr)) {
-				lastRun.observedLrByStep.push([step, lr])
-			}
-		}
+		// TODO: LR schedule moved to ExternalModelConfig (off-chain)
+		// Fetch from GCS/HuggingFace to restore LR tracking
 
 		if (configChanged) {
 			lastRun.configChanges.push({
@@ -672,7 +666,10 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					roundWitnessTime: Number(config.round_witness_time),
 					warmupTime: Number(config.warmup_time),
 
-					lrSchedule: c.coordinator.model.LLM.lr_schedule,
+					// TODO: Fetch from ExternalModelConfig (off-chain)
+					lrSchedule: {
+						Constant: { base_lr: 0, warmup_init_lr: 0, warmup_steps: 0 },
+					},
 				},
 			}
 		}
@@ -744,7 +741,8 @@ function makeRunSummary(
 		: undefined
 
 	const summary: RunSummary = {
-		arch: c.model.LLM.architecture,
+		// TODO: Fetch from ExternalModelConfig (off-chain)
+		arch: 'HfLlama',
 		id: c.run_id,
 		index: index,
 		isOnlyRunAtThisIndex,
