@@ -4,8 +4,6 @@ import {
 	Model,
 	PsycheCoordinator,
 	RunMetadata,
-	LearningRateSchedule,
-	LLMArchitecture,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
 	RunSummary,
@@ -27,7 +25,6 @@ import { UniqueRunKey, runKey } from '../coordinator.js'
 import { readVersionedFile, writeVersionedFile } from './versioned.js'
 import { CURRENT_VERSION } from 'shared/formats/type.js'
 import { existsSync, renameSync } from 'fs'
-import { fetchExternalConfig } from '../externalConfig.js'
 
 // any run ID outside this list will not be returned to the frontend in the summary list,
 const ALLOWLISTED_RUN_IDS =
@@ -68,11 +65,6 @@ type WitnessV2 = Omit<
 	prompt_index: number
 }
 
-interface ExternalModelConfig {
-	architecture: LLMArchitecture
-	lr_schedule: LearningRateSchedule
-}
-
 interface RunHistoryV2 {
 	runId: string
 	createdAt: ChainTimestamp
@@ -103,9 +95,6 @@ interface RunHistoryV2 {
 	observedLrByStep: Array<[number, number]>
 
 	recentTxs: Array<TxSummary>
-
-	// Cached external config (fetched from HuggingFace/GCS)
-	externalConfig?: ExternalModelConfig
 }
 
 interface RunSummaries {
@@ -300,54 +289,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 		lastRun.lastUpdated = eventTime
 		lastRun.lastState = newState
-
-		// Fetch external config in the background (non-blocking)
-		const checkpoint = newState.coordinator.model.LLM.checkpoint
-		console.log(
-			'[externalConfig] Checking checkpoint for run',
-			lastRun.runId,
-			':',
-			checkpoint
-		)
-		if (!lastRun.externalConfig) {
-			console.log(
-				'[externalConfig] Fetching external config for run',
-				lastRun.runId
-			)
-			fetchExternalConfig(checkpoint)
-				.then((config) => {
-					console.log(
-						'[externalConfig] Fetch result for run',
-						lastRun.runId,
-						':',
-						config
-					)
-					if (config) {
-						lastRun.externalConfig = {
-							architecture: config.architecture,
-							lr_schedule: config.lr_schedule,
-						}
-						// Clear caches so next request will show updated data
-						this.#runCache.delete(runKey(lastRun.runId, index))
-						this.#summaryCache = null
-						// Notify listeners of update
-						this.eventEmitter.emit('update', runKey(lastRun.runId, index))
-					}
-				})
-				.catch((err) => {
-					console.warn(
-						`[externalConfig] Failed to fetch external config for run ${lastRun.runId}:`,
-						err
-					)
-				})
-		} else {
-			console.log(
-				'[externalConfig] Already have external config for run',
-				lastRun.runId,
-				':',
-				lastRun.externalConfig
-			)
-		}
 
 		if (configChanged) {
 			lastRun.configChanges.push({
@@ -721,11 +662,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					maxRoundTrainTime: Number(config.max_round_train_time),
 					roundWitnessTime: Number(config.round_witness_time),
 					warmupTime: Number(config.warmup_time),
-
-					// Use cached external config or fallback to placeholder
-					lrSchedule: run.externalConfig?.lr_schedule ?? {
-						Constant: { base_lr: 0, warmup_init_lr: 0, warmup_steps: 0 },
-					},
 				},
 			}
 		}
@@ -797,8 +733,6 @@ function makeRunSummary(
 		: undefined
 
 	const summary: RunSummary = {
-		// Use cached external config or fallback to HfLlama
-		arch: run.externalConfig?.architecture ?? 'HfLlama',
 		id: c.run_id,
 		index: index,
 		isOnlyRunAtThisIndex,
