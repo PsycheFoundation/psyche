@@ -86,11 +86,37 @@ run-manager create-run \
 
 At this point, your run has been successfully created.
 
+### Adding parallelism configuration (required for --parallelism-auto)
+
+If you want clients to use `PARALLELISM_AUTO=true` for automatic configuration, you must add a `parallelism_data.json` file to your model's HuggingFace repository.
+
+```json
+{
+	"H100": {
+		"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
+		"8": { "dp": 4, "tp": 2, "micro_batch_size": 4 }
+	},
+	"H200": {
+		"8": { "dp": 8, "tp": 1, "micro_batch_size": 8 }
+	}
+}
+```
+
+Format: `gpu_type` → `num_gpus` → config
+
+- **gpu_type**: GPU model name (e.g., "H100", "H200")
+- **num_gpus**: Number of GPUs available (e.g., "1", "8")
+- **dp**: Data parallelism
+- **tp**: Tensor parallelism
+- **micro_batch_size**: Micro batch size per GPU
+
+The config is shared via P2P when clients join a run.
+
 ### Initializing configuration
 
 Initially, the run will not have any configuration defined and will remain paused, so no clients can join yet.
 
-To set the run configuration, you’ll need to provide mostly the same parameters as when creating the run, along with the path to a `config.toml` file that follows the [run config schema](./run-config.md).
+To set the run configuration, you'll need to provide mostly the same parameters as when creating the run, along with the path to a `config.toml` file that follows the [run config schema](./run-config.md).
 
 ```bash
 run-manager update-config \
