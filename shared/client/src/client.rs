@@ -1,26 +1,26 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, Finished, NC, RunInitConfig, RunInitConfigAndIO,
-    TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
+    Broadcast, BroadcastType, ClientTUIState, Finished, RunInitConfig, RunInitConfigAndIO,
+    TrainingResult, NC,
 };
 use anyhow::anyhow;
-use anyhow::{Error, Result, bail};
+use anyhow::{bail, Error, Result};
 use futures::future::join_all;
 use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    EndpointId, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState,
-    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload, allowlist,
-    blob_ticket_param_request_task, raw_p2p_verify,
+    allowlist, blob_ticket_param_request_task, raw_p2p_verify, AuthenticatableIdentity, BlobTicket,
+    DownloadComplete, DownloadRetryInfo, DownloadType, EndpointId, ModelRequestType, NetworkEvent,
+    NetworkTUIState, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
+    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
 use iroh_blobs::api::Tag;
-use rand::{Rng, RngCore, seq::SliceRandom};
+use rand::{seq::SliceRandom, Rng, RngCore};
 use std::{
     collections::BTreeSet,
     marker::PhantomData,
@@ -29,7 +29,7 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{Notify, mpsc, watch},
+    sync::{mpsc, watch, Notify},
     task::JoinHandle,
     time::interval,
 };
@@ -432,13 +432,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
 
                             let tag_name = format!("distro-result_{step}");
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
+                            let (ticket, size) = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
 
                             let hash = ticket.hash();
                             info!(
                                 client_id = %identity, step = step,
-                                "Broadcasting payload batch id {batch_id} hash 0x{}",
+                                "Broadcasting payload batch id {batch_id} hash 0x{} ({:.3} MB)",
                                 hex::encode(hash),
+                                (size as f64 ) / 1_000_000f64
                             );
 
                             let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);

@@ -1,11 +1,11 @@
 use anyhow::Result;
-use iroh::EndpointId;
 use iroh::protocol::AcceptError;
+use iroh::EndpointId;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
 use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
@@ -445,7 +445,7 @@ impl SharableModel {
                     let transmittable_download =
                         TransmittableDownload::ModelParameter(transmittable_parameter);
                     trace!("Adding parameter downloadable {param_name}");
-                    let blob_ticket = p2p
+                    let (blob_ticket, _) = p2p
                         .add_downloadable(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
@@ -492,7 +492,7 @@ impl SharableModel {
                 );
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
-                let ticket = p2p
+                let (ticket, _) = p2p
                     .add_downloadable(transmittable_download, Tag::from(tag))
                     .await
                     .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
