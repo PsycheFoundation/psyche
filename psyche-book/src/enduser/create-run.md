@@ -86,40 +86,31 @@ run-manager create-run \
 
 At this point, your run has been successfully created.
 
-### Adding parallelism configuration (recommended)
+### Adding parallelism configuration (required for --parallelism-auto)
 
-If your run uses a model that is not already in the [parallelism lookup table](https://github.com/PsycheFoundation/psyche/blob/main/shared/client/src/parallelism_data.json), it's recommended to add the optimal parallelism configuration for your model and target GPU hardware. This allows clients to use `PARALLELISM_AUTO=true` for automatic configuration.
-
-#### Option 1: Add to your model's HuggingFace repo (preferred)
-
-Add a `parallelism_data.json` file directly to your model's HuggingFace repository. The client will automatically fetch this configuration at runtime - no Psyche rebuild required.
+If you want clients to use `PARALLELISM_AUTO=true` for automatic configuration, you must add a `parallelism_data.json` file to your model's HuggingFace repository.
 
 ```json
 {
-	"your-org/your-model": {
-		"H100": {
-			"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
-			"8": { "dp": 4, "tp": 2, "micro_batch_size": 4 }
-		},
-		"H200": {
-			"8": { "dp": 8, "tp": 1, "micro_batch_size": 8 }
-		}
+	"H100": {
+		"1": { "dp": 1, "tp": 1, "micro_batch_size": 4 },
+		"8": { "dp": 4, "tp": 2, "micro_batch_size": 4 }
+	},
+	"H200": {
+		"8": { "dp": 8, "tp": 1, "micro_batch_size": 8 }
 	}
 }
 ```
 
-This is the preferred approach because:
+Format: `gpu_type` → `num_gpus` → config
 
-- No PR to Psyche required
-- No Docker image rebuild needed
-- Model creators manage their own configuration
-- Changes take effect immediately
+- **gpu_type**: GPU model name (e.g., "H100", "H200")
+- **num_gpus**: Number of GPUs available (e.g., "1", "8")
+- **dp**: Data parallelism
+- **tp**: Tensor parallelism
+- **micro_batch_size**: Micro batch size per GPU
 
-#### Option 2: Add to Psyche's compiled table
-
-Alternatively, open a PR to add your model to the [compiled parallelism table](https://github.com/PsycheFoundation/psyche/blob/main/shared/client/src/parallelism_data.json). This is useful for widely-used models that should have default configurations. The format is the same as above.
-
-**Lookup order**: The client first tries to fetch config from the model's HuggingFace repo, then falls back to the compiled table with a warning if not found.
+The config is shared via P2P when clients join a run.
 
 ### Initializing configuration
 
