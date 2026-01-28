@@ -1,26 +1,26 @@
 use crate::{
+    Broadcast, BroadcastType, ClientTUIState, Finished, NC, RunInitConfig, RunInitConfigAndIO,
+    TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
-    Broadcast, BroadcastType, ClientTUIState, Finished, RunInitConfig, RunInitConfigAndIO,
-    TrainingResult, NC,
 };
 use anyhow::anyhow;
-use anyhow::{bail, Error, Result};
+use anyhow::{Error, Result, bail};
 use futures::future::join_all;
 use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    allowlist, blob_ticket_param_request_task, raw_p2p_verify, AuthenticatableIdentity, BlobTicket,
-    DownloadComplete, DownloadRetryInfo, DownloadType, EndpointId, ModelRequestType, NetworkEvent,
-    NetworkTUIState, PeerManagerHandle, RetriedDownloadsHandle, SharableModel,
-    TransmittableDownload, MAX_DOWNLOAD_RETRIES,
+    AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
+    EndpointId, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState,
+    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload, allowlist,
+    blob_ticket_param_request_task, raw_p2p_verify,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
 
 use iroh_blobs::api::Tag;
-use rand::{seq::SliceRandom, Rng, RngCore};
+use rand::{Rng, RngCore, seq::SliceRandom};
 use std::{
     collections::BTreeSet,
     marker::PhantomData,
@@ -29,7 +29,7 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{mpsc, watch, Notify},
+    sync::{Notify, mpsc, watch},
     task::JoinHandle,
     time::interval,
 };
