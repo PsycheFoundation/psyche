@@ -36,6 +36,7 @@ clap.workspace = true
 sysinfo = "0.32.0"
 iroh.workspace = true
 iroh-blobs.workspace = true
+nvml-wrapper = "0.11.0"
 
 [features]
 parallelism = ["psyche-modeling/parallelism"]

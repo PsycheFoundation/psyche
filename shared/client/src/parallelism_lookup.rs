@@ -1,8 +1,8 @@
 use anyhow::Result;
 use hf_hub::{Repo, RepoType};
+use nvml_wrapper::Nvml;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::process::Command;
 use tracing::info;
 
 const REMOTE_CONFIG_FILENAME: &str = "parallelism_data.json";
@@ -17,41 +17,48 @@ pub struct ParallelismConfig {
 // Table format: gpu_type -> num_gpus -> config
 type Table = HashMap<String, HashMap<String, ParallelismConfig>>;
 
-fn get_gpu_type() -> String {
-    // Try nvidia-smi first
-    let raw_gpu_name = Command::new("nvidia-smi")
-        .args(["--query-gpu=name", "--format=csv,noheader"])
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.lines().next().map(|l| l.trim().to_string()))
-        .filter(|s| !s.is_empty())
-        // Fallback: read from /proc/driver/nvidia (works in containers without nvidia-smi)
-        .or_else(|| {
-            std::fs::read_dir("/proc/driver/nvidia/gpus")
-                .ok()?
-                .filter_map(|e| e.ok())
-                .next()
-                .and_then(|entry| {
-                    let info_path = entry.path().join("information");
-                    std::fs::read_to_string(info_path).ok()
-                })
-                .and_then(|content| {
-                    content
-                        .lines()
-                        .find(|line| line.starts_with("Model:"))
-                        .map(|line| line.trim_start_matches("Model:").trim().to_string())
-                })
-        })
-        .unwrap_or_default();
+#[derive(Debug)]
+struct GpuInfo {
+    name: String,
+    device_count: u32,
+}
 
-    // Normalize GPU name to match table keys
-    if raw_gpu_name.to_uppercase().contains("H200") {
+fn get_gpu_info() -> Result<GpuInfo> {
+    let nvml = Nvml::init()?;
+    let device_count = nvml.device_count()?;
+
+    if device_count == 0 {
+        anyhow::bail!("No GPUs found!");
+    }
+
+    let mut gpu_names = Vec::new();
+    for i in 0..device_count {
+        let device = nvml.device_by_index(i)?;
+        gpu_names.push(device.name()?);
+    }
+
+    let first_name = &gpu_names[0];
+    if !gpu_names.iter().all(|name| name == first_name) {
+        anyhow::bail!(
+            "All GPUs must be of the same type, but we have mismatching names: {:?}",
+            gpu_names
+        );
+    }
+
+    Ok(GpuInfo {
+        name: gpu_names.pop().unwrap(),
+        device_count,
+    })
+}
+
+fn normalize_gpu_name(raw_name: &str) -> String {
+    let upper = raw_name.to_uppercase();
+    if upper.contains("H200") {
         "H200".to_string()
-    } else if raw_gpu_name.to_uppercase().contains("H100") {
+    } else if upper.contains("H100") {
         "H100".to_string()
     } else {
-        raw_gpu_name
+        raw_name.to_string()
     }
 }
 
@@ -79,9 +86,9 @@ fn lookup_in_table(table: &Table, gpu_type: &str, num_gpus: usize) -> Option<Par
 
 /// Lookup parallelism config from the model's HuggingFace repo
 pub fn lookup(model_repo_id: &str) -> Result<ParallelismConfig> {
-    let num_gpus = tch::Cuda::device_count() as usize;
-    let gpu_type = get_gpu_type();
-    info!("Detected {} x {} GPU(s)", num_gpus, gpu_type);
+    let gpu_info = get_gpu_info()?;
+    let gpu_type = normalize_gpu_name(&gpu_info.name);
+    info!("Detected {} x {} GPU(s)", gpu_info.device_count, gpu_type);
 
     let raw_json = load_json_from_model_repo(model_repo_id).ok_or_else(|| {
         anyhow::anyhow!(
@@ -99,6 +106,6 @@ pub fn lookup(model_repo_id: &str) -> Result<ParallelismConfig> {
         model_repo_id
     );
 
-    lookup_in_table(&table, &gpu_type, num_gpus)
-        .ok_or_else(|| anyhow::anyhow!("No config for {} x {}", num_gpus, gpu_type))
+    lookup_in_table(&table, &gpu_type, gpu_info.device_count as usize)
+        .ok_or_else(|| anyhow::anyhow!("No config for {} x {}", gpu_info.device_count, gpu_type))
 }
