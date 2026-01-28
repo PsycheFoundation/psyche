@@ -1,16 +1,30 @@
-use anchor_client::solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use anchor_client::solana_sdk::{
+    commitment_config::CommitmentConfig, pubkey::Pubkey, system_program,
+};
 use anchor_lang::AccountDeserialize;
 use anyhow::{Context, Result};
+use psyche_coordinator::RunState;
+use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{
     CoordinatorInstance, coordinator_account_from_bytes, find_coordinator_instance,
+    logic::JOIN_RUN_AUTHORIZATION_SCOPE,
 };
+use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_client::RpcClient;
-use tracing::info;
+use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
+use tracing::{debug, info, warn};
+
+#[derive(Debug, Clone)]
+pub struct RunInfo {
+    pub run_id: String,
+    pub instance_pubkey: Pubkey,
+    pub coordinator_account: Pubkey,
+    pub run_state: RunState,
+}
 
 /// Coordinator client for querying Solana
 pub struct CoordinatorClient {
     rpc_client: RpcClient,
-    #[allow(dead_code)]
     program_id: Pubkey,
 }
 
@@ -40,19 +54,39 @@ impl CoordinatorClient {
         Ok(instance)
     }
 
+    fn fetch_run_state(&self, coordinator_account: &Pubkey) -> Result<RunState> {
+        // Fetch the raw Solana account data from the blockchain
+        let solana_account = self
+            .rpc_client
+            .get_account(coordinator_account)
+            .with_context(|| {
+                format!(
+                    "Failed to fetch coordinator account {}",
+                    coordinator_account
+                )
+            })?;
+
+        // Deserialize the account data into a CoordinatorAccount struct
+        let coordinator =
+            coordinator_account_from_bytes(&solana_account.data).with_context(|| {
+                format!(
+                    "Failed to deserialize coordinator account {}",
+                    coordinator_account
+                )
+            })?;
+
+        Ok(coordinator.state.coordinator.run_state)
+    }
+
     pub fn get_docker_tag_for_run(&self, run_id: &str, local_docker: bool) -> Result<String> {
         info!("Querying coordinator for Run ID: {}", run_id);
 
         let instance = self.fetch_coordinator_data(run_id)?;
 
         // Fetch the coordinator account to get the client version
-        let coordinator_account_data = self
-            .rpc_client
-            .get_account(&instance.coordinator_account)
-            .context("RPC error: failed to get coordinator account")?;
-
-        let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)
-            .context("Failed to deserialize CoordinatorAccount")?;
+        let coordinator_account_data =
+            self.rpc_client.get_account(&instance.coordinator_account)?;
+        let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)?;
 
         let client_version = String::from(&coordinator_account.state.client_version);
 
@@ -81,5 +115,104 @@ impl CoordinatorClient {
         };
 
         Ok(image_name)
+    }
+
+    pub fn get_all_runs(&self) -> Result<Vec<RunInfo>> {
+        // Fetch all CoordinatorInstance accounts that are owned by the program
+        let accounts = self
+            .rpc_client
+            .get_program_accounts_with_config(
+                &self.program_id,
+                RpcProgramAccountsConfig {
+                    account_config: RpcAccountInfoConfig {
+                        encoding: Some(UiAccountEncoding::Base64),
+                        commitment: Some(CommitmentConfig::confirmed()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to fetch program accounts from coordinator program {}: {}",
+                    self.program_id,
+                    e
+                )
+            })?;
+
+        let mut runs = Vec::new();
+        for (pubkey, account) in accounts {
+            match CoordinatorInstance::try_deserialize(&mut account.data.as_slice()) {
+                Ok(instance) => {
+                    if let Ok(run_state) = self.fetch_run_state(&instance.coordinator_account) {
+                        runs.push(RunInfo {
+                            run_id: instance.run_id.clone(),
+                            instance_pubkey: pubkey,
+                            coordinator_account: instance.coordinator_account,
+                            run_state,
+                        });
+                    } else {
+                        debug!(
+                            "Skipping run {} (instance: {}) - could not fetch coordinator state",
+                            instance.run_id, pubkey
+                        );
+                    }
+                }
+                Err(e) => {
+                    debug!(
+                        "Failed to deserialize CoordinatorInstance at {}: {}",
+                        pubkey, e
+                    );
+                }
+            }
+        }
+
+        Ok(runs)
+    }
+
+    /// Check if a user is authorized to join a specific run.
+    ///
+    /// This checks both permissionless authorization (grantee = system_program::ID)
+    /// and user-specific authorization (grantee = user_pubkey).
+    pub fn can_user_join_run(&self, run: &RunInfo, user_pubkey: &Pubkey) -> Result<bool> {
+        // Fetch the CoordinatorInstance to get join_authority
+        let instance = self.fetch_coordinator_data(&run.run_id)?;
+        let join_authority = instance.join_authority;
+
+        // Try permissionless authorization first (grantee = system_program::ID)
+        if self.check_authorization_for_grantee(&join_authority, &system_program::ID, user_pubkey) {
+            return Ok(true);
+        }
+
+        // Try user-specific authorization (grantee = user_pubkey)
+        Ok(self.check_authorization_for_grantee(&join_authority, user_pubkey, user_pubkey))
+    }
+
+    /// Check if an authorization exists and is valid for a specific grantee.
+    fn check_authorization_for_grantee(
+        &self,
+        join_authority: &Pubkey,
+        grantee: &Pubkey,
+        user_pubkey: &Pubkey,
+    ) -> bool {
+        let auth_pda = psyche_solana_authorizer::find_authorization(
+            join_authority,
+            grantee,
+            JOIN_RUN_AUTHORIZATION_SCOPE,
+        );
+
+        let Ok(account) = self.rpc_client.get_account(&auth_pda) else {
+            return false;
+        };
+
+        let Ok(authorization) = Authorization::try_deserialize(&mut account.data.as_slice()) else {
+            warn!(
+                "Failed to deserialize authorization at {}: invalid data",
+                auth_pda
+            );
+            return false;
+        };
+
+        authorization.is_valid_for(join_authority, user_pubkey, JOIN_RUN_AUTHORIZATION_SCOPE)
     }
 }
