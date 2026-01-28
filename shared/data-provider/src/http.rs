@@ -2,7 +2,8 @@ use std::{str::FromStr, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use futures::future::join_all;
-use google_cloud_storage::http::objects::list::ListObjectsRequest;
+use google_cloud_gax::paginator::ItemPaginator;
+use google_cloud_storage::client::StorageControl;
 use psyche_coordinator::model::HttpTrainingDataLocation;
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use rand::seq::SliceRandom;
@@ -10,7 +11,7 @@ use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
 use reqwest::IntoUrl;
 use tokio::task::JoinHandle;
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     TokenizedData,
@@ -85,50 +86,58 @@ impl FileURLs {
         Ok(Self(urls_with_sizes))
     }
 
-    pub async fn from_gcp_bucket(bucket_name: &str, directory: Option<String>) -> Result<Self> {
-        let config = google_cloud_storage::client::ClientConfig::default().anonymous();
-        let client = google_cloud_storage::client::Client::new(config);
-        let mut data_files_matching_directory = {
-            let mut all_results = vec![];
-            // the outer option is if we should continue looping
-            // the inner option is if we have a "next page token"
-            let mut next_page_token: Option<Option<String>> = Some(None);
+    pub async fn from_gcp_bucket(
+        bucket_name: &str,
+        directory: Option<String>,
+    ) -> anyhow::Result<Self> {
+        debug!(
+            "http: from_gcp_bucket: bucket_name={}, directory={:?}",
+            bucket_name, directory
+        );
+        let storage_control = StorageControl::builder().build().await?;
 
-            while let Some(maybe_next_page_token) = next_page_token {
-                let this_results = client
-                    .list_objects(&ListObjectsRequest {
-                        bucket: bucket_name.to_owned(),
-                        prefix: directory.clone(),
-                        page_token: maybe_next_page_token,
-                        ..Default::default()
-                    })
-                    .await?;
-                all_results.extend(this_results.items.iter().flatten().filter_map(|obj| {
-                    let file_ext = obj.name.split('.').next_back()?;
-                    if !DATA_FILE_EXTENSIONS.contains(&file_ext) {
-                        return None;
-                    }
-
-                    Some(
-                        obj.media_link
-                            .parse::<reqwest::Url>()
-                            .map(|full_url| (full_url, obj.size as u64))
-                            .map_err(anyhow::Error::from),
-                    )
-                }));
-
-                // if we have a token, Some(Some(String)),
-                // if not, None
-                next_page_token = this_results.next_page_token.map(Some)
-            }
-            all_results
+        let mut builder = storage_control
+            .list_objects()
+            .set_parent(format!("projects/_/buckets/{}", bucket_name));
+        if let Some(p) = directory {
+            builder = builder.set_prefix(p);
         }
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
 
-        data_files_matching_directory.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut items = builder.by_item();
+        let mut all_results = vec![];
 
-        Ok(Self(data_files_matching_directory))
+        // transpose does Result<Option<T>> -> Option<Result<T>>
+        while let Some(obj) = items.next().await.transpose()? {
+            // Only process those files with extensions we care about
+            let file_ext = obj.name.split('.').next_back().unwrap_or("");
+            if !DATA_FILE_EXTENSIONS.contains(&file_ext) {
+                continue;
+            }
+
+            let full_url = {
+                // Transforms spaces, etc. into %20 and other url-friendly encodings
+                let encoded_name = urlencoding::encode(&obj.name);
+
+                // Just in case we have the whole "projects/_/buckets/bucket-name" prefix remove it
+                let bucket_name_only = obj
+                    .bucket
+                    .strip_prefix("projects/_/buckets/")
+                    .unwrap_or(&obj.bucket);
+
+                format!("https://www.googleapis.com/storage/v1/b/{bucket_name_only}/o/{encoded_name}?alt=media")
+                    .parse::<reqwest::Url>()
+                    .map_err(anyhow::Error::from)?
+            };
+            debug!(
+                "Constructed full url: {:?} for object: {} with size {}",
+                full_url, obj.name, obj.size
+            );
+            all_results.push((full_url, obj.size as u64));
+        }
+
+        // We sort here to return in deterministic order
+        all_results.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(Self(all_results))
     }
 
     pub async fn from_location(location: &HttpTrainingDataLocation) -> Result<Self> {

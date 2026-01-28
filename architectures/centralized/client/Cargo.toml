@@ -25,6 +25,8 @@ time.workspace = true
 bytemuck.workspace = true
 clap-markdown.workspace = true
 hex = "0.4.3"
+bytes.workspace = true
+google-cloud-storage.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
 
 [features]

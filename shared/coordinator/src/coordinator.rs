@@ -1,5 +1,5 @@
 use crate::{
-    Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
+    CheckpointerSelection, Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
     model::{Checkpoint, Model},
 };
 
@@ -14,6 +14,7 @@ pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
 pub const SOLANA_MAX_NUM_CLIENTS: usize = 256;
 pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
+pub const SOLANA_MAX_NUM_CHECKPOINTERS: usize = 16;
 // run_id must be at most 32 bytes because of PDA constraints
 pub const SOLANA_RUN_ID_MAX_LEN: usize = 32;
 
@@ -281,6 +282,7 @@ pub struct CoordinatorEpochState<T> {
     pub start_timestamp: u64,
     pub first_round: SmallBoolean,
     pub cold_start_epoch: SmallBoolean,
+    pub checkpointed: bool,
 }
 
 #[derive(
@@ -416,6 +418,7 @@ impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
             start_step: Default::default(),
             last_step: Default::default(),
             start_timestamp: Default::default(),
+            checkpointed: false,
         }
     }
 }
@@ -504,6 +507,37 @@ impl<T: NodeIdentity> Coordinator<T> {
         if round.witnesses.len() == witness_nodes {
             self.start_round_train(unix_timestamp, random_seed, 0);
         }
+
+        Ok(())
+    }
+
+    pub fn cooldown_witness(
+        &mut self,
+        from: &T,
+        witness: Witness,
+    ) -> std::result::Result<(), CoordinatorError> {
+        if self.halted() {
+            return Err(CoordinatorError::Halted);
+        }
+
+        if !matches!(self.run_state, RunState::Cooldown) {
+            return Ok(());
+        }
+
+        // Verify the sender matches the witness index to prevent spoofing
+        let index = witness.proof.index as usize;
+        if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
+            return Err(CoordinatorError::InvalidWitness);
+        }
+
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
+        if !checkpointer_selection
+            .is_checkpointer(witness.proof.index, self.epoch_state.clients.len() as u64)
+        {
+            return Err(CoordinatorError::InvalidWitness);
+        }
+
+        self.epoch_state.checkpointed = true;
 
         Ok(())
     }
@@ -604,16 +638,28 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
 
-        // TODO: In the case of more than one checkpointer, this will overwrite the checkpoint
-        // with the last checkpointed one. We could instead have a vector of checkpoints to have
-        // more download options.
+        if self.halted() {
+            return Err(CoordinatorError::Halted);
+        }
+
+        if !matches!(self.run_state, RunState::Cooldown) {
+            return Err(CoordinatorError::InvalidRunState);
+        }
+
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(self, 0)?;
+        if !checkpointer_selection
+            .is_checkpointer(index as u64, self.epoch_state.clients.len() as u64)
+        {
+            return Err(CoordinatorError::InvalidWitness);
+        }
+
         let Model::LLM(llm) = &mut self.model;
         match (&llm.checkpoint, checkpoint_repo) {
             // If current is P2P, wrap the new checkpoint in P2P
-            (Checkpoint::P2P(_), Checkpoint::Hub(hub_repo)) => {
+            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
                 llm.checkpoint = Checkpoint::P2P(hub_repo);
             }
-            (Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
+            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
                 llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
             }
             // If current is Hub, only accept Hub updates
@@ -624,15 +670,11 @@ impl<T: NodeIdentity> Coordinator<T> {
             (Checkpoint::Gcs(_), Checkpoint::Gcs(gcs_repo)) => {
                 llm.checkpoint = Checkpoint::Gcs(gcs_repo);
             }
-            (Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::P2P(hub_repo);
-            }
-            (Checkpoint::P2P(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
-            }
             // Ignore other combinations
             _ => {}
         }
+
+        self.epoch_state.checkpointed = true;
 
         Ok(())
     }
@@ -1052,7 +1094,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         &mut self,
         unix_timestamp: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        if self.check_timeout(unix_timestamp, self.config.cooldown_time) {
+        if self.check_timeout(unix_timestamp, self.config.cooldown_time)
+            || self.epoch_state.checkpointed
+        {
             let last_round_batch_size = self.get_target_global_batch_size(self.current_round());
             self.progress.epoch_start_data_index =
                 self.current_round_unchecked().data_index + last_round_batch_size as u64;

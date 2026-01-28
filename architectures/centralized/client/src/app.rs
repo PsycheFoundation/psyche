@@ -1,13 +1,13 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use hf_hub::Repo;
+use google_cloud_storage::client::{Storage, StorageControl};
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_client::HubUploadInfo;
-use psyche_client::UploadInfo;
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_client::{GcsUploadInfo, HubUploadInfo, UploadInfo};
+use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{
     AuthenticatableIdentity, EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient,
@@ -31,7 +31,7 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
     HealthCheck(HealthChecks<ClientId>),
-    Checkpoint(model::Checkpoint),
+    Checkpoint(Checkpoint),
 }
 
 struct Backend {
@@ -69,7 +69,7 @@ impl WatcherBackend<ClientId> for Backend {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: Checkpoint) -> Result<()> {
         self.tx.send(ToSend::Checkpoint(checkpoint))?;
         Ok(())
     }
@@ -84,6 +84,7 @@ pub struct App {
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
 
     metrics: Arc<ClientMetrics>,
+    skip_upload_check: bool,
 }
 
 pub async fn build_app(
@@ -91,6 +92,7 @@ pub async fn build_app(
     server_addr: String,
     tx_tui_state: Option<Sender<TabsData>>,
     p: TrainArgs,
+    is_test: bool,
 ) -> Result<(
     App,
     allowlist::AllowDynamic,
@@ -162,6 +164,7 @@ pub async fn build_app(
         server_conn,
         run_id: p.run_id,
         metrics,
+        skip_upload_check: is_test,
     };
     Ok((app, allowlist, p2p, state_options))
 }
@@ -173,22 +176,59 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig<ClientId, ClientId>,
     ) -> Result<()> {
-        // sanity checks
-        if let Some(checkpoint_config) = &state_options.checkpoint_config {
-            if let Some(UploadInfo::Hub(HubUploadInfo {
-                hub_repo,
-                hub_token,
-            })) = &checkpoint_config.upload_info
-            {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_token.clone()))
-                    .build()?;
-                let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
-                if !repo_api.is_writable().await {
+        // Sanity checks using the checkpoint config from state_options, not the zeroed coordinator state.
+        // The coordinator_state is only populated after receiving the first ServerToClientMessage::Coordinator.
+        if !self.skip_upload_check {
+            let upload_info = match &state_options.checkpoint_config {
+                config if config.skip_upload => Some(UploadInfo::Dummy()),
+                config => {
+                    // Use HF_TOKEN from checkpoint_config for Hub uploads
+                    if let Some(ref hub_token) = config.hub_token {
+                        Some(UploadInfo::Hub(HubUploadInfo {
+                            hub_repo: String::new(), // Will be validated when actual checkpoint is received
+                            hub_token: hub_token.clone(),
+                        }))
+                    } else {
+                        // Check if GCS credentials are available by attempting to create a client
+                        match Storage::builder().build().await {
+                            Ok(_) => Some(UploadInfo::Gcs(GcsUploadInfo {
+                                gcs_bucket: String::new(), // Will be validated when actual checkpoint is received
+                                gcs_prefix: None,
+                            })),
+                            Err(_) => None,
+                        }
+                    }
+                }
+            };
+
+            match upload_info {
+                Some(UploadInfo::Hub(HubUploadInfo {
+                    hub_repo: _,
+                    hub_token,
+                })) => {
+                    let _api = hf_hub::api::tokio::ApiBuilder::new()
+                        .with_token(Some(hub_token.clone()))
+                        .build()?;
+                }
+                Some(UploadInfo::Gcs(_gcs_info)) => {
+                    let _storage = Storage::builder()
+                        .build()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
+
+                    let _storage_control =
+                        StorageControl::builder().build().await.map_err(|e| {
+                            anyhow::anyhow!("Failed to create GCS control client: {}", e)
+                        })?;
+                    // GCS credentials are valid - actual bucket writability will be checked during checkpoint
+                }
+                Some(UploadInfo::Dummy()) => {
+                    // In test mode or skip_upload mode, we skip upload checks
+                }
+                None => {
                     anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_repo
-                    )
+                        "No upload credentials found for checkpointing. Set HF_TOKEN for HuggingFace Hub or configure GCS credentials."
+                    );
                 }
             }
         }

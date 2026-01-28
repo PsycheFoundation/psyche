@@ -1,19 +1,11 @@
 use crate::errors::{DownloadError, UploadError};
 use chrono::{DateTime, Utc};
-use google_cloud_storage::client::{Client, ClientConfig};
-use google_cloud_storage::http::objects::upload::Media;
-use google_cloud_storage::http::objects::upload::UploadObjectRequest;
-use google_cloud_storage::http::objects::upload::UploadType;
-use google_cloud_storage::http::objects::{
-    download::Range, get::GetObjectRequest, list::ListObjectsRequest,
-};
-use psyche_coordinator::model::{self, GcsRepo};
-use psyche_core::FixedString;
+use google_cloud_gax::paginator::ItemPaginator;
+use google_cloud_storage::client::{Storage, StorageControl};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{debug, info};
 
 /// Checkpoint manifest.json uploaded to GCS alongside safetensors files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,47 +102,42 @@ pub async fn download_model_from_gcs_async(
     bucket: &str,
     prefix: Option<&str>,
 ) -> Result<Vec<PathBuf>, DownloadError> {
-    // Use authenticated client if GOOGLE_APPLICATION_CREDENTIALS is set, otherwise anonymous
-    let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
-        info!("Using authenticated GCS client");
-        ClientConfig::default().with_auth().await?
-    } else {
-        info!("Using anonymous GCS client");
-        ClientConfig::default().anonymous()
-    };
-    let client = Client::new(config);
+    // Automatically handles authentication via GOOGLE_APPLICATION_CREDENTIALS
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+
+    let storage_control = StorageControl::builder()
+        .build()
+        .await
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
 
     let manifest_object_path = match prefix {
         Some(p) => format!("{}/manifest.json", p),
         None => "manifest.json".to_string(),
     };
 
-    // Get manifest metadata to obtain generation number
-    let manifest_metadata = client
-        .get_object(&GetObjectRequest {
-            bucket: bucket.to_owned(),
-            object: manifest_object_path.clone(),
-            ..Default::default()
-        })
+    // Try to get manifest - first check if it exists
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+    let manifest_result = storage
+        .read_object(&bucket_resource_name, &manifest_object_path)
+        .send()
         .await;
 
-    match manifest_metadata {
-        Ok(object_meta) => {
-            let manifest_generation = object_meta.generation;
-
-            // Download manifest content
-            let manifest_data = client
-                .download_object(
-                    &GetObjectRequest {
-                        bucket: bucket.to_owned(),
-                        object: manifest_object_path,
-                        ..Default::default()
-                    },
-                    &Range::default(),
-                )
-                .await?;
+    match manifest_result {
+        Ok(mut read_response) => {
+            // Read manifest content
+            let mut manifest_data = Vec::new();
+            while let Some(chunk_result) = read_response.next().await {
+                let chunk = chunk_result.map_err(|e| DownloadError::Gcs(e.to_string()))?;
+                manifest_data.extend_from_slice(&chunk);
+            }
 
             let manifest: GcsCheckpointManifest = serde_json::from_slice(&manifest_data)?;
+
+            // Use step as generation proxy (1.5.x doesn't expose generation in same way)
+            let manifest_generation = manifest.metadata.step as i64;
 
             info!(
                 "Found manifest: step {}, epoch {}, generation {}",
@@ -171,12 +158,19 @@ pub async fn download_model_from_gcs_async(
                     cache_dir
                 );
                 std::fs::create_dir_all(&cache_dir)?;
-                download_files_from_manifest(&client, bucket, prefix, &cache_dir, &manifest).await?
+                download_files_from_manifest(&storage, bucket, prefix, &cache_dir, &manifest)
+                    .await?
             };
             // Download config files (json, py) - skips if already cached
-            let config_files =
-                download_files_no_manifest(&client, bucket, prefix, &cache_dir, &[".json", ".py"])
-                    .await?;
+            let config_files = download_files_no_manifest(
+                &storage_control,
+                &storage,
+                bucket,
+                prefix,
+                &cache_dir,
+                &[".json", ".py"],
+            )
+            .await?;
             files.extend(config_files);
             Ok(files)
         }
@@ -185,19 +179,28 @@ pub async fn download_model_from_gcs_async(
             info!("No manifest found, downloading model without manifest");
             let cache_dir = get_cache_dir_no_manifest(bucket, prefix);
             std::fs::create_dir_all(&cache_dir)?;
-            download_files_no_manifest(&client, bucket, prefix, &cache_dir, &MODEL_EXTENSIONS).await
+            download_files_no_manifest(
+                &storage_control,
+                &storage,
+                bucket,
+                prefix,
+                &cache_dir,
+                &MODEL_EXTENSIONS,
+            )
+            .await
         }
     }
 }
 
 async fn download_files_from_manifest(
-    client: &Client,
+    storage: &Storage,
     bucket: &str,
     prefix: Option<&str>,
     cache_dir: &Path,
     manifest: &GcsCheckpointManifest,
 ) -> Result<Vec<PathBuf>, DownloadError> {
     let mut downloaded_files = Vec::new();
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
 
     for file_entry in &manifest.files {
         let object_name = match prefix {
@@ -217,17 +220,17 @@ async fn download_files_from_manifest(
             bucket, object_name, file_entry.generation
         );
 
-        let data = client
-            .download_object(
-                &GetObjectRequest {
-                    bucket: bucket.to_owned(),
-                    object: object_name,
-                    generation: Some(file_entry.generation),
-                    ..Default::default()
-                },
-                &Range::default(),
-            )
-            .await?;
+        let mut read_response = storage
+            .read_object(&bucket_resource_name, &object_name)
+            .send()
+            .await
+            .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+
+        let mut data = Vec::new();
+        while let Some(chunk_result) = read_response.next().await {
+            let chunk = chunk_result.map_err(|e| DownloadError::Gcs(e.to_string()))?;
+            data.extend_from_slice(&chunk);
+        }
 
         std::fs::write(&local_path, &data)?;
         info!("Downloaded: {} ({} bytes)", file_entry.filename, data.len());
@@ -240,34 +243,34 @@ async fn download_files_from_manifest(
 /// Download model files by listing the bucket. Skips files that already exist in cache.
 /// Used for initial model download (no manifest) and to fetch config files (json, py) after manifest download.
 async fn download_files_no_manifest(
-    client: &Client,
+    storage_control: &StorageControl,
+    storage: &Storage,
     bucket: &str,
     prefix: Option<&str>,
     cache_dir: &Path,
     extensions: &[&str],
 ) -> Result<Vec<PathBuf>, DownloadError> {
     let mut all_objects = vec![];
-    let mut page_token: Option<String> = None;
 
-    loop {
-        let results = client
-            .list_objects(&ListObjectsRequest {
-                bucket: bucket.to_owned(),
-                prefix: prefix.map(|s| s.to_owned()),
-                page_token: page_token.clone(),
-                ..Default::default()
-            })
-            .await?;
+    let parent_name = format!("projects/_/buckets/{}", bucket);
+    debug!(
+        "Listing objects in GCS bucket: {}, parent: {}",
+        bucket, parent_name
+    );
+    let mut list_request = storage_control.list_objects().set_parent(parent_name);
+    if let Some(p) = prefix {
+        list_request = list_request.set_prefix(p.to_string());
+    }
 
-        for obj in results.items.iter().flatten() {
-            if extensions.iter().any(|ext| obj.name.ends_with(ext)) {
-                all_objects.push(obj.name.clone());
-            }
-        }
-
-        match results.next_page_token {
-            Some(token) => page_token = Some(token),
-            None => break,
+    let mut stream = list_request.by_item();
+    while let Some(obj) = stream
+        .next()
+        .await
+        .transpose()
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?
+    {
+        if extensions.iter().any(|ext| obj.name.ends_with(ext)) {
+            all_objects.push(obj.name);
         }
     }
 
@@ -293,22 +296,21 @@ async fn download_files_no_manifest(
 
         info!("Downloading: gs://{}/{}", bucket, object_name);
 
-        let data = client
-            .download_object(
-                &GetObjectRequest {
-                    bucket: bucket.to_owned(),
-                    object: object_name.clone(),
-                    ..Default::default()
-                },
-                &Range::default(),
-            )
-            .await?;
+        let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+        let mut read_response = storage
+            .read_object(&bucket_resource_name, &object_name)
+            .send()
+            .await
+            .map_err(|e| DownloadError::Gcs(e.to_string()))?;
 
-        // Write to cache
+        let mut data = Vec::new();
+        while let Some(chunk_result) = read_response.next().await {
+            let chunk = chunk_result.map_err(|e| DownloadError::Gcs(e.to_string()))?;
+            data.extend_from_slice(&chunk);
+        }
+
         std::fs::write(&local_path, &data)?;
-
         info!("Downloaded: {} ({} bytes)", filename, data.len());
-
         downloaded_files.push(local_path);
     }
 
@@ -328,120 +330,102 @@ pub async fn upload_to_gcs(
     manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), UploadError> {
-    let GcsUploadInfo {
-        gcs_bucket,
-        gcs_prefix,
-    } = gcs_info;
-
-    let GcsManifestMetadata { epoch, run_id } = manifest_metadata;
-
-    info!(bucket = gcs_bucket, "Uploading checkpoint to GCS");
-
-    let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
-        info!("Using authenticated GCS client");
-        ClientConfig::default().with_auth().await?
-    } else {
-        info!("Using anonymous GCS client");
-        ClientConfig::default().anonymous()
-    };
-    let client = Client::new(config);
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
 
     let mut manifest = GcsCheckpointManifest {
         metadata: ManifestMetadata {
             timestamp: Utc::now(),
-            epoch,
+            epoch: manifest_metadata.epoch,
             step: step as u32,
-            run_id,
+            run_id: manifest_metadata.run_id,
         },
         files: Vec::new(),
     };
 
-    for path in local {
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| UploadError::NotAFile(path.clone()))?
-            .to_str()
-            .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?;
-
-        // Only upload safetensors files
-        if !file_name.ends_with(".safetensors") {
-            continue;
+    for path in local
+        .iter()
+        .filter(|p| p.extension() == Some("safetensors".as_ref()))
+    {
+        if cancellation_token.is_cancelled() {
+            info!("Upload cancelled before uploading {}", path.display());
+            return Ok(());
         }
 
-        let object_name = match &gcs_prefix {
-            Some(p) => format!("{}/{}", p, file_name),
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?;
+        let object_name = match &gcs_info.gcs_prefix {
+            Some(p) => format!("{}/{}", p.trim_end_matches('/'), file_name),
             None => file_name.to_string(),
         };
+        let bucket_resource_name = format!("projects/_/buckets/{}", gcs_info.gcs_bucket);
 
-        let size = std::fs::metadata(&path)?.len();
-        let data = tokio::fs::read(&path).await?;
+        let data_vec = tokio::fs::read(&path).await?;
+        let size = data_vec.len() as u64;
+        let data = bytes::Bytes::from(data_vec);
 
-        let upload_type = UploadType::Simple(Media::new(object_name.clone()));
-        let uploaded = client
-            .upload_object(
-                &UploadObjectRequest {
-                    bucket: gcs_bucket.clone(),
-                    ..Default::default()
-                },
-                data,
-                &upload_type,
-            )
-            .await?;
+        let upload_future = storage
+            .write_object(&bucket_resource_name, &object_name, data)
+            .send_unbuffered();
+
+        let uploaded_file = tokio::select! {
+            biased;
+
+            _ = cancellation_token.cancelled() => {
+                info!("Upload cancelled during upload of {}", path.display());
+                return Ok(());
+            }
+            result = upload_future => {
+                result.map_err(|e| UploadError::Gcs(e.to_string()))?
+            }
+        };
 
         info!(
-            bucket = gcs_bucket,
+            bucket = gcs_info.gcs_bucket,
             object = object_name,
-            size = uploaded.size,
-            generation = uploaded.generation,
-            "Uploaded file to GCS"
+            size = uploaded_file.size,
+            "Successfully uploaded file to GCS"
         );
 
         manifest.files.push(ManifestFileEntry {
             filename: file_name.to_string(),
-            generation: uploaded.generation,
+            generation: uploaded_file.generation,
             size_bytes: size,
         });
     }
 
     // Upload the manifest file
-    let manifest_path = match &gcs_prefix {
+    let manifest_path = match &gcs_info.gcs_prefix {
         Some(p) => format!("{}/manifest.json", p),
         None => "manifest.json".to_string(),
     };
     let manifest_json = serde_json::to_string_pretty(&manifest)?;
+    let manifest_bytes = bytes::Bytes::from(manifest_json.into_bytes());
 
-    let upload_type = UploadType::Simple(Media::new(manifest_path.clone()));
-    client
-        .upload_object(
-            &UploadObjectRequest {
-                bucket: gcs_bucket.clone(),
-                ..Default::default()
-            },
-            manifest_json.into_bytes(),
-            &upload_type,
-        )
-        .await?;
+    let bucket_resource_name = format!("projects/_/buckets/{}", gcs_info.gcs_bucket);
+    storage
+        .write_object(&bucket_resource_name, &manifest_path, manifest_bytes)
+        .send_unbuffered()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
 
     info!(
-        bucket = gcs_bucket,
+        bucket = gcs_info.gcs_bucket,
         object = manifest_path,
         "Uploaded manifest to GCS"
     );
 
     info!(
         "Upload to GCS complete at gs://{}/{}",
-        gcs_bucket,
-        gcs_prefix.as_deref().unwrap_or("")
+        gcs_info.gcs_bucket,
+        gcs_info.gcs_prefix.as_deref().unwrap_or("")
     );
-
-    tx_checkpoint
-        .send(model::Checkpoint::Gcs(GcsRepo {
-            bucket: FixedString::from_str_truncated(&gcs_bucket),
-            prefix: gcs_prefix.map(|p| FixedString::from_str_truncated(&p)),
-        }))
-        .map_err(|_| UploadError::SendCheckpoint)?;
 
     Ok(())
 }

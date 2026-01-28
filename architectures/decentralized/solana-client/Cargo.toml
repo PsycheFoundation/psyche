@@ -29,6 +29,8 @@ time.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+google-cloud-storage.workspace = true
+hf-hub.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
 
 [features]

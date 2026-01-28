@@ -95,18 +95,27 @@ Any clients that have failed [health checks](#health-checks) will also be remove
 
 ### Cooldown phase (state: Cooldown)
 
-The _Cooldown_ phase is the last phase of an epoch, during which the Coordinator waits the _Cooldown_ period to elapse. At this point the clients will begin to do a new checkpoint of the model, this is saving the state of the model at that time to a external storage, such as a Hugging Face.
+The **Cooldown** phase is the last phase of an epoch. At this point, clients begin creating a new checkpoint of the model. This means saving the current state of the model to external storage, such as Hugging Face or a bucket in Google Cloud Storage (GCS).
 
-When the _Cooldown_ phase begins, the Coordinator also resets the current model checkpoint state to `Checkpoint::P2P`, indicating that new joiners should download the latest copy of the model from the other participants and not from the usual checkpoint.
+At the beginning of this state, the run elects a subset of clients that will be designated as **checkpointers**. All clients are potential checkpointers: one third of the total clients in the run will be elected pseudo-randomly at this stage. If a client is elected, it will start uploading the model state to the storage declared in the run configuration by the run owner.
 
-Upon exiting the _Cooldown_ phase, the Coordinator transitions to the next epoch, saving the previous epoch state, and moving back to the _WaitingForMembers_ phase. All the clients that were participating in the previous epoch automatically join to the new epoch unless they exit manually.
+The client that finishes uploading the model sends a transaction to the coordinator, called the **opportunistic cooldown**, indicating that the entire model was uploaded successfully.
+
+There are two ways the coordinator can transition from this state to the next one:
+
+- As soon as the first opportunistic cooldown transaction arrives, the coordinator moves to the next state and cancels all upload tasks from the remaining clients, since it already knows that at least one checkpointer has uploaded the complete model correctly.
+- If no transaction is received, there is a maximum cooldown time defined in the run configuration. If this time is reached, the coordinator will move to the next state even if no new checkpoint was produced.
+
+When the _Cooldown_ phase begins, the coordinator also resets the current model checkpoint state to `Checkpoint::P2P`, indicating that new joiners should download the latest copy of the model from other participants rather than from the usual checkpoint storage.
+
+Upon exiting the _Cooldown_ phase, the coordinator transitions to the next epoch, saving the previous epoch state and moving back to the _WaitingForMembers_ phase. All clients that participated in the previous epoch automatically join the new epoch unless they exit manually.
 
 ### It all comes together
 
 Here's is an overview of how the state of the run can change depending on the situation:
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'35px'}}}%%
+%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'45px'}}}%%
 flowchart LR
     WFM((Waiting For Members))
     W((Warmup))
@@ -119,6 +128,8 @@ flowchart LR
     d{Witness quorum reached}
     e{Max training time passed}
     f{End of the epoch reached}
+    g{Client checkpoints}
+    h{Max cooldown time passed}
 
     WFM --> a
     a -->|Yes| W
@@ -135,7 +146,10 @@ flowchart LR
     WI --> f
     f -->|Yes| CD
     f -->|No| T
-    CD --> WFM
+    CD -->g
+    g -->|Yes| WFM
+    g -->|No|h
+    h -->|Yes| WFM
 ```
 
 And this is how it fits with real the real clients and how they interact in each of the stages. The committee in this case is the structure that contains all the witness data for the round.

@@ -1605,6 +1605,7 @@ name = "psyche-coordinator"
 version = "0.2.0"
 dependencies = [
  "anchor-lang",
+ "anyhow",
  "async-trait",
  "bytemuck",
  "cfg_eval",

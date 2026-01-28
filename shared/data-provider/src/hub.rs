@@ -1,16 +1,10 @@
 use crate::errors::UploadError;
-use crate::hub::model::HubRepo;
+use futures::future::try_join_all;
 use hf_hub::{
     Cache, Repo, RepoType,
-    api::{
-        Siblings,
-        tokio::{ApiError, UploadSource},
-    },
+    api::{Siblings, tokio::ApiError},
 };
-use psyche_coordinator::model;
-use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
-use tokio::sync::mpsc;
 use tracing::{error, info};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
@@ -58,26 +52,22 @@ async fn download_repo_async(
         .collect::<Vec<_>>();
     let mut ret: Vec<PathBuf> = Vec::new();
     for chunk in siblings.chunks(max_concurrent_downloads.unwrap_or(siblings.len())) {
-        let futures = chunk
-            .iter()
-            .map(|x| async {
-                let start_time = Instant::now();
-                tracing::debug!(filename = x.rfilename, "Starting file download from hub");
-                let res = api.get(&x.rfilename).await;
-                if res.is_ok() {
-                    let duration_secs = (Instant::now() - start_time).as_secs_f32();
-                    tracing::info!(
-                        filename = x.rfilename,
-                        duration_secs = duration_secs,
-                        "Finished downloading file from hub"
-                    );
-                }
-                res
-            })
-            .collect::<Vec<_>>();
-        for future in futures {
-            ret.push(future.await?);
-        }
+        let futures = chunk.iter().map(|x| async {
+            let start_time = Instant::now();
+            tracing::debug!(filename = x.rfilename, "Starting file download from hub");
+            let res = api.get(&x.rfilename).await;
+            if res.is_ok() {
+                let duration_secs = (Instant::now() - start_time).as_secs_f32();
+                tracing::info!(
+                    filename = x.rfilename,
+                    duration_secs = duration_secs,
+                    "Finished downloading file from hub"
+                );
+            }
+            res
+        });
+        let chunk_results = try_join_all(futures).await?;
+        ret.extend(chunk_results);
     }
     Ok(ret)
 }
@@ -203,63 +193,72 @@ pub async fn upload_to_hub(
     hub_info: HubUploadInfo,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), UploadError> {
     let HubUploadInfo {
         hub_repo,
         hub_token,
     } = hub_info;
 
-    info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
+    if cancellation_token.is_cancelled() {
+        return Ok(());
+    }
+
+    // Collect all safetensors files to upload in a single commit
+    let files_to_upload: Vec<_> = local
+        .iter()
+        .filter(|p| p.extension() == Some("safetensors".as_ref()))
+        .map(|path| -> Result<_, UploadError> {
+            let file_name = path
+                .file_name()
+                .ok_or_else(|| UploadError::NotAFile(path.clone()))?
+                .to_str()
+                .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?
+                .to_string();
+            Ok((path.clone().into(), file_name))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if files_to_upload.is_empty() {
+        info!(repo = hub_repo, "No safetensors files to upload");
+        return Ok(());
+    }
+
+    let file_names: Vec<_> = files_to_upload
+        .iter()
+        .map(|(_, name)| name.clone())
+        .collect();
+    info!(
+        repo = hub_repo,
+        file_count = files_to_upload.len(),
+        "Uploading checkpoint to HuggingFace"
+    );
 
     let api = hf_hub::api::tokio::ApiBuilder::new()
-        .with_token(Some(hub_token.clone()))
+        .with_token(Some(hub_token))
         .build()?;
     let repo = Repo::model(hub_repo.clone());
     let api_repo = api.repo(repo);
 
-    let files: Result<Vec<(UploadSource, String)>, _> = local
-        .into_iter()
-        .map(|path| {
-            path.file_name()
-                .ok_or(UploadError::NotAFile(path.clone()))
-                .and_then(|name| {
-                    name.to_str()
-                        .ok_or(UploadError::InvalidFilename(path.clone()))
-                        .map(|s| s.to_string())
-                })
-                .map(|name| (path.into(), name))
-        })
-        .collect();
+    let upload_future =
+        api_repo.upload_files(files_to_upload, Some(format!("step {step}")), None, false);
 
-    let files = files?;
+    tokio::select! {
+        biased;
 
-    let commit_info = api_repo
-        .upload_files(files, Some(format!("step {step}")), None, false)
-        .await
-        .map_err(|e| {
-            error!(
-                repo = hub_repo,
-                error = ?e,
-                "Failed to upload files to HuggingFace"
-            );
-            e
-        })?;
+        _ = cancellation_token.cancelled() => {
+            info!(repo = hub_repo, "Upload to HuggingFace cancelled");
+            return Ok(());
+        }
+        result = upload_future => {
+            result.map_err(|e| {
+                error!(repo = hub_repo, error = ?e, "Failed to upload files");
+                e
+            })?;
+        }
+    }
 
-    let revision = commit_info.oid;
-
-    info!(
-        repo = hub_repo,
-        revision = revision,
-        "Upload to HuggingFace complete"
-    );
-
-    tx_checkpoint
-        .send(model::Checkpoint::Hub(HubRepo {
-            repo_id: FixedString::from_str_truncated(&hub_repo),
-            revision: Some(FixedString::from_str_truncated(&revision)),
-        }))
-        .map_err(|_| UploadError::SendCheckpoint)?;
+    info!(repo = hub_repo, files = ?file_names, "Upload to HuggingFace complete");
 
     Ok(())
 }

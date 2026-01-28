@@ -2,7 +2,7 @@ use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::{Context, Result, anyhow, bail};
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -163,8 +163,17 @@ impl RunManager {
             .arg(&self.env_file);
 
         if let Some(dir) = &self.scratch_dir {
+            let scratch_credentials_path = format!("{dir}/application_default_credentials.json");
+            if !Path::new(&scratch_credentials_path).exists() {
+                bail!("GCS credentials were not found in scratch dir");
+            }
+
             cmd.arg("--mount")
-                .arg(format!("type=bind,src={dir},dst=/scratch"));
+                .arg(format!("type=bind,src={dir},dst=/scratch"))
+                .arg("--env")
+                .arg(
+                    "GOOGLE_APPLICATION_CREDENTIALS=/scratch/application_default_credentials.json",
+                );
         }
 
         if let Some(Entrypoint { entrypoint, .. }) = entrypoint {
