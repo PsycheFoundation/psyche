@@ -7123,6 +7123,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "clap-markdown",
  "iroh",
  "iroh-blobs",
  "iroh-gossip",
