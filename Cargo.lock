@@ -7074,6 +7074,7 @@ dependencies = [
 name = "psyche-deserialize-zerocopy-wasm"
 version = "0.2.0"
 dependencies = [
+ "psyche-coordinator",
  "psyche-core",
  "psyche-solana-coordinator",
  "serde",
