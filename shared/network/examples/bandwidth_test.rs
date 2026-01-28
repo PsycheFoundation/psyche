@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Args, Parser, Subcommand};
 use iroh::{PublicKey, RelayMode, RelayUrl};
@@ -7,17 +7,17 @@ use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
 use psyche_network::RelayKind;
 use psyche_network::{
-    BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, NetworkTUIState,
-    NetworkTui, allowlist, fmt_bytes,
+    allowlist, fmt_bytes, BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent,
+    NetworkTUIState, NetworkTui,
 };
 use psyche_tui::{
-    CustomWidget, LogOutput,
     logging::LoggerWidget,
     maybe_start_render_loop,
     ratatui::{
         layout::{Constraint, Direction, Layout},
         widgets::{Block, Borders, Paragraph, Widget},
     },
+    CustomWidget, LogOutput,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{Interval, interval, interval_at},
+    time::{interval, interval_at, Interval},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -242,7 +242,7 @@ impl App {
             .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
-            Ok(v) => {
+            Ok((v, _)) => {
                 info!(name:"upload_blob", from=%endpoint_id.fmt_short(), step=step, blob=%v.hash().fmt_short());
                 v
             }

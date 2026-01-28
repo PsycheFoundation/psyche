@@ -9,15 +9,15 @@ use std::{sync::Arc, time::Duration};
 use tokio::{join, select, time::timeout};
 use tokio::{
     sync::{
-        Mutex,
         mpsc::{self, UnboundedReceiver, UnboundedSender},
+        Mutex,
     },
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-use crate::{DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, allowlist};
+use crate::{allowlist, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent};
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Message {
@@ -134,7 +134,7 @@ impl App {
             .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
-            Ok(bt) => {
+            Ok((bt, _)) => {
                 println!("Uploaded blob");
                 bt
             }
