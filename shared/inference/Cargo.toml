@@ -13,6 +13,9 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 uuid = { version = "1.10", features = ["v4"] }
+
+iroh.workspace = true
+tokio.workspace = true
 postcard.workspace = true
 
 [dev-dependencies]

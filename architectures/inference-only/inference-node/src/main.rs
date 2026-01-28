@@ -10,11 +10,13 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use psyche_inference::{InferenceGossipMessage, InferenceNode};
+use psyche_inference::{INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{fs, time::Duration};
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -45,6 +47,14 @@ struct Args {
     /// node capabilities (comma-separated, e.g. "streaming,tool_use")
     #[arg(long, default_value = "")]
     capabilities: String,
+
+    /// bootstrap peer file (JSON file with gateway endpoint address)
+    #[arg(long)]
+    bootstrap_peer_file: Option<PathBuf>,
+
+    /// write endpoint address to file for other nodes to bootstrap from
+    #[arg(long)]
+    write_endpoint_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -86,7 +96,16 @@ async fn main() -> Result<()> {
     info!("Relay kind: {:?}", relay_kind);
     info!("Capabilities: {:?}", capabilities);
 
+    let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
+        args.bootstrap_peer_file.as_ref(),
+        "No bootstrap peers configured (no env vars or CLI args)",
+    )?;
+
     let cancel = CancellationToken::new();
+
+    info!("Initializing Python interpreter...");
+    pyo3::prepare_freethreaded_python();
+    info!("Python interpreter initialized");
 
     info!("Initializing vLLM engine...");
     let mut inference_node = InferenceNode::new(
@@ -104,6 +123,8 @@ async fn main() -> Result<()> {
 
     info!("vLLM engine initialized successfully");
 
+    let inference_node_shared = Arc::new(RwLock::new(Some(inference_node)));
+
     info!("Initializing P2P network...");
 
     let metrics = Arc::new(ClientMetrics::default());
@@ -111,25 +132,40 @@ async fn main() -> Result<()> {
 
     type P2PNetwork = NetworkConnection<InferenceGossipMessage, ()>;
 
-    let mut network = P2PNetwork::init(
+    info!("Registering inference protocol handler...");
+    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
+
+    let mut network = P2PNetwork::init_with_custom_protocol(
         run_id,
         None, // port (let OS choose)
         None, // interface
         discovery_mode,
         relay_kind,
-        vec![],              // bootstrap peers (will discover via gossip)
+        bootstrap_peers,
         None,                // secret key (generate new)
         allowlist::AllowAll, // No allowlist for inference network
         metrics.clone(),
         Some(cancel.clone()),
+        (INFERENCE_ALPN, inference_protocol),
     )
     .await
     .context("Failed to initialize P2P network")?;
 
-    info!("✓ P2P network initialized");
+    info!("P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
+    info!("Protocol handler registered");
 
-    // Announce availability via gossip
+    if let Some(ref endpoint_file) = args.write_endpoint_file {
+        let endpoint_addr = network.router().endpoint().addr();
+        let content = serde_json::to_string(&endpoint_addr)
+            .context("Failed to serialize endpoint address")?;
+        fs::write(endpoint_file, content).context("Failed to write endpoint file")?;
+        info!("Wrote endpoint to {:?}", endpoint_file);
+    }
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // announce availability via gossip
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: args.model_name.clone(),
         checkpoint_id: None, // TODO: Track actual checkpoint when reloading - do we need this?
@@ -143,6 +179,10 @@ async fn main() -> Result<()> {
     info!("Broadcasted availability to network");
     info!("Inference node ready! Listening for requests...");
 
+    // heartbeat for re-announcing availability
+    let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -153,6 +193,20 @@ async fn main() -> Result<()> {
             _ = cancel.cancelled() => {
                 info!("Cancellation requested");
                 break;
+            }
+
+            _ = heartbeat_interval.tick() => {
+                info!("Re-broadcasting availability");
+                let availability_msg = InferenceGossipMessage::NodeAvailable {
+                    model_name: args.model_name.clone(),
+                    checkpoint_id: None,
+                    capabilities: capabilities.clone(),
+                };
+                if let Err(e) = network.broadcast(&availability_msg) {
+                    warn!("Failed to broadcast: {:#}", e);
+                } else {
+                    info!("Broadcast successful");
+                }
             }
 
             event = network.poll_next() => {
@@ -199,7 +253,9 @@ async fn main() -> Result<()> {
     }
 
     info!("Shutting down inference node...");
-    inference_node.shutdown()?;
+    if let Some(mut node) = inference_node_shared.write().await.take() {
+        node.shutdown()?;
+    }
     info!("Shutdown complete");
 
     Ok(())
