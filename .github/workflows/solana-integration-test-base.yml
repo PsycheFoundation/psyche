@@ -122,4 +122,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          nix run .#test-psyche-decentralized-testing-integration_tests -- --nocapture "${{ inputs.test-name }}"
+          cd architectures/decentralized/testing/ && nix run .#test-psyche-decentralized-testing-integration_tests -- --nocapture "${{ inputs.test-name }}"
