@@ -83,25 +83,23 @@ pub struct TrainArgs {
     pub logs: LogOutput,
 
     /// An auth header string for an OpenTelemetry endpoint. Used for both logging and metrics.
-    #[clap(long, env = "OTLP_AUTH_HEADER", alias = "oltp-auth-header")]
+    #[clap(long, env = "OTLP_AUTH_HEADER")]
     pub otlp_auth_header: Option<String>,
 
     /// A URL for sending OpenTelemetry metrics. Probably ends in /v1/metrics
-    #[clap(long, env = "OTLP_METRICS_URL", alias = "oltp-metrics-url")]
+    #[clap(long, env = "OTLP_METRICS_URL")]
     pub otlp_metrics_url: Option<String>,
 
     /// A URL for sending OpenTelemetry traces. Probably ends in /v1/traces
-    #[clap(long, env = "OTLP_TRACING_URL", alias = "oltp-tracing-url")]
+    #[clap(long, env = "OTLP_TRACING_URL")]
     pub otlp_tracing_url: Option<String>,
 
     /// A URL for sending OpenTelemetry logs. Probably ends in /v1/logs
-    #[clap(long, env = "OTLP_LOGS_URL", alias = "oltp-logs-url")]
+    #[clap(long, env = "OTLP_LOGS_URL")]
     pub otlp_logs_url: Option<String>,
 
     /// How often to report metrics through OpenTelemetry
-    #[clap(long, env = "OTLP_REPORT_INTERVAL", alias = "oltp-report-interval",
-    default_value = "60.0",
-    value_parser = parse_duration_from_seconds)]
+    #[clap(long, env = "OTLP_REPORT_INTERVAL", default_value = "60.0", value_parser = parse_duration_from_seconds)]
     pub otlp_report_interval: Duration,
 
     /// If present, output some metrics & stats via this TCP port in JSON format. Useful for debugging or local integration.
