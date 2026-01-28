@@ -8,7 +8,11 @@ import * as miningPoolTypes from './idl/mining-pool_idlType.js'
 type PsycheSolanaCoordinator = coordinatorTypes.PsycheSolanaCoordinator
 type PsycheSolanaMiningPool = miningPoolTypes.PsycheSolanaMiningPool
 
-import type { HubRepo, RunState } from 'psyche-deserialize-zerocopy-wasm'
+import type {
+	GcsRepo,
+	HubRepo,
+	RunState,
+} from 'psyche-deserialize-zerocopy-wasm'
 
 export type * from 'psyche-deserialize-zerocopy-wasm'
 
@@ -112,7 +116,7 @@ export interface RunData {
 		epochStartTime: Date
 		clients: Array<RunRoundClient>
 
-		checkpoint: HubRepo | null
+		checkpoint: { Hub: HubRepo } | { Gcs: GcsRepo } | null
 
 		round: number
 		config: {
