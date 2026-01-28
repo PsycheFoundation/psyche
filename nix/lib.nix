@@ -36,6 +36,7 @@ let
       python312
       pkg-config
       perl
+      cargo-nextest
     ];
 
     buildInputs =
