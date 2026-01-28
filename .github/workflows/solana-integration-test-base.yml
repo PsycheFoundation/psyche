@@ -79,17 +79,9 @@ jobs:
           echo "Disk space before client build"
           df -h
 
-          # Calculate the derivation hash
-          echo "Calculating derivation path"
-          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client-no-python.drvPath)
-          echo "Derivation path: $DRV_PATH"
-
-          OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
-          echo "Output path: $OUT_PATH"
-
-          # download from Garnix cache first
+          # download from Garnix cache
           echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH --option substitute true
+          OUT_PATH=$(nix build .#docker-psyche-solana-test-client-no-python --no-link --print-out-paths)
 
           # Load the image into Docker
           $OUT_PATH | docker load
@@ -105,9 +97,6 @@ jobs:
       # Clean Nix store
       - name: Clean after client build
         run: |
-          # Clean up the path file
-          rm -f client-image-path.txt
-
           # Clean nix store garbage
           nix-collect-garbage -d
           nix store optimise
