@@ -242,7 +242,7 @@ impl App {
             .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
-            Ok(v) => {
+            Ok((v, _)) => {
                 info!(name:"upload_blob", from=%endpoint_id.fmt_short(), step=step, blob=%v.hash().fmt_short());
                 v
             }
@@ -321,7 +321,7 @@ async fn main() -> Result<()> {
         single_endpoint_id.into_iter().collect(),
         secret_key,
         allowlist::AllowAll,
-        Arc::new(ClientMetrics::new(None)),
+        Arc::new(ClientMetrics::new(None, None)),
         Some(cancel.clone()),
     )
     .await?;

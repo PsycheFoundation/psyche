@@ -170,7 +170,6 @@ async fn async_main() -> Result<()> {
             authorizer,
         } => {
             psyche_client::prepare_environment();
-
             info!(
                 "============ Client Startup at {} ============",
                 OffsetDateTime::now_utc()

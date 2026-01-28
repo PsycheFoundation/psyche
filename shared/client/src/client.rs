@@ -432,13 +432,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
 
                             let tag_name = format!("distro-result_{step}");
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
+                            let (ticket, size) = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
 
                             let hash = ticket.hash();
                             info!(
                                 client_id = %identity, step = step,
-                                "Broadcasting payload batch id {batch_id} hash 0x{}",
+                                "Broadcasting payload batch id {batch_id} hash 0x{} ({:.3} MB)",
                                 hex::encode(hash),
+                                (size as f64 ) / 1_000_000f64
                             );
 
                             let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
