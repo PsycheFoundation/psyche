@@ -929,7 +929,14 @@ function cleanupSampledUpdates(
 function removeOverriddenSteps(
 	witnesses: [WitnessV2, ChainTimestamp][]
 ): [WitnessV2, ChainTimestamp][] {
-	const orderedWitnesses = witnesses.sort(
+	const validWitnesses = witnesses.filter((w) => {
+		if (!w) {
+			console.error('null witness found?? removing...')
+			return false
+		}
+		return true
+	})
+	const orderedWitnesses = validWitnesses.sort(
 		(a, b) => a[1].time.getTime() - b[1].time.getTime()
 	)
 

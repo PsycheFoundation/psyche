@@ -1,5 +1,5 @@
 {
 	"watch": ["src"],
 	"ext": ".ts,.js",
-	"exec": "node --no-warnings=ExperimentalWarning --loader ts-node/esm src/index.ts"
+	"exec": "node --no-warnings=ExperimentalWarning --loader ts-node/esm src/index.ts --enable-source-maps"
 }
