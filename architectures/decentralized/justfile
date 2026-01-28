@@ -25,16 +25,16 @@ setup-solana-localnet-light-test-run-treasurer run_id="test" *args='':
     RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml PERMISSIONLESS=true ./scripts/setup-and-deploy-solana-test.sh --treasurer {{ args }}
 
 setup-solana-localnet-permissioned-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/deploy-solana-test.sh {{ args }}
+    RUN_ID={{ run_id }} ./scripts/setup-and-deploy-solana-test.sh {{ args }}
 
 setup-solana-localnet-permissioned-light-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh {{ args }}
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/setup-and-deploy-solana-test.sh {{ args }}
 
 setup-solana-localnet-permissioned-test-run-treasurer run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+    RUN_ID={{ run_id }} ./scripts/setup-and-deploy-solana-test.sh --treasurer {{ args }}
 
 setup-solana-localnet-permissioned-light-test-run-treasurer run_id="test" *args='':
-    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/setup-and-deploy-solana-test.sh --treasurer {{ args }}
 
 start-training-localnet-client run_id="test" *args='':
     AUTHORIZER={{ AUTHORIZER }} RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
