@@ -303,9 +303,25 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 		// Fetch external config in the background (non-blocking)
 		const checkpoint = newState.coordinator.model.LLM.checkpoint
+		console.log(
+			'[externalConfig] Checking checkpoint for run',
+			lastRun.runId,
+			':',
+			checkpoint
+		)
 		if (!lastRun.externalConfig) {
+			console.log(
+				'[externalConfig] Fetching external config for run',
+				lastRun.runId
+			)
 			fetchExternalConfig(checkpoint)
 				.then((config) => {
+					console.log(
+						'[externalConfig] Fetch result for run',
+						lastRun.runId,
+						':',
+						config
+					)
 					if (config) {
 						lastRun.externalConfig = {
 							architecture: config.architecture,
@@ -320,10 +336,17 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				})
 				.catch((err) => {
 					console.warn(
-						`Failed to fetch external config for run ${lastRun.runId}:`,
+						`[externalConfig] Failed to fetch external config for run ${lastRun.runId}:`,
 						err
 					)
 				})
+		} else {
+			console.log(
+				'[externalConfig] Already have external config for run',
+				lastRun.runId,
+				':',
+				lastRun.externalConfig
+			)
 		}
 
 		if (configChanged) {

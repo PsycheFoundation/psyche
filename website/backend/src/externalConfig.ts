@@ -99,7 +99,14 @@ export async function fetchExternalConfig(
 	checkpoint: Checkpoint
 ): Promise<ExternalModelConfig | null> {
 	const url = getExternalConfigUrl(checkpoint)
+	console.log(
+		'[externalConfig] fetchExternalConfig called with checkpoint:',
+		checkpoint,
+		'-> URL:',
+		url
+	)
 	if (!url) {
+		console.log('[externalConfig] No URL found for checkpoint')
 		return null
 	}
 
