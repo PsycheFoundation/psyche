@@ -89,7 +89,7 @@ mod tests {
         assert_eq!(req.max_tokens, 100);
         assert_eq!(req.temperature, 1.0);
         assert_eq!(req.top_p, 1.0);
-        assert_eq!(req.stream, false);
+        assert!(!req.stream);
     }
 
     #[test]
@@ -144,7 +144,7 @@ mod tests {
         assert_eq!(req.max_tokens, 200);
         assert_eq!(req.temperature, 0.5);
         assert_eq!(req.top_p, 0.95);
-        assert_eq!(req.stream, true);
+        assert!(req.stream);
     }
 
     #[test]

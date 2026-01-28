@@ -24,7 +24,7 @@ This shell provides:
 
 ### Development Workflow
 
-You can use `uv pip` to install arbitrary packages. Dependencies are tracked via `uv.lock`, so if you don't have `direnv` set up, you must exit and re-enter the development shell with `nix develop .#dev-python`.
+You can use `uv pip` to install arbitrary packages. Dependencies are tracked via `uv.lock`, so if you don't have `direnv` set up, you must exit and re-enter the development shell with `nix develop .#python`.
 
 When you enter the dev shell, it compiles the Rust extension that provides the `psyche` Python module. **If you modify any Rust code in the Python extension or its dependencies, you must exit and re-enter the dev shell** to recompile the extension.
 
@@ -33,7 +33,7 @@ We recommend running commands directly through the dev shell without entering it
 For example, to run the `train` program using python:
 
 ```bash
-nix develop .#dev-python --command just train-model-python \
+nix develop .#python --command just train-model-python \
   --model emozilla/llama2-20m-init \
   --data-path ./data/fineweb-10bt/ \
   --total-batch 2 \
@@ -44,7 +44,7 @@ nix develop .#dev-python --command just train-model-python \
 Alternatively, you _could_ enter the shell and run the commands with:
 
 ```bash
-nix develop .#dev-python
+nix develop .#python
 ```
 
 but **this is likely to be a footgun** as it's easy to forget to exit and re-enter the shell.
