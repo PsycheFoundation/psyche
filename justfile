@@ -42,6 +42,7 @@ decentralized-integration-tests test_name="":
 
     if [[ "{{ use_python }}" == "1" ]]; then
         echo "Running tests with Python support"
+        export PYTHON_ENABLED=true
         just setup_python_test_infra
 
         if [[ -z "{{ test_name }}" ]]; then
@@ -140,10 +141,23 @@ run_test_infra num_clients="1":
     set -e
 
     cd docker/test
+    COMPOSE_FILES="-f docker-compose.yml"
+
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
+        COMPOSE_FILES="${COMPOSE_FILES} -f docker-compose.gpu.yml"
+    else
+        echo "Running without GPU support"
+    fi
+
+    if [ "${PYTHON_ENABLED}" = "true" ]; then
+        echo "Python enabled, adding Python-specific configuration"
+        COMPOSE_FILES="${COMPOSE_FILES} -f docker-compose.python.yml"
+    fi
 
     # Start validator only first
     echo "Starting validator and deploying contracts..."
-    docker compose up -d --wait psyche-solana-test-validator
+    docker compose ${COMPOSE_FILES} up -d --wait psyche-solana-test-validator
 
     sleep 2  # Extra buffer for RPC to be fully ready
 
@@ -155,23 +169,28 @@ run_test_infra num_clients="1":
     # Now start the client services
     cd docker/test
     echo "Starting clients..."
-    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
-        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d psyche-test-client
-    else
-        echo "Running without GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d psyche-test-client
-    fi
+    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d psyche-test-client
 
 run_test_infra_with_proxies_validator num_clients="1":
     #!/usr/bin/env bash
     set -e
 
     cd docker/test/subscriptions_test
+    COMPOSE_FILES="-f ../docker-compose.yml -f docker-compose.yml"
+
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
+        COMPOSE_FILES="${COMPOSE_FILES} -f ../docker-compose.gpu.yml"
+    fi
+
+    if [ "${PYTHON_ENABLED}" = "true" ]; then
+        echo "Python enabled, adding Python-specific configuration"
+        COMPOSE_FILES="${COMPOSE_FILES} -f ../docker-compose.python.yml"
+    fi
 
     # Start validator only first
     echo "Starting validator and deploying contracts..."
-    docker compose -f ../docker-compose.yml up -d --wait psyche-solana-test-validator
+    docker compose ${COMPOSE_FILES} up -d --wait psyche-solana-test-validator
 
     sleep 2  # Extra buffer for RPC to be fully ready
 
@@ -183,13 +202,7 @@ run_test_infra_with_proxies_validator num_clients="1":
     # Now start the client and proxy services
     cd docker/test/subscriptions_test
     echo "Starting clients and proxies..."
-    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
-        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml -f ../docker-compose.gpu.yml up -d psyche-test-client nginx nginx_2
-    else
-        echo "Running without GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d psyche-test-client nginx nginx_2
-    fi
+    NUM_REPLICAS={{ num_clients }} docker compose ${COMPOSE_FILES} up -d psyche-test-client nginx nginx_2
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down

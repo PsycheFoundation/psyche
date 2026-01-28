@@ -1,0 +1,5 @@
+services:
+  psyche-test-client:
+    environment:
+      EVAL_TASKS: arc_easy
+      EVAL_TASK_MAX_DOCS: 25
