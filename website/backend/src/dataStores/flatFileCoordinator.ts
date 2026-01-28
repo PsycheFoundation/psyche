@@ -961,7 +961,7 @@ function removeOverriddenSteps(
 	witnesses: [WitnessV2, ChainTimestamp][]
 ): [WitnessV2, ChainTimestamp][] {
 	const validWitnesses = witnesses.filter((w) => {
-		if (w === null) {
+		if (!w) {
 			console.error('null witness found?? removing...')
 			return false
 		}
