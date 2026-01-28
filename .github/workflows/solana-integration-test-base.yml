@@ -89,10 +89,9 @@ jobs:
           echo "Disk space after client build"
           df -h
 
-      - name: Build run-manager & integration tests
+      - name: Build run-manager binary
         run: |
           nix build --out-link run-manager .#run-manager
-          nix build --out-link do-test .#test-psyche-decentralized-testing-integration_tests
 
       # Clean Nix store
       - name: Clean after client build

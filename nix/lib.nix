@@ -6,7 +6,7 @@
 }:
 let
   optionalApply = cond: f: if cond then f else lib.id;
-
+  util = import ./util.nix;
   system = pkgs.stdenv.hostPlatform.system;
 
   rustToolchain = pkgs.rust-bin.stable.latest.default.override {
@@ -104,7 +104,6 @@ let
     }
     // pythonDeps
   );
-
   # builds a rust package
   # Returns an attrset of packages: { packageName = ...; packageName-nopython = ...; }
   # Automatically discovers and builds examples from the crate's examples/ directory
@@ -126,6 +125,8 @@ let
           name,
           type,
           withPython,
+          originalName ? name,
+          dir ? null,
         }:
         assert lib.assertMsg (builtins.elem type [
           "bin"
@@ -136,38 +137,84 @@ let
           workspaceArgs = if withPython then rustWorkspaceArgsWithPython else rustWorkspaceArgsNoPython;
           artifacts = if withPython then cargoArtifacts else cargoArtifactsNoPython;
 
-          # test builds aren't copied by default in crane, so we need our own copy phase for it
-          testInstallPhase = ''
-            mkdir -p $out/bin
-            # find the test binary in target/release/deps
-            # it has a hash suffix like `integration_tests-abc123` that we need to ignore
-            test_binary=$(find target/release/deps -maxdepth 1 -name "${name}-*" -type f -executable | head -n1)
-            if [ -n "$test_binary" ] && [ -f "$test_binary" ]; then
-              cp "$test_binary" $out/bin/${name}
-              chmod +x $out/bin/${name}
+          temporaryUniqueBinaryName = "temporary_long_unique_binary_name_nobody_would_ever_use";
+
+          shouldRenameBinary = originalName != name && dir != null;
+          renameBinaryUnique = lib.optionalString shouldRenameBinary ''
+            # get workspace root and this crate's manifest path from cargo metadata
+            crate_manifest=$(cargo metadata --format-version 1 --no-deps | \
+              jq -r '.packages[] | select(.name == "${packageName}") | .manifest_path')
+            workspace_root=$(cargo metadata --format-version 1 --no-deps | jq -r '.workspace_root')
+
+            crate_dir=$(dirname "$crate_manifest")
+
+            # crate dir relative to workspace root
+            crate_relative_path=$(realpath --relative-to="$workspace_root" "$crate_dir")
+
+            source_file="$crate_relative_path/${dir}/${originalName}.rs"
+            target_file="$crate_relative_path/${dir}/${temporaryUniqueBinaryName}.rs"
+
+            if [ -f "$source_file" ]; then
+              echo "Renaming $source_file to $target_file"
+              mv "$source_file" "$target_file"
             else
-              echo "Error: Test binary ${name}-* not found in target/release/deps"
-              echo "Contents of target/release/deps:"
-              ls -la target/release/deps/ | grep "${name}" || true
-              exit 1
+              echo "Warning: Source file $source_file not found"
+              ls -la "$crate_relative_path/${dir}/" || true
             fi
           '';
+
+          binaryName = if shouldRenameBinary then temporaryUniqueBinaryName else name;
 
           rustPackage = craneLib.buildPackage (
             workspaceArgs
             // {
               cargoArtifacts = artifacts;
               pname = name;
-              cargoExtraArgs = workspaceArgs.cargoExtraArgs + " --${type} ${name}";
+              cargoExtraArgs = workspaceArgs.cargoExtraArgs + " --${type} ${binaryName}";
               doCheck = false;
               meta.mainProgram = name;
+
+              # rename source file to avoid workspace conflicts
+              # skipped for src/main.rs
+              preBuild = renameBinaryUnique;
+              nativeBuildInputs = workspaceArgs.nativeBuildInputs ++ [ pkgs.jq ];
             }
-            // lib.optionalAttrs (type == "test") {
-              # for tests, skip crane's installFromCargoBuildLogHook and use custom install
+            // lib.optionalAttrs shouldRenameBinary {
               doInstallCargoArtifacts = false;
-              installPhase = testInstallPhase;
+              installPhase = ''
+                runHook preInstall
+                mkdir -p $out/bin
+
+                ${
+                  if type == "test" then
+                    # tests have hash suffixes and live in deps/
+                    ''
+                      expected_binary_dir="target/release/deps"
+                      built_binary=$(find "$expected_binary_dir" -maxdepth 1 -name "${temporaryUniqueBinaryName}-*" -type f -executable | head -n1)
+                    ''
+                  else
+                    # binaries and examples are in release/ with exact name
+                    ''
+                      expected_binary_dir="target/release"
+                      built_binary="$expected_binary_dir/${temporaryUniqueBinaryName}"
+                    ''
+                }
+
+                if [ -n "$built_binary" ] && [ -f "$built_binary" ]; then
+                  cp "$built_binary" $out/bin/${name}
+                  chmod +x $out/bin/${name}
+                else
+                  echo "Error: binary ${temporaryUniqueBinaryName} not found in $expected_binary_dir"
+                  echo "Contents of $expected_binary_dir:"
+                  ls -la "$expected_binary_dir/" || true
+                  exit 1
+                fi
+
+                runHook postInstall
+              '';
             }
           );
+
           pythonWrappedRustPackage =
             pkgs.runCommand "${name}"
               {
@@ -186,31 +233,38 @@ let
       buildTarget =
         {
           name,
-          outName ? name,
+          originalName ? name,
           type,
           needsPython,
           needsGpu,
+          dir ? null,
         }:
         let
           maybeWrapGpu = optionalApply needsGpu useHostGpuDrivers;
 
-          withPython = maybeWrapGpu (buildMaybePythonRustPackage {
-            inherit name type;
-            withPython = true;
-          });
-          withoutPython = maybeWrapGpu (buildMaybePythonRustPackage {
-            inherit name type;
-            withPython = false;
-          });
+          mkVariant =
+            withPython:
+            maybeWrapGpu (buildMaybePythonRustPackage {
+              inherit
+                type
+                dir
+                name
+                originalName
+                withPython
+                ;
+            });
+
+          withPython = mkVariant true;
+          withoutPython = mkVariant false;
 
         in
         if needsPython == "optional" then
           {
-            ${outName} = withPython;
-            "${outName}-nopython" = withoutPython;
+            ${name} = withPython;
+            "${name}-nopython" = withoutPython;
           }
         else if lib.isBool needsPython then
-          { ${outName} = if needsPython then withPython else withoutPython; }
+          { ${name} = if needsPython then withPython else withoutPython; }
         else
           throw "needsPython must be true, false, or \"optional\", got: ${builtins.toString needsPython}";
 
@@ -231,45 +285,49 @@ let
           prefix ? "",
         }:
         let
-          targetNames = allRsFilenamesInDir dir;
+          absoluteDir = cratePath + "/${dir}";
+          targetNames = allRsFilenamesInDir absoluteDir;
           buildOne =
             name:
             buildTarget {
               inherit
-                name
                 type
                 needsPython
                 needsGpu
+                dir
                 ;
-              outName = "${prefix}${name}";
+              originalName = name;
+              name = "${prefix}${name}";
             };
         in
         builtins.foldl' (acc: name: acc // (buildOne name)) { } targetNames;
 
-      actualPath = if cratePath != null then cratePath else ./.;
-      cargoToml = builtins.fromTOML (builtins.readFile (actualPath + "/Cargo.toml"));
+      cargoToml = builtins.fromTOML (builtins.readFile (cratePath + "/Cargo.toml"));
       packageName = cargoToml.package.name;
+      hasMainRs = builtins.pathExists (cratePath + "/src/main.rs");
 
-      hasMainRs = builtins.pathExists (actualPath + "/src/main.rs");
-      hasBinDir = builtins.pathExists (actualPath + "/src/bin");
-      hasBinary = hasMainRs || hasBinDir;
-
-      mainPackages = lib.optionalAttrs hasBinary (buildTarget {
+      # build src/main.rs if it exists (output is guaranteed unique by crate name)
+      mainRsPackage = lib.optionalAttrs hasMainRs (buildTarget {
         name = packageName;
         type = "bin";
         inherit needsPython needsGpu;
       });
 
-      examplesDir = actualPath + "/examples";
+      binDirPackages = buildTargetsFromDir {
+        dir = "src/bin";
+        type = "bin";
+        prefix = "bin-${packageName}-";
+        inherit needsPython needsGpu;
+      };
+
       examplePackages = buildTargetsFromDir {
-        dir = examplesDir;
+        dir = "examples";
         type = "example";
         inherit needsPython needsGpu;
       };
 
-      testsDir = actualPath + "/tests";
       testPackages = buildTargetsFromDir {
-        dir = testsDir;
+        dir = "tests";
         type = "test";
         prefix = "test-${packageName}-";
         inherit needsPython needsGpu;
@@ -277,7 +335,14 @@ let
 
       shouldBuildForThisSystem = supportedSystems == null || builtins.elem system supportedSystems;
     in
-    lib.optionalAttrs shouldBuildForThisSystem (mainPackages // examplePackages // testPackages);
+    lib.optionalAttrs shouldBuildForThisSystem (
+      util.mergeAttrsetsNoConflicts "can't merge binary package sets" [
+        mainRsPackage
+        binDirPackages
+        examplePackages
+        testPackages
+      ]
+    );
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
