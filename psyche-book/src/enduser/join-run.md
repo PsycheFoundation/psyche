@@ -86,11 +86,10 @@ This makes it easier to join training without needing to know the specific run I
 
 ```
 INFO RUN_ID not set, discovering available runs...
-INFO Discovered 3 run(s):
-INFO   - run_abc123 (state: Training)
-INFO   - run_def456 (state: Warmup)
-INFO   - run_xyz789 (state: Finished)
-INFO Selected run: run_abc123 (state: Training)
+INFO Found 2 available run(s):
+INFO   - run_abc123 (state: Waiting for members)
+INFO   - run_def456 (state: Training)
+INFO Selected run: run_abc123 (state: Waiting for members)
 ```
 
 After the initial setup, you'll see the Psyche client logs streaming in real-time. These logs show training progress, network status, and other important information.
@@ -101,9 +100,19 @@ To stop the client, press `Ctrl+C` in the terminal.
 
 We recommend using a dedicated RPC service such as [Helius](https://www.helius.dev/), [QuickNode](https://www.quicknode.com/), [Triton](https://triton.one/), or self-hosting your own Solana RPC node.
 
+## Filtering by Authorizer
+
+If you want to only join runs authorized by a specific entity, you can use the `--authorizer` flag:
+
+```bash
+./run-manager --env-file /path/to/your/.env --authorizer <AUTHORIZER_PUBKEY>
+```
+
+This is useful when you want to ensure you only join runs from a trusted coordinator.
+
 ## Additional config variables
 
-In general it's not neccesary to change these variables to join a run since we provide sensible defaults,
+In general it's not necessary to change these variables to join a run since we provide sensible defaults,
 though you might need to.
 
 **`NVIDIA_DRIVER_CAPABILITIES`** - An environment variable that the NVIDIA Container Toolkit uses to determine which compute capabilities should be provided to your container. It is recommended to set it to 'all', e.g. `NVIDIA_DRIVER_CAPABILITIES=all`.
