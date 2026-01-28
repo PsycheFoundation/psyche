@@ -9,15 +9,15 @@ use std::{sync::Arc, time::Duration};
 use tokio::{join, select, time::timeout};
 use tokio::{
     sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
         Mutex,
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
     },
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-use crate::{allowlist, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent};
+use crate::{DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, allowlist};
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Message {
@@ -193,7 +193,7 @@ async fn spawn_new_node(
         peers,
         None,
         allowlist::AllowAll,
-        Arc::new(ClientMetrics::new(None)),
+        Arc::new(ClientMetrics::new(None, None)),
         None,
     )
     .await?;
