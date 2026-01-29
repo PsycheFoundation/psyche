@@ -107,21 +107,6 @@ jobs:
               run: |
                 nix build --out-link _keep_tests_binary .#test-psyche-decentralized-testing-integration_tests
 
-            # Clean Nix store
-            - name: Clean after client build
-              id: nix-clean
-              needs: [ nix-test-client, nix-run-manager, nix-integration-tests ]
-              run: |
-                # Clean nix store garbage
-                nix-collect-garbage -d
-                nix store optimise
-
-                # Remove temp files
-                sudo rm -rf /tmp/* 2>/dev/null || true
-
-                echo "Disk space after cleanup"
-                df -h
-
       - name: Verify Docker images exist
         run: |
           echo "Checking for required Docker images"
