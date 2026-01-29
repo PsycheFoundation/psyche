@@ -171,49 +171,77 @@ let
           workspaceArgs = if withPython then rustWorkspaceArgsWithPython else rustWorkspaceArgsNoPython;
           artifacts = if withPython then cargoArtifacts else cargoArtifactsNoPython;
 
-          temporaryUniqueBinaryName = "temporary_long_unique_binary_name_nobody_would_ever_use";
+          # delete conflicting bins from other crates to prevent ambiguous --bin/--example/--test
+          deleteConflicts =
+            let
+              # main binaries use packageName, others use originalName
+              binaryName = if type == "bin" && dir == null then packageName else originalName;
+              # main binaries (dir==null) delete from src/bin, others use their dir
+              conflictingDir = if dir == null then "src/bin" else dir;
+            in
+            ''
+              echo "Resolving workspace binary conflicts for ${type} ${originalName} from crate ${packageName}"
 
-          shouldRenameBinary = originalName != name && dir != null;
-          renameBinaryUnique = lib.optionalString shouldRenameBinary ''
-            # get workspace root and this crate's manifest path from cargo metadata
-            crate_manifest=$(cargo metadata --format-version 1 --no-deps | \
-              jq -r '.packages[] | select(.name == "${packageName}") | .manifest_path')
-            workspace_root=$(cargo metadata --format-version 1 --no-deps | jq -r '.workspace_root')
+              # get workspace root and this crate's manifest path from cargo metadata
+              crate_manifest=$(cargo metadata --format-version 1 --no-deps | \
+                jq -r '.packages[] | select(.name == "${packageName}") | .manifest_path')
+              workspace_root=$(cargo metadata --format-version 1 --no-deps | jq -r '.workspace_root')
+              crate_dir=$(dirname "$crate_manifest")
+              crate_relative_path=$(realpath --relative-to="$workspace_root" "$crate_dir")
 
-            crate_dir=$(dirname "$crate_manifest")
+              ${lib.optionalString (type == "bin" && dir == null) ''
+                # validate no conflicting src/bin/${packageName}.rs in same crate
+                if [ -f "$crate_relative_path/src/main.rs" ] && [ -f "$crate_relative_path/${conflictingDir}/${binaryName}.rs" ]; then
+                  echo "Error: crate ${packageName} has both src/main.rs and src/bin/${packageName}.rs"
+                  echo "This makes '--bin ${packageName}' ambiguous."
+                  exit 1
+                fi
+              ''}
 
-            # crate dir relative to workspace root
-            crate_relative_path=$(realpath --relative-to="$workspace_root" "$crate_dir")
+              # delete conflicting files from all workspace members
+              while IFS= read -r member_id; do
+                member_manifest=$(cargo metadata --format-version 1 --no-deps | \
+                  jq -r ".packages[] | select(.id == \"$member_id\") | .manifest_path")
+                member_name=$(cargo metadata --format-version 1 --no-deps | \
+                  jq -r ".packages[] | select(.id == \"$member_id\") | .name")
+                member_dir=$(dirname "$member_manifest")
+                member_relative=$(realpath --relative-to="$workspace_root" "$member_dir")
 
-            source_file="$crate_relative_path/${dir}/${originalName}.rs"
-            target_file="$crate_relative_path/${dir}/${temporaryUniqueBinaryName}.rs"
+                # skip our own crate
+                if [ "$member_relative" != "$crate_relative_path" ]; then
+                  conflict_file="$member_relative/${conflictingDir}/${binaryName}.rs"
+                  if [ -f "$conflict_file" ]; then
+                    echo "Deleting conflicting file: $conflict_file"
+                    rm "$conflict_file"
+                  fi
+                fi
 
-            if [ -f "$source_file" ]; then
-              echo "Renaming $source_file to $target_file"
-              mv "$source_file" "$target_file"
-            else
-              echo "Warning: Source file $source_file not found"
-              ls -la "$crate_relative_path/${dir}/" || true
-            fi
-          '';
-
-          binaryName = if shouldRenameBinary then temporaryUniqueBinaryName else name;
+                ${lib.optionalString (type == "bin" && dir == "src/bin") ''
+                  # delete src/main.rs if package name matches binary name
+                  if [ "$member_name" = "${originalName}" ]; then
+                    conflict_file="$member_relative/src/main.rs"
+                    if [ -f "$conflict_file" ]; then
+                      echo "Deleting conflicting file: $conflict_file (package name conflicts with binary name)"
+                      rm "$conflict_file"
+                    fi
+                  fi
+                ''}
+              done < <(cargo metadata --format-version 1 --no-deps | jq -r '.workspace_members[]')
+            '';
 
           rustPackage = craneLib.buildPackage (
             workspaceArgs
             // {
               cargoArtifacts = artifacts;
               pname = name;
-              cargoExtraArgs = workspaceArgs.cargoExtraArgs + " --${type} ${binaryName}";
+              cargoExtraArgs = workspaceArgs.cargoExtraArgs + " --${type} ${originalName}";
               doCheck = false;
               meta.mainProgram = name;
 
-              # rename source file to avoid workspace conflicts
-              # skipped for src/main.rs
-              preBuild = renameBinaryUnique;
+              # delete conflicting files from other crates to avoid ambiguity in what to build
+              preBuild = deleteConflicts;
               nativeBuildInputs = workspaceArgs.nativeBuildInputs ++ [ pkgs.jq ];
-            }
-            // lib.optionalAttrs shouldRenameBinary {
+
               doInstallCargoArtifacts = false;
               installPhase = ''
                 runHook preInstall
@@ -224,13 +252,13 @@ let
                     # tests have hash suffixes and live in deps/
                     ''
                       expected_binary_dir="target/release/deps"
-                      built_binary=$(find "$expected_binary_dir" -maxdepth 1 -name "${temporaryUniqueBinaryName}-*" -type f -executable | head -n1)
+                      built_binary=$(find "$expected_binary_dir" -maxdepth 1 -name "${originalName}-*" -type f -executable | head -n1)
                     ''
                   else
-                    # binaries and examples are in release/ with exact name
+                    # binaries are in release/ with exact name, examples are in target/release/examples with exact name
                     ''
-                      expected_binary_dir="target/release"
-                      built_binary="$expected_binary_dir/${temporaryUniqueBinaryName}"
+                      expected_binary_dir="target/release${lib.optionalString (type == "example") "/examples"}"
+                      built_binary="$expected_binary_dir/${originalName}"
                     ''
                 }
 
@@ -238,7 +266,7 @@ let
                   cp "$built_binary" $out/bin/${name}
                   chmod +x $out/bin/${name}
                 else
-                  echo "Error: binary ${temporaryUniqueBinaryName} not found in $expected_binary_dir"
+                  echo "Error: binary ${originalName} not found in $expected_binary_dir"
                   echo "Contents of $expected_binary_dir:"
                   ls -la "$expected_binary_dir/" || true
                   exit 1
@@ -385,7 +413,6 @@ let
             test = testNames;
           };
 
-          # Check each buildInputs key
           checkType =
             type:
             let
@@ -403,7 +430,6 @@ let
             else if lib.isList typeConfig then
               null # list format is always valid for a type
             else if lib.isAttrs typeConfig then
-              # Check each specific artifact name
               let
                 specifiedNames = lib.attrNames typeConfig;
                 invalidNames = lib.filter (name: !(lib.elem name available)) specifiedNames;
@@ -430,6 +456,7 @@ let
         if invalidTypes != [ ] then
           throw "buildInputs has invalid types: ${lib.concatStringsSep ", " invalidTypes}. Valid types: main, bin, example, test"
         else
+          assert (builtins.all (c: c == null) typeChecks);
           x;
     in
     validateBuildInputs (
