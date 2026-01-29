@@ -11,6 +11,7 @@ use anchor_client::{
 use anyhow::{Context, Result, bail};
 use psyche_coordinator::RunState;
 use psyche_solana_rpc::SolanaBackend;
+use run_manager::docker::DockerClient;
 use std::sync::Arc;
 use std::{
     process::{Command, Stdio},
@@ -18,12 +19,16 @@ use std::{
 };
 
 /// Test validator Docker guard - stops the validator containers on drop
-pub struct TestValidator;
+pub struct TestValidator {
+    docker_client: DockerClient,
+}
 
 impl TestValidator {
     /// Start the Docker test validator infrastructure
-    pub fn start() -> Result<Self> {
+    pub async fn start() -> Result<Self> {
         println!("Starting Docker test validator...");
+
+        let docker_client = DockerClient::new()?;
 
         // Find workspace root (go up from CARGO_MANIFEST_DIR to workspace root)
         let manifest_dir =
@@ -35,6 +40,7 @@ impl TestValidator {
             .context("Could not find workspace root")?;
         let compose_file = workspace_root.join("docker/test/docker-compose.yml");
 
+        // Keep docker compose as CLI - Bollard doesn't support compose
         let output = Command::new("docker")
             .args([
                 "compose",
@@ -66,40 +72,41 @@ impl TestValidator {
         println!("Looking for Authorizer program: {}", authorizer_id);
         println!("Looking for Coordinator program: {}", coordinator_id);
 
-        for i in 0..30 {
-            let health_check = Command::new("docker")
-                .args([
-                    "exec",
-                    "test-psyche-solana-test-validator-1",
-                    "solana",
-                    "account",
-                    &authorizer_id,
-                    "--url",
-                    "http://localhost:8899",
-                ])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
+        let container_name = "test-psyche-solana-test-validator-1";
 
-            if health_check.is_ok() && health_check.unwrap().success() {
-                // Verify coordinator is also deployed
-                let coord_check = Command::new("docker")
-                    .args([
-                        "exec",
-                        "test-psyche-solana-test-validator-1",
+        for i in 0..30 {
+            // Use Bollard for docker exec
+            let health_check = docker_client
+                .exec_in_container(
+                    container_name,
+                    vec![
                         "solana",
                         "account",
-                        &coordinator_id,
+                        &authorizer_id,
                         "--url",
                         "http://localhost:8899",
-                    ])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
+                    ],
+                )
+                .await;
 
-                if coord_check.is_ok() && coord_check.unwrap().success() {
+            if let Ok(true) = health_check {
+                // Verify coordinator is also deployed
+                let coord_check = docker_client
+                    .exec_in_container(
+                        container_name,
+                        vec![
+                            "solana",
+                            "account",
+                            &coordinator_id,
+                            "--url",
+                            "http://localhost:8899",
+                        ],
+                    )
+                    .await;
+
+                if let Ok(true) = coord_check {
                     println!("Validator is healthy! Both programs deployed.");
-                    return Ok(Self);
+                    return Ok(Self { docker_client });
                 } else {
                     println!("Warning: Authorizer found but Coordinator not deployed yet");
                 }
@@ -108,15 +115,14 @@ impl TestValidator {
             if i % 5 == 0 && i > 0 {
                 println!("Still waiting for validator... (attempt {}/30)", i + 1);
             }
-            std::thread::sleep(Duration::from_secs(2));
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
 
         bail!("Validator did not become healthy in time");
     }
-}
 
-impl Drop for TestValidator {
-    fn drop(&mut self) {
+    /// Stop the validator (called from Drop via blocking runtime)
+    fn stop_sync(&self) {
         println!("Stopping Docker test validator...");
         // Find workspace root for compose file path
         if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -126,6 +132,7 @@ impl Drop for TestValidator {
                 .and_then(|p| p.parent())
             {
                 let compose_file = workspace_root.join("docker/test/docker-compose.yml");
+                // Keep docker compose down as CLI - Bollard doesn't support compose
                 let _ = Command::new("docker")
                     .args(["compose", "-f", compose_file.to_str().unwrap(), "down"])
                     .stdout(Stdio::null())
@@ -133,6 +140,12 @@ impl Drop for TestValidator {
                     .output();
             }
         }
+    }
+}
+
+impl Drop for TestValidator {
+    fn drop(&mut self) {
+        self.stop_sync();
     }
 }
 

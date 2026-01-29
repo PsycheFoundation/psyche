@@ -27,6 +27,8 @@ anchor-lang.workspace = true
 anchor-spl.workspace = true
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+bollard = "0.18"
+futures-util = "0.3"
 clap-markdown.workspace = true
 serde.workspace = true
 serde_json.workspace = true

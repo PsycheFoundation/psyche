@@ -52,7 +52,7 @@ cargo run --release --bin run-manager -- \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} \
-    --client-version test \
+    --client-version latest \
     ${TREASURER_ARGS} \
     "${EXTRA_ARGS[@]}"
 
