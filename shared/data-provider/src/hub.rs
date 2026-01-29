@@ -7,6 +7,7 @@ use hf_hub::{
         tokio::{ApiError, UploadSource},
     },
 };
+use psyche_coordinator::external_config::ExternalModelConfig;
 use psyche_coordinator::model;
 use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
@@ -194,7 +195,7 @@ pub fn download_dataset_repo_sync(
 }
 
 /// Fetch a JSON file from HuggingFace and deserialize it.
-/// Used for fetching external model configuration from Hub checkpoints.
+/// Used for fetching external model configuration from Hub.
 pub async fn fetch_json_from_hub<T: serde::de::DeserializeOwned>(
     repo_id: &str,
     revision: Option<String>,
@@ -220,6 +221,44 @@ pub async fn fetch_json_from_hub<T: serde::de::DeserializeOwned>(
     let content = tokio::fs::read_to_string(&file_path).await?;
 
     serde_json::from_str(&content).map_err(DownloadError::Json)
+}
+
+/// Upload a JSON-serializable value to HuggingFace Hub.
+pub async fn upload_extra_config_to_hub(
+    repo_id: &str,
+    filename: &str,
+    external_config: &ExternalModelConfig,
+    token: Option<String>,
+    commit_message: Option<String>,
+) -> Result<(), UploadError> {
+    let cache = Cache::default();
+    let api = hf_hub::api::tokio::ApiBuilder::new()
+        .with_cache_dir(cache.path().clone())
+        .with_token(token.or(cache.token()))
+        .with_progress(false)
+        .build()?;
+
+    let repo = Repo::model(repo_id.to_string());
+    let api_repo = api.repo(repo);
+
+    let json = serde_json::to_string_pretty(external_config)?;
+    let data = json.into_bytes();
+
+    info!("Uploading JSON to {}/{} on HuggingFace", repo_id, filename);
+
+    api_repo
+        .upload_file(
+            UploadSource::Bytes(data),
+            filename,
+            commit_message.or_else(|| Some(format!("Upload {}", filename))),
+            None,
+            false,
+        )
+        .await?;
+
+    info!("Uploaded JSON to {}/{} on HuggingFace", repo_id, filename);
+
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

@@ -35,8 +35,6 @@ pub async fn run() {
     assert_eq!(coordinator.run_state_start_unix_timestamp, 0);
     assert_eq!(coordinator.pending_pause, SmallBoolean::FALSE);
     // Coordinator model (only on-chain fields)
-    // Note: architecture, data_type, data_location, lr_schedule, optimizer are now
-    // stored off-chain in ExternalModelConfig (GCS) and not part of the on-chain LLM struct
     match coordinator.model {
         Model::LLM(llm) => {
             assert_eq!(llm.max_seq_len, 2048);

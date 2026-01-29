@@ -180,23 +180,13 @@ pub enum HttpTrainingDataLocation {
     },
 }
 
-/// On-chain LLM configuration.
-///
-/// This struct only contains fields that the coordinator needs to read/write.
-/// All other configuration (architecture, data_location, lr_schedule, optimizer, etc.)
-/// is stored externally in GCS and fetched by clients.
-///
-/// See `external_config::ExternalModelConfig` for the external configuration schema.
 #[derive(
     AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
 )]
 #[repr(C)]
 pub struct LLM {
-    /// Maximum sequence length for training
     pub max_seq_len: u32,
-    /// Number of warmup steps for cold start
     pub cold_start_warmup_steps: u32,
-    /// Checkpoint location - coordinator reads and writes this for Hub↔P2P transitions
     pub checkpoint: Checkpoint,
 }
 
@@ -302,11 +292,6 @@ impl std::fmt::Display for Checkpoint {
 }
 
 impl Model {
-    /// Check on-chain model configuration validity.
-    ///
-    /// This only validates fields stored on-chain. External configuration
-    /// (architecture, data_location, optimizer, etc.) is validated by
-    /// `ExternalModelConfig::check()` on the client side.
     pub fn check(&self) -> bool {
         match self {
             Model::LLM(llm) => {

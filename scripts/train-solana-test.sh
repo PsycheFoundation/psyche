@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 set -eo pipefail
 
 # use the agenix provided wallet if you have it
@@ -6,12 +7,16 @@ if [[ -n "${devnet__keypair__wallet_PATH}" && -f "${devnet__keypair__wallet_PATH
     WALLET_FILE="${devnet__keypair__wallet_PATH}"
 elif [[ -z "${WALLET_FILE:-}" ]]; then
     echo "No wallet file specified, generating ephemeral keypair..."
+    # Create a named pipe for the keypair data
     mkdir -p ~/.config/solana/solana-keys
     WALLET_FILE=$(mktemp ~/.config/solana/solana-keys/solana-wallet-XXXXXXXXX)
 
+    # Generate keypair and write to the generated file
     solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
 
     echo "Using ephemeral keypair (will not persist after script exits)"
+    # Set up cleanup trap to remove the wallet file when script exits
+    # This will run on normal exit, SIGINT (Ctrl+C), SIGTERM, or ERR
     trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
 fi
 
@@ -35,35 +40,38 @@ else
 fi
 
 # fine if this fails
-solana airdrop 10 "$(solana-keygen pubkey "${WALLET_FILE}")" --url "${RPC}" || true
+solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || true
 
 export RUST_LOG="info,psyche=debug"
 
-COMMON_ARGS=(
-    train
-    --wallet-private-key-path "${WALLET_FILE}"
-    --rpc "${RPC}"
-    --ws-rpc "${WS_RPC}"
-    --run-id "${RUN_ID}"
-    --data-parallelism "${DP}"
-    --tensor-parallelism "${TP}"
-    --micro-batch-size "${BATCH_SIZE}"
-    --authorizer "${AUTHORIZER}"
-    --logs console
-    "${CHECKPOINT_ARGS[@]}"
-    "$@"
-)
-
-if [[ -z "${OTLP_METRICS_URL:-}" ]]; then
-    HF_TOKEN=${HF_TOKEN} \
-        GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} \
-        cargo run --release --bin psyche-solana-client -- \
-        "${COMMON_ARGS[@]}"
+if [[ "$OTLP_METRICS_URL" == "" ]]; then
+    cargo run --release --bin psyche-solana-client -- \
+        train \
+        --wallet-private-key-path ${WALLET_FILE} \
+        --rpc ${RPC} \
+        --ws-rpc ${WS_RPC} \
+        --run-id ${RUN_ID} \
+        --data-parallelism ${DP} \
+        --tensor-parallelism ${TP} \
+        --micro-batch-size ${BATCH_SIZE} \
+        --authorizer ${AUTHORIZER} \
+        --logs "console" \
+        ${CHECKPOINT_ARGS[@]} \
+        "$@"
 else
-    HF_TOKEN=${HF_TOKEN} \
-        GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} \
-        cargo run --release --bin psyche-solana-client -- \
-        "${COMMON_ARGS[@]}" \
+    cargo run --release --bin psyche-solana-client -- \
+        train \
+        --wallet-private-key-path ${WALLET_FILE} \
+        --rpc ${RPC} \
+        --ws-rpc ${WS_RPC} \
+        --run-id ${RUN_ID} \
+        --data-parallelism ${DP} \
+        --tensor-parallelism ${TP} \
+        --micro-batch-size ${BATCH_SIZE} \
+        --logs "console" \
+        --authorizer ${AUTHORIZER} \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
-        --oltp-logs-url "http://localhost:4318/v1/logs"
+        --oltp-logs-url "http://localhost:4318/v1/logs" \
+        ${CHECKPOINT_ARGS[@]} \
+        "$@"
 fi

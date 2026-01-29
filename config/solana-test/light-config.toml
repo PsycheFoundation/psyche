@@ -18,8 +18,8 @@ waiting_for_members_extra_time = 3
 max_seq_len = 2048
 cold_start_warmup_steps = 0
 
-[model.LLM.checkpoint.Gcs]
-bucket = "my_checkpoints"
+[model.LLM.checkpoint.Hub]
+repo_id = "emozilla/llama2-20m-init"
 
 [external_config]
 architecture = "HfLlama"

@@ -355,15 +355,6 @@ pub async fn fetch_json_from_gcs<T: serde::de::DeserializeOwned>(
     serde_json::from_slice(&data).map_err(DownloadError::Json)
 }
 
-/// Fetch a JSON file from GCS synchronously.
-pub fn fetch_json_from_gcs_sync<T: serde::de::DeserializeOwned>(
-    bucket: &str,
-    object_path: &str,
-) -> Result<T, DownloadError> {
-    let rt = Runtime::new().map_err(DownloadError::Io)?;
-    rt.block_on(fetch_json_from_gcs(bucket, object_path))
-}
-
 /// Upload a JSON-serializable value to GCS.
 pub async fn upload_json_to_gcs<T: serde::Serialize>(
     bucket: &str,
@@ -393,16 +384,6 @@ pub async fn upload_json_to_gcs<T: serde::Serialize>(
     info!("Uploaded JSON to gs://{}/{}", bucket, object_path);
 
     Ok(())
-}
-
-/// Upload a JSON-serializable value to GCS synchronously.
-pub fn upload_json_to_gcs_sync<T: serde::Serialize>(
-    bucket: &str,
-    object_path: &str,
-    value: &T,
-) -> Result<(), UploadError> {
-    let rt = Runtime::new().map_err(UploadError::Io)?;
-    rt.block_on(upload_json_to_gcs(bucket, object_path, value))
 }
 
 pub async fn upload_to_gcs(

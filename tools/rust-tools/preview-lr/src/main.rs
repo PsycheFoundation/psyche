@@ -1,6 +1,6 @@
 use clap::Parser;
 use plotters::prelude::*;
-use psyche_coordinator::{CoordinatorConfig, external_config::ExternalModelConfig, model::Model};
+use psyche_coordinator::{CoordinatorConfig, external_config::ExternalModelConfig};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -28,8 +28,6 @@ enum Commands {
 #[derive(Deserialize)]
 struct Config {
     pub config: CoordinatorConfig,
-    #[allow(dead_code)]
-    pub model: Model,
     pub external_config: ExternalModelConfig,
 }
 fn main() -> anyhow::Result<()> {
