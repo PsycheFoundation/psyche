@@ -100,6 +100,7 @@ cmd_start() {
         echo "Examples:"
         echo "  $0 start test --binary /usr/local/bin/psyche-solana-client --env config.env"
         echo "  $0 start test --binary ./psyche-solana-client --wallet /path/to/wallet.json"
+        echo "  $0 start test --binary /usr/local/bin/run-manager --env config.env"
         exit 1
     fi
 
@@ -109,6 +110,12 @@ cmd_start() {
     binary="$(cd "$(dirname "${binary}")" && pwd)/$(basename "${binary}")"
     if [[ ! -x "${binary}" ]]; then
         log_error "Binary not found or not executable: ${binary}"
+        exit 1
+    fi
+
+    # Check if run-manager requires env file
+    if [[ "$(basename "${binary}")" == "run-manager" ]] && [[ -z "${env_file}" ]]; then
+        log_error "run-manager requires --env <file>"
         exit 1
     fi
 
@@ -156,23 +163,31 @@ EOF
     cat >> "${start_script}" << EOF
 export RUST_LOG="\${RUST_LOG:-info,psyche=debug}"
 
-# Determine wallet
-WALLET="\${WALLET_PRIVATE_KEY_PATH:-\${devnet__keypair__wallet_PATH:-${wallet}}}"
-if [[ -z "\${WALLET}" ]]; then
-    echo "ERROR: No wallet configured"
-    exit 1
-fi
+# Detect which binary we're running
+BINARY_NAME="\$(basename "${binary}")"
 
-exec "${binary}" train \\
-    --wallet-private-key-path "\${WALLET}" \\
-    --rpc "\${RPC:-http://127.0.0.1:8899}" \\
-    --ws-rpc "\${WS_RPC:-ws://127.0.0.1:8900}" \\
-    --run-id "${run_id}" \\
-    --data-parallelism "\${DP:-1}" \\
-    --tensor-parallelism "\${TP:-1}" \\
-    --micro-batch-size "\${BATCH_SIZE:-1}" \\
-    --authorizer "\${AUTHORIZER:-11111111111111111111111111111111}" \\
-    --logs console
+if [[ "\${BINARY_NAME}" == "run-manager" ]]; then
+    # run-manager mode: just pass --env-file
+    exec "${binary}" --env-file "${env_file}"
+else
+    # psyche-solana-client mode: pass full train arguments
+    WALLET="\${WALLET_PRIVATE_KEY_PATH:-\${devnet__keypair__wallet_PATH:-${wallet}}}"
+    if [[ -z "\${WALLET}" ]]; then
+        echo "ERROR: No wallet configured"
+        exit 1
+    fi
+
+    exec "${binary}" train \\
+        --wallet-private-key-path "\${WALLET}" \\
+        --rpc "\${RPC:-http://127.0.0.1:8899}" \\
+        --ws-rpc "\${WS_RPC:-ws://127.0.0.1:8900}" \\
+        --run-id "${run_id}" \\
+        --data-parallelism "\${DP:-1}" \\
+        --tensor-parallelism "\${TP:-1}" \\
+        --micro-batch-size "\${BATCH_SIZE:-1}" \\
+        --authorizer "\${AUTHORIZER:-11111111111111111111111111111111}" \\
+        --logs console
+fi
 EOF
 
     chmod +x "${start_script}"
@@ -242,17 +257,25 @@ Commands:
   logs <run_id> [lines]                         Follow logs
 
 Start options:
-  --binary, -b <path>    Path to psyche-solana-client binary (required)
-  --env, -e <file>       Environment file with config variables
-  --wallet, -w <path>    Wallet file path (or set in env file)
+  --binary, -b <path>    Path to binary (run-manager or psyche-solana-client)
+  --env, -e <file>       Environment file (required for run-manager)
+  --wallet, -w <path>    Wallet file path (for psyche-solana-client mode)
 
 Examples:
+  # Using run-manager (auto-manages Docker containers)
   psyche-daemon.sh install
-  psyche-daemon.sh start myrun --binary /opt/psyche/psyche-solana-client --env /etc/psyche/config.env
+  psyche-daemon.sh start myrun --binary /opt/psyche/run-manager --env config.env
   psyche-daemon.sh logs myrun
+
+  # Using psyche-solana-client directly
+  psyche-daemon.sh start myrun --binary /opt/psyche/psyche-solana-client --env config.env
   psyche-daemon.sh stop myrun
 
-Environment variables (in env file or exported):
+Binary modes:
+  run-manager           Passes --env-file to run-manager
+  psyche-solana-client  Passes full train command arguments
+
+Environment variables (in env file for psyche-solana-client):
   WALLET_PRIVATE_KEY_PATH  Wallet JSON file path
   RPC                      Solana RPC URL (default: http://127.0.0.1:8899)
   WS_RPC                   Solana WebSocket URL (default: ws://127.0.0.1:8900)
