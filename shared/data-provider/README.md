@@ -1,22 +1,24 @@
 # data-provider
 
-there's a bunch of functionality here, but the http stuff is what you probably wanna try out.
+There's a bunch of functionality here, but the HTTP components are what you probably want to try out first.
 
-## http data provider fetch example
+## HTTP data provider fetch example
 
 ### Usage
 
-#### working example
+#### Working example
 
 First, an example:
+
 `cargo run --example http -- --file-size 40000004052 --batch-ids 103 --token-size 4 --tokenizer tests/resources/llama3_tokenizer.json urls https://storage.googleapis.com/nous-pretraining-public-us/fineweb-1pct-tokenized-llama3/000_fineweb.ds`
 
-This will fetch some fineweb data & output it using the llama3 tokenizer!
+This will fetch some FineWeb data and output it using the LLaMA 3 tokenizer.
 
-#### Basic Command Structure
+#### Basic command structure
 
 ```bash
 cargo run --example http --file-size <SIZE> [--sequence-length <LENGTH>] [--token-size <SIZE>] --batch-ids <IDS> [--tokenizer <PATH>] <SUBCOMMAND>
+
 ```
 
 The tool supports two main modes of operation: template-based URLs and explicit URL lists.
@@ -29,7 +31,7 @@ The tool supports two main modes of operation: template-based URLs and explicit 
 
 - `--sequence-length`: Length of each sequence (default: 2048)
 - `--token-size`: Size of each token in bytes (default: 2)
-- `--tokenizer`: Path to tokenizer file for decoding output
+- `--tokenizer`: Path to a tokenizer file for decoding output
 
 #### Subcommands
 
@@ -45,11 +47,11 @@ Example:
 cargo run --example http --batch-ids 1,2,3 template "http://example.com/{}.ds" --start 0 --end 10
 ```
 
-this will fetch urls http://example.com/0.ds thru http://example.com/10.ds
+This will fetch URLs http://example.com/0.ds through http://example.com/10.ds.
 
-###### left pad zeros
+###### Left pad zeros
 
-`--left-pad-zeros 3` will transform fetch URLs http://example.com/000.ds thru http://example.com/010.ds
+Using `--left-pad-zeros 3` will transform the fetched URLs to http://example.com/000.ds through http://example.com/010.ds.
 
 ##### URL List Mode
 
@@ -65,7 +67,7 @@ cargo run --example http --batch-ids 1,2,3 urls "http://example.com/1.ds" "http:
 
 ### Examples
 
-1. Fetch data using a template with tokenizer:
+1. Fetch data using a template with a tokenizer:
 
 ```bash
 cargo run --example http --batch-ids 1,2,3 --tokenizer ./tokenizer.json template "http://example.com/{}.ds" --start 0 --end 10
