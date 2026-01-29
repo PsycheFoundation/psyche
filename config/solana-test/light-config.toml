@@ -22,6 +22,7 @@ cold_start_warmup_steps = 0
 repo_id = "emozilla/llama2-20m-init"
 
 [external_config]
+version = 1
 architecture = "HfLlama"
 data_type = "Pretraining"
 

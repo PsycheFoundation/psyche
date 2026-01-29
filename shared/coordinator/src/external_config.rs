@@ -12,6 +12,7 @@ pub const MODEL_CONFIG_FILENAME: &str = "model_config.json";
 /// This is stored in an off-chain storage and fetched by clients.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalModelConfig {
+    #[serde(default)]
     pub version: u32,
 
     pub architecture: LLMArchitecture,

@@ -23,6 +23,7 @@ repo_id = "pefontana/Nano-Llama"
 revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
 
 [external_config]
+version = 1
 architecture = "HfLlama"
 data_type = "Pretraining"
 
