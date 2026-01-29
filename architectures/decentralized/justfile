@@ -84,3 +84,33 @@ start-training-devnet-light-client run_id="test" *args='':
 
 close-dev-programs:
     ./scripts/close-programs.sh
+
+# Daemon management via systemd
+
+# Install systemd service files (run once per machine)
+daemon-install:
+    ./scripts/psyche-daemon.sh install
+
+# Create/edit environment file for a run
+daemon-env run_id="test":
+    ./scripts/psyche-daemon.sh env {{ run_id }}
+
+# Start training client as daemon
+daemon-start run_id="test":
+    ./scripts/psyche-daemon.sh start {{ run_id }}
+
+# Stop training client daemon
+daemon-stop run_id="test":
+    ./scripts/psyche-daemon.sh stop {{ run_id }}
+
+# Restart training client daemon
+daemon-restart run_id="test":
+    ./scripts/psyche-daemon.sh restart {{ run_id }}
+
+# Show daemon status
+daemon-status run_id="test":
+    ./scripts/psyche-daemon.sh status {{ run_id }}
+
+# Show and follow daemon logs (Ctrl+C to exit)
+daemon-logs run_id="test":
+    ./scripts/psyche-daemon.sh logs {{ run_id }}
