@@ -91,13 +91,9 @@ close-dev-programs:
 daemon-install:
     ./scripts/psyche-daemon.sh install
 
-# Create/edit environment file for a run
-daemon-env run_id="test":
-    ./scripts/psyche-daemon.sh env {{ run_id }}
-
 # Start training client as daemon
-daemon-start run_id="test":
-    ./scripts/psyche-daemon.sh start {{ run_id }}
+daemon-start run_id="test" env_file="config/client/.env.local":
+    ./scripts/psyche-daemon.sh start {{ run_id }} {{ env_file }}
 
 # Stop training client daemon
 daemon-stop run_id="test":
