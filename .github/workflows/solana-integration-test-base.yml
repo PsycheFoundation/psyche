@@ -39,79 +39,73 @@ jobs:
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
-      - name: Install just
-        run: |
-          nix profile install nixpkgs#just
-
-      # Step 1: Get Validator Image from cache
-      - name: Get Validator Image from cache
-        id: cache-validator
-        uses: actions/cache/restore@v4
+      - uses: qoomon/actions--parallel-steps@ecb0abb4521f949557e66afc198899327f3bbaf1
         with:
-          path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{ hashFiles('shared/coordinator/src/coordinator.rs', 'architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
-          fail-on-cache-miss: true
+          steps: |
+            # Step 1: Get Validator Image from cache
+            - name: Get Validator Image from cache
+              id: validator-cache
+              uses: actions/cache/restore@v4
+              with:
+                path: validator-image.tar.gz
+                key: validator-image-${{ runner.os }}-${{ hashFiles('shared/coordinator/src/coordinator.rs', 'architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+                fail-on-cache-miss: true
 
-      - name: Load Validator Image
-        run: |
-          echo "Loading validator image from cache"
-          docker load < validator-image.tar.gz
-          docker images | grep psyche-solana-test-validator
+            - name: Load Validator Image
+              id: validator-load
+              needs: [ validator-cache ]
+              run: |
+                echo "Loading validator image from cache"
+                docker load < validator-image.tar.gz
+                docker images | grep psyche-solana-test-validator
 
-          echo "Disk usage after loading validator"
-          df -h
+                echo "Disk usage after loading validator"
+                df -h
 
-      - name: Clean up validator tar file
-        run: |
-          # Remove the compressed validator image to free up disk space
-          rm -f validator-image.tar.gz
-          echo "Disk usage after removing validator tar"
-          df -h
+            - name: Clean up validator tar file
+              id: validator-clean
+              needs: [ validator-load ]
+              run: |
+                # Remove the compressed validator image to free up disk space
+                rm -f validator-image.tar.gz
+                echo "Disk usage after removing validator tar"
+                df -h
 
-      # Step 2: Download Solana Test Client No Python Image
+            # Step 2: Download Solana Test Client No Python Image
 
-      # Wait for Garnix right before downloading from Garnix cache
-      - name: Wait for Garnix checks
-        uses: ./.github/actions/wait-for-garnix
+            # Wait for Garnix right before downloading from Garnix cache
+            - name: Wait for Garnix checks
+              id: garnix-wait
+              uses: ./.github/actions/wait-for-garnix
 
-      - name: Download Solana Test Client No Python Image
-        run: |
-          echo "Disk space before client build"
-          df -h
+            - name: Download Solana Test Client No Python Image
+              id: nix-test-client
+              needs: [ garnix-wait ]
+              run: |
+                echo "Disk space before client build"
+                df -h
 
-          # Calculate the derivation hash
-          echo "Calculating derivation path"
-          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client-no-python.drvPath)
-          echo "Derivation path: $DRV_PATH"
+                # download from Garnix cache
+                echo "Attempting to fetch from Garnix cache"
+                OUT_PATH=$(nix build .#docker-psyche-solana-test-client-no-python --no-link --print-out-paths)
 
-          OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
-          echo "Output path: $OUT_PATH"
+                # Load the image into Docker
+                $OUT_PATH | docker load
 
-          # download from Garnix cache first
-          echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH --option substitute true
+                echo "Disk space after client build"
+                df -h
 
-          # Load the image into Docker
-          $OUT_PATH | docker load
+            - name: Build run-manager binary
+              id: nix-run-manager 
+              needs: [ garnix-wait ]
+              run: |
+                nix build --out-link run-manager .#run-manager
 
-          echo "Disk space after client build"
-          df -h
-
-      # Clean Nix store after client build
-      - name: Clean after client build
-        run: |
-          # Clean up the path file
-          rm -f client-image-path.txt
-
-          # Clean nix store garbage
-          nix-collect-garbage -d
-          nix store optimise
-
-          # Remove temp files
-          sudo rm -rf /tmp/* 2>/dev/null || true
-
-          echo "Disk space after cleanup"
-          df -h
+            - name: Build integration tests binary
+              id: nix-integration-tests
+              needs: [ garnix-wait ]
+              run: |
+                nix build --out-link _keep_tests_binary .#test-psyche-decentralized-testing-integration_tests
 
       - name: Verify Docker images exist
         run: |
@@ -129,4 +123,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "${{ inputs.test-name }}"
+          cd architectures/decentralized/testing/ && nix run .#test-psyche-decentralized-testing-integration_tests -- --nocapture "${{ inputs.test-name }}"
