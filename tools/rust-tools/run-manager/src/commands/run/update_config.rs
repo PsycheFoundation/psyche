@@ -44,6 +44,8 @@ pub struct CommandUpdateConfig {
     // end metadata
     #[clap(long, env)]
     pub client_version: Option<String>,
+    #[clap(long, default_value_t = false, hide = true)]
+    pub skip_upload_external_config: bool,
 }
 
 #[async_trait]
@@ -60,6 +62,7 @@ impl Command for CommandUpdateConfig {
             num_parameters,
             vocab_size,
             client_version,
+            skip_upload_external_config,
         } = self;
 
         let main_authority = backend.get_payer();
@@ -145,50 +148,52 @@ impl Command for CommandUpdateConfig {
         }
 
         // Upload external config to GCS or hub repo depending of the model checkpoint
-        if let Some(external_config) = external_config {
-            let Model::LLM(llm) = &coordinator_account_state.state.coordinator.model;
-            match llm.checkpoint {
-                Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
-                    let bucket = gcs_repo.bucket.to_string();
-                    let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
-                    info!("Uploading external config to gs://{}/{}", bucket, path);
-                    upload_json_to_gcs(&bucket, &path, &external_config)
+        if !skip_upload_external_config {
+            if let Some(external_config) = external_config {
+                let Model::LLM(llm) = &coordinator_account_state.state.coordinator.model;
+                match llm.checkpoint {
+                    Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
+                        let bucket = gcs_repo.bucket.to_string();
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                        info!("Uploading external config to gs://{}/{}", bucket, path);
+                        upload_json_to_gcs(&bucket, &path, &external_config)
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "failed to upload external config to gs://{}/{}",
+                                    bucket, path
+                                )
+                            })?;
+                        println!("Uploaded external config to gs://{}/{}", bucket, path);
+                    }
+                    Checkpoint::Hub(ref hub_repo)
+                    | Checkpoint::P2P(ref hub_repo)
+                    | Checkpoint::Dummy(ref hub_repo) => {
+                        let repo_id = hub_repo.repo_id.to_string();
+                        psyche_data_provider::upload_extra_config_to_hub(
+                            &repo_id,
+                            "model_config.json",
+                            &external_config,
+                            None,
+                            None,
+                        )
                         .await
                         .with_context(|| {
                             format!(
-                                "failed to upload external config to gs://{}/{}",
-                                bucket, path
+                                "failed to upload external config to Hub repo {}/external_config.json",
+                                repo_id
                             )
                         })?;
-                    println!("Uploaded external config to gs://{}/{}", bucket, path);
-                }
-                Checkpoint::Hub(ref hub_repo)
-                | Checkpoint::P2P(ref hub_repo)
-                | Checkpoint::Dummy(ref hub_repo) => {
-                    let repo_id = hub_repo.repo_id.to_string();
-                    psyche_data_provider::upload_extra_config_to_hub(
-                        &repo_id,
-                        "model_config.json",
-                        &external_config,
-                        None,
-                        None,
-                    )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "failed to upload external config to Hub repo {}/external_config.json",
+                        println!(
+                            "Uploaded external config to Hub repo {}/external_config.json",
                             repo_id
-                        )
-                    })?;
-                    println!(
-                        "Uploaded external config to Hub repo {}/external_config.json",
-                        repo_id
-                    );
-                }
-                _ => {
-                    println!(
-                        "Warning: external_config provided but checkpoint is not GCS- or Hub-based, skipping upload"
-                    );
+                        );
+                    }
+                    _ => {
+                        println!(
+                            "Warning: external_config provided but checkpoint is not GCS- or Hub-based, skipping upload"
+                        );
+                    }
                 }
             }
         }

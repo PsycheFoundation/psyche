@@ -65,7 +65,8 @@ cargo run --release --bin run-manager -- \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} \
-    --config-path "${CONFIG_PATH}"
+    --config-path "${CONFIG_PATH}" \
+    --skip-upload-external-config
 
 echo -e "\n[+] Model config uploaded successfully"
 

@@ -226,11 +226,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 {
                     Ok(config) => config,
                     Err(e) => {
-                        debug!(
+                        error!(
                             "Failed to fetch external config from Hub ({}), using default: {}",
                             repo_id, e
                         );
-                        ExternalModelConfig::default()
+                        return Err(InitRunError::GcsModelLoad(e));
                     }
                 }
             }
