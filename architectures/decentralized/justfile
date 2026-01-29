@@ -87,26 +87,28 @@ close-dev-programs:
 
 # Daemon management via systemd
 
-# Install systemd service files (run once per machine)
+# Install systemd service (run once per machine)
 daemon-install:
     ./scripts/psyche-daemon.sh install
 
-# Start training client as daemon
-daemon-start run_id="test" env_file="config/client/.env.local":
-    ./scripts/psyche-daemon.sh start {{ run_id }} {{ env_file }}
+# Start training client as daemon (pass binary path and env file)
+daemon-start run_id binary env_file="" wallet="":
+    ./scripts/psyche-daemon.sh start {{ run_id }} --binary {{ binary }} \
+        {{ if env_file != "" { "--env " + env_file } else { "" } }} \
+        {{ if wallet != "" { "--wallet " + wallet } else { "" } }}
 
 # Stop training client daemon
-daemon-stop run_id="test":
+daemon-stop run_id:
     ./scripts/psyche-daemon.sh stop {{ run_id }}
 
 # Restart training client daemon
-daemon-restart run_id="test":
+daemon-restart run_id:
     ./scripts/psyche-daemon.sh restart {{ run_id }}
 
 # Show daemon status
-daemon-status run_id="test":
+daemon-status run_id:
     ./scripts/psyche-daemon.sh status {{ run_id }}
 
 # Show and follow daemon logs (Ctrl+C to exit)
-daemon-logs run_id="test":
+daemon-logs run_id:
     ./scripts/psyche-daemon.sh logs {{ run_id }}
