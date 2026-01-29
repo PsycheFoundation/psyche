@@ -1,12 +1,12 @@
 # Docker Psyche
 
 This folder contains some of the docker related files and scripts, mostly entrypoint scripts for the docker containers.
-All the used docker images are created via nix docker-tools and can be found in the `packages.nix` file inside the `nix` directory.
+All the docker images used are created via nix docker-tools and can be found in the `packages.nix` file inside the `nix` directory.
 
 The purpose of using docker is two-fold:
 
-- compartmentalize psyche client to be deployed and used in testing and production environments easily.
-- implementing end-to-end tests that are as close as possible to a production environment.
+- compartmentalize the Psyche client to be deployed and used in testing and production environments easily.
+- implement end-to-end tests that are as close as possible to a production environment.
 
 There are three concrete use-cases for the docker containers:
 
@@ -22,9 +22,9 @@ There are three concrete use-cases for the docker containers:
 ## Psyche Solana client
 
 The `docker-psyche-solana-client` package works as the dockerfile used to build the image for the client that would be used by
-end users, in a production-like environment `psyche-solana-cient binary` already built with nix.
+end users, in a production-like environment `psyche-solana-client binary` already built with nix.
 The `train_entrypoint.sh` script runs as the default entrypoint for the container, which is no more than a
-call to the `psyche-solana-client` binary to start training, and some logic for restart the client in case it crashes.
+call to the `psyche-solana-client` binary to start training, and some logic to restart the client in case it crashes.
 
 ## Psyche Solana test client
 
@@ -45,7 +45,7 @@ Its main task is to spawn the `solana-test-validator` and deploy the coordinator
 
 ### Starting solana-test-validator and deploying Coordinator
 
-If you want to running a validator in your machine, then you will need to start the `solana-test-validator`
+If you want to run a validator on your machine, then you will need to start the `solana-test-validator`
 binary and then deploy the coordinator program. If you have started the validator and deployed the Coordinator
 in another machine, you can skip to the next section.
 
@@ -96,7 +96,7 @@ This can be done using:
 just setup_gpu_clients <num_clients>
 ```
 
-where `<num_clients>` should be replaced with the number of clients you want spawn.
+where `<num_clients>` should be replaced with the number of clients you want to spawn.
 
 As soon as you run the previous `just` command, you will be prompted with a message saying something like
 
@@ -158,7 +158,7 @@ go directly to the `Join training run with the dockerized Psyche client` step.
 To create a run, you will need to specify the model configuration file and the wallet that will be used
 to pay for the creation of the run, as well as the devnet/mainnet RPC and websocket endpoint, and the **run ID**
 of the training run.
-Create an environment file in `config/client/.env`, if you don't already have one. There variables that should be present are:
+Create an environment file in `config/client/.env`, if you don't already have one. The variables that should be present are:
 
 - `RPC`: The url to the Solana RPC endpoint
 - `WS_RPC`: The url to the Solana websocket endpoint
