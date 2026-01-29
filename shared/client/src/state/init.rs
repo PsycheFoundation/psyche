@@ -212,14 +212,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             model::Checkpoint::Hub(repo) | model::Checkpoint::P2P(repo) => {
                 let repo_id: String = (&repo.repo_id).into();
                 let revision = repo.revision.map(|bytes| (&bytes).into());
-                debug!(
-                    "Fetching external config from Hub: {}/{}",
-                    repo_id, MODEL_CONFIG_FILENAME
-                );
+                let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                debug!("Fetching external config from Hub: {}/{}", repo_id, path);
                 match fetch_json_from_hub(
                     &repo_id,
                     revision,
-                    MODEL_CONFIG_FILENAME,
+                    &path,
                     init_config.hub_read_token.clone(),
                 )
                 .await

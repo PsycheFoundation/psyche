@@ -46,6 +46,10 @@ pub struct CommandUpdateConfig {
     pub client_version: Option<String>,
     #[clap(long, default_value_t = false, hide = true)]
     pub skip_upload_external_config: bool,
+
+    /// HuggingFace token for uploading to Hub repos (can also use HF_TOKEN env var)
+    #[clap(long, env = "HF_TOKEN")]
+    pub hub_token: Option<String>,
 }
 
 #[async_trait]
@@ -63,6 +67,7 @@ impl Command for CommandUpdateConfig {
             vocab_size,
             client_version,
             skip_upload_external_config,
+            hub_token,
         } = self;
 
         let main_authority = backend.get_payer();
@@ -166,28 +171,24 @@ impl Command for CommandUpdateConfig {
                             })?;
                         println!("Uploaded external config to gs://{}/{}", bucket, path);
                     }
-                    Checkpoint::Hub(ref hub_repo)
-                    | Checkpoint::P2P(ref hub_repo)
-                    | Checkpoint::Dummy(ref hub_repo) => {
+                    Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => {
                         let repo_id = hub_repo.repo_id.to_string();
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
                         psyche_data_provider::upload_extra_config_to_hub(
                             &repo_id,
-                            "model_config.json",
+                            &path,
                             &external_config,
-                            None,
+                            hub_token.clone(),
                             None,
                         )
                         .await
                         .with_context(|| {
                             format!(
-                                "failed to upload external config to Hub repo {}/external_config.json",
-                                repo_id
+                                "failed to upload external config to Hub repo {}/{}",
+                                repo_id, path
                             )
                         })?;
-                        println!(
-                            "Uploaded external config to Hub repo {}/external_config.json",
-                            repo_id
-                        );
+                        println!("Uploaded external config to Hub repo {}/{}", repo_id, path);
                     }
                     _ => {
                         println!(
