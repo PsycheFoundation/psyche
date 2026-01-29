@@ -1,7 +1,8 @@
 use crate::{WandBInfo, fetch_data::DataFetcher};
+pub use psyche_coordinator::external_config::ExternalModelConfig;
 use psyche_coordinator::{
     Coordinator, HealthChecks,
-    external_config::{CONFIG_PREFIX, ExternalModelConfig, MODEL_CONFIG_FILENAME},
+    external_config::{CONFIG_PREFIX, MODEL_CONFIG_FILENAME},
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
 use psyche_core::{
@@ -77,6 +78,10 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub dummy_training_delay_secs: Option<u64>,
 
     pub sidecar_port: Option<u16>,
+
+    /// If provided, use this external config instead of fetching from GCS/Hub.
+    /// Only meant for testing/debugging.
+    pub external_config_override: Option<ExternalModelConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -201,38 +206,46 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         let model::Model::LLM(llm) = state.model;
 
-        // Fetch run config that is stored off-chain
-        let external_config: ExternalModelConfig = match llm.checkpoint {
-            model::Checkpoint::Gcs(gcs_repo) | model::Checkpoint::P2PGcs(gcs_repo) => {
-                let bucket = gcs_repo.bucket.to_string();
-                let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
-                debug!("Fetching external config from gs://{}/{}", bucket, path);
-                fetch_json_from_gcs(&bucket, &path).await?
-            }
-            model::Checkpoint::Hub(repo) | model::Checkpoint::P2P(repo) => {
-                let repo_id: String = (&repo.repo_id).into();
-                let revision = repo.revision.map(|bytes| (&bytes).into());
-                let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
-                debug!("Fetching external config from Hub: {}/{}", repo_id, path);
-                match fetch_json_from_hub(
-                    &repo_id,
-                    revision,
-                    &path,
-                    init_config.hub_read_token.clone(),
-                )
-                .await
-                {
-                    Ok(config) => config,
-                    Err(e) => {
-                        error!(
-                            "Failed to fetch external config from Hub ({}), using default: {}",
-                            repo_id, e
-                        );
-                        return Err(InitRunError::GcsModelLoad(e));
+        // Use external config override if provided (only meant for testing/debugging),
+        // otherwise fetch from GCS/Hub
+        let external_config: ExternalModelConfig = if let Some(config) =
+            init_config.external_config_override.clone()
+        {
+            info!("Using external config override from CLI");
+            config
+        } else {
+            match llm.checkpoint {
+                model::Checkpoint::Gcs(gcs_repo) | model::Checkpoint::P2PGcs(gcs_repo) => {
+                    let bucket = gcs_repo.bucket.to_string();
+                    let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                    debug!("Fetching external config from gs://{}/{}", bucket, path);
+                    fetch_json_from_gcs(&bucket, &path).await?
+                }
+                model::Checkpoint::Hub(repo) | model::Checkpoint::P2P(repo) => {
+                    let repo_id: String = (&repo.repo_id).into();
+                    let revision = repo.revision.map(|bytes| (&bytes).into());
+                    let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                    debug!("Fetching external config from Hub: {}/{}", repo_id, path);
+                    match fetch_json_from_hub(
+                        &repo_id,
+                        revision,
+                        &path,
+                        init_config.hub_read_token.clone(),
+                    )
+                    .await
+                    {
+                        Ok(config) => config,
+                        Err(e) => {
+                            error!(
+                                "Failed to fetch external config from Hub ({}), using default: {}",
+                                repo_id, e
+                            );
+                            return Err(InitRunError::GcsModelLoad(e));
+                        }
                     }
                 }
+                _ => ExternalModelConfig::default(),
             }
-            _ => ExternalModelConfig::default(),
         };
 
         let hub_read_token = init_config.hub_read_token.clone();
