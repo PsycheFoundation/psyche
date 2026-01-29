@@ -88,7 +88,7 @@ lib.makeScope pkgs.newScope (
 
     # a packages.nix returns an attrset of packages (including examples)
     rustPackages = util.mergeAttrsetsNoConflicts "can't merge rust package sets." (
-      lib.map (pkg: import (pkg.path + "/packages.nix") { inherit psycheLib; }) (
+      lib.map (pkg: import (pkg.path + "/packages.nix") { inherit psycheLib pkgs inputs; }) (
         discoverCratesWithPackagesNix expandedMembers
       )
     );

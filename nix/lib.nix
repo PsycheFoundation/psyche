@@ -112,14 +112,48 @@ let
   # needsPython: true = only with Python + ext, false = only without Python + ext, "optional" = both variants
   # needsGpu: wraps the package with nix-gl-host
   # supportedSystems: list of systems to build on (e.g., [ "x86_64-linux" "aarch64-linux" ]), null means all systems
+  # buildInputs: attrset of runtime dependencies for each built binary
+  #   - buildInputs.main = [ deps ] applies to src/main.rs
+  #   - buildInputs.<type> = [ deps ] applies to all binaries of type (bin/test/example)
+  #   - buildInputs.<type>.<name> = [ deps ] applies to specific binary
   buildRustPackage =
     {
       needsPython ? false,
       needsGpu ? false,
       cratePath, # path to the crate dir
       supportedSystems ? null,
+      buildInputs ? { },
     }:
     let
+      # type: "main" | "bin" | "test" | "example"
+      # name: the binary / test name
+      getRuntimeDepsForArtifact =
+        type: name:
+        let
+          typeConfig = buildInputs.${type} or null;
+
+          # there's only one "main"
+          mainDeps =
+            if type == "main" then
+              (
+                if lib.isList typeConfig then
+                  typeConfig
+                else if typeConfig != null then
+                  throw "buildInputs.main must be a list, got ${builtins.typeOf typeConfig}"
+                else
+                  [ ]
+              )
+            else
+              [ ];
+
+          # for other types, take both list (all bins) and attrset (specific bin)
+          typeDeps = if type != "main" then (if lib.isList typeConfig then typeConfig else [ ]) else [ ];
+
+          specificDeps =
+            if type != "main" && lib.isAttrs typeConfig then (typeConfig.${name} or [ ]) else [ ];
+        in
+        mainDeps ++ typeDeps ++ specificDeps;
+
       buildMaybePythonRustPackage =
         {
           name,
@@ -215,7 +249,10 @@ let
             }
           );
 
-          pythonWrappedRustPackage =
+          runtimeDeps = getRuntimeDepsForArtifact type originalName;
+          allRuntimeDeps = (lib.optionals withPython [ psychePythonVenvWithExtension ]) ++ runtimeDeps;
+
+          wrappedRustPackage =
             pkgs.runCommand "${name}"
               {
                 buildInputs = [ pkgs.makeWrapper ];
@@ -224,10 +261,10 @@ let
               ''
                 mkdir -p $out/bin
                 makeWrapper ${rustPackage}/bin/${name} $out/bin/${name} \
-                  --prefix PATH : "${psychePythonVenvWithExtension}/bin"
+                  ${lib.concatMapStringsSep " " (dep: "--prefix PATH : \"${dep}/bin\"") allRuntimeDeps}
               '';
         in
-        if withPython then pythonWrappedRustPackage else rustPackage;
+        if allRuntimeDeps != [ ] then wrappedRustPackage else rustPackage;
 
       # build a target with python/nopython variants
       buildTarget =
@@ -334,14 +371,76 @@ let
       };
 
       shouldBuildForThisSystem = supportedSystems == null || builtins.elem system supportedSystems;
+
+      validateBuildInputs =
+        let
+          binNames = allRsFilenamesInDir (cratePath + "/src/bin");
+          exampleNames = allRsFilenamesInDir (cratePath + "/examples");
+          testNames = allRsFilenamesInDir (cratePath + "/tests");
+
+          availableArtifacts = {
+            main = lib.optional hasMainRs packageName;
+            bin = binNames;
+            example = exampleNames;
+            test = testNames;
+          };
+
+          # Check each buildInputs key
+          checkType =
+            type:
+            let
+              typeConfig = buildInputs.${type} or null;
+              available = availableArtifacts.${type} or [ ];
+            in
+            if typeConfig == null then
+              null
+            else if type == "main" then
+              # main must exist
+              if !hasMainRs then
+                throw "buildInputs.main specified but ${packageName} has no src/main.rs"
+              else
+                null
+            else if lib.isList typeConfig then
+              null # list format is always valid for a type
+            else if lib.isAttrs typeConfig then
+              # Check each specific artifact name
+              let
+                specifiedNames = lib.attrNames typeConfig;
+                invalidNames = lib.filter (name: !(lib.elem name available)) specifiedNames;
+              in
+              if invalidNames != [ ] then
+                throw "buildInputs.${type} specifies non-existent artifacts: ${lib.concatStringsSep ", " invalidNames}. Available ${type} artifacts: ${lib.concatStringsSep ", " available}"
+              else
+                null
+            else
+              throw "buildInputs.${type} must be a list or attrset, got ${builtins.typeOf typeConfig}";
+
+          invalidTypes = lib.filter (
+            t:
+            !(lib.elem t [
+              "main"
+              "bin"
+              "example"
+              "test"
+            ])
+          ) (lib.attrNames buildInputs);
+          typeChecks = lib.map checkType (lib.attrNames buildInputs);
+        in
+        x:
+        if invalidTypes != [ ] then
+          throw "buildInputs has invalid types: ${lib.concatStringsSep ", " invalidTypes}. Valid types: main, bin, example, test"
+        else
+          x;
     in
-    lib.optionalAttrs shouldBuildForThisSystem (
-      util.mergeAttrsetsNoConflicts "can't merge binary package sets" [
-        mainRsPackage
-        binDirPackages
-        examplePackages
-        testPackages
-      ]
+    validateBuildInputs (
+      lib.optionalAttrs shouldBuildForThisSystem (
+        util.mergeAttrsetsNoConflicts "can't merge binary package sets" [
+          mainRsPackage
+          binDirPackages
+          examplePackages
+          testPackages
+        ]
+      )
     );
 
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.

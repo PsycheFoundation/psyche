@@ -39,10 +39,6 @@ jobs:
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
-      - name: Install just
-        run: |
-          nix profile install nixpkgs#just
-
       # Step 1: Get Validator Image from cache
       - name: Get Validator Image from cache
         id: cache-validator
@@ -92,6 +88,7 @@ jobs:
       - name: Build run-manager binary
         run: |
           nix build --out-link run-manager .#run-manager
+          nix build --out-link _keep_tests_binary .#test-psyche-decentralized-testing-integration_tests
 
       # Clean Nix store
       - name: Clean after client build
