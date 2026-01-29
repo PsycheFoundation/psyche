@@ -1,4 +1,4 @@
-Thsi binary is a manager for Psyche client containers. It should allow users to connect to a Psyche without having to worry about client versions, as this performs the necessary checks beforehand.
+This binary is a manager for Psyche client containers. It allows users to connect to the Psyche network without having to worry about client versions, as it performs the necessary checks beforehand.
 
 One can run the run manager like this:
 
@@ -23,6 +23,6 @@ Where:
   WALLET_PRIVATE_KEY_PATH=keys/keypair.json  # Optional
   ```
 
-  - If `WALLET_PRIVATE_KEY_PATH` is defined it will use the specified keypair instead of the default `$HOME/.config/solana/id.json`
+  - If `WALLET_PRIVATE_KEY_PATH` is defined, it will use the specified keypair instead of the default `$HOME/.config/solana/id.json`
 
-The run manager will also try to restart the client a few times in case it encounters an error. If you notice it somehow is stuck you may close the process manually via `ctrl+c` and run it again.
+The run manager will also try to restart the client a few times in case it encounters an error. If you notice that it is stuck, you may close the process manually via Ctrl+C and run it again.
