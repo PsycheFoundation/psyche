@@ -1,18 +1,11 @@
 import { Application } from "express";
 import {
-  Pubkey,
-  jsonCodecArrayToArray,
-  jsonCodecBigInt,
-  jsonCodecObjectToObject,
-  jsonCodecPubkey,
-  pubkeyFindPdaAddress,
-  utf8Encode,
-} from "solana-kiss";
+  miningPoolAddressFromIndex,
+  miningPoolAnalysisJsonCodec,
+  miningPoolSummaryJsonCodec,
+} from "psyche-indexer-codecs";
+import { Pubkey, jsonCodecBigInt, jsonEncoderArrayToArray } from "solana-kiss";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
-import {
-  miningPoolDataPoolAnalysisJsonCodec,
-  miningPoolDataPoolOnchainJsonCodec,
-} from "./MiningPoolDataTypes";
 
 export async function miningPoolApiRoutes(
   programAddress: Pubkey,
@@ -35,37 +28,25 @@ export async function miningPoolApiRoutes(
       }
       return res
         .status(200)
-        .json(poolSummariesJsonCodec.encoder(poolsSummaries));
+        .json(
+          jsonEncoderArrayToArray(miningPoolSummaryJsonCodec.encoder)(
+            poolsSummaries,
+          ),
+        );
     },
   );
   expressApplication.get(
     `/${programAddress}/mining-pool/pool/:index`,
     (req, res) => {
       const poolIndex = jsonCodecBigInt.decoder(req.params.index);
-      const poolAddress = getPoolAddress(programAddress, poolIndex);
+      const poolAddress = miningPoolAddressFromIndex(programAddress, poolIndex);
       const poolAnalysis = dataStore.poolAnalysisByAddress.get(poolAddress);
       if (poolAnalysis === undefined) {
         return res.status(404).json({ error: "Pool not found" });
       }
       return res
         .status(200)
-        .json(miningPoolDataPoolAnalysisJsonCodec.encoder(poolAnalysis));
+        .json(miningPoolAnalysisJsonCodec.encoder(poolAnalysis));
     },
   );
 }
-
-function getPoolAddress(programAddress: Pubkey, poolIndex: bigint): Pubkey {
-  const poolIndexSeed = new Uint8Array(8);
-  new DataView(poolIndexSeed.buffer).setBigUint64(0, poolIndex, true);
-  return pubkeyFindPdaAddress(programAddress, [
-    utf8Encode("Pool"),
-    poolIndexSeed,
-  ]);
-}
-
-const poolSummariesJsonCodec = jsonCodecArrayToArray(
-  jsonCodecObjectToObject({
-    address: jsonCodecPubkey,
-    state: miningPoolDataPoolOnchainJsonCodec,
-  }),
-);

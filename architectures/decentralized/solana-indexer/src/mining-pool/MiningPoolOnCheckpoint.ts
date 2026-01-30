@@ -1,17 +1,17 @@
+import {
+  MiningPoolAnalysis,
+  miningPoolOnchainJsonCodec,
+} from "psyche-indexer-codecs";
 import { Pubkey, Solana } from "solana-kiss";
 import { utilRunInParallel } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
-import {
-  MiningPoolDataPoolAnalysis,
-  miningPoolDataPoolOnchainJsonCodec,
-} from "./MiningPoolDataTypes";
 
 export async function miningPoolOnCheckpoint(
   solana: Solana,
-  miningPoolDataStore: MiningPoolDataStore,
+  dataStore: MiningPoolDataStore,
 ) {
   const tasks = await utilRunInParallel(
-    miningPoolDataStore.poolAnalysisByAddress.entries(),
+    dataStore.poolAnalysisByAddress.entries(),
     async ([poolAddress, poolAnalysis]) => {
       return await poolCheckpoint(solana, poolAddress, poolAnalysis);
     },
@@ -30,7 +30,7 @@ export async function miningPoolOnCheckpoint(
 async function poolCheckpoint(
   solana: Solana,
   poolAddress: Pubkey,
-  poolAnalysis: MiningPoolDataPoolAnalysis,
+  poolAnalysis: MiningPoolAnalysis,
 ) {
   if (
     poolAnalysis.latestUpdateFetchOrdinal ===
@@ -43,7 +43,7 @@ async function poolCheckpoint(
     await solana.getAndInferAndDecodeAccount(poolAddress);
   poolAnalysis.latestOnchainSnapshot = {
     native: accountState,
-    parsed: miningPoolDataPoolOnchainJsonCodec.decoder(accountState),
+    parsed: miningPoolOnchainJsonCodec.decoder(accountState),
     updatedAt: new Date(),
   };
 }

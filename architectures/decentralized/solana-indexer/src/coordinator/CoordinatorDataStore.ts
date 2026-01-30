@@ -1,4 +1,8 @@
 import {
+  CoordinatorRunAnalysis,
+  coordinatorRunAnalysisJsonCodec,
+} from "psyche-indexer-codecs";
+import {
   JsonCodec,
   jsonCodecObjectToObject,
   jsonCodecPubkey,
@@ -6,24 +10,20 @@ import {
   Pubkey,
 } from "solana-kiss";
 import { jsonCodecObjectToMapByPubkey } from "../json";
-import {
-  CoordinatorDataRunAnalysis,
-  coordinatorDataRunAnalysisJsonCodec,
-} from "./CoordinatorDataTypes";
 
 export class CoordinatorDataStore {
   public programAddress: Pubkey;
-  public runAnalysisByAddress: Map<Pubkey, CoordinatorDataRunAnalysis>;
+  public runAnalysisByAddress: Map<Pubkey, CoordinatorRunAnalysis>;
 
   constructor(
     programAddress: Pubkey,
-    runAnalysisByAddress: Map<Pubkey, CoordinatorDataRunAnalysis>,
+    runAnalysisByAddress: Map<Pubkey, CoordinatorRunAnalysis>,
   ) {
     this.programAddress = programAddress;
     this.runAnalysisByAddress = runAnalysisByAddress;
   }
 
-  public getRunAnalysis(runAddress: Pubkey): CoordinatorDataRunAnalysis {
+  public getRunAnalysis(runAddress: Pubkey): CoordinatorRunAnalysis {
     let runAnalysis = this.runAnalysisByAddress.get(runAddress);
     if (runAnalysis === undefined) {
       runAnalysis = {
@@ -48,7 +48,7 @@ export const coordinatorDataStoreJsonCodec: JsonCodec<CoordinatorDataStore> =
     jsonCodecObjectToObject({
       programAddress: jsonCodecPubkey,
       runAnalysisByAddress: jsonCodecObjectToMapByPubkey(
-        coordinatorDataRunAnalysisJsonCodec,
+        coordinatorRunAnalysisJsonCodec,
       ),
     }),
     {

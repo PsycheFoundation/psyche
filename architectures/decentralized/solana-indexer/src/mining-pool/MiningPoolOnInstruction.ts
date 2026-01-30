@@ -1,16 +1,15 @@
+import { IndexedInstruction, MiningPoolAnalysis } from "psyche-indexer-codecs";
 import {
   jsonCodecBigInt,
   jsonDecoderObjectToObject,
   Pubkey,
 } from "solana-kiss";
-import { IndexerInstruction } from "../indexer/IndexerTypes";
 import { utilsBigintArraySortAscending } from "../utils";
 import { MiningPoolDataStore } from "./MiningPoolDataStore";
-import { MiningPoolDataPoolAnalysis } from "./MiningPoolDataTypes";
 
 export function miningPoolOnInstruction(
   dataStore: MiningPoolDataStore,
-  instruction: IndexerInstruction,
+  instruction: IndexedInstruction,
 ) {
   const poolAddress = instruction.instructionAddresses["pool"];
   if (poolAddress === undefined) {
@@ -60,11 +59,11 @@ const processorsByInstructionName = new Map([
 type ProcessingContext = {
   poolAddress: Pubkey;
   signerAddress: Pubkey;
-  instruction: IndexerInstruction;
+  instruction: IndexedInstruction;
 };
 
 async function processAdminAction(
-  poolAnalysis: MiningPoolDataPoolAnalysis,
+  poolAnalysis: MiningPoolAnalysis,
   context: ProcessingContext,
 ): Promise<void> {
   poolAnalysis.adminHistory.push(context.instruction);
@@ -75,7 +74,7 @@ async function processAdminAction(
 }
 
 async function processPoolExtract(
-  poolAnalysis: MiningPoolDataPoolAnalysis,
+  poolAnalysis: MiningPoolAnalysis,
   context: ProcessingContext,
 ): Promise<void> {
   const poolExtractPayload = poolExtractJsonDecoder(
@@ -86,7 +85,7 @@ async function processPoolExtract(
 }
 
 async function processLenderDeposit(
-  poolAnalysis: MiningPoolDataPoolAnalysis,
+  poolAnalysis: MiningPoolAnalysis,
   context: ProcessingContext,
 ): Promise<void> {
   const lenderDepositPayload = lenderDepositJsonDecoder(
@@ -102,7 +101,7 @@ async function processLenderDeposit(
 }
 
 async function processLenderClaim(
-  poolAnalysis: MiningPoolDataPoolAnalysis,
+  poolAnalysis: MiningPoolAnalysis,
   context: ProcessingContext,
 ): Promise<void> {
   const lenderClaimPayload = lenderClaimJsonDecoder(

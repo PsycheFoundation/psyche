@@ -1,3 +1,4 @@
+import { CoordinatorRunAnalysis } from "psyche-indexer-codecs";
 import {
   jsonCodecBigInt,
   jsonCodecNumber,
@@ -12,12 +13,11 @@ import {
   jsonDecoderRustFixedArray,
   jsonDecoderRustFixedString,
 } from "../json";
-import { CoordinatorDataRunAnalysis } from "./CoordinatorDataTypes";
 
 export async function coordinatorRunOnchainFetch(
   solana: Solana,
   runAddress: Pubkey,
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
 ) {
   if (
     runAnalysis.latestUpdateFetchOrdinal ===
@@ -36,7 +36,7 @@ export async function coordinatorRunOnchainFetch(
 async function fetchAndUpdateOnchainState(
   solana: Solana,
   runAddress: Pubkey,
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
 ) {
   const { accountState: runInstanceState } =
     await solana.getAndInferAndDecodeAccount(runAddress);
@@ -64,10 +64,7 @@ async function fetchAndUpdateOnchainState(
       epochClients: runAccountParsed.state.coordinator.epochState.clients.map(
         (client) => ({ signer: client.id.signer, state: client.state }),
       ),
-      progress: {
-        epoch: runAccountParsed.state.coordinator.progress.epoch,
-        step: runAccountParsed.state.coordinator.progress.step,
-      },
+      progress: runAccountParsed.state.coordinator.progress,
     },
     native: {
       coordinatorInstance: runInstanceState,
@@ -125,7 +122,7 @@ const runAccountJsonDecoder = jsonDecoderObjectToObject({
         clients: jsonDecoderRustFixedArray(
           jsonDecoderObjectToObject({
             id: jsonDecoderRustClientId,
-            exitedHeight: jsonCodecNumber.decoder,
+            // exitedHeight: jsonCodecNumber.decoder,
             state: jsonCodecString.decoder,
           }),
         ),

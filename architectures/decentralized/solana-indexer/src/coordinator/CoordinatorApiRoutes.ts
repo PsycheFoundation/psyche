@@ -1,18 +1,11 @@
 import { Application } from "express";
 import {
-  Pubkey,
-  jsonCodecArrayToArray,
-  jsonCodecObjectToObject,
-  jsonCodecPubkey,
-  jsonCodecString,
-  pubkeyFindPdaAddress,
-  utf8Encode,
-} from "solana-kiss";
+  coordinatorRunAddressFromId,
+  coordinatorRunAnalysisJsonCodec,
+  coordinatorRunSummaryJsonCodec,
+} from "psyche-indexer-codecs";
+import { Pubkey, jsonCodecString, jsonEncoderArrayToArray } from "solana-kiss";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
-import {
-  coordinatorDataRunAnalysisJsonCodec,
-  coordinatorDataRunOnchainJsonCodec,
-} from "./CoordinatorDataTypes";
 
 export async function coordinatorApiRoutes(
   programAddress: Pubkey,
@@ -28,31 +21,23 @@ export async function coordinatorApiRoutes(
       }
       runSummaries.push({ address: runAddress, state: runState });
     }
-    return res.status(200).json(runSummariesJsonCodec.encoder(runSummaries));
+    return res
+      .status(200)
+      .json(
+        jsonEncoderArrayToArray(coordinatorRunSummaryJsonCodec.encoder)(
+          runSummaries,
+        ),
+      );
   });
   expressApp.get(`/${programAddress}/coordinator/run/:runId`, (req, res) => {
     const runId = jsonCodecString.decoder(req.params.runId);
-    const runAddress = getRunAddress(programAddress, runId);
+    const runAddress = coordinatorRunAddressFromId(programAddress, runId);
     const runAnalysis = dataStore.runAnalysisByAddress.get(runAddress);
     if (!runAnalysis) {
       return res.status(404).json({ error: "Run not found" });
     }
     return res
       .status(200)
-      .json(coordinatorDataRunAnalysisJsonCodec.encoder(runAnalysis));
+      .json(coordinatorRunAnalysisJsonCodec.encoder(runAnalysis));
   });
 }
-
-function getRunAddress(programAddress: Pubkey, runId: string): Pubkey {
-  return pubkeyFindPdaAddress(programAddress, [
-    utf8Encode("coordinator"),
-    utf8Encode(runId).slice(0, 32),
-  ]);
-}
-
-const runSummariesJsonCodec = jsonCodecArrayToArray(
-  jsonCodecObjectToObject({
-    address: jsonCodecPubkey,
-    state: coordinatorDataRunOnchainJsonCodec,
-  }),
-);

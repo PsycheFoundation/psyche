@@ -1,11 +1,14 @@
 import {
+  CoordinatorRunAnalysis,
+  IndexedInstruction,
+} from "psyche-indexer-codecs";
+import {
   Pubkey,
   jsonCodecBigInt,
   jsonCodecNumber,
   jsonDecoderNullable,
   jsonDecoderObjectToObject,
 } from "solana-kiss";
-import { IndexerInstruction } from "../indexer/IndexerTypes";
 import {
   jsonDecoderRustClientId,
   jsonDecoderRustFixedArray,
@@ -14,11 +17,10 @@ import {
 } from "../json";
 import { utilsBigintArraySortAscending } from "../utils";
 import { CoordinatorDataStore } from "./CoordinatorDataStore";
-import { CoordinatorDataRunAnalysis } from "./CoordinatorDataTypes";
 
 export async function coordinatorOnInstruction(
   dataStore: CoordinatorDataStore,
-  instruction: IndexerInstruction,
+  instruction: IndexedInstruction,
 ): Promise<void> {
   const runAddress = instruction.instructionAddresses["coordinator_instance"];
   if (runAddress === undefined) {
@@ -72,11 +74,11 @@ const processorsByInstructionName = new Map([
 type ProcessingContext = {
   runAddress: Pubkey;
   signerAddress: Pubkey;
-  instruction: IndexerInstruction;
+  instruction: IndexedInstruction;
 };
 
 async function processAdminAction(
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
   context: ProcessingContext,
 ): Promise<void> {
   runAnalysis.adminHistory.push(context.instruction);
@@ -87,7 +89,7 @@ async function processAdminAction(
 }
 
 async function processJoinRun(
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
   context: ProcessingContext,
 ) {
   const joinRunPayload = joinRunJsonDecoder(
@@ -106,7 +108,7 @@ async function processJoinRun(
 }
 
 async function processCheckpoint(
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
   context: ProcessingContext,
 ) {
   const checkpointPayload = checkpointJsonDecoder(
@@ -125,14 +127,14 @@ async function processCheckpoint(
 }
 
 async function processFinish(
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
   context: ProcessingContext,
 ): Promise<void> {
   runAnalysis.finishesOrdinals.push(context.instruction.instructionOrdinal);
 }
 
 async function processWitness(
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
   context: ProcessingContext,
 ): Promise<void> {
   const witnessPayload = witnessJsonDecoder(

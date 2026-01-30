@@ -1,28 +1,28 @@
 import {
+  MiningPoolAnalysis,
+  miningPoolAnalysisJsonCodec,
+} from "psyche-indexer-codecs";
+import {
   Pubkey,
   jsonCodecObjectToObject,
   jsonCodecPubkey,
   jsonCodecWrapped,
 } from "solana-kiss";
 import { jsonCodecObjectToMapByPubkey } from "../json";
-import {
-  MiningPoolDataPoolAnalysis,
-  miningPoolDataPoolAnalysisJsonCodec,
-} from "./MiningPoolDataTypes";
 
 export class MiningPoolDataStore {
   programAddress: Pubkey; // TODO - this might not belong here ??
-  poolAnalysisByAddress: Map<Pubkey, MiningPoolDataPoolAnalysis>;
+  poolAnalysisByAddress: Map<Pubkey, MiningPoolAnalysis>;
 
   constructor(
     programAddress: Pubkey,
-    poolAnalysisByAddress: Map<Pubkey, MiningPoolDataPoolAnalysis>,
+    poolAnalysisByAddress: Map<Pubkey, MiningPoolAnalysis>,
   ) {
     this.programAddress = programAddress;
     this.poolAnalysisByAddress = poolAnalysisByAddress;
   }
 
-  public getPoolAnalysis(poolAddress: Pubkey): MiningPoolDataPoolAnalysis {
+  public getPoolAnalysis(poolAddress: Pubkey): MiningPoolAnalysis {
     let poolAnalysis = this.poolAnalysisByAddress.get(poolAddress);
     if (poolAnalysis === undefined) {
       poolAnalysis = {
@@ -46,7 +46,7 @@ export const miningPoolDataStoreJsonCodec = jsonCodecWrapped(
   jsonCodecObjectToObject({
     programAddress: jsonCodecPubkey,
     poolAnalysisByAddress: jsonCodecObjectToMapByPubkey(
-      miningPoolDataPoolAnalysisJsonCodec,
+      miningPoolAnalysisJsonCodec,
     ),
   }),
   {

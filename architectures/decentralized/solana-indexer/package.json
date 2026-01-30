@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
+    "psyche-indexer-codecs": "^0.0.3",
     "solana-kiss": "0.2.10"
   }
 }

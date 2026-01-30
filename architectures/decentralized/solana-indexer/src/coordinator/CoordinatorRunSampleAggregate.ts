@@ -1,13 +1,13 @@
+import {
+  CoordinatorRunAnalysis,
+  CoordinatorRunSample,
+} from "psyche-indexer-codecs";
 import { Pubkey } from "solana-kiss";
 import { utilsBigintArraySortAscending, utilsWritePointPlot } from "../utils";
-import {
-  CoordinatorDataRunAnalysis,
-  CoordinatorDataRunSample,
-} from "./CoordinatorDataTypes";
 
 export async function coordinatorRunSampleAggregate(
   programAddress: Pubkey,
-  runAnalysis: CoordinatorDataRunAnalysis,
+  runAnalysis: CoordinatorRunAnalysis,
 ) {
   for (const [statName, statSamples] of runAnalysis.samplesByStatName) {
     await aggregateStatSamplesCategory(
@@ -24,7 +24,7 @@ async function aggregateStatSamplesCategory(
   programAddress: Pubkey,
   runId: string | undefined,
   statName: string,
-  statSamples: Array<CoordinatorDataRunSample>,
+  statSamples: Array<CoordinatorRunSample>,
   finishesOrdinals: Array<bigint>,
 ) {
   utilsBigintArraySortAscending(statSamples, (sample) => sample.maxOrdinal);
@@ -85,7 +85,7 @@ async function aggregateStatSamplesSlice(
   programAddress: Pubkey,
   runId: string | undefined,
   statName: string,
-  statSamples: Array<CoordinatorDataRunSample>,
+  statSamples: Array<CoordinatorRunSample>,
   runCycleIndex: number,
   sampleIndexMin: number,
   sampleIndexMax: number,
