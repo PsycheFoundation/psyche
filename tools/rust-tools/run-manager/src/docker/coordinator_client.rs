@@ -174,18 +174,23 @@ impl CoordinatorClient {
     ///
     /// This checks both permissionless authorization (grantee = system_program::ID)
     /// and user-specific authorization (grantee = user_pubkey).
-    pub fn can_user_join_run(&self, run: &RunInfo, user_pubkey: &Pubkey) -> Result<bool> {
+    /// Returns the matched grantee pubkey if authorized, or None if not.
+    pub fn can_user_join_run(&self, run_id: &str, user_pubkey: &Pubkey) -> Result<Option<Pubkey>> {
         // Fetch the CoordinatorInstance to get join_authority
-        let instance = self.fetch_coordinator_data(&run.run_id)?;
+        let instance = self.fetch_coordinator_data(run_id)?;
         let join_authority = instance.join_authority;
 
         // Try permissionless authorization first (grantee = system_program::ID)
         if self.check_authorization_for_grantee(&join_authority, &system_program::ID, user_pubkey) {
-            return Ok(true);
+            return Ok(Some(system_program::ID));
         }
 
         // Try user-specific authorization (grantee = user_pubkey)
-        Ok(self.check_authorization_for_grantee(&join_authority, user_pubkey, user_pubkey))
+        if self.check_authorization_for_grantee(&join_authority, user_pubkey, user_pubkey) {
+            return Ok(Some(*user_pubkey));
+        }
+
+        Ok(None)
     }
 
     /// Check if an authorization exists and is valid for a specific grantee.
