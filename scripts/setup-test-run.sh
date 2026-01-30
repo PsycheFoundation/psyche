@@ -33,14 +33,14 @@ echo "[+] Airdropping SOL to wallet..."
 solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}"
 
 echo "[+] Creating join authorization..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     join-authorization-create \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
     --authorizer 11111111111111111111111111111111
 
 echo "[+] Creating run..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     create-run \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
@@ -49,7 +49,7 @@ cargo run --release --bin run-manager -- \
     --client-version "latest"
 
 echo "[+] Updating config..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     update-config \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
@@ -58,7 +58,7 @@ cargo run --release --bin run-manager -- \
     --config-path "config/solana-test/test-config.toml"
 
 echo "[+] Unpausing run..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     set-paused \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
