@@ -47,12 +47,16 @@ pub enum Response {
 
 /// Get the socket path for this user
 pub fn get_socket_path() -> PathBuf {
-    // Use current working directory for socket file
-    PathBuf::from("./run-manager.sock")
+    // Use current working directory (as absolute path) for socket file
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("/tmp"))
+        .join("run-manager.sock")
 }
 
 /// Get the PID file path for this user
 pub fn get_pid_path() -> PathBuf {
-    // Use current working directory for PID file
-    PathBuf::from("./run-manager.pid")
+    // Use current working directory (as absolute path) for PID file
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("/tmp"))
+        .join("run-manager.pid")
 }

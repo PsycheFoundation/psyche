@@ -248,6 +248,10 @@ enum Commands {
         local: bool,
         #[arg(long)]
         entrypoint: Option<String>,
+        #[arg(long)]
+        socket_path: PathBuf,
+        #[arg(long)]
+        pid_path: PathBuf,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         entrypoint_args: Vec<String>,
     },
@@ -464,6 +468,8 @@ async fn async_main() -> Result<()> {
             coordinator_program_id,
             local,
             entrypoint,
+            socket_path,
+            pid_path,
             entrypoint_args,
         } => {
             daemon::server::run_server(
@@ -472,6 +478,8 @@ async fn async_main() -> Result<()> {
                 local,
                 entrypoint,
                 entrypoint_args,
+                socket_path,
+                pid_path,
             )
             .await
         }

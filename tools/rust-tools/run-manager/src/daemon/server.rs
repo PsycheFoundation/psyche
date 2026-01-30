@@ -26,7 +26,9 @@ pub fn start_daemon(
     entrypoint: Option<String>,
     entrypoint_args: Vec<String>,
 ) -> Result<()> {
+    // Capture absolute paths BEFORE forking (since daemon changes cwd to /)
     let socket_path = get_socket_path();
+    let pid_path = get_pid_path();
 
     // Check if daemon is already running
     if socket_path.exists() {
@@ -42,13 +44,17 @@ pub fn start_daemon(
     // Get current executable path
     let exe = std::env::current_exe().context("Failed to get current executable")?;
 
-    // Build args for the daemon process
+    // Build args for the daemon process - pass absolute paths
     let mut args = vec![
         "__daemon-server".to_string(),
         "--env-file".to_string(),
         env_file.to_string_lossy().to_string(),
         "--coordinator-program-id".to_string(),
         coordinator_program_id,
+        "--socket-path".to_string(),
+        socket_path.to_string_lossy().to_string(),
+        "--pid-path".to_string(),
+        pid_path.to_string_lossy().to_string(),
     ];
     if local {
         args.push("--local".to_string());
@@ -128,10 +134,9 @@ pub async fn run_server(
     local: bool,
     entrypoint: Option<String>,
     entrypoint_args: Vec<String>,
+    socket_path: PathBuf,
+    pid_path: PathBuf,
 ) -> Result<()> {
-    let socket_path = get_socket_path();
-    let pid_path = get_pid_path();
-
     // Clean up any stale socket
     if socket_path.exists() {
         std::fs::remove_file(&socket_path)?;
