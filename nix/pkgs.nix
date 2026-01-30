@@ -9,6 +9,7 @@ lib.makeScope pkgs.newScope (
     psycheLib = import ./lib.nix {
       inherit pkgs inputs;
     };
+    util = import ./util.nix;
 
     workspaceCargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
 
@@ -86,8 +87,8 @@ lib.makeScope pkgs.newScope (
     };
 
     # a packages.nix returns an attrset of packages (including examples)
-    rustPackages = mergeAttrsetsNoConflicts "can't merge rust package sets." (
-      lib.map (pkg: import (pkg.path + "/packages.nix") { inherit psycheLib; }) (
+    rustPackages = util.mergeAttrsetsNoConflicts "can't merge rust package sets." (
+      lib.map (pkg: import (pkg.path + "/packages.nix") { inherit psycheLib pkgs inputs; }) (
         discoverCratesWithPackagesNix expandedMembers
       )
     );
@@ -101,21 +102,8 @@ lib.makeScope pkgs.newScope (
         ;
     };
 
-    mergeAttrsetsNoConflicts =
-      error: attrsets:
-      builtins.foldl' (
-        acc: current:
-        let
-          conflicts = builtins.filter (key: builtins.hasAttr key acc) (builtins.attrNames current);
-        in
-        if conflicts != [ ] then
-          throw "${error} Conflicting keys: ${builtins.toString conflicts}"
-        else
-          acc // current
-      ) { } attrsets;
-
     psychePackages = (
-      mergeAttrsetsNoConflicts "can't merge psyche package sets." [
+      util.mergeAttrsetsNoConflicts "can't merge psyche package sets." [
         {
           psyche-website-shared = self.callPackage ../website/shared { };
 

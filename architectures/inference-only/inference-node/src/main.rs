@@ -9,7 +9,7 @@
 //! - Supports dynamic checkpoint reloading
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Args as ClapArgs, Parser, Subcommand};
 use psyche_inference::{InferenceGossipMessage, InferenceNode};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
@@ -20,9 +20,31 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Parser, Debug)]
 #[command(name = "psyche-inference-node")]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[command(flatten)]
+    run_args: RunArgs,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Run the inference node (default)
+    Run(RunArgs),
+
+    // Prints the help, optionally as markdown. Used for docs generation.
+    #[clap(hide = true)]
+    PrintAllHelp {
+        #[arg(long, required = true)]
+        markdown: bool,
+    },
+}
+
+#[derive(ClapArgs, Debug, Clone)]
+struct RunArgs {
     #[arg(long)]
-    model_name: String,
+    model_name: Option<String>,
 
     #[arg(long, default_value = "1")]
     tensor_parallel_size: usize,
@@ -56,27 +78,44 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let args = Args::parse();
+    let cli = Cli::parse();
+
+    // If no subcommand is provided, default to run with the flattened args
+    let run_args = match cli.command {
+        Some(Commands::PrintAllHelp { markdown }) => {
+            assert!(markdown);
+            clap_markdown::print_help_markdown::<Cli>();
+            return Ok(());
+        }
+        Some(Commands::Run(args)) => args,
+        None => cli.run_args,
+    };
+
+    let model_name = run_args.model_name.context("--model-name is required")?;
 
     info!("Starting Psyche Inference Node");
-    info!("Model: {}", args.model_name);
-    info!("Tensor Parallel Size: {}", args.tensor_parallel_size);
-    info!("GPU Memory Utilization: {}", args.gpu_memory_utilization);
+    info!("Model: {}", model_name);
+    info!("Tensor Parallel Size: {}", run_args.tensor_parallel_size);
+    info!(
+        "GPU Memory Utilization: {}",
+        run_args.gpu_memory_utilization
+    );
 
-    let discovery_mode: DiscoveryMode = args
+    let discovery_mode: DiscoveryMode = run_args
         .discovery_mode
         .parse()
         .map_err(|e| anyhow::anyhow!("Invalid discovery mode: {}", e))?;
 
-    let relay_kind: RelayKind = args
+    let relay_kind: RelayKind = run_args
         .relay_kind
         .parse()
         .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
 
-    let capabilities: Vec<String> = if args.capabilities.is_empty() {
+    let capabilities: Vec<String> = if run_args.capabilities.is_empty() {
         vec![]
     } else {
-        args.capabilities
+        run_args
+            .capabilities
             .split(',')
             .map(|s| s.trim().to_string())
             .collect()
@@ -90,15 +129,15 @@ async fn main() -> Result<()> {
 
     info!("Initializing vLLM engine...");
     let mut inference_node = InferenceNode::new(
-        args.model_name.clone(),
-        Some(args.tensor_parallel_size),
-        Some(args.gpu_memory_utilization),
+        model_name.clone(),
+        Some(run_args.tensor_parallel_size),
+        Some(run_args.gpu_memory_utilization),
     );
 
     inference_node
         .initialize(
-            Some(args.tensor_parallel_size),
-            Some(args.gpu_memory_utilization),
+            Some(run_args.tensor_parallel_size),
+            Some(run_args.gpu_memory_utilization),
         )
         .context("Failed to initialize vLLM engine")?;
 
@@ -131,7 +170,7 @@ async fn main() -> Result<()> {
 
     // Announce availability via gossip
     let availability_msg = InferenceGossipMessage::NodeAvailable {
-        model_name: args.model_name.clone(),
+        model_name: model_name.clone(),
         checkpoint_id: None, // TODO: Track actual checkpoint when reloading - do we need this?
         capabilities: capabilities.clone(),
     };
