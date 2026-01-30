@@ -32,10 +32,6 @@ in
             liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
             torchtitan = pyfinal.callPackage ../python/torchtitan.nix { };
             torchdata = pyfinal.callPackage ../python/torchdata.nix { };
-            keras = pyprev.keras.overrideAttrs (oldAttrs: {
-              dontUsePytestCheck = "please dont";
-
-            });
           };
         };
       })
