@@ -101,10 +101,7 @@
               echo "Welcome to the Psyche development shell.";
             '';
           };
-        in
-        {
-          default = craneLib.devShell defaultShell;
-          dev-python = craneLib.devShell (
+          pythonShell = craneLib.devShell (
             defaultShell
             // {
               packages = defaultShell.packages ++ [
@@ -119,6 +116,11 @@
               '';
             }
           );
+        in
+        {
+          default = craneLib.devShell defaultShell;
+          python = pythonShell;
+          dev-python = pythonShell; # old name, kept for backwards compatibility
         };
     };
 }
