@@ -47,12 +47,12 @@ pub enum Response {
 
 /// Get the socket path for this user
 pub fn get_socket_path() -> PathBuf {
-    let uid = unsafe { libc::getuid() };
-    PathBuf::from(format!("/tmp/run-manager-{}.sock", uid))
+    // Use current working directory for socket file
+    PathBuf::from("./run-manager.sock")
 }
 
 /// Get the PID file path for this user
 pub fn get_pid_path() -> PathBuf {
-    let uid = unsafe { libc::getuid() };
-    PathBuf::from(format!("/tmp/run-manager-{}.pid", uid))
+    // Use current working directory for PID file
+    PathBuf::from("./run-manager.pid")
 }
