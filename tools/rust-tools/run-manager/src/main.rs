@@ -9,6 +9,7 @@ use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_solana_rpc::SolanaBackend;
 use run_manager::commands::{self, Command};
+use run_manager::daemon;
 use run_manager::docker::manager::{Entrypoint, RunManager};
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -214,12 +215,81 @@ enum Commands {
         params: CommandCanJoin,
     },
 
+    // Daemon commands
+    /// Manage the background daemon
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonAction,
+    },
+
+    /// Show daemon and container status (JSON output)
+    Status,
+
+    /// View container logs
+    Logs {
+        /// Follow log output (like tail -f)
+        #[arg(short, long)]
+        follow: bool,
+
+        /// Number of lines to show (default: all buffered)
+        #[arg(short = 'n', long)]
+        lines: Option<usize>,
+    },
+
+    // Hidden internal command for daemon server process
+    #[clap(hide = true)]
+    #[command(name = "__daemon-server")]
+    DaemonServer {
+        #[arg(long)]
+        env_file: PathBuf,
+        #[arg(long, default_value = "4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7")]
+        coordinator_program_id: String,
+        #[arg(long)]
+        local: bool,
+        #[arg(long)]
+        entrypoint: Option<String>,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        entrypoint_args: Vec<String>,
+    },
+
     // Docs generation
     #[clap(hide = true)]
     PrintAllHelp {
         #[arg(long, required = true)]
         markdown: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum DaemonAction {
+    /// Start the daemon in background
+    Start {
+        /// Path to .env file with environment variables
+        #[arg(long)]
+        env_file: PathBuf,
+
+        /// Coordinator program ID
+        #[arg(long, default_value = "4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7")]
+        coordinator_program_id: String,
+
+        /// Use a local Docker image instead of pulling from registry
+        #[arg(long)]
+        local: bool,
+
+        /// Optional entrypoint override
+        #[arg(long)]
+        entrypoint: Option<String>,
+
+        /// Arguments to pass to the entrypoint (use after --)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        entrypoint_args: Vec<String>,
+    },
+
+    /// Stop the daemon
+    Stop,
+
+    /// Restart the daemon (re-runs with same configuration)
+    Restart,
 }
 
 impl From<ClusterArgs> for Cluster {
@@ -369,6 +439,41 @@ async fn async_main() -> Result<()> {
         } => params.execute(create_backend(cluster, wallet)?).await,
         Commands::CanJoin { cluster, params } => {
             params.execute(create_backend_readonly(cluster)?).await
+        }
+        Commands::Daemon { action } => match action {
+            DaemonAction::Start {
+                env_file,
+                coordinator_program_id,
+                local,
+                entrypoint,
+                entrypoint_args,
+            } => daemon::client::start_daemon(
+                env_file,
+                coordinator_program_id,
+                local,
+                entrypoint,
+                entrypoint_args,
+            ),
+            DaemonAction::Stop => daemon::client::send_stop(),
+            DaemonAction::Restart => daemon::client::send_restart(),
+        },
+        Commands::Status => daemon::client::get_status(),
+        Commands::Logs { follow, lines } => daemon::client::get_logs(follow, lines),
+        Commands::DaemonServer {
+            env_file,
+            coordinator_program_id,
+            local,
+            entrypoint,
+            entrypoint_args,
+        } => {
+            daemon::server::run_server(
+                env_file,
+                coordinator_program_id,
+                local,
+                entrypoint,
+                entrypoint_args,
+            )
+            .await
         }
         Commands::PrintAllHelp { markdown } => {
             assert!(markdown);

@@ -82,7 +82,7 @@ impl RunManager {
     }
 
     /// Determine which Docker image to use and pull it if necessary
-    async fn prepare_image(&self) -> Result<String> {
+    pub async fn prepare_image(&self) -> Result<String> {
         let docker_tag = self
             .coordinator_client
             .get_docker_tag_for_run(&self.run_id, self.local_docker)?;
@@ -128,7 +128,11 @@ impl RunManager {
         Ok(())
     }
 
-    fn run_container(&self, image_name: &str, entrypoint: &Option<Entrypoint>) -> Result<String> {
+    pub fn run_container(
+        &self,
+        image_name: &str,
+        entrypoint: &Option<Entrypoint>,
+    ) -> Result<String> {
         info!("Creating container from image: {}", image_name);
 
         let client_version = if image_name.contains("sha256:") {
@@ -222,7 +226,7 @@ impl RunManager {
         Ok(())
     }
 
-    fn wait_for_container(&self, container_id: &str) -> Result<i32> {
+    pub fn wait_for_container(&self, container_id: &str) -> Result<i32> {
         let output = Command::new("docker")
             .arg("wait")
             .arg(container_id)
@@ -246,7 +250,7 @@ impl RunManager {
         Ok(exit_code)
     }
 
-    fn stop_and_remove_container(&self, container_id: &str) -> Result<()> {
+    pub fn stop_and_remove_container(&self, container_id: &str) -> Result<()> {
         info!("Stopping and removing container: {}", container_id);
 
         // Stop the container

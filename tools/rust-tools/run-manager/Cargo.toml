@@ -35,6 +35,8 @@ rand.workspace = true
 rand_chacha.workspace = true
 time.workspace = true
 solana-client = "=2.1.4"
+exec = "0.3"
+libc = "0.2"
 
 [dev-dependencies]
 serial_test = "3.0"

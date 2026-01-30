@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 
 pub mod commands;
+pub mod daemon;
 pub mod docker;
 
 // Re-export from psyche-solana-rpc for convenience
