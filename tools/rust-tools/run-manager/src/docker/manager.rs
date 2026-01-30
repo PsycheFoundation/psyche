@@ -1,3 +1,4 @@
+use anchor_client::solana_sdk::bs58;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_client::solana_sdk::signature::{EncodableKey, Keypair, Signer};
 use anyhow::{Context, Result, anyhow, bail};
@@ -61,6 +62,8 @@ impl RunManager {
             }
             .trim()
             .to_string();
+        let user_pubkey = parse_wallet_pubkey(&wallet_key)?;
+        info!("User pubkey: {}", user_pubkey);
 
         let coordinator_program_id = coordinator_program_id
             .parse::<Pubkey>()
@@ -93,10 +96,6 @@ impl RunManager {
         if runs.is_empty() {
             bail!("No runs found on coordinator program");
         }
-
-        // Parse wallet key to get user's pubkey for authorization checks
-        let user_pubkey = parse_wallet_pubkey(&wallet_key)?;
-        info!("User pubkey: {}", user_pubkey);
 
         let run_id = select_best_run(
             &runs,
@@ -364,8 +363,14 @@ fn parse_wallet_pubkey(wallet_key: &str) -> Result<Pubkey> {
         Keypair::read(&mut Cursor::new(wallet_key))
             .map_err(|e| anyhow!("Failed to parse wallet key: {}", e))?
     } else {
-        // Assume base58 encoded private key
-        Keypair::from_base58_string(wallet_key)
+        // from_base58_string has an internal unwrap() so we use these functions to handle
+        // errors more gracefuly
+        let decoded = bs58::decode(wallet_key)
+            .into_vec()
+            .map_err(|e| anyhow!("Failed to decode base58 wallet key: {}", e))?;
+
+        Keypair::from_bytes(&decoded)
+            .map_err(|e| anyhow!("Failed to create keypair from decoded bytes: {}", e))?
     };
     Ok(keypair.pubkey())
 }
