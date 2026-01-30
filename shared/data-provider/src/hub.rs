@@ -7,8 +7,8 @@ use hf_hub::{
         tokio::{ApiError, UploadSource},
     },
 };
-use psyche_coordinator::external_config::ExternalModelConfig;
 use psyche_coordinator::model;
+use psyche_coordinator::model_extra_data::ModelExtraData;
 use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
 use tokio::sync::mpsc;
@@ -223,11 +223,11 @@ pub async fn fetch_json_from_hub<T: serde::de::DeserializeOwned>(
     serde_json::from_str(&content).map_err(DownloadError::Json)
 }
 
-/// Upload a JSON-serializable value to HuggingFace Hub.
-pub async fn upload_extra_config_to_hub(
+/// Upload model extra data to HuggingFace Hub.
+pub async fn upload_model_extra_data_to_hub(
     repo_id: &str,
     filename: &str,
-    external_config: &ExternalModelConfig,
+    model_extra_data: &ModelExtraData,
     token: Option<String>,
     commit_message: Option<String>,
 ) -> Result<(), UploadError> {
@@ -241,7 +241,7 @@ pub async fn upload_extra_config_to_hub(
     let repo = Repo::model(repo_id.to_string());
     let api_repo = api.repo(repo);
 
-    let json = serde_json::to_string_pretty(external_config)?;
+    let json = serde_json::to_string_pretty(model_extra_data)?;
     let data = json.into_bytes();
 
     info!("Uploading JSON to {}/{} on HuggingFace", repo_id, filename);

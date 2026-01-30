@@ -5,10 +5,9 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
-    CoordinatorConfig, CoordinatorProgress,
-    external_config::{CONFIG_PREFIX, ExternalModelConfig, MODEL_CONFIG_FILENAME},
-    get_data_index_for_step,
+    CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
     model::{Checkpoint, Model},
+    model_extra_data::{CONFIG_PREFIX, MODEL_CONFIG_FILENAME, ModelExtraData},
 };
 use psyche_data_provider::upload_json_to_gcs;
 use psyche_solana_treasurer::logic::RunUpdateParams;
@@ -45,7 +44,7 @@ pub struct CommandUpdateConfig {
     #[clap(long, env)]
     pub client_version: Option<String>,
     #[clap(long, default_value_t = false, hide = true)]
-    pub skip_upload_external_config: bool,
+    pub skip_upload_model_extra_data: bool,
 
     /// HuggingFace token for uploading to Hub repos (can also use HF_TOKEN env var)
     #[clap(long, env = "HF_TOKEN")]
@@ -66,7 +65,7 @@ impl Command for CommandUpdateConfig {
             num_parameters,
             vocab_size,
             client_version,
-            skip_upload_external_config,
+            skip_upload_model_extra_data,
             hub_token,
         } = self;
 
@@ -81,13 +80,13 @@ impl Command for CommandUpdateConfig {
             .get_coordinator_account(&coordinator_account)
             .await?;
 
-        let (config, mut model, external_config) = match config_path {
+        let (config, mut model, model_extra_data) = match config_path {
             Some(config_path) => {
                 #[derive(Serialize, Deserialize)]
                 struct State {
                     pub config: CoordinatorConfig,
                     pub model: Model,
-                    pub external_config: ExternalModelConfig,
+                    pub model_extra_data: ModelExtraData,
                 }
                 let state: State = toml::from_str(std::str::from_utf8(
                     &std::fs::read(&config_path).with_context(|| {
@@ -99,7 +98,7 @@ impl Command for CommandUpdateConfig {
                 (
                     Some(state.config),
                     Some(state.model),
-                    Some(state.external_config),
+                    Some(state.model_extra_data),
                 )
             }
             None => (None, None, None),
@@ -152,47 +151,47 @@ impl Command for CommandUpdateConfig {
             coordinator_account_state.state.coordinator.model = model;
         }
 
-        // Upload external config to GCS or hub repo depending of the model checkpoint
-        if !skip_upload_external_config {
-            if let Some(external_config) = external_config {
+        // Upload model extra data to GCS or hub repo depending of the model checkpoint
+        if !skip_upload_model_extra_data {
+            if let Some(model_extra_data) = model_extra_data {
                 let Model::LLM(llm) = &coordinator_account_state.state.coordinator.model;
                 match llm.checkpoint {
                     Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
                         let bucket = gcs_repo.bucket.to_string();
                         let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
-                        info!("Uploading external config to gs://{}/{}", bucket, path);
-                        upload_json_to_gcs(&bucket, &path, &external_config)
+                        info!("Uploading model extra data to gs://{}/{}", bucket, path);
+                        upload_json_to_gcs(&bucket, &path, &model_extra_data)
                             .await
                             .with_context(|| {
                                 format!(
-                                    "failed to upload external config to gs://{}/{}",
+                                    "failed to upload model extra data to gs://{}/{}",
                                     bucket, path
                                 )
                             })?;
-                        println!("Uploaded external config to gs://{}/{}", bucket, path);
+                        println!("Uploaded model extra data to gs://{}/{}", bucket, path);
                     }
                     Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => {
                         let repo_id = hub_repo.repo_id.to_string();
                         let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
-                        psyche_data_provider::upload_extra_config_to_hub(
+                        psyche_data_provider::upload_model_extra_data_to_hub(
                             &repo_id,
                             &path,
-                            &external_config,
+                            &model_extra_data,
                             hub_token.clone(),
                             None,
                         )
                         .await
                         .with_context(|| {
                             format!(
-                                "failed to upload external config to Hub repo {}/{}",
+                                "failed to upload model extra data to Hub repo {}/{}",
                                 repo_id, path
                             )
                         })?;
-                        println!("Uploaded external config to Hub repo {}/{}", repo_id, path);
+                        println!("Uploaded model extra data to Hub repo {}/{}", repo_id, path);
                     }
                     _ => {
                         println!(
-                            "Warning: external_config provided but checkpoint is not GCS- or Hub-based, skipping upload"
+                            "Warning: model_extra_data provided but checkpoint is not GCS- or Hub-based, skipping upload"
                         );
                     }
                 }

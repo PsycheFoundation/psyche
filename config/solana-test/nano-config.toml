@@ -22,26 +22,26 @@ cold_start_warmup_steps = 0
 repo_id = "pefontana/Nano-Llama"
 revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
 
-[external_config]
+[model_extra_data]
 version = 1
 architecture = "HfLlama"
 data_type = "Pretraining"
 
-[external_config.data_location.Http]
+[model_extra_data.data_location.Http]
 token_size_in_bytes = "TwoBytes"
 shuffle = "DontShuffle"
 
-[external_config.data_location.Http.location]
+[model_extra_data.data_location.Http.location]
 SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds"
 
-[external_config.lr_schedule.Cosine]
+[model_extra_data.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 250
 warmup_init_lr = 0.0
 total_steps = 25000
 final_lr = 4.0e-5
 
-[external_config.optimizer.Distro]
+[model_extra_data.optimizer.Distro]
 clip_grad_norm = 1.0
 compression_decay = 0.999
 compression_chunk = 64

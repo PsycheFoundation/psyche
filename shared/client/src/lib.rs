@@ -9,7 +9,7 @@ pub use cli::{TrainArgs, prepare_environment, print_identity_keys, read_identity
 pub use client::Client;
 pub use protocol::{Broadcast, BroadcastType, Finished, NC, TrainingResult};
 pub use state::{
-    CheckpointConfig, ExternalModelConfig, GcsUploadInfo, HubUploadInfo, InitRunError, RoundState,
+    CheckpointConfig, GcsUploadInfo, HubUploadInfo, InitRunError, ModelExtraData, RoundState,
     RunInitConfig, RunInitConfigAndIO, UploadInfo,
 };
 pub use tui::{ClientTUI, ClientTUIState};

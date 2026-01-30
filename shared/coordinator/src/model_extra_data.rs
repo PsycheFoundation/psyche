@@ -8,10 +8,9 @@ pub const CONFIG_PREFIX: &str = "config";
 /// Filename for the model config
 pub const MODEL_CONFIG_FILENAME: &str = "model_config.json";
 
-/// External model configuration schema.
-/// This is stored in an off-chain storage and fetched by clients.
+/// Extra model data that is stored off-chain and fetched by clients.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExternalModelConfig {
+pub struct ModelExtraData {
     #[serde(default)]
     pub version: u32,
 
@@ -30,7 +29,7 @@ pub struct ExternalModelConfig {
     pub run_metadata: Option<RunMetadata>,
 }
 
-impl Default for ExternalModelConfig {
+impl Default for ModelExtraData {
     fn default() -> Self {
         Self {
             version: 1,
@@ -63,7 +62,7 @@ pub struct RunMetadata {
     pub client_version: String,
 }
 
-impl ExternalModelConfig {
+impl ModelExtraData {
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }

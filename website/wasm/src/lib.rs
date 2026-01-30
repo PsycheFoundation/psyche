@@ -40,7 +40,7 @@ pub struct DummyCoordinatorAccount(CoordinatorAccount);
 #[ts(export)]
 pub struct DummyClientId(ClientId);
 
-// Export types that are now in ExternalModelConfig but still needed by the website
+// Export types that are now in ModelExtraData but still needed by the website
 #[allow(dead_code)]
 #[derive(TS)]
 #[ts(export)]

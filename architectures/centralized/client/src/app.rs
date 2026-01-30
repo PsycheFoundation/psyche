@@ -5,7 +5,7 @@ use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientM
 use psyche_client::HubUploadInfo;
 use psyche_client::UploadInfo;
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, ExternalModelConfig, NC, RunInitConfig, TrainArgs,
+    Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig, TrainArgs,
     read_identity_secret_key,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
@@ -111,7 +111,7 @@ pub async fn build_app(
     let hub_read_token = std::env::var("HF_TOKEN").ok();
     let eval_tasks = p.eval_tasks()?;
     let checkpoint_config = p.checkpoint_config()?;
-    let external_config_override: Option<ExternalModelConfig> = p.external_config_override()?;
+    let model_extra_data_override: Option<ModelExtraData> = p.model_extra_data_override()?;
     let wandb_info = p.wandb_info(format!(
         "{}-{}",
         p.run_id.clone(),
@@ -155,7 +155,7 @@ pub async fn build_app(
         max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
         device: p.device,
         sidecar_port: p.sidecar_port,
-        external_config_override,
+        model_extra_data_override,
     };
     let app = App {
         cancel,
