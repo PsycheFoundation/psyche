@@ -1,5 +1,6 @@
 {
   pkgs,
+  lib ? pkgs.lib,
   rustPackages,
   inputs,
   externalRustPackages,
@@ -202,4 +203,4 @@ let
     };
   };
 in
-if pkgs.stdenv.isLinux then dockerPackages else { }
+lib.optionalAttrs pkgs.stdenv.isLinux dockerPackages
