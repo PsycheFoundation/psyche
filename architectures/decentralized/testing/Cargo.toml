@@ -17,6 +17,7 @@ futures-util.workspace = true
 thiserror.workspace = true
 psyche-client.workspace = true
 toml.workspace = true
+anyhow.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
 
 [dev-dependencies]

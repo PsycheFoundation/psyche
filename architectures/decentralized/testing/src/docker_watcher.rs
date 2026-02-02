@@ -29,6 +29,9 @@ pub enum Response {
     SolanaSubscription(String, String),
     WitnessElected(String),
     Error(ObservedErrorKind, String),
+    DataProviderFetchSuccess(u64),
+    DataProviderFetchError(u64),
+    CheckpointType(String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -310,6 +313,37 @@ impl DockerWatcher {
                             println!("Probably the test ended so we drop the log sender");
                         }
                     }
+                    IntegrationTestLogMarker::DataProviderFetchSuccess => {
+                        let provider_idx = parsed_log
+                            .get("provider_idx")
+                            .and_then(|v| v.as_u64())
+                            .unwrap();
+                        let response = Response::DataProviderFetchSuccess(provider_idx);
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
+                    IntegrationTestLogMarker::DataProviderFetchError => {
+                        let provider_idx = parsed_log
+                            .get("provider_idx")
+                            .and_then(|v| v.as_u64())
+                            .unwrap();
+                        let response = Response::DataProviderFetchError(provider_idx);
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
+                    IntegrationTestLogMarker::CheckpointType => {
+                        let checkpoint_type = parsed_log
+                            .get("checkpoint_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap()
+                            .to_string();
+                        let response = Response::CheckpointType(checkpoint_type);
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
                 }
             }
             Ok(())
@@ -334,6 +368,28 @@ impl DockerWatcher {
         Ok(())
     }
 
+    /// Fetch the last N lines of logs from a container
+    async fn fetch_container_logs(&self, container_name: &str, tail: usize) -> String {
+        let log_options = Some(LogsOptions::<String> {
+            stderr: true,
+            stdout: true,
+            follow: false,
+            tail: tail.to_string(),
+            ..Default::default()
+        });
+
+        let mut logs = self.client.logs(container_name, log_options);
+        let mut log_lines = Vec::new();
+
+        while let Some(log) = logs.next().await {
+            if let Ok(log) = log {
+                log_lines.push(log.to_string());
+            }
+        }
+
+        log_lines.join("\n")
+    }
+
     pub async fn monitor_client_health_by_id(
         &self,
         container_name: &str,
@@ -346,9 +402,20 @@ impl DockerWatcher {
         let state = container.state.unwrap();
         match state.status {
             Some(bollard::secret::ContainerStateStatusEnum::DEAD)
-            | Some(bollard::secret::ContainerStateStatusEnum::EXITED) => Err(
-                DockerWatcherError::ClientCrashedError(container_name.to_string()),
-            ),
+            | Some(bollard::secret::ContainerStateStatusEnum::EXITED) => {
+                // Capture last 50 lines of logs before reporting crash
+                let logs = self.fetch_container_logs(container_name, 50).await;
+                eprintln!(
+                    "\n========== Last 50 lines from {} ==========",
+                    container_name
+                );
+                eprintln!("{}", logs);
+                eprintln!("========== End of logs ==========\n");
+
+                Err(DockerWatcherError::ClientCrashedError(
+                    container_name.to_string(),
+                ))
+            }
             _ => Ok(()),
         }
     }

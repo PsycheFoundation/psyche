@@ -10,6 +10,9 @@ pub enum IntegrationTestLogMarker {
     SolanaSubscription,
     WitnessElected,
     Error,
+    DataProviderFetchSuccess,
+    DataProviderFetchError,
+    CheckpointType,
 }
 
 impl std::fmt::Display for IntegrationTestLogMarker {
@@ -26,6 +29,9 @@ impl std::fmt::Display for IntegrationTestLogMarker {
                 Self::SolanaSubscription => "solana_subscription",
                 Self::WitnessElected => "witness_elected",
                 Self::Error => "error",
+                Self::DataProviderFetchSuccess => "data_provider_fetch_success",
+                Self::DataProviderFetchError => "data_provider_fetch_error",
+                Self::CheckpointType => "checkpoint_type",
             }
         )
     }
@@ -44,6 +50,9 @@ impl FromStr for IntegrationTestLogMarker {
             "solana_subscription" => Self::SolanaSubscription,
             "witness_elected" => Self::WitnessElected,
             "error" => Self::Error,
+            "data_provider_fetch_success" => Self::DataProviderFetchSuccess,
+            "data_provider_fetch_error" => Self::DataProviderFetchError,
+            "checkpoint_type" => Self::CheckpointType,
             _ => return Err(()),
         })
     }

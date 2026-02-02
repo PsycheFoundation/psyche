@@ -7050,6 +7050,7 @@ name = "psyche-decentralized-testing"
 version = "0.2.0"
 dependencies = [
  "anchor-client",
+ "anyhow",
  "bollard",
  "futures-util",
  "psyche-client",
