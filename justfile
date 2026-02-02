@@ -147,13 +147,9 @@ run_test_infra num_clients="1":
 
     sleep 2  # Extra buffer for RPC to be fully ready
 
-    # Run setup script from project root
-    echo "Setting up test run..."
-    cd ../..
-    ./scripts/setup-test-run.sh
+    # The psyche-run-owner container handles run setup (create-run, update-config, set-paused)
+    # It will be started automatically as a dependency of psyche-test-client
 
-    # Now start the client services
-    cd docker/test
     echo "Starting clients..."
     if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
         echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
@@ -175,13 +171,9 @@ run_test_infra_with_proxies_validator num_clients="1":
 
     sleep 2  # Extra buffer for RPC to be fully ready
 
-    # Run setup script from project root
-    echo "Setting up test run..."
-    cd ../../..
-    RPC="http://127.0.0.1:8899" WS_RPC="ws://127.0.0.1:8900" RUN_ID="test" ./scripts/setup-test-run.sh
+    # The psyche-run-owner container handles run setup (create-run, update-config, set-paused)
+    # It will be started automatically as a dependency of psyche-test-client
 
-    # Now start the client and proxy services
-    cd docker/test/subscriptions_test
     echo "Starting clients and proxies..."
     if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
         echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
