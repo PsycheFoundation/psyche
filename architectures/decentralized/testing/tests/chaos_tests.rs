@@ -36,9 +36,9 @@ async fn test_pause_solana_validator(
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, 1).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(docker.clone(), 2, 2).await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client
@@ -124,9 +124,9 @@ async fn test_delay_solana_test_validator(
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, 1).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(docker.clone(), 2, 2).await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client
@@ -208,9 +208,9 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
 
     // Initialize a Solana run with n_clients clients
     let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1, 1).await
+        e2e_testing_setup(docker.clone(), 1).await
     } else {
-        e2e_testing_setup(docker.clone(), 2, 2).await
+        e2e_testing_setup(docker.clone(), 2).await
     };
 
     // Solana client

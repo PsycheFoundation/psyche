@@ -1,3 +1,7 @@
+use crate::{
+    docker_watcher::DockerWatcherError,
+    utils::{ConfigBuilder, SolanaTestClient},
+};
 use bollard::{
     Docker,
     container::{
@@ -8,15 +12,11 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use futures_util::StreamExt;
+use psyche_core::IntegrationTestLogMarker;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
-
-use crate::{
-    docker_watcher::DockerWatcherError,
-    utils::{ConfigBuilder, SolanaTestClient},
-};
 
 /// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
 fn has_gpu_support() -> bool {
@@ -60,6 +60,15 @@ impl Drop for DockerTestCleanup {
 
 /// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(
+    docker_client: Arc<Docker>,
+    num_clients: usize,
+) -> DockerTestCleanup {
+    e2e_testing_setup_with_min(docker_client, num_clients, num_clients).await
+}
+
+/// Setup with explicit init_num_clients and min_clients values.
+/// Use this when you need different values (e.g., init_num_clients=0, min_clients=1).
+pub async fn e2e_testing_setup_with_min(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
     min_clients: usize,
@@ -218,7 +227,6 @@ pub async fn wait_for_container_and_cleanup(
     container_name: &str,
     timeout_secs: u64,
 ) -> Result<i64, anyhow::Error> {
-    // Wait for container to complete with timeout
     println!("Waiting for container to complete...");
     let mut wait_stream =
         docker_client.wait_container(container_name, None::<WaitContainerOptions<String>>);
@@ -243,7 +251,6 @@ pub async fn wait_for_container_and_cleanup(
             }
         };
 
-    // Get the container logs for debugging
     println!("Retrieving container logs...");
     let mut logs_stream = docker_client.logs(
         container_name,
@@ -260,10 +267,8 @@ pub async fn wait_for_container_and_cleanup(
         }
     }
 
-    // Always cleanup the container
     remove_container(docker_client, container_name).await;
 
-    // Return success or error based on exit code
     if exit_code == 0 {
         Ok(exit_code)
     } else {
@@ -284,9 +289,9 @@ pub async fn spawn_new_client_with_monitoring(
         .monitor_container(
             &container_id,
             vec![
-                psyche_core::IntegrationTestLogMarker::LoadedModel,
-                psyche_core::IntegrationTestLogMarker::StateChange,
-                psyche_core::IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::LoadedModel,
+                IntegrationTestLogMarker::StateChange,
+                IntegrationTestLogMarker::Loss,
             ],
         )
         .unwrap();
@@ -337,18 +342,19 @@ pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Ve
     let mut running_containers = Vec::new();
     let mut all_container_names = Vec::new();
 
-    for cont in containers {
-        if let Some(name) = container_name(&cont) {
-            let name_owned = name.to_string();
-            all_container_names.push(name_owned.clone());
+    for c in containers {
+        let Some(name) = container_name(&c) else {
+            continue;
+        };
 
-            if cont
-                .state
-                .as_deref()
-                .is_some_and(|state| state.eq_ignore_ascii_case("running"))
-            {
-                running_containers.push(name_owned);
-            }
+        let name = name.to_string();
+        all_container_names.push(name.clone());
+
+        if c.state
+            .as_deref()
+            .is_some_and(|state| state.eq_ignore_ascii_case("running"))
+        {
+            running_containers.push(name);
         }
     }
 

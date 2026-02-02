@@ -16,8 +16,9 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run, spawn_new_client,
-        spawn_new_client_with_monitoring, spawn_new_client_with_options,
+        e2e_testing_setup, e2e_testing_setup_with_min, kill_all_clients, pause_and_verify,
+        resume_run, spawn_new_client, spawn_new_client_with_monitoring,
+        spawn_new_client_with_options,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,
@@ -45,7 +46,7 @@ async fn test_one_clients_three_epochs_run() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
     // Monitor the client container
     let _monitor_client_1 = watcher
@@ -123,7 +124,7 @@ async fn test_two_clients_three_epochs_run() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 2 clients
-    let _cleanup = e2e_testing_setup(docker.clone(), 2, 2).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
 
     // Monitor the client container
     let _monitor_client_1 = watcher
@@ -202,7 +203,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
     println!("Waiting for run to go on with the first client");
     tokio::time::sleep(Duration::from_secs(30)).await;
@@ -264,7 +265,7 @@ async fn test_rejoining_client_delay() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
 
@@ -332,7 +333,7 @@ async fn disconnect_client() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 3 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 3, 3).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 3).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(
@@ -482,7 +483,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    let _cleanup = e2e_testing_setup(docker.clone(), 2, 2).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
 
     let solana_client = SolanaTestClient::new(run_id).await;
     // Monitor clients
@@ -572,7 +573,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    let _cleanup = e2e_testing_setup(docker.clone(), 2, 2).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
 
     let solana_client = SolanaTestClient::new(run_id).await;
     let mut has_spawned_new_client_yet = false;
@@ -816,7 +817,7 @@ async fn test_everybody_leaves_in_warmup() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
     tokio::time::sleep(Duration::from_secs(20)).await;
 
     // initialize DockerWatcher
@@ -873,7 +874,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 1 client, minimum 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1, 1).await;
+    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
     // Monitor the original client container
     let _monitor_client_1 = watcher
@@ -971,7 +972,7 @@ async fn test_pause_and_resume_run() {
 
     // Initialize Solana test infrastructure (validator, run owner, etc.)
     // The run owner is created by docker-compose with pre-generated keypair
-    let _cleanup = e2e_testing_setup(docker.clone(), 0, 1).await;
+    let _cleanup = e2e_testing_setup_with_min(docker.clone(), 0, 1).await;
 
     // Wait for run owner to be ready
     tokio::time::sleep(Duration::from_secs(5)).await;
