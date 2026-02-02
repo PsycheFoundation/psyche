@@ -325,12 +325,36 @@ impl DockerWatcher {
             .map_err(|err| DockerWatcherError::LogsError { inner: err })
     }
 
-    pub async fn monitor_clients_health(&self, num_clients: u8) -> Result<(), DockerWatcherError> {
-        for i in 1..=num_clients {
-            let container_name = format!("{CLIENT_CONTAINER_PREFIX}-{i}");
-            self.monitor_client_health_by_id(container_name.as_str())
-                .await?;
+    /// Monitors the health of all currently running client containers.
+    pub async fn monitor_clients_health(&self) -> Result<(), DockerWatcherError> {
+        use bollard::container::ListContainersOptions;
+
+        // Get list of containers that are currently running
+        let all_containers = self
+            .client
+            .list_containers::<String>(Some(ListContainersOptions {
+                all: false, // Only running containers
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+
+        // Check health of running containers only
+        for container in all_containers {
+            // Get the first container name, if it exists
+            let Some(name) = container.names.as_ref().and_then(|names| names.first()) else {
+                continue;
+            };
+
+            // Remove the / from the name ("/psyche-client-1" -> "psyche-client-1")
+            let trimmed_name = name.trim_start_matches('/');
+
+            // Only monitor containers that match our client prefix (e.g., "psyche-client-")
+            if trimmed_name.starts_with(CLIENT_CONTAINER_PREFIX) {
+                self.monitor_client_health_by_id(trimmed_name).await?;
+            }
         }
+
         Ok(())
     }
 
@@ -346,10 +370,42 @@ impl DockerWatcher {
         let state = container.state.unwrap();
         match state.status {
             Some(bollard::secret::ContainerStateStatusEnum::DEAD)
-            | Some(bollard::secret::ContainerStateStatusEnum::EXITED) => Err(
-                DockerWatcherError::ClientCrashedError(container_name.to_string()),
-            ),
+            | Some(bollard::secret::ContainerStateStatusEnum::EXITED) => {
+                let logs = self.fetch_container_logs(container_name, 150).await;
+                eprintln!(
+                    "\n========== Last 150 lines from {} ==========",
+                    container_name
+                );
+                eprintln!("{}", logs);
+                eprintln!("========== End of logs ==========\n");
+
+                Err(DockerWatcherError::ClientCrashedError(
+                    container_name.to_string(),
+                ))
+            }
             _ => Ok(()),
         }
+    }
+
+    /// Fetch the last N lines of logs from a container
+    async fn fetch_container_logs(&self, container_name: &str, tail: usize) -> String {
+        let log_options = Some(LogsOptions::<String> {
+            stderr: true,
+            stdout: true,
+            follow: false,
+            tail: tail.to_string(),
+            ..Default::default()
+        });
+
+        let mut logs = self.client.logs(container_name, log_options);
+        let mut log_lines = Vec::new();
+
+        while let Some(log) = logs.next().await {
+            if let Ok(log) = log {
+                log_lines.push(log.to_string());
+            }
+        }
+
+        log_lines.join("\n")
     }
 }
