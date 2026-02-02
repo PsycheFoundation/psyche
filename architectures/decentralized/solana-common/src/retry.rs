@@ -84,7 +84,7 @@ impl From<ClientError> for RetryError<ClientError> {
                                 RetryError::Fatal(ClientError::SolanaClientError(e))
                             } else if msg.contains("AccountNotInitialized") {
                                 error!(
-                                    "AccountNotInitialized error - your authorization account has not been created. Please ensure you have been authorized to join this run."
+                                    "Your authorization account has not been created. Please ensure you have been authorized to join this run. Fatal Error."
                                 );
                                 RetryError::Fatal(ClientError::SolanaClientError(e))
                             } else if msg.contains("Failed to tick") {
