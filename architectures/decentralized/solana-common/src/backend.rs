@@ -258,8 +258,25 @@ impl SolanaBackend {
     ) -> Result<Signature> {
         let coordinator_instance_state =
             self.get_coordinator_instance(&coordinator_instance).await?;
-        let authorization =
-            Self::find_join_authorization(&coordinator_instance_state.join_authority, authorizer);
+
+        // First try permissionless authorization (system_program::ID)
+        let permissionless_authorization = Self::find_join_authorization(
+            &coordinator_instance_state.join_authority,
+            None,
+            system_program::ID,
+        );
+
+        // Check if permissionless authorization exists, otherwise use the provided
+        // authorizer or fall back to the payer's key
+        let authorization = if self.get_balance(&permissionless_authorization).await? > 0 {
+            permissionless_authorization
+        } else {
+            Self::find_join_authorization(
+                &coordinator_instance_state.join_authority,
+                authorizer,
+                self.get_payer(),
+            )
+        };
         let instruction = instructions::coordinator_join_run(
             &coordinator_instance,
             &coordinator_account,
@@ -346,10 +363,14 @@ impl SolanaBackend {
         self.spawn_scheduled_send("Checkpoint", &[instruction], &[]);
     }
 
-    pub fn find_join_authorization(join_authority: &Pubkey, authorizer: Option<Pubkey>) -> Pubkey {
+    pub fn find_join_authorization(
+        join_authority: &Pubkey,
+        authorizer: Option<Pubkey>,
+        authorizer_fallback: Pubkey,
+    ) -> Pubkey {
         psyche_solana_authorizer::find_authorization(
             join_authority,
-            &authorizer.unwrap_or(system_program::ID),
+            &authorizer.unwrap_or(authorizer_fallback),
             psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
         )
     }

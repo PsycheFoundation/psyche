@@ -1,4 +1,5 @@
 use crate::commands::Command;
+use anchor_client::anchor_lang::system_program;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::Result;
 use anyhow::bail;
@@ -33,16 +34,31 @@ impl Command for CommandCanJoin {
             .get_coordinator_instance(&coordinator_instance)
             .await?;
 
-        let authorization = SolanaBackend::find_join_authorization(
+        // First try permissionless authorization (system_program::ID)
+        let permissionless_authorization = SolanaBackend::find_join_authorization(
             &coordinator_instance_state.join_authority,
-            authorizer,
+            None,
+            system_program::ID,
         );
-        if backend.get_balance(&authorization).await? == 0 {
-            bail!(
-                "Authorization does not exist for authorizer: {authorizer:?} (authorization address: {authorization:?}, join authority: {0:?}). Authorizer must be set to grantee pubkey for permissioned runs",
-                coordinator_instance_state.join_authority
+
+        // Check if permissionless authorization exists, otherwise use the provided
+        // authorizer or fall back to the address
+        let authorization = if backend.get_balance(&permissionless_authorization).await? > 0 {
+            permissionless_authorization
+        } else {
+            let fallback_authorization = SolanaBackend::find_join_authorization(
+                &coordinator_instance_state.join_authority,
+                authorizer,
+                address,
             );
-        }
+            if backend.get_balance(&fallback_authorization).await? == 0 {
+                bail!(
+                    "Authorization does not exist for authorizer: {authorizer:?} (authorization address: {fallback_authorization:?}, join authority: {0:?}). Authorizer must be set to grantee pubkey for permissioned runs",
+                    coordinator_instance_state.join_authority
+                );
+            }
+            fallback_authorization
+        };
         if !backend
             .get_authorization(&authorization)
             .await?
@@ -54,7 +70,7 @@ impl Command for CommandCanJoin {
         {
             bail!("Authorization invalid for run id {run_id} using pubkey {address}");
         }
-        println!("authorization valid for run id {run_id} using pubkey {address}");
+        println!("Authorization valid for run id {run_id} using pubkey {address}");
 
         let coordinator_account_state = backend
             .get_coordinator_account(&coordinator_instance_state.coordinator_account)
