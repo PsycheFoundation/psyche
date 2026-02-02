@@ -88,6 +88,20 @@ let
   # python venv without the psyche extension (vllm, etc)
 
   pythonDeps = { inherit (inputs) uv2nix pyproject-nix pyproject-build-systems; };
+
+  # function to create a python venv with specific python packages
+  mkPythonVenvForPackages =
+    pythonPkgs:
+    pkgs.callPackage ./python.nix (
+      {
+        extraPackages = {
+          psyche = psychePythonExtension;
+        };
+        additionalNixPackages = pythonPkgs;
+      }
+      // pythonDeps
+    );
+
   psychePythonVenv = pkgs.callPackage ./python.nix (
     {
       extraPackages = { };
@@ -95,15 +109,8 @@ let
     // pythonDeps
   );
 
-  # python venv with the psyche extension
-  psychePythonVenvWithExtension = pkgs.callPackage ./python.nix (
-    {
-      extraPackages = {
-        psyche = psychePythonExtension;
-      };
-    }
-    // pythonDeps
-  );
+  # python venv with the psyche extension (legacy, kept for compatibility)
+  psychePythonVenvWithExtension = mkPythonVenvForPackages [ ];
   # builds a rust package
   # Returns an attrset of packages: { packageName = ...; packageName-nopython = ...; }
   # Automatically discovers and builds examples from the crate's examples/ directory
@@ -116,6 +123,7 @@ let
   #   - buildInputs.main = [ deps ] applies to src/main.rs
   #   - buildInputs.<type> = [ deps ] applies to all binaries of type (bin/test/example)
   #   - buildInputs.<type>.<name> = [ deps ] applies to specific binary
+  # pythonBuildInputs: attrset of runtime python deps for each built binary, same format as buildInputs
   buildRustPackage =
     {
       needsPython ? false,
@@ -123,14 +131,15 @@ let
       cratePath, # path to the crate dir
       supportedSystems ? null,
       buildInputs ? { },
+      pythonBuildInputs ? { },
     }:
     let
       # type: "main" | "bin" | "test" | "example"
       # name: the binary / test name
       getRuntimeDepsForArtifact =
-        type: name:
+        inputsAttrset: inputsAttrsetName: type: name:
         let
-          typeConfig = buildInputs.${type} or null;
+          typeConfig = inputsAttrset.${type} or null;
 
           # there's only one "main"
           mainDeps =
@@ -139,7 +148,7 @@ let
                 if lib.isList typeConfig then
                   typeConfig
                 else if typeConfig != null then
-                  throw "buildInputs.main must be a list, got ${builtins.typeOf typeConfig}"
+                  throw "${inputsAttrsetName}.main must be a list, got ${builtins.typeOf typeConfig}"
                 else
                   [ ]
               )
@@ -168,7 +177,23 @@ let
           "example"
         ]) "type must be 'bin', 'test', or 'example', got: ${type}";
         let
-          workspaceArgs = if withPython then rustWorkspaceArgsWithPython else rustWorkspaceArgsNoPython;
+          # custom venv for this package with its specific python dependencies
+          pythonRuntimeDeps =
+            getRuntimeDepsForArtifact pythonBuildInputs "pythonBuildInputs" type
+              originalName;
+          customPythonVenv = if withPython then mkPythonVenvForPackages pythonRuntimeDeps else null;
+
+          workspaceArgs =
+            if withPython then
+              (
+                rustWorkspaceArgs
+                // {
+                  buildInputs = rustWorkspaceArgs.buildInputs ++ [ customPythonVenv ];
+                  NIX_LDFLAGS = "-L${customPythonVenv}/lib -lpython3.12";
+                }
+              )
+            else
+              rustWorkspaceArgsNoPython;
           artifacts = if withPython then cargoArtifacts else cargoArtifactsNoPython;
 
           # delete conflicting bins from other crates to prevent ambiguous --bin/--example/--test
@@ -277,8 +302,8 @@ let
             }
           );
 
-          runtimeDeps = getRuntimeDepsForArtifact type originalName;
-          allRuntimeDeps = (lib.optionals withPython [ psychePythonVenvWithExtension ]) ++ runtimeDeps;
+          runtimeDeps = getRuntimeDepsForArtifact buildInputs "buildInputs" type originalName;
+          allRuntimeDeps = (lib.optionals withPython [ customPythonVenv ]) ++ runtimeDeps;
 
           wrappedRustPackage =
             pkgs.runCommand "${name}"
