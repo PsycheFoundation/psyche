@@ -1,0 +1,86 @@
+# Run these commands from the root
+
+set working-directory := '../../'
+
+# In case a recipe is not found here, it will fallback to the root justfile.
+
+AUTHORIZER := env_var_or_default("AUTHORIZER", "11111111111111111111111111111111")
+
+set fallback := true
+
+default:
+    just --list
+
+# Localnet
+setup-solana-localnet-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} PERMISSIONLESS=true ./scripts/setup-and-deploy-solana-test.sh {{ args }}
+
+setup-solana-localnet-light-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml PERMISSIONLESS=true ./scripts/setup-and-deploy-solana-test.sh {{ args }}
+
+setup-solana-localnet-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} PERMISSIONLESS=true ./scripts/setup-and-deploy-solana-test.sh --treasurer {{ args }}
+
+setup-solana-localnet-light-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml PERMISSIONLESS=true ./scripts/setup-and-deploy-solana-test.sh --treasurer {{ args }}
+
+setup-solana-localnet-permissioned-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} ./scripts/deploy-solana-test.sh {{ args }}
+
+setup-solana-localnet-permissioned-light-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh {{ args }}
+
+setup-solana-localnet-permissioned-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+
+setup-solana-localnet-permissioned-light-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+
+start-training-localnet-client run_id="test" *args='':
+    AUTHORIZER={{ AUTHORIZER }} RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
+
+start-training-localnet-light-client run_id="test" *args='':
+    AUTHORIZER={{ AUTHORIZER }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
+OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
+
+start-training-localnet-light-client-telemetry run_id="test" *args='':
+    AUTHORIZER={{ AUTHORIZER }} OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+DEVNET_RPC := "https://api.devnet.solana.com"
+DEVNET_WS_RPC := "wss://api.devnet.solana.com"
+
+# Devnet
+setup-solana-devnet-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} PERMISSIONLESS=true ./scripts/deploy-solana-test.sh {{ args }}
+
+setup-solana-devnet-light-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} CONFIG_FILE=./config/solana-test/light-config.toml PERMISSIONLESS=true ./scripts/deploy-solana-test.sh {{ args }}
+
+setup-solana-devnet-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} PERMISSIONLESS=true ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+
+setup-solana-devnet-light-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} CONFIG_FILE=./config/solana-test/light-config.toml PERMISSIONLESS=true ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+
+setup-solana-devnet-permissioned-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/deploy-solana-test.sh {{ args }}
+
+setup-solana-devnet-permissioned-light-test-run run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh {{ args }}
+
+setup-solana-devnet-permissioned-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+
+setup-solana-devnet-permissioned-light-test-run-treasurer run_id="test" *args='':
+    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh --treasurer {{ args }}
+
+start-training-devnet-client run_id="test" *args='':
+    AUTHORIZER=${AUTHORIZER} RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/train-solana-test.sh {{ args }}
+
+start-training-devnet-light-client run_id="test" *args='':
+    AUTHORIZER=${AUTHORIZER} RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
+
+close-dev-programs:
+    ./scripts/close-programs.sh

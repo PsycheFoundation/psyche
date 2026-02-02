@@ -54,6 +54,7 @@ const ALLOWLISTED_RUN_IDS =
 				'hermes-4.1-36b',
 				'hermes-4.3-36b',
 				'hermes-4.3-36b-2',
+				'moe-10b-a1b-8k-wsd-lr3e4-1t',
 			]
 
 type WitnessV2 = Omit<
@@ -928,7 +929,14 @@ function cleanupSampledUpdates(
 function removeOverriddenSteps(
 	witnesses: [WitnessV2, ChainTimestamp][]
 ): [WitnessV2, ChainTimestamp][] {
-	const orderedWitnesses = witnesses.sort(
+	const validWitnesses = witnesses.filter((w) => {
+		if (!w) {
+			console.error('null witness found?? removing...')
+			return false
+		}
+		return true
+	})
+	const orderedWitnesses = validWitnesses.sort(
 		(a, b) => a[1].time.getTime() - b[1].time.getTime()
 	)
 

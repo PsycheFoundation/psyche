@@ -1,5 +1,6 @@
 {
   pkgs,
+  lib ? pkgs.lib,
   rustPackages,
   inputs,
   externalRustPackages,
@@ -45,7 +46,7 @@ let
           busybox
           cacert
           solanaClientPackage
-          externalRustPackages.solana_toolbox_cli
+          externalRustPackages.solana-toolbox-cli
           jq
           # Create proper system structure including /tmp
           (pkgs.runCommand "system-setup" { } ''
@@ -66,12 +67,11 @@ let
           '')
           (pkgs.runCommand "entrypoint" { } ''
             mkdir -p $out/bin
+            mkdir -p $out/architectures/decentralized/solana-authorizer/target/deploy
             cp ${../docker/test/client_test_entrypoint.sh} $out/bin/client_test_entrypoint.sh
             cp ${../docker/test/run_owner_entrypoint.sh} $out/bin/run_owner_entrypoint.sh
-            cp ${../scripts/join-authorization-create.sh} $out/bin/join-authorization-create.sh
             chmod +x $out/bin/client_test_entrypoint.sh
             chmod +x $out/bin/run_owner_entrypoint.sh
-            chmod +x $out/bin/join-authorization-create.sh
           '')
         ]
         ++ lib.optionals usePython [
@@ -205,4 +205,4 @@ let
     };
   };
 in
-if pkgs.stdenv.isLinux then dockerPackages else { }
+lib.optionalAttrs pkgs.stdenv.isLinux dockerPackages
