@@ -82,7 +82,7 @@ cargo run --release --bin run-manager -- \
     --config-path ${CONFIG_FILE} \
     --num-parameters 1100000000 \
     --vocab-size 32768 \
-    --skip-upload-external-config
+    --skip-upload-model-extra-data
 
 echo -e "\n[+] Unpause the training run..."
 cargo run --release --bin run-manager -- \

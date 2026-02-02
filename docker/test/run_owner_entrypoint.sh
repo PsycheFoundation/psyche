@@ -26,7 +26,7 @@ run-manager update-config \
     --ws-rpc "${WS_RPC}" \
     --run-id "${RUN_ID}" \
     --config-path "/usr/local/config.toml" \
-    --skip-upload-external-config
+    --skip-upload-model-extra-data
 
 run-manager set-paused \
     --wallet-private-key-path ${WALLET_FILE} \

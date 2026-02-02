@@ -56,7 +56,7 @@ cargo run --release --bin run-manager -- \
     --ws-rpc "${WS_RPC}" \
     --run-id "${RUN_ID}" \
     --config-path "config/solana-test/test-config.toml" \
-    --skip-upload-external-config
+    --skip-upload-model-extra-data
 
 echo "[+] Unpausing run..."
 cargo run --release --bin run-manager -- \
