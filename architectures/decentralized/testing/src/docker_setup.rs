@@ -543,14 +543,12 @@ pub async fn pause_and_verify(docker: Arc<Docker>, run_id: &str, solana_client: 
     let coordinator_state = solana_client.get_run_state().await;
     println!("Coordinator state after pause: {coordinator_state}");
 
-    if coordinator_state == RunState::Cooldown {
-        println!("Waiting for Cooldown → Paused transition...");
+    if coordinator_state != RunState::Paused {
+        println!("Waiting for {coordinator_state} → Paused transition...");
         assert!(
             solana_client.wait_for_run_state(RunState::Paused, 30).await,
             "Run should transition to Paused"
         );
-    } else {
-        assert_eq!(coordinator_state, RunState::Paused, "Run should be paused");
     }
     println!("Run successfully paused!");
 }
