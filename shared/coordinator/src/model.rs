@@ -270,6 +270,8 @@ pub enum Checkpoint {
     Dummy(HubRepo),
     Hub(HubRepo),
     P2P(HubRepo),
+    /// P2P checkpoint that originated from a Dummy checkpoint (for testing)
+    P2PDummy,
     Gcs(GcsRepo),
     P2PGcs(GcsRepo),
 }
@@ -277,7 +279,7 @@ pub enum Checkpoint {
 impl std::fmt::Display for Checkpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Checkpoint::Dummy(_hub_repo) => write!(f, "Dummy"),
+            Checkpoint::Dummy(_) | Checkpoint::P2PDummy => write!(f, "Dummy"),
             Checkpoint::Ephemeral => write!(f, "Ephemeral"),
             Checkpoint::Hub(hub_repo) => write!(f, "{}", &hub_repo.repo_id),
             Checkpoint::P2P(hub_repo) => {
@@ -301,7 +303,7 @@ impl Model {
                 }
 
                 let bad_checkpoint = match llm.checkpoint {
-                    Checkpoint::Dummy(_hub_repo) => false,
+                    Checkpoint::Dummy(_) | Checkpoint::P2PDummy => false,
                     Checkpoint::Ephemeral => true,
                     Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
                     Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),

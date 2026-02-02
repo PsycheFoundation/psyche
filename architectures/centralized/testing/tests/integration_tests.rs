@@ -9,10 +9,7 @@ use psyche_centralized_testing::{
         spawn_clients_with_training_delay,
     },
 };
-use psyche_coordinator::{
-    RunState,
-    model::{Checkpoint, HubRepo},
-};
+use psyche_coordinator::{RunState, model::Checkpoint};
 use tracing::info;
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -639,7 +636,7 @@ async fn client_join_in_training_and_get_model_using_p2p() {
 
     assert_with_retries(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
+        std::mem::discriminant(&Checkpoint::P2PDummy),
     )
     .await;
 
@@ -722,7 +719,7 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
 
     assert_with_retries(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
+        std::mem::discriminant(&Checkpoint::P2PDummy),
     )
     .await;
 

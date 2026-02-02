@@ -288,6 +288,9 @@ async fn async_main() -> Result<()> {
                     Checkpoint::Ephemeral => {
                         bail!("Can't predownload model with ephemeral checkpoint.")
                     }
+                    Checkpoint::P2PDummy => {
+                        println!("P2PDummy checkpoint (for testing), nothing to predownload.");
+                    }
                     Checkpoint::Dummy(hub_repo)
                     | Checkpoint::Hub(hub_repo)
                     | Checkpoint::P2P(hub_repo) => {

@@ -211,7 +211,7 @@ impl App {
                     Checkpoint::Dummy(_) => {
                         // ok!
                     }
-                    Checkpoint::P2P(_) | Checkpoint::P2PGcs(_) => {
+                    Checkpoint::P2P(_) | Checkpoint::P2PDummy | Checkpoint::P2PGcs(_) => {
                         bail!("Can't start up a run with a P2P checkpoint.")
                     }
                     Checkpoint::Gcs(gcs_repo) => {

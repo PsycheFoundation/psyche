@@ -1,6 +1,6 @@
 use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, Model},
+    model::{Checkpoint, HubRepo, Model},
 };
 
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
@@ -936,6 +936,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 match llm.checkpoint {
                     Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
                     Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
+                    Checkpoint::P2PDummy => llm.checkpoint = Checkpoint::Dummy(HubRepo::dummy()),
                     _ => {}
                 }
             }
@@ -1065,9 +1066,8 @@ impl<T: NodeIdentity> Coordinator<T> {
             // we've completed an epoch, switch to P2P from now on
             let Model::LLM(llm) = &mut self.model;
             match llm.checkpoint {
-                Checkpoint::Hub(hub_repo) | Checkpoint::Dummy(hub_repo) => {
-                    llm.checkpoint = Checkpoint::P2P(hub_repo)
-                }
+                Checkpoint::Hub(hub_repo) => llm.checkpoint = Checkpoint::P2P(hub_repo),
+                Checkpoint::Dummy(_) => llm.checkpoint = Checkpoint::P2PDummy,
                 Checkpoint::Gcs(gcs_repo) => llm.checkpoint = Checkpoint::P2PGcs(gcs_repo),
                 _ => {}
             }
