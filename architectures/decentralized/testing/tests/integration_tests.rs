@@ -10,18 +10,18 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
-use psyche_client::IntegrationTestLogMarker;
-use psyche_coordinator::model::{DummyType, LLMTrainingDataLocation};
-use psyche_coordinator::{RunState, model::Checkpoint};
-use psyche_decentralized_testing::docker_setup::{
-    e2e_testing_setup_subscription, e2e_testing_setup_with_datasource,
+use psyche_coordinator::{
+    RunState,
+    model::{Checkpoint, DummyType, LLMTrainingDataLocation},
 };
+use psyche_core::IntegrationTestLogMarker;
+use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, pause_and_verify, resume_run, spawn_new_client,
-        spawn_new_client_with_options,
+        e2e_testing_setup, e2e_testing_setup_with_datasource, kill_all_clients, pause_and_verify,
+        resume_run, spawn_new_client, spawn_new_client_with_options,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::SolanaTestClient,

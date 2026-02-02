@@ -363,8 +363,19 @@ export async function startWatchCoordinatorChainLoop(
 					}
 				}
 			},
+
 			async onDoneCatchup(store, runUpdates) {
-				const allRuns = [...runUpdates.getRuns()]
+				const allRuns = [...runUpdates.getRuns()].filter((run) => {
+					// known broken addrs
+					if (
+						run[0] === '5rHDPfLLYNxKDh86GYtx6nF94WAS2uvHp4zp7WUqsBSg' ||
+						run[0] === 'Gewx2auE9MBxNkbDevDSPBdDjDekNhhoyYyYaxEfM2gy' ||
+						run[0] === 'GWBFVhEi1nCp2J2E7paukFMZ9PE1hAa9dQcvZSeQoKAj'
+					) {
+						return false
+					}
+					return true
+				})
 				if (allRuns.length === 0) {
 					return
 				}

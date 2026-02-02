@@ -59,6 +59,7 @@ impl Drop for DockerTestCleanup {
     }
 }
 
+/// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,

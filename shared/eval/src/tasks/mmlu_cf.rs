@@ -72,6 +72,7 @@ impl MMLUCF {
             answer,
             category: Some(subject),
             cot_content: None,
+            eval_name: MMLUCF::name().to_string(),
         }
     }
 }
@@ -96,6 +97,13 @@ impl LogLikelihoodTask for MMLUCF {
             }
         });
         fewshot_documents
+    }
+
+    fn get_preamble(&self, category: &str) -> String {
+        format!(
+            "The following are multiple choice questions (with answers) about {}.\n\n",
+            category
+        )
     }
 }
 

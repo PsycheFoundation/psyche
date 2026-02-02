@@ -16,7 +16,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          # FIXME: this key will make the cache succeed even if some other nix files which affect it change.
+          # we should *really* build this with nix instead of a manual hashFiles / cache here
+          key: validator-image-${{ runner.os }}-${{ hashFiles('shared/coordinator/src/coordinator.rs', 'architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
           lookup-only: true
 
       # Build validator image if cache fails
@@ -86,7 +88,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: validator-image.tar.gz
-          key: validator-image-${{ runner.os }}-${{ hashFiles('architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          key: validator-image-${{ runner.os }}-${{ hashFiles('shared/coordinator/src/coordinator.rs', 'architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
 
       - name: Build complete
         if: steps.cache-validator.outputs.cache-hit != 'true'

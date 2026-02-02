@@ -8,7 +8,7 @@ use anyhow::Result;
 use bollard::Docker;
 use psyche_coordinator::{
     NUM_STORED_ROUNDS, Round, RunState,
-    model::{Checkpoint, LLMTrainingDataLocation, Model},
+    model::{Checkpoint, Model},
 };
 use psyche_core::FixedVec;
 use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
@@ -203,7 +203,6 @@ pub struct ConfigBuilder {
     min_clients: Option<usize>,
     batch_size: u32,
     architecture: String,
-    data_source: Option<Vec<LLMTrainingDataLocation>>,
 }
 
 impl Default for ConfigBuilder {
@@ -232,7 +231,6 @@ impl ConfigBuilder {
             min_clients: None,
             batch_size: 4,
             architecture: String::from("HfLlama"),
-            data_source: None,
         }
     }
 
@@ -256,11 +254,6 @@ impl ConfigBuilder {
         self
     }
 
-    pub fn with_data_source(mut self, source: Option<Vec<LLMTrainingDataLocation>>) -> Self {
-        self.data_source = source;
-        self
-    }
-
     pub fn build(mut self) -> PathBuf {
         // Apply runtime overrides
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -275,12 +268,6 @@ impl ConfigBuilder {
         self.set_value("config.global_batch_size_start", self.batch_size);
         self.set_value("config.global_batch_size_end", self.batch_size);
 
-        if let Some(src) = self.data_source.clone() {
-            self.set_value(
-                "model.LLM.data_locations",
-                toml::Value::try_from(src).unwrap(),
-            );
-        }
         #[cfg(feature = "python")]
         self.set_value("config.warmup_time", 100);
 

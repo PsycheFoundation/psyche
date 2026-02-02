@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use bollard::Docker;
-use psyche_client::IntegrationTestLogMarker;
+use psyche_core::IntegrationTestLogMarker;
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, VALIDATOR_CONTAINER_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
