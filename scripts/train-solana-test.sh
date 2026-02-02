@@ -56,7 +56,7 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --micro-batch-size ${BATCH_SIZE} \
         --authorizer ${AUTHORIZER} \
         --logs "console" \
-        --external-config-toml ./config/solana-test/light-config.toml \
+        --model-extra-data-toml ./config/solana-test/light-config.toml \
         ${CHECKPOINT_ARGS[@]} \
         "$@"
 else
@@ -73,7 +73,7 @@ else
         --authorizer ${AUTHORIZER} \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
         --oltp-logs-url "http://localhost:4318/v1/logs" \
-        --external-config-toml ./config/solana-test/light-config.toml \
+        --model-extra-data-toml ./config/solana-test/light-config.toml \
         ${CHECKPOINT_ARGS[@]} \
         "$@"
 fi

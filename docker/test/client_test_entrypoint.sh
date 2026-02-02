@@ -18,7 +18,7 @@ if [ "${PYTHON_ENABLED}" = "true" ]; then
         --run-id "${RUN_ID}" \
         --data-parallelism 8 \
         --sidecar-port "${SIDECAR_PORT}" \
-        --external-config-toml "/usr/local/config.toml" \
+        --model-extra-data-toml "/usr/local/config.toml" \
         --logs "json"
 else
     echo "Starting client without Python features"
@@ -27,6 +27,6 @@ else
         --rpc "${RPC}" \
         --ws-rpc "${WS_RPC}" \
         --run-id "${RUN_ID}" \
-        --external-config-toml "/usr/local/config.toml" \
+        --model-extra-data-toml "/usr/local/config.toml" \
         --logs "json"
 fi
