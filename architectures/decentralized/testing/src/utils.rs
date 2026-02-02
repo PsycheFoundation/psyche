@@ -109,10 +109,16 @@ impl SolanaTestClient {
         let mut attempts = 0;
         const MAX_ATTEMPTS_PER_SEC: u32 = 4;
         let max_attempts = timeout_secs * MAX_ATTEMPTS_PER_SEC;
+        let mut last_state = String::new();
 
         while attempts < max_attempts {
             let coordinator_state = self.get_run_state().await;
-            println!("Current state is {coordinator_state}");
+            let state_str = coordinator_state.to_string();
+
+            if state_str != last_state {
+                println!("Current state is {coordinator_state}");
+                last_state = state_str;
+            }
 
             if coordinator_state == target_state {
                 return true;

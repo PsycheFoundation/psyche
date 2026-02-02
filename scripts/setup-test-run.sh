@@ -19,15 +19,18 @@ RPC="http://127.0.0.1:8899"
 WS_RPC="ws://127.0.0.1:8900"
 RUN_ID=${RUN_ID:-"test"}
 
-# Create a temporary wallet for the run owner
-TEMP_DIR=$(mktemp -d)
-WALLET_FILE="${TEMP_DIR}/id.json"
+# Use the pre-generated run owner keypair so that the same authority
+# can be used later to pause/resume the run.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WALLET_FILE="${SCRIPT_DIR}/../docker/test/keypairs/run_owner.json"
+
+if [ ! -f "${WALLET_FILE}" ]; then
+    echo "[!] Run owner keypair not found at ${WALLET_FILE}"
+    exit 1
+fi
 
 echo "[+] Configuring solana CLI..."
 solana config set --url "${RPC}"
-
-echo "[+] Generating temporary wallet..."
-solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
 
 echo "[+] Airdropping SOL to wallet..."
 solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}"
@@ -67,6 +70,3 @@ nix run .#run-manager -- \
     --resume
 
 echo "[+] Test run setup complete!"
-
-# Clean up temporary wallet
-rm -rf "${TEMP_DIR}"
