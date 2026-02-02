@@ -677,7 +677,7 @@ async fn test_solana_subscriptions() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 2 client
-    let _cleanup = e2e_testing_setup_subscription(docker.clone(), 2, None, 2).await;
+    let _cleanup = e2e_testing_setup_subscription(docker.clone(), 2, 2).await;
 
     // Monitor the client containers
     let _monitor_client_1 = watcher

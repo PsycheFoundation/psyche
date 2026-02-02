@@ -250,15 +250,6 @@ impl ConfigBuilder {
         self
     }
 
-    pub fn with_data_source(
-        self,
-        _data_source: Option<Vec<psyche_coordinator::model::LLMTrainingDataLocation>>,
-    ) -> Self {
-        // Note: data_source configuration is currently not implemented for tests
-        // The default data location from the base config will be used
-        self
-    }
-
     pub fn with_architecture(mut self, architecture: &str) -> Self {
         self.architecture = architecture.to_string();
         self
