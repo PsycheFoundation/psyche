@@ -1,39 +1,14 @@
 {
   lib,
-  mdbook,
-  fetchFromGitHub,
-  rustPlatform,
   stdenvNoCC,
+  mdbook,
   mdbook-mermaid,
   mdbook-linkcheck,
+  fetchFromGitHub,
 
   # custom args
   rustPackages,
-  rustPackageNames,
 }:
-let
-  mdbook-0-4-47 = mdbook.overrideAttrs (
-    oldAttrs:
-    let
-      version = "0.4.47";
-      src = fetchFromGitHub {
-        owner = "rust-lang";
-        repo = "mdBook";
-        tag = "v${version}";
-        hash = "sha256-XTvC2pGRVat0kOybNb9TziG32wDVexnFx2ahmpUFmaA=";
-      };
-    in
-    {
-      inherit version src;
-      cargoDeps = rustPlatform.fetchCargoVendor {
-        inherit (oldAttrs) pname;
-        inherit version src;
-        allowGitDependencies = false;
-        hash = "sha256-ASPRBAB+elJuyXpPQBm3WI97wD3mjoO1hw0fNHc+KAw=";
-      };
-    }
-  );
-in
 stdenvNoCC.mkDerivation {
   __structuredAttrs = true;
 
@@ -41,9 +16,26 @@ stdenvNoCC.mkDerivation {
   src = ./.;
 
   nativeBuildInputs = [
-    mdbook-0-4-47
+    mdbook
     mdbook-mermaid
-    mdbook-linkcheck
+    (mdbook-linkcheck.overrideAttrs (
+      final: prev: {
+        version = "unstable-2025-12-04";
+        src = fetchFromGitHub {
+          owner = "schilkp";
+          repo = "mdbook-linkcheck";
+          rev = "ed981be6ded11562e604fff290ae4c08f1c419c5";
+          sha256 = "sha256-GTVWc/vkqY9Hml2fmm3iCHOzd/HPP1i/8NIIjFqGGbQ=";
+        };
+
+        cargoDeps = prev.cargoDeps.overrideAttrs (previousAttrs: {
+          vendorStaging = previousAttrs.vendorStaging.overrideAttrs {
+            inherit (final) src;
+            outputHash = "sha256-+73aI/jt5mu6dR6PR9Q08hPdOsWukb/z9crIdMMeF7U=";
+          };
+        });
+      }
+    ))
   ];
 
   postPatch = ''
@@ -52,15 +44,22 @@ stdenvNoCC.mkDerivation {
     # we set HOME to a writable directory to avoid cache dir permission issues
     export HOME=$TMPDIR
 
-    ${lib.concatMapStringsSep "\n" (
-      name:
-      let
-        noPythonPackage = "${name}-nopython";
-      in
-      "${rustPackages.${noPythonPackage}}/bin/${name} print-all-help --markdown > generated/cli/${
-        lib.replaceStrings [ "-" ] [ "-" ] name
-      }.md"
-    ) rustPackageNames}
+    ${lib.concatMapStringsSep "\n"
+      (
+        name:
+        let
+          basename = lib.replaceStrings [ "-nopython" ] [ "" ] name;
+        in
+        "${rustPackages.${name}}/bin/${basename} print-all-help --markdown > generated/cli/${basename}.md"
+      )
+      [
+        "psyche-centralized-local-testnet"
+        "psyche-sidecar"
+        "psyche-centralized-client"
+        "psyche-centralized-server"
+        "psyche-solana-client"
+      ]
+    }
 
     cp ${../secrets.nix} generated/secrets.nix
   '';

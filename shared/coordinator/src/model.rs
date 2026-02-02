@@ -40,6 +40,18 @@ pub enum LLMArchitecture {
     HfLlama,
     HfDeepseek,
     HfAuto,
+    Torchtitan,
+}
+
+impl std::fmt::Display for LLMArchitecture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LLMArchitecture::HfLlama => f.write_str("HfLlama"),
+            LLMArchitecture::HfDeepseek => f.write_str("HfDeepseek"),
+            LLMArchitecture::HfAuto => f.write_str("HfAuto"),
+            LLMArchitecture::Torchtitan => f.write_str("Torchtitan"),
+        }
+    }
 }
 
 #[derive(
@@ -52,6 +64,7 @@ pub enum LLMArchitecture {
     Serialize,
     Deserialize,
     InitSpace,
+    PartialEq,
     TS,
 )]
 #[repr(C)]

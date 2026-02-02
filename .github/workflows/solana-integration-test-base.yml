@@ -39,11 +39,6 @@ jobs:
             substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
             trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
 
-      - name: Install just
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
-          sudo chmod +x /usr/local/bin/just
-
       # Step 1: Get Validator Image from cache
       - name: Get Validator Image from cache
         id: cache-validator
@@ -80,17 +75,9 @@ jobs:
           echo "Disk space before client build"
           df -h
 
-          # Calculate the derivation hash
-          echo "Calculating derivation path"
-          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client-no-python.drvPath)
-          echo "Derivation path: $DRV_PATH"
-
-          OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
-          echo "Output path: $OUT_PATH"
-
-          # download from Garnix cache first
+          # download from Garnix cache
           echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH --option substitute true --option max-jobs 0
+          OUT_PATH=$(nix build .#docker-psyche-solana-test-client-no-python --no-link --print-out-paths)
 
           # Load the image into Docker
           $OUT_PATH | docker load
@@ -98,12 +85,14 @@ jobs:
           echo "Disk space after client build"
           df -h
 
-      # Clean Nix store after client build
+      - name: Build run-manager binary
+        run: |
+          nix build --out-link run-manager .#run-manager
+          nix build --out-link _keep_tests_binary .#test-psyche-decentralized-testing-integration_tests
+
+      # Clean Nix store
       - name: Clean after client build
         run: |
-          # Clean up the path file
-          rm -f client-image-path.txt
-
           # Clean nix store garbage
           nix-collect-garbage -d
           nix store optimise
@@ -127,5 +116,7 @@ jobs:
 
       # Step 4: Run Integration Tests
       - name: Run integration test
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          nix develop --command cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "${{ inputs.test-name }}"
+          cd architectures/decentralized/testing/ && nix run .#test-psyche-decentralized-testing-integration_tests -- --nocapture "${{ inputs.test-name }}"
