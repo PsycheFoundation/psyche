@@ -20,7 +20,7 @@ echo "[+] Airdropping SOL to wallet..."
 solana airdrop 10 --url ${RPC} --keypair ${WALLET_FILE}
 
 # Run the resume command (with --resume flag)
-CMD="psyche-solana-client set-paused --wallet-private-key-path ${WALLET_FILE} --rpc ${RPC} --ws-rpc ${WS_RPC} --run-id ${RUN_ID} --resume"
+CMD="run-manager set-paused --wallet-private-key-path ${WALLET_FILE} --rpc ${RPC} --ws-rpc ${WS_RPC} --run-id ${RUN_ID} --resume"
 echo "[+] Running: $CMD"
 $CMD
 

@@ -46,6 +46,7 @@ let
           busybox
           cacert
           solanaClientPackage
+          rustPackages."run-manager"
           externalRustPackages.solana-toolbox-cli
           jq
           # Create proper system structure including /tmp
