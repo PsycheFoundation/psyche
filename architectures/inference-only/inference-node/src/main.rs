@@ -10,7 +10,6 @@
 
 use anyhow::{Context, Result};
 use clap::{Args as ClapArgs, Parser, Subcommand};
-use iroh::EndpointAddr;
 use psyche_inference::{INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
@@ -34,7 +33,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Run the inference node (default)
-    Run(RunArgs),
+    Run(Box<RunArgs>),
 
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
@@ -98,7 +97,7 @@ async fn main() -> Result<()> {
             clap_markdown::print_help_markdown::<Cli>();
             return Ok(());
         }
-        Some(Commands::Run(args)) => args,
+        Some(Commands::Run(args)) => *args,
         None => cli.run_args,
     };
 
@@ -137,7 +136,7 @@ async fn main() -> Result<()> {
     info!("Capabilities: {:?}", capabilities);
 
     let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
-        args.bootstrap_peer_file.as_ref(),
+        run_args.bootstrap_peer_file.as_ref(),
         "No bootstrap peers configured (no env vars or CLI args)",
     )?;
 
@@ -195,7 +194,7 @@ async fn main() -> Result<()> {
     info!("  Endpoint ID: {}", network.endpoint_id());
     info!("Protocol handler registered");
 
-    if let Some(ref endpoint_file) = args.write_endpoint_file {
+    if let Some(ref endpoint_file) = run_args.write_endpoint_file {
         let endpoint_addr = network.router().endpoint().addr();
         let content = serde_json::to_string(&endpoint_addr)
             .context("Failed to serialize endpoint address")?;
@@ -238,7 +237,7 @@ async fn main() -> Result<()> {
             _ = heartbeat_interval.tick() => {
                 info!("Re-broadcasting availability");
                 let availability_msg = InferenceGossipMessage::NodeAvailable {
-                    model_name: args.model_name.clone(),
+                    model_name: model_name.clone(),
                     checkpoint_id: None,
                     capabilities: capabilities.clone(),
                 };

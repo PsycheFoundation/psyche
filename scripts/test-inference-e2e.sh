@@ -27,7 +27,7 @@ trap cleanup EXIT
 
 # Start inference node
 echo "Starting inference node..."
-LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info cargo run --bin psyche-inference-node -- \
+LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info nix run .#psyche-inference-node -- \
     --model-name "$MODEL" \
     --discovery-mode local \
     > /tmp/psyche-inference-node.log 2>&1 &
@@ -46,7 +46,7 @@ fi
 
 # Start gateway
 echo "Starting gateway node..."
-RUST_LOG=info cargo run --bin gateway-node --features gateway -- \
+RUST_LOG=info nix run .#bin-psyche-inference-node-gateway-node -- \
     --discovery-mode local \
     > /tmp/psyche-gateway-node.log 2>&1 &
 GATEWAY_PID=$!
