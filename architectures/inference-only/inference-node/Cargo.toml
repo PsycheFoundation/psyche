@@ -25,7 +25,8 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-clap = { version = "4", features = ["derive"] }
+clap.workspace = true
+clap-markdown.workspace = true
 
 iroh.workspace = true
 iroh-blobs.workspace = true
