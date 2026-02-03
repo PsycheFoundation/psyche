@@ -255,7 +255,9 @@ class TorchtitanAuto(CausalLM):
             for k in model_sd.keys()
         }
 
-        for k, source in state_dict.items():
+        sorted_keys = sorted(state_dict.keys())
+        for idx, k in enumerate(sorted_keys):
+            source = state_dict[k]
             actual_key = clean_to_actual.get(k)
             if actual_key is not None:
                 dest = model_sd[actual_key]

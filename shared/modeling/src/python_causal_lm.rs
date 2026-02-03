@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::{rc::Rc, sync::Arc};
 use tch::{Device, Tensor};
 use thiserror::Error;
-use tracing::error;
 
 #[derive(Clone, Debug)]
 pub struct PythonModelConfig {

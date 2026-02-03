@@ -177,6 +177,7 @@ async fn async_main() -> Result<()> {
             );
 
             let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            info!("Solana wallet pubkey: {}", wallet_keypair.pubkey());
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
